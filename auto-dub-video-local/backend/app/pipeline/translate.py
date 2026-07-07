@@ -35,11 +35,11 @@ class OllamaTranslator(BaseTranslator):
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a professional subtitle translator. Translate the given text to natural Vietnamese. Output ONLY the translation. Never include explanations, notes, or any other languages."
+                    "content": "Bạn là một dịch giả phụ đề video chuyên nghiệp. Hãy dịch câu tiếng Anh sau sang tiếng Việt tự nhiên, hợp xu hướng video TikTok. Bạn có thể giữ lại các từ tiếng Anh thông dụng (như vitamin C, underrated, calories, S tier,...) để câu văn tự nhiên, không cần dịch cứng nhắc 100%. Tuyệt đối không thêm ghi chú, giải thích, hoặc tiếng Trung."
                 },
                 {
                     "role": "user",
-                    "content": f"Dịch và viết lại câu sau sang tiếng Việt tự nhiên, ngắn gọn, phù hợp phụ đề video TikTok. Chỉ trả về câu tiếng Việt:\n\n'{text}'"
+                    "content": f"Dịch câu sau:\n\n'{text}'"
                 }
             ],
             "options": {
@@ -63,16 +63,16 @@ class OllamaTranslator(BaseTranslator):
             
         formatted_input = "\n".join(f"[{i+1}] {t}" for i, t in enumerate(texts))
         system_prompt = (
-            "You are a professional subtitle translator. Translate the given numbered list of English subtitle segments into natural, concise Vietnamese.\n"
-            "Follow these rules strictly:\n"
-            "1. Translate into natural Vietnamese. Never output Chinese or any other language.\n"
-            "2. Translate contextually, preserving the flow and pronouns across segments.\n"
-            "3. Keep the translations concise, suitable for video subtitles.\n"
-            "4. Maintain the exact format '[index] Translated text' for each line.\n"
-            "5. Do NOT include any explanations, introduction, notes, or other languages. Output ONLY the translated list."
+            "Bạn là một dịch giả phụ đề video chuyên nghiệp. Hãy dịch danh sách các phân đoạn phụ đề tiếng Anh sang tiếng Việt tự nhiên, ngắn gọn và hiện đại.\n"
+            "Tuân thủ nghiêm ngặt các quy tắc sau:\n"
+            "1. Dịch phụ đề sang văn phong tiếng Việt hiện đại, tự nhiên, hợp xu hướng video mạng xã hội (TikTok, Shorts). Bạn CÓ THỂ giữ lại một số thuật ngữ tiếng Anh phổ biến (ví dụ: 'vitamin C', 'underrated', 'basically', 'calories', 'deficit', 'carb', 'protein', 'S tier', 'A tier',...) để câu dịch tự nhiên, không cần dịch cứng nhắc 100% sang tiếng Việt.\n"
+            "2. Tuyệt đối KHÔNG bao giờ viết chữ Hán, chữ Trung Quốc, chú thích tiếng Trung, giải thích bằng bất kỳ ngôn ngữ nào khác ngoài tiếng Việt.\n"
+            "3. Giữ nguyên định dạng đầu ra '[chỉ_số] câu_dịch' cho mỗi dòng (ví dụ: '[1] Xin chào').\n"
+            "4. Không thêm bất kỳ ghi chú, lời mở đầu, giải thích hoặc dấu ngoặc đơn giải thích nào.\n"
+            "5. Số lượng dòng dịch trả về phải khớp chính xác 100% với số lượng dòng đầu vào."
         )
         user_prompt = (
-            "Dịch danh sách phụ đề tiếng Anh sau sang tiếng Việt tự nhiên (Tuyệt đối KHÔNG dịch sang tiếng Trung) và giữ nguyên định dạng '[chỉ_số] câu_dịch':\n\n"
+            "Hãy dịch danh sách phụ đề tiếng Anh sau sang tiếng Việt tự nhiên và giữ nguyên định dạng '[chỉ_số] câu_dịch':\n\n"
             f"{formatted_input}"
         )
         
@@ -114,7 +114,7 @@ class OpenAICompatibleTranslator(BaseTranslator):
     def translate_single(self, text: str, job_id: str) -> str:
         if not text.strip():
             return ""
-        prompt = f"Dịch và viết lại câu sau sang tiếng Việt tự nhiên, ngắn gọn, hợp video TikTok. Không giải thích, chỉ trả về câu tiếng Việt. Giữ ý chính, tránh câu quá dài. Câu gốc: {text}"
+        prompt = f"Dịch câu sau sang tiếng Việt tự nhiên, ngắn gọn, hợp video TikTok. Có thể giữ các từ tiếng Anh thông dụng (như vitamin C, underrated, calories, S tier,...) để câu văn tự nhiên, không dịch cứng nhắc 100%. Không giải thích, chỉ trả về câu tiếng Việt. Câu gốc: {text}"
         url = f"{OPENAI_BASE_URL.rstrip('/')}/chat/completions"
         headers = {
             "Content-Type": "application/json",
@@ -145,16 +145,16 @@ class OpenAICompatibleTranslator(BaseTranslator):
             
         formatted_input = "\n".join(f"[{i+1}] {t}" for i, t in enumerate(texts))
         system_prompt = (
-            "You are a professional subtitle translator. Translate the given numbered list of subtitle segments into natural, concise Vietnamese.\n"
-            "Follow these rules strictly:\n"
-            "1. Translate contextually, preserving the flow and pronouns across segments.\n"
-            "2. Keep the translations concise, suitable for video subtitles.\n"
-            "3. Maintain the exact format '[index] Translated text' for each line.\n"
-            "4. Return exactly the same number of lines as the input.\n"
-            "5. Do NOT include any explanations, introduction, notes, or other languages. Output ONLY the translated list."
+            "Bạn là một dịch giả phụ đề video chuyên nghiệp. Hãy dịch danh sách các phân đoạn phụ đề tiếng Anh sang tiếng Việt tự nhiên, ngắn gọn và hiện đại.\n"
+            "Tuân thủ các quy tắc sau:\n"
+            "1. Dịch phụ đề sang văn phong tiếng Việt hiện đại, tự nhiên, hợp xu hướng video TikTok. Bạn CÓ THỂ giữ lại các thuật ngữ tiếng Anh phổ biến (ví dụ: 'vitamin C', 'underrated', 'basically', 'calories', 'deficit', 'carb', 'protein', 'S tier',...) để câu dịch tự nhiên, không cần dịch cứng nhắc 100%.\n"
+            "2. Tuyệt đối KHÔNG viết chữ Hán, chữ Trung Quốc, chú thích tiếng Trung, giải thích bằng bất kỳ ngôn ngữ nào ngoài tiếng Việt.\n"
+            "3. Giữ nguyên định dạng đầu ra '[chỉ_số] câu_dịch' cho mỗi dòng (ví dụ: '[1] Xin chào').\n"
+            "4. Không thêm bất kỳ ghi chú, lời mở đầu, giải thích hoặc dấu ngoặc đơn giải thích nào.\n"
+            "5. Số lượng dòng dịch trả về phải khớp chính xác 100% với số lượng dòng đầu vào."
         )
         user_prompt = (
-            "Dịch danh sách phụ đề sau sang tiếng Việt tự nhiên và giữ nguyên định dạng '[chỉ_số] câu_dịch':\n\n"
+            "Hãy dịch danh sách phụ đề sau sang tiếng Việt tự nhiên và giữ nguyên định dạng '[chỉ_số] câu_dịch':\n\n"
             f"{formatted_input}"
         )
         
@@ -196,12 +196,17 @@ class OpenAICompatibleTranslator(BaseTranslator):
         return fallback_results
 
 def clean_translation(text: str) -> str:
-    """Removes double quotes, single quotes, or model-generated prefixes from translation output."""
+    """Removes double quotes, single quotes, or model-generated prefixes from translation output,
+    and strips Chinese characters, annotations/notes in parentheses to ensure compatibility with Edge-TTS.
+    """
     text = text.strip()
-    if text.startswith('"') and text.endswith('"'):
-        text = text[1:-1].strip()
-    if text.startswith("'") and text.endswith("'"):
-        text = text[1:-1].strip()
+    
+    # Remove any notes in parentheses like (note) or （note）
+    text = re.sub(r"\([^)]*\)", "", text)
+    text = re.sub(r"（[^）]*）", "", text)
+    
+    # Remove Chinese characters: range \u4e00-\u9fff
+    text = re.sub(r"[\u4e00-\u9fff]", "", text)
     
     # Remove common prefix headings returned by some models
     prefixes = ["Dịch:", "Tiếng Việt:", "Dịch lại:", "Bản dịch:", "Tiếng Việt dịch:", "Dịch sang tiếng Việt:"]
@@ -209,9 +214,18 @@ def clean_translation(text: str) -> str:
         if text.lower().startswith(prefix.lower()):
             text = text[len(prefix):].strip()
             
-    # Clean quotes again if they were inside the prefix
-    if text.startswith('"') and text.endswith('"'):
-        text = text[1:-1].strip()
+    # Remove English/Vietnamese quotes or notes like "Note:" or "Translation:"
+    text = re.sub(r"(?i)\b(note|translation|trans|explain|explanation|annotation|chú thích|dịch|nghĩa)\b.*?:", "", text)
+            
+    # Clean quotes
+    text = text.replace('"', '').replace("'", "").replace("“", "").replace("”", "")
+    
+    # Remove extra spaces/newlines
+    text = re.sub(r"\s+", " ", text).strip()
+    
+    # If the text has no letters or numbers left, return empty
+    if not re.search(r"\w", text):
+        return ""
         
     return text
 

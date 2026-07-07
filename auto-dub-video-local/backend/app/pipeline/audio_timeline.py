@@ -33,7 +33,7 @@ def build_audio_timeline(segments_json_path: str, voice_parts_dir: str, video_pa
                 db_change = -100
                 log_to_job(job_id, f"Original video volume set to {original_video_volume}%. Muting accompaniment.")
             else:
-                db_change = 20 * math.log10(original_video_volume / 100.0)
+                db_change = 40 * math.log10(original_video_volume / 100.0)
                 log_to_job(job_id, f"Original video volume set to {original_video_volume}%. Adjusting accompaniment by {db_change:.2f} dB.")
             bg_audio = bg_audio + db_change
             # Convert background audio to mono and 16000Hz (the format whisperX/edge-tts uses)
@@ -126,7 +126,7 @@ def mix_accompaniment_and_voice(voice_path: str, no_vocals_path: str, output_wav
             db_change = -100
             log_to_job(job_id, f"Original video volume set to {original_video_volume}%. Muting accompaniment.")
         else:
-            db_change = 20 * math.log10(original_video_volume / 100.0)
+            db_change = 40 * math.log10(original_video_volume / 100.0)
             log_to_job(job_id, f"Original video volume set to {original_video_volume}%. Adjusting accompaniment by {db_change:.2f} dB.")
         bg_audio = bg_audio + db_change
         

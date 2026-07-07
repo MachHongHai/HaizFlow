@@ -1,14 +1,88 @@
 import asyncio
 import os
 import json
+import re
 import edge_tts
 from app.job_store import log_to_job
 
+def preprocess_text_for_tts(text: str) -> str:
+    """Preprocesses translation text to ensure compatibility with Edge-TTS.
+    It replaces English words that crash the vi-VN normalizer with Vietnamese equivalents or phonetics,
+    and ensures the text ends with punctuation to prevent crashes on very short phrases.
+    This is ONLY used for TTS voice synthesis (subtitles still show the original text).
+    """
+    if not text:
+        return ""
+        
+    text = text.strip()
+    
+    # Replaces common English terms with Vietnamese phonetic equivalents or translations
+    replacements = {
+        r"\bunderrated\b": "đánh giá thấp",
+        r"\boverrated\b": "đánh giá quá cao",
+        r"\bbasically\b": "cơ bản",
+        r"\bdensity\b": "mật độ",
+        r"\bđensity\b": "mật độ",
+        r"\bpocket\b": "bỏ túi",
+        r"\bsugar\b": "đường",
+        r"\bcalories\b": "calo",
+        r"\bcalorie\b": "calo",
+        r"\bdeficit\b": "thâm hụt",
+        r"\bcarb\b": "các",
+        r"\bcarbs\b": "các",
+        r"\bprotein\b": "prô-tê-in",
+        r"\bfit\b": "phù hợp",
+        r"\bfits\b": "phù hợp",
+        r"\bdetox\b": "thải độc",
+        r"\bdiet\b": "ăn kiêng",
+        r"\bcommencement\b": "lễ tốt nghiệp",
+        r"\buniversities\b": "trường đại học",
+        r"\buniversity\b": "trường đại học",
+        r"\bcollege\b": "đại học",
+        r"\bgraduated\b": "tốt nghiệp",
+        r"\bhonored\b": "vinh dự",
+        r"\btruth\b": "sự thật",
+        r"\btold\b": "nói",
+        r"\bblueberries\b": "việt quất",
+        r"\bwatermelon\b": "dưa hấu",
+        r"\bpineapple\b": "dứa",
+        r"\bmelon\b": "dưa",
+        r"\bgrapes\b": "nho",
+        r"\bvitamin c\b": "vitamin xê",
+        r"\bvitamin C\b": "vitamin xê",
+        r"\bS tier\b": "hạng S",
+        r"\bA tier\b": "hạng A",
+        r"\bB tier\b": "hạng B",
+        r"\bC tier\b": "hạng C",
+        r"\bF tier\b": "hạng F",
+        r"\bs-tier\b": "hạng S",
+        r"\ba-tier\b": "hạng A",
+        r"\bb-tier\b": "hạng B",
+        r"\bc-tier\b": "hạng C",
+        r"\bf-tier\b": "hạng F",
+        r"\bS\b": "hạng ét",
+        r"\bA\b": "hạng a",
+        r"\bB\b": "hạng bê",
+        r"\bC\b": "hạng xê",
+        r"\bD\b": "hạng đê",
+        r"\bF\b": "hạng ép",
+    }
+    
+    for pattern, repl in replacements.items():
+        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
+        
+    # Ensure it ends with a punctuation (., !, ?) to prevent Edge-TTS failure on very short texts
+    if text and text[-1] not in ('.', '!', '?', ',', ';', ':', '...'):
+        text += "."
+        
+    return text
+
 async def tts_segment_with_retry(text: str, voice: str, output_path: str, retries: int = 3):
     """Invokes edge-tts to speak text, retrying if a network error occurs."""
+    processed_text = preprocess_text_for_tts(text)
     for attempt in range(retries):
         try:
-            communicate = edge_tts.Communicate(text, voice)
+            communicate = edge_tts.Communicate(processed_text, voice)
             await communicate.save(output_path)
             return
         except Exception as e:
