@@ -5,10 +5,31 @@ from pydub.effects import speedup
 from app.job_store import log_to_job
 from app.utils.ffmpeg import get_video_duration
 
-# Maximum allowed speed factor for time-stretching (2.0x = 100% faster)
-MAX_SPEED_FACTOR = 2.0
-# Maximum allowed overrun (ms) after time-stretching before hard truncation
-MAX_OVERRUN_AFTER_STRETCH_MS = 300
+# Maximum allowed speed factor for time-stretching (1.25x = 25% faster for natural speech)
+MAX_SPEED_FACTOR = 1.25
+
+def trim_silence(audio: AudioSegment, silence_threshold_db: float = -50.0) -> AudioSegment:
+    """Trims leading and trailing silence from an AudioSegment to remove delay and trailing padding."""
+    start_trim = 0
+    chunk_size = 10
+    for i in range(0, len(audio), chunk_size):
+        chunk = audio[i:i+chunk_size]
+        if chunk.dBFS > silence_threshold_db:
+            # Keep a small 30ms buffer to avoid abrupt cut-off
+            start_trim = max(0, i - 30)
+            break
+            
+    end_trim = len(audio)
+    for i in range(len(audio), 0, -chunk_size):
+        chunk = audio[i - chunk_size : i]
+        if chunk.dBFS > silence_threshold_db:
+            # Keep a small 50ms buffer at the end
+            end_trim = min(len(audio), i + 50)
+            break
+            
+    if start_trim < end_trim:
+        return audio[start_trim:end_trim]
+    return audio
 
 def build_audio_timeline(segments_json_path: str, voice_parts_dir: str, video_path: str, output_wav_path: str, job_id: str, no_vocals_path: str = None, original_video_volume: int = 60):
     """Overlays generated voice MP3 parts on top of a silent or accompaniment audio track based on timestamps."""
@@ -58,44 +79,51 @@ def build_audio_timeline(segments_json_path: str, voice_parts_dir: str, video_pa
             continue
             
         start_ms = int(seg["start"] * 1000)
-        end_ms = int(seg["end"] * 1000)
-        seg_dur = end_ms - start_ms
+        
+        # Place the speech start position: it must not overlap with the previous segment's end
+        placed_start_ms = max(start_ms, last_end_ms)
+        
+        # Determine target end time: start of the next segment (original) or end of video
+        if idx < total:
+            next_start_ms = int(segments[idx]["start"] * 1000)
+        else:
+            next_start_ms = video_dur_ms
+            
+        # The available duration before overlapping with the next speech segment
+        available_dur = next_start_ms - placed_start_ms
         
         try:
             tts_segment = AudioSegment.from_file(part_path)
+            # Trim leading/trailing silence from the generated TTS audio to remove delay/gaps
+            tts_segment = trim_silence(tts_segment)
             tts_dur = len(tts_segment)
             
-            # Dynamic Time-Stretching: speed up TTS if it overruns the segment duration
-            if tts_dur > seg_dur:
-                if seg_dur <= 0:
+            # Dynamic Time-Stretching: speed up TTS only if it exceeds the available gap
+            if tts_dur > available_dur:
+                if available_dur <= 0:
                     speed_factor = MAX_SPEED_FACTOR
                 else:
-                    speed_factor = tts_dur / seg_dur
+                    speed_factor = tts_dur / available_dur
                 
-                if speed_factor <= MAX_SPEED_FACTOR:
-                    # Speed up entirely within the safe range
-                    log_to_job(job_id, f"[{idx}/{total}] TTS overran by {tts_dur - seg_dur}ms. Applying time-stretch at {speed_factor:.2f}x speed.")
-                    try:
-                        tts_segment = speedup(tts_segment, playback_speed=speed_factor)
-                    except Exception as stretch_err:
-                        log_to_job(job_id, f"[{idx}/{total}] Time-stretch failed ({str(stretch_err)}). Using original audio.")
-                else:
-                    # Speed factor exceeds max: apply max stretch
-                    log_to_job(job_id, f"[{idx}/{total}] TTS overran by {tts_dur - seg_dur}ms (speed factor {speed_factor:.2f}x exceeds max {MAX_SPEED_FACTOR}x). Stretching to {MAX_SPEED_FACTOR}x.")
-                    try:
-                        tts_segment = speedup(tts_segment, playback_speed=MAX_SPEED_FACTOR)
-                    except Exception as stretch_err:
-                        log_to_job(job_id, f"[{idx}/{total}] Time-stretch failed ({str(stretch_err)}). Using original audio.")
-                
-            # Record the end time of the current segment to prevent overlap for the next segment
-            last_end_ms = start_ms + len(tts_segment)
+                # Cap the speedup factor to ensure natural clear voice (1.25x max)
+                if speed_factor > MAX_SPEED_FACTOR:
+                    speed_factor = MAX_SPEED_FACTOR
+                    
+                log_to_job(job_id, f"[{idx}/{total}] TTS overran available gap ({available_dur}ms). Applying time-stretch at {speed_factor:.2f}x speed.")
+                try:
+                    tts_segment = speedup(tts_segment, playback_speed=speed_factor)
+                except Exception as stretch_err:
+                    log_to_job(job_id, f"[{idx}/{total}] Time-stretch failed ({str(stretch_err)}). Using original audio.")
+            
+            # Record the actual end time of the current segment
+            last_end_ms = placed_start_ms + len(tts_segment)
             
             # If the voice overlay exceeds current track length, expand it
-            if start_ms + len(tts_segment) > len(base_audio):
-                extra_ms = (start_ms + len(tts_segment)) - len(base_audio)
+            if placed_start_ms + len(tts_segment) > len(base_audio):
+                extra_ms = (placed_start_ms + len(tts_segment)) - len(base_audio)
                 base_audio = base_audio + AudioSegment.silent(duration=extra_ms, frame_rate=16000)
                 
-            base_audio = base_audio.overlay(tts_segment, position=start_ms)
+            base_audio = base_audio.overlay(tts_segment, position=placed_start_ms)
         except Exception as e:
             log_to_job(job_id, f"Failed to overlay segment {idx} ({part_filename}): {str(e)}")
             
