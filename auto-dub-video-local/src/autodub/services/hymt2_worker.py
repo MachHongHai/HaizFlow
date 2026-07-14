@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 _INFERENCE_BATCH_SIZE = max(1, min(8, int(os.getenv("HYMT2_INFERENCE_BATCH_SIZE", "4"))))
-_CONTEXT_SEGMENTS = 1
-_MAX_CONTEXT_CHARACTERS = 800
+_CONTEXT_SEGMENTS = 3
+_MAX_CONTEXT_CHARACTERS = 1200
 _PROGRESS_PATH = None
 _MODEL_RUNTIME = None
 
@@ -56,25 +56,30 @@ def _build_prompt(
         before_start = _context_before_start(texts, index)
         after_end = _context_after_end(texts, index + 1)
         previous_context = "\n".join(
-            texts[context_index]
+            f"P{index - context_index}: {texts[context_index]}"
             for context_index in range(before_start, index)
         )
         following_context = "\n".join(
-            texts[context_index]
+            f"N{context_index - index}: {texts[context_index]}"
             for context_index in range(index + 1, after_end)
         )
-        context_parts = [f"Source language: {source_languages[index]}"]
+        context_parts = [
+            "[Background Information - reference only]",
+            f"Source language: {source_languages[index]}",
+        ]
         if previous_context:
-            context_parts.append(f"Previous subtitle: {previous_context}")
+            context_parts.append(f"[Previous Subtitles]\n{previous_context}")
         if following_context:
-            context_parts.append(f"Following subtitle: {following_context}")
-        context_block = "[Background Information]\n" + "\n".join(context_parts) + "\n\n"
+            context_parts.append(f"[Following Subtitles]\n{following_context}")
+        context_parts.append("[End Background Information]")
+        context_block = "\n".join(context_parts) + "\n\n"
 
     return (
         f"{context_block}Please accurately translate the [Source Text] into {target_language_name}, "
         "taking the provided background information into consideration. Translate only the [Source Text], "
-        "not the background. Preserve its meaning, names, numbers, and percentages exactly; do not paraphrase, "
-        "expand, or omit information. Only output the translated result without any additional explanation.\n\n"
+        "not the background, and never copy a background sentence even when its wording is similar. Preserve its "
+        "meaning, names, numbers, and percentages exactly; do not paraphrase, expand, or omit information. "
+        "Only output the translated result without any additional explanation.\n\n"
         f"[Source Text]\n{texts[index]}"
     )
 

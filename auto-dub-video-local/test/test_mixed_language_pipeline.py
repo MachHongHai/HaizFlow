@@ -129,8 +129,8 @@ class MixedLanguagePipelineTests(unittest.TestCase):
     def test_hymt2_prompt_batches_preserve_order_and_context(self):
         texts = ["Hello", "How are you?", "Fine.", "Thanks", "Bye"]
         self.assertEqual(list(_inference_batches(texts, batch_size=4)), [(0, 4), (4, 5)])
-        self.assertEqual(_context_before_start(["A" * 900, "B"], 2), 1)
-        self.assertEqual(_context_after_end(["A", "B" * 900], 1), 1)
+        self.assertEqual(_context_before_start(["A" * 1300, "B"], 2), 1)
+        self.assertEqual(_context_after_end(["A", "B" * 1300], 1), 1)
 
         prompt = _build_prompt(
             ["Hello", "How are you?", "Fine."],
@@ -138,9 +138,10 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             1,
             "Vietnamese",
         )
-        self.assertIn("[Background Information]", prompt)
-        self.assertIn("Previous subtitle: Hello", prompt)
-        self.assertIn("Following subtitle: Fine.", prompt)
+        self.assertIn("[Background Information - reference only]", prompt)
+        self.assertIn("[Previous Subtitles]\nP1: Hello", prompt)
+        self.assertIn("[Following Subtitles]\nN1: Fine.", prompt)
+        self.assertIn("[End Background Information]", prompt)
         self.assertIn("[Source Text]\nHow are you?", prompt)
         self.assertIn("Translate only the [Source Text], not the background", prompt)
         self.assertIn("do not paraphrase, expand, or omit information", prompt)
@@ -159,14 +160,30 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertIn("[Source Text]\nThanks", prompts[3])
 
         focused_prompt = _build_prompt(
-            ["Honey details", "Top 20%.", "Banana details", "Top 10%."],
-            ["English"] * 4,
-            2,
+            ["Earlier context", "Honey details", "Top 20%.", "Banana details", "Top 10%.", "Later context"],
+            ["English"] * 6,
+            3,
             "Vietnamese",
         )
-        self.assertNotIn("Honey details", focused_prompt)
-        self.assertIn("Previous subtitle: Top 20%.", focused_prompt)
-        self.assertIn("Following subtitle: Top 10%.", focused_prompt)
+        self.assertIn("P2: Honey details", focused_prompt)
+        self.assertIn("P1: Top 20%.", focused_prompt)
+        self.assertIn("N1: Top 10%.", focused_prompt)
+        self.assertIn("N2: Later context", focused_prompt)
+        self.assertLess(
+            focused_prompt.index("[End Background Information]"),
+            focused_prompt.rindex("[Source Text]\nBanana details"),
+        )
+
+        wide_prompt = _build_prompt(
+            [f"Line {number}" for number in range(9)],
+            ["English"] * 9,
+            4,
+            "Vietnamese",
+        )
+        self.assertNotIn("Line 0", wide_prompt)
+        for number in (1, 2, 3, 5, 6, 7):
+            self.assertIn(f"Line {number}", wide_prompt)
+        self.assertNotIn("Line 8", wide_prompt)
 
     def test_hymt2_worker_writes_response_and_progress_sidecar(self):
         with tempfile.TemporaryDirectory() as temp_dir:
