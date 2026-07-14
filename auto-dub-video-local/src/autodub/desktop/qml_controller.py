@@ -17,7 +17,7 @@ from autodub.config import (
 from autodub.core.events import subscribe_log, unsubscribe_log
 from autodub.pipeline.job_manager import cancel_job, pause_job
 from autodub.schemas.job import CropSettings, JobConfig, SubtitleStyle
-from autodub.services import job_store
+from autodub.services import job_store, project_store
 from autodub.services.desktop_jobs import SUPPORTED_VIDEO_EXTENSIONS, create_desktop_job
 from autodub.services.translation import shutdown_hymt2_worker, warm_hymt2_worker
 from autodub.services import desktop_settings
@@ -851,6 +851,15 @@ class AutoDubController(QObject):
         self._project_name = project_name
         self._project_directory = os.path.abspath(project_directory)
         self._project_type = "batch" if project_type == "batch" else "single"
+        try:
+            project_store.ensure_project(
+                self._project_name,
+                self._project_directory,
+                self._project_type,
+            )
+        except OSError as exc:
+            QMessageBox.warning(None, "Project folder", f"Cannot create project folder: {exc}")
+            return False
         self.videoPath = ""
         self._selected_job_id = None
         self._batch_job_ids = []
@@ -860,6 +869,7 @@ class AutoDubController(QObject):
         self.projectSetupChanged.emit()
         self.selectedJobChanged.emit()
         self.logsChanged.emit()
+        self.refreshJobs()
         self.projectPrepared.emit()
         return True
 
@@ -1374,14 +1384,20 @@ class AutoDubController(QObject):
         if not project:
             return
         jobs = project["jobs"]
-        if not jobs:
-            return
         self._project_name = project["project_name"]
         self._project_directory = project["project_directory"] or self._project_directory
         self._project_type = project["project_type"]
         self._batch_job_ids = [job.job_id for job in jobs] if self._project_type == "batch" else []
         self._refresh_batch_model()
-        self._select_job(jobs[0])
+        if jobs:
+            self._select_job(jobs[0])
+        else:
+            self.videoPath = ""
+            self._selected_job_id = None
+            self._logs = ""
+            self.tasks.set_job(None)
+            self.selectedJobChanged.emit()
+            self.logsChanged.emit()
         self._project_type = project["project_type"]
         self.projectSetupChanged.emit()
         self.batchChanged.emit()
@@ -1428,7 +1444,7 @@ class AutoDubController(QObject):
     def refreshJobs(self):
         all_jobs = job_store.list_jobs()
         self.jobs.set_jobs(all_jobs[:40])
-        self.projects.set_projects(self._build_project_summaries(all_jobs))
+        self.projects.set_projects(self._build_project_summaries(all_jobs, project_store.list_projects()))
         self._refresh_batch_model()
         selected = job_store.get_job(self._selected_job_id) if self._selected_job_id else None
         self.tasks.set_job(selected)
@@ -1777,17 +1793,25 @@ class AutoDubController(QObject):
         return next((group for group in self._batch_dimension_groups() if group["size_key"] == size_key), None)
 
     @staticmethod
-    def _build_project_summaries(jobs):
+    def _build_project_summaries(jobs, persisted_projects=None):
         grouped = {}
+        for persisted in persisted_projects or []:
+            key = persisted.get("key")
+            if not key:
+                continue
+            grouped[key] = {
+                "key": key,
+                "project_name": persisted["project_name"],
+                "project_directory": persisted.get("project_directory", ""),
+                "project_type": "batch" if persisted.get("project_type") == "batch" else "single",
+                "jobs": [],
+                "updated_at": persisted.get("updated_at", ""),
+            }
         for job in jobs:
             project_type = "batch" if getattr(job, "project_type", "single") == "batch" else "single"
             project_name = job.project_name or os.path.splitext(job.original_filename)[0]
             project_directory = job.project_directory or ""
-            key = (
-                f"batch:{project_directory.lower()}:{project_name.lower()}"
-                if project_type == "batch"
-                else f"single:{job.job_id}"
-            )
+            key = project_store.project_key(project_name, project_directory, project_type) if project_directory else f"legacy:{job.job_id}"
             project = grouped.setdefault(
                 key,
                 {
@@ -1796,6 +1820,7 @@ class AutoDubController(QObject):
                     "project_directory": project_directory,
                     "project_type": project_type,
                     "jobs": [],
+                    "updated_at": job.updated_at,
                 },
             )
             project["jobs"].append(job)
@@ -1803,6 +1828,18 @@ class AutoDubController(QObject):
         summaries = []
         for project in grouped.values():
             project_jobs = project["jobs"]
+            if not project_jobs:
+                summaries.append(
+                    {
+                        **project,
+                        "job_count": 0,
+                        "status": "empty",
+                        "progress": 0,
+                        "thumbnail_source": "",
+                        "updated_at": project.get("updated_at", ""),
+                    }
+                )
+                continue
             statuses = {job.status for job in project_jobs}
             if "processing" in statuses:
                 status = "processing"

@@ -13,6 +13,7 @@ if str(SRC) not in sys.path:
 from autodub.desktop.qml_controller import AutoDubController
 from autodub.schemas.job import JobConfig
 from autodub.services import job_store
+from autodub.services import project_store
 from autodub.services.desktop_jobs import create_desktop_job
 
 
@@ -55,7 +56,9 @@ class ProjectGroupingTests(unittest.TestCase):
             source = root / "clip.mp4"
             source.write_bytes(b"video")
             original_jobs_dir = job_store.JOBS_DIR
+            original_project_index = project_store.PROJECT_INDEX_PATH
             job_store.JOBS_DIR = str(root / "jobs")
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
             try:
                 job = create_desktop_job(
                     str(source),
@@ -65,12 +68,42 @@ class ProjectGroupingTests(unittest.TestCase):
                 )
             finally:
                 job_store.JOBS_DIR = original_jobs_dir
+                project_store.PROJECT_INDEX_PATH = original_project_index
 
         output_path = Path(job.files["final_video"])
         self.assertEqual(job.project_type, "batch")
         self.assertEqual(output_path.name, "dubbed_video.mp4")
         self.assertEqual(output_path.parent.parent.name, "outputs")
         self.assertIn(job.job_id[:8], output_path.parent.name)
+
+    def test_empty_project_is_included_in_project_summaries(self):
+        persisted = {
+            "key": "single:d:/autodubdata/projects:draft",
+            "project_name": "Draft",
+            "project_directory": "D:/AutoDubData/projects",
+            "project_type": "single",
+            "updated_at": "2026-07-15T10:00:00Z",
+        }
+        summaries = AutoDubController._build_project_summaries([], [persisted])
+
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(summaries[0]["status"], "empty")
+        self.assertEqual(summaries[0]["job_count"], 0)
+
+    def test_ensure_project_persists_an_empty_project(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                project = project_store.ensure_project("Empty batch", str(root / "exports"), "batch")
+                projects = project_store.list_projects()
+                self.assertTrue(Path(project["project_root"]).is_dir())
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
+
+        self.assertEqual(projects[0]["key"], project["key"])
+        self.assertEqual(projects[0]["project_type"], "batch")
 
 
 if __name__ == "__main__":

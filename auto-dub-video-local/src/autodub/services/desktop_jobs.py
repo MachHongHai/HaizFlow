@@ -3,7 +3,7 @@ import shutil
 import uuid
 
 from autodub.schemas.job import JobConfig
-from autodub.services import job_store
+from autodub.services import job_store, project_store
 from autodub.utils.ffmpeg import get_video_dimensions
 
 
@@ -27,11 +27,12 @@ def create_desktop_job(video_path: str, config: JobConfig, project_name: str = "
     if project_directory:
         config.project_name = project_name
         config.project_directory = os.path.abspath(project_directory)
+        project_store.ensure_project(project_name, config.project_directory, config.project_type)
     job_info = job_store.create_job(job_id, os.path.basename(video_path), config, video_ext=ext)
 
     if project_directory:
-        safe_project = "".join(character if character.isalnum() or character in {"-", "_", " "} else "_" for character in project_name).strip()
-        project_output_dir = os.path.join(os.path.abspath(project_directory), safe_project or "project")
+        safe_project = project_store.safe_project_name(project_name)
+        project_output_dir = project_store.project_root(project_name, project_directory)
         os.makedirs(project_output_dir, exist_ok=True)
         if config.project_type == "batch":
             safe_stem = "".join(

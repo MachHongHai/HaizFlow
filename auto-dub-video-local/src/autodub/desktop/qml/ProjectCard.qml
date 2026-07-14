@@ -16,6 +16,7 @@ Rectangle {
     signal activated()
 
     readonly property string statusLabel: status === "pending" ? I18n.t("Queued")
+        : status === "empty" ? I18n.t("No source selected")
         : status === "processing" ? I18n.t("Processing")
         : status === "done" ? I18n.t("Complete")
         : status === "failed" ? I18n.t("Failed")

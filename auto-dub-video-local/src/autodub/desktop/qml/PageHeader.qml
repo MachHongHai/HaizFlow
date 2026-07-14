@@ -40,7 +40,7 @@ RowLayout {
 
     RowLayout {
         id: actionArea
-        Layout.alignment: Qt.AlignTop
+        Layout.alignment: Qt.AlignVCenter
         spacing: Theme.space8
     }
 }

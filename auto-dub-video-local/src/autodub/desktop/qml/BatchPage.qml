@@ -27,10 +27,13 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.topMargin: Theme.space20
         spacing: Theme.space20
 
         PageHeader {
             Layout.fillWidth: true
+            Layout.minimumHeight: 58
+            Layout.preferredHeight: 58
             title: controller.projectName || I18n.t("Batch project")
             subtitle: qsTr("%1 %2").arg(controller.batchCount).arg(I18n.t("videos"))
 
@@ -43,6 +46,7 @@ Item {
 
             AppButton {
                 text: I18n.t("Batch setup")
+                iconGlyph: "\uE713"
                 toolTipText: I18n.t("Configure this batch")
                 enabled: controller.batchCount > 0 && !controller.isBatchRunning
                 onClicked: root.requestBatchSettings()
