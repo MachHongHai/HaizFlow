@@ -40,6 +40,7 @@ _WORKER_LOCK = threading.RLock()
 _WORKER_PROCESS = None
 _WORKER_OUTPUT = None
 _WORKER_READER = None
+_WORKER_WARM = False
 
 
 def language_name(language_code: str) -> str:
@@ -106,16 +107,27 @@ def _worker_command() -> list[str]:
 
 
 def _discard_hymt2_worker(process=None) -> None:
-    global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER
+    global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM
     if process is not None and process is not _WORKER_PROCESS:
         return
     _WORKER_PROCESS = None
     _WORKER_OUTPUT = None
     _WORKER_READER = None
+    _WORKER_WARM = False
+
+
+def is_hymt2_worker_warm() -> bool:
+    """Return whether the persistent worker has a live, loaded model."""
+    with _WORKER_LOCK:
+        return bool(
+            _WORKER_WARM
+            and _WORKER_PROCESS is not None
+            and _WORKER_PROCESS.poll() is None
+        )
 
 
 def _ensure_hymt2_worker():
-    global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER
+    global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM
     if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is None and _WORKER_OUTPUT is not None:
         return _WORKER_PROCESS, _WORKER_OUTPUT
 
@@ -125,6 +137,14 @@ def _ensure_hymt2_worker():
     environment["OMP_NUM_THREADS"] = "1"
     environment["MKL_NUM_THREADS"] = "1"
     environment["PYTHONFAULTHANDLER"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
+    startupinfo = None
+    if os.name == "nt":
+        # Hide the console window while retaining normal process semantics for
+        # CUDA and native Torch libraries.
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
     process = subprocess.Popen(
         _worker_command(),
         cwd=str(project_root()),
@@ -133,8 +153,10 @@ def _ensure_hymt2_worker():
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        startupinfo=startupinfo,
     )
     output_queue = queue.Queue()
 
@@ -147,6 +169,7 @@ def _ensure_hymt2_worker():
     _WORKER_PROCESS = process
     _WORKER_OUTPUT = output_queue
     _WORKER_READER = reader
+    _WORKER_WARM = False
     return process, output_queue
 
 
@@ -170,9 +193,11 @@ def shutdown_hymt2_worker() -> None:
 
 def warm_hymt2_worker(status_callback=None) -> None:
     """Load HY-MT2 once in the persistent worker before the first job arrives."""
+    global _WORKER_WARM
     with _WORKER_LOCK:
         process, output_queue = _ensure_hymt2_worker()
         request_id = uuid.uuid4().hex
+        worker_output = []
         try:
             if process.stdin is None:
                 raise RuntimeError("HY-MT2 worker input channel is unavailable.")
@@ -190,6 +215,7 @@ def warm_hymt2_worker(status_callback=None) -> None:
                     if process.poll() is not None:
                         break
                     continue
+                worker_output.append(line)
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
@@ -201,6 +227,7 @@ def warm_hymt2_worker(status_callback=None) -> None:
                 if event.get("error"):
                     raise RuntimeError(event["error"])
                 if event.get("warmed"):
+                    _WORKER_WARM = True
                     return
                 raise RuntimeError("HY-MT2 worker returned an invalid warm-up response.")
         except Exception:
@@ -209,7 +236,15 @@ def warm_hymt2_worker(status_callback=None) -> None:
             raise
 
         _discard_hymt2_worker(process)
-        raise RuntimeError(f"HY-MT2 worker stopped during warm-up with exit code {process.returncode}.")
+        details = "".join(worker_output).strip() or "no worker output"
+        if process.returncode == 3221225477:
+            raise RuntimeError(
+                "HY-MT2 worker suffered a native Windows crash (0xC0000005) during warm-up. "
+                f"Worker output: {details[-3000:]}"
+            )
+        raise RuntimeError(
+            f"HY-MT2 worker stopped during warm-up with exit code {process.returncode}: {details[-3000:]}"
+        )
 
 
 def _translate_with_hymt2_worker(
@@ -219,6 +254,7 @@ def _translate_with_hymt2_worker(
     target_language_name: str,
     progress_callback=None,
 ) -> list[str]:
+    global _WORKER_WARM
     if not texts:
         return []
     if len(source_languages) != len(texts):
@@ -288,6 +324,7 @@ def _translate_with_hymt2_worker(
                 translations = event.get("translations")
                 if not isinstance(translations, list) or len(translations) != len(texts) or not all(isinstance(text, str) for text in translations):
                     raise RuntimeError("HY-MT2 worker returned an invalid translation result.")
+                _WORKER_WARM = True
                 log_to_job(job_id, "HY-MT2 translation completed; model stays warm for the next job.")
                 return translations
         finally:

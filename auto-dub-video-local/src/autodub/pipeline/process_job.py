@@ -14,7 +14,7 @@ from autodub.pipeline.subtitle import generate_srt
 from autodub.pipeline.transcribe import transcribe
 from autodub.pipeline.tts import generate_voice_parts
 from autodub.services.job_store import get_job, log_to_job, update_job
-from autodub.services.translation import translate_segments
+from autodub.services.translation import is_hymt2_worker_warm, translate_segments, warm_hymt2_worker
 
 
 def _signature(*values):
@@ -92,7 +92,7 @@ def process_job_sync(job_id: str):
         temp_audio_wav = os.path.join(job_dir, "temp", "audio.wav")
         source_segments_json = os.path.join(job_dir, "temp", "source_segments.json")
         translation_signature = _signature(
-            _file_state(video_input), "auto-per-subtitle-v2", "hymt2-multilingual-context-greedy-v6",
+            _file_state(video_input), "auto-per-subtitle-v2", "hymt2-tencent-anchored-context-v10",
             job.target_language, job.enable_audio_separation, "hymt2"
         )
 
@@ -112,6 +112,16 @@ def process_job_sync(job_id: str):
             log_to_job(job_id, f"Resuming from translated segments after paused step '{job.resume_step}'.")
             _finish_after_translation(job, reporter, job_dir, temp_audio_wav)
             return
+
+        if not is_hymt2_worker_warm():
+            reporter.update(4, "loading_models", "Preparing HY-MT2 translation model")
+            log_to_job(job_id, "Preparing HY-MT2 before WhisperX to avoid peak memory usage.")
+
+            def report_model_warmup(detail):
+                log_to_job(job_id, detail)
+                reporter.update(4, "loading_models", detail)
+
+            warm_hymt2_worker(report_model_warmup)
 
         check_cancellation(job_id)
         reporter.update(5, "extracting_audio", "Extracting source audio")

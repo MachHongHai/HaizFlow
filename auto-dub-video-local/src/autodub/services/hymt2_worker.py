@@ -9,12 +9,16 @@ from pathlib import Path
 _INFERENCE_BATCH_SIZE = max(1, min(8, int(os.getenv("HYMT2_INFERENCE_BATCH_SIZE", "4"))))
 _CONTEXT_SEGMENTS = 3
 _MAX_CONTEXT_CHARACTERS = 1200
+_GLOBAL_CONTEXT_SEGMENTS = 3
+_MAX_BACKGROUND_CHARACTERS = 2400
 _PROGRESS_PATH = None
 _MODEL_RUNTIME = None
 
 
 def _emit_event(payload: dict) -> None:
-    line = json.dumps(payload, ensure_ascii=False)
+    # Keep the worker protocol ASCII-safe so Windows console code pages cannot
+    # corrupt or reject translated Unicode text. json.loads restores Unicode.
+    line = json.dumps(payload, ensure_ascii=True)
     if _PROGRESS_PATH is not None:
         with open(_PROGRESS_PATH, "a", encoding="utf-8") as file:
             file.write(line + "\n")
@@ -43,6 +47,32 @@ def _context_after_end(texts: list[str], core_end: int) -> int:
     return end
 
 
+def _is_short_label(text: str) -> bool:
+    source_label = text.strip().rstrip(".!?。！？").strip()
+    return bool(source_label) and len(source_label) <= 40 and len(source_label.split()) <= 2
+
+
+def _context_indices(texts: list[str], index: int) -> list[int]:
+    """Use topic anchors and preceding subtitles without leaking future source text."""
+    priority = []
+    priority.extend(range(min(_GLOBAL_CONTEXT_SEGMENTS, len(texts))))
+    if not _is_short_label(texts[index]):
+        for distance in range(1, _CONTEXT_SEGMENTS + 1):
+            priority.append(index - distance)
+
+    selected = []
+    used_characters = 0
+    for context_index in priority:
+        if context_index == index or context_index < 0 or context_index >= len(texts) or context_index in selected:
+            continue
+        item_characters = len(texts[context_index])
+        if used_characters + item_characters > _MAX_BACKGROUND_CHARACTERS:
+            continue
+        selected.append(context_index)
+        used_characters += item_characters
+    return sorted(selected)
+
+
 def _build_prompt(
     texts: list[str],
     source_languages: list[str],
@@ -53,34 +83,38 @@ def _build_prompt(
 ) -> str:
     context_block = ""
     if include_context:
-        before_start = _context_before_start(texts, index)
-        after_end = _context_after_end(texts, index + 1)
-        previous_context = "\n".join(
-            f"P{index - context_index} [{source_languages[context_index]}]: {texts[context_index]}"
-            for context_index in range(before_start, index)
-        )
-        following_context = "\n".join(
-            f"N{context_index - index} [{source_languages[context_index]}]: {texts[context_index]}"
-            for context_index in range(index + 1, after_end)
-        )
-        context_parts = [
-            "[Background Information - reference only]",
-            f"Source language: {source_languages[index]}",
-        ]
-        if previous_context:
-            context_parts.append(f"[Previous Subtitles]\n{previous_context}")
-        if following_context:
-            context_parts.append(f"[Following Subtitles]\n{following_context}")
-        context_parts.append("[End Background Information]")
-        context_block = "\n".join(context_parts) + "\n\n"
+        context_lines = []
+        for context_index in _context_indices(texts, index):
+            context_lines.append(f"- [{source_languages[context_index]}] {texts[context_index]}")
+        context_parts = [f"Source language: {source_languages[index]}"]
+        if context_lines:
+            context_parts.append(
+                "Video subtitle context in chronological order. It is reference only and is not text to translate:\n"
+                + "\n".join(context_lines)
+            )
+        context_block = "[Background Information]\n" + "\n".join(context_parts) + "\n\n"
 
+    if context_block:
+        short_label_rule = ""
+        if _is_short_label(texts[index]):
+            short_label_rule = (
+                " The [Source Text] is a standalone label: preserve its exact identity and level of specificity. "
+                "If there is no certain exact equivalent, transliterate or preserve it rather than substituting "
+                "a different item or a more specific subtype."
+            )
+        return (
+            f"{context_block}Please translate only the following [Source Text] into {target_language_name}, "
+            "taking the provided background information into consideration. Preserve the exact meaning and identity "
+            "of names, objects, numbers, percentages, and ranking labels. The [Source Text] always takes priority over "
+            f"the background; never replace its subject with a different item from the context.{short_label_rule} "
+            "Note that you must ONLY output the translated "
+            "result without any additional explanation or background text.\n\n"
+            f"[Source Text]\n{texts[index]}"
+        )
     return (
-        f"{context_block}Please accurately translate the [Source Text] into {target_language_name}, "
-        "taking the provided background information into consideration. Translate only the [Source Text], "
-        "not the background, and never copy a background sentence even when its wording is similar. Preserve its "
-        "meaning, names, numbers, and percentages exactly; do not paraphrase, expand, or omit information. "
-        "Only output the translated result without any additional explanation.\n\n"
-        f"[Source Text]\n{texts[index]}"
+        f"Translate the following text into {target_language_name}. Note that you should only output "
+        "the translated result without any additional explanation:\n\n"
+        f"{texts[index]}"
     )
 
 
@@ -156,7 +190,10 @@ def _translate_prompt_batch(
     with torch.inference_mode():
         generated = model.generate(
             **encoded,
-            do_sample=False,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.6,
+            top_k=20,
             repetition_penalty=1.05,
             max_new_tokens=min(output_budget, available_output),
             pad_token_id=tokenizer.pad_token_id,
@@ -183,20 +220,23 @@ def _load_model(model_name: str):
     torch.set_num_interop_threads(1)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    _emit_event({"event": "status", "detail": "Loading HY-MT2 tokenizer"})
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        dtype=dtype,
-        trust_remote_code=True,
-    )
-    # The checkpoint ships with sampling defaults. Subtitle translation uses
-    # deterministic decoding so identical source text cannot drift between runs.
-    model.generation_config.do_sample = False
-    model.generation_config.temperature = 1.0
-    model.generation_config.top_p = 1.0
-    model.generation_config.top_k = 50
+    load_options = {
+        "dtype": dtype,
+        "trust_remote_code": True,
+    }
+    _emit_event({"event": "status", "detail": "Loading HY-MT2 weights"})
+    model = AutoModelForCausalLM.from_pretrained(model_name, **load_options)
+    _emit_event({"event": "status", "detail": f"HY-MT2 weights loaded; moving model to {device}"})
+    # Match Tencent's recommended inference parameters for the 1.8B checkpoint.
+    model.generation_config.do_sample = True
+    model.generation_config.temperature = 0.7
+    model.generation_config.top_p = 0.6
+    model.generation_config.top_k = 20
     model.to(device)
     model.eval()
+    _emit_event({"event": "status", "detail": "HY-MT2 model is ready"})
     return model, tokenizer, torch, device
 
 

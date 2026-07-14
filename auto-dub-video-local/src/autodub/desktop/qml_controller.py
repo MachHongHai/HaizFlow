@@ -22,7 +22,6 @@ from autodub.services.desktop_jobs import SUPPORTED_VIDEO_EXTENSIONS, create_des
 from autodub.services.translation import shutdown_hymt2_worker, warm_hymt2_worker
 from autodub.services import desktop_settings
 from autodub.utils.ffmpeg import get_video_dimensions
-from autodub.pipeline.transcribe import release_warm_whisperx_model, warm_whisperx_model
 
 
 POPULAR_TARGET_LANGUAGES = [
@@ -386,16 +385,20 @@ class AutoDubController(QObject):
         self.refreshJobs()
 
     def shutdown(self):
+        from autodub.pipeline.transcribe import release_warm_whisperx_model
+
         unsubscribe_log(self._on_job_log)
         shutdown_hymt2_worker()
         release_warm_whisperx_model()
 
     def _warm_models(self):
         try:
-            warm_whisperx_model()
-            self._status_message = "WhisperX model ready"
-            self.statusMessageChanged.emit()
             warm_hymt2_worker(self._set_warmup_status)
+            self._status_message = "HY-MT2 model ready"
+            self.statusMessageChanged.emit()
+            from autodub.pipeline.transcribe import warm_whisperx_model
+
+            warm_whisperx_model()
             self._status_message = "WhisperX and HY-MT2 models ready"
         except Exception as exc:
             self._status_message = f"Model warm-up unavailable: {exc}"
@@ -1661,8 +1664,10 @@ class AutoDubController(QObject):
     def _prepare_batch_models(job_id):
         job_store.log_to_job(job_id, "Preparing shared WhisperX and HY-MT2 models for the batch.")
         try:
-            warm_whisperx_model()
             warm_hymt2_worker(lambda detail: job_store.log_to_job(job_id, detail))
+            from autodub.pipeline.transcribe import warm_whisperx_model
+
+            warm_whisperx_model()
             job_store.log_to_job(
                 job_id,
                 "Shared models are ready and will be reused for every video in this batch.",

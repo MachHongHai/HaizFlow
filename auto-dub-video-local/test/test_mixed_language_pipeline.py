@@ -23,6 +23,7 @@ from autodub.services.hymt2_worker import (
     _clean_single_translation,
     _context_after_end,
     _context_before_start,
+    _context_indices,
     _inference_batches,
 )
 
@@ -138,14 +139,16 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             1,
             "Vietnamese",
         )
-        self.assertIn("[Background Information - reference only]", prompt)
-        self.assertIn("[Previous Subtitles]\nP1 [English]: Hello", prompt)
-        self.assertIn("[Following Subtitles]\nN1 [English]: Fine.", prompt)
-        self.assertIn("[End Background Information]", prompt)
+        self.assertIn("[Background Information]", prompt)
+        self.assertIn("reference only and is not text to translate", prompt)
+        self.assertIn("- [English] Hello", prompt)
+        self.assertIn("- [English] Fine.", prompt)
         self.assertIn("[Source Text]\nHow are you?", prompt)
-        self.assertIn("Translate only the [Source Text], not the background", prompt)
-        self.assertIn("do not paraphrase, expand, or omit information", prompt)
-        self.assertIn("Only output the translated result", prompt)
+        self.assertIn(
+            "Please translate only the following [Source Text] into Vietnamese",
+            prompt,
+        )
+        self.assertIn("ONLY output the translated result", prompt)
         self.assertNotIn("JSON", prompt)
 
         prompts = _build_translation_prompts(
@@ -165,14 +168,11 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             3,
             "Vietnamese",
         )
-        self.assertIn("P2 [English]: Honey details", focused_prompt)
-        self.assertIn("P1 [English]: Top 20%.", focused_prompt)
-        self.assertIn("N1 [English]: Top 10%.", focused_prompt)
-        self.assertIn("N2 [English]: Later context", focused_prompt)
-        self.assertLess(
-            focused_prompt.index("[End Background Information]"),
-            focused_prompt.rindex("[Source Text]\nBanana details"),
-        )
+        self.assertIn("- [English] Honey details", focused_prompt)
+        self.assertIn("- [English] Top 20%.", focused_prompt)
+        self.assertNotIn("Top 10%.", focused_prompt)
+        self.assertNotIn("Later context", focused_prompt)
+        self.assertLess(focused_prompt.index("[Background Information]"), focused_prompt.rindex("[Source Text]\nBanana details"))
 
         wide_prompt = _build_prompt(
             [f"Line {number}" for number in range(9)],
@@ -180,10 +180,21 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             4,
             "Vietnamese",
         )
-        self.assertNotIn("Line 0", wide_prompt)
-        for number in (1, 2, 3, 5, 6, 7):
+        for number in (0, 1, 2):
             self.assertIn(f"Line {number}", wide_prompt)
-        self.assertNotIn("Line 8", wide_prompt)
+        for number in (3, 5, 6, 7, 8):
+            self.assertNotIn(f"Line {number}", wide_prompt)
+
+        long_texts = [f"Line {number} " + ("A" * 450) for number in range(20)]
+        long_context_indices = _context_indices(long_texts, 10)
+        self.assertIn(0, long_context_indices)
+        self.assertIn(9, long_context_indices)
+        self.assertNotIn(11, long_context_indices)
+        self.assertNotIn(19, long_context_indices)
+        self.assertLessEqual(
+            sum(len(long_texts[context_index]) for context_index in long_context_indices),
+            2400,
+        )
 
         mixed_prompt = _build_prompt(
             ["Hello", "今日は特別なメニューがあります。", "¿Puedes hacerlo sin gluten?"],
@@ -192,8 +203,68 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             "Vietnamese",
         )
         self.assertIn("Source language: Japanese", mixed_prompt)
-        self.assertIn("P1 [English]: Hello", mixed_prompt)
-        self.assertIn("N1 [Spanish]: ¿Puedes hacerlo sin gluten?", mixed_prompt)
+        self.assertIn("- [English] Hello", mixed_prompt)
+        self.assertIn("- [Spanish] ¿Puedes hacerlo sin gluten?", mixed_prompt)
+
+        shake_texts = [
+            "If you only drink a protein shake after training, you are in the top 50%.",
+            "Add creatine for strength and recovery.",
+            "Add honey to deliver nutrients faster.",
+            "Add a banana to replenish glycogen.",
+            "Top 10%.",
+            "No gas in, no underfueling, just a shake that actually works.",
+        ]
+        shake_prompt = _build_prompt(
+            shake_texts,
+            ["English"] * len(shake_texts),
+            len(shake_texts) - 1,
+            "Vietnamese",
+        )
+        self.assertIn("- [English] If you only drink a protein shake", shake_prompt)
+        self.assertIn("[Source Text]\nNo gas in, no underfueling, just a shake", shake_prompt)
+
+        fruit_texts = [
+            "for fat loss.",
+            "S tier, elite for fat loss.",
+            "Easy to digest, high in fiber, low calorie and great for cravings.",
+            "Dry fruit.",
+            "F tier, basically fruit with the water removed.",
+            "Tiny portion, high calorie density, easy to destroy your deficit without noticing.",
+        ]
+        fruit_prompt = _build_prompt(
+            fruit_texts,
+            ["English"] * len(fruit_texts),
+            4,
+            "Vietnamese",
+        )
+        self.assertIn("[Source Text]\nF tier, basically fruit with the water removed.", fruit_prompt)
+        self.assertNotIn("Tiny portion", fruit_prompt)
+        self.assertNotIn("N1", fruit_prompt)
+
+        kiwi_prompt = _build_prompt(
+            fruit_texts + ["Mango.", "C tier.", "Easy to overeat.", "Kiwi."],
+            ["English"] * 10,
+            9,
+            "Vietnamese",
+        )
+        self.assertIn("[Source Text]\nKiwi.", kiwi_prompt)
+        self.assertIn("standalone label", kiwi_prompt)
+        self.assertIn("more specific subtype", kiwi_prompt)
+        self.assertNotIn("Mango.", kiwi_prompt)
+        self.assertNotIn("Easy to overeat.", kiwi_prompt)
+
+        default_prompt = _build_prompt(
+            ["Hello"],
+            ["English"],
+            0,
+            "Vietnamese",
+            include_context=False,
+        )
+        self.assertEqual(
+            default_prompt,
+            "Translate the following text into Vietnamese. Note that you should only output "
+            "the translated result without any additional explanation:\n\nHello",
+        )
 
     def test_hymt2_mixed_language_batch_keeps_target_language_segments(self):
         captured_source_texts = []
