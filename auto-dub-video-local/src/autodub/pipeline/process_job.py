@@ -16,7 +16,7 @@ from autodub.pipeline.extract_audio import extract_audio
 from autodub.pipeline.job_manager import check_cancellation, clean_job, is_cancelled, is_paused, start_job
 from autodub.pipeline.render import render_video
 from autodub.pipeline.subtitle import generate_srt
-from autodub.pipeline.transcribe import transcribe
+from autodub.pipeline.transcribe import TIMING_SOURCE, transcribe
 from autodub.pipeline.tts import generate_voice_parts
 from autodub.services.job_store import get_job, log_to_job, update_job
 from autodub.services.translation import (
@@ -36,6 +36,18 @@ def _file_state(path):
         return None
     stat = os.stat(path)
     return (os.path.abspath(path), stat.st_size, stat.st_mtime_ns)
+
+
+def _timing_file_is_current(path):
+    try:
+        with open(path, "r", encoding="utf-8") as timing_file:
+            segments = json.load(timing_file)
+        return bool(segments) and all(
+            isinstance(segment, dict) and segment.get("timing_source") == TIMING_SOURCE
+            for segment in segments
+        )
+    except (OSError, json.JSONDecodeError, TypeError):
+        return False
 
 
 def _checkpoint_valid(job, name, signature, outputs):
@@ -218,6 +230,9 @@ def _finish_recovered_translation(job, reporter, job_dir, temp_audio_wav, source
         return True
     if recovery_step != "translating" or not os.path.exists(source_segments_json):
         return False
+    if not _timing_file_is_current(source_segments_json):
+        log_to_job(job.job_id, "CPU recovery discarded legacy source timestamps and will transcribe again.")
+        return False
 
     log_to_job(job.job_id, "CPU recovery: keeping the transcript and retrying HY-MT2 translation.")
     reporter.update(50, "translating", "Retrying translation on CPU")
@@ -280,7 +295,7 @@ def process_job_sync(job_id: str, _reporter: ProgressReporter | None = None):
         temp_audio_wav = os.path.join(job_dir, "temp", "audio.wav")
         source_segments_json = os.path.join(job_dir, "temp", "source_segments.json")
         translation_signature = _signature(
-            _file_state(video_input), "auto-per-subtitle-v2", "hymt2-tencent-anchored-context-v10",
+            _file_state(video_input), "native-word-timestamps-v1", "hymt2-official-concise-context-v15",
             job.target_language, job.enable_audio_separation, "hymt2"
         )
 
@@ -297,9 +312,11 @@ def process_job_sync(job_id: str, _reporter: ProgressReporter | None = None):
             return
 
         if job.resume_step and os.path.exists(transcript_json):
-            log_to_job(job_id, f"Resuming from translated segments after paused step '{job.resume_step}'.")
-            _finish_after_translation(job, reporter, job_dir, temp_audio_wav)
-            return
+            if _timing_file_is_current(transcript_json):
+                log_to_job(job_id, f"Resuming from translated segments after paused step '{job.resume_step}'.")
+                _finish_after_translation(job, reporter, job_dir, temp_audio_wav)
+                return
+            log_to_job(job_id, "Resume discarded legacy translated timestamps and will transcribe again.")
 
         if _finish_recovered_translation(
             job,
@@ -359,7 +376,7 @@ def process_job_sync(job_id: str, _reporter: ProgressReporter | None = None):
             job_id,
             progress_callback=lambda event, detail: reporter.update(
                 {"loading_model": 25, "transcribing": 29, "transcribed": 39,
-                 "loading_alignment": 40, "aligning": 42, "aligned": 46, "saved": 48}.get(event, 24),
+                 "segmenting": 42, "detecting_languages": 46, "saved": 48}.get(event, 24),
                 "transcribing",
                 detail,
             ),

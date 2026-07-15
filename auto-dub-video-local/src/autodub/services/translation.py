@@ -79,6 +79,10 @@ def translate_segments(
         target_language_name=target_language_name,
         progress_callback=progress_callback,
     )
+    if len(translations) != len(segments):
+        raise RuntimeError(
+            "HY-MT2 must return exactly one translation for each timestamped source sentence."
+        )
     translated_segments = []
     total = len(segments)
     for index, (segment, source_text, translated_text) in enumerate(
@@ -96,6 +100,7 @@ def translate_segments(
                 "end": segment["end"],
                 "text": translated_text or source_text,
                 "source_language": source_codes[index - 1],
+                "timing_source": segment.get("timing_source", "unknown"),
             }
         )
 

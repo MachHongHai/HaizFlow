@@ -16,6 +16,8 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from autodub.pipeline import transcribe
+from autodub.pipeline.process_job import _timing_file_is_current
+from autodub.pipeline.subtitle import split_segment_into_cues
 from autodub.schemas.job import JobConfig
 from autodub.services import hymt2_worker, job_store, translation
 from autodub.services.hymt2_worker import (
@@ -45,8 +47,20 @@ class _AsrModel:
         self.model = _LanguageModel(languages)
 
 
+def _native_segment(start, end, text, words=None):
+    return SimpleNamespace(
+        start=start,
+        end=end,
+        text=text,
+        words=[
+            SimpleNamespace(start=word_start, end=word_end, word=word)
+            for word_start, word_end, word in (words or [])
+        ],
+    )
+
+
 class MixedLanguagePipelineTests(unittest.TestCase):
-    def test_segment_language_detection_and_alignment_mapping(self):
+    def test_segment_language_detection_uses_immutable_sentence_clips(self):
         original_log = transcribe.log_to_job
         transcribe.log_to_job = lambda *_args, **_kwargs: None
         try:
@@ -67,11 +81,74 @@ class MixedLanguagePipelineTests(unittest.TestCase):
 
         self.assertEqual([segment["language"] for segment in detected], ["en", "vi"])
         self.assertEqual(model.model.clip_lengths, [16_000, 24_000])
-        language, confidence = transcribe._language_for_aligned_segment(
-            {"start": 2.1, "end": 3.2}, detected, "en"
+
+    def test_native_sentence_grouping_preserves_complete_speech_and_timestamps(self):
+        segments = [
+            _native_segment(
+                0.0,
+                1.94,
+                " If you only drink a protein shake after training,",
+                [(0.0, 0.22, " If"), (1.58, 1.94, " training,")],
+            ),
+            _native_segment(
+                2.32,
+                3.92,
+                " you are in the top 50%.",
+                [(2.32, 2.38, " you"), (2.92, 3.92, " 50%.")],
+            ),
+            _native_segment(
+                3.92,
+                6.28,
+                " If you add creatine, now you're supporting strength,",
+                [(3.92, 4.24, " If"), (5.88, 6.28, " strength,")],
+            ),
+            _native_segment(
+                6.72,
+                9.22,
+                " power, and recovery, top 30%.",
+                [(6.72, 6.92, " power,"), (8.1, 9.22, " 30%.")],
+            ),
+        ]
+
+        grouped = transcribe._group_native_segments(segments)
+
+        self.assertEqual(len(grouped), 2)
+        self.assertEqual((grouped[0]["start"], grouped[0]["end"]), (0.0, 3.92))
+        self.assertEqual(
+            grouped[0]["text"],
+            "If you only drink a protein shake after training, you are in the top 50%.",
         )
-        self.assertEqual(language, "vi")
-        self.assertEqual(confidence, 0.92)
+        self.assertEqual((grouped[1]["start"], grouped[1]["end"]), (3.92, 9.22))
+        self.assertIn("creatine", grouped[1]["text"])
+        self.assertTrue(grouped[1]["text"].endswith("top 30%."))
+
+    def test_mixed_language_retranscription_changes_text_only(self):
+        class NativeModel:
+            def transcribe(self, _audio, **kwargs):
+                self.language = kwargs["language"]
+                return iter([SimpleNamespace(text=" Xin chao.")]), SimpleNamespace()
+
+        model = SimpleNamespace(model=NativeModel())
+        original_log = transcribe.log_to_job
+        transcribe.log_to_job = lambda *_args, **_kwargs: None
+        try:
+            source = [
+                {"start": 1.25, "end": 3.75, "text": "bad", "language": "vi", "language_confidence": 0.95},
+            ]
+            corrected = transcribe._retranscribe_mixed_language_segments(
+                model,
+                np.zeros(16_000 * 5, dtype=np.float32),
+                source,
+                "en",
+                "test-job",
+            )
+        finally:
+            transcribe.log_to_job = original_log
+
+        self.assertEqual(len(corrected), 1)
+        self.assertEqual((corrected[0]["start"], corrected[0]["end"]), (1.25, 3.75))
+        self.assertEqual(corrected[0]["text"], "Xin chao.")
+        self.assertEqual(model.model.language, "vi")
 
     def test_translation_uses_the_language_from_each_segment(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -101,32 +178,52 @@ class MixedLanguagePipelineTests(unittest.TestCase):
 
         self.assertEqual(captured["source_languages"], ["English", "Vietnamese"])
         self.assertEqual([segment["source_language"] for segment in translated], ["en", "vi"])
+        self.assertEqual(
+            [(segment["start"], segment["end"]) for segment in translated],
+            [(0, 1), (1, 2)],
+        )
+        self.assertEqual([segment["timing_source"] for segment in translated], ["unknown", "unknown"])
 
-    def test_alignment_uses_a_model_per_detected_language(self):
-        loaded_languages = []
-        original_load = transcribe.whisperx.load_align_model
-        original_align = transcribe.whisperx.align
-        original_log = transcribe.log_to_job
-        transcribe.whisperx.load_align_model = lambda language_code, device: (loaded_languages.append(language_code) or object(), {})
-        transcribe.whisperx.align = lambda segments, *_args, **_kwargs: {"segments": segments}
-        transcribe.log_to_job = lambda *_args, **_kwargs: None
-        try:
-            aligned = transcribe._align_segments_by_language(
-                np.zeros(16_000 * 4, dtype=np.float32),
-                [
-                    {"start": 2, "end": 3, "text": "Konnichiwa", "language": "ja"},
-                    {"start": 0, "end": 1, "text": "Hello", "language": "en"},
-                ],
-                "cpu",
-                "test-job",
+    def test_subtitle_cues_keep_all_text_inside_the_source_timestamp(self):
+        segment = {
+            "start": 9.22,
+            "end": 15.18,
+            "text": "Neu ban them mot thia mat ong, chat dinh duong se den co bap nhanh hon.",
+        }
+
+        cues = split_segment_into_cues(segment, 24)
+
+        self.assertGreater(len(cues), 1)
+        self.assertEqual(cues[0]["start"], segment["start"])
+        self.assertEqual(cues[-1]["end"], segment["end"])
+        self.assertEqual(
+            " ".join(cue["text"].replace("\n", " ") for cue in cues),
+            segment["text"],
+        )
+        self.assertTrue(all(segment["start"] <= cue["start"] < cue["end"] <= segment["end"] for cue in cues))
+
+    def test_resume_accepts_only_current_native_timestamp_artifacts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            current_path = Path(temp_dir) / "current.json"
+            legacy_path = Path(temp_dir) / "legacy.json"
+            current_path.write_text(
+                json.dumps([
+                    {
+                        "start": 0,
+                        "end": 1,
+                        "text": "Hello",
+                        "timing_source": transcribe.TIMING_SOURCE,
+                    }
+                ]),
+                encoding="utf-8",
             )
-        finally:
-            transcribe.whisperx.load_align_model = original_load
-            transcribe.whisperx.align = original_align
-            transcribe.log_to_job = original_log
+            legacy_path.write_text(
+                json.dumps([{"start": 0, "end": 1, "text": "Hello"}]),
+                encoding="utf-8",
+            )
 
-        self.assertEqual(loaded_languages, ["ja", "en"])
-        self.assertEqual([segment["text"] for segment in aligned], ["Hello", "Konnichiwa"])
+            self.assertTrue(_timing_file_is_current(current_path))
+            self.assertFalse(_timing_file_is_current(legacy_path))
 
     def test_hymt2_prompt_batches_preserve_order_and_context(self):
         texts = ["Hello", "How are you?", "Fine.", "Thanks", "Bye"]
@@ -140,17 +237,17 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             1,
             "Vietnamese",
         )
-        self.assertIn("[Background Information]", prompt)
-        self.assertIn("reference only and is not text to translate", prompt)
-        self.assertIn("- [English] Hello", prompt)
-        self.assertIn("- [English] Fine.", prompt)
-        self.assertIn("[Source Text]\nHow are you?", prompt)
-        self.assertIn(
-            "Please translate only the following [Source Text] into Vietnamese",
+        self.assertEqual(
             prompt,
+            "[Background Information]\n"
+            "[English] Hello\n"
+            "[English] Fine.\n\n"
+            "Please translate the following text into Vietnamese, taking the provided "
+            "background information into consideration. Preserve the source text's brevity, structure, "
+            "numbers, symbols, and fragment form.\n\n"
+            "[Source Text]\n"
+            "How are you?",
         )
-        self.assertIn("ONLY output the translated result", prompt)
-        self.assertNotIn("JSON", prompt)
 
         prompts = _build_translation_prompts(
             texts,
@@ -169,11 +266,15 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             3,
             "Vietnamese",
         )
-        self.assertIn("- [English] Honey details", focused_prompt)
-        self.assertIn("- [English] Top 20%.", focused_prompt)
-        self.assertNotIn("Top 10%.", focused_prompt)
-        self.assertNotIn("Later context", focused_prompt)
-        self.assertLess(focused_prompt.index("[Background Information]"), focused_prompt.rindex("[Source Text]\nBanana details"))
+        self.assertIn("[English] Earlier context", focused_prompt)
+        self.assertIn("[English] Honey details", focused_prompt)
+        self.assertIn("[English] Top 20%.", focused_prompt)
+        self.assertIn("[English] Top 10%.", focused_prompt)
+        self.assertIn("[English] Later context", focused_prompt)
+        self.assertLess(
+            focused_prompt.index("[Background Information]"),
+            focused_prompt.index("[Source Text]\nBanana details"),
+        )
 
         wide_prompt = _build_prompt(
             [f"Line {number}" for number in range(9)],
@@ -181,16 +282,18 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             4,
             "Vietnamese",
         )
-        for number in (0, 1, 2):
+        for number in (1, 2, 3, 5, 6, 7):
             self.assertIn(f"Line {number}", wide_prompt)
-        for number in (3, 5, 6, 7, 8):
+        for number in (0, 8):
             self.assertNotIn(f"Line {number}", wide_prompt)
 
         long_texts = [f"Line {number} " + ("A" * 450) for number in range(20)]
         long_context_indices = _context_indices(long_texts, 10)
-        self.assertIn(0, long_context_indices)
+        self.assertNotIn(0, long_context_indices)
+        self.assertIn(8, long_context_indices)
         self.assertIn(9, long_context_indices)
-        self.assertNotIn(11, long_context_indices)
+        self.assertIn(11, long_context_indices)
+        self.assertIn(12, long_context_indices)
         self.assertNotIn(19, long_context_indices)
         self.assertLessEqual(
             sum(len(long_texts[context_index]) for context_index in long_context_indices),
@@ -203,9 +306,9 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             1,
             "Vietnamese",
         )
-        self.assertIn("Source language: Japanese", mixed_prompt)
-        self.assertIn("- [English] Hello", mixed_prompt)
-        self.assertIn("- [Spanish] ¿Puedes hacerlo sin gluten?", mixed_prompt)
+        self.assertIn("[English] Hello", mixed_prompt)
+        self.assertIn("[Spanish] ¿Puedes hacerlo sin gluten?", mixed_prompt)
+        self.assertIn("[Source Text]\n今日は特別なメニューがあります。", mixed_prompt)
 
         shake_texts = [
             "If you only drink a protein shake after training, you are in the top 50%.",
@@ -221,7 +324,10 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             len(shake_texts) - 1,
             "Vietnamese",
         )
-        self.assertIn("- [English] If you only drink a protein shake", shake_prompt)
+        self.assertNotIn("If you only drink a protein shake", shake_prompt)
+        self.assertIn("[English] Add honey to deliver nutrients faster.", shake_prompt)
+        self.assertIn("[English] Add a banana to replenish glycogen.", shake_prompt)
+        self.assertIn("[English] Top 10%.", shake_prompt)
         self.assertIn("[Source Text]\nNo gas in, no underfueling, just a shake", shake_prompt)
 
         fruit_texts = [
@@ -239,8 +345,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             "Vietnamese",
         )
         self.assertIn("[Source Text]\nF tier, basically fruit with the water removed.", fruit_prompt)
-        self.assertNotIn("Tiny portion", fruit_prompt)
-        self.assertNotIn("N1", fruit_prompt)
+        self.assertIn("[English] Tiny portion", fruit_prompt)
 
         kiwi_prompt = _build_prompt(
             fruit_texts + ["Mango.", "C tier.", "Easy to overeat.", "Kiwi."],
@@ -249,10 +354,9 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             "Vietnamese",
         )
         self.assertIn("[Source Text]\nKiwi.", kiwi_prompt)
-        self.assertIn("standalone label", kiwi_prompt)
-        self.assertIn("more specific subtype", kiwi_prompt)
-        self.assertNotIn("Mango.", kiwi_prompt)
-        self.assertNotIn("Easy to overeat.", kiwi_prompt)
+        self.assertIn("[English] Mango.", kiwi_prompt)
+        self.assertIn("[English] C tier.", kiwi_prompt)
+        self.assertIn("[English] Easy to overeat.", kiwi_prompt)
 
         default_prompt = _build_prompt(
             ["Hello"],
@@ -264,7 +368,8 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual(
             default_prompt,
             "Translate the following text into Vietnamese. Note that you should only output "
-            "the translated result without any additional explanation:\n\nHello",
+            "the translated result without any additional explanation. Preserve the source text's brevity, "
+            "structure, numbers, symbols, and fragment form:\n\nHello",
         )
 
     def test_hymt2_mixed_language_batch_keeps_target_language_segments(self):

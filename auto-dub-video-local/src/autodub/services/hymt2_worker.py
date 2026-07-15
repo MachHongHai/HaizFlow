@@ -12,7 +12,6 @@ from autodub.core.hardware import processing_device_preference, runtime_profile
 _INFERENCE_BATCH_SIZE = max(1, min(8, int(os.getenv("HYMT2_INFERENCE_BATCH_SIZE", "4"))))
 _CONTEXT_SEGMENTS = 3
 _MAX_CONTEXT_CHARACTERS = 1200
-_GLOBAL_CONTEXT_SEGMENTS = 3
 _MAX_BACKGROUND_CHARACTERS = 2400
 _PROGRESS_PATH = None
 _MODEL_RUNTIME = None
@@ -142,24 +141,17 @@ def _context_after_end(texts: list[str], core_end: int) -> int:
     return end
 
 
-def _is_short_label(text: str) -> bool:
-    source_label = text.strip().rstrip(".!?。！？").strip()
-    return bool(source_label) and len(source_label) <= 40 and len(source_label.split()) <= 2
-
-
 def _context_indices(texts: list[str], index: int) -> list[int]:
-    """Use topic anchors and preceding subtitles without leaking future source text."""
-    priority = []
-    priority.extend(range(min(_GLOBAL_CONTEXT_SEGMENTS, len(texts))))
-    if not _is_short_label(texts[index]):
-        for distance in range(1, _CONTEXT_SEGMENTS + 1):
-            priority.append(index - distance)
-
+    """Return a chronological local context window around one subtitle."""
+    before_start = _context_before_start(texts, index)
+    after_end = _context_after_end(texts, index + 1)
+    candidates = [
+        *range(before_start, index),
+        *range(index + 1, after_end),
+    ]
     selected = []
     used_characters = 0
-    for context_index in priority:
-        if context_index == index or context_index < 0 or context_index >= len(texts) or context_index in selected:
-            continue
+    for context_index in candidates:
         item_characters = len(texts[context_index])
         if used_characters + item_characters > _MAX_BACKGROUND_CHARACTERS:
             continue
@@ -176,39 +168,26 @@ def _build_prompt(
     *,
     include_context: bool = True,
 ) -> str:
-    context_block = ""
     if include_context:
-        context_lines = []
-        for context_index in _context_indices(texts, index):
-            context_lines.append(f"- [{source_languages[context_index]}] {texts[context_index]}")
-        context_parts = [f"Source language: {source_languages[index]}"]
+        context_lines = [
+            f"[{source_languages[context_index]}] {texts[context_index]}"
+            for context_index in _context_indices(texts, index)
+        ]
         if context_lines:
-            context_parts.append(
-                "Video subtitle context in chronological order. It is reference only and is not text to translate:\n"
+            return (
+                "[Background Information]\n"
                 + "\n".join(context_lines)
+                + "\n\n"
+                f"Please translate the following text into {target_language_name}, taking the provided "
+                "background information into consideration. Preserve the source text's brevity, structure, "
+                "numbers, symbols, and fragment form.\n\n"
+                "[Source Text]\n"
+                f"{texts[index]}"
             )
-        context_block = "[Background Information]\n" + "\n".join(context_parts) + "\n\n"
-
-    if context_block:
-        short_label_rule = ""
-        if _is_short_label(texts[index]):
-            short_label_rule = (
-                " The [Source Text] is a standalone label: preserve its exact identity and level of specificity. "
-                "If there is no certain exact equivalent, transliterate or preserve it rather than substituting "
-                "a different item or a more specific subtype."
-            )
-        return (
-            f"{context_block}Please translate only the following [Source Text] into {target_language_name}, "
-            "taking the provided background information into consideration. Preserve the exact meaning and identity "
-            "of names, objects, numbers, percentages, and ranking labels. The [Source Text] always takes priority over "
-            f"the background; never replace its subject with a different item from the context.{short_label_rule} "
-            "Note that you must ONLY output the translated "
-            "result without any additional explanation or background text.\n\n"
-            f"[Source Text]\n{texts[index]}"
-        )
     return (
         f"Translate the following text into {target_language_name}. Note that you should only output "
-        "the translated result without any additional explanation:\n\n"
+        "the translated result without any additional explanation. Preserve the source text's brevity, "
+        "structure, numbers, symbols, and fragment form:\n\n"
         f"{texts[index]}"
     )
 
