@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 
+from autodub.core.hardware import runtime_profile
+
 
 _INFERENCE_BATCH_SIZE = max(1, min(8, int(os.getenv("HYMT2_INFERENCE_BATCH_SIZE", "4"))))
 _CONTEXT_SEGMENTS = 3
@@ -27,8 +29,10 @@ def _emit_event(payload: dict) -> None:
         print(line, flush=True)
 
 
-def _inference_batches(texts: list[str], batch_size: int = _INFERENCE_BATCH_SIZE):
+def _inference_batches(texts: list[str], batch_size: int | None = None):
     """Yield prompt batches; each prompt still produces exactly one subtitle."""
+    if batch_size is None:
+        batch_size = 1 if runtime_profile().is_cpu_only else _INFERENCE_BATCH_SIZE
     for start in range(0, len(texts), batch_size):
         yield start, min(len(texts), start + batch_size)
 
@@ -176,6 +180,25 @@ def _translate_prompt_batch(
     prompts: list[str],
     source_texts: list[str],
 ) -> list[str]:
+    if device == "cpu-gguf":
+        results = []
+        for prompt, source_text in zip(prompts, source_texts):
+            output_budget = min(384, max(48, len(source_text) * 2 + 24))
+            response = model.create_chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                top_p=0.6,
+                top_k=20,
+                repeat_penalty=1.05,
+                max_tokens=output_budget,
+            )
+            try:
+                content = response["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise RuntimeError("HY-MT2 GGUF returned an invalid response.") from exc
+            results.append(_clean_single_translation(content))
+        return results
+
     encoded = _encode_prompts(tokenizer, torch, device, prompts)
     input_length = encoded["input_ids"].shape[-1]
     context_limit = getattr(model.config, "max_position_embeddings", 32768)
@@ -208,7 +231,63 @@ def _translate_prompt_batch(
     ]
 
 
+def _cpu_model_path() -> str:
+    from huggingface_hub import hf_hub_download
+
+    from autodub.config import HYMT2_CPU_MODEL_FILE, HYMT2_CPU_MODEL_REPO, MODELS_DIR
+    from autodub.core.paths import bundle_root
+
+    model_directory = Path(MODELS_DIR) / "hymt2-gguf"
+    model_path = model_directory / HYMT2_CPU_MODEL_FILE
+    if model_path.is_file():
+        return str(model_path)
+    bundled_model = bundle_root() / "models" / "hymt2-gguf" / HYMT2_CPU_MODEL_FILE
+    if bundled_model.is_file():
+        return str(bundled_model)
+    _emit_event(
+        {
+            "event": "status",
+            "detail": f"Downloading CPU translation model {HYMT2_CPU_MODEL_FILE}",
+        }
+    )
+    model_directory.mkdir(parents=True, exist_ok=True)
+    try:
+        return hf_hub_download(
+            repo_id=HYMT2_CPU_MODEL_REPO,
+            filename=HYMT2_CPU_MODEL_FILE,
+            local_dir=str(model_directory),
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "The HY-MT2 CPU model is not installed. Connect once to download the official "
+            f"{HYMT2_CPU_MODEL_FILE} model, or include it in the installer at {model_path}."
+        ) from exc
+
+
 def _load_model(model_name: str):
+    profile = runtime_profile()
+    if profile.hymt2_backend == "llama_cpp":
+        from llama_cpp import Llama
+
+        model_path = _cpu_model_path()
+        _emit_event(
+            {
+                "event": "status",
+                "detail": f"Loading HY-MT2 Q4 CPU model with {profile.cpu_threads} threads",
+            }
+        )
+        model = Llama(
+            model_path=model_path,
+            n_ctx=4096,
+            n_batch=256 if profile.key == "cpu_balanced" else 128,
+            n_threads=profile.cpu_threads,
+            n_threads_batch=profile.cpu_threads,
+            n_gpu_layers=0,
+            verbose=False,
+        )
+        _emit_event({"event": "status", "detail": "HY-MT2 Q4 CPU model is ready"})
+        return model, None, None, "cpu-gguf"
+
     # Torch's CPU loader is more stable on Windows when model deserialization
     # does not fan out across every logical processor.
     os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -260,7 +339,7 @@ def release_model() -> None:
     _MODEL_RUNTIME = None
     del model, tokenizer
     gc.collect()
-    if torch.cuda.is_available():
+    if torch is not None and torch.cuda.is_available():
         torch.cuda.empty_cache()
 
 

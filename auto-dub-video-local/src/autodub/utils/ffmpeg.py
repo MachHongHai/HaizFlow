@@ -1,5 +1,78 @@
 ﻿import subprocess
+import os
 import shutil
+from functools import lru_cache
+from pathlib import Path
+
+from autodub.config import BIN_DIR
+from autodub.core.hardware import runtime_profile
+
+
+def _binary(name: str) -> str:
+    resolved = shutil.which(name)
+    if resolved:
+        return resolved
+    return str(Path(BIN_DIR) / f"{name}.exe")
+
+
+@lru_cache(maxsize=1)
+def available_video_encoders() -> set[str]:
+    try:
+        result = subprocess.run(
+            [_binary("ffmpeg"), "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    encoders = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].startswith("V"):
+            encoders.add(parts[1])
+    return encoders
+
+
+@lru_cache(maxsize=None)
+def _encoder_works(encoder: str) -> bool:
+    if encoder not in available_video_encoders():
+        return False
+    try:
+        result = subprocess.run(
+            [
+                _binary("ffmpeg"), "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
+                "-frames:v", "1", "-c:v", encoder, "-f", "null", "-",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def preferred_video_encoder() -> tuple[str, list[str]]:
+    """Return a verified hardware encoder, with a universal CPU fallback."""
+    profile = runtime_profile()
+    candidates = []
+    if profile.cuda_available:
+        candidates = ["h264_nvenc", "h264_qsv", "h264_amf"]
+    for encoder in candidates:
+        if not _encoder_works(encoder):
+            continue
+        if encoder == "h264_nvenc":
+            return encoder, ["-preset", "p4", "-cq", "23"]
+        if encoder == "h264_qsv":
+            return encoder, ["-preset", "faster", "-global_quality", "23"]
+        return encoder, ["-quality", "speed", "-qp_i", "23", "-qp_p", "23"]
+    return "libx264", ["-preset", "veryfast", "-crf", "23"]
 
 def is_ffmpeg_available() -> bool:
     """Checks if both ffmpeg and ffprobe are available in the PATH."""

@@ -6,7 +6,7 @@ import srt
 from autodub.pipeline.job_manager import check_cancellation, register_process, unregister_process
 from autodub.schemas.job import CropSettings, SubtitleStyle
 from autodub.services.job_store import log_to_job
-from autodub.utils.ffmpeg import get_video_dimensions
+from autodub.utils.ffmpeg import get_video_dimensions, preferred_video_encoder
 
 
 def _escape_ass_text(text: str) -> str:
@@ -117,21 +117,30 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         filters.append(ass_filter)
         vf_filter = ",".join(filters)
 
-    cmd = [
+    video_encoder, video_encoder_args = preferred_video_encoder()
+    cmd_prefix = [
         "ffmpeg", "-y", "-i", rel_video, "-i", rel_voice,
         "-map", "0:v:0", "-map", "1:a:0", "-vf", vf_filter,
         "-shortest",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "192k", rel_output,
     ]
-    log_to_job(job_id, f"Running FFmpeg render command in Cwd: {job_temp_dir}")
-    check_cancellation(job_id)
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=job_temp_dir)
-    register_process(job_id, process)
-    _stdout, stderr = process.communicate()
-    unregister_process(job_id, process)
-    check_cancellation(job_id)
-    if process.returncode != 0:
+    audio_args = ["-c:a", "aac", "-b:a", "192k", rel_output]
+
+    def run_render(encoder: str, encoder_args: list[str]):
+        command = cmd_prefix + ["-c:v", encoder, *encoder_args, *audio_args]
+        log_to_job(job_id, f"Running FFmpeg render with {encoder} in Cwd: {job_temp_dir}")
+        check_cancellation(job_id)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=job_temp_dir)
+        register_process(job_id, process)
+        _stdout, process_stderr = process.communicate()
+        unregister_process(job_id, process)
+        check_cancellation(job_id)
+        return process.returncode, process_stderr
+
+    return_code, stderr = run_render(video_encoder, video_encoder_args)
+    if return_code != 0 and video_encoder != "libx264":
+        log_to_job(job_id, f"Hardware encoder {video_encoder} failed; retrying with libx264.")
+        return_code, stderr = run_render("libx264", ["-preset", "veryfast", "-crf", "23"])
+    if return_code != 0:
         log_to_job(job_id, f"FFmpeg Render Error output:\n{stderr}")
-        raise RuntimeError(f"FFmpeg render failed with exit code {process.returncode}")
+        raise RuntimeError(f"FFmpeg render failed with exit code {return_code}")
     log_to_job(job_id, f"Successfully rendered final video to: {output_path}")

@@ -20,7 +20,8 @@ Rectangle {
         : status === "failed" ? I18n.t("Failed")
         : status === "cancelled" ? I18n.t("Cancelled")
         : status === "paused" ? I18n.t("Paused")
-        : status
+        : status === "awaiting_review" ? I18n.t("Review needed")
+        : I18n.taskStateLabel(status)
 
     width: ListView.view ? ListView.view.width : 640
     height: 82
@@ -30,7 +31,7 @@ Rectangle {
     border.color: activeFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : Theme.outline
     activeFocusOnTab: true
     Accessible.role: Accessible.Button
-    Accessible.name: I18n.t("Open job") + " " + fileName
+    Accessible.name: I18n.t("Open video") + " " + fileName
     scale: tapHandler.pressed ? 0.995 : 1
 
     Keys.onReturnPressed: root.activated()
@@ -98,7 +99,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: root.step.replace(/_/g, " ")
+                text: I18n.stageLabel(root.step)
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
                 textFormat: Text.PlainText

@@ -22,7 +22,7 @@ Panel {
 
         SegmentedControl {
             Layout.fillWidth: true
-            enabled: !controller.isProcessing
+            enabled: !controller.isSelectedJobProcessing
             currentValue: controller.workflowMode
             options: [
                 { "label": I18n.t("Full auto"), "value": "A" },
@@ -49,7 +49,7 @@ Panel {
         SearchableLanguageCombo {
             Layout.fillWidth: true
             Layout.preferredHeight: 42
-            enabled: !controller.isProcessing
+            enabled: !controller.isSelectedJobProcessing
             options: controller.targetLanguageOptions
             selectedCode: controller.targetLanguage
             onSelected: function(code) {
@@ -72,7 +72,7 @@ Panel {
 
         AppComboBox {
             Layout.fillWidth: true
-            enabled: !controller.isProcessing
+            enabled: !controller.isSelectedJobProcessing
             textRole: "label"
             valueRole: "voice"
             model: controller.ttsVoiceOptions
@@ -89,16 +89,45 @@ Panel {
         color: Theme.divider
     }
 
-    AppCheckBox {
+    ColumnLayout {
         Layout.fillWidth: true
-        enabled: !controller.isProcessing
-        text: I18n.t("Separate vocals for music or noisy audio")
-        checked: controller.enableAudioSeparation
-        onToggled: controller.enableAudioSeparation = checked
+        spacing: Theme.space8
+
+        Text {
+            text: I18n.t("Audio source")
+            color: Theme.textMuted
+            font.pixelSize: Theme.caption
+            font.weight: Font.Medium
+            textFormat: Text.PlainText
+        }
+
+        SegmentedControl {
+            Layout.fillWidth: true
+            enabled: !controller.isSelectedJobProcessing
+            currentValue: controller.enableAudioSeparation ? "separated" : "original"
+            options: [
+                { "label": I18n.t("Keep original audio"), "value": "original" },
+                { "label": I18n.t("Separate vocals"), "value": "separated" }
+            ]
+            onActivated: function(value) {
+                controller.enableAudioSeparation = value === "separated"
+            }
+        }
+    }
+
+    Text {
+        Layout.fillWidth: true
+        visible: controller.cpuOnly && controller.enableAudioSeparation
+        text: I18n.t("Audio separation is slower in CPU mode")
+        color: Theme.warning
+        font.pixelSize: Theme.caption
+        wrapMode: Text.Wrap
+        textFormat: Text.PlainText
     }
 
     ColumnLayout {
         Layout.fillWidth: true
+        visible: !controller.enableAudioSeparation
         spacing: Theme.space8
 
         RowLayout {
@@ -106,7 +135,7 @@ Panel {
 
             Text {
                 Layout.fillWidth: true
-                text: I18n.t("Original audio")
+                text: I18n.t("Original audio volume")
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
                 font.weight: Font.Medium
@@ -124,12 +153,12 @@ Panel {
 
         AppSlider {
             Layout.fillWidth: true
-            enabled: !controller.isProcessing
+            enabled: !controller.isSelectedJobProcessing
             from: 0
             to: 100
             stepSize: 1
             value: controller.originalVolume
-            Accessible.name: I18n.t("Original audio")
+            Accessible.name: I18n.t("Original audio volume")
             onMoved: controller.originalVolume = Math.round(value)
         }
     }
@@ -145,17 +174,17 @@ Panel {
         text: I18n.t("Save video settings")
         iconGlyph: "\uE74E"
         tone: "primary"
-        enabled: !controller.isProcessing
+        enabled: !controller.isSelectedJobProcessing
         onClicked: controller.saveSelectedJobSettings()
     }
 
     AppButton {
         Layout.fillWidth: true
         visible: !controller.hasSelectedJob
-        text: controller.isProcessing ? I18n.t("A job is already processing") : I18n.t("Create and process")
+        text: controller.isProcessing ? I18n.t("Add to processing queue") : I18n.t("Create and process")
         iconGlyph: "\uE768"
         tone: "primary"
-        enabled: !controller.isProcessing && controller.videoPath.length > 0
+        enabled: !controller.isSelectedJobProcessing && controller.videoPath.length > 0
         onClicked: controller.startProjectJob()
     }
 }

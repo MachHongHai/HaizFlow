@@ -35,6 +35,11 @@ storage/
 **/temp/
 *.log
 
+# Local media used only for manual pipeline smoke tests
+test/*.mp4
+test/*.mov
+test/*.mkv
+
 # Build artifacts
 frontend/dist/
 dist/
@@ -55,6 +60,8 @@ __pycache__/
 **/*.pyc
 **/*.pyo
 **/*.pyd
+*.egg-info/
+**/*.egg-info/
 
 # IDEs and editors
 .vscode/

@@ -12,7 +12,7 @@ ApplicationWindow {
     minimumHeight: 720
     visible: true
     visibility: Window.Maximized
-    title: qsTr("Video Dubbing")
+    title: I18n.t("Video Dubbing")
     color: Theme.window
 
     property int pageIndex: 0
@@ -145,7 +145,7 @@ ApplicationWindow {
                         Text {
                             visible: !root.compactNavigation
                             anchors.verticalCenter: parent.verticalCenter
-                            text: qsTr("Video Dubbing")
+                            text: I18n.t("Video Dubbing")
                             color: Theme.textOnDark
                             font.pixelSize: Theme.bodyLarge
                             font.weight: Font.DemiBold
@@ -217,7 +217,7 @@ ApplicationWindow {
 
                     Text {
                         Layout.fillWidth: true
-                        text: controller.statusMessage
+                        text: I18n.runtimeStatus(controller.statusMessage)
                         color: Theme.textOnDarkMuted
                         font.pixelSize: Theme.label
                         textFormat: Text.PlainText

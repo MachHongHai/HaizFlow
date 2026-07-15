@@ -10,6 +10,39 @@ from autodub.utils.ffmpeg import get_video_dimensions
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv"}
 
 
+def _same_path(first: str, second: str) -> bool:
+    return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
+
+
+def migrate_legacy_single_export(job_info) -> bool:
+    """Move a legacy single-project export out of the project root once."""
+    if (
+        not job_info
+        or job_info.project_type == "batch"
+        or not job_info.project_name
+        or not job_info.project_directory
+    ):
+        return False
+
+    project_root = project_store.project_root(job_info.project_name, job_info.project_directory)
+    legacy_export = os.path.join(project_root, "dubbed_video.mp4")
+    current_export = (job_info.files or {}).get("final_video") or ""
+    if not current_export or not _same_path(current_export, legacy_export):
+        return False
+
+    export_directory = project_store.project_exports_dir(job_info.project_name, job_info.project_directory)
+    migrated_export = os.path.join(export_directory, "dubbed_video.mp4")
+    os.makedirs(export_directory, exist_ok=True)
+    if os.path.isfile(legacy_export) and not os.path.exists(migrated_export):
+        os.replace(legacy_export, migrated_export)
+
+    if os.path.exists(migrated_export):
+        job_info.files["final_video"] = migrated_export
+        job_store.save_job(job_info)
+        return True
+    return False
+
+
 def create_desktop_job(video_path: str, config: JobConfig, project_name: str = "", project_directory: str = ""):
     ext = os.path.splitext(video_path)[1].lower()
     if ext not in SUPPORTED_VIDEO_EXTENSIONS:
@@ -29,21 +62,6 @@ def create_desktop_job(video_path: str, config: JobConfig, project_name: str = "
         config.project_directory = os.path.abspath(project_directory)
         project_store.ensure_project(project_name, config.project_directory, config.project_type)
     job_info = job_store.create_job(job_id, os.path.basename(video_path), config, video_ext=ext)
-
-    if project_directory:
-        safe_project = project_store.safe_project_name(project_name)
-        project_output_dir = project_store.project_root(project_name, project_directory)
-        os.makedirs(project_output_dir, exist_ok=True)
-        if config.project_type == "batch":
-            safe_stem = "".join(
-                character if character.isalnum() or character in {"-", "_", " "} else "_"
-                for character in os.path.splitext(os.path.basename(video_path))[0]
-            ).strip()
-            video_output_dir = os.path.join(project_output_dir, "outputs", f"{safe_stem or 'video'}-{job_id[:8]}")
-            os.makedirs(video_output_dir, exist_ok=True)
-            job_info.files["final_video"] = os.path.join(video_output_dir, "dubbed_video.mp4")
-        else:
-            job_info.files["final_video"] = os.path.join(project_output_dir, "dubbed_video.mp4")
 
     shutil.copyfile(video_path, job_info.files["video_input"])
 

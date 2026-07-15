@@ -4,6 +4,120 @@ import QtQuick
 QtObject {
     property string language: "en"
 
+    function stageLabel(stage) {
+        const labels = {
+            "queued": "Queued",
+            "starting": "Preparing project",
+            "loading_models": "Preparing translation model",
+            "loading_alignment": "Preparing subtitle alignment",
+            "extracting_audio": "Extracting audio",
+            "separating_audio": "Separating vocals",
+            "transcribing": "Transcribing speech",
+            "translating": "Translating",
+            "review_translation": "Waiting for translation review",
+            "creating_subtitle": "Creating subtitles",
+            "creating_voice": "Generating voice",
+            "building_audio_timeline": "Mixing audio",
+            "rendering": "Rendering video",
+            "paused": "Paused",
+            "done": "Export complete",
+            "failed": "Failed"
+        }
+        return t(labels[stage] || stage)
+    }
+
+    function taskStateLabel(state) {
+        const labels = {
+            "active": "In progress",
+            "pending": "Queued",
+            "done": "Complete",
+            "failed": "Failed",
+            "cancelled": "Cancelled"
+        }
+        return t(labels[state] || state)
+    }
+
+    function runtimeStatus(source) {
+        if (language !== "vi" || !source)
+            return source
+
+        const direct = t(source)
+        if (direct !== source)
+            return direct
+
+        if (source.indexOf("_") >= 0)
+            return stageLabel(source)
+
+        let match = source.match(/^(.+?) ready - GPU acceleration - (.+)$/)
+        if (match)
+            return match[1] + " đã sẵn sàng - Tăng tốc GPU: " + match[2]
+
+        match = source.match(/^(.+?) ready - CPU mode - (.+)$/)
+        if (match)
+            return match[1] + " đã sẵn sàng - Chế độ CPU: " + match[2].replace(/threads$/, "luồng")
+
+        match = source.match(/^Ready - GPU acceleration - (.+)$/)
+        if (match)
+            return "Sẵn sàng - Tăng tốc GPU: " + match[1]
+
+        match = source.match(/^Ready - CPU mode - (.+)$/)
+        if (match)
+            return "Sẵn sàng - Chế độ CPU: " + match[1].replace(/threads$/, "luồng")
+
+        match = source.match(/^Model warm-up unavailable: (.+)$/)
+        if (match)
+            return "Không thể khởi tạo model: " + match[1]
+
+        match = source.match(/^Processing device switch failed: (.+)$/)
+        if (match)
+            return "Không thể chuyển thiết bị xử lý: " + match[1]
+
+        match = source.match(/^Saved processing device unavailable: (.+) Using automatic mode\.$/)
+        if (match)
+            return "Thiết bị xử lý đã lưu không khả dụng: " + match[1] + " Đã chuyển sang chế độ tự động."
+
+        match = source.match(/^Organized (\d+) video workspace\(s\) into their projects\.$/)
+        if (match)
+            return "Đã sắp xếp " + match[1] + " video vào dự án tương ứng."
+
+        return source
+    }
+
+    function progressDetail(source) {
+        if (language !== "vi" || !source)
+            return source
+
+        const direct = t(source)
+        if (direct !== source)
+            return direct
+
+        let match = source.match(/^Translating subtitles (\d+)-(\d+) of (\d+)$/)
+        if (match)
+            return "Đang dịch phụ đề " + match[1] + "-" + match[2] + " / " + match[3]
+
+        match = source.match(/^Translated (\d+) of (\d+) subtitles$/)
+        if (match)
+            return "Đã dịch " + match[1] + " / " + match[2] + " phụ đề"
+
+        match = source.match(/^Paused during (.+)$/)
+        if (match)
+            return "Đã tạm dừng tại bước: " + stageLabel(match[1])
+
+        match = source.match(/^Queued: position (\d+)$/)
+        if (match)
+            return "Đang chờ ở vị trí " + match[1]
+
+        match = source.match(/^Loading HY-MT2 Q4 CPU model with (\d+) threads$/)
+        if (match)
+            return "Đang tải model HY-MT2 Q4 cho CPU với " + match[1] + " luồng"
+
+        match = source.match(/^HY-MT2 weights loaded; moving model to (.+)$/)
+        if (match)
+            return "Đã tải trọng số HY-MT2; đang chuyển model sang " + match[1]
+
+        return source
+    }
+
     function t(source) {
         if (language !== "vi")
             return source
@@ -11,6 +125,7 @@ QtObject {
         const vi = {
             "Workspace": "Không gian làm việc",
             "WORKSPACE": "KHÔNG GIAN LÀM VIỆC",
+            "Video Dubbing": "Lồng tiếng video",
             "Projects": "Dự án",
             "Batch": "Hàng loạt",
             "Settings": "Cài đặt",
@@ -26,19 +141,20 @@ QtObject {
 
             "Create project": "Tạo dự án",
             "Project name": "Tên dự án",
-            "Project folder": "Thư mục dự án",
+            "Project storage location": "Vị trí lưu dự án",
             "Project type": "Loại dự án",
             "Single video": "Một video",
             "Batch videos": "Nhiều video",
             "New project": "Dự án mới",
             "Recent projects": "Dự án gần đây",
-            "Create a project or reopen previous work.": "Tạo dự án mới hoặc tiếp tục công việc trước đó.",
-            "Select a project to inspect its job and output.": "Chọn dự án để xem tiến trình và tệp đầu ra.",
+            "Create a project or reopen previous work.": "Tạo dự án mới hoặc tiếp tục dự án trước đó.",
+            "Select a project to view its progress and exports.": "Chọn dự án để xem tiến trình và video xuất.",
             "Start with one source video": "Bắt đầu với một video nguồn",
             "Single video or batch": "Một video hoặc hàng loạt",
             "No preview": "Chưa có hình xem trước",
 
             "Queued": "Đang chờ",
+            "In progress": "Đang thực hiện",
             "Processing": "Đang xử lý",
             "Complete": "Hoàn tất",
             "Failed": "Lỗi",
@@ -75,7 +191,7 @@ QtObject {
             "MP4, MOV or MKV; multiple files are supported": "Hỗ trợ nhiều tệp MP4, MOV hoặc MKV",
             "Only MP4, MOV and MKV files are added": "Chỉ thêm tệp MP4, MOV và MKV",
             "Browse folder": "Chọn thư mục",
-            "Video jobs": "Danh sách video",
+            "Videos": "Video",
             "Your queue is empty": "Hàng đợi đang trống",
             "Add videos above to begin a batch": "Thêm video ở phía trên để bắt đầu xử lý",
             "items": "mục",
@@ -97,6 +213,17 @@ QtObject {
             "Edit this size": "Chỉnh kích thước này",
             "Save video settings": "Lưu thiết lập video",
             "Unknown size": "Chưa xác định kích thước",
+
+            "Prepare project": "Chuẩn bị dự án",
+            "Extract audio": "Trích xuất âm thanh",
+            "Separate vocals": "Tách giọng",
+            "Transcribe speech": "Nhận diện lời nói",
+            "Translate segments": "Dịch phụ đề",
+            "Build subtitles": "Tạo phụ đề",
+            "Generate voice": "Tạo giọng đọc",
+            "Mix audio timeline": "Phối âm thanh",
+            "Render final video": "Kết xuất video",
+            "Finish": "Hoàn tất",
 
             "Create a new dub": "Tạo video lồng tiếng mới",
             "Turn one source video into a translated, voiced and captioned export.": "Chuyển video nguồn thành bản dịch, giọng đọc và phụ đề hoàn chỉnh.",
@@ -120,18 +247,59 @@ QtObject {
             "Search language": "Tìm ngôn ngữ",
             "Voice": "Giọng đọc",
             "Separate vocals for music or noisy audio": "Tách giọng khi video có nhạc hoặc tạp âm",
+            "Audio separation is slower in CPU mode": "Tách âm sẽ chậm hơn khi chạy bằng CPU",
             "Original audio": "Âm thanh gốc",
-            "A job is already processing": "Đang xử lý một công việc khác",
+            "Audio source": "Nguồn âm thanh",
+            "Keep original audio": "Giữ âm thanh gốc",
+            "Original audio volume": "Âm lượng gốc",
+            "Another project is already processing": "Một dự án khác đang được xử lý",
+            "Add to processing queue": "Đưa vào hàng đợi xử lý",
             "Create and process": "Tạo và xử lý",
+            "Process": "Xử lý",
 
             "Activity log": "Nhật ký hoạt động",
             "Live processing output": "Nhật ký xử lý trực tiếp",
-            "Logs will appear here while a job is processing.": "Nhật ký sẽ xuất hiện tại đây khi video được xử lý.",
+            "Logs will appear here while this project is processing.": "Nhật ký sẽ xuất hiện tại đây khi dự án đang được xử lý.",
             "No logs loaded.": "Chưa có nhật ký.",
 
             "Ready to process": "Sẵn sàng xử lý",
+            "Prepare project": "Chuẩn bị dự án",
             "Last export ready": "Video xuất đã sẵn sàng",
             "Ready": "Sẵn sàng",
+            "No active job": "Không có video đang xử lý",
+            "No video selected": "Chưa chọn video",
+            "Settings applied": "Đã áp dụng cài đặt",
+            "Settings reset to defaults": "Đã khôi phục cài đặt mặc định",
+            "Switching processing device": "Đang chuyển thiết bị xử lý",
+            "Preparing HY-MT2 translation model": "Đang chuẩn bị model dịch HY-MT2",
+            "Preparing HY-MT2 translation": "Đang chuẩn bị dịch bằng HY-MT2",
+            "Loading HY-MT2 translation model": "Đang tải model dịch HY-MT2",
+            "Reusing HY-MT2 translation model": "Đang dùng lại model dịch HY-MT2",
+            "Loading HY-MT2 tokenizer": "Đang tải bộ tách từ HY-MT2",
+            "Loading HY-MT2 weights": "Đang tải trọng số HY-MT2",
+            "HY-MT2 model is ready": "Model HY-MT2 đã sẵn sàng",
+            "HY-MT2 Q4 CPU model is ready": "Model HY-MT2 Q4 cho CPU đã sẵn sàng",
+            "Preparing job": "Đang chuẩn bị video",
+            "Processing started": "Đã bắt đầu xử lý",
+            "Queued to resume": "Đã đưa vào hàng đợi để tiếp tục",
+            "Queued to restart": "Đã đưa vào hàng đợi để chạy lại",
+            "Queued to create dub": "Đã đưa vào hàng đợi để tạo lồng tiếng",
+            "Queued for processing": "Đã đưa vào hàng đợi xử lý",
+            "Translation ready for review": "Bản dịch đã sẵn sàng để duyệt",
+            "Extracting source audio": "Đang trích xuất âm thanh nguồn",
+            "Source audio ready": "Âm thanh nguồn đã sẵn sàng",
+            "Separating speech from background audio": "Đang tách lời nói khỏi âm thanh nền",
+            "Speech track ready": "Âm thanh lời nói đã sẵn sàng",
+            "Preparing speech recognition": "Đang chuẩn bị nhận diện lời nói",
+            "Starting HY-MT2 translation": "Đang bắt đầu dịch bằng HY-MT2",
+            "Reusing subtitles checkpoint": "Đang dùng lại checkpoint phụ đề",
+            "Formatting timed subtitles": "Đang định dạng phụ đề theo thời gian",
+            "Reusing generated voices": "Đang dùng lại giọng đọc đã tạo",
+            "Starting voice synthesis": "Đang bắt đầu tạo giọng đọc",
+            "Reusing mixed audio checkpoint": "Đang dùng lại checkpoint âm thanh",
+            "Fitting voices to the video timeline": "Đang khớp giọng đọc với thời lượng video",
+            "Reusing rendered video checkpoint": "Đang dùng lại checkpoint video đã kết xuất",
+            "Rendering final video": "Đang kết xuất video đầu ra",
             "Preparing project": "Đang chuẩn bị dự án",
             "Extracting audio": "Đang trích xuất âm thanh",
             "Separating vocals": "Đang tách giọng",
@@ -153,10 +321,13 @@ QtObject {
             "Review translation": "Duyệt bản dịch",
             "Open input video": "Mở video nguồn",
             "Open output video": "Mở video đầu ra",
-            "Open output folder": "Mở thư mục đầu ra",
-            "Delete job": "Xóa công việc",
+            "Open export folder": "Mở thư mục video xuất",
+            "Open project folder": "Mở thư mục dự án",
+            "Remove video": "Xóa video",
+            "Delete project": "Xóa dự án",
 
             "Appearance and language": "Giao diện và ngôn ngữ",
+            "Appearance, language and performance": "Giao diện, ngôn ngữ và hiệu năng",
             "Theme": "Chủ đề",
             "Dark": "Tối",
             "Light": "Sáng",
@@ -165,6 +336,47 @@ QtObject {
             "English": "Tiếng Anh",
             "Vietnamese": "Tiếng Việt",
             "Choose the interface language": "Chọn ngôn ngữ hiển thị",
+            "Performance": "Hiệu năng",
+            "Processing device": "Thiết bị xử lý",
+            "Auto": "Tự động",
+            "GPU": "GPU",
+            "CPU": "CPU",
+            "GPU accelerated": "Tăng tốc GPU",
+            "GPU low memory": "GPU ít bộ nhớ",
+            "CPU balanced": "CPU cân bằng",
+            "CPU low memory": "CPU ít bộ nhớ",
+            "CPU minimum memory": "CPU bộ nhớ tối thiểu",
+            "Current hardware": "Cấu hình máy hiện tại",
+            "Active GPU": "GPU đang hoạt động",
+            "Active GPU role": "Vai trò GPU",
+            "GPU compute": "Xử lý bằng GPU",
+            "Windows display adapter": "GPU hiển thị Windows",
+            "Display resolution": "Độ phân giải màn hình",
+            "CPU cores": "Nhân CPU",
+            "CPU max clock": "Xung CPU tối đa",
+            "CPU clock": "Xung CPU",
+            "GPU processing": "Đang xử lý bằng GPU",
+            "CPU processing": "Đang xử lý bằng CPU",
+            "GPU available": "GPU khả dụng",
+            "Yes": "Có",
+            "No": "Không",
+            "cores": "nhân",
+            "threads": "luồng",
+            "No CUDA GPU detected": "Không phát hiện GPU CUDA",
+            "Total VRAM": "VRAM tổng",
+            "Free VRAM": "VRAM trống",
+            "System RAM": "RAM hệ thống",
+            "CPU threads": "Luồng CPU",
+            "Power source": "Nguồn điện",
+            "Plugged in": "Đang cắm sạc",
+            "On battery": "Đang dùng pin",
+            "Unknown": "Không rõ",
+            "Recommended": "Khuyến nghị",
+            "GPU memory is safe for processing": "Bộ nhớ GPU đủ an toàn để xử lý",
+            "Automatic mode will use CPU when GPU memory is insufficient": "Chế độ tự động sẽ dùng CPU khi bộ nhớ GPU không đủ",
+            "GPU is recommended for faster processing": "Khuyến nghị dùng GPU để xử lý nhanh hơn",
+            "CPU is recommended while running on battery": "Khuyến nghị dùng CPU khi laptop đang chạy bằng pin",
+            "CPU is recommended because GPU is unavailable or unsafe": "Khuyến nghị dùng CPU vì GPU không khả dụng hoặc chưa đủ an toàn",
             "Reset defaults": "Khôi phục mặc định",
             "Apply settings": "Áp dụng",
 
@@ -185,7 +397,7 @@ QtObject {
             "Apply to this size": "Áp dụng cho kích thước này",
             "Save subtitle frame": "Lưu khung phụ đề",
             "Not available": "Chưa có",
-            "Open job": "Mở công việc"
+            "Open video": "Mở video"
         }
         return vi[source] || source
     }

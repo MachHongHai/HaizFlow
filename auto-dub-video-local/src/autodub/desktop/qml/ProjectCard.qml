@@ -23,7 +23,7 @@ Rectangle {
         : status === "cancelled" ? I18n.t("Cancelled")
         : status === "paused" ? I18n.t("Paused")
         : status === "awaiting_review" ? I18n.t("Review needed")
-        : status
+        : I18n.taskStateLabel(status)
     readonly property color statusColor: status === "done" ? Theme.success
         : status === "failed" || status === "cancelled" ? Theme.danger
         : status === "processing" ? Theme.warning

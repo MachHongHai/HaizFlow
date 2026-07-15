@@ -6,6 +6,7 @@ import torch
 import whisperx
 
 from autodub.config import WHISPER_MODEL
+from autodub.core.hardware import runtime_profile
 from autodub.services.job_store import log_to_job
 
 
@@ -22,9 +23,15 @@ def warm_whisperx_model():
     with _MODEL_LOCK:
         if _WARM_ASR_MODEL is not None:
             return True
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        profile = runtime_profile()
+        device = "cuda" if profile.cuda_available else "cpu"
         compute_type = "float16" if device == "cuda" else "int8"
-        _WARM_ASR_MODEL = whisperx.load_model(WHISPER_MODEL, device, compute_type=compute_type)
+        _WARM_ASR_MODEL = whisperx.load_model(
+            WHISPER_MODEL,
+            device,
+            compute_type=compute_type,
+            threads=profile.cpu_threads,
+        )
         _WARM_DEVICE = device
         return True
 
@@ -204,9 +211,14 @@ def _align_segments_by_language(audio, segments, device: str, job_id: str, progr
 def transcribe(audio_path: str, output_json_path: str, source_language: str, job_id: str, progress_callback=None):
     """Transcribe and align audio while releasing each GPU model as soon as it is no longer needed."""
     log_to_job(job_id, f"Initializing WhisperX with model '{WHISPER_MODEL}'.")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    profile = runtime_profile()
+    device = "cuda" if profile.cuda_available else "cpu"
     compute_type = "float16" if device == "cuda" else "int8"
-    log_to_job(job_id, f"WhisperX device: {device}, compute type: {compute_type}.")
+    log_to_job(
+        job_id,
+        f"WhisperX device: {device}, compute type: {compute_type}, "
+        f"batch size: {profile.whisper_batch_size}, threads: {profile.cpu_threads}.",
+    )
 
     asr_model = None
     using_warm_model = False
@@ -221,7 +233,12 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, job
                 using_warm_model = True
                 log_to_job(job_id, "Reusing warmed WhisperX speech model.")
             else:
-                asr_model = whisperx.load_model(WHISPER_MODEL, device, compute_type=compute_type)
+                asr_model = whisperx.load_model(
+                    WHISPER_MODEL,
+                    device,
+                    compute_type=compute_type,
+                    threads=profile.cpu_threads,
+                )
         audio = whisperx.load_audio(audio_path)
         # Source language is always automatic. Per-segment detection runs after
         # transcription so mixed-language videos are not constrained by the first 30 seconds.
@@ -231,7 +248,7 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, job
         log_to_job(job_id, "Running transcription with automatic language detection.")
         if progress_callback:
             progress_callback("transcribing", "Transcribing speech")
-        result = asr_model.transcribe(audio, batch_size=16, language=language)
+        result = asr_model.transcribe(audio, batch_size=profile.whisper_batch_size, language=language)
         detected_language = result.get("language")
         log_to_job(job_id, f"Transcription completed. Detected language: '{detected_language}'.")
         if progress_callback:
@@ -247,13 +264,20 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, job
             }
             for segment in result["segments"]
         ]
-        sentence_segments = _align_segments_by_language(
-            audio,
-            initial_segments,
-            device,
-            job_id,
-            progress_callback=progress_callback,
-        )
+        if profile.cuda_available:
+            sentence_segments = _align_segments_by_language(
+                audio,
+                initial_segments,
+                device,
+                job_id,
+                progress_callback=progress_callback,
+            )
+        else:
+            sentence_segments = initial_segments
+            log_to_job(
+                job_id,
+                "CPU mode: using Whisper sentence boundaries before the single final alignment pass.",
+            )
         log_to_job(job_id, f"Prepared {len(sentence_segments)} sentence-level subtitle segments for language identification.")
 
         source_segments = _detect_segment_languages(

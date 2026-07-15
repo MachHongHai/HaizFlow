@@ -48,15 +48,22 @@ Item {
                 text: I18n.t("Batch setup")
                 iconGlyph: "\uE713"
                 toolTipText: I18n.t("Configure this batch")
-                enabled: controller.batchCount > 0 && !controller.isBatchRunning
+                enabled: controller.batchCount > 0
                 onClicked: root.requestBatchSettings()
             }
 
             AppButton {
-                text: I18n.t("Delete batch")
+                text: I18n.t("Open project folder")
+                iconGlyph: "\uE8B7"
+                enabled: controller.hasOpenProject
+                onClicked: controller.openProjectFolder()
+            }
+
+            AppButton {
+                text: I18n.t("Delete project")
                 iconGlyph: "\uE74D"
                 tone: "danger"
-                enabled: controller.batchCount > 0
+                enabled: controller.hasOpenProject
                 onClicked: controller.deleteCurrentBatch()
             }
 
@@ -65,7 +72,7 @@ Item {
                 text: I18n.t("Start queue")
                 iconGlyph: "\uE768"
                 tone: "primary"
-                enabled: controller.batchPendingCount > 0 && !controller.isProcessing
+                enabled: controller.batchPendingCount > 0
                 onClicked: controller.startBatch()
             }
 
@@ -203,7 +210,6 @@ Item {
                 AppButton {
                     text: I18n.t("Add videos")
                     iconGlyph: "\uE710"
-                    enabled: !controller.isBatchRunning
                     onClicked: controller.browseBatchVideos()
                 }
 
@@ -211,7 +217,6 @@ Item {
                     id: importMoreButton
                     glyph: "\uE712"
                     toolTipText: I18n.t("More import options")
-                    enabled: !controller.isBatchRunning
                     onClicked: importMenu.open()
 
                     Menu {
@@ -240,8 +245,6 @@ Item {
             DropArea {
                 anchors.fill: parent
                 keys: ["text/uri-list"]
-                enabled: !controller.isBatchRunning
-
                 onEntered: function(drag) {
                     if (drag.hasUrls) {
                         root.dropActive = true
@@ -278,7 +281,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Video jobs")
+                    text: I18n.t("Videos")
                     color: Theme.text
                     font.pixelSize: Theme.h2
                     font.weight: Font.DemiBold

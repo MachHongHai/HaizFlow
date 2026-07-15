@@ -15,6 +15,6 @@ Panel {
         Layout.fillWidth: true
         Layout.fillHeight: true
         text: controller.logs
-        emptyText: I18n.t("Logs will appear here while a job is processing.")
+        emptyText: I18n.t("Logs will appear here while this project is processing.")
     }
 }

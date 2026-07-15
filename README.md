@@ -48,7 +48,7 @@ Video nguồn
   -> render video và subtitle bằng FFmpeg
 ```
 
-WhisperX và HY-MT2 được warm-up tuần tự ở nền khi app mở. Nếu warm-up hoàn tất, job đầu tiên tái sử dụng model đã có trong RAM/VRAM thay vì load lại từ đầu; các job tiếp theo tiếp tục dùng HY-MT2 worker đang giữ model. Model được giải phóng khi đóng app.
+Trên máy có CUDA, WhisperX và HY-MT2 được warm-up tuần tự ở nền khi app mở. Trên máy chỉ có CPU, app tự chọn batch và số luồng theo RAM, chỉ warm-up WhisperX khi đủ bộ nhớ, rồi tải HY-MT2 Q4 lúc bắt đầu dịch. Model dịch CPU được tự động giải phóng sau thời gian không hoạt động để tránh chiếm RAM lâu dài.
 
 ## Công nghệ
 
@@ -67,8 +67,8 @@ Runtime desktop không cần Node.js, React, Vite, FastAPI, trình duyệt hay d
 ## Yêu cầu
 
 - Windows 10 hoặc Windows 11.
-- Python tương thích với các dependency đã pin trong `requirements.txt`.
-- NVIDIA CUDA được khuyến nghị mạnh để WhisperX và HY-MT2 có tốc độ thực tế tốt. CPU vẫn chạy nhưng chậm đáng kể.
+- Python 3.11-3.13; dependency và metadata được pin trong `auto-dub-video-local/pyproject.toml`.
+- NVIDIA CUDA được khuyến nghị để có tốc độ tốt nhất. Máy không có card đồ họa rời vẫn chạy được bằng WhisperX INT8 và HY-MT2 Q4 trên CPU; thời gian xử lý sẽ dài hơn.
 - Có FFmpeg và FFprobe trong `runtime/bin` khi chạy source.
 - Có Internet để Edge TTS tạo giọng và để tải model từ Hugging Face ở lần đầu.
 
@@ -78,6 +78,16 @@ Runtime desktop không cần Node.js, React, Vite, FastAPI, trình duyệt hay d
 git clone <repository-url>
 cd auto-dub-video-local
 Copy-Item .env.example .env
+.\scripts\install-desktop-env.ps1
+.\scripts\run-desktop.ps1
+```
+
+Một môi trường duy nhất hỗ trợ cả GPU và CPU. Chế độ xử lý được chọn trong **Settings > Processing device**:
+
+- **GPU:** yêu cầu GPU NVIDIA CUDA với tối thiểu 6 GB VRAM. GPU 6-8 GB dùng batch nhỏ và giải phóng WhisperX trước khi dịch.
+- **CPU:** dùng WhisperX INT8 và HY-MT2 Q4; yêu cầu khoảng 6 GB RAM trở lên.
+
+```powershell
 .\scripts\install-desktop-env.ps1
 .\scripts\run-desktop.ps1
 ```
@@ -116,7 +126,9 @@ HYMT2_MODEL=tencent/Hy-MT2-1.8B
 TTS_MAX_CONCURRENCY=3
 ```
 
-`RUNTIME_DATA_DIR` là biến quan trọng nhất. Nếu không đặt, runtime data sẽ vào `%LOCALAPPDATA%\AutoDubVideoLocal\data`. Đặt `D:\AutoDubData` trước khi import media lớn để toàn bộ jobs, log, output, thumbnail và cache model ở ổ D.
+Nhánh CPU dùng model chính thức `Hy-MT2-1.8B-Q4_K_M.gguf`. Model được tải một lần vào `<RUNTIME_DATA_DIR>\models\hymt2-gguf`, hoặc có thể được đóng gói sẵn trong bản phát hành offline.
+
+`RUNTIME_DATA_DIR` là biến quan trọng nhất. Nếu không đặt, runtime data sẽ vào `%LOCALAPPDATA%\AutoDubVideoLocal\data`. Đặt `D:\AutoDubData` trước khi import media lớn để cache model, chỉ mục project và toàn bộ workspace của project ở ổ D.
 
 Có thể đặt `HF_HOME` và `TORCH_HOME` thành đường dẫn tuyệt đối nếu muốn tách Hugging Face/Torch cache khỏi runtime root.
 
@@ -159,24 +171,26 @@ Ví dụ với `RUNTIME_DATA_DIR=D:\AutoDubData`:
 
 ```text
 D:\AutoDubData\
-  jobs\<job-id>\
-    input\video.<ext>
-    temp\audio.wav
-    temp\source_segments.json
-    temp\vi_segments.json
-    temp\voice_parts\
-    output\final.mp4
-    logs.txt
-    job.json
-  projects\<project-name>\dubbed_video.mp4
-  cache\thumbnails\
+  projects\<project-name>\
+    .autodub-project.json
+    exports\
+      dubbed_video.mp4
+    videos\<video-id>\
+      input\video.<ext>
+      temp\audio.wav
+      temp\source_segments.json
+      temp\vi_segments.json
+      temp\voice_parts\
+      output\final.mp4
+      logs.txt
+      job.json
   cache\huggingface\
   cache\torch\
   logs\
   desktop-settings.json
 ```
 
-Project có thể xuất video ra thư mục project đã chọn, khác với output nội bộ trong job folder. Có thể migrate dữ liệu cũ bằng:
+Mỗi project tự chứa input, temp, log, metadata và video export. App sẽ tự chuyển workspace `jobs` của phiên bản cũ vào project khi khởi động. Có thể migrate dữ liệu cũ bằng:
 
 ```powershell
 .\scripts\migrate-runtime-data.ps1 -Move
@@ -189,7 +203,7 @@ Hãy đọc output script trước khi dùng `-Move`.
 Log của từng job nằm tại:
 
 ```text
-<RUNTIME_DATA_DIR>\jobs\<job-id>\logs.txt
+<project>\videos\<video-id>\logs.txt
 ```
 
 Activity Log trong app hiển thị realtime log của project đang chọn. Text progress và log dùng cùng callback ở translation/TTS, nên dòng như `Translating segment 2 of 3` tương ứng trực tiếp với trạng thái trên progress bar.
@@ -208,10 +222,17 @@ Khi sửa code, test bằng source runtime:
 .\scripts\run-desktop.ps1
 ```
 
-Không cài package trực tiếp vào Python hệ thống. Mọi dependency desktop và ML được pin trong `requirements.txt` và cài qua `scripts\install-desktop-env.ps1`. Khi cần tạo lại một environment sạch:
+Không cài package trực tiếp vào Python hệ thống. Mọi dependency desktop và ML được pin trong `pyproject.toml`; `requirements.txt` chỉ khai báo binary index và cài package editable. Khi cần tạo lại một environment sạch:
 
 ```powershell
 .\scripts\install-desktop-env.ps1 -Recreate
+```
+
+Chạy kiểm tra chuẩn trước khi merge:
+
+```powershell
+.\scripts\test.ps1
+.\.venv\Scripts\python.exe .\scripts\verify-runtime.py
 ```
 
 Chỉ build EXE khi cần phát hành:
@@ -219,6 +240,18 @@ Chỉ build EXE khi cần phát hành:
 ```powershell
 .\scripts\build-exe.ps1
 ```
+
+Một bản phát hành duy nhất chứa cả backend GPU và CPU:
+
+```powershell
+.\scripts\build-exe.ps1
+
+# Tùy chọn: nhúng sẵn model Q4 để CPU không phải tải ở lần đầu
+.\.venv\Scripts\python.exe .\scripts\prepare-cpu-model.py
+.\scripts\build-exe.ps1 -IncludeCpuModel
+```
+
+Bản thống nhất lớn hơn bản CPU chuyên biệt vì chứa cả Torch CUDA và `llama.cpp`, nhưng người dùng chỉ cần cài một lần và có thể đổi thiết bị xử lý trong Settings.
 
 Kết quả:
 
@@ -230,7 +263,8 @@ Build dùng `--onedir` vì Qt, Torch, WhisperX và FFmpeg cần nhiều native f
 
 ## Hiệu năng và giới hạn
 
-- WhisperX và HY-MT2 warm-up tuần tự khi app mở; HY-MT2 chạy trong worker riêng, giữ model trong phiên app và nhả VRAM khi đóng app.
+- CUDA warm-up WhisperX và HY-MT2 tuần tự khi app mở. CPU dùng INT8/Q4, batch thích ứng theo RAM và tự nhả worker dịch khi không hoạt động.
+- FFmpeg tự probe NVENC, Intel Quick Sync và AMD AMF; nếu encoder phần cứng không dùng được, app tự thử lại bằng `libx264 veryfast`.
 - Edge TTS dùng tối đa 3 request song song mặc định; tăng `TTS_MAX_CONCURRENCY` có thể nhanh hơn nhưng dễ gặp throttling.
 - Demucs tắt mặc định vì nặng; chỉ bật nếu nhạc nền/tạp âm làm giảm chất lượng nhận dạng.
 - Batch chạy tuần tự để tránh cạnh tranh VRAM.
@@ -239,6 +273,7 @@ Build dùng `--onedir` vì Qt, Torch, WhisperX và FFmpeg cần nhiều native f
 
 ## Tài liệu bổ sung
 
-- [Architecture (English)](docs/architecture.md)
-- [.env.example](.env.example)
-- [requirements.txt](requirements.txt)
+- [Architecture (English)](auto-dub-video-local/docs/architecture.md)
+- [Package metadata](auto-dub-video-local/pyproject.toml)
+- [Environment template](auto-dub-video-local/.env.example)
+- [Installer requirements](auto-dub-video-local/requirements.txt)

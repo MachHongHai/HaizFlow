@@ -8,6 +8,7 @@ import time
 import uuid
 
 from autodub.core.paths import is_frozen, project_root
+from autodub.core.hardware import runtime_profile
 from autodub.pipeline.job_manager import register_process, unregister_process
 from autodub.services.job_store import log_to_job
 
@@ -41,6 +42,7 @@ _WORKER_PROCESS = None
 _WORKER_OUTPUT = None
 _WORKER_READER = None
 _WORKER_WARM = False
+_WORKER_IDLE_TIMER = None
 
 
 def language_name(language_code: str) -> str:
@@ -116,6 +118,27 @@ def _discard_hymt2_worker(process=None) -> None:
     _WORKER_WARM = False
 
 
+def _cancel_worker_idle_timer() -> None:
+    global _WORKER_IDLE_TIMER
+    timer = _WORKER_IDLE_TIMER
+    _WORKER_IDLE_TIMER = None
+    if timer is not None:
+        timer.cancel()
+
+
+def _schedule_worker_idle_shutdown() -> None:
+    global _WORKER_IDLE_TIMER
+    profile = runtime_profile()
+    _cancel_worker_idle_timer()
+    if not profile.is_cpu_only or profile.translation_idle_seconds <= 0:
+        return
+    timer = threading.Timer(profile.translation_idle_seconds, shutdown_hymt2_worker)
+    timer.name = "hymt2-idle-shutdown"
+    timer.daemon = True
+    _WORKER_IDLE_TIMER = timer
+    timer.start()
+
+
 def is_hymt2_worker_warm() -> bool:
     """Return whether the persistent worker has a live, loaded model."""
     with _WORKER_LOCK:
@@ -128,6 +151,7 @@ def is_hymt2_worker_warm() -> bool:
 
 def _ensure_hymt2_worker():
     global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM
+    _cancel_worker_idle_timer()
     if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is None and _WORKER_OUTPUT is not None:
         return _WORKER_PROCESS, _WORKER_OUTPUT
 
@@ -176,6 +200,7 @@ def _ensure_hymt2_worker():
 def shutdown_hymt2_worker() -> None:
     """Release the persistent translation model when the desktop session closes."""
     with _WORKER_LOCK:
+        _cancel_worker_idle_timer()
         process = _WORKER_PROCESS
         if process is None:
             return
@@ -325,7 +350,14 @@ def _translate_with_hymt2_worker(
                 if not isinstance(translations, list) or len(translations) != len(texts) or not all(isinstance(text, str) for text in translations):
                     raise RuntimeError("HY-MT2 worker returned an invalid translation result.")
                 _WORKER_WARM = True
-                log_to_job(job_id, "HY-MT2 translation completed; model stays warm for the next job.")
+                _schedule_worker_idle_shutdown()
+                if runtime_profile().is_cpu_only:
+                    log_to_job(
+                        job_id,
+                        f"HY-MT2 CPU model stays warm for {runtime_profile().translation_idle_seconds} seconds.",
+                    )
+                else:
+                    log_to_job(job_id, "HY-MT2 translation completed; model stays warm for the next job.")
                 return translations
         finally:
             unregister_process(job_id, process)

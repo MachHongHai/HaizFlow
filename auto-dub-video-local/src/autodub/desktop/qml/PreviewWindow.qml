@@ -16,7 +16,9 @@ Window {
 
     property real videoRatio: Math.max(0.1, controller.previewAspectRatio)
     property bool showPoster: false
+    property bool userPlaybackRequested: false
     property bool editHandled: false
+    property bool editsSaved: false
     property bool returnToBatchSetup: false
 
     signal batchSetupReturnRequested()
@@ -41,7 +43,9 @@ Window {
         player.source = ""
         player.source = controller.previewSource
         showPoster = controller.previewPosterSource.length > 0
+        userPlaybackRequested = false
         editHandled = false
+        editsSaved = false
         subtitleBox.resetFromController()
         visible = true
         raise()
@@ -49,10 +53,14 @@ Window {
     }
 
     function togglePlayback() {
-        if (player.playbackState === MediaPlayer.PlayingState) {
+        if (userPlaybackRequested) {
+            userPlaybackRequested = false
             player.pause()
         } else {
             root.showPoster = false
+            if (player.mediaStatus === MediaPlayer.EndOfMedia)
+                player.position = 0
+            userPlaybackRequested = true
             player.play()
         }
     }
@@ -73,8 +81,19 @@ Window {
         id: player
         audioOutput: AudioOutput {
             volume: 0.6
+            muted: false
         }
         videoOutput: videoOutput
+
+        onErrorOccurred: {
+            root.userPlaybackRequested = false
+        }
+
+        onPlaybackStateChanged: {
+            if (playbackState !== MediaPlayer.PlayingState) {
+                root.userPlaybackRequested = false
+            }
+        }
     }
 
     ColumnLayout {
@@ -126,8 +145,8 @@ Window {
                 }
 
                 AppButton {
-                    text: player.playbackState === MediaPlayer.PlayingState ? I18n.t("Pause") : I18n.t("Play")
-                    iconGlyph: player.playbackState === MediaPlayer.PlayingState ? "\uE769" : "\uE768"
+                    text: root.userPlaybackRequested ? I18n.t("Pause") : I18n.t("Play")
+                    iconGlyph: root.userPlaybackRequested ? "\uE769" : "\uE768"
                     tone: "primary"
                     onClicked: root.togglePlayback()
                 }
@@ -137,10 +156,11 @@ Window {
                     text: I18n.t(controller.previewSaveLabel)
                     iconGlyph: "\uE74E"
                     tone: "primary"
+                    enabled: !root.editsSaved
                     onClicked: {
                         if (controller.commitPreviewEdits()) {
                             root.editHandled = true
-                            root.close()
+                            root.editsSaved = true
                         }
                     }
                 }
@@ -205,7 +225,6 @@ Window {
                         sourceSize.width: Math.round(contentArea.width)
                         sourceSize.height: Math.round(contentArea.height)
                         fillMode: Image.PreserveAspectFit
-                        asynchronous: true
                         visible: root.showPoster && status === Image.Ready
                         opacity: visible ? 1 : 0
 
@@ -217,6 +236,7 @@ Window {
                     SubtitleEditBox {
                         id: subtitleBox
                         onEdited: function(xPercent, yPercent, widthPercent, heightPercent, fontSize) {
+                            root.editsSaved = false
                             controller.updatePreviewEdits(xPercent, yPercent, widthPercent, heightPercent, fontSize)
                         }
                     }

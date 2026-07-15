@@ -11,6 +11,7 @@ Dialog {
 
     signal requestEditAllSubtitles()
     signal requestEditSubtitleSize(string sizeKey)
+    property bool changesApplied: false
 
     modal: true
     focus: true
@@ -25,7 +26,10 @@ Dialog {
     header: null
     footer: null
 
-    onOpened: controller.loadBatchSettings()
+    onOpened: {
+        changesApplied = false
+        controller.loadBatchSettings()
+    }
 
     enter: Transition {
         ParallelAnimation {
@@ -136,7 +140,10 @@ Dialog {
                             { "label": I18n.t("Full auto"), "value": "A" },
                             { "label": I18n.t("Review then dub"), "value": "review" }
                         ]
-                        onActivated: function(value) { controller.workflowMode = value }
+                        onActivated: function(value) {
+                            root.changesApplied = false
+                            controller.workflowMode = value
+                        }
                     }
 
                     Text {
@@ -150,7 +157,10 @@ Dialog {
                         Layout.preferredHeight: 42
                         options: controller.targetLanguageOptions
                         selectedCode: controller.targetLanguage
-                        onSelected: function(code) { controller.targetLanguage = code }
+                        onSelected: function(code) {
+                            root.changesApplied = false
+                            controller.targetLanguage = code
+                        }
                     }
 
                     Text {
@@ -165,7 +175,10 @@ Dialog {
                         valueRole: "voice"
                         model: controller.ttsVoiceOptions
                         currentIndex: controller.ttsVoiceIndex
-                        onActivated: controller.ttsVoice = currentValue
+                        onActivated: {
+                            root.changesApplied = false
+                            controller.ttsVoice = currentValue
+                        }
                     }
 
                     Rectangle {
@@ -175,22 +188,35 @@ Dialog {
                         color: Theme.divider
                     }
 
-                    AppCheckBox {
-                        Layout.columnSpan: 2
+                    Text {
+                        text: I18n.t("Audio source")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.caption
+                    }
+
+                    SegmentedControl {
                         Layout.fillWidth: true
-                        text: I18n.t("Separate vocals for music or noisy audio")
-                        checked: controller.enableAudioSeparation
-                        onToggled: controller.enableAudioSeparation = checked
+                        currentValue: controller.enableAudioSeparation ? "separated" : "original"
+                        options: [
+                            { "label": I18n.t("Keep original audio"), "value": "original" },
+                            { "label": I18n.t("Separate vocals"), "value": "separated" }
+                        ]
+                        onActivated: function(value) {
+                            root.changesApplied = false
+                            controller.enableAudioSeparation = value === "separated"
+                        }
                     }
 
                     Text {
-                        text: I18n.t("Original audio")
+                        visible: !controller.enableAudioSeparation
+                        text: I18n.t("Original audio volume")
                         color: Theme.textMuted
                         font.pixelSize: Theme.caption
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
+                        visible: !controller.enableAudioSeparation
                         spacing: Theme.space12
 
                         AppSlider {
@@ -199,7 +225,10 @@ Dialog {
                             to: 100
                             stepSize: 1
                             value: controller.originalVolume
-                            onMoved: controller.originalVolume = Math.round(value)
+                            onMoved: {
+                                root.changesApplied = false
+                                controller.originalVolume = Math.round(value)
+                            }
                         }
 
                         Text {
@@ -354,10 +383,10 @@ Dialog {
                 text: I18n.t("Apply to all videos")
                 iconGlyph: "\uE73E"
                 tone: "primary"
-                enabled: controller.batchCount > 0 && !controller.isProcessing
+                enabled: controller.batchCount > 0 && !root.changesApplied
                 onClicked: {
                     if (controller.applyBatchSettings())
-                        root.close()
+                        root.changesApplied = true
                 }
             }
         }

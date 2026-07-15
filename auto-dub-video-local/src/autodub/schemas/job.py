@@ -61,6 +61,10 @@ class JobInfo(BaseModel):
     progress: int = 0
     step: str = "pending"
     resume_step: str = ""
+    # Separate from pause/resume checkpoints: this records a single automatic
+    # GPU-to-CPU recovery during the current run.
+    runtime_recovery_step: str = ""
+    gpu_recovery_attempted: bool = False
     checkpoints: Dict[str, str] = Field(default_factory=dict)
     created_at: str
     updated_at: str

@@ -8,9 +8,14 @@ Rectangle {
 
     signal requestReviewTranslation()
 
-    readonly property bool hasOutput: controller.hasSelectedJob && controller.selectedOutputPath.length > 0
+    readonly property bool hasOutput: controller.hasSelectedOutput
+    readonly property bool hasProject: controller.hasOpenProject
     readonly property bool selectedProcessing: controller.isSelectedJobProcessing
-    readonly property bool canRestart: controller.hasSelectedJob && !controller.isProcessing
+    readonly property bool canStart: controller.hasSelectedJob && controller.selectedStatus === "pending"
+        && !controller.isSelectedJobQueued
+    readonly property bool canRestart: controller.hasSelectedJob && !controller.isSelectedJobProcessing
+        && !controller.isSelectedJobQueued
+        && controller.selectedStatus !== "pending"
         && controller.selectedStatus !== "paused"
         && controller.selectedStatus !== "awaiting_review"
     readonly property string headline: root.selectedProcessing
@@ -97,7 +102,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: I18n.t(controller.selectedProgressDetail
+                text: I18n.progressDetail(controller.selectedProgressDetail
                     || controller.selectedStep
                     || "Processing status will appear here")
                 color: Theme.textMuted
@@ -132,6 +137,14 @@ Rectangle {
             }
 
             AppButton {
+                visible: root.canStart
+                text: I18n.t("Process")
+                iconGlyph: "\uE768"
+                tone: "primary"
+                onClicked: controller.startProjectJob()
+            }
+
+            AppButton {
                 visible: root.canRestart && !root.hasOutput
                 text: I18n.t("Restart")
                 iconGlyph: "\uE72C"
@@ -148,16 +161,25 @@ Rectangle {
             }
 
             AppButton {
-                visible: root.hasOutput
+                visible: controller.hasSelectedJob
                 text: I18n.t("Open output video")
                 iconGlyph: "\uE768"
                 tone: "primary"
+                enabled: root.hasOutput
                 onClicked: controller.openOutputFile()
+            }
+
+            AppButton {
+                visible: root.hasProject && !controller.hasSelectedJob
+                text: I18n.t("Open project folder")
+                iconGlyph: "\uE8B7"
+                tone: "secondary"
+                onClicked: controller.openProjectFolder()
             }
 
             IconButton {
                 id: moreButton
-                visible: controller.hasSelectedJob
+                visible: controller.hasSelectedJob || root.hasProject
                 glyph: "\uE712"
                 toolTipText: I18n.t("More actions")
                 onClicked: jobMenu.open()
@@ -186,14 +208,22 @@ Rectangle {
                     AppMenuItem {
                         text: I18n.t("Open input video")
                         iconGlyph: "\uE714"
+                        visible: controller.hasSelectedJob
                         onTriggered: controller.openInputFile()
                     }
 
                     AppMenuItem {
-                        text: I18n.t("Open output folder")
+                        text: I18n.t("Open export folder")
                         iconGlyph: "\uE8B7"
-                        enabled: controller.hasSelectedJob
+                        visible: controller.hasSelectedJob
                         onTriggered: controller.openOutputFolder()
+                    }
+
+                    AppMenuItem {
+                        text: I18n.t("Open project folder")
+                        iconGlyph: "\uE8B7"
+                        visible: root.hasProject
+                        onTriggered: controller.openProjectFolder()
                     }
 
                     AppMenuItem {
@@ -204,10 +234,21 @@ Rectangle {
                     }
 
                     AppMenuItem {
-                        text: I18n.t("Delete job")
+                        text: I18n.t("Remove video")
                         iconGlyph: "\uE74D"
                         tone: "danger"
+                        visible: controller.isSelectedBatchJob
                         onTriggered: controller.deleteSelectedJob()
+                    }
+
+                    AppMenuItem {
+                        text: I18n.t("Delete project")
+                        iconGlyph: "\uE74D"
+                        tone: "danger"
+                        // Batch deletion belongs to the batch-level action bar.
+                        // An opened batch video can only remove that video here.
+                        visible: root.hasProject && !controller.isSelectedBatchJob
+                        onTriggered: controller.deleteCurrentProject()
                     }
                 }
             }

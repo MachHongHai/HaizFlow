@@ -105,10 +105,10 @@ def build_audio_timeline(
             import math
             if original_video_volume <= 0:
                 db_change = -100
-                log_to_job(job_id, f"Original video volume set to {original_video_volume}%. Muting original/background audio.")
+                log_to_job(job_id, f"Background audio volume set to {original_video_volume}%. Muting the background track.")
             else:
                 db_change = 20 * math.log10(original_video_volume / 100.0)
-                log_to_job(job_id, f"Original video volume set to {original_video_volume}%. Adjusting original/background audio by {db_change:.2f} dB.")
+                log_to_job(job_id, f"Background audio volume set to {original_video_volume}%. Applying {db_change:.2f} dB.")
             bg_audio = bg_audio + db_change
             # Convert background audio to mono and 16000Hz (the format whisperX/edge-tts uses)
             base_audio = bg_audio.set_frame_rate(16000).set_channels(1)
@@ -205,10 +205,10 @@ def mix_accompaniment_and_voice(voice_path: str, background_audio_path: str, out
         import math
         if original_video_volume <= 0:
             db_change = -100
-            log_to_job(job_id, f"Original video volume set to {original_video_volume}%. Muting original/background audio.")
+            log_to_job(job_id, f"Background audio volume set to {original_video_volume}%. Muting the background track.")
         else:
             db_change = 20 * math.log10(original_video_volume / 100.0)
-            log_to_job(job_id, f"Original video volume set to {original_video_volume}%. Adjusting original/background audio by {db_change:.2f} dB.")
+            log_to_job(job_id, f"Background audio volume set to {original_video_volume}%. Applying {db_change:.2f} dB.")
         bg_audio = bg_audio + db_change
         
         # Overlay voice onto bg_audio. Expand if voice is longer than bg_audio.

@@ -1,7 +1,7 @@
 ﻿import os
 import subprocess
 import sys
-import torch
+from autodub.core.hardware import runtime_profile
 from autodub.services.job_store import log_to_job
 from autodub.pipeline.job_manager import register_process, unregister_process, check_cancellation
 
@@ -13,7 +13,8 @@ def separate_audio(audio_path: str, output_dir: str, job_id: str) -> tuple[str, 
     log_to_job(job_id, f"Starting audio source separation using Demucs on: {audio_path}")
     
     # Auto-detect device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    profile = runtime_profile()
+    device = "cuda" if profile.cuda_available else "cpu"
     log_to_job(job_id, f"Demucs device selected: {device}")
     
     python_exe = sys.executable
@@ -26,6 +27,13 @@ def separate_audio(audio_path: str, output_dir: str, job_id: str) -> tuple[str, 
         "-d", device,
         audio_path
     ]
+    if device == "cpu":
+        jobs = 1 if profile.key in {"cpu_low_memory", "cpu_minimum"} else max(1, min(4, profile.cpu_threads // 2))
+        cmd[7:7] = ["--shifts", "0", "--overlap", "0.1", "--segment", "7", "-j", str(jobs)]
+        log_to_job(
+            job_id,
+            f"CPU Demucs profile enabled with {jobs} worker(s). Source separation will be slower without CUDA.",
+        )
     
     log_to_job(job_id, f"Running Demucs command: {' '.join(cmd)}")
     

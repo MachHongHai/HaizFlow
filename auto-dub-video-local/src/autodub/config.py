@@ -26,6 +26,8 @@ if os.path.exists(BIN_DIR):
 
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 HYMT2_MODEL = os.getenv("HYMT2_MODEL", "tencent/Hy-MT2-1.8B")
+HYMT2_CPU_MODEL_REPO = os.getenv("HYMT2_CPU_MODEL_REPO", "tencent/Hy-MT2-1.8B-GGUF")
+HYMT2_CPU_MODEL_FILE = os.getenv("HYMT2_CPU_MODEL_FILE", "Hy-MT2-1.8B-Q4_K_M.gguf")
 TTS_MAX_CONCURRENCY = max(1, min(4, int(os.getenv("TTS_MAX_CONCURRENCY", "3"))))
 
 
@@ -43,10 +45,30 @@ def _resolve_runtime_path(value: str | None, default: str) -> str:
 
 HF_HOME = _resolve_runtime_path(os.getenv("HF_HOME"), os.path.join(CACHE_DIR, "huggingface"))
 TORCH_HOME = _resolve_runtime_path(os.getenv("TORCH_HOME"), os.path.join(CACHE_DIR, "torch"))
+PIP_CACHE_DIR = _resolve_runtime_path(os.getenv("PIP_CACHE_DIR"), os.path.join(CACHE_DIR, "pip"))
+UV_CACHE_DIR = _resolve_runtime_path(os.getenv("UV_CACHE_DIR"), os.path.join(CACHE_DIR, "uv"))
+TMP_DIR = _resolve_runtime_path(os.getenv("AUTODUB_TMP_DIR"), os.path.join(CACHE_DIR, "tmp"))
 os.environ["HF_HOME"] = HF_HOME
 os.environ["TORCH_HOME"] = TORCH_HOME
+os.environ["PIP_CACHE_DIR"] = PIP_CACHE_DIR
+os.environ["UV_CACHE_DIR"] = UV_CACHE_DIR
+# Keep worker extraction/build temporary files out of the system drive.
+os.environ["TMP"] = TMP_DIR
+os.environ["TEMP"] = TMP_DIR
 
-for directory in (RUNTIME_DATA_DIR, STORAGE_DIR, CACHE_DIR, LOGS_DIR, MODELS_DIR, HF_HOME, TORCH_HOME):
+# Project-owned data is created inside the selected project. JOBS_DIR remains
+# only as a read-once migration location for older installations.
+for directory in (
+    RUNTIME_DATA_DIR,
+    CACHE_DIR,
+    LOGS_DIR,
+    MODELS_DIR,
+    HF_HOME,
+    TORCH_HOME,
+    PIP_CACHE_DIR,
+    UV_CACHE_DIR,
+    TMP_DIR,
+):
     os.makedirs(directory, exist_ok=True)
 
 JOBS_DIR = STORAGE_DIR

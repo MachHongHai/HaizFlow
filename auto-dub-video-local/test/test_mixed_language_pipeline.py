@@ -6,6 +6,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -269,9 +270,11 @@ class MixedLanguagePipelineTests(unittest.TestCase):
     def test_hymt2_mixed_language_batch_keeps_target_language_segments(self):
         captured_source_texts = []
         original_runtime = hymt2_worker._model_runtime
+        original_runtime_profile = hymt2_worker.runtime_profile
         original_translate_batch = hymt2_worker._translate_prompt_batch
         original_emit = hymt2_worker._emit_event
         hymt2_worker._model_runtime = lambda: (object(), object(), object(), "cpu")
+        hymt2_worker.runtime_profile = lambda: SimpleNamespace(is_cpu_only=False)
         hymt2_worker._translate_prompt_batch = (
             lambda _model, _tokenizer, _torch, _device, _prompts, source_texts: (
                 captured_source_texts.extend(source_texts) or ["Xin chào", "Không gluten"]
@@ -288,6 +291,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             )
         finally:
             hymt2_worker._model_runtime = original_runtime
+            hymt2_worker.runtime_profile = original_runtime_profile
             hymt2_worker._translate_prompt_batch = original_translate_batch
             hymt2_worker._emit_event = original_emit
 

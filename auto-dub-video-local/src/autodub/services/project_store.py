@@ -2,7 +2,10 @@
 
 import json
 import os
+import shutil
+import stat
 import tempfile
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -11,6 +14,30 @@ from autodub.config import RUNTIME_DATA_DIR
 
 PROJECT_INDEX_PATH = os.path.join(RUNTIME_DATA_DIR, "projects.json")
 PROJECT_MANIFEST_NAME = ".autodub-project.json"
+
+
+def _force_remove_readonly(func, path, _exc_info) -> None:
+    """Retry a project-owned file after clearing Windows' read-only flag."""
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except OSError:
+        pass
+
+
+def _remove_project_root(root: str, attempts: int = 8, delay_seconds: float = 0.35) -> None:
+    """Remove only the validated project root, tolerating brief Windows locks."""
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            shutil.rmtree(root, onerror=_force_remove_readonly)
+            return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(delay_seconds * (attempt + 1))
+
+    if os.path.exists(root):
+        raise RuntimeError(f"Could not delete project folder after {attempts} attempts: {last_error}")
 
 
 def safe_project_name(project_name: str) -> str:
@@ -30,6 +57,16 @@ def project_key(project_name: str, project_directory: str, project_type: str) ->
 
 def project_root(project_name: str, project_directory: str) -> str:
     return os.path.abspath(os.path.join(os.path.abspath(project_directory), safe_project_name(project_name)))
+
+
+def project_exports_dir(project_name: str, project_directory: str) -> str:
+    """Return the dedicated export directory inside a project."""
+    return os.path.join(project_root(project_name, project_directory), "exports")
+
+
+def project_videos_dir(project_name: str, project_directory: str) -> str:
+    """Return the directory that owns per-video inputs, logs, and workspace data."""
+    return os.path.join(project_root(project_name, project_directory), "videos")
 
 
 def _now() -> str:
@@ -91,6 +128,8 @@ def ensure_project(project_name: str, project_directory: str, project_type: str)
         "updated_at": now,
     }
     os.makedirs(root, exist_ok=True)
+    os.makedirs(project_exports_dir(name, directory), exist_ok=True)
+    os.makedirs(project_videos_dir(name, directory), exist_ok=True)
     _write_json_atomic(os.path.join(root, PROJECT_MANIFEST_NAME), record)
     records = [item for item in records if item.get("key") != key]
     records.append(record)
@@ -103,3 +142,27 @@ def list_projects() -> list[dict[str, Any]]:
     records = _load_index()
     valid = [record for record in records if record.get("key") and record.get("project_name")]
     return sorted(valid, key=lambda record: record.get("updated_at", ""), reverse=True)
+
+
+def delete_project(project_name: str, project_directory: str, project_type: str) -> bool:
+    """Remove a registered project and its project-owned output directory."""
+    directory = os.path.abspath(project_directory.strip())
+    key = project_key(project_name, directory, project_type)
+    root = project_root(project_name, directory)
+
+    try:
+        is_project_child = os.path.commonpath([directory, root]) == directory and root != directory
+    except ValueError as exc:
+        raise ValueError("Project folder is outside the selected project directory.") from exc
+    if not is_project_child:
+        raise ValueError("Project folder is outside the selected project directory.")
+
+    records = _load_index()
+    exists = any(record.get("key") == key for record in records)
+    if os.path.isdir(root):
+        _remove_project_root(root)
+        exists = True
+
+    if exists:
+        _write_json_atomic(PROJECT_INDEX_PATH, [record for record in records if record.get("key") != key])
+    return exists

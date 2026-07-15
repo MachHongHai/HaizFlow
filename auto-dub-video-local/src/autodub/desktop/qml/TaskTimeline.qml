@@ -63,7 +63,7 @@ ListView {
 
                 Text {
                     Layout.fillWidth: true
-                    text: taskDelegate.name
+                    text: I18n.t(taskDelegate.name)
                     color: Theme.text
                     font.pixelSize: Theme.body
                     font.weight: Font.DemiBold
@@ -73,7 +73,7 @@ ListView {
 
                 Text {
                     Layout.fillWidth: true
-                    text: taskDelegate.detail
+                    text: I18n.stageLabel(taskDelegate.key)
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     textFormat: Text.PlainText
@@ -83,7 +83,7 @@ ListView {
 
             StatusPill {
                 status: taskDelegate.taskState
-                label: taskDelegate.taskState
+                label: I18n.taskStateLabel(taskDelegate.taskState)
             }
         }
     }

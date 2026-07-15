@@ -2,22 +2,28 @@ import argparse
 import importlib.metadata
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
+
+from packaging.requirements import Requirement
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-EXPECTED_PACKAGES = {
-    "PySide6": "6.11.1",
-    "torch": "2.8.0",
-    "torchaudio": "2.8.0",
-    "torchvision": "0.23.0",
-    "torchcodec": "0.7.0",
-    "whisperx": "3.8.6",
-    "pyannote-audio": "4.0.7",
-    "transformers": "4.57.6",
-    "pandas": "3.0.3",
-}
+
+
+def expected_packages() -> dict[str, str]:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    expected = {}
+    for value in project.get("dependencies", []):
+        requirement = Requirement(value)
+        if requirement.marker and not requirement.marker.evaluate():
+            continue
+        exact_versions = [item.version for item in requirement.specifier if item.operator == "=="]
+        if len(exact_versions) != 1:
+            raise RuntimeError(f"Runtime dependency must have one exact version: {value}")
+        expected[requirement.name] = exact_versions[0]
+    return expected
 
 
 def check(condition: bool, message: str, failures: list[str]) -> None:
@@ -37,7 +43,7 @@ def main() -> int:
     expected_venv = (ROOT / ".venv").resolve()
     check(Path(sys.prefix).resolve() == expected_venv, f"Project virtual environment: {expected_venv}", failures)
 
-    for distribution, expected in EXPECTED_PACKAGES.items():
+    for distribution, expected in expected_packages().items():
         try:
             actual = importlib.metadata.version(distribution)
         except importlib.metadata.PackageNotFoundError:
@@ -56,6 +62,8 @@ def main() -> int:
     try:
         import torch
 
+        torch_build = "CUDA-capable" if torch.version.cuda else "CPU-only"
+        check(bool(torch.version.cuda), f"Unified Torch build: {torch_build}", failures)
         print(f"[INFO] CUDA available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():
             print(f"[INFO] CUDA device: {torch.cuda.get_device_name(0)}")

@@ -84,7 +84,7 @@ Panel {
             id: sourceDropArea
             anchors.fill: parent
             keys: ["text/uri-list"]
-            enabled: !controller.isProcessing
+            enabled: !controller.isSelectedJobProcessing
 
             onEntered: function(drag) {
                 if (drag.hasUrls) {
@@ -109,7 +109,7 @@ Panel {
         }
 
         TapHandler {
-            enabled: controller.videoPath.length === 0 && !controller.isProcessing
+            enabled: controller.videoPath.length === 0 && !controller.isSelectedJobProcessing
             onTapped: controller.browseVideo()
         }
 
@@ -160,7 +160,7 @@ Panel {
             text: controller.videoPath.length > 0 ? I18n.t("Replace") : I18n.t("Browse")
             iconGlyph: "\uE8B7"
             compact: true
-            enabled: !controller.isProcessing
+            enabled: !controller.isSelectedJobProcessing
             onClicked: controller.browseVideo()
         }
     }
@@ -169,7 +169,7 @@ Panel {
         Layout.fillWidth: true
         text: I18n.t("Edit subtitle frame")
         iconGlyph: "\uE70F"
-        enabled: controller.videoPath.length > 0 && !controller.isProcessing
+        enabled: controller.videoPath.length > 0 && !controller.isSelectedJobProcessing
         onClicked: controller.openInputPreview()
     }
 

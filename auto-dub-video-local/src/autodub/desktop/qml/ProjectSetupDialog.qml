@@ -149,7 +149,7 @@ Dialog {
                 spacing: Theme.space8
 
                 Text {
-                    text: I18n.t("Project folder")
+                    text: I18n.t("Project storage location")
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     font.weight: Font.Medium

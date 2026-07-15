@@ -1,3 +1,7 @@
+param(
+  [switch]$IncludeCpuModel
+)
+
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
@@ -55,6 +59,17 @@ if (Test-Path $BinPath) {
 $QmlPath = Join-Path $Root "src\autodub\desktop\qml"
 if (Test-Path $QmlPath) {
   $ArgsList += @("--add-data", "$QmlPath;autodub\desktop\qml")
+}
+
+$ArgsList += @("--collect-all", "llama_cpp")
+
+if ($IncludeCpuModel) {
+  $SourcePath = Join-Path $Root "src"
+  $ModelPath = & $Python -c "import sys; sys.path.insert(0, r'$SourcePath'); from autodub.config import HYMT2_CPU_MODEL_FILE, MODELS_DIR; from pathlib import Path; print(Path(MODELS_DIR) / 'hymt2-gguf' / HYMT2_CPU_MODEL_FILE)"
+  if (!(Test-Path -LiteralPath $ModelPath)) {
+    throw "CPU model is missing. Run: .venv\Scripts\python.exe scripts\prepare-cpu-model.py"
+  }
+  $ArgsList += @("--add-data", "$ModelPath;models\hymt2-gguf")
 }
 
 & $Python @ArgsList

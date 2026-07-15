@@ -1,30 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
-# Core desktop runtime
-PySide6==6.11.1
-pydantic==2.13.4
-python-dotenv==1.2.2
-
-# GPU-capable speech and translation stack
-torch==2.8.0
-torchaudio==2.8.0
-torchvision==0.23.0
-whisperx==3.8.6
-pyannote-audio==4.0.7
-torchcodec==0.7.0
-transformers==4.57.6
-ctranslate2==4.8.1
-faster-whisper==1.2.1
-numpy==2.5.1
-pandas==3.0.3
-audioop-lts==0.2.2; python_version >= "3.13"
-
-# Media processing and voice synthesis
-edge-tts==7.2.8
-pydub==0.25.1
-srt==3.5.3
-demucs==4.0.1
-
-# Distribution tooling
-pyinstaller==6.21.0
+# Versions and package metadata live in pyproject.toml. Keep the custom wheel
+# indexes here so one command installs the complete development environment.
+-e .
 

@@ -1,0 +1,20 @@
+* text=auto
+
+*.py text eol=lf
+*.qml text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.ps1 text eol=lf
+
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.mp3 binary
+*.wav binary
+*.mp4 binary
+*.mov binary
+*.mkv binary
+*.exe binary
+*.dll binary
+

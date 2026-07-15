@@ -39,7 +39,7 @@ def app_data_dir() -> Path:
 
 
 def runtime_data_dir() -> Path:
-    """All mutable runtime data: jobs, logs, model caches, and downloaded models."""
+    """All mutable app-level data: settings, diagnostics, model caches, and project index."""
     override = os.getenv("RUNTIME_DATA_DIR")
     if override:
         path = Path(override).expanduser()
@@ -53,7 +53,7 @@ def legacy_runtime_data_dir() -> Path:
 
 
 def storage_dir() -> Path:
-    """Compatibility name for the job data directory."""
+    """Legacy pre-project-first video workspace location, retained for migration."""
     return runtime_data_dir() / "jobs"
 
 

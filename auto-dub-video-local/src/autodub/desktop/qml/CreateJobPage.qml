@@ -35,7 +35,7 @@ Item {
                 iconGlyph: "\uE72B"
                 tone: "secondary"
                 onClicked: {
-                    if (controller.isSelectedBatchJob && !controller.isProcessing)
+                    if (controller.isSelectedBatchJob && !controller.isSelectedJobProcessing)
                         controller.saveSelectedJobSettings()
                     root.requestBack()
                 }
