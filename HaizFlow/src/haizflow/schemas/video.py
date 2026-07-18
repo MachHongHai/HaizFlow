@@ -18,14 +18,14 @@ class MediaSource(BaseModel):
 
 
 class SubtitleStyle(BaseModel):
-    font_size: int = 14
+    font_size: int = 36
     margin_bottom: int = 40
     outline: int = 2
     max_chars_per_line: int = 32
-    position_x_percent: int = 50
-    position_y_percent: int = 88
+    position_x_percent: int = 51
+    position_y_percent: int = 96
     box_width_percent: int = 72
-    box_height_percent: int = 12
+    box_height_percent: int = 6
 
 
 class CropSettings(BaseModel):

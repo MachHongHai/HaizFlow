@@ -20,7 +20,7 @@ from haizflow.desktop.media import (
     resolve_video_file,
     thumbnail_source,
 )
-from haizflow.desktop.models import VideoListModel, ProjectListModel, TaskListModel
+from haizflow.desktop.models import VideoListModel, ProjectGridModel, ProjectListModel, TaskListModel
 from haizflow.desktop.presenters import (
     build_project_summaries,
     format_duration,
@@ -89,8 +89,8 @@ class HaizFlowController(QObject):
         type(self)._qml_instance = self
         self.videos = VideoListModel()
         self.projects = ProjectListModel()
-        self.single_projects = ProjectListModel()
-        self.batch_projects = ProjectListModel()
+        self.single_projects = ProjectGridModel()
+        self.batch_projects = ProjectGridModel()
         self.batch_videos = VideoListModel()
         self.tasks = TaskListModel()
         self._video_path = ""
@@ -123,11 +123,11 @@ class HaizFlowController(QObject):
         self._batch_stop_requested = False
         self._logs = ""
         self._status_message = "Ready"
-        self._subtitle_position_x = 50
-        self._subtitle_position_y = 88
-        self._caption_font_size = 72
+        self._subtitle_position_x = 51
+        self._subtitle_position_y = 96
+        self._caption_font_size = 36
         self._subtitle_box_width = 72
-        self._subtitle_box_height = 12
+        self._subtitle_box_height = 6
         self._preview_source = ""
         self._preview_poster_source = ""
         self._preview_title = "Preview"

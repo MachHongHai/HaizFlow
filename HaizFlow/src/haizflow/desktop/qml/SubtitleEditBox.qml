@@ -12,10 +12,10 @@ Item {
     property string mode: ""
     property real originMouseX: 0
     property real originMouseY: 0
-    property int originXPercent: 50
-    property int originYPercent: 88
+    property int originXPercent: 51
+    property int originYPercent: 96
     property int originWidthPercent: 72
-    property int originHeightPercent: 12
+    property int originHeightPercent: 6
 
     signal edited(int xPercent, int yPercent, int widthPercent, int heightPercent, int fontSize)
 

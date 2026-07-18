@@ -78,9 +78,8 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             reuseItems: true
 
-            header: Item {
-                width: projectGrid.width
-                height: projectGrid.cardHeight + Theme.space16
+            Component {
+                id: newProjectCardDelegate
 
                 Rectangle {
                     id: newProjectCard
@@ -169,11 +168,42 @@ Item {
                 }
             }
 
-            delegate: ProjectCard {
+            delegate: Item {
+                id: projectGridDelegate
+
+                required property int index
+                required property bool isCreateCard
+                required property string projectName
+                required property string projectType
+                required property int videoCount
+                required property string status
+                required property int progress
+                required property string thumbnailSource
+
                 width: projectGrid.cardWidth
-                onActivated: {
-                    AppController.selectProjectInMode(index, root.projectType)
-                    root.openProject(root.projectType)
+                height: projectGrid.cardHeight
+
+                Loader {
+                    anchors.fill: parent
+                    active: projectGridDelegate.isCreateCard
+                    sourceComponent: newProjectCardDelegate
+                }
+
+                ProjectCard {
+                    visible: !projectGridDelegate.isCreateCard
+                    width: parent.width
+                    height: parent.height
+                    index: projectGridDelegate.index - 1
+                    projectName: projectGridDelegate.projectName
+                    projectType: projectGridDelegate.projectType
+                    videoCount: projectGridDelegate.videoCount
+                    status: projectGridDelegate.status
+                    progress: projectGridDelegate.progress
+                    thumbnailSource: projectGridDelegate.thumbnailSource
+                    onActivated: {
+                        AppController.selectProjectInMode(index, root.projectType)
+                        root.openProject(root.projectType)
+                    }
                 }
             }
 
