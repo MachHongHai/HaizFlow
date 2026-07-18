@@ -1,5 +1,9 @@
 import argparse
+import hashlib
 import importlib.metadata
+import json
+import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -10,6 +14,14 @@ from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        while chunk := file.read(8 * 1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def expected_packages() -> dict[str, str]:
@@ -39,6 +51,22 @@ def main() -> int:
     args = parser.parse_args()
     failures: list[str] = []
 
+    lock_check = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "verify-dependency-lock.py")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+    check(
+        lock_check.returncode == 0,
+        lock_check.stdout.strip() or lock_check.stderr.strip() or "Hashed dependency lock",
+        failures,
+    )
+
     check((3, 11) <= sys.version_info[:2] <= (3, 13), f"Python {sys.version.split()[0]}", failures)
     expected_venv = (ROOT / ".venv").resolve()
     check(Path(sys.prefix).resolve() == expected_venv, f"Project virtual environment: {expected_venv}", failures)
@@ -52,6 +80,19 @@ def main() -> int:
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
+    from autodub.config import HYMT2_CPU_MODEL_REVISION, HYMT2_MODEL_REVISION
+    from autodub.core.model_integrity import HYMT2_CPU_REVISION, HYMT2_GPU_REVISION
+
+    check(
+        HYMT2_MODEL_REVISION == HYMT2_GPU_REVISION and len(HYMT2_GPU_REVISION) == 40,
+        f"Pinned HY-MT2 GPU revision: {HYMT2_GPU_REVISION}",
+        failures,
+    )
+    check(
+        HYMT2_CPU_MODEL_REVISION == HYMT2_CPU_REVISION and len(HYMT2_CPU_REVISION) == 40,
+        f"Pinned HY-MT2 CPU revision: {HYMT2_CPU_REVISION}",
+        failures,
+    )
     try:
         from PySide6 import QtCore, QtMultimedia, QtQml, QtQuick  # noqa: F401
 
@@ -67,6 +108,14 @@ def main() -> int:
         print(f"[INFO] CUDA available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():
             print(f"[INFO] CUDA device: {torch.cuda.get_device_name(0)}")
+            tensor = torch.ones((16, 16), device="cuda", dtype=torch.float16)
+            result = tensor @ tensor
+            torch.cuda.synchronize()
+            check(float(result.sum().item()) > 0, "CUDA allocation and FP16 compute", failures)
+            print(f"[INFO] CUDA compute capability: {torch.cuda.get_device_capability(0)}")
+            print(f"[INFO] CUDA BF16 supported: {torch.cuda.is_bf16_supported()}")
+            del tensor, result
+            torch.cuda.empty_cache()
     except Exception as exc:
         check(False, f"Torch import: {exc}", failures)
 
@@ -80,15 +129,66 @@ def main() -> int:
             "The pipeline supplies preloaded waveforms to WhisperX and does not depend on this decoder."
         )
 
-    from autodub.config import HF_HOME, RUNTIME_DATA_DIR, TORCH_HOME
+    from autodub.config import HF_HOME, RUNTIME_DATA_DIR, TMP_DIR, TORCH_HOME
+    from autodub.core.runtime_probe import probe_runtime
 
     check(Path(RUNTIME_DATA_DIR).is_absolute(), f"Runtime data: {RUNTIME_DATA_DIR}", failures)
     check(Path(HF_HOME).is_absolute(), f"Hugging Face cache: {HF_HOME}", failures)
     check(Path(TORCH_HOME).is_absolute(), f"Torch cache: {TORCH_HOME}", failures)
+    for directory in (RUNTIME_DATA_DIR, HF_HOME, TORCH_HOME, TMP_DIR):
+        path = Path(directory)
+        path.mkdir(parents=True, exist_ok=True)
+        probe_path = path / f".runtime-write-{os.getpid()}"
+        try:
+            probe_path.write_text("ok", encoding="utf-8")
+            probe_path.unlink()
+            writable = True
+        except OSError:
+            writable = False
+        check(writable, f"Writable runtime directory: {path}", failures)
+    free_gib = shutil.disk_usage(RUNTIME_DATA_DIR).free / (1024 ** 3)
+    check(free_gib >= 2, f"Runtime disk has {free_gib:.1f} GB free", failures)
+
+    ffmpeg_manifest_path = ROOT / "runtime" / "ffmpeg-manifest.json"
+    try:
+        ffmpeg_manifest = json.loads(ffmpeg_manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        ffmpeg_manifest = {}
+        check(False, f"FFmpeg runtime manifest: {exc}", failures)
+    check(ffmpeg_manifest.get("version") == "8.1.2", "Pinned FFmpeg 8.1.2 manifest", failures)
 
     for executable in ("ffmpeg.exe", "ffprobe.exe"):
         path = ROOT / "runtime" / "bin" / executable
         check(path.is_file(), f"Bundled media tool: {path}", failures)
+        if path.is_file():
+            expected_hash = ffmpeg_manifest.get(executable.removesuffix(".exe") + "_sha256")
+            check(bool(expected_hash) and sha256(path) == expected_hash, f"Pinned checksum: {path.name}", failures)
+            media_probe = subprocess.run(
+                [str(path), "-version"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+            )
+            version_matches = "8.1.2-essentials_build-www.gyan.dev" in media_probe.stdout
+            check(media_probe.returncode == 0 and version_matches, f"Native media tool starts: {path.name}", failures)
+
+    compliance_directory = ROOT / "runtime" / "compliance" / "ffmpeg"
+    for filename, hash_key in (
+        ("ffmpeg-8.1.2.tar.xz", "source_sha256"),
+        ("ffmpeg-8.1.2.tar.xz.asc", "source_signature_sha256"),
+    ):
+        path = compliance_directory / filename
+        expected_hash = ffmpeg_manifest.get(hash_key)
+        check(path.is_file() and bool(expected_hash) and sha256(path) == expected_hash, f"FFmpeg compliance file: {filename}", failures)
+
+    cpu_probe = probe_runtime("cpu")
+    check(cpu_probe.ok, f"Isolated CPU model runtime: {cpu_probe.message}", failures)
+    if "torch" in locals() and torch.cuda.is_available():
+        gpu_probe = probe_runtime("gpu")
+        check(gpu_probe.ok, f"Isolated GPU model runtime: {gpu_probe.message}", failures)
 
     pip_check = subprocess.run(
         [sys.executable, "-m", "pip", "check"],

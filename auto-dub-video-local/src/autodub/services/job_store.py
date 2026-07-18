@@ -10,7 +10,13 @@ from typing import List, Optional
 
 from autodub.config import JOBS_DIR
 from autodub.core.events import emit_log
-from autodub.schemas.job import JobConfig, JobInfo
+from autodub.schemas.job import (
+    VIDEO_METADATA_SCHEMA_VERSION,
+    VIDEO_METADATA_TYPE,
+    JobConfig,
+    JobInfo,
+    MediaSource,
+)
 from autodub.services import project_store
 
 
@@ -34,8 +40,13 @@ def _legacy_job_dir(job_id: str) -> str:
 
 def _project_job_dir(job_id: str, config: JobConfig) -> str:
     if config.project_name.strip() and config.project_directory.strip():
+        videos_dir = (
+            project_store.project_videos_dir_for_key(config.project_key)
+            if config.project_key
+            else project_store.project_videos_dir(config.project_name, config.project_directory, config.project_type)
+        )
         return os.path.join(
-            project_store.project_videos_dir(config.project_name, config.project_directory),
+            videos_dir,
             job_id,
         )
     return _legacy_job_dir(job_id)
@@ -54,7 +65,7 @@ def _find_job_dir(job_id: str) -> str:
 
     for project in project_store.list_projects():
         candidate = os.path.join(
-            project_store.project_videos_dir(project["project_name"], project["project_directory"]),
+            project_store.project_videos_dir_for_key(project["key"]),
             job_id,
         )
         if os.path.isdir(candidate):
@@ -94,7 +105,11 @@ def create_job(job_id: str, original_filename: str, config: JobConfig, video_ext
 
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     if project_owned:
-        export_dir = project_store.project_exports_dir(config.project_name, config.project_directory)
+        export_dir = (
+            project_store.project_exports_dir_for_key(config.project_key)
+            if config.project_key
+            else project_store.project_exports_dir(config.project_name, config.project_directory, config.project_type)
+        )
         if config.project_type == "batch":
             safe_stem = "".join(
                 character if character.isalnum() or character in {"-", "_", " "} else "_"
@@ -128,6 +143,8 @@ def create_job(job_id: str, original_filename: str, config: JobConfig, video_ext
         project_name=config.project_name,
         project_directory=config.project_directory,
         project_type=config.project_type,
+        project_id=config.project_id,
+        project_key=config.project_key,
         review_approved=config.review_approved,
         status="pending",
         progress=0,
@@ -144,7 +161,10 @@ def create_job(job_id: str, original_filename: str, config: JobConfig, video_ext
 
 
 def _job_data(job_info: JobInfo) -> dict:
-    return job_info.model_dump() if hasattr(job_info, "model_dump") else job_info.dict()
+    data = job_info.model_dump() if hasattr(job_info, "model_dump") else job_info.dict()
+    data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
+    data["metadata_type"] = VIDEO_METADATA_TYPE
+    return data
 
 
 def _write_json_atomic(path: str, data: dict) -> None:
@@ -163,6 +183,85 @@ def _write_json_atomic(path: str, data: dict) -> None:
         except FileNotFoundError:
             pass
         raise
+
+
+class VideoMetadataError(RuntimeError):
+    pass
+
+
+class UnsupportedVideoSchemaError(VideoMetadataError):
+    pass
+
+
+def _video_schema_version(data: dict) -> int:
+    raw_version = data.get("schema_version", 1)
+    try:
+        version = int(raw_version)
+    except (TypeError, ValueError) as exc:
+        raise VideoMetadataError(f"Video metadata has an invalid schema version: {raw_version!r}") from exc
+    if version < 1:
+        raise VideoMetadataError(f"Video metadata has an invalid schema version: {version}")
+    if version > VIDEO_METADATA_SCHEMA_VERSION:
+        raise UnsupportedVideoSchemaError(
+            f"Video metadata uses schema v{version}, newer than supported v{VIDEO_METADATA_SCHEMA_VERSION}."
+        )
+    return version
+
+
+def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
+    if not isinstance(raw_data, dict):
+        raise VideoMetadataError("Video metadata must contain a JSON object.")
+    original = dict(raw_data)
+    data = dict(raw_data)
+    version = _video_schema_version(data)
+    while version < VIDEO_METADATA_SCHEMA_VERSION:
+        if version == 1:
+            data["schema_version"] = 2
+            data["metadata_type"] = VIDEO_METADATA_TYPE
+            data["mode"] = data.get("mode") if data.get("mode") in {"A", "review"} else "A"
+            data["source_language"] = "auto"
+            data["translator_provider"] = "hymt2"
+            data["output_format"] = "keep_ratio"
+            data["project_type"] = "batch" if data.get("project_type") == "batch" else "single"
+            version = 2
+            continue
+        if version == 2:
+            data["schema_version"] = 3
+            data["media_source"] = {"type": "local_file"}
+            version = 3
+            continue
+        if version == 3:
+            project_name = str(data.get("project_name") or "").strip()
+            project_directory = str(data.get("project_directory") or "").strip()
+            project_type = "batch" if data.get("project_type") == "batch" else "single"
+            key = project_store.resolve_project_key(project_name, project_directory, project_type)
+            record = project_store.get_project(key) if key else None
+            data["schema_version"] = 4
+            data["project_key"] = key
+            data["project_id"] = str((record or {}).get("project_id") or "")
+            version = 4
+            continue
+        raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
+    data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
+    data["metadata_type"] = VIDEO_METADATA_TYPE
+    return data, data != original
+
+
+def _write_video_migration_backup(path: str, raw_data: dict) -> None:
+    backup_path = f"{path}.schema-migration.bak"
+    if not os.path.exists(backup_path):
+        _write_json_atomic(backup_path, raw_data)
+
+
+def _load_video_metadata(path: str, *, persist_migration: bool = True) -> JobInfo:
+    with open(path, "r", encoding="utf-8") as file:
+        raw_data = json.load(file)
+    migrated_data, migrated = _migrate_video_metadata(raw_data)
+    job = JobInfo(**migrated_data)
+    if migrated and persist_migration:
+        _write_video_migration_backup(path, raw_data)
+        _write_json_atomic(path, _job_data(job))
+    return job
 
 
 def _save_job_unlocked(job_info: JobInfo) -> None:
@@ -188,16 +287,16 @@ def _get_job_unlocked(job_id: str) -> Optional[JobInfo]:
     if not os.path.exists(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as file:
-            return JobInfo(**json.load(file))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as original_error:
+        return _load_video_metadata(path)
+    except UnsupportedVideoSchemaError as exc:
+        raise RuntimeError(f"Job metadata was created by a newer application version: {path}") from exc
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, VideoMetadataError) as original_error:
         backup_path = _get_job_backup_path(job_id)
         if not os.path.exists(backup_path):
             raise RuntimeError(f"Job metadata is unreadable: {path}") from original_error
         try:
-            with open(backup_path, "r", encoding="utf-8") as file:
-                recovered = JobInfo(**json.load(file))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as backup_error:
+            recovered = _load_video_metadata(backup_path, persist_migration=False)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, VideoMetadataError) as backup_error:
             raise RuntimeError(f"Job metadata and backup are unreadable: {path}") from backup_error
         _write_json_atomic(path, _job_data(recovered))
         log_to_job(job_id, "Recovered job metadata from the last atomic backup.")
@@ -229,7 +328,11 @@ def _is_inside(path: str, root: str) -> bool:
         return False
 
 
-def replace_job_input(job_id: str, source_path: str) -> Optional[JobInfo]:
+def replace_job_input(
+    job_id: str,
+    source_path: str,
+    media_source: MediaSource | dict | None = None,
+) -> Optional[JobInfo]:
     """Replace a completed/pending video's source and discard its old artifacts."""
     source_path = os.path.abspath(source_path)
     with _job_lock(job_id):
@@ -255,7 +358,9 @@ def replace_job_input(job_id: str, source_path: str) -> Optional[JobInfo]:
         final_video = (job.files or {}).get("final_video") or ""
         previous_thumbnail = (job.files or {}).get("thumbnail") or ""
         project_root = (
-            project_store.project_root(job.project_name, job.project_directory)
+            project_store.project_root_for_key(job.project_key)
+            if job.project_key
+            else project_store.project_root(job.project_name, job.project_directory, job.project_type)
             if job.project_name and job.project_directory
             else job_dir
         )
@@ -292,6 +397,7 @@ def replace_job_input(job_id: str, source_path: str) -> Optional[JobInfo]:
         job.files["transcript_json"] = os.path.join(job_dir, "temp", "vi_segments.json")
         job.files["thumbnail"] = os.path.join(job_dir, "thumbnail.jpg")
         job.original_filename = os.path.basename(source_path)
+        job.media_source = MediaSource.model_validate(media_source or {"type": "local_file"})
         job.video_width = 0
         job.video_height = 0
         job.review_approved = False
@@ -349,7 +455,9 @@ def prepare_job_restart(job_id: str) -> Optional[JobInfo]:
 
         final_video = (job.files or {}).get("final_video") or ""
         project_root = (
-            project_store.project_root(job.project_name, job.project_directory)
+            project_store.project_root_for_key(job.project_key)
+            if job.project_key
+            else project_store.project_root(job.project_name, job.project_directory, job.project_type)
             if job.project_name and job.project_directory
             else job_dir
         )
@@ -389,7 +497,7 @@ def prepare_job_restart(job_id: str) -> Optional[JobInfo]:
 def _project_job_ids() -> list[str]:
     job_ids: list[str] = []
     for project in project_store.list_projects():
-        videos_dir = project_store.project_videos_dir(project["project_name"], project["project_directory"])
+        videos_dir = project_store.project_videos_dir_for_key(project["key"])
         if not os.path.isdir(videos_dir):
             continue
         for name in os.listdir(videos_dir):
@@ -462,10 +570,7 @@ def migrate_legacy_project_data() -> list[str]:
     """Move old global video workspaces into their registered project folders."""
     if not os.path.isdir(JOBS_DIR):
         return []
-    registered = {
-        project_store.project_key(record["project_name"], record["project_directory"], record["project_type"])
-        for record in project_store.list_projects()
-    }
+    registered = {record["key"]: record for record in project_store.list_projects()}
     migrated = []
     for job_id in os.listdir(JOBS_DIR):
         source = _legacy_job_dir(job_id)
@@ -473,22 +578,30 @@ def migrate_legacy_project_data() -> list[str]:
         if not os.path.isdir(source) or not os.path.isfile(metadata_path):
             continue
         try:
-            with open(metadata_path, "r", encoding="utf-8") as file:
-                job = JobInfo(**json.load(file))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            job = _load_video_metadata(metadata_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, VideoMetadataError):
             continue
         if not job.project_name or not job.project_directory:
             continue
-        kind = "batch" if job.project_type == "batch" else "single"
-        key = project_store.project_key(job.project_name, job.project_directory, kind)
-        if key not in registered:
+        key = job.project_key or project_store.resolve_project_key(
+            job.project_name,
+            job.project_directory,
+            job.project_type,
+        )
+        record = registered.get(key)
+        if not record:
             continue
-        destination = os.path.join(project_store.project_videos_dir(job.project_name, job.project_directory), job_id)
+        destination = os.path.join(
+            project_store.project_videos_dir_for_key(key),
+            job_id,
+        )
         if os.path.exists(destination):
             continue
         os.makedirs(os.path.dirname(destination), exist_ok=True)
         shutil.move(source, destination)
         _JOB_DIR_CACHE[job_id] = destination
+        job.project_key = key
+        job.project_id = str(record.get("project_id") or "")
         for file_key, file_path in (job.files or {}).items():
             if not file_path:
                 continue

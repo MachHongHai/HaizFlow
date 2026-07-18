@@ -45,7 +45,14 @@ def build_project_summaries(jobs, persisted_projects=None):
         project_type = "batch" if getattr(job, "project_type", "single") == "batch" else "single"
         project_name = job.project_name or os.path.splitext(job.original_filename)[0]
         project_directory = job.project_directory or ""
-        key = project_store.project_key(project_name, project_directory, project_type) if project_directory else f"legacy:{job.job_id}"
+        key = str(getattr(job, "project_key", "") or "")
+        # A persisted job is migrated to an immutable project key when it is
+        # read.  Plain presenter test data and truly legacy jobs still need a
+        # deterministic grouping key without consulting unrelated app data.
+        if not key and project_directory:
+            key = project_store.project_key(project_name, project_directory, project_type)
+        if not key:
+            key = f"legacy:{job.job_id}"
         project = grouped.setdefault(
             key,
             {
@@ -148,4 +155,3 @@ def localized_voice_label(label: str, ui_language: str) -> str:
     if ui_language != "vi":
         return label
     return label.replace("Female", "Nữ").replace("Male", "Nam")
-

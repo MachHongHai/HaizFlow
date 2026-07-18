@@ -16,11 +16,13 @@ class SerialProcessingQueue:
         on_started: Callable[[str], None] | None = None,
         on_finished: Callable[[str], None] | None = None,
         on_idle: Callable[[], None] | None = None,
+        on_error: Callable[[str, Exception], None] | None = None,
     ):
         self._runner = runner
         self._on_started = on_started
         self._on_finished = on_finished
         self._on_idle = on_idle
+        self._on_error = on_error
         self._pending: deque[str] = deque()
         self._active_job_id: str | None = None
         self._worker: threading.Thread | None = None
@@ -30,6 +32,12 @@ class SerialProcessingQueue:
     def active_job_id(self) -> str | None:
         with self._lock:
             return self._active_job_id
+
+    @property
+    def has_work(self) -> bool:
+        """Return whether a job is active or waiting without exposing internals."""
+        with self._lock:
+            return self._active_job_id is not None or bool(self._pending)
 
     def pending_ids(self) -> list[str]:
         with self._lock:
@@ -68,15 +76,40 @@ class SerialProcessingQueue:
                     break
                 job_id = self._pending.popleft()
                 self._active_job_id = job_id
+
+            can_run = True
             if self._on_started:
-                self._on_started(job_id)
+                try:
+                    self._on_started(job_id)
+                except Exception as exc:
+                    can_run = False
+                    self._report_error(job_id, exc)
             try:
-                self._runner(job_id)
+                if can_run:
+                    self._runner(job_id)
+            except Exception as exc:
+                self._report_error(job_id, exc)
             finally:
                 if self._on_finished:
-                    self._on_finished(job_id)
+                    try:
+                        self._on_finished(job_id)
+                    except Exception as exc:
+                        self._report_error(job_id, exc)
                 with self._lock:
                     if self._active_job_id == job_id:
                         self._active_job_id = None
         if self._on_idle:
-            self._on_idle()
+            try:
+                self._on_idle()
+            except Exception as exc:
+                self._report_error("", exc)
+
+    def _report_error(self, job_id: str, exc: Exception) -> None:
+        """Keep the worker alive even when a runner or lifecycle callback fails."""
+        if not self._on_error:
+            return
+        try:
+            self._on_error(job_id, exc)
+        except Exception:
+            # Error reporting must never strand the remaining queue.
+            pass

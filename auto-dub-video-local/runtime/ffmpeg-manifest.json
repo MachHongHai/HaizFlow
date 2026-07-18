@@ -1,0 +1,31 @@
+{
+  "version": "8.1.2",
+  "variant": "essentials_build",
+  "architecture": "windows-x64",
+  "license": "GPL-3.0-or-later configured build",
+  "binary_url": "https://github.com/GyanD/codexffmpeg/releases/download/8.1.2/ffmpeg-8.1.2-essentials_build.zip",
+  "binary_sha256": "db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec",
+  "source_url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz",
+  "source_sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c",
+  "source_signature_url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz.asc",
+  "source_signature_sha256": "0a0963fccd70597838073f3e31b20f4a4d8cc2b5e577472c9a5a1f22624246f8",
+  "source_commit": "38b88335f9",
+  "ffmpeg_sha256": "1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e",
+  "ffprobe_sha256": "b49ccc7c6547b141ad5a2f6ec69cc04323d7133d7704d70b331b904c63eecb07",
+  "version_line": "ffmpeg version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "required_configuration": [
+    "--enable-gpl",
+    "--enable-libass",
+    "--enable-librubberband",
+    "--enable-libx264"
+  ],
+  "required_filters": [
+    "adelay",
+    "amix",
+    "ass",
+    "atempo"
+  ],
+  "required_encoders": [
+    "libx264"
+  ]
+}

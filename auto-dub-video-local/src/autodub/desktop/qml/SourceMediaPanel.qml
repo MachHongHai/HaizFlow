@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -86,7 +87,7 @@ Panel {
             id: sourceDropArea
             anchors.fill: parent
             keys: ["text/uri-list"]
-            enabled: !controller.isSelectedJobProcessing
+            enabled: controller.canEditSelectedJob
 
             onEntered: function(drag) {
                 if (drag.hasUrls) {
@@ -111,7 +112,7 @@ Panel {
         }
 
         TapHandler {
-            enabled: controller.videoPath.length === 0 && !controller.isSelectedJobProcessing
+            enabled: controller.videoPath.length === 0 && controller.canEditSelectedJob
             onTapped: controller.browseVideo()
         }
 
@@ -159,10 +160,11 @@ Panel {
         }
 
         AppButton {
+            visible: controller.videoPath.length === 0
             text: I18n.t("From link")
             iconGlyph: "\uE71B"
             compact: true
-            enabled: !controller.isSelectedJobProcessing
+            enabled: controller.canEditSelectedJob
             onClicked: root.requestUrlImport()
         }
 
@@ -171,8 +173,36 @@ Panel {
             text: I18n.t("Replace")
             iconGlyph: "\uE8B7"
             compact: true
-            enabled: !controller.isSelectedJobProcessing
-            onClicked: controller.browseVideo()
+            enabled: controller.canEditSelectedJob
+            onClicked: replaceMenu.open()
+
+            Menu {
+                id: replaceMenu
+
+                width: 238
+                y: parent.height + Theme.space4
+                padding: 6
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+
+                background: Rectangle {
+                    color: Theme.surfaceElevated
+                    radius: Theme.radius
+                    border.width: 1
+                    border.color: Theme.outlineStrong
+                }
+
+                AppMenuItem {
+                    text: I18n.t("Replace with file")
+                    iconGlyph: "\uE8B7"
+                    onTriggered: controller.browseVideo()
+                }
+
+                AppMenuItem {
+                    text: I18n.t("Replace from link")
+                    iconGlyph: "\uE71B"
+                    onTriggered: root.requestUrlImport()
+                }
+            }
         }
     }
 
@@ -180,7 +210,7 @@ Panel {
         Layout.fillWidth: true
         text: I18n.t("Edit subtitle frame")
         iconGlyph: "\uE70F"
-        enabled: controller.videoPath.length > 0 && !controller.isSelectedJobProcessing
+        enabled: controller.videoPath.length > 0 && controller.canEditSelectedJob
         onClicked: controller.openInputPreview()
     }
 

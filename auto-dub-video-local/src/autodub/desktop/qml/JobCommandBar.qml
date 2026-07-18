@@ -225,13 +225,6 @@ Rectangle {
                     }
 
                     AppMenuItem {
-                        visible: root.canRestart
-                        text: I18n.t("Restart")
-                        iconGlyph: "\uE72C"
-                        onTriggered: controller.restartSelectedJob()
-                    }
-
-                    AppMenuItem {
                         text: I18n.t("Remove video")
                         iconGlyph: "\uE74D"
                         tone: "danger"

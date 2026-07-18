@@ -3,6 +3,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from autodub.core.model_integrity import (
+    HYMT2_CPU_FILE,
+    HYMT2_CPU_REPO,
+    HYMT2_CPU_REVISION,
+    HYMT2_GPU_REPO,
+    HYMT2_GPU_REVISION,
+)
 from autodub.core.paths import app_data_dir, bin_dir, cache_dir, logs_dir, package_root, project_root, runtime_data_dir, storage_dir
 
 BASE_DIR = str(package_root())
@@ -25,13 +32,29 @@ if os.path.exists(BIN_DIR):
     os.environ["PATH"] = BIN_DIR + os.path.pathsep + os.environ["PATH"]
 
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
-HYMT2_MODEL = os.getenv("HYMT2_MODEL", "tencent/Hy-MT2-1.8B")
-HYMT2_CPU_MODEL_REPO = os.getenv("HYMT2_CPU_MODEL_REPO", "tencent/Hy-MT2-1.8B-GGUF")
-HYMT2_CPU_MODEL_FILE = os.getenv("HYMT2_CPU_MODEL_FILE", "Hy-MT2-1.8B-Q4_K_M.gguf")
+HYMT2_MODEL = HYMT2_GPU_REPO
+HYMT2_MODEL_REVISION = HYMT2_GPU_REVISION
+HYMT2_CPU_MODEL_REPO = HYMT2_CPU_REPO
+HYMT2_CPU_MODEL_REVISION = HYMT2_CPU_REVISION
+HYMT2_CPU_MODEL_FILE = HYMT2_CPU_FILE
 # Edge's consumer speech endpoint is substantially more reliable with one
 # WebSocket at a time. Advanced users can still override this, but production
 # defaults preserve the sequential behavior of the stable pipeline.
 TTS_MAX_CONCURRENCY = max(1, min(4, int(os.getenv("TTS_MAX_CONCURRENCY", "1"))))
+
+
+def _bounded_seconds(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+# These are inactivity limits. Long CPU inference remains valid while the
+# worker continues to emit progress or model-loading status events.
+HYMT2_WARM_TIMEOUT_SECONDS = _bounded_seconds("HYMT2_WARM_TIMEOUT_SECONDS", 1800, 300, 7200)
+HYMT2_REQUEST_TIMEOUT_SECONDS = _bounded_seconds("HYMT2_REQUEST_TIMEOUT_SECONDS", 3600, 600, 14400)
 
 
 def _resolve_runtime_path(value: str | None, default: str) -> str:

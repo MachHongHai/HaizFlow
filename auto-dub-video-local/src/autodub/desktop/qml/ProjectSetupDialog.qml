@@ -10,19 +10,26 @@ Dialog {
     modal: true
     focus: true
     width: Math.min(620, parent ? parent.width - 48 : 620)
-    height: 426
+    height: 346
     padding: 0
-    title: I18n.t("Create project")
+    title: root.projectType === "batch"
+        ? I18n.t("Create batch project")
+        : I18n.t("Create single project")
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     parent: Overlay.overlay
     x: Math.round((parent.width - width) / 2)
     y: Math.round((parent.height - height) / 2)
     header: null
     footer: null
+    property string projectType: "single"
+
+    function openForType(type) {
+        projectType = type === "batch" ? "batch" : "single"
+        open()
+    }
 
     onOpened: {
         projectName.clear()
-        projectType.currentValue = "single"
         projectName.forceActiveFocus()
     }
 
@@ -58,7 +65,7 @@ Dialog {
 
             Text {
                 Layout.fillWidth: true
-                text: I18n.t("Create project")
+                text: root.title
                 color: Theme.text
                 font.pixelSize: Theme.h2
                 font.weight: Font.DemiBold
@@ -115,31 +122,6 @@ Dialog {
                     Keys.onReturnPressed: {
                         if (continueButton.enabled)
                             continueButton.clicked()
-                    }
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.space8
-
-                Text {
-                    text: I18n.t("Project type")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.caption
-                    font.weight: Font.Medium
-                    textFormat: Text.PlainText
-                }
-
-                SegmentedControl {
-                    id: projectType
-                    Layout.fillWidth: true
-                    options: [
-                        { "label": I18n.t("Single video"), "value": "single" },
-                        { "label": I18n.t("Batch videos"), "value": "batch" }
-                    ]
-                    onActivated: function(value) {
-                        projectType.currentValue = value
                     }
                 }
             }
@@ -213,7 +195,7 @@ Dialog {
                     tone: "primary"
                     enabled: projectName.text.trim().length > 0 && controller.projectDirectory.length > 0
                     onClicked: {
-                        if (controller.prepareProject(projectName.text.trim(), controller.projectDirectory, projectType.currentValue))
+                        if (controller.prepareProject(projectName.text.trim(), controller.projectDirectory, root.projectType))
                             root.close()
                     }
                 }

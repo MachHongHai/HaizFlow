@@ -5,11 +5,13 @@ import time
 import traceback
 from datetime import datetime, timezone
 
+from autodub.config import HYMT2_MODEL_REVISION
 from autodub.core.hardware import (
     configure_processing_device,
     detect_hardware_capabilities,
     runtime_profile,
 )
+from autodub.core.runtime_probe import probe_runtime
 from autodub.pipeline.audio_separation import separate_audio
 from autodub.pipeline.audio_timeline import build_audio_timeline
 from autodub.pipeline.extract_audio import extract_audio
@@ -142,6 +144,10 @@ def _recover_gpu_to_cpu(job_id: str, stage: str, error: Exception) -> bool:
     try:
         from autodub.pipeline.transcribe import release_warm_whisperx_model
 
+        cpu_probe = probe_runtime("cpu")
+        if not cpu_probe.ok:
+            log_to_job(job_id, f"CPU fallback runtime is unavailable: {cpu_probe.message}")
+            return False
         shutdown_hymt2_worker()
         release_warm_whisperx_model()
         configure_processing_device("cpu")
@@ -295,8 +301,8 @@ def process_job_sync(job_id: str, _reporter: ProgressReporter | None = None):
         temp_audio_wav = os.path.join(job_dir, "temp", "audio.wav")
         source_segments_json = os.path.join(job_dir, "temp", "source_segments.json")
         translation_signature = _signature(
-            _file_state(video_input), "native-word-timestamps-v1", "hymt2-official-concise-context-v15",
-            job.target_language, job.enable_audio_separation, "hymt2"
+            _file_state(video_input), "whisperx-aligned-sentences-v2", "hymt2-tencent-structured-context-v17",
+            job.target_language, job.enable_audio_separation, "hymt2", HYMT2_MODEL_REVISION
         )
 
         if _checkpoint_valid(job, "translation", translation_signature, [transcript_json]):
@@ -376,7 +382,8 @@ def process_job_sync(job_id: str, _reporter: ProgressReporter | None = None):
             job_id,
             progress_callback=lambda event, detail: reporter.update(
                 {"loading_model": 25, "transcribing": 29, "transcribed": 39,
-                 "segmenting": 42, "detecting_languages": 46, "saved": 48}.get(event, 24),
+                 "loading_alignment": 40, "aligning": 41, "segmenting": 42,
+                 "detecting_languages": 46, "saved": 48}.get(event, 24),
                 "transcribing",
                 detail,
             ),
@@ -493,7 +500,7 @@ def _finish_after_translation(job, reporter, job_dir, original_audio_target):
             _file_state(mix_audio_path),
             job.enable_audio_separation,
             mix_audio_volume,
-            "exclusive-audio-source-v2",
+            "exclusive-audio-source-v3-final-tail-margin",
         )
         if _checkpoint_valid(job, "timeline", timeline_signature, [voice_output]) or _recovery_checkpoint_valid(job, "timeline", timeline_signature, [voice_output]):
             reporter.update(87, "building_audio_timeline", "Reusing mixed audio checkpoint")

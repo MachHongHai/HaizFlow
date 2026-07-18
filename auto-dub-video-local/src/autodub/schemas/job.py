@@ -1,5 +1,21 @@
 ﻿from pydantic import BaseModel, Field
-from typing import Optional, Dict
+from typing import Dict, Literal, Optional
+
+
+VIDEO_METADATA_SCHEMA_VERSION = 4
+VIDEO_METADATA_TYPE = "autodub.video"
+
+
+class MediaSource(BaseModel):
+    type: Literal["local_file", "video_url", "channel"] = "local_file"
+    platform: str = ""
+    remote_video_id: str = ""
+    source_url: str = ""
+    channel_url: str = ""
+    channel_name: str = ""
+    import_session_id: str = ""
+    imported_at: str = ""
+
 
 class SubtitleStyle(BaseModel):
     font_size: int = 14
@@ -21,6 +37,7 @@ class CropSettings(BaseModel):
     top_percent: int = 0
     bottom_percent: int = 0
 
+
 class JobConfig(BaseModel):
     mode: str = "A"  # A = full auto, review = pause after translation.
     source_language: str = "auto"  # Automatic detection is performed for every speech segment.
@@ -35,9 +52,14 @@ class JobConfig(BaseModel):
     project_name: str = ""
     project_directory: str = ""
     project_type: str = "single"
+    project_id: str = ""
+    project_key: str = ""
     review_approved: bool = False
 
+
 class JobInfo(BaseModel):
+    schema_version: int = VIDEO_METADATA_SCHEMA_VERSION
+    metadata_type: str = VIDEO_METADATA_TYPE
     job_id: str
     original_filename: str
     mode: str
@@ -53,10 +75,13 @@ class JobInfo(BaseModel):
     project_name: str = ""
     project_directory: str = ""
     project_type: str = "single"
+    project_id: str = ""
+    project_key: str = ""
     video_width: int = 0
     video_height: int = 0
     subtitle_override: bool = False
     review_approved: bool = False
+    media_source: MediaSource = Field(default_factory=MediaSource)
     status: str  # pending, processing, done, failed
     progress: int = 0
     step: str = "pending"
@@ -75,4 +100,3 @@ class JobInfo(BaseModel):
     total_items: int = 0
     error: Optional[str] = None
     files: Dict[str, Optional[str]] = Field(default_factory=dict)
-

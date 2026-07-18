@@ -6,6 +6,16 @@ import tempfile
 from autodub.services.job_store import log_to_job
 from autodub.utils.ffmpeg import get_video_duration
 
+
+_FINAL_AUDIO_TAIL_MARGIN_MS = 120
+
+
+def _segment_slot_end_ms(start_ms: int, next_start_ms: int, video_duration_ms: int, *, is_last: bool) -> int:
+    slot_end_ms = min(video_duration_ms, max(start_ms, next_start_ms))
+    if is_last and slot_end_ms - start_ms > _FINAL_AUDIO_TAIL_MARGIN_MS * 2:
+        slot_end_ms -= _FINAL_AUDIO_TAIL_MARGIN_MS
+    return slot_end_ms
+
 def trim_silence(audio: AudioSegment, silence_threshold_db: float = -50.0) -> AudioSegment:
     """Trims leading and trailing silence from an AudioSegment to remove delay and trailing padding."""
     start_trim = 0
@@ -153,7 +163,12 @@ def build_audio_timeline(
             
         # Keep each line anchored to its original timestamp. A long translation
         # must not push every following line later and create a cascade of cuts.
-        slot_end_ms = min(video_dur_ms, max(start_ms, next_start_ms))
+        slot_end_ms = _segment_slot_end_ms(
+            start_ms,
+            next_start_ms,
+            video_dur_ms,
+            is_last=idx == total,
+        )
         available_dur = slot_end_ms - start_ms
         if available_dur <= 0:
             log_to_job(job_id, f"[{idx}/{total}] Skipping TTS: no available timeline slot.")
@@ -222,4 +237,3 @@ def mix_accompaniment_and_voice(voice_path: str, background_audio_path: str, out
     except Exception as e:
         log_to_job(job_id, f"Failed to mix narration and accompaniment: {str(e)}")
         raise e
-

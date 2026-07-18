@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot
 
 from autodub.desktop.catalog import POPULAR_TARGET_LANGUAGES
+from autodub.desktop.channel_import import ChannelImportCoordinator
 from autodub.desktop.localization import QFileDialog, QMessageBox, _set_ui_language, _ui_text
 from autodub.desktop.media import (
     collect_batch_video_paths,
@@ -39,9 +40,11 @@ from autodub.core.hardware import (
     runtime_profile,
     validate_processing_device,
 )
+from autodub.core.runtime_probe import probe_runtime
 from autodub.pipeline.job_manager import cancel_job, pause_job
 from autodub.schemas.job import CropSettings, JobConfig, SubtitleStyle
 from autodub.services import desktop_settings, job_store, project_store
+from autodub.services.channel_import import normalize_remote_url
 from autodub.services.desktop_jobs import create_desktop_job, migrate_legacy_single_export
 from autodub.services.processing_queue import SerialProcessingQueue
 from autodub.services.translation import shutdown_hymt2_worker, warm_hymt2_worker
@@ -76,6 +79,8 @@ class AutoDubController(QObject):
         super().__init__()
         self.jobs = JobListModel()
         self.projects = ProjectListModel()
+        self.single_projects = ProjectListModel()
+        self.batch_projects = ProjectListModel()
         self.batch_jobs = JobListModel()
         self.tasks = TaskListModel()
         self._video_path = ""
@@ -87,17 +92,18 @@ class AutoDubController(QObject):
         self._workflow_mode = "A"
         self._selected_job_id = None
         self._selected_project_key = ""
-        self._processing_job_id = None
-        self._is_processing = False
         self._device_switching = False
         self._pending_processing_device = ""
         self._model_runtime_lock = threading.Lock()
+        self._initial_model_warmup_done = threading.Event()
+        self._runtime_probe_error = ""
         self._deleted_job_ids = set()
         self._processing_queue = SerialProcessingQueue(
             self._execute_pipeline,
             on_started=self._on_queue_job_started,
             on_finished=self._on_queue_job_finished,
             on_idle=self._on_processing_queue_idle,
+            on_error=self._on_processing_queue_error,
         )
         self._batch_job_ids = []
         self._batch_running = False
@@ -154,15 +160,30 @@ class AutoDubController(QObject):
         self._log_queue = queue.Queue()
         self._thumbnail_refresh_running = False
         self._url_importer = VideoUrlImportCoordinator(self)
+        self._url_import_target = None
         self._url_importer.downloadReady.connect(self._handle_url_download_ready)
         self._url_importer.importFinished.connect(self.urlImportFinished.emit)
+        self._channel_importer = ChannelImportCoordinator(self)
+        self._channel_importer.set_worker_limit_provider(
+            lambda: 1 if self._processing_queue.active_job_id else 2
+        )
+        self._channel_import_targets = {}
+        self._channel_importer.videoReady.connect(self._handle_channel_video_ready)
+        self._channel_importer.downloadsFinished.connect(self._finish_channel_import_target)
 
         migrated_video_data = job_store.migrate_legacy_project_data()
         if migrated_video_data:
             self._status_message = f"Organized {len(migrated_video_data)} video workspace(s) into their projects."
         self._migrate_legacy_project_thumbnails()
 
-        threading.Thread(target=self._warm_models, daemon=True).start()
+        if os.getenv("AUTODUB_SMOKE_TEST") == "1":
+            self._initial_model_warmup_done.set()
+        else:
+            threading.Thread(
+                target=self._warm_models_at_startup,
+                name="autodub-model-warmup",
+                daemon=True,
+            ).start()
 
         subscribe_log(self._on_job_log)
         self._log_timer = QTimer(self)
@@ -183,6 +204,7 @@ class AutoDubController(QObject):
         from autodub.pipeline.transcribe import release_warm_whisperx_model
 
         self._url_importer.shutdown()
+        self._channel_importer.shutdown()
         unsubscribe_log(self._on_job_log)
         shutdown_hymt2_worker()
         release_warm_whisperx_model()
@@ -190,6 +212,45 @@ class AutoDubController(QObject):
     def _warm_models(self):
         with self._model_runtime_lock:
             self._warm_models_unlocked()
+
+    def _warm_models_at_startup(self):
+        try:
+            requested_device = processing_device_preference()
+            probe = probe_runtime(requested_device)
+            if not probe.ok and requested_device == "gpu":
+                cpu_probe = probe_runtime("cpu")
+                if cpu_probe.ok:
+                    configure_processing_device("cpu")
+                    self._active_processing_device = "cpu"
+                    self._settings_processing_device = "cpu"
+                    self._processing_device_origin = "detected"
+                    try:
+                        desktop_settings.save_settings(
+                            {
+                                "theme": self._settings_theme,
+                                "language": self._settings_language,
+                                "processing_device": "cpu",
+                                "processing_device_origin": "detected",
+                            }
+                        )
+                    except OSError:
+                        pass
+                    self._status_message = f"GPU runtime unavailable; using CPU. {probe.message}"
+                    self.settingsChanged.emit()
+                    self.hardwareChanged.emit()
+                else:
+                    self._runtime_probe_error = (
+                        f"GPU runtime: {probe.message} CPU runtime: {cpu_probe.message}"
+                    )
+            elif not probe.ok:
+                self._runtime_probe_error = probe.message
+            if self._runtime_probe_error:
+                self._status_message = f"Model runtime unavailable: {self._runtime_probe_error}"
+                self.statusMessageChanged.emit()
+                return
+            self._warm_models()
+        finally:
+            self._initial_model_warmup_done.set()
 
     def _warm_models_unlocked(self):
         profile = runtime_profile()
@@ -222,11 +283,32 @@ class AutoDubController(QObject):
             try:
                 from autodub.pipeline.transcribe import release_warm_whisperx_model
 
+                probe = probe_runtime(preference)
+                if not probe.ok:
+                    active_device = self._active_processing_device
+                    self._settings_processing_device = active_device
+                    self._pending_processing_device = ""
+                    try:
+                        desktop_settings.save_settings(
+                            {
+                                "theme": self._settings_theme,
+                                "language": self._settings_language,
+                                "processing_device": active_device,
+                                "processing_device_origin": self._processing_device_origin,
+                            }
+                        )
+                    except OSError:
+                        pass
+                    self._status_message = f"Cannot switch to {preference.upper()}: {probe.message}"
+                    self.settingsChanged.emit()
+                    self.statusMessageChanged.emit()
+                    return
                 with self._model_runtime_lock:
                     shutdown_hymt2_worker()
                     release_warm_whisperx_model()
                     configure_processing_device(preference)
                     self._active_processing_device = preference
+                    self._runtime_probe_error = ""
                     if self._pending_processing_device == preference:
                         self._pending_processing_device = ""
                     self._warm_models_unlocked()
@@ -273,14 +355,39 @@ class AutoDubController(QObject):
                 pass
             job_store.log_to_job(job_id, f"Requested GPU runtime is no longer safe: {message} Falling back to CPU.")
 
+        probe = probe_runtime(preference)
+        if not probe.ok and preference == "gpu":
+            job_store.log_to_job(job_id, f"GPU runtime validation failed: {probe.message} Falling back to CPU.")
+            preference = "cpu"
+            probe = probe_runtime("cpu")
+            self._settings_processing_device = "cpu"
+            self._processing_device_origin = "detected"
+            try:
+                desktop_settings.save_settings(
+                    {
+                        "theme": self._settings_theme,
+                        "language": self._settings_language,
+                        "processing_device": "cpu",
+                        "processing_device_origin": "detected",
+                    }
+                )
+            except OSError:
+                pass
+        if not probe.ok:
+            self._runtime_probe_error = probe.message
+            job_store.log_to_job(job_id, f"Processing runtime validation failed: {probe.message}")
+            return
+
         try:
             from autodub.pipeline.transcribe import release_warm_whisperx_model
 
             with self._model_runtime_lock:
-                shutdown_hymt2_worker()
-                release_warm_whisperx_model()
-                configure_processing_device(preference)
+                if preference != processing_device_preference():
+                    shutdown_hymt2_worker()
+                    release_warm_whisperx_model()
+                    configure_processing_device(preference)
             self._active_processing_device = preference
+            self._runtime_probe_error = ""
             self._pending_processing_device = ""
             job_store.log_to_job(job_id, f"Using the updated {preference.upper()} runtime for this video.")
         except Exception as exc:
@@ -348,6 +455,18 @@ class AutoDubController(QObject):
     @Property(QObject, constant=True)
     def projectModel(self):
         return self.projects
+
+    @Property(QObject, constant=True)
+    def singleProjectModel(self):
+        return self.single_projects
+
+    @Property(QObject, constant=True)
+    def batchProjectModel(self):
+        return self.batch_projects
+
+    @Property(QObject, constant=True)
+    def channelImporter(self):
+        return self._channel_importer
 
     @Property(QObject, constant=True)
     def batchJobModel(self):
@@ -521,22 +640,31 @@ class AutoDubController(QObject):
 
     @Property(bool, notify=processingChanged)
     def isProcessing(self):
-        return self._is_processing or self._device_switching
+        return self._processing_queue.has_work or self._device_switching
 
     @Property(bool, notify=processingChanged)
     def isSelectedJobProcessing(self):
-        if not self._selected_job_id or self._selected_job_id != self._processing_job_id:
-            return False
-        job = job_store.get_job(self._selected_job_id)
-        return bool(job and job.status == "processing")
+        return bool(
+            self._selected_job_id
+            and self._selected_job_id == self._processing_queue.active_job_id
+        )
 
     @Property(bool, notify=selectedJobChanged)
     def isSelectedJobQueued(self):
         return bool(self._selected_job_id and self._processing_queue.contains(self._selected_job_id))
 
+    @Property(bool, notify=selectedJobChanged)
+    def canEditSelectedJob(self):
+        """Only freeze the video whose immutable pipeline snapshot is queued."""
+        return not (
+            self._selected_job_id
+            and self._processing_queue.contains(self._selected_job_id)
+        )
+
     @Property(str, notify=processingChanged)
     def processingText(self):
-        job = job_store.get_job(self._processing_job_id) if self._processing_job_id else None
+        active_job_id = self._processing_queue.active_job_id
+        job = job_store.get_job(active_job_id) if active_job_id else None
         return f"{job.original_filename} | {job.step_detail or job.status}" if job else "No active job"
 
     @Property(str, notify=selectedJobChanged)
@@ -550,9 +678,26 @@ class AutoDubController(QObject):
 
     @Property(bool, notify=projectSetupChanged)
     def hasOpenProject(self):
-        if not self._project_name.strip() or not self._project_directory.strip():
+        if not self._selected_project_key:
             return False
-        return os.path.isdir(project_store.project_root(self._project_name, self._project_directory))
+        try:
+            return os.path.isdir(project_store.project_root_for_key(self._selected_project_key))
+        except (RuntimeError, ValueError):
+            return False
+
+    @staticmethod
+    def _job_project_key(job) -> str:
+        key = str(getattr(job, "project_key", "") or "")
+        if key:
+            return key
+        return project_store.resolve_project_key(
+            str(getattr(job, "project_name", "") or ""),
+            str(getattr(job, "project_directory", "") or ""),
+            "batch" if getattr(job, "project_type", "single") == "batch" else "single",
+        )
+
+    def _selected_project_root(self) -> str:
+        return project_store.project_root_for_key(self._selected_project_key)
 
     @Property(bool, notify=selectedJobChanged)
     def isSelectedBatchJob(self):
@@ -854,22 +999,228 @@ class AutoDubController(QObject):
                 "Pause or finish the current video before replacing it.",
             )
             return
-        project_root = project_store.project_root(self._project_name, self._project_directory)
-        self._url_importer.start_download(project_root)
+        project_root = self._selected_project_root()
+        self._url_import_target = {
+            "project_key": self._selected_project_key,
+            "project_name": self._project_name,
+            "project_directory": self._project_directory,
+            "project_type": self._project_type,
+            "selected_job_id": self._selected_job_id,
+            "config": self._build_config(),
+            "media_source": {
+                "type": "video_url",
+                "platform": self._url_importer.platform,
+                "source_url": self._url_importer.url,
+                "imported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            },
+        }
+        if not self._url_importer.start_download(project_root):
+            self._url_import_target = None
 
     def _handle_url_download_ready(self, path, _workspace, mode):
-        imported = False
-        if mode == "batch":
-            previous_count = self.batchCount
-            self.importBatchVideos([path])
-            imported = self.batchCount > previous_count
-        elif self._selected_job_id:
-            imported = self.replaceSelectedJobVideo(path)
-        else:
-            imported = self.importVideo(path)
+        target = self._url_import_target
+        self._url_import_target = None
+        imported = self._import_downloaded_video(path, mode, target)
 
         message = "" if imported else "The video was downloaded but could not be added to the project."
         self._url_importer.complete_import(imported, message)
+
+    def _import_downloaded_video(self, path: str, mode: str, target) -> bool:
+        """Commit an async URL download to the project that requested it."""
+        if not target:
+            if mode == "batch":
+                previous_count = self.batchCount
+                self.importBatchVideos([path])
+                return self.batchCount > previous_count
+            if self._selected_job_id:
+                return self.replaceSelectedJobVideo(path)
+            return self.importVideo(path)
+
+        target_job_id = target.get("selected_job_id")
+        if mode != "batch" and target_job_id:
+            return self._replace_job_video(target_job_id, path, target.get("media_source"))
+
+        config = target.get("config")
+        if not isinstance(config, JobConfig):
+            return False
+        registered_keys = {project.get("key") for project in project_store.list_projects()}
+        if target.get("project_key") not in registered_keys:
+            QMessageBox.warning(None, "Import video", "The destination project no longer exists.")
+            return False
+        try:
+            import_kwargs = {
+                "project_name": str(target.get("project_name") or ""),
+                "project_directory": str(target.get("project_directory") or ""),
+            }
+            if target.get("media_source"):
+                import_kwargs["media_source"] = target["media_source"]
+            job = create_desktop_job(
+                path,
+                config,
+                **import_kwargs,
+                project_key_value=str(target.get("project_key") or ""),
+            )
+            thumbnail_path = self._create_video_thumbnail_path(
+                job.files["video_input"],
+                self._job_thumbnail_path(job.job_id),
+            )
+            if thumbnail_path:
+                job.files["thumbnail"] = thumbnail_path
+                job_store.save_job(job)
+        except Exception as exc:
+            QMessageBox.warning(None, "Import video", str(exc))
+            return False
+
+        target_is_open = target.get("project_key") == self._selected_project_key
+        if target_is_open and mode == "batch":
+            self._batch_job_ids.append(job.job_id)
+            self._refresh_batch_model()
+            self.batchChanged.emit()
+        elif target_is_open:
+            self._select_job(job)
+        self.refreshJobs()
+        return True
+
+    def _current_project_media_keys(self) -> set[str]:
+        keys = set()
+        for job in job_store.list_jobs():
+            if not job.project_directory:
+                continue
+            key = self._job_project_key(job)
+            if key != self._selected_project_key:
+                continue
+            source = getattr(job, "media_source", None)
+            platform = str(getattr(source, "platform", "") or "").strip().lower()
+            remote_video_id = str(getattr(source, "remote_video_id", "") or "").strip().lower()
+            source_url = str(getattr(source, "source_url", "") or "").strip().lower()
+            if platform and remote_video_id:
+                keys.add(f"{platform}:{remote_video_id}")
+            if source_url:
+                keys.add(source_url)
+                keys.add(normalize_remote_url(source_url))
+        return keys
+
+    @Slot(result=bool)
+    def prepareChannelImport(self):
+        if not self.hasOpenProject or self._project_type != "batch":
+            QMessageBox.information(
+                None,
+                "Channel import",
+                "Open or create a batch project before importing a channel.",
+            )
+            return False
+        project_root = self._selected_project_root()
+        self._channel_importer.attach_project(
+            self._selected_project_key,
+            project_root,
+            self._current_project_media_keys(),
+        )
+        return True
+
+    @Slot(result=bool)
+    def startChannelDownloads(self):
+        if not self.prepareChannelImport() or self._channel_importer.selectedCount <= 0:
+            return False
+        session_id = self._channel_importer.sessionId
+        if not session_id:
+            return False
+        self._remember_channel_import_target(session_id)
+        # The coordinator continuously throttles to one worker while the model
+        # pipeline is active and can return to two when the device is idle.
+        started_session_id = self._channel_importer.start_downloads(2)
+        if not started_session_id:
+            self._channel_import_targets.pop(session_id, None)
+            return False
+        return True
+
+    def _remember_channel_import_target(self, session_id: str) -> None:
+        self._channel_import_targets[session_id] = {
+            "project_key": self._selected_project_key,
+            "project_name": self._project_name,
+            "project_directory": self._project_directory,
+            "project_type": "batch",
+            "config": self._build_config().model_copy(deep=True),
+            "channel_url": self._channel_importer.channelUrl,
+            "channel_name": self._channel_importer.channelName,
+        }
+
+    @Slot(int, result=bool)
+    def retryChannelVideo(self, row):
+        if not self.prepareChannelImport():
+            return False
+        session_id = self._channel_importer.sessionId
+        if not session_id:
+            return False
+        self._remember_channel_import_target(session_id)
+        if not self._channel_importer.retry(int(row)):
+            self._channel_import_targets.pop(session_id, None)
+            return False
+        return True
+
+    def _handle_channel_video_ready(self, path, _workspace, candidate_payload, project_key, session_id):
+        target = self._channel_import_targets.get(session_id)
+        candidate = dict(candidate_payload or {})
+        remote_video_id = str(candidate.get("remote_video_id") or "")
+        if not target or target.get("project_key") != project_key:
+            self._channel_importer.complete_video(
+                session_id,
+                remote_video_id,
+                False,
+                "The destination project is no longer available.",
+            )
+            return
+        registered_keys = {project.get("key") for project in project_store.list_projects()}
+        if project_key not in registered_keys:
+            self._channel_importer.complete_video(
+                session_id,
+                remote_video_id,
+                False,
+                "The destination project was deleted.",
+            )
+            return
+
+        media_source = {
+            "type": "channel",
+            "platform": str(candidate.get("platform") or ""),
+            "remote_video_id": remote_video_id,
+            "source_url": str(candidate.get("source_url") or ""),
+            "channel_url": str(target.get("channel_url") or ""),
+            "channel_name": str(target.get("channel_name") or candidate.get("uploader") or ""),
+            "import_session_id": session_id,
+            "imported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        try:
+            job = create_desktop_job(
+                path,
+                target["config"].model_copy(deep=True),
+                project_name=str(target.get("project_name") or ""),
+                project_directory=str(target.get("project_directory") or ""),
+                media_source=media_source,
+                move_input=True,
+                project_key_value=project_key,
+            )
+            thumbnail_path = self._create_video_thumbnail_path(
+                job.files["video_input"],
+                self._job_thumbnail_path(job.job_id),
+            )
+            if thumbnail_path:
+                job.files["thumbnail"] = thumbnail_path
+                job_store.save_job(job)
+        except Exception as exc:
+            self._channel_importer.complete_video(session_id, remote_video_id, False, str(exc))
+            return
+
+        if project_key == self._selected_project_key and self._project_type == "batch":
+            if job.job_id not in self._batch_job_ids:
+                self._batch_job_ids.append(job.job_id)
+            self._refresh_batch_model()
+            self.batchChanged.emit()
+        self.refreshJobs()
+        self._channel_importer.complete_video(session_id, remote_video_id, True)
+
+    @Slot(str)
+    def _finish_channel_import_target(self, session_id):
+        self._channel_import_targets.pop(str(session_id), None)
 
     @Slot()
     def browseVideo(self):
@@ -882,11 +1233,14 @@ class AutoDubController(QObject):
 
     @Slot(str, result=bool)
     def replaceSelectedJobVideo(self, path):
-        job = job_store.get_job(self._selected_job_id) if self._selected_job_id else None
+        return self._replace_job_video(self._selected_job_id, path)
+
+    def _replace_job_video(self, job_id, path, media_source=None):
+        job = job_store.get_job(job_id) if job_id else None
         normalized_path = self._normalize_video_path(path)
         if not job:
             return False
-        if job.status == "processing":
+        if job.status == "processing" or self._processing_queue.active_job_id == job.job_id:
             QMessageBox.information(None, "Replace video", "Pause or finish this video before replacing it.")
             return False
         if not os.path.isfile(normalized_path) or os.path.splitext(normalized_path)[1].lower() not in {".mp4", ".mov", ".mkv"}:
@@ -895,7 +1249,7 @@ class AutoDubController(QObject):
         if self._processing_queue.discard(job.job_id):
             self._update_queue_positions()
         try:
-            job = job_store.replace_job_input(job.job_id, normalized_path)
+            job = job_store.replace_job_input(job.job_id, normalized_path, media_source=media_source)
         except (OSError, RuntimeError) as exc:
             QMessageBox.warning(None, "Replace video", str(exc))
             return False
@@ -912,12 +1266,15 @@ class AutoDubController(QObject):
         job_store.save_job(job)
         # The managed input path remains stable (input/video.ext) after a
         # replacement, so explicitly refresh the image source as well.
-        self._set_video_path(destination, refresh_thumbnail=True)
+        update_open_view = self._selected_job_id == job.job_id
+        if update_open_view:
+            self._set_video_path(destination, refresh_thumbnail=True)
         job_store.log_to_job(job.job_id, f"Input video replaced with: {job.original_filename}")
-        self._logs = self._read_job_logs(job.job_id)
-        self.videoThumbnailChanged.emit()
-        self.selectedJobChanged.emit()
-        self.logsChanged.emit()
+        if update_open_view:
+            self._logs = self._read_job_logs(job.job_id)
+            self.videoThumbnailChanged.emit()
+            self.selectedJobChanged.emit()
+            self.logsChanged.emit()
         self.refreshJobs()
         self._log_queue.put("__QUEUE_CHANGED__")
         return True
@@ -944,12 +1301,12 @@ class AutoDubController(QObject):
         self._project_directory = os.path.abspath(project_directory)
         self._project_type = "batch" if project_type == "batch" else "single"
         try:
-            project = project_store.ensure_project(
+            project = project_store.create_project(
                 self._project_name,
                 self._project_directory,
                 self._project_type,
             )
-        except OSError as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             QMessageBox.warning(None, "Project storage location", f"Cannot create the project at this location: {exc}")
             return False
         self._selected_project_key = project["key"]
@@ -1050,6 +1407,7 @@ class AutoDubController(QObject):
                     self._build_config(),
                     project_name=self._project_name,
                     project_directory=self._project_directory,
+                    project_key_value=self._selected_project_key,
                 )
             except Exception as exc:
                 QMessageBox.critical(None, "Cannot import video", str(exc))
@@ -1092,7 +1450,14 @@ class AutoDubController(QObject):
         valid_paths, invalid_names = self._collect_batch_video_paths(paths)
 
         if not valid_paths:
-            QMessageBox.warning(None, "No supported videos", "Choose MP4, MOV, or MKV video files.")
+            if invalid_names:
+                QMessageBox.warning(
+                    None,
+                    "Some videos were skipped",
+                    self._batch_rejection_message(invalid_names),
+                )
+            else:
+                QMessageBox.warning(None, "No supported videos", "Choose MP4, MOV, or MKV video files.")
             return
 
         created_ids = []
@@ -1104,6 +1469,7 @@ class AutoDubController(QObject):
                     self._build_config(),
                     project_name=self._project_name,
                     project_directory=self._project_directory,
+                    project_key_value=self._selected_project_key,
                 )
                 thumbnail_path = self._create_video_thumbnail_path(
                     job.files["video_input"],
@@ -1126,8 +1492,21 @@ class AutoDubController(QObject):
             QMessageBox.warning(
                 None,
                 "Some videos were skipped",
-                "\n".join(str(item) for item in rejected[:12]),
+                self._batch_rejection_message(rejected),
             )
+
+    def _batch_rejection_message(self, rejected) -> str:
+        rejected = [str(item) for item in rejected]
+        shown = rejected[:12]
+        remaining = len(rejected) - len(shown)
+        if remaining:
+            suffix = f"... và {remaining} mục khác" if self._settings_language == "vi" else f"... and {remaining} more"
+            shown.append(suffix)
+        if self._settings_language == "vi":
+            heading = f"{len(rejected)} mục không được hỗ trợ hoặc không thể đọc:"
+        else:
+            heading = f"{len(rejected)} unsupported or unreadable item(s):"
+        return f"{heading}\n\n" + "\n".join(shown)
 
     @Slot()
     def startBatch(self):
@@ -1154,7 +1533,7 @@ class AutoDubController(QObject):
         updated = 0
         for job_id in self._batch_job_ids:
             job = job_store.get_job(job_id)
-            if not job or job.status == "processing":
+            if not job or self._processing_queue.contains(job_id):
                 continue
             job_store.update_job(
                 job_id,
@@ -1199,7 +1578,7 @@ class AutoDubController(QObject):
     @Slot(result=bool)
     def saveSelectedJobSettings(self):
         job = job_store.get_job(self._selected_job_id) if self._selected_job_id else None
-        if not job or job.project_type != "batch" or job.status == "processing":
+        if not job or job.project_type != "batch" or self._processing_queue.contains(job.job_id):
             return False
         self._apply_setup_to_job(job)
         job_store.log_to_job(job.job_id, "Per-video dubbing settings saved.")
@@ -1216,7 +1595,7 @@ class AutoDubController(QObject):
             return
 
         self._batch_stop_requested = True
-        active_job_id = self._processing_job_id
+        active_job_id = self._processing_queue.active_job_id
         if active_job_id in self._batch_job_ids:
             cancel_job(active_job_id)
             job_store.update_job(active_job_id, status="cancelled", error=None, step="cancelled")
@@ -1244,13 +1623,17 @@ class AutoDubController(QObject):
         output_path = (job.files or {}).get("final_video", "")
         if not project_directory or not output_path:
             return ""
-        safe_project = "".join(
-            character if character.isalnum() or character in {"-", "_", " "} else "_"
-            for character in (job.project_name or "").strip()
-        ).strip() or "project"
-        project_root = os.path.abspath(os.path.join(project_directory, safe_project))
+        project_root = (
+            project_store.project_root_for_key(job.project_key)
+            if getattr(job, "project_key", "")
+            else project_store.project_root(job.project_name, project_directory, job.project_type)
+        )
         export_roots = (
-            os.path.abspath(project_store.project_exports_dir(job.project_name, project_directory)),
+            os.path.abspath(
+                project_store.project_exports_dir_for_key(job.project_key)
+                if getattr(job, "project_key", "")
+                else project_store.project_exports_dir(job.project_name, project_directory, job.project_type)
+            ),
             os.path.abspath(os.path.join(project_root, "outputs")),
         )
         output_directory = os.path.abspath(os.path.dirname(output_path))
@@ -1300,8 +1683,25 @@ class AutoDubController(QObject):
         ) != QMessageBox.StandardButton.Yes:
             return
 
+        current_key = self._selected_project_key
+        try:
+            project_store.validate_project_deletion_by_key(current_key)
+        except Exception as exc:
+            QMessageBox.warning(None, "Delete project", str(exc))
+            return
+        if not self._channel_importer.cancel_project(current_key):
+            QMessageBox.information(
+                None,
+                "Channel import",
+                "Channel import is still stopping. Try deleting the project again in a moment.",
+            )
+            return
+        for session_id, target in tuple(self._channel_import_targets.items()):
+            if target.get("project_key") == current_key:
+                self._channel_import_targets.pop(session_id, None)
+
         self._batch_stop_requested = True
-        active_job_id = self._processing_job_id
+        active_job_id = self._processing_queue.active_job_id
         if active_job_id in batch_ids:
             cancel_job(active_job_id)
 
@@ -1344,7 +1744,7 @@ class AutoDubController(QObject):
             )
             return
         try:
-            project_store.delete_project(self._project_name, self._project_directory, "batch")
+            project_store.delete_project_by_key(current_key)
         except Exception as exc:
             QMessageBox.warning(None, "Delete project", str(exc))
             return
@@ -1386,6 +1786,10 @@ class AutoDubController(QObject):
             QMessageBox.warning(None, "Project storage location", "Choose a location for this project.")
             return False
         selected_job = job_store.get_job(self._selected_job_id) if self._selected_job_id else None
+        if selected_job and self._processing_queue.contains(selected_job.job_id):
+            self._status_message = "This video is already waiting or processing."
+            self.statusMessageChanged.emit()
+            return False
         if selected_job and selected_job.status == "pending" and not self._processing_queue.contains(selected_job.job_id):
             self._apply_setup_to_job(selected_job, review_approved=False)
             job_store.log_to_job(selected_job.job_id, "Processing requested for the imported video.")
@@ -1393,12 +1797,15 @@ class AutoDubController(QObject):
             self.selectedJobChanged.emit()
             self.refreshJobs()
             return True
+        if selected_job:
+            return False
         try:
             job = create_desktop_job(
                 self._video_path,
                 self._build_config(),
                 project_name=self._project_name,
                 project_directory=self._project_directory,
+                project_key_value=self._selected_project_key,
             )
         except Exception as exc:
             QMessageBox.critical(None, "Cannot create project", str(exc))
@@ -1418,10 +1825,10 @@ class AutoDubController(QObject):
     @Slot()
     def stopJob(self):
         selected_job_id = self._selected_job_id
-        if not selected_job_id or selected_job_id != self._processing_job_id:
+        if not selected_job_id or selected_job_id != self._processing_queue.active_job_id:
             return
         selected_job = job_store.get_job(selected_job_id)
-        if not selected_job or selected_job.status != "processing":
+        if not selected_job:
             return
         if self.isSelectedBatchJob:
             self.stopBatch()
@@ -1497,12 +1904,12 @@ class AutoDubController(QObject):
         self._project_name = job.project_name or os.path.splitext(job.original_filename)[0]
         self._project_directory = job.project_directory or self._project_directory
         self._project_type = "batch" if getattr(job, "project_type", "single") == "batch" else "single"
-        self._selected_project_key = (
-            project_store.project_key(self._project_name, self._project_directory, self._project_type)
-            if job.project_directory
-            else ""
-        )
-        if job.status != "processing" and (job.source_language != "auto" or job.output_format != "keep_ratio"):
+        self._selected_project_key = self._job_project_key(job)
+        if (
+            self._processing_queue.active_job_id != job.job_id
+            and job.status != "processing"
+            and (job.source_language != "auto" or job.output_format != "keep_ratio")
+        ):
             job = job_store.update_job(job.job_id, source_language="auto", output_format="keep_ratio") or job
         if migrate_legacy_single_export(job):
             job = job_store.get_job(job.job_id) or job
@@ -1542,6 +1949,17 @@ class AutoDubController(QObject):
         project = self.projects.project_at(row)
         if not project:
             return
+        self._open_project_summary(project)
+
+    @Slot(int, str)
+    def selectProjectInMode(self, row: int, project_type: str):
+        model = self.batch_projects if project_type == "batch" else self.single_projects
+        project = model.project_at(row)
+        if not project:
+            return
+        self._open_project_summary(project)
+
+    def _open_project_summary(self, project):
         jobs = project["jobs"]
         self._project_name = project["project_name"]
         self._project_directory = project["project_directory"] or self._project_directory
@@ -1561,6 +1979,8 @@ class AutoDubController(QObject):
         self._project_type = project["project_type"]
         self.projectSetupChanged.emit()
         self.batchChanged.emit()
+        if self._project_type == "batch":
+            self.prepareChannelImport()
 
     @Slot()
     def deleteSelectedJob(self):
@@ -1573,7 +1993,7 @@ class AutoDubController(QObject):
         message = f"Remove this video from the batch project and delete its generated files?\n\n{label}\n\nIf it is running, it will be stopped first."
         if QMessageBox.question(None, "Remove video", message) != QMessageBox.StandardButton.Yes:
             return
-        if job and job.status == "processing":
+        if job and (job.status == "processing" or self._processing_queue.active_job_id == job_id):
             cancel_job(job_id)
             job_store.update_job(job_id, status="cancelled", error=None, step="cancelled")
         self._deleted_job_ids.add(job_id)
@@ -1602,7 +2022,9 @@ class AutoDubController(QObject):
         if not self.hasOpenProject:
             QMessageBox.information(None, "Project folder", "This project's folder is not available yet.")
             return
-        self._open_path(project_store.project_root(self._project_name, self._project_directory))
+        self._open_path(
+            self._selected_project_root()
+        )
 
     @Slot()
     def deleteCurrentProject(self):
@@ -1610,20 +2032,12 @@ class AutoDubController(QObject):
             QMessageBox.information(None, "Delete project", "Select a project first.")
             return
 
-        current_key = self._selected_project_key or project_store.project_key(
-            self._project_name,
-            self._project_directory,
-            self._project_type,
-        )
+        current_key = self._selected_project_key
         project_jobs = [
             job
             for job in job_store.list_jobs()
             if job.project_directory
-            and project_store.project_key(
-                job.project_name or os.path.splitext(job.original_filename)[0],
-                job.project_directory,
-                "batch" if getattr(job, "project_type", "single") == "batch" else "single",
-            ) == current_key
+            and self._job_project_key(job) == current_key
         ]
         job_label = "" if not project_jobs else f"\n\nThis also removes {len(project_jobs)} video(s) and their generated files."
         message = f"Delete project '{self._project_name}' and all files inside its project folder?{job_label}"
@@ -1631,14 +2045,30 @@ class AutoDubController(QObject):
             return
 
         try:
+            project_store.validate_project_deletion_by_key(current_key)
+        except Exception as exc:
+            QMessageBox.critical(None, "Delete project", str(exc))
+            return
+        if not self._channel_importer.cancel_project(current_key):
+            QMessageBox.information(
+                None,
+                "Channel import",
+                "Channel import is still stopping. Try deleting the project again in a moment.",
+            )
+            return
+        for session_id, target in tuple(self._channel_import_targets.items()):
+            if target.get("project_key") == current_key:
+                self._channel_import_targets.pop(session_id, None)
+
+        try:
             for job in project_jobs:
                 self._processing_queue.discard(job.job_id)
-                if job.status == "processing":
+                if job.status == "processing" or self._processing_queue.active_job_id == job.job_id:
                     cancel_job(job.job_id)
                     job_store.update_job(job.job_id, status="cancelled", error=None, step="cancelled")
                 self._deleted_job_ids.add(job.job_id)
                 job_store.delete_job(job.job_id)
-            project_store.delete_project(self._project_name, self._project_directory, self._project_type)
+            project_store.delete_project_by_key(current_key)
         except Exception as exc:
             QMessageBox.critical(None, "Delete project", str(exc))
             return
@@ -1661,7 +2091,14 @@ class AutoDubController(QObject):
     def refreshJobs(self):
         all_jobs = job_store.list_jobs()
         self.jobs.set_jobs(all_jobs[:40])
-        self.projects.set_projects(self._build_project_summaries(all_jobs, project_store.list_projects()))
+        summaries = self._build_project_summaries(all_jobs, project_store.list_projects())
+        self.projects.set_projects(summaries)
+        self.single_projects.set_projects(
+            [project for project in summaries if project["project_type"] == "single"]
+        )
+        self.batch_projects.set_projects(
+            [project for project in summaries if project["project_type"] == "batch"]
+        )
         self._refresh_batch_model()
         selected = job_store.get_job(self._selected_job_id) if self._selected_job_id else None
         self.tasks.set_job(selected)
@@ -1754,7 +2191,7 @@ class AutoDubController(QObject):
             self._open_path(fallback_folder)
             return
         if self.hasOpenProject:
-            export_folder = project_store.project_exports_dir(self._project_name, self._project_directory)
+            export_folder = project_store.project_exports_dir_for_key(self._selected_project_key)
             os.makedirs(export_folder, exist_ok=True)
             self._open_path(export_folder)
             return
@@ -1839,6 +2276,8 @@ class AutoDubController(QObject):
             project_name=self._project_name,
             project_directory=self._project_directory,
             project_type=self._project_type,
+            project_key=self._selected_project_key,
+            project_id=str((project_store.get_project(self._selected_project_key) or {}).get("project_id") or ""),
         )
 
     def _apply_setup_to_job(self, job, review_approved=None):
@@ -1869,6 +2308,8 @@ class AutoDubController(QObject):
             return False
         job_store.log_to_job(job_id, "Added to the processing queue.")
         self._update_queue_positions()
+        self.processingChanged.emit()
+        self.selectedJobChanged.emit()
         self._log_queue.put("__QUEUE_CHANGED__")
         return True
 
@@ -1904,11 +2345,31 @@ class AutoDubController(QObject):
     def _on_processing_queue_idle(self) -> None:
         self._log_queue.put("__QUEUE_IDLE__")
 
+    def _on_processing_queue_error(self, job_id: str, exc: Exception) -> None:
+        if not job_id or job_id in self._deleted_job_ids:
+            return
+        job = job_store.get_job(job_id)
+        if not job:
+            return
+        message = f"Processing queue recovered from an internal error: {exc}"
+        job_store.log_to_job(job_id, message)
+        job_store.update_job(job_id, status="failed", error=str(exc), step="failed", step_detail=message)
+
     def _execute_pipeline(self, job_id):
         job = job_store.get_job(job_id)
         if not job or job.status == "cancelled" or job_id in self._deleted_job_ids:
             return
         try:
+            if not self._initial_model_warmup_done.is_set():
+                job_store.log_to_job(job_id, "Waiting for startup model warm-up to finish.")
+                self._initial_model_warmup_done.wait()
+            runtime_probe_error = getattr(self, "_runtime_probe_error", "")
+            if runtime_probe_error:
+                raise RuntimeError(f"Model runtime validation failed: {runtime_probe_error}")
+            # A device switch owns this lock. Crossing the barrier guarantees
+            # that model processes are stable before the pipeline uses them.
+            with self._model_runtime_lock:
+                pass
             from autodub.pipeline.process_job import process_job_sync
 
             process_job_sync(job_id)
@@ -1939,7 +2400,7 @@ class AutoDubController(QObject):
 
     def _on_job_log(self, job_id, line):
         if job_id == self._selected_job_id:
-            self._log_queue.put(line)
+            self._log_queue.put(("job_log", job_id, line))
 
     def _drain_log_queue(self):
         changed = False
@@ -1948,9 +2409,12 @@ class AutoDubController(QObject):
                 item = self._log_queue.get_nowait()
             except queue.Empty:
                 break
-            if item.startswith("__QUEUE_STARTED__:"):
-                self._processing_job_id = item.split(":", 1)[1]
-                self._is_processing = True
+            if isinstance(item, tuple) and len(item) == 3 and item[0] == "job_log":
+                _kind, job_id, line = item
+                if job_id == self._selected_job_id:
+                    self._logs = f"{self._logs}\n{line}".strip()
+                    changed = True
+            elif item.startswith("__QUEUE_STARTED__:"):
                 self.refreshJobs()
                 self.selectedJobChanged.emit()
                 self.processingChanged.emit()
@@ -1962,10 +2426,10 @@ class AutoDubController(QObject):
                 self._refresh_batch_model()
                 self.batchChanged.emit()
             elif item == "__QUEUE_IDLE__":
-                self._processing_job_id = None
+                if self._processing_queue.has_work:
+                    continue
                 self._batch_running = False
                 self._batch_stop_requested = False
-                self._is_processing = False
                 self.refreshJobs()
                 self.processingChanged.emit()
                 self.batchChanged.emit()
@@ -1976,9 +2440,6 @@ class AutoDubController(QObject):
             elif item == "__THUMBNAILS_READY__":
                 self._thumbnail_refresh_running = False
                 self.refreshJobs()
-            else:
-                self._logs = f"{self._logs}\n{item}".strip()
-                changed = True
         if changed:
             self.logsChanged.emit()
 
@@ -2143,7 +2604,10 @@ class AutoDubController(QObject):
     def _draft_thumbnail_path(self) -> str:
         if not self.hasOpenProject:
             return ""
-        return os.path.join(project_store.project_root(self._project_name, self._project_directory), ".input-thumbnail.jpg")
+        return os.path.join(
+            self._selected_project_root(),
+            ".input-thumbnail.jpg",
+        )
 
     @staticmethod
     def _job_thumbnail_path(job_id: str) -> str:

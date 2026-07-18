@@ -99,7 +99,7 @@ def validate_video_url(value: str) -> tuple[str, str]:
     return url, platform
 
 
-def _youtube_dl_options() -> dict:
+def _youtube_dl_options(auth: dict | None = None) -> dict:
     ffmpeg_location = BIN_DIR if os.path.isdir(BIN_DIR) else None
     options = {
         "quiet": True,
@@ -117,6 +117,13 @@ def _youtube_dl_options() -> dict:
     }
     if ffmpeg_location:
         options["ffmpeg_location"] = ffmpeg_location
+    auth = auth or {}
+    cookie_file = str(auth.get("cookie_file") or "").strip()
+    cookie_browser = str(auth.get("cookie_browser") or "").strip().lower()
+    if cookie_file:
+        options["cookiefile"] = cookie_file
+    elif cookie_browser in {"chrome", "edge"}:
+        options["cookiesfrombrowser"] = (cookie_browser,)
     return options
 
 
@@ -269,6 +276,7 @@ def download_video(
     workspace: str,
     progress_callback: Callable[[int, str], None] | None = None,
     cancel_event: threading.Event | None = None,
+    auth: dict | None = None,
 ) -> str:
     """Download one video and return its final MP4/MOV/MKV path."""
     os.makedirs(workspace, exist_ok=True)
@@ -302,7 +310,7 @@ def download_video(
         elif status == "finished":
             report(99, "Finalizing video")
 
-    options = _youtube_dl_options()
+    options = _youtube_dl_options(auth)
     options.update(
         {
             "outtmpl": os.path.join(workspace, "%(title).120B [%(id)s].%(ext)s"),

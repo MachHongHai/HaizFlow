@@ -25,7 +25,16 @@ class CpuRuntimeTests(unittest.TestCase):
         ffmpeg.available_video_encoders.cache_clear()
         ffmpeg._encoder_works.cache_clear()
 
-    def _profile(self, *, cuda=False, vram_gib=8, ram_gib=16, cpu_count=12, preference="gpu"):
+    def _profile(
+        self,
+        *,
+        cuda=False,
+        vram_gib=8,
+        ram_gib=16,
+        cpu_count=12,
+        preference="gpu",
+        bf16=True,
+    ):
         hardware.clear_runtime_profile_cache()
         with (
             mock.patch.dict(
@@ -34,6 +43,11 @@ class CpuRuntimeTests(unittest.TestCase):
                 clear=False,
             ),
             mock.patch.object(hardware, "_cuda_details", return_value=(cuda, "Test GPU" if cuda else "")),
+            mock.patch.object(
+                hardware,
+                "_cuda_precision_details",
+                return_value=((8, 9), bf16) if cuda else ((0, 0), False),
+            ),
             mock.patch.object(hardware, "_cuda_memory_bytes", return_value=vram_gib * 1024**3),
             mock.patch.object(hardware, "_cuda_free_memory_bytes", return_value=vram_gib * 1024**3),
             mock.patch.object(hardware, "_total_memory_bytes", return_value=ram_gib * 1024**3),
@@ -65,11 +79,15 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(profile.hymt2_backend, "transformers")
         self.assertEqual(profile.whisper_batch_size, 16)
         self.assertTrue(profile.warm_hymt2_on_startup)
+        self.assertEqual(profile.hymt2_dtype, "bfloat16")
 
         marketed_eight_gib = self._profile(cuda=True, vram_gib=8, ram_gib=16, cpu_count=12)
         self.assertEqual(marketed_eight_gib.key, "cuda_low_memory")
         self.assertEqual(marketed_eight_gib.hymt2_backend, "transformers")
         self.assertTrue(marketed_eight_gib.warm_hymt2_on_startup)
+
+        older_gpu = self._profile(cuda=True, vram_gib=8, ram_gib=16, cpu_count=12, bf16=False)
+        self.assertEqual(older_gpu.hymt2_dtype, "float16")
 
     def test_device_preference_and_vram_select_the_expected_backend(self):
         forced_cpu = self._profile(cuda=True, vram_gib=8, preference="cpu")
@@ -87,6 +105,7 @@ class CpuRuntimeTests(unittest.TestCase):
         hardware.clear_runtime_profile_cache()
         with (
             mock.patch.object(hardware, "_cuda_details", return_value=(True, "Test GPU")),
+            mock.patch.object(hardware, "_cuda_precision_details", return_value=((8, 9), True)),
             mock.patch.object(hardware, "_cuda_memory_bytes", return_value=8 * 1024**3),
             mock.patch.object(hardware, "_cuda_free_memory_bytes", return_value=4 * 1024**3),
             mock.patch.object(hardware, "_total_memory_bytes", return_value=16 * 1024**3),
@@ -202,6 +221,7 @@ class CpuRuntimeTests(unittest.TestCase):
         hardware.clear_runtime_profile_cache()
         with (
             mock.patch.object(hardware, "_cuda_details", return_value=(True, "Laptop GPU")),
+            mock.patch.object(hardware, "_cuda_precision_details", return_value=((8, 9), True)),
             mock.patch.object(hardware, "_cuda_memory_bytes", return_value=8 * 1024**3),
             mock.patch.object(hardware, "_cuda_free_memory_bytes", return_value=7 * 1024**3),
             mock.patch.object(hardware, "_total_memory_bytes", return_value=16 * 1024**3),
@@ -236,7 +256,8 @@ class CpuRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(result, ["Xin chao"])
         self.assertEqual(model.requests[0]["messages"][0]["content"], "Translate this")
-        self.assertLessEqual(model.requests[0]["max_tokens"], 384)
+        self.assertLessEqual(model.requests[0]["max_tokens"], 24)
+        self.assertEqual(model.requests[0]["temperature"], 0.0)
 
     def test_hymt2_resolves_an_installed_transformers_snapshot_without_network(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -245,7 +266,10 @@ class CpuRuntimeTests(unittest.TestCase):
             for filename in ("config.json", "tokenizer_config.json", "tokenizer.json", "model.safetensors"):
                 (snapshot / filename).write_bytes(b"installed")
 
-            with mock.patch("huggingface_hub.snapshot_download", return_value=str(snapshot)) as resolve_snapshot:
+            with (
+                mock.patch("huggingface_hub.snapshot_download", return_value=str(snapshot)) as resolve_snapshot,
+                mock.patch("autodub.core.model_integrity.verify_gpu_model", return_value=snapshot),
+            ):
                 model_source, local_files_only = hymt2_worker._local_transformers_model_source(
                     "tencent/Hy-MT2-1.8B"
                 )
@@ -256,9 +280,25 @@ class CpuRuntimeTests(unittest.TestCase):
 
         resolve_snapshot.assert_called_once_with(
             repo_id="tencent/Hy-MT2-1.8B",
+            revision="9a341cd1b679d3efd23b46e847b01745a71ed792",
             cache_dir=str(Path(HF_HOME) / "hub"),
             local_files_only=True,
         )
+
+    def test_hymt2_rejects_an_incomplete_sharded_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshot = Path(temp_dir) / "snapshot"
+            snapshot.mkdir()
+            for filename in ("config.json", "tokenizer_config.json", "tokenizer.json"):
+                (snapshot / filename).write_text("{}", encoding="utf-8")
+            (snapshot / "model.safetensors.index.json").write_text(
+                '{"weight_map":{"layer":"missing-00001-of-00002.safetensors"}}',
+                encoding="utf-8",
+            )
+            self.assertFalse(hymt2_worker._transformers_snapshot_complete(snapshot))
+
+            (snapshot / "missing-00001-of-00002.safetensors").write_bytes(b"weights")
+            self.assertTrue(hymt2_worker._transformers_snapshot_complete(snapshot))
 
     def test_hymt2_torch_threading_is_configured_only_once(self):
         fake_torch = SimpleNamespace(

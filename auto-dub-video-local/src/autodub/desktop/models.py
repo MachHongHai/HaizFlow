@@ -150,6 +150,86 @@ class ProjectListModel(QAbstractListModel):
         return self._projects[row]
 
 
+class ChannelCandidateListModel(QAbstractListModel):
+    CandidateIdRole = Qt.ItemDataRole.UserRole + 1
+    SelectedRole = Qt.ItemDataRole.UserRole + 2
+    TitleRole = Qt.ItemDataRole.UserRole + 3
+    PlatformRole = Qt.ItemDataRole.UserRole + 4
+    UploaderRole = Qt.ItemDataRole.UserRole + 5
+    DurationRole = Qt.ItemDataRole.UserRole + 6
+    PublishedRole = Qt.ItemDataRole.UserRole + 7
+    ViewCountRole = Qt.ItemDataRole.UserRole + 8
+    ThumbnailRole = Qt.ItemDataRole.UserRole + 9
+    DuplicateRole = Qt.ItemDataRole.UserRole + 10
+    StatusRole = Qt.ItemDataRole.UserRole + 11
+    ProgressRole = Qt.ItemDataRole.UserRole + 12
+    ErrorRole = Qt.ItemDataRole.UserRole + 13
+
+    def __init__(self):
+        super().__init__()
+        self._candidates = []
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._candidates)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() < 0 or index.row() >= len(self._candidates):
+            return None
+        candidate = self._candidates[index.row()]
+        return {
+            self.CandidateIdRole: candidate.remote_video_id,
+            self.SelectedRole: candidate.selected,
+            self.TitleRole: candidate.title,
+            self.PlatformRole: candidate.platform,
+            self.UploaderRole: candidate.uploader,
+            self.DurationRole: candidate.duration_label,
+            self.PublishedRole: candidate.published_label,
+            self.ViewCountRole: candidate.view_count_label,
+            self.ThumbnailRole: candidate.thumbnail_url,
+            self.DuplicateRole: candidate.duplicate,
+            self.StatusRole: candidate.status,
+            self.ProgressRole: candidate.progress,
+            self.ErrorRole: candidate.error,
+        }.get(role)
+
+    def roleNames(self):
+        return {
+            self.CandidateIdRole: b"candidateId",
+            self.SelectedRole: b"selected",
+            self.TitleRole: b"title",
+            self.PlatformRole: b"platform",
+            self.UploaderRole: b"uploader",
+            self.DurationRole: b"durationLabel",
+            self.PublishedRole: b"publishedLabel",
+            self.ViewCountRole: b"viewCountLabel",
+            self.ThumbnailRole: b"thumbnailSource",
+            self.DuplicateRole: b"duplicate",
+            self.StatusRole: b"candidateStatus",
+            self.ProgressRole: b"candidateProgress",
+            self.ErrorRole: b"candidateError",
+        }
+
+    def set_candidates(self, candidates):
+        self.beginResetModel()
+        self._candidates = list(candidates)
+        self.endResetModel()
+
+    def candidate_at(self, row: int):
+        if row < 0 or row >= len(self._candidates):
+            return None
+        return self._candidates[row]
+
+    def candidates(self):
+        return list(self._candidates)
+
+    def update_candidate(self, remote_video_id: str) -> None:
+        for row, candidate in enumerate(self._candidates):
+            if candidate.remote_video_id == remote_video_id:
+                index = self.index(row, 0)
+                self.dataChanged.emit(index, index, list(self.roleNames().keys()))
+                return
+
+
 class TaskListModel(QAbstractListModel):
     NameRole = Qt.ItemDataRole.UserRole + 1
     KeyRole = Qt.ItemDataRole.UserRole + 2

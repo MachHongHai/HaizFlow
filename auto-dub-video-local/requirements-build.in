@@ -1,0 +1,5 @@
+# Build frontend required by pyproject.toml. Runtime dependencies are read
+# directly from pyproject.toml by scripts/lock-dependencies.ps1.
+pip==25.1.1
+setuptools==83.0.0
+wheel==0.47.0

@@ -8,6 +8,8 @@ import "."
 Item {
     id: root
 
+    property string projectType: "single"
+    property var projectModel: null
     signal requestNewProject()
     signal openProject(string projectType)
 
@@ -28,7 +30,9 @@ Item {
 
         PageHeader {
             Layout.fillWidth: true
-            title: I18n.t("Projects")
+            title: root.projectType === "batch"
+                ? I18n.t("Batch projects")
+                : I18n.t("Single projects")
         }
 
         Rectangle {
@@ -87,7 +91,9 @@ Item {
                     border.color: activeFocus || newProjectHover.hovered ? Theme.focus : Theme.outline
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
-                    Accessible.name: I18n.t("New project")
+                    Accessible.name: root.projectType === "batch"
+                        ? I18n.t("New batch project")
+                        : I18n.t("New single project")
                     scale: newProjectTap.pressed ? 0.99 : 1
 
                     Keys.onReturnPressed: root.requestNewProject()
@@ -130,7 +136,9 @@ Item {
 
                         Text {
                             width: parent.width
-                            text: I18n.t("New project")
+                            text: root.projectType === "batch"
+                                ? I18n.t("New batch project")
+                                : I18n.t("New single project")
                             color: Theme.text
                             font.pixelSize: Theme.bodyLarge
                             font.weight: Font.DemiBold
@@ -140,7 +148,9 @@ Item {
 
                         Text {
                             width: parent.width
-                            text: I18n.t("Single video or batch")
+                            text: root.projectType === "batch"
+                                ? I18n.t("Files, folders, links, or channels")
+                                : I18n.t("One source video per project")
                             color: Theme.textMuted
                             font.pixelSize: Theme.caption
                             horizontalAlignment: Text.AlignHCenter
@@ -157,13 +167,13 @@ Item {
                 }
 
                 Repeater {
-                    model: controller.projectModel
+                    model: root.projectModel
 
                     delegate: ProjectCard {
                         width: projectFlick.cardWidth
                         onActivated: {
-                            controller.selectProject(index)
-                            root.openProject(projectType)
+                            controller.selectProjectInMode(index, root.projectType)
+                            root.openProject(root.projectType)
                         }
                     }
                 }

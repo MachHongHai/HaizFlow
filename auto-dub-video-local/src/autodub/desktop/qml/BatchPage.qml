@@ -12,6 +12,7 @@ Item {
     signal openJobDetail()
     signal requestBatchSettings()
     signal requestUrlImport()
+    signal requestChannelImport()
 
     property bool dropActive: false
 
@@ -166,7 +167,7 @@ Item {
             id: importStrip
 
             Layout.fillWidth: true
-            Layout.preferredHeight: 76
+            Layout.preferredHeight: 88
             radius: Theme.radius
             color: root.dropActive ? Theme.interactiveMuted : Theme.surfaceElevated
             border.width: 1
@@ -214,38 +215,25 @@ Item {
                     onClicked: controller.browseBatchVideos()
                 }
 
-                IconButton {
-                    id: importMoreButton
-                    glyph: "\uE712"
-                    toolTipText: I18n.t("More import options")
-                    onClicked: importMenu.open()
+                AppButton {
+                    text: I18n.t("Add folder")
+                    iconGlyph: "\uE8B7"
+                    tone: "secondary"
+                    onClicked: controller.browseBatchFolder()
+                }
 
-                    Menu {
-                        id: importMenu
-                        width: 230
-                        y: parent.height + Theme.space4
-                        padding: 6
-                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                AppButton {
+                    text: I18n.t("Video link")
+                    iconGlyph: "\uE71B"
+                    tone: "secondary"
+                    onClicked: root.requestUrlImport()
+                }
 
-                        background: Rectangle {
-                            color: Theme.surfaceElevated
-                            radius: Theme.radius
-                            border.width: 1
-                            border.color: Theme.outlineStrong
-                        }
-
-                        AppMenuItem {
-                            text: I18n.t("Add folder")
-                            iconGlyph: "\uE8B7"
-                            onTriggered: controller.browseBatchFolder()
-                        }
-
-                        AppMenuItem {
-                            text: I18n.t("Add from link")
-                            iconGlyph: "\uE71B"
-                            onTriggered: root.requestUrlImport()
-                        }
-                    }
+                AppButton {
+                    text: I18n.t("Import channel")
+                    iconGlyph: "\uE896"
+                    tone: "primary"
+                    onClicked: root.requestChannelImport()
                 }
             }
 

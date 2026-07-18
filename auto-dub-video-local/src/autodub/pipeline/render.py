@@ -6,7 +6,7 @@ import srt
 from autodub.pipeline.job_manager import check_cancellation, register_process, unregister_process
 from autodub.schemas.job import CropSettings, SubtitleStyle
 from autodub.services.job_store import log_to_job
-from autodub.utils.ffmpeg import get_video_dimensions, preferred_video_encoder
+from autodub.utils.ffmpeg import get_video_dimensions, get_video_duration, preferred_video_encoder
 
 
 def _escape_ass_text(text: str) -> str:
@@ -118,10 +118,13 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         vf_filter = ",".join(filters)
 
     video_encoder, video_encoder_args = preferred_video_encoder()
+    source_duration = get_video_duration(video_path)
+    if source_duration <= 0:
+        raise RuntimeError("Unable to determine the source video duration before rendering.")
     cmd_prefix = [
         "ffmpeg", "-y", "-i", rel_video, "-i", rel_voice,
         "-map", "0:v:0", "-map", "1:a:0", "-vf", vf_filter,
-        "-shortest",
+        "-t", f"{source_duration:.6f}",
     ]
     audio_args = ["-c:a", "aac", "-b:a", "192k", rel_output]
 

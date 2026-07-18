@@ -1,7 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
-# Versions and package metadata live in pyproject.toml. Keep the custom wheel
-# indexes here so one command installs the complete development environment.
+# Source-development convenience only. Production and clean environment setup
+# use requirements-lock-py313-win64.txt with --require-hashes.
 -e .
 

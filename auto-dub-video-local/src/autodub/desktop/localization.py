@@ -4,6 +4,8 @@ QML owns visible application copy; this module keeps native file and message
 dialogs aligned with the persisted UI language.
 """
 
+import re
+
 from PySide6.QtWidgets import QFileDialog as QtFileDialog, QMessageBox as QtMessageBox
 
 _UI_LANGUAGE = "en"
@@ -27,6 +29,10 @@ def _ui_text(value) -> str:
         "Project storage location": "Vị trí lưu dự án",
         "Processing device": "Thiết bị xử lý",
         "Settings": "Cài đặt",
+        "Import video": "Nhập video",
+        "Channel import": "Nhập video từ kênh",
+        "Some videos were skipped": "Một số video đã bị bỏ qua",
+        "Batch delete incomplete": "Chưa xóa hết dự án hàng loạt",
         "No supported videos": "Không có video được hỗ trợ",
         "Batch queue": "Hàng đợi xử lý",
         "Batch settings": "Thiết lập hàng loạt",
@@ -53,7 +59,9 @@ def _ui_text(value) -> str:
         "Choose project storage location": "Chọn vị trí lưu dự án",
         "Choose videos for batch processing": "Chọn video để xử lý hàng loạt",
         "Choose a folder of videos for batch processing": "Chọn thư mục video để xử lý hàng loạt",
+        "Choose cookies.txt": "Chọn cookies.txt",
         "Video files (*.mp4 *.mov *.mkv);;All files (*.*)": "Tệp video (*.mp4 *.mov *.mkv);;Tất cả tệp (*.*)",
+        "Netscape cookie files (*.txt);;All files (*.*)": "Tệp cookie Netscape (*.txt);;Tất cả tệp (*.*)",
         "Pause or finish this video before replacing it.": "Hãy tạm dừng hoặc hoàn tất video này trước khi thay thế.",
         "Choose an MP4, MOV, or MKV video file.": "Hãy chọn tệp video MP4, MOV hoặc MKV.",
         "Enter a project name.": "Hãy nhập tên dự án.",
@@ -79,6 +87,9 @@ def _ui_text(value) -> str:
         "Input video is not available yet.": "Video nguồn chưa khả dụng.",
         "Final video is not available yet.": "Video đầu ra chưa khả dụng.",
         "The export folder is not available yet.": "Thư mục video xuất chưa khả dụng.",
+        "The destination project no longer exists.": "Dự án đích không còn tồn tại.",
+        "Open or create a batch project before importing a channel.": "Hãy mở hoặc tạo một dự án hàng loạt trước khi nhập video từ kênh.",
+        "Channel import is still stopping. Try deleting the project again in a moment.": "Tiến trình nhập từ kênh vẫn đang dừng. Hãy thử xóa lại dự án sau giây lát.",
     }
     if text in translations:
         return translations[text]
@@ -98,6 +109,10 @@ def _ui_text(value) -> str:
             return translated + text[len(source):]
         if text == source:
             return translated
+
+    skipped = re.match(r"^(\d+) unsupported or unreadable item\(s\):(.*)$", text, re.DOTALL)
+    if skipped:
+        return f"{skipped.group(1)} mục không được hỗ trợ hoặc không thể đọc:{skipped.group(2)}"
     return text
 
 
@@ -135,4 +150,3 @@ class QFileDialog(QtFileDialog):
     @staticmethod
     def getExistingDirectory(parent=None, caption="", directory="", options=QtFileDialog.Option.ShowDirsOnly):
         return QtFileDialog.getExistingDirectory(parent, _ui_text(caption), directory, options)
-

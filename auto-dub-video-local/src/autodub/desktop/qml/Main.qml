@@ -15,13 +15,34 @@ ApplicationWindow {
     title: I18n.t("Video Dubbing")
     color: Theme.window
 
-    property int pageIndex: 0
-    property int workspaceReturnPage: 0
+    readonly property string routeSingleProjects: "single-projects"
+    readonly property string routeSingleWorkspace: "single-workspace"
+    readonly property string routeBatchProjects: "batch-projects"
+    readonly property string routeBatchWorkspace: "batch-workspace"
+    readonly property string routeBatchVideo: "batch-video"
+    readonly property string routeChannelImport: "channel-import"
+    property string currentRoute: routeSingleProjects
+    property string workspaceReturnRoute: routeSingleProjects
     readonly property bool compactNavigation: width < 1280
     readonly property bool modelStatusFailed: controller.statusMessage.toLowerCase().indexOf("unavailable") >= 0
         || controller.statusMessage.toLowerCase().indexOf("failed") >= 0
     readonly property bool modelStatusBusy: !modelStatusFailed
         && controller.statusMessage.toLowerCase().indexOf("ready") < 0
+
+    function routeIndex(route) {
+        switch (route) {
+        case routeSingleWorkspace: return 1
+        case routeBatchProjects: return 2
+        case routeBatchWorkspace: return 3
+        case routeBatchVideo: return 4
+        case routeChannelImport: return 5
+        default: return 0
+        }
+    }
+
+    function navigate(route) {
+        currentRoute = route
+    }
 
     Component.onCompleted: {
         Theme.darkMode = controller.settingsTheme === "dark"
@@ -79,12 +100,12 @@ ApplicationWindow {
         }
 
         function onJobDeleted() {
-            root.pageIndex = root.workspaceReturnPage
+            root.navigate(root.workspaceReturnRoute)
         }
 
         function onBatchDeleted() {
-            root.workspaceReturnPage = 0
-            root.pageIndex = 0
+            root.workspaceReturnRoute = root.routeBatchProjects
+            root.navigate(root.routeBatchProjects)
         }
 
         function onSettingsChanged() {
@@ -93,8 +114,13 @@ ApplicationWindow {
         }
 
         function onProjectPrepared() {
-            root.workspaceReturnPage = 0
-            root.pageIndex = controller.projectType === "batch" ? 2 : 1
+            if (controller.projectType === "batch") {
+                root.workspaceReturnRoute = root.routeBatchProjects
+                root.navigate(root.routeBatchWorkspace)
+            } else {
+                root.workspaceReturnRoute = root.routeSingleProjects
+                root.navigate(root.routeSingleWorkspace)
+            }
         }
     }
 
@@ -181,12 +207,28 @@ ApplicationWindow {
                 SidebarButton {
                     Layout.fillWidth: true
                     compact: root.compactNavigation
-                    iconGlyph: "\uE8B7"
-                    text: I18n.t("Projects")
-                    selected: root.pageIndex === 0 || root.pageIndex === 1 || root.pageIndex === 2
+                    iconGlyph: "\uE714"
+                    text: I18n.t("Single")
+                    selected: root.currentRoute === root.routeSingleProjects
+                        || root.currentRoute === root.routeSingleWorkspace
                     onClicked: {
                         controller.refreshJobs()
-                        root.pageIndex = 0
+                        root.navigate(root.routeSingleProjects)
+                    }
+                }
+
+                SidebarButton {
+                    Layout.fillWidth: true
+                    compact: root.compactNavigation
+                    iconGlyph: "\uE8FD"
+                    text: I18n.t("Batch")
+                    selected: root.currentRoute === root.routeBatchProjects
+                        || root.currentRoute === root.routeBatchWorkspace
+                        || root.currentRoute === root.routeBatchVideo
+                        || root.currentRoute === root.routeChannelImport
+                    onClicked: {
+                        controller.refreshJobs()
+                        root.navigate(root.routeBatchProjects)
                     }
                 }
 
@@ -261,9 +303,11 @@ ApplicationWindow {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: root.pageIndex
+                currentIndex: root.routeIndex(root.currentRoute)
 
                 ProjectsPage {
+                    projectType: "single"
+                    projectModel: controller.singleProjectModel
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.leftMargin: root.width < 1400 ? 22 : 30
@@ -271,12 +315,12 @@ ApplicationWindow {
                     Layout.topMargin: 24
                     Layout.bottomMargin: 24
                     onRequestNewProject: {
-                        root.workspaceReturnPage = 0
-                        projectSetupDialog.open()
+                        root.workspaceReturnRoute = root.routeSingleProjects
+                        projectSetupDialog.openForType("single")
                     }
-                    onOpenProject: function(projectType) {
-                        root.workspaceReturnPage = 0
-                        root.pageIndex = projectType === "batch" ? 2 : 1
+                    onOpenProject: {
+                        root.workspaceReturnRoute = root.routeSingleProjects
+                        root.navigate(root.routeSingleWorkspace)
                     }
                 }
 
@@ -288,8 +332,27 @@ ApplicationWindow {
                     Layout.topMargin: 20
                     Layout.bottomMargin: 20
                     onRequestReviewTranslation: translationReviewDialog.open()
-                    onRequestBack: root.pageIndex = root.workspaceReturnPage
+                    onRequestBack: root.navigate(root.routeSingleProjects)
                     onRequestUrlImport: urlImportDialog.openForMode("single")
+                }
+
+                ProjectsPage {
+                    projectType: "batch"
+                    projectModel: controller.batchProjectModel
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.leftMargin: root.width < 1400 ? 22 : 30
+                    Layout.rightMargin: root.width < 1400 ? 22 : 30
+                    Layout.topMargin: 24
+                    Layout.bottomMargin: 24
+                    onRequestNewProject: {
+                        root.workspaceReturnRoute = root.routeBatchProjects
+                        projectSetupDialog.openForType("batch")
+                    }
+                    onOpenProject: {
+                        root.workspaceReturnRoute = root.routeBatchProjects
+                        root.navigate(root.routeBatchWorkspace)
+                    }
                 }
 
                 BatchPage {
@@ -299,12 +362,51 @@ ApplicationWindow {
                     Layout.rightMargin: root.width < 1400 ? 22 : 30
                     Layout.topMargin: root.width < 1400 ? 30 : 36
                     Layout.bottomMargin: 24
-                    onRequestBack: root.pageIndex = 0
+                    onRequestBack: root.navigate(root.routeBatchProjects)
                     onRequestBatchSettings: batchSettingsDialog.open()
                     onRequestUrlImport: urlImportDialog.openForMode("batch")
+                    onRequestChannelImport: {
+                        if (controller.prepareChannelImport())
+                            root.navigate(root.routeChannelImport)
+                    }
                     onOpenJobDetail: {
-                        root.workspaceReturnPage = 2
-                        root.pageIndex = 1
+                        root.workspaceReturnRoute = root.routeBatchWorkspace
+                        root.navigate(root.routeBatchVideo)
+                    }
+                }
+
+                CreateJobPage {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.leftMargin: root.width < 1400 ? 18 : 26
+                    Layout.rightMargin: root.width < 1400 ? 18 : 26
+                    Layout.topMargin: 20
+                    Layout.bottomMargin: 20
+                    onRequestReviewTranslation: translationReviewDialog.open()
+                    onRequestBack: root.navigate(root.routeBatchWorkspace)
+                    onRequestUrlImport: urlImportDialog.openForMode("batch")
+                }
+
+                Loader {
+                    id: channelImportLoader
+
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.leftMargin: root.width < 1400 ? 22 : 30
+                    Layout.rightMargin: root.width < 1400 ? 22 : 30
+                    Layout.topMargin: 24
+                    Layout.bottomMargin: 24
+                    active: root.currentRoute === root.routeChannelImport
+                    asynchronous: true
+                    source: "ChannelImportPage.qml"
+
+                    Connections {
+                        target: channelImportLoader.item
+                        ignoreUnknownSignals: true
+
+                        function onRequestBack() {
+                            root.navigate(root.routeBatchWorkspace)
+                        }
                     }
                 }
             }

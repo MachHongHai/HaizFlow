@@ -9,8 +9,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from autodub.core.paths import is_frozen, project_root
+from autodub.config import HYMT2_REQUEST_TIMEOUT_SECONDS, HYMT2_WARM_TIMEOUT_SECONDS
 from autodub.core.hardware import runtime_profile
+from autodub.core.paths import is_frozen, project_root
 from autodub.pipeline.job_manager import register_process, unregister_process
 from autodub.services.job_store import log_to_job
 
@@ -374,14 +375,15 @@ def warm_hymt2_worker(status_callback=None) -> None:
                 raise RuntimeError("HY-MT2 worker input channel is unavailable.")
             process.stdin.write(json.dumps({"request_id": request_id, "command": "warm"}) + "\n")
             process.stdin.flush()
-            deadline = time.monotonic() + 300
+            deadline = time.monotonic() + HYMT2_WARM_TIMEOUT_SECONDS
             while True:
                 if time.monotonic() >= deadline:
                     diagnostic_path = _worker_diagnostic_path(process)
                     process.kill()
                     _discard_hymt2_worker(process)
                     raise RuntimeError(
-                        f"HY-MT2 warm-up timed out after 5 minutes. Diagnostic log: {diagnostic_path or 'unavailable'}"
+                        f"HY-MT2 warm-up produced no activity for {HYMT2_WARM_TIMEOUT_SECONDS} seconds. "
+                        f"Diagnostic log: {diagnostic_path or 'unavailable'}"
                     )
                 try:
                     line = output_queue.get(timeout=0.25)
@@ -390,6 +392,7 @@ def warm_hymt2_worker(status_callback=None) -> None:
                         break
                     continue
                 worker_output.append(line)
+                deadline = time.monotonic() + HYMT2_WARM_TIMEOUT_SECONDS
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
@@ -457,12 +460,15 @@ def _translate_with_hymt2_worker(
                 raise RuntimeError("HY-MT2 worker input channel is unavailable.")
             process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
             process.stdin.flush()
-            deadline = time.monotonic() + 1800
+            deadline = time.monotonic() + HYMT2_REQUEST_TIMEOUT_SECONDS
             while True:
                 if time.monotonic() >= deadline:
                     process.kill()
                     _discard_hymt2_worker(process)
-                    raise RuntimeError("HY-MT2 translation timed out after 30 minutes.")
+                    raise RuntimeError(
+                        "HY-MT2 translation stopped producing progress for "
+                        f"{HYMT2_REQUEST_TIMEOUT_SECONDS} seconds."
+                    )
                 try:
                     line = output_queue.get(timeout=0.25)
                 except queue.Empty:
@@ -470,6 +476,7 @@ def _translate_with_hymt2_worker(
                         break
                     continue
                 worker_output.append(line)
+                deadline = time.monotonic() + HYMT2_REQUEST_TIMEOUT_SECONDS
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:

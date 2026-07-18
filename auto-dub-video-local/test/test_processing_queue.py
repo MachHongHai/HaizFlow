@@ -69,3 +69,81 @@ class SerialProcessingQueueTests(unittest.TestCase):
         self.assertTrue(done.wait(2))
         self.assertEqual(completed, ["first"])
 
+    def test_accepts_another_project_while_the_active_project_keeps_running(self):
+        first_started = threading.Event()
+        release_first = threading.Event()
+        second_started = threading.Event()
+        done = threading.Event()
+
+        def runner(job_id):
+            if job_id == "project-a":
+                first_started.set()
+                release_first.wait(2)
+            else:
+                second_started.set()
+
+        queue = SerialProcessingQueue(runner, on_idle=done.set)
+        self.assertTrue(queue.enqueue("project-a"))
+        self.assertTrue(first_started.wait(1))
+
+        # Enqueue is non-blocking: UI work for project B can continue while A runs.
+        self.assertTrue(queue.enqueue("project-b"))
+        self.assertEqual(queue.active_job_id, "project-a")
+        self.assertEqual(queue.pending_ids(), ["project-b"])
+        self.assertTrue(queue.has_work)
+        self.assertTrue(queue.contains("project-a"))
+        self.assertTrue(queue.contains("project-b"))
+        self.assertFalse(second_started.is_set())
+
+        release_first.set()
+        self.assertTrue(second_started.wait(1))
+        self.assertTrue(done.wait(2))
+        self.assertFalse(queue.has_work)
+
+    def test_runner_failure_does_not_strand_the_next_project(self):
+        started = []
+        completed = []
+        errors = []
+        done = threading.Event()
+
+        def runner(job_id):
+            if job_id == "broken-project":
+                raise RuntimeError("pipeline failed")
+
+        queue = SerialProcessingQueue(
+            runner,
+            on_started=started.append,
+            on_finished=completed.append,
+            on_idle=done.set,
+            on_error=lambda job_id, exc: errors.append((job_id, str(exc))),
+        )
+        self.assertTrue(queue.enqueue("broken-project"))
+        self.assertTrue(queue.enqueue("next-project"))
+        self.assertTrue(done.wait(2))
+
+        self.assertEqual(started, ["broken-project", "next-project"])
+        self.assertEqual(completed, ["broken-project", "next-project"])
+        self.assertEqual(errors, [("broken-project", "pipeline failed")])
+        self.assertFalse(queue.has_work)
+
+    def test_start_callback_failure_is_reported_and_queue_continues(self):
+        ran = []
+        errors = []
+        done = threading.Event()
+
+        def on_started(job_id):
+            if job_id == "invalid-project":
+                raise ValueError("cannot start")
+
+        queue = SerialProcessingQueue(
+            ran.append,
+            on_started=on_started,
+            on_idle=done.set,
+            on_error=lambda job_id, exc: errors.append((job_id, str(exc))),
+        )
+        self.assertTrue(queue.enqueue("invalid-project"))
+        self.assertTrue(queue.enqueue("valid-project"))
+        self.assertTrue(done.wait(2))
+
+        self.assertEqual(ran, ["valid-project"])
+        self.assertEqual(errors, [("invalid-project", "cannot start")])

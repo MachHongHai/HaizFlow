@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +35,19 @@ class BatchImportTests(unittest.TestCase):
                 [os.path.basename(path) for path in valid_paths],
                 ["a.mp4", "b.MOV", "c.mkv"],
             )
-            self.assertEqual(invalid_names, ["missing.mp4"])
+            self.assertEqual(invalid_names, ["audio.wav", "notes.txt", "missing.mp4"])
+
+    def test_rejected_file_report_lists_items_in_current_language(self):
+        controller = SimpleNamespace(_settings_language="vi")
+
+        message = AutoDubController._batch_rejection_message(
+            controller,
+            ["notes.txt", "audio.wav"],
+        )
+
+        self.assertIn("2 mục không được hỗ trợ", message)
+        self.assertIn("notes.txt", message)
+        self.assertIn("audio.wav", message)
 
 
 if __name__ == "__main__":

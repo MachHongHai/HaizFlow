@@ -22,7 +22,7 @@ Panel {
 
         SegmentedControl {
             Layout.fillWidth: true
-            enabled: !controller.isSelectedJobProcessing
+            enabled: controller.canEditSelectedJob
             currentValue: controller.workflowMode
             options: [
                 { "label": I18n.t("Full auto"), "value": "A" },
@@ -49,7 +49,7 @@ Panel {
         SearchableLanguageCombo {
             Layout.fillWidth: true
             Layout.preferredHeight: 42
-            enabled: !controller.isSelectedJobProcessing
+            enabled: controller.canEditSelectedJob
             options: controller.targetLanguageOptions
             selectedCode: controller.targetLanguage
             onSelected: function(code) {
@@ -72,7 +72,7 @@ Panel {
 
         AppComboBox {
             Layout.fillWidth: true
-            enabled: !controller.isSelectedJobProcessing
+            enabled: controller.canEditSelectedJob
             textRole: "label"
             valueRole: "voice"
             model: controller.ttsVoiceOptions
@@ -103,7 +103,7 @@ Panel {
 
         SegmentedControl {
             Layout.fillWidth: true
-            enabled: !controller.isSelectedJobProcessing
+            enabled: controller.canEditSelectedJob
             currentValue: controller.enableAudioSeparation ? "separated" : "original"
             options: [
                 { "label": I18n.t("Keep original audio"), "value": "original" },
@@ -153,7 +153,7 @@ Panel {
 
         AppSlider {
             Layout.fillWidth: true
-            enabled: !controller.isSelectedJobProcessing
+            enabled: controller.canEditSelectedJob
             from: 0
             to: 100
             stepSize: 1
@@ -174,7 +174,7 @@ Panel {
         text: I18n.t("Save video settings")
         iconGlyph: "\uE74E"
         tone: "primary"
-        enabled: !controller.isSelectedJobProcessing
+        enabled: controller.canEditSelectedJob
         onClicked: controller.saveSelectedJobSettings()
     }
 
@@ -184,7 +184,7 @@ Panel {
         text: controller.isProcessing ? I18n.t("Add to processing queue") : I18n.t("Create and process")
         iconGlyph: "\uE768"
         tone: "primary"
-        enabled: !controller.isSelectedJobProcessing && controller.videoPath.length > 0
+        enabled: controller.canEditSelectedJob && controller.videoPath.length > 0
         onClicked: controller.startProjectJob()
     }
 }

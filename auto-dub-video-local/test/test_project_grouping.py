@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from autodub.desktop.qml_controller import AutoDubController
+from autodub.desktop.models import ProjectListModel
 from autodub.schemas.job import JobConfig
 from autodub.services import job_store
 from autodub.services import project_store
@@ -33,6 +35,77 @@ def _job(job_id, filename, project_name, project_type, status, progress, updated
 
 
 class ProjectGroupingTests(unittest.TestCase):
+    def test_same_name_single_and_batch_projects_have_distinct_storage(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_project_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                single = project_store.ensure_project("Campaign", str(root / "projects"), "single")
+                batch = project_store.ensure_project("Campaign", str(root / "projects"), "batch")
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_project_index
+
+        self.assertNotEqual(single["key"], batch["key"])
+        self.assertNotEqual(single["project_root"], batch["project_root"])
+        self.assertTrue(single["key"].startswith("project:"))
+        self.assertTrue(batch["key"].startswith("project:"))
+
+    def test_new_projects_with_the_same_name_have_distinct_uuid_identities(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                first = project_store.create_project("Daily clips", str(root / "projects"), "single")
+                second = project_store.create_project("Daily clips", str(root / "projects"), "single")
+                persisted = project_store.list_projects()
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
+
+        self.assertNotEqual(first["project_id"], second["project_id"])
+        self.assertNotEqual(first["key"], second["key"])
+        self.assertNotEqual(first["project_root"], second["project_root"])
+        self.assertEqual({item["key"] for item in persisted}, {first["key"], second["key"]})
+
+    def test_jobs_with_duplicate_project_names_use_the_selected_project_id(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "clip.mp4"
+            source.write_bytes(b"video")
+            original_jobs_dir = job_store.JOBS_DIR
+            original_index = project_store.PROJECT_INDEX_PATH
+            job_store.JOBS_DIR = str(root / "legacy-jobs")
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                first = project_store.create_project("Episode", str(root / "projects"), "single")
+                second = project_store.create_project("Episode", str(root / "projects"), "single")
+                first_job = create_desktop_job(
+                    str(source),
+                    JobConfig(project_type="single", project_key=first["key"]),
+                    project_name="Episode",
+                    project_directory=str(root / "projects"),
+                    project_key_value=first["key"],
+                )
+                second_job = create_desktop_job(
+                    str(source),
+                    JobConfig(project_type="single", project_key=second["key"]),
+                    project_name="Episode",
+                    project_directory=str(root / "projects"),
+                    project_key_value=second["key"],
+                )
+                first_workspace = Path(job_store.get_job_dir(first_job.job_id))
+                second_workspace = Path(job_store.get_job_dir(second_job.job_id))
+            finally:
+                job_store.JOBS_DIR = original_jobs_dir
+                project_store.PROJECT_INDEX_PATH = original_index
+                job_store._JOB_DIR_CACHE.clear()
+
+        self.assertEqual(first_job.project_key, first["key"])
+        self.assertEqual(second_job.project_key, second["key"])
+        self.assertTrue(first_workspace.is_relative_to(Path(first["project_root"])))
+        self.assertTrue(second_workspace.is_relative_to(Path(second["project_root"])))
+
     def test_batch_jobs_share_one_project_card(self):
         summaries = AutoDubController._build_project_summaries(
             [
@@ -51,6 +124,23 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(batch["progress"], 75)
         self.assertEqual([job.job_id for job in batch["jobs"]], ["one", "two"])
 
+    def test_project_library_models_keep_single_and_batch_projects_separate(self):
+        summaries = AutoDubController._build_project_summaries(
+            [
+                _job("one", "one.mp4", "Campaign", "batch", "pending", 0, "2026-07-14T10:00:00Z"),
+                _job("two", "two.mp4", "Interview", "single", "done", 100, "2026-07-14T11:00:00Z"),
+            ]
+        )
+        single_model = ProjectListModel()
+        batch_model = ProjectListModel()
+        single_model.set_projects([item for item in summaries if item["project_type"] == "single"])
+        batch_model.set_projects([item for item in summaries if item["project_type"] == "batch"])
+
+        self.assertEqual(single_model.rowCount(), 1)
+        self.assertEqual(batch_model.rowCount(), 1)
+        self.assertEqual(single_model.project_at(0)["project_name"], "Interview")
+        self.assertEqual(batch_model.project_at(0)["project_name"], "Campaign")
+
     def test_batch_output_uses_a_unique_folder_for_each_video(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -67,6 +157,7 @@ class ProjectGroupingTests(unittest.TestCase):
                     project_name="Launch",
                     project_directory=str(root / "projects"),
                 )
+                project_root = Path(project_store.project_root("Launch", str(root / "projects"), "batch"))
             finally:
                 job_store.JOBS_DIR = original_jobs_dir
                 project_store.PROJECT_INDEX_PATH = original_project_index
@@ -75,7 +166,8 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(job.project_type, "batch")
         self.assertEqual(output_path.name, "dubbed_video.mp4")
         self.assertEqual(output_path.parent.parent.name, "exports")
-        self.assertEqual(output_path.parent.parent.parent.name, "Launch")
+        self.assertEqual(output_path.parent.parent.parent, project_root)
+        self.assertTrue(project_root.name.startswith("Launch--"))
         self.assertIn(job.job_id[:8], output_path.parent.name)
 
     def test_single_project_export_is_separate_from_the_project_folder(self):
@@ -95,15 +187,17 @@ class ProjectGroupingTests(unittest.TestCase):
                     project_directory=str(root / "projects"),
                 )
                 workspace = Path(job_store.get_job_dir(job.job_id))
+                project_root = Path(project_store.project_root("Interview", str(root / "projects"), "single"))
             finally:
                 job_store.JOBS_DIR = original_jobs_dir
                 project_store.PROJECT_INDEX_PATH = original_project_index
 
         output_path = Path(job.files["final_video"])
         self.assertEqual(output_path.parent.name, "exports")
-        self.assertEqual(output_path.parent.parent.name, "Interview")
+        self.assertEqual(output_path.parent.parent, project_root)
+        self.assertTrue(project_root.name.startswith("Interview--"))
         self.assertEqual(workspace.parent.name, "videos")
-        self.assertEqual(workspace.parent.parent.name, "Interview")
+        self.assertEqual(workspace.parent.parent, project_root)
         self.assertFalse((workspace / "output").exists())
 
     def test_imported_single_video_is_saved_before_processing_starts(self):
@@ -134,6 +228,37 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(persisted.status, "pending")
         self.assertEqual(copied_bytes, b"video")
         self.assertTrue(copied_input.is_relative_to(Path(project_root)))
+
+    def test_channel_import_can_move_downloaded_video_into_project(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "downloaded.mp4"
+            source.write_bytes(b"downloaded-video")
+            original_jobs_dir = job_store.JOBS_DIR
+            original_project_index = project_store.PROJECT_INDEX_PATH
+            job_store.JOBS_DIR = str(root / "legacy-jobs")
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                job = create_desktop_job(
+                    str(source),
+                    JobConfig(project_type="batch"),
+                    project_name="Channel",
+                    project_directory=str(root / "projects"),
+                    media_source={"type": "channel", "platform": "YouTube", "remote_video_id": "abc"},
+                    move_input=True,
+                )
+                imported_path = Path(job.files["video_input"])
+                imported_bytes = imported_path.read_bytes()
+                source_exists = source.exists()
+            finally:
+                job_store.JOBS_DIR = original_jobs_dir
+                project_store.PROJECT_INDEX_PATH = original_project_index
+                job_store._JOB_DIR_CACHE.clear()
+
+        self.assertFalse(source_exists)
+        self.assertEqual(imported_bytes, b"downloaded-video")
+        self.assertEqual(job.media_source.type, "channel")
+        self.assertEqual(job.media_source.remote_video_id, "abc")
 
     def test_legacy_single_export_moves_into_exports_once(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -258,6 +383,125 @@ class ProjectGroupingTests(unittest.TestCase):
 
         self.assertEqual(projects[0]["key"], project["key"])
         self.assertEqual(projects[0]["project_type"], "batch")
+        self.assertEqual(projects[0]["schema_version"], project_store.PROJECT_SCHEMA_VERSION)
+        self.assertEqual(projects[0]["storage_layout"], "uuid")
+
+    def test_single_and_batch_projects_with_the_same_name_use_distinct_roots(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                single = project_store.ensure_project("Shared name", str(root / "projects"), "single")
+                batch = project_store.ensure_project("Shared name", str(root / "projects"), "batch")
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
+
+        self.assertNotEqual(single["project_id"], batch["project_id"])
+        self.assertNotEqual(single["project_root"], batch["project_root"])
+        self.assertTrue(Path(single["project_root"]).name.startswith("Shared name--"))
+        self.assertTrue(Path(batch["project_root"]).name.startswith("Shared name--"))
+
+    def test_deleting_one_project_type_keeps_the_same_named_project(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                single = project_store.ensure_project("Shared name", str(root / "projects"), "single")
+                batch = project_store.ensure_project("Shared name", str(root / "projects"), "batch")
+                Path(single["project_root"], "single.txt").write_text("single", encoding="utf-8")
+                Path(batch["project_root"], "batch.txt").write_text("batch", encoding="utf-8")
+                deleted = project_store.delete_project("Shared name", str(root / "projects"), "single")
+                remaining = project_store.list_projects()
+                batch_still_exists = Path(batch["project_root"], "batch.txt").is_file()
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
+
+        self.assertTrue(deleted)
+        self.assertTrue(batch_still_exists)
+        self.assertEqual([record["key"] for record in remaining], [batch["key"]])
+
+    def test_new_project_rejects_invalid_and_windows_reserved_names(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                for name in ("a:b", "a?b", "CON", "LPT1.txt", "trailing."):
+                    with self.subTest(name=name), self.assertRaises(ValueError):
+                        project_store.ensure_project(name, str(root / "projects"), "single")
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
+
+    def test_legacy_project_keeps_its_existing_root_when_metadata_is_upgraded(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            projects_dir = root / "projects"
+            legacy_root = projects_dir / "Legacy"
+            legacy_root.mkdir(parents=True)
+            key = project_store.project_key("Legacy", str(projects_dir), "single")
+            legacy_record = {
+                "key": key,
+                "project_name": "Legacy",
+                "project_directory": str(projects_dir),
+                "project_root": str(legacy_root),
+                "project_type": "single",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+            index_path = root / "runtime" / "projects.json"
+            index_path.parent.mkdir(parents=True)
+            index_path.write_text(json.dumps([legacy_record]), encoding="utf-8")
+            (legacy_root / project_store.PROJECT_MANIFEST_NAME).write_text(
+                json.dumps(legacy_record),
+                encoding="utf-8",
+            )
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(index_path)
+            try:
+                upgraded = project_store.ensure_project("Legacy", str(projects_dir), "single")
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
+
+        self.assertEqual(Path(upgraded["project_root"]), legacy_root)
+        self.assertEqual(upgraded["storage_layout"], "legacy")
+        self.assertTrue(upgraded["project_id"])
+
+    def test_delete_is_blocked_when_two_records_reference_the_same_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            projects_dir = root / "projects"
+            shared_root = projects_dir / "shared"
+            shared_root.mkdir(parents=True)
+            records = []
+            for project_type in ("single", "batch"):
+                records.append(
+                    {
+                        "key": project_store.project_key("Shared", str(projects_dir), project_type),
+                        "project_name": "Shared",
+                        "project_directory": str(projects_dir),
+                        "project_root": str(shared_root),
+                        "project_type": project_type,
+                    }
+                )
+            index_path = root / "runtime" / "projects.json"
+            index_path.parent.mkdir(parents=True)
+            index_path.write_text(json.dumps(records), encoding="utf-8")
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(index_path)
+            try:
+                with self.assertRaises(RuntimeError):
+                    project_store.validate_project_deletion("Shared", str(projects_dir), "single")
+                with self.assertRaises(RuntimeError):
+                    project_store.delete_project("Shared", str(projects_dir), "single")
+                still_exists = shared_root.is_dir()
+                remaining = project_store.list_projects()
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
+
+        self.assertTrue(still_exists)
+        self.assertEqual(len(remaining), 2)
 
     def test_delete_empty_project_removes_only_its_project_root(self):
         with tempfile.TemporaryDirectory() as temp_dir:

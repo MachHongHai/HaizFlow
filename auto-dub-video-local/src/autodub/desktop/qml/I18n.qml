@@ -118,6 +118,41 @@ QtObject {
         return source
     }
 
+    function channelImportStatus(source) {
+        if (language !== "vi" || !source)
+            return source
+
+        const direct = t(source)
+        if (direct !== source)
+            return direct
+
+        let match = source.match(/^Reading video details (\d+)\/(\d+)$/)
+        if (match)
+            return "Đang đọc thông tin video " + match[1] + "/" + match[2]
+
+        match = source.match(/^Found (\d+) videos$/)
+        if (match)
+            return "Đã tìm thấy " + match[1] + " video"
+
+        match = source.match(/^(\d+) videos ready to review$/)
+        if (match)
+            return match[1] + " video sẵn sàng để xem lại"
+
+        match = source.match(/^Downloading (\d+) videos$/)
+        if (match)
+            return "Đang tải " + match[1] + " video"
+
+        match = source.match(/^Imported (\d+) videos; (\d+) need attention$/)
+        if (match)
+            return "Đã nhập " + match[1] + " video; " + match[2] + " video cần kiểm tra"
+
+        match = source.match(/^Imported (\d+) videos$/)
+        if (match)
+            return "Đã nhập " + match[1] + " video"
+
+        return source
+    }
+
     function t(source) {
         if (language !== "vi")
             return source
@@ -127,7 +162,10 @@ QtObject {
             "WORKSPACE": "KHÔNG GIAN LÀM VIỆC",
             "Video Dubbing": "Lồng tiếng video",
             "Projects": "Dự án",
+            "Single": "Đơn lẻ",
             "Batch": "Hàng loạt",
+            "Single projects": "Dự án đơn lẻ",
+            "Batch projects": "Dự án hàng loạt",
             "Settings": "Cài đặt",
             "Back": "Quay lại",
             "Close": "Đóng",
@@ -140,6 +178,7 @@ QtObject {
             "More import options": "Tùy chọn thêm video",
             "From link": "Từ liên kết",
             "Add from link": "Thêm từ liên kết",
+            "Add video link": "Thêm từ liên kết video",
             "Import from link": "Nhập video từ liên kết",
             "YouTube, TikTok or Douyin": "YouTube, TikTok hoặc Douyin",
             "Video link": "Liên kết video",
@@ -177,6 +216,8 @@ QtObject {
             "Select a project to view its progress and exports.": "Chọn dự án để xem tiến trình và video xuất.",
             "Start with one source video": "Bắt đầu với một video nguồn",
             "Single video or batch": "Một video hoặc hàng loạt",
+            "One source video per project": "Một video nguồn cho mỗi dự án",
+            "Files, folders, links, or channels": "Tệp, thư mục, liên kết hoặc kênh",
             "No preview": "Chưa có hình xem trước",
 
             "Queued": "Đang chờ",
@@ -201,7 +242,70 @@ QtObject {
             "Clear": "Xóa danh sách",
             "Delete batch": "Xóa batch",
             "Add videos": "Thêm video",
+            "Import channel": "Tải từ kênh",
             "Add folder": "Thêm thư mục",
+            "Import from channel": "Nhập video từ kênh",
+            "Cancel import": "Hủy nhập",
+            "Channel source": "Nguồn kênh",
+            "YouTube and TikTok are supported; Douyin is Beta": "Hỗ trợ YouTube và TikTok; Douyin đang ở bản Beta",
+            "Paste a channel or profile link": "Dán liên kết kênh hoặc trang cá nhân",
+            "Channel link": "Liên kết kênh",
+            "Scan again": "Quét lại",
+            "Preview videos": "Xem trước video",
+            "Order": "Sắp xếp",
+            "Newest": "Mới nhất",
+            "Most viewed": "Nhiều lượt xem",
+            "Import limit": "Số lượng nhập",
+            "Duration": "Thời lượng",
+            "All videos": "Tất cả",
+            "Short videos": "Video ngắn",
+            "Long videos": "Video dài",
+            "Scan range": "Phạm vi quét",
+            "100 videos": "100 video",
+            "300 videos": "300 video",
+            "1000 videos": "1000 video",
+            "All available": "Toàn bộ",
+            "Access": "Quyền truy cập",
+            "Public videos": "Video công khai",
+            "Use Edge session": "Dùng phiên Edge",
+            "Use Chrome session": "Dùng phiên Chrome",
+            "Choose cookies.txt": "Chọn cookies.txt",
+            "Beta": "Beta",
+            "Channel videos": "Video trong kênh",
+            "Select all": "Chọn tất cả",
+            "Download selected": "Tải video đã chọn",
+            "Preview a channel to choose videos": "Xem trước kênh để chọn video",
+            "Downloaded videos are added to this batch without starting processing": "Video tải xong chỉ được thêm vào dự án và không tự chạy xử lý",
+            "Already in project": "Đã có trong dự án",
+            "Downloading": "Đang tải",
+            "Adding to project": "Đang thêm vào dự án",
+            "Imported": "Đã nhập",
+            "Ready": "Sẵn sàng",
+            "Views": "Lượt xem",
+            "Select video": "Chọn video",
+            "Retry": "Thử lại",
+            "Reading channel": "Đang đọc kênh",
+            "Reading channel videos": "Đang đọc danh sách video",
+            "Starting isolated Douyin Beta inspector": "Đang khởi động bộ đọc Douyin Beta",
+            "Previous import can be resumed": "Có thể tiếp tục phiên nhập trước",
+            "Adding downloaded videos to the project": "Đang thêm video đã tải vào dự án",
+            "Cancelling channel import": "Đang hủy nhập từ kênh",
+            "Channel inspection cancelled": "Đã hủy quét kênh",
+            "Import was interrupted. Retry this video.": "Phiên nhập đã bị gián đoạn. Hãy thử lại video này.",
+            "Download cancelled": "Đã hủy tải xuống",
+            "Channel import cancelled.": "Đã hủy nhập từ kênh.",
+            "Paste a channel or profile link first.": "Hãy dán liên kết kênh hoặc trang cá nhân trước.",
+            "Enter a valid HTTP or HTTPS channel link.": "Hãy nhập liên kết kênh HTTP hoặc HTTPS hợp lệ.",
+            "Only YouTube, TikTok, and Douyin channels are supported.": "Chỉ hỗ trợ kênh YouTube, TikTok và Douyin.",
+            "Paste a YouTube channel link, not an individual video link.": "Hãy dán liên kết kênh YouTube, không phải liên kết một video.",
+            "Paste a YouTube channel link.": "Hãy dán liên kết kênh YouTube.",
+            "Paste a TikTok profile link, not an individual video link.": "Hãy dán liên kết trang cá nhân TikTok, không phải liên kết một video.",
+            "Paste a Douyin profile link, not an individual video link.": "Hãy dán liên kết trang cá nhân Douyin, không phải liên kết một video.",
+            "Paste a Douyin profile link.": "Hãy dán liên kết trang cá nhân Douyin.",
+            "The channel returned no public videos.": "Kênh không trả về video công khai nào.",
+            "Browser session or cookies could not be read. Close the browser or choose cookies.txt and try again.": "Không thể đọc phiên trình duyệt hoặc cookie. Hãy đóng trình duyệt hoặc chọn cookies.txt rồi thử lại.",
+            "The destination project is no longer available.": "Dự án đích không còn khả dụng.",
+            "The destination project was deleted.": "Dự án đích đã bị xóa.",
             "Start queue": "Bắt đầu xử lý",
             "Stop queue": "Dừng hàng đợi",
             "Videos": "Video",
@@ -262,6 +366,8 @@ QtObject {
             "No source selected": "Chưa chọn video nguồn",
             "Choose a file to begin": "Chọn một tệp để bắt đầu",
             "Replace": "Thay thế",
+            "Replace with file": "Thay thế bằng tệp",
+            "Replace from link": "Thay thế từ liên kết",
             "Edit subtitle frame": "Chỉnh khung phụ đề",
 
             "Dubbing setup": "Thiết lập lồng tiếng",
@@ -365,6 +471,22 @@ QtObject {
             "Performance": "Hiệu năng",
             "Processing device": "Thiết bị xử lý",
             "Auto": "Tự động",
+            "Content type": "Loại nội dung",
+            "All YouTube videos": "Tất cả video YouTube",
+            "YouTube Shorts": "YouTube Shorts",
+            "Regular YouTube videos": "Video YouTube thường",
+            "Video posts": "Video",
+            "New single project": "Dự án đơn mới",
+            "New batch project": "Dự án hàng loạt mới",
+            "Create single project": "Tạo dự án đơn",
+            "Create batch project": "Tạo dự án hàng loạt",
+            "Platform": "Nền tảng",
+            "Douyin Beta": "Douyin Beta",
+            "Choose a platform, then paste its channel or profile link": "Chọn nền tảng, sau đó dán liên kết kênh hoặc trang cá nhân",
+            "Paste a YouTube channel link": "Dán liên kết kênh YouTube",
+            "Paste a TikTok profile link": "Dán liên kết trang cá nhân TikTok",
+            "Paste a Douyin profile link": "Dán liên kết trang cá nhân Douyin",
+            "The link does not match the selected platform.": "Liên kết không khớp với nền tảng đã chọn.",
             "GPU": "GPU",
             "CPU": "CPU",
             "GPU accelerated": "Tăng tốc GPU",

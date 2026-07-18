@@ -2,6 +2,7 @@ import argparse
 import gc
 import json
 import os
+import shutil
 import sys
 import traceback
 from pathlib import Path
@@ -17,7 +18,10 @@ _PROGRESS_PATH = None
 _MODEL_RUNTIME = None
 _TORCH_THREADING_CONFIGURED = False
 _FIRST_GENERATION_PENDING = True
-
+_MIN_GGUF_BYTES = 100 * 1024 * 1024
+_MIN_CPU_MODEL_DISK_BYTES = 2 * 1024 ** 3
+_MIN_GPU_MODEL_DISK_BYTES = 6 * 1024 ** 3
+_OUTPUT_TOKEN_BUCKETS = (24, 48, 96, 160, 256)
 
 def _configure_torch_threading(torch) -> None:
     """Configure process-wide Torch pools once, before CUDA probing starts work."""
@@ -168,27 +172,37 @@ def _build_prompt(
     *,
     include_context: bool = True,
 ) -> str:
+    context_block = ""
     if include_context:
-        context_lines = [
-            f"[{source_languages[context_index]}] {texts[context_index]}"
-            for context_index in _context_indices(texts, index)
+        context_indices = _context_indices(texts, index)
+        previous_context = "\n".join(
+            f"P{index - context_index} [{source_languages[context_index]}]: {texts[context_index]}"
+            for context_index in context_indices
+            if context_index < index
+        )
+        following_context = "\n".join(
+            f"N{context_index - index} [{source_languages[context_index]}]: {texts[context_index]}"
+            for context_index in context_indices
+            if context_index > index
+        )
+        context_parts = [
+            "[Background Information - reference only]",
+            f"Source language: {source_languages[index]}",
         ]
-        if context_lines:
-            return (
-                "[Background Information]\n"
-                + "\n".join(context_lines)
-                + "\n\n"
-                f"Please translate the following text into {target_language_name}, taking the provided "
-                "background information into consideration. Preserve the source text's brevity, structure, "
-                "numbers, symbols, and fragment form.\n\n"
-                "[Source Text]\n"
-                f"{texts[index]}"
-            )
+        if previous_context:
+            context_parts.append(f"[Previous Subtitles]\n{previous_context}")
+        if following_context:
+            context_parts.append(f"[Following Subtitles]\n{following_context}")
+        context_parts.append("[End Background Information]")
+        context_block = "\n".join(context_parts) + "\n\n"
+
     return (
-        f"Translate the following text into {target_language_name}. Note that you should only output "
-        "the translated result without any additional explanation. Preserve the source text's brevity, "
-        "structure, numbers, symbols, and fragment form:\n\n"
-        f"{texts[index]}"
+        f"{context_block}Please accurately translate the [Source Text] into {target_language_name}, "
+        "taking the provided background information into consideration. Translate only the [Source Text], "
+        "not the background, and never copy a background sentence even when its wording is similar. Preserve its "
+        "meaning, names, numbers, and percentages exactly; do not paraphrase, expand, or omit information. "
+        "Only output the translated result without any additional explanation.\n\n"
+        f"[Source Text]\n{texts[index]}"
     )
 
 
@@ -224,6 +238,12 @@ def _clean_single_translation(response: str) -> str:
     return parsed.strip().strip('"').strip()
 
 
+def _output_token_budget(source_token_count: int) -> int:
+    """Bound generation by the current subtitle, never by a longer batch peer."""
+    requested = max(16, source_token_count * 3 + 8)
+    return next((bucket for bucket in _OUTPUT_TOKEN_BUCKETS if requested <= bucket), _OUTPUT_TOKEN_BUCKETS[-1])
+
+
 def _encode_prompts(tokenizer, torch, device: str, prompts: list[str]):
     rendered_prompts = [
         tokenizer.apply_chat_template(
@@ -254,13 +274,14 @@ def _translate_prompt_batch(
     if device == "cpu-gguf":
         results = []
         for prompt, source_text in zip(prompts, source_texts):
-            output_budget = min(384, max(48, len(source_text) * 2 + 24))
+            estimated_source_tokens = max(len(source_text.split()) * 2, len(source_text) // 4, 1)
+            output_budget = _output_token_budget(estimated_source_tokens)
             response = model.create_chat_completion(
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                top_p=0.6,
-                top_k=20,
-                repeat_penalty=1.05,
+                temperature=0.0,
+                top_p=1.0,
+                top_k=0,
+                repeat_penalty=1.0,
                 max_tokens=output_budget,
             )
             try:
@@ -270,63 +291,76 @@ def _translate_prompt_batch(
             results.append(_clean_single_translation(content))
         return results
 
-    encoded = _encode_prompts(tokenizer, torch, device, prompts)
-    input_length = encoded["input_ids"].shape[-1]
-    context_limit = getattr(model.config, "max_position_embeddings", 32768)
-    available_output = context_limit - input_length
-    if available_output < 64:
-        raise RuntimeError("Translation context window is full before the subtitle batch can be generated.")
-    longest_source_tokens = max(
-        len(tokenizer.encode(text, add_special_tokens=False))
-        for text in source_texts
-    )
-    output_budget = min(384, max(48, longest_source_tokens * 4 + 16))
-    first_generation = _FIRST_GENERATION_PENDING
-    if first_generation:
-        _emit_diagnostic(
-            "first_generation_start",
-            torch,
-            prompt_count=len(prompts),
-            input_tokens=input_length,
-            output_token_budget=min(output_budget, available_output),
-        )
-    with torch.inference_mode():
-        generated = model.generate(
-            **encoded,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.6,
-            top_k=20,
-            repetition_penalty=1.05,
-            max_new_tokens=min(output_budget, available_output),
-            pad_token_id=tokenizer.pad_token_id,
-        )
-    if first_generation:
-        _FIRST_GENERATION_PENDING = False
-        _emit_diagnostic("first_generation_complete", torch, prompt_count=len(prompts))
-    if len(generated) != len(prompts):
+    grouped_indices: dict[int, list[int]] = {}
+    for index, source_text in enumerate(source_texts):
+        source_tokens = len(tokenizer.encode(source_text, add_special_tokens=False))
+        grouped_indices.setdefault(_output_token_budget(source_tokens), []).append(index)
+
+    results: list[str | None] = [None] * len(prompts)
+    for output_budget, indices in grouped_indices.items():
+        encoded = _encode_prompts(tokenizer, torch, device, [prompts[index] for index in indices])
+        input_length = encoded["input_ids"].shape[-1]
+        context_limit = getattr(model.config, "max_position_embeddings", 32768)
+        available_output = context_limit - input_length
+        if available_output < 16:
+            raise RuntimeError("Translation context window is full before the subtitle batch can be generated.")
+        first_generation = _FIRST_GENERATION_PENDING
+        if first_generation:
+            _emit_diagnostic(
+                "first_generation_start",
+                torch,
+                prompt_count=len(indices),
+                input_tokens=input_length,
+                output_token_budget=min(output_budget, available_output),
+            )
+        with torch.inference_mode():
+            generated = model.generate(
+                **encoded,
+                do_sample=False,
+                max_new_tokens=min(output_budget, available_output),
+                pad_token_id=tokenizer.pad_token_id,
+            )
+        if first_generation:
+            _FIRST_GENERATION_PENDING = False
+            _emit_diagnostic("first_generation_complete", torch, prompt_count=len(indices))
+        if len(generated) != len(indices):
+            raise RuntimeError("HY-MT2 inference did not return one result per subtitle prompt.")
+        for index, output in zip(indices, generated):
+            results[index] = _clean_single_translation(
+                tokenizer.decode(output[input_length:], skip_special_tokens=True).strip()
+            )
+    if any(result is None for result in results):
         raise RuntimeError("HY-MT2 inference did not return one result per subtitle prompt.")
-    return [
-        _clean_single_translation(
-            tokenizer.decode(output[input_length:], skip_special_tokens=True).strip()
-        )
-        for output in generated
-    ]
+    return [result for result in results if result is not None]
 
 
 def _cpu_model_path() -> str:
     from huggingface_hub import hf_hub_download
 
-    from autodub.config import HYMT2_CPU_MODEL_FILE, HYMT2_CPU_MODEL_REPO, MODELS_DIR
+    from autodub.config import (
+        HYMT2_CPU_MODEL_FILE,
+        HYMT2_CPU_MODEL_REPO,
+        HYMT2_CPU_MODEL_REVISION,
+        MODELS_DIR,
+    )
+    from autodub.core.model_integrity import ModelIntegrityError, verify_cpu_model
     from autodub.core.paths import bundle_root
 
     model_directory = Path(MODELS_DIR) / "hymt2-gguf"
     model_path = model_directory / HYMT2_CPU_MODEL_FILE
-    if model_path.is_file():
-        return str(model_path)
+    if model_path.is_file() and model_path.stat().st_size >= _MIN_GGUF_BYTES:
+        try:
+            return str(verify_cpu_model(model_path))
+        except ModelIntegrityError as exc:
+            raise RuntimeError(f"Installed HY-MT2 CPU model failed integrity verification: {exc}") from exc
     bundled_model = bundle_root() / "models" / "hymt2-gguf" / HYMT2_CPU_MODEL_FILE
-    if bundled_model.is_file():
-        return str(bundled_model)
+    if bundled_model.is_file() and bundled_model.stat().st_size >= _MIN_GGUF_BYTES:
+        try:
+            return str(verify_cpu_model(bundled_model))
+        except ModelIntegrityError as exc:
+            raise RuntimeError(f"Bundled HY-MT2 CPU model failed integrity verification: {exc}") from exc
+    if model_path.exists():
+        model_path.unlink(missing_ok=True)
     _emit_event(
         {
             "event": "status",
@@ -334,12 +368,18 @@ def _cpu_model_path() -> str:
         }
     )
     model_directory.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(model_directory).free < _MIN_CPU_MODEL_DISK_BYTES:
+        raise RuntimeError(
+            f"At least 2 GB of free disk space is required to install {HYMT2_CPU_MODEL_FILE}."
+        )
     try:
-        return hf_hub_download(
+        downloaded = Path(hf_hub_download(
             repo_id=HYMT2_CPU_MODEL_REPO,
             filename=HYMT2_CPU_MODEL_FILE,
+            revision=HYMT2_CPU_MODEL_REVISION,
             local_dir=str(model_directory),
-        )
+        ))
+        return str(verify_cpu_model(downloaded))
     except Exception as exc:
         raise RuntimeError(
             "The HY-MT2 CPU model is not installed. Connect once to download the official "
@@ -347,36 +387,92 @@ def _cpu_model_path() -> str:
         ) from exc
 
 
+def _transformers_snapshot_complete(snapshot_path: Path) -> bool:
+    required_files = ("config.json", "tokenizer_config.json", "tokenizer.json")
+    if not snapshot_path.is_dir() or not all(
+        (snapshot_path / filename).is_file() for filename in required_files
+    ):
+        return False
+    single_weights = snapshot_path / "model.safetensors"
+    if single_weights.is_file() and single_weights.stat().st_size > 0:
+        return True
+    index_path = snapshot_path / "model.safetensors.index.json"
+    if not index_path.is_file():
+        return False
+    try:
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        shards = set((index.get("weight_map") or {}).values())
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
+    return bool(shards) and all(
+        (snapshot_path / shard).is_file() and (snapshot_path / shard).stat().st_size > 0
+        for shard in shards
+    )
+
+
 def _local_transformers_model_source(model_name: str) -> tuple[str, bool]:
     """Resolve an installed Hub model to its snapshot so startup stays offline."""
-    from autodub.config import HF_HOME
+    from autodub.config import HF_HOME, HYMT2_MODEL_REVISION
+    from autodub.core.model_integrity import ModelIntegrityError, verify_gpu_model
+    from autodub.core.paths import bundle_root
 
     configured_path = Path(model_name).expanduser()
-    if configured_path.is_dir():
-        return str(configured_path.resolve()), True
+    if _transformers_snapshot_complete(configured_path):
+        try:
+            return str(verify_gpu_model(configured_path)), True
+        except ModelIntegrityError as exc:
+            raise RuntimeError(f"Configured HY-MT2 GPU model failed integrity verification: {exc}") from exc
+    if configured_path.exists():
+        raise RuntimeError(f"Configured HY-MT2 model directory is incomplete: {configured_path}")
 
+    bundled_model = bundle_root() / "models" / "hymt2-transformers"
+    if _transformers_snapshot_complete(bundled_model):
+        try:
+            return str(verify_gpu_model(bundled_model)), True
+        except ModelIntegrityError as exc:
+            raise RuntimeError(f"Bundled HY-MT2 GPU model failed integrity verification: {exc}") from exc
+    if bundled_model.exists():
+        raise RuntimeError(f"Bundled HY-MT2 model is incomplete: {bundled_model}")
+
+    from huggingface_hub import snapshot_download
+
+    snapshot_path = None
     try:
-        from huggingface_hub import snapshot_download
-
         snapshot_path = Path(
             snapshot_download(
                 repo_id=model_name,
+                revision=HYMT2_MODEL_REVISION,
                 cache_dir=str(Path(HF_HOME) / "hub"),
                 local_files_only=True,
             )
         )
     except Exception:
-        return model_name, False
+        pass
 
-    required_files = ("config.json", "tokenizer_config.json", "tokenizer.json")
-    has_weights = (snapshot_path / "model.safetensors").is_file() or (
-        snapshot_path / "model.safetensors.index.json"
-    ).is_file()
-    if snapshot_path.is_dir() and has_weights and all(
-        (snapshot_path / filename).is_file() for filename in required_files
-    ):
-        return str(snapshot_path.resolve()), True
-    return model_name, False
+    if snapshot_path is not None and _transformers_snapshot_complete(snapshot_path):
+        try:
+            return str(verify_gpu_model(snapshot_path)), True
+        except ModelIntegrityError as exc:
+            raise RuntimeError(f"Cached HY-MT2 GPU model failed integrity verification: {exc}") from exc
+    cache_root = Path(HF_HOME)
+    cache_root.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(cache_root).free < _MIN_GPU_MODEL_DISK_BYTES:
+        raise RuntimeError(
+            "At least 6 GB of free disk space is required to install the HY-MT2 GPU model."
+        )
+    try:
+        snapshot_path = Path(
+            snapshot_download(
+                repo_id=model_name,
+                revision=HYMT2_MODEL_REVISION,
+                cache_dir=str(Path(HF_HOME) / "hub"),
+            )
+        )
+        return str(verify_gpu_model(snapshot_path)), True
+    except Exception as exc:
+        raise RuntimeError(
+            f"Unable to install pinned HY-MT2 GPU revision {HYMT2_MODEL_REVISION}."
+        ) from exc
 
 
 def _load_model(model_name: str):
@@ -432,7 +528,14 @@ def _load_model(model_name: str):
     torch = torch_runtime or _prepare_torch_runtime()
     from transformers import AutoModelForCausalLM, AutoTokenizer
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    if device == "cuda":
+        requested_dtype = getattr(profile, "hymt2_dtype", "float16")
+        bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
+        dtype = torch.bfloat16 if requested_dtype == "bfloat16" and bf16_supported else torch.float16
+        precision_label = "BF16" if dtype == torch.bfloat16 else "FP16"
+    else:
+        dtype = torch.float32
+        precision_label = "FP32"
     model_source, local_files_only = _local_transformers_model_source(model_name)
     _emit_diagnostic(
         "tokenizer_load_start",
@@ -468,7 +571,7 @@ def _load_model(model_name: str):
     if staged_cuda_load:
         # Loading a single large safetensors shard directly into CUDA through
         # Transformers' meta-model path can trigger a native storage access
-        # violation on Windows. Stage the same BF16 checkpoint in system
+        # violation on Windows. Stage the same checkpoint in system
         # memory, then transfer the complete model to CUDA.
         load_options["low_cpu_mem_usage"] = False
         load_strategy = "staged_cpu_to_cuda"
@@ -488,7 +591,7 @@ def _load_model(model_name: str):
         {
             "event": "status",
             "detail": (
-                "Loading full HY-MT2 BF16 weights in staged GPU mode"
+                f"Loading full HY-MT2 {precision_label} weights in staged GPU mode"
                 if staged_cuda_load
                 else "Loading HY-MT2 weights"
             ),
@@ -504,17 +607,16 @@ def _load_model(model_name: str):
         load_strategy=load_strategy,
     )
     if staged_cuda_load:
-        _emit_event({"event": "status", "detail": "Transferring full HY-MT2 BF16 model to CUDA"})
+        _emit_event({"event": "status", "detail": f"Transferring full HY-MT2 {precision_label} model to CUDA"})
         _emit_diagnostic("cuda_transfer_start", torch, model=model_name, dtype=str(dtype))
         model.to(device)
         _emit_diagnostic("cuda_transfer_complete", torch, model=model_name, dtype=str(dtype))
     else:
         _emit_event({"event": "status", "detail": f"HY-MT2 weights loaded directly on {device}"})
-    # Match Tencent's recommended inference parameters for the 1.8B checkpoint.
-    model.generation_config.do_sample = True
-    model.generation_config.temperature = 0.7
-    model.generation_config.top_p = 0.6
-    model.generation_config.top_k = 20
+    # Tencent's direct Transformers example uses deterministic generate().
+    # Subtitle production values faithful, repeatable output over sampling
+    # variation because one wrong noun corrupts both captions and TTS.
+    model.generation_config.do_sample = False
     model.eval()
     _emit_diagnostic("model_ready", torch, model=model_name, dtype=str(dtype), device=device)
     _emit_event({"event": "status", "detail": "HY-MT2 model is ready"})

@@ -16,8 +16,10 @@ from huggingface_hub import hf_hub_download  # noqa: E402
 from autodub.config import (  # noqa: E402
     HYMT2_CPU_MODEL_FILE,
     HYMT2_CPU_MODEL_REPO,
+    HYMT2_CPU_MODEL_REVISION,
     MODELS_DIR,
 )
+from autodub.core.model_integrity import verify_cpu_model  # noqa: E402
 
 
 def main() -> int:
@@ -26,9 +28,11 @@ def main() -> int:
     model_path = hf_hub_download(
         repo_id=HYMT2_CPU_MODEL_REPO,
         filename=HYMT2_CPU_MODEL_FILE,
+        revision=HYMT2_CPU_MODEL_REVISION,
         local_dir=str(destination),
     )
-    print(f"HY-MT2 CPU model ready: {model_path}")
+    verify_cpu_model(Path(model_path))
+    print(f"HY-MT2 CPU model ready at pinned revision {HYMT2_CPU_MODEL_REVISION}: {model_path}")
     return 0
 
 

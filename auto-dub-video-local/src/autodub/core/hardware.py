@@ -43,6 +43,8 @@ class HardwareCapabilities:
     cpu_manufacturer: str = ""
     cpu_physical_cores: int = 0
     cpu_max_mhz: int = 0
+    cuda_compute_capability: tuple[int, int] = (0, 0)
+    cuda_bf16_supported: bool = False
 
     @property
     def gpu_supported(self) -> bool:
@@ -75,6 +77,7 @@ class RuntimeProfile:
     warm_whisper_on_startup: bool
     warm_hymt2_on_startup: bool
     translation_idle_seconds: int
+    hymt2_dtype: str = "float16"
 
     @property
     def total_ram_gib(self) -> float:
@@ -162,6 +165,20 @@ def _cuda_free_memory_bytes() -> int:
     except Exception:
         pass
     return 0
+
+
+def _cuda_precision_details() -> tuple[tuple[int, int], bool]:
+    """Return the active CUDA architecture and its safe HY-MT2 precision."""
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return (0, 0), False
+        capability = tuple(int(value) for value in torch.cuda.get_device_capability(0))
+        bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
+        return capability, bf16_supported
+    except Exception:
+        return (0, 0), False
 
 
 def _power_status() -> tuple[bool | None, int | None]:
@@ -282,6 +299,9 @@ def _windows_system_info() -> dict:
 def detect_hardware_capabilities() -> HardwareCapabilities:
     """Probe live hardware telemetry without changing the active runtime profile."""
     cuda_available, cuda_name = _cuda_details()
+    cuda_compute_capability, cuda_bf16_supported = (
+        _cuda_precision_details() if cuda_available else ((0, 0), False)
+    )
     ac_powered, battery_percent = _power_status()
     system_info = _windows_system_info()
     return HardwareCapabilities(
@@ -301,6 +321,8 @@ def detect_hardware_capabilities() -> HardwareCapabilities:
         cpu_manufacturer=system_info.get("cpu_manufacturer", ""),
         cpu_physical_cores=int(system_info.get("cpu_physical_cores", 0)),
         cpu_max_mhz=int(system_info.get("cpu_max_mhz", 0)),
+        cuda_compute_capability=cuda_compute_capability,
+        cuda_bf16_supported=cuda_bf16_supported,
     )
 
 
@@ -384,13 +406,13 @@ def runtime_profile() -> RuntimeProfile:
             logical_cpu_count=logical_cpus,
             cpu_threads=max(1, min(8, logical_cpus - 1 if logical_cpus > 2 else logical_cpus)),
             whisper_batch_size=8 if low_vram else 16,
-            # A supported CUDA device always runs the official BF16 checkpoint.
-            # The low-memory profile controls batch sizes and model hand-off,
-            # not translation quality or model format.
+            # CUDA keeps the official checkpoint. Precision is selected from
+            # the active GPU architecture without changing model quality.
             hymt2_backend="transformers",
             warm_whisper_on_startup=True,
             warm_hymt2_on_startup=True,
             translation_idle_seconds=0,
+            hymt2_dtype="bfloat16" if capabilities.cuda_bf16_supported else "float16",
         )
 
     total_gib = total_ram / _GIB if total_ram else 16
@@ -432,6 +454,7 @@ def runtime_profile() -> RuntimeProfile:
         warm_whisper_on_startup=key == "cpu_balanced",
         warm_hymt2_on_startup=False,
         translation_idle_seconds=idle_seconds,
+        hymt2_dtype="float32",
     )
 
 

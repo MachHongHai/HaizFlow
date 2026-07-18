@@ -38,7 +38,10 @@ def collect_batch_video_paths(paths):
                 with os.scandir(path) as entries:
                     for entry in sorted(entries, key=lambda item: item.name.lower()):
                         if entry.is_file():
-                            add_if_supported(entry.path)
+                            if os.path.splitext(entry.name)[1].lower() in SUPPORTED_VIDEO_EXTENSIONS:
+                                add_if_supported(entry.path)
+                            else:
+                                invalid_names.append(entry.name)
             except OSError as exc:
                 invalid_names.append(f"{os.path.basename(path) or path}: {exc}")
         elif os.path.isfile(path):

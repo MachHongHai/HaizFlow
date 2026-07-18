@@ -16,11 +16,7 @@ _WARM_ASR_MODEL = None
 _WARM_DEVICE = None
 _AUDIO_SAMPLE_RATE = 16000
 _SEGMENT_LANGUAGE_CONFIDENCE = 0.55
-_MAX_SENTENCE_GAP_SECONDS = 1.0
-_MAX_SENTENCE_DURATION_SECONDS = 15.0
-_MAX_SENTENCE_CHARACTERS = 280
-TIMING_SOURCE = "faster-whisper-native-words-v1"
-_SENTENCE_END_RE = re.compile(r"[.!?\u2026\u3002\uff01\uff1f]+[\"'\u201d\u2019)\]}]*$")
+TIMING_SOURCE = "whisperx-aligned-sentences-v2"
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 
 
@@ -33,12 +29,21 @@ def warm_whisperx_model():
         profile = runtime_profile()
         device = "cuda" if profile.cuda_available else "cpu"
         compute_type = "float16" if device == "cuda" else "int8"
-        _WARM_ASR_MODEL = whisperx.load_model(
-            WHISPER_MODEL,
-            device,
-            compute_type=compute_type,
-            threads=profile.cpu_threads,
-        )
+        try:
+            model = whisperx.load_model(
+                WHISPER_MODEL,
+                device,
+                compute_type=compute_type,
+                threads=profile.cpu_threads,
+            )
+        except Exception:
+            _WARM_ASR_MODEL = None
+            _WARM_DEVICE = None
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            raise
+        _WARM_ASR_MODEL = model
         _WARM_DEVICE = device
         return True
 
@@ -84,93 +89,6 @@ def _merge_transcript_text(left: str, right: str) -> str:
     if right[:1] in ",.;:!?%)]}\u3001\u3002\uff0c\uff01\uff1f":
         return left + right
     return f"{left} {right}"
-
-
-def _normalize_native_segment(segment) -> dict | None:
-    text = str(_value(segment, "text", "") or "")
-    words = list(_value(segment, "words", None) or [])
-    timed_words = [
-        word
-        for word in words
-        if _value(word, "start") is not None and _value(word, "end") is not None
-    ]
-    if timed_words:
-        start = float(_value(timed_words[0], "start"))
-        end = float(_value(timed_words[-1], "end"))
-    else:
-        start = float(_value(segment, "start", 0.0) or 0.0)
-        end = float(_value(segment, "end", start) or start)
-    if not text.strip() or end <= start:
-        return None
-    return {
-        "start": round(max(0.0, start), 3),
-        "end": round(max(start, end), 3),
-        "text": text,
-    }
-
-
-def _group_native_segments(native_segments) -> list[dict]:
-    """Build complete spoken sentences from native timestamp fragments.
-
-    Boundaries come only from Whisper's own timed fragments, punctuation and
-    actual pauses. No fixed-duration audio window is introduced.
-    """
-    grouped: list[dict] = []
-    current = None
-    for native_segment in native_segments:
-        segment = _normalize_native_segment(native_segment)
-        if segment is None:
-            continue
-        if current is None:
-            current = segment
-            continue
-
-        gap = max(0.0, segment["start"] - current["end"])
-        combined_text = _merge_transcript_text(current["text"], segment["text"])
-        combined_duration = segment["end"] - current["start"]
-        can_join = (
-            not _SENTENCE_END_RE.search(current["text"].strip())
-            and gap <= _MAX_SENTENCE_GAP_SECONDS
-            and combined_duration <= _MAX_SENTENCE_DURATION_SECONDS
-            and len(combined_text) <= _MAX_SENTENCE_CHARACTERS
-        )
-        if can_join:
-            current["end"] = segment["end"]
-            current["text"] = combined_text
-            continue
-
-        current["text"] = current["text"].strip()
-        grouped.append(current)
-        current = segment
-
-    if current is not None:
-        current["text"] = current["text"].strip()
-        grouped.append(current)
-    return grouped
-
-
-def _transcribe_with_native_timestamps(asr_model, audio, job_id: str):
-    """Transcribe once and retain Faster-Whisper's language-neutral word timing."""
-    native_segments, info = asr_model.model.transcribe(
-        audio,
-        language=None,
-        beam_size=5,
-        word_timestamps=True,
-        vad_filter=True,
-        condition_on_previous_text=True,
-        multilingual=True,
-        language_detection_segments=3,
-        hallucination_silence_threshold=1.0,
-    )
-    sentence_segments = _group_native_segments(native_segments)
-    detected_language = getattr(info, "language", None)
-    if not sentence_segments:
-        raise RuntimeError("Whisper did not return any timed speech segments.")
-    log_to_job(
-        job_id,
-        f"Native word timestamps prepared {len(sentence_segments)} complete sentence segment(s).",
-    )
-    return sentence_segments, detected_language
 
 
 def _detect_segment_languages(asr_model, audio, segments, fallback_language: str, job_id: str):
@@ -233,17 +151,9 @@ def _retranscribe_mixed_language_segments(asr_model, audio, segments, primary_la
         try:
             log_to_job(job_id, f"Re-transcribing sentence {index} with detected language '{language}'.")
             clip = audio[int(start * _AUDIO_SAMPLE_RATE): int(end * _AUDIO_SAMPLE_RATE)]
-            local_segments, _info = asr_model.model.transcribe(
-                clip,
-                language=language,
-                beam_size=5,
-                word_timestamps=False,
-                vad_filter=False,
-                condition_on_previous_text=False,
-                multilingual=False,
-            )
+            local_result = asr_model.transcribe(clip, batch_size=1, language=language)
             corrected_text = ""
-            for local_segment in local_segments:
+            for local_segment in local_result.get("segments", []):
                 corrected_text = _merge_transcript_text(
                     corrected_text,
                     str(_value(local_segment, "text", "") or ""),
@@ -255,6 +165,83 @@ def _retranscribe_mixed_language_segments(asr_model, audio, segments, primary_la
         corrected_segments.append(corrected_segment)
 
     return corrected_segments
+
+
+def _language_for_aligned_segment(segment, source_segments, fallback_language: str) -> tuple[str, float]:
+    """Carry language metadata to the aligned sentence with the greatest overlap."""
+    start = float(segment.get("start", 0.0))
+    end = float(segment.get("end", start))
+    midpoint = (start + end) / 2
+    best_source = None
+    best_overlap = -1.0
+
+    for source in source_segments:
+        source_start = float(source.get("start", 0.0))
+        source_end = float(source.get("end", source_start))
+        overlap = max(0.0, min(end, source_end) - max(start, source_start))
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_source = source
+        elif overlap == best_overlap and best_source is not None:
+            source_midpoint = (source_start + source_end) / 2
+            best_midpoint = (
+                float(best_source.get("start", 0.0)) + float(best_source.get("end", 0.0))
+            ) / 2
+            if abs(midpoint - source_midpoint) < abs(midpoint - best_midpoint):
+                best_source = source
+
+    if not best_source:
+        return fallback_language, 0.0
+    return (
+        best_source.get("language") or fallback_language,
+        float(best_source.get("language_confidence", 0.0)),
+    )
+
+
+def _align_segments_by_language(audio, segments, device: str, job_id: str, progress_callback=None):
+    """Apply the matching WhisperX alignment model to each detected language."""
+    grouped_segments = {}
+    ordered_languages = []
+    for segment in segments:
+        language = segment.get("language") or "en"
+        if language not in grouped_segments:
+            grouped_segments[language] = []
+            ordered_languages.append(language)
+        grouped_segments[language].append(segment)
+
+    aligned_segments = []
+    for language in ordered_languages:
+        language_segments = grouped_segments[language]
+        align_model = None
+        try:
+            log_to_job(job_id, f"Loading alignment model for language '{language}'.")
+            if progress_callback:
+                progress_callback("loading_alignment", f"Loading subtitle alignment for {language}")
+            align_model, metadata = whisperx.load_align_model(language_code=language, device=device)
+            if progress_callback:
+                progress_callback("aligning", f"Aligning {language} subtitles")
+            aligned_result = whisperx.align(
+                language_segments,
+                align_model,
+                metadata,
+                audio,
+                device,
+                return_char_alignments=False,
+            )
+            aligned_segments.extend(aligned_result["segments"])
+        except Exception as exc:
+            log_to_job(
+                job_id,
+                f"WARNING: Alignment failed or is unsupported for '{language}'. Using Whisper timestamps: {exc}",
+            )
+            aligned_segments.extend(language_segments)
+        finally:
+            if align_model is not None:
+                del align_model
+            _release_cuda(job_id, f"{language} alignment")
+
+    aligned_segments.sort(key=lambda segment: float(segment.get("start", 0.0)))
+    return aligned_segments
 
 
 def _validate_timestamp_invariants(segments: list[dict], audio_duration: float) -> None:
@@ -277,14 +264,15 @@ def _validate_timestamp_invariants(segments: list[dict], audio_duration: float) 
 
 
 def transcribe(audio_path: str, output_json_path: str, source_language: str, job_id: str, progress_callback=None):
-    """Transcribe with immutable native timestamps for every source language."""
+    """Transcribe through WhisperX and align sentence timestamps per language."""
     log_to_job(job_id, f"Initializing WhisperX with model '{WHISPER_MODEL}'.")
     profile = runtime_profile()
     device = "cuda" if profile.cuda_available else "cpu"
     compute_type = "float16" if device == "cuda" else "int8"
     log_to_job(
         job_id,
-        f"WhisperX device: {device}, compute type: {compute_type}, threads: {profile.cpu_threads}.",
+        f"WhisperX device: {device}, compute type: {compute_type}, "
+        f"batch size: {profile.whisper_batch_size}, threads: {profile.cpu_threads}.",
     )
 
     asr_model = None
@@ -310,13 +298,42 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, job
         if source_language != "auto":
             log_to_job(job_id, f"Ignoring legacy source language '{source_language}'; using automatic detection.")
 
-        log_to_job(job_id, "Running continuous transcription with native word timestamps.")
+        log_to_job(job_id, "Running WhisperX batched transcription with automatic language detection.")
         if progress_callback:
-            progress_callback("transcribing", "Transcribing speech with native timestamps")
-        sentence_segments, detected_language = _transcribe_with_native_timestamps(asr_model, audio, job_id)
+            progress_callback("transcribing", "Transcribing speech")
+        result = asr_model.transcribe(
+            audio,
+            batch_size=profile.whisper_batch_size,
+            language=None,
+        )
+        detected_language = result.get("language")
+        initial_segments = [
+            {
+                **segment,
+                "language": detected_language or "en",
+                "language_confidence": 1.0,
+            }
+            for segment in result.get("segments", [])
+            if segment.get("text", "").strip()
+        ]
+        if not initial_segments:
+            raise RuntimeError("WhisperX did not return any speech segments.")
         log_to_job(job_id, f"Transcription completed. Primary detected language: '{detected_language}'.")
         if progress_callback:
             progress_callback("transcribed", f"Detected {detected_language or 'unknown'} speech")
+
+        if profile.cuda_available:
+            sentence_segments = _align_segments_by_language(
+                audio,
+                initial_segments,
+                device,
+                job_id,
+                progress_callback=progress_callback,
+            )
+        else:
+            sentence_segments = initial_segments
+            log_to_job(job_id, "CPU mode: using WhisperX sentence boundaries before final alignment.")
+        if progress_callback:
             progress_callback("segmenting", f"Prepared {len(sentence_segments)} complete sentences")
 
         source_segments = _detect_segment_languages(
@@ -333,21 +350,35 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, job
             detected_language or "en",
             job_id,
         )
-        _validate_timestamp_invariants(source_segments, len(audio) / _AUDIO_SAMPLE_RATE)
-        if progress_callback:
-            progress_callback("detecting_languages", f"Validated {len(source_segments)} timed sentences")
+        aligned_segments = _align_segments_by_language(
+            audio,
+            source_segments,
+            device,
+            job_id,
+            progress_callback=None,
+        )
 
-        output_segments = [
-            {
-                "start": round(float(segment["start"]), 3),
-                "end": round(float(segment["end"]), 3),
-                "text": segment["text"].strip(),
-                "language": segment.get("language") or detected_language or "en",
-                "language_confidence": round(float(segment.get("language_confidence", 0.0)), 3),
-                "timing_source": TIMING_SOURCE,
-            }
-            for segment in source_segments
-        ]
+        output_segments = []
+        for segment in aligned_segments:
+            language, confidence = _language_for_aligned_segment(
+                segment,
+                source_segments,
+                detected_language or "en",
+            )
+            output_segments.append(
+                {
+                    "start": round(float(segment["start"]), 3),
+                    "end": round(float(segment["end"]), 3),
+                    "text": segment["text"].strip(),
+                    "language": language,
+                    "language_confidence": round(confidence, 3),
+                    "timing_source": TIMING_SOURCE,
+                }
+            )
+
+        _validate_timestamp_invariants(output_segments, len(audio) / _AUDIO_SAMPLE_RATE)
+        if progress_callback:
+            progress_callback("detecting_languages", f"Validated {len(output_segments)} timed sentences")
         with open(output_json_path, "w", encoding="utf-8") as file:
             json.dump(output_segments, file, ensure_ascii=False, indent=2)
 
