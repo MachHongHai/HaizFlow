@@ -8,23 +8,29 @@ import "."
 Item {
     id: root
 
-    signal requestBack()
-    signal openVideoDetail()
-    signal requestBatchSettings()
-    signal requestUrlImport()
-    signal requestChannelImport()
+    signal requestBack
+    signal openVideoDetail
+    signal requestBatchSettings
+    signal requestUrlImport
+    signal requestChannelImport
 
     property bool dropActive: false
+    readonly property bool hasChannelImport: AppController.hasChannelImportSession
 
     opacity: visible ? 1 : 0
     transform: Translate {
         y: root.visible ? 0 : 8
         Behavior on y {
-            NumberAnimation { duration: Theme.motionStandard; easing.type: Easing.OutCubic }
+            NumberAnimation {
+                duration: Theme.motionStandard
+                easing.type: Easing.OutCubic
+            }
         }
     }
     Behavior on opacity {
-        NumberAnimation { duration: Theme.motionStandard }
+        NumberAnimation {
+            duration: Theme.motionStandard
+        }
     }
 
     ColumnLayout {
@@ -230,7 +236,7 @@ Item {
                 }
 
                 AppButton {
-                    text: I18n.t("Import channel")
+                    text: root.hasChannelImport ? I18n.t("View progress") : I18n.t("Import channel")
                     iconGlyph: "\uE896"
                     tone: "primary"
                     onClicked: root.requestChannelImport()
@@ -240,14 +246,14 @@ Item {
             DropArea {
                 anchors.fill: parent
                 keys: ["text/uri-list"]
-                onEntered: function(drag) {
+                onEntered: function (drag) {
                     if (drag.hasUrls) {
                         root.dropActive = true
                         drag.accept()
                     }
                 }
                 onExited: root.dropActive = false
-                onDropped: function(drop) {
+                onDropped: function (drop) {
                     root.dropActive = false
                     if (!drop.urls || drop.urls.length === 0)
                         return
@@ -259,10 +265,87 @@ Item {
             }
 
             Behavior on color {
-                ColorAnimation { duration: Theme.motionFast }
+                ColorAnimation {
+                    duration: Theme.motionFast
+                }
             }
             Behavior on border.color {
-                ColorAnimation { duration: Theme.motionFast }
+                ColorAnimation {
+                    duration: Theme.motionFast
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? 102 : 0
+            visible: root.hasChannelImport
+            radius: Theme.radius
+            color: AppController.channelImportBusy ? Theme.interactiveMuted : Theme.surfaceElevated
+            border.width: 1
+            border.color: AppController.channelImportBusy ? Theme.focus : Theme.outline
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: Theme.space16
+                spacing: Theme.space12
+
+                AppIcon {
+                    Layout.preferredWidth: 28
+                    Layout.preferredHeight: 28
+                    glyph: "\uE896"
+                    iconColor: AppController.channelImportBusy ? Theme.interactive : Theme.textMuted
+                    iconSize: Theme.iconLarge
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.space8
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: AppController.channelImportName.length > 0 ? AppController.channelImportName : I18n.t("Import channel")
+                            color: Theme.text
+                            font.pixelSize: Theme.body
+                            font.weight: Font.DemiBold
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            text: qsTr("%1 / %2").arg(AppController.channelImportImportedCount).arg(AppController.channelImportCandidateCount)
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            textFormat: Text.PlainText
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: I18n.channelImportStatus(AppController.channelImportStatus)
+                        color: AppController.channelImportFailedCount > 0 ? Theme.warning : Theme.textMuted
+                        font.pixelSize: Theme.caption
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                    }
+
+                    AppProgressBar {
+                        Layout.fillWidth: true
+                        visible: AppController.channelImportBusy
+                        value: AppController.channelImportProgress
+                    }
+                }
+
+                AppButton {
+                    text: I18n.t("View progress")
+                    iconGlyph: "\uE76C"
+                    tone: "secondary"
+                    onClicked: root.requestChannelImport()
+                }
             }
         }
 

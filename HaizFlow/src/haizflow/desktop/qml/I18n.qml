@@ -236,6 +236,7 @@ QtObject {
             "Delete batch": "Xóa batch",
             "Add videos": "Thêm video",
             "Import channel": "Tải từ kênh",
+            "View progress": "Xem tiến trình",
             "Add folder": "Thêm thư mục",
             "Import from channel": "Nhập video từ kênh",
             "Cancel import": "Hủy nhập",

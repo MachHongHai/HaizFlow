@@ -564,6 +564,31 @@ class ChannelSessionTests(unittest.TestCase):
         self.assertEqual(second_id, "second-video")
         self.assertEqual(restored_first_id, "first-video")
 
+    def test_reattaching_an_active_project_keeps_its_download_progress(self):
+        coordinator = ChannelImportCoordinator()
+        request = ChannelImportRequest(url="https://www.youtube.com/@creator")
+        session = new_session("batch:key", "D:/projects/example", request)
+        session.state = "downloading"
+        session.status = "Downloading example"
+        session.candidates = [
+            ChannelVideoCandidate(
+                remote_video_id="active-video",
+                source_url="https://www.youtube.com/watch?v=active-video",
+                title="Active",
+                platform="YouTube",
+                status="downloading",
+                progress=47,
+            )
+        ]
+        coordinator._sessions[session.session_id] = session
+        coordinator._project_sessions[session.project_key] = session.session_id
+
+        coordinator.attach_project(session.project_key, session.project_root, set())
+
+        self.assertEqual(coordinator.state, "downloading")
+        self.assertEqual(coordinator.progress, 47)
+        self.assertEqual(coordinator.candidates.candidate_at(0).status, "downloading")
+
     def test_interrupted_download_is_restored_as_retryable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "project"

@@ -68,6 +68,11 @@ class ChannelImportQmlTests(unittest.TestCase):
             engine.deleteLater()
             self.app.processEvents()
 
+    def test_channel_import_loader_is_kept_alive_after_the_first_visit(self):
+        main_qml = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        self.assertIn("property bool channelImportVisited: false", main_qml)
+        self.assertIn("active: root.channelImportVisited", main_qml)
+
 
 if __name__ == "__main__":
     unittest.main()

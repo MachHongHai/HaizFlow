@@ -83,6 +83,7 @@ class HaizFlowController(QObject):
     projectSetupChanged = Signal()
     projectPrepared = Signal()
     urlImportFinished = Signal()
+    channelImportChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -181,6 +182,7 @@ class HaizFlowController(QObject):
             lambda: 1 if self._processing_queue.active_video_id else 2
         )
         self._channel_import_targets = {}
+        self._channel_importer.changed.connect(self.channelImportChanged.emit)
         self._channel_importer.videoReady.connect(self._handle_channel_video_ready)
         self._channel_importer.downloadsFinished.connect(self._finish_channel_import_target)
 
@@ -560,6 +562,38 @@ class HaizFlowController(QObject):
     @Property(QObject, constant=True)
     def channelImporter(self):
         return self._channel_importer
+
+    @Property(bool, notify=channelImportChanged)
+    def hasChannelImportSession(self):
+        return bool(self._channel_importer.sessionId)
+
+    @Property(bool, notify=channelImportChanged)
+    def channelImportBusy(self):
+        return self._channel_importer.busy
+
+    @Property(int, notify=channelImportChanged)
+    def channelImportProgress(self):
+        return self._channel_importer.progress
+
+    @Property(str, notify=channelImportChanged)
+    def channelImportStatus(self):
+        return self._channel_importer.status
+
+    @Property(str, notify=channelImportChanged)
+    def channelImportName(self):
+        return self._channel_importer.channelName
+
+    @Property(int, notify=channelImportChanged)
+    def channelImportCandidateCount(self):
+        return self._channel_importer.candidateCount
+
+    @Property(int, notify=channelImportChanged)
+    def channelImportImportedCount(self):
+        return self._channel_importer.importedCount
+
+    @Property(int, notify=channelImportChanged)
+    def channelImportFailedCount(self):
+        return self._channel_importer.failedCount
 
     @Property(QObject, constant=True)
     def batchVideoModel(self):

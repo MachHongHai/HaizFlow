@@ -23,20 +23,25 @@ ApplicationWindow {
     readonly property string routeChannelImport: "channel-import"
     property string currentRoute: routeSingleProjects
     property string workspaceReturnRoute: routeSingleProjects
+    property bool channelImportVisited: false
     readonly property bool compactNavigation: width < 1280
-    readonly property bool modelStatusFailed: AppController.statusMessage.toLowerCase().indexOf("unavailable") >= 0
-        || AppController.statusMessage.toLowerCase().indexOf("failed") >= 0
-    readonly property bool modelStatusBusy: !modelStatusFailed
-        && AppController.statusMessage.toLowerCase().indexOf("ready") < 0
+    readonly property bool modelStatusFailed: AppController.statusMessage.toLowerCase().indexOf("unavailable") >= 0 || AppController.statusMessage.toLowerCase().indexOf("failed") >= 0
+    readonly property bool modelStatusBusy: !modelStatusFailed && AppController.statusMessage.toLowerCase().indexOf("ready") < 0
 
     function routeIndex(route) {
         switch (route) {
-        case routeSingleWorkspace: return 1
-        case routeBatchProjects: return 2
-        case routeBatchWorkspace: return 3
-        case routeBatchVideo: return 4
-        case routeChannelImport: return 5
-        default: return 0
+        case routeSingleWorkspace:
+            return 1
+        case routeBatchProjects:
+            return 2
+        case routeBatchWorkspace:
+            return 3
+        case routeBatchVideo:
+            return 4
+        case routeChannelImport:
+            return 5
+        default:
+            return 0
         }
     }
 
@@ -81,7 +86,7 @@ ApplicationWindow {
             AppController.openBatchSubtitleEditor()
         }
 
-        onRequestEditSubtitleSize: function(sizeKey) {
+        onRequestEditSubtitleSize: function (sizeKey) {
             close()
             previewWindow.returnToBatchSetup = true
             AppController.openBatchSizeEditor(sizeKey)
@@ -127,7 +132,9 @@ ApplicationWindow {
     Overlay.modal: Rectangle {
         color: Theme.scrim
         Behavior on opacity {
-            NumberAnimation { duration: Theme.motionStandard }
+            NumberAnimation {
+                duration: Theme.motionStandard
+            }
         }
     }
 
@@ -143,7 +150,10 @@ ApplicationWindow {
             color: Theme.sidebar
 
             Behavior on Layout.preferredWidth {
-                NumberAnimation { duration: Theme.motionStandard; easing.type: Easing.OutCubic }
+                NumberAnimation {
+                    duration: Theme.motionStandard
+                    easing.type: Easing.OutCubic
+                }
             }
 
             ColumnLayout {
@@ -209,8 +219,7 @@ ApplicationWindow {
                     compact: root.compactNavigation
                     iconGlyph: "\uE714"
                     text: I18n.t("Single")
-                    selected: root.currentRoute === root.routeSingleProjects
-                        || root.currentRoute === root.routeSingleWorkspace
+                    selected: root.currentRoute === root.routeSingleProjects || root.currentRoute === root.routeSingleWorkspace
                     onClicked: {
                         AppController.refreshVideos()
                         root.navigate(root.routeSingleProjects)
@@ -222,10 +231,7 @@ ApplicationWindow {
                     compact: root.compactNavigation
                     iconGlyph: "\uE8FD"
                     text: I18n.t("Batch")
-                    selected: root.currentRoute === root.routeBatchProjects
-                        || root.currentRoute === root.routeBatchWorkspace
-                        || root.currentRoute === root.routeBatchVideo
-                        || root.currentRoute === root.routeChannelImport
+                    selected: root.currentRoute === root.routeBatchProjects || root.currentRoute === root.routeBatchWorkspace || root.currentRoute === root.routeBatchVideo || root.currentRoute === root.routeChannelImport
                     onClicked: {
                         AppController.refreshVideos()
                         root.navigate(root.routeBatchProjects)
@@ -249,15 +255,21 @@ ApplicationWindow {
                         Layout.preferredWidth: 7
                         Layout.preferredHeight: 7
                         radius: 4
-                        color: root.modelStatusFailed ? Theme.danger
-                            : root.modelStatusBusy ? Theme.warning
-                            : Theme.success
+                        color: root.modelStatusFailed ? Theme.danger : root.modelStatusBusy ? Theme.warning : Theme.success
 
                         SequentialAnimation on opacity {
                             running: modelStatusIndicator.visible && root.modelStatusBusy && Theme.motionEnabled
                             loops: Animation.Infinite
-                            NumberAnimation { to: 0.35; duration: 750; easing.type: Easing.InOutSine }
-                            NumberAnimation { to: 1; duration: 750; easing.type: Easing.InOutSine }
+                            NumberAnimation {
+                                to: 0.35
+                                duration: 750
+                                easing.type: Easing.InOutSine
+                            }
+                            NumberAnimation {
+                                to: 1
+                                duration: 750
+                                easing.type: Easing.InOutSine
+                            }
                         }
                     }
 
@@ -366,8 +378,10 @@ ApplicationWindow {
                     onRequestBatchSettings: batchSettingsDialog.open()
                     onRequestUrlImport: urlImportDialog.openForMode("batch")
                     onRequestChannelImport: {
-                        if (AppController.prepareChannelImport())
+                        if (AppController.prepareChannelImport()) {
+                            root.channelImportVisited = true
                             root.navigate(root.routeChannelImport)
+                        }
                     }
                     onOpenVideoDetail: {
                         root.workspaceReturnRoute = root.routeBatchWorkspace
@@ -396,7 +410,7 @@ ApplicationWindow {
                     Layout.rightMargin: root.width < 1400 ? 22 : 30
                     Layout.topMargin: 24
                     Layout.bottomMargin: 24
-                    active: root.currentRoute === root.routeChannelImport
+                    active: root.channelImportVisited
                     asynchronous: true
                     sourceComponent: ChannelImportPage {
                         appController: AppController
