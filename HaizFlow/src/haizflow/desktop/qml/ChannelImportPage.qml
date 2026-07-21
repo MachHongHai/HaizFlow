@@ -14,6 +14,7 @@ Item {
     readonly property var importer: appController.channelImporter
     readonly property bool hasResults: importer.candidateCount > 0
     property string selectedPlatform: "youtube"
+    property string syncedSessionId: "\u0000"
 
     function restoredPlatform() {
         var value = String(importer.requestedPlatform || importer.platform || "").toLowerCase()
@@ -52,20 +53,43 @@ Item {
             authentication.currentIndex = 0
     }
 
+    function syncSessionDraft() {
+        const sessionId = String(importer.sessionId || "")
+        if (syncedSessionId === sessionId) {
+            syncAuthentication()
+            return
+        }
+
+        syncedSessionId = sessionId
+        const request = importer.requestData || ({})
+        selectedPlatform = restoredPlatform()
+        channelUrl.text = String(request.url || importer.channelUrl || "")
+        ranking.currentIndex = request.ranking === "popular" ? 1 : 0
+        importLimit.value = Math.max(importLimit.from, Math.min(importLimit.to, Number(request.limit || 20)))
+        if (selectedPlatform === "youtube") {
+            const durationFilter = String(request.duration_filter || "short")
+            contentFilter.currentIndex = durationFilter === "all" ? 0 : durationFilter === "long" ? 2 : 1
+        } else {
+            contentFilter.currentIndex = 0
+        }
+        const scanScopeValue = Number(request.scan_scope || 300)
+        scanScope.currentIndex = scanScopeValue === 100 ? 0
+            : scanScopeValue === 1000 ? 2
+            : scanScopeValue === 0 ? 3
+            : 1
+        syncAuthentication()
+    }
+
     Component.onCompleted: {
         root.appController.prepareChannelImport()
-        selectedPlatform = restoredPlatform()
-        contentFilter.currentIndex = selectedPlatform === "youtube" ? 1 : 0
-        if (importer.channelUrl.length > 0)
-            channelUrl.text = importer.channelUrl
-        syncAuthentication()
+        syncSessionDraft()
     }
 
     Connections {
         target: root.importer
 
         function onChanged() {
-            root.syncAuthentication()
+            root.syncSessionDraft()
         }
     }
 

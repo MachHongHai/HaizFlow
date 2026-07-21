@@ -734,8 +734,26 @@ Module {
             Parameter { name: "a1"; type: "QVariantList" }
         }
         Method { name: "startBatch" }
+        Method {
+            name: "batchSettings"
+            type: "QVariantMap"
+        }
         Method { name: "applyBatchSettings"; type: "bool" }
+        Method {
+            name: "applyBatchSettingsDraft"
+            type: "bool"
+            Parameter { name: "workflow_mode"; type: "QString" }
+            Parameter { name: "target_language"; type: "QString" }
+            Parameter { name: "tts_voice"; type: "QString" }
+            Parameter { name: "enable_audio_separation"; type: "bool" }
+            Parameter { name: "original_volume"; type: "int" }
+        }
         Method { name: "loadBatchSettings" }
+        Method {
+            name: "voiceOptionsForLanguage"
+            type: "QVariantList"
+            Parameter { name: "language_code"; type: "QString" }
+        }
         Method { name: "saveSelectedVideoSettings"; type: "bool" }
         Method { name: "stopBatch" }
         Method { name: "clearBatch" }

@@ -13,7 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.desktop.models import ProjectListModel
+from haizflow.desktop.models import ProjectGridModel, ProjectListModel
 from haizflow.schemas.video import VideoConfig
 from haizflow.services import video_store
 from haizflow.services import project_store
@@ -140,6 +140,25 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(batch_model.rowCount(), 1)
         self.assertEqual(single_model.project_at(0)["project_name"], "Interview")
         self.assertEqual(batch_model.project_at(0)["project_name"], "Campaign")
+
+    def test_project_grid_notifies_the_real_project_rows_after_its_create_card(self):
+        model = ProjectGridModel()
+        project = {
+            "key": "project:one",
+            "project_name": "Campaign",
+            "project_type": "single",
+            "video_count": 1,
+            "status": "pending",
+            "progress": 0,
+            "thumbnail_source": "",
+        }
+        model.set_projects([project])
+        changed_rows = []
+        model.dataChanged.connect(lambda first, last, _roles: changed_rows.append((first.row(), last.row())))
+
+        model.set_projects([{**project, "status": "processing", "progress": 50}])
+
+        self.assertEqual(changed_rows, [(1, 1)])
 
     def test_batch_output_uses_a_unique_folder_for_each_video(self):
         with tempfile.TemporaryDirectory() as temp_dir:

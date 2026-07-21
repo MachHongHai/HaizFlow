@@ -1,7 +1,9 @@
+import os
 import sys
 import queue
 import threading
 import time
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +21,83 @@ from haizflow.schemas.video import VideoConfig
 
 
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_batch_settings_draft_applies_without_mutating_editor_state(self):
+        video = SimpleNamespace(video_id="batch-video")
+        controller = SimpleNamespace(
+            _batch_video_ids=[video.video_id],
+            _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+            _voice_options_for_language=lambda language: {
+                "vi": [{"voice": "vi-VN-HoaiMyNeural"}],
+                "en": [{"voice": "en-US-JennyNeural"}],
+            }[language],
+            refreshVideos=Mock(),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(controller)
+        controller._apply_batch_settings = HaizFlowController._apply_batch_settings.__get__(controller)
+
+        with (
+            patch.object(qml_controller.video_store, "get_video", return_value=video),
+            patch.object(qml_controller.video_store, "update_video") as update_video,
+        ):
+            applied = HaizFlowController.applyBatchSettingsDraft(
+                controller,
+                "review",
+                "en",
+                "vi-VN-HoaiMyNeural",
+                True,
+                35,
+            )
+
+        self.assertTrue(applied)
+        update_video.assert_called_once_with(
+            video.video_id,
+            mode="review",
+            source_language="auto",
+            target_language="en",
+            tts_voice="en-US-JennyNeural",
+            enable_audio_separation=True,
+            original_video_volume=35,
+        )
+        self.assertFalse(hasattr(controller, "_target_language"))
+        controller.refreshVideos.assert_called_once()
+        controller.batchChanged.emit.assert_called_once()
+
+    def test_batch_settings_dialog_keeps_edits_local_until_apply(self):
+        dialog_qml = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("function loadDraft()", dialog_qml)
+        self.assertIn("AppController.batchSettings()", dialog_qml)
+        self.assertIn("AppController.applyBatchSettingsDraft(", dialog_qml)
+        self.assertNotIn("AppController.workflowMode =", dialog_qml)
+        self.assertNotIn("AppController.targetLanguage =", dialog_qml)
+        self.assertNotIn("AppController.ttsVoice =", dialog_qml)
+        self.assertNotIn("AppController.enableAudioSeparation =", dialog_qml)
+        self.assertNotIn("AppController.originalVolume =", dialog_qml)
+
+    def test_failed_thumbnail_is_not_requeued_until_its_source_changes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "clip.mp4"
+            source.write_bytes(b"first")
+            video = SimpleNamespace(video_id="thumbnail-video", files={"video_input": str(source)})
+            controller = SimpleNamespace(
+                _thumbnail_retry_failures={},
+                _thumbnail_retry_lock=threading.Lock(),
+                _resolve_video_file=Mock(return_value=str(source)),
+                _thumbnail_retry_signature=HaizFlowController._thumbnail_retry_signature,
+                _THUMBNAIL_RETRY_MAX_ATTEMPTS=HaizFlowController._THUMBNAIL_RETRY_MAX_ATTEMPTS,
+                _THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS=HaizFlowController._THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS,
+            )
+
+            self.assertEqual(HaizFlowController._missing_thumbnail_ids(controller, [video]), ["thumbnail-video"])
+            signature = HaizFlowController._thumbnail_retry_signature(str(source))
+            HaizFlowController._record_thumbnail_failure(controller, video.video_id, signature)
+            self.assertEqual(HaizFlowController._missing_thumbnail_ids(controller, [video]), [])
+
+            source.write_bytes(b"changed source")
+            os.utime(source, None)
+            self.assertEqual(HaizFlowController._missing_thumbnail_ids(controller, [video]), ["thumbnail-video"])
     def test_close_confirmation_is_only_required_for_background_work(self):
         idle_controller = SimpleNamespace(
             _processing_queue=SimpleNamespace(has_work=False),

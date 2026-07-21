@@ -173,6 +173,12 @@ class ChannelImportCoordinator(QObject):
             return ""
         return str(session.request.get("platform") or "")
 
+    @Property("QVariantMap", notify=changed)
+    def requestData(self):
+        """Persisted scan options for the active project session."""
+        session = self._active_session()
+        return dict(session.request) if session else {}
+
     @Property(str, notify=changed)
     def sessionId(self):
         return self._active_session_id

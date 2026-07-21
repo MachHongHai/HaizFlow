@@ -530,8 +530,18 @@ class ChannelSessionTests(unittest.TestCase):
     def test_switching_projects_restores_each_projects_own_candidates(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            request = ChannelImportRequest(url="https://www.youtube.com/@creator")
-            first = new_session("batch:first", str(root / "first"), request)
+            first = new_session(
+                "batch:first",
+                str(root / "first"),
+                ChannelImportRequest(
+                    url="https://www.youtube.com/@first",
+                    platform="youtube",
+                    ranking="newest",
+                    limit=100,
+                    duration_filter="long",
+                    scan_scope=1000,
+                ),
+            )
             first.candidates = [
                 ChannelVideoCandidate(
                     remote_video_id="first-video",
@@ -540,7 +550,18 @@ class ChannelSessionTests(unittest.TestCase):
                     platform="YouTube",
                 )
             ]
-            second = new_session("batch:second", str(root / "second"), request)
+            second = new_session(
+                "batch:second",
+                str(root / "second"),
+                ChannelImportRequest(
+                    url="https://www.tiktok.com/@second",
+                    platform="tiktok",
+                    ranking="popular",
+                    limit=20,
+                    duration_filter="all",
+                    scan_scope=100,
+                ),
+            )
             second.candidates = [
                 ChannelVideoCandidate(
                     remote_video_id="second-video",
@@ -555,14 +576,22 @@ class ChannelSessionTests(unittest.TestCase):
             coordinator = ChannelImportCoordinator()
             coordinator.attach_project(first.project_key, first.project_root, set())
             first_id = coordinator.candidates.candidate_at(0).remote_video_id
+            first_request = coordinator.requestData
             coordinator.attach_project(second.project_key, second.project_root, set())
             second_id = coordinator.candidates.candidate_at(0).remote_video_id
+            second_request = coordinator.requestData
             coordinator.attach_project(first.project_key, first.project_root, set())
             restored_first_id = coordinator.candidates.candidate_at(0).remote_video_id
+            restored_first_request = coordinator.requestData
 
         self.assertEqual(first_id, "first-video")
         self.assertEqual(second_id, "second-video")
         self.assertEqual(restored_first_id, "first-video")
+        self.assertEqual(first_request["url"], "https://www.youtube.com/@first")
+        self.assertEqual(first_request["duration_filter"], "long")
+        self.assertEqual(second_request["url"], "https://www.tiktok.com/@second")
+        self.assertEqual(second_request["scan_scope"], 100)
+        self.assertEqual(restored_first_request, first_request)
 
     def test_reattaching_an_active_project_keeps_its_download_progress(self):
         coordinator = ChannelImportCoordinator()

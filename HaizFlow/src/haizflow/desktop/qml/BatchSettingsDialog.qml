@@ -12,6 +12,37 @@ Dialog {
     signal requestEditAllSubtitles()
     signal requestEditSubtitleSize(string sizeKey)
     property bool changesApplied: false
+    property string draftWorkflowMode: "A"
+    property string draftTargetLanguage: "vi"
+    property string draftTtsVoice: ""
+    property bool draftEnableAudioSeparation: false
+    property int draftOriginalVolume: 60
+    readonly property var draftVoiceOptions: AppController.voiceOptionsForLanguage(draftTargetLanguage)
+    readonly property int draftTtsVoiceIndex: {
+        for (let index = 0; index < draftVoiceOptions.length; ++index) {
+            if (draftVoiceOptions[index].voice === draftTtsVoice)
+                return index
+        }
+        return 0
+    }
+
+    function normalizedDraftVoice(languageCode, preferredVoice) {
+        const options = AppController.voiceOptionsForLanguage(languageCode)
+        for (let index = 0; index < options.length; ++index) {
+            if (options[index].voice === preferredVoice)
+                return preferredVoice
+        }
+        return options.length > 0 ? options[0].voice : ""
+    }
+
+    function loadDraft() {
+        const settings = AppController.batchSettings()
+        draftWorkflowMode = settings.workflowMode || "A"
+        draftTargetLanguage = settings.targetLanguage || "vi"
+        draftTtsVoice = normalizedDraftVoice(draftTargetLanguage, settings.ttsVoice || "")
+        draftEnableAudioSeparation = Boolean(settings.enableAudioSeparation)
+        draftOriginalVolume = Number(settings.originalVolume !== undefined ? settings.originalVolume : 60)
+    }
 
     modal: true
     focus: true
@@ -28,7 +59,7 @@ Dialog {
 
     onOpened: {
         changesApplied = false
-        AppController.loadBatchSettings()
+        loadDraft()
     }
 
     enter: Transition {
@@ -135,14 +166,14 @@ Dialog {
 
                     SegmentedControl {
                         Layout.fillWidth: true
-                        currentValue: AppController.workflowMode
+                        currentValue: root.draftWorkflowMode
                         options: [
                             { "label": I18n.t("Full auto"), "value": "A" },
                             { "label": I18n.t("Review then dub"), "value": "review" }
                         ]
                         onActivated: function(value) {
                             root.changesApplied = false
-                            AppController.workflowMode = value
+                            root.draftWorkflowMode = value
                         }
                     }
 
@@ -156,10 +187,11 @@ Dialog {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 42
                         options: AppController.targetLanguageOptions
-                        selectedCode: AppController.targetLanguage
+                        selectedCode: root.draftTargetLanguage
                         onSelected: function(code) {
                             root.changesApplied = false
-                            AppController.targetLanguage = code
+                            root.draftTargetLanguage = code
+                            root.draftTtsVoice = root.normalizedDraftVoice(code, root.draftTtsVoice)
                         }
                     }
 
@@ -173,11 +205,11 @@ Dialog {
                         Layout.fillWidth: true
                         textRole: "label"
                         valueRole: "voice"
-                        model: AppController.ttsVoiceOptions
-                        currentIndex: AppController.ttsVoiceIndex
+                        model: root.draftVoiceOptions
+                        currentIndex: root.draftTtsVoiceIndex
                         onActivated: {
                             root.changesApplied = false
-                            AppController.ttsVoice = currentValue
+                            root.draftTtsVoice = currentValue
                         }
                     }
 
@@ -196,19 +228,19 @@ Dialog {
 
                     SegmentedControl {
                         Layout.fillWidth: true
-                        currentValue: AppController.enableAudioSeparation ? "separated" : "original"
+                        currentValue: root.draftEnableAudioSeparation ? "separated" : "original"
                         options: [
                             { "label": I18n.t("Keep original audio"), "value": "original" },
                             { "label": I18n.t("Separate vocals"), "value": "separated" }
                         ]
                         onActivated: function(value) {
                             root.changesApplied = false
-                            AppController.enableAudioSeparation = value === "separated"
+                            root.draftEnableAudioSeparation = value === "separated"
                         }
                     }
 
                     Text {
-                        visible: !AppController.enableAudioSeparation
+                        visible: !root.draftEnableAudioSeparation
                         text: I18n.t("Original audio volume")
                         color: Theme.textMuted
                         font.pixelSize: Theme.caption
@@ -216,7 +248,7 @@ Dialog {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: !AppController.enableAudioSeparation
+                        visible: !root.draftEnableAudioSeparation
                         spacing: Theme.space12
 
                         AppSlider {
@@ -224,16 +256,16 @@ Dialog {
                             from: 0
                             to: 100
                             stepSize: 1
-                            value: AppController.originalVolume
+                            value: root.draftOriginalVolume
                             onMoved: {
                                 root.changesApplied = false
-                                AppController.originalVolume = Math.round(value)
+                                root.draftOriginalVolume = Math.round(value)
                             }
                         }
 
                         Text {
                             Layout.preferredWidth: 44
-                            text: qsTr("%1%").arg(AppController.originalVolume)
+                            text: qsTr("%1%").arg(root.draftOriginalVolume)
                             color: Theme.text
                             horizontalAlignment: Text.AlignRight
                             font.pixelSize: Theme.caption
@@ -385,7 +417,13 @@ Dialog {
                 tone: "primary"
                 enabled: AppController.batchCount > 0 && !root.changesApplied
                 onClicked: {
-                    if (AppController.applyBatchSettings())
+                    if (AppController.applyBatchSettingsDraft(
+                            root.draftWorkflowMode,
+                            root.draftTargetLanguage,
+                            root.draftTtsVoice,
+                            root.draftEnableAudioSeparation,
+                            root.draftOriginalVolume
+                        ))
                         root.changesApplied = true
                 }
             }

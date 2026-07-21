@@ -75,7 +75,7 @@ def resolve_video_file(video, keys, fallback_parts):
     return video.files.get(keys[0]) or fallback
 
 
-def create_video_thumbnail_path(path: str, output_path: str = "") -> str:
+def create_video_thumbnail_path(path: str, output_path: str = "", *, timeout_seconds: float = 30.0) -> str:
     if not path or not output_path or not os.path.exists(path):
         return ""
     try:
@@ -101,6 +101,7 @@ def create_video_thumbnail_path(path: str, output_path: str = "") -> str:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
+                timeout=timeout_seconds,
             )
         return output_path if os.path.exists(output_path) else ""
     except (OSError, subprocess.SubprocessError):

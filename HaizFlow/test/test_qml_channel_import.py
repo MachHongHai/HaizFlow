@@ -73,6 +73,13 @@ class ChannelImportQmlTests(unittest.TestCase):
         self.assertIn("property bool channelImportVisited: false", main_qml)
         self.assertIn("active: root.channelImportVisited", main_qml)
 
+    def test_channel_import_form_resyncs_only_when_the_project_session_changes(self):
+        page_qml = (QML_DIR / "ChannelImportPage.qml").read_text(encoding="utf-8")
+        self.assertIn("property string syncedSessionId", page_qml)
+        self.assertIn("if (syncedSessionId === sessionId)", page_qml)
+        self.assertIn("const request = importer.requestData", page_qml)
+        self.assertIn("channelUrl.text = String(request.url || importer.channelUrl || \"\")", page_qml)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -135,14 +135,18 @@ class ProjectListModel(QAbstractListModel):
             self._projects = projects
             if projects:
                 self.dataChanged.emit(
-                    self.index(0, 0),
-                    self.index(len(projects) - 1, 0),
+                    self.index(self._project_row_to_model_row(0), 0),
+                    self.index(self._project_row_to_model_row(len(projects) - 1), 0),
                     list(self.roleNames().keys()),
                 )
             return
         self.beginResetModel()
         self._projects = projects
         self.endResetModel()
+
+    def _project_row_to_model_row(self, row: int) -> int:
+        """Map a persisted-project row to the row exposed to a view."""
+        return row
 
     def project_at(self, row: int):
         if row < 0 or row >= len(self._projects):
@@ -157,6 +161,10 @@ class ProjectGridModel(ProjectListModel):
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._projects) + 1
+
+    def _project_row_to_model_row(self, row: int) -> int:
+        # Row zero is the synthetic "create project" card.
+        return row + 1
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or index.row() < 0 or index.row() >= self.rowCount():

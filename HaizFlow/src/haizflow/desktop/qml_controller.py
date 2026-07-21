@@ -3,6 +3,7 @@ import json
 import shutil
 import queue
 import threading
+import time
 from collections import Counter
 from datetime import datetime, timezone
 
@@ -59,6 +60,8 @@ QML_IMPORT_MAJOR_VERSION = 1
 @QmlSingleton
 class HaizFlowController(QObject):
     _qml_instance = None
+    _THUMBNAIL_RETRY_MAX_ATTEMPTS = 3
+    _THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS = 15.0
 
     videoPathChanged = Signal()
     videoThumbnailChanged = Signal()
@@ -173,6 +176,8 @@ class HaizFlowController(QObject):
         self._project_type = "single"
         self._log_queue = queue.Queue()
         self._thumbnail_refresh_running = False
+        self._thumbnail_retry_failures: dict[str, tuple[str, int, float]] = {}
+        self._thumbnail_retry_lock = threading.Lock()
         self._url_importer = VideoUrlImportCoordinator(self)
         self._url_import_target = None
         self._url_importer.downloadReady.connect(self._handle_url_download_ready)
@@ -736,6 +741,10 @@ class HaizFlowController(QObject):
     @Property("QVariantList", notify=ttsVoiceOptionsChanged)
     def ttsVoiceOptions(self):
         return self._voice_options_for_language(self._target_language)
+
+    @Slot(str, result="QVariantList")
+    def voiceOptionsForLanguage(self, language_code: str):
+        return self._voice_options_for_language(str(language_code or "vi"))
 
     @Property(int, notify=ttsVoiceOptionsChanged)
     def ttsVoiceIndex(self):
@@ -1666,36 +1675,17 @@ class HaizFlowController(QObject):
             return
         self.batchChanged.emit()
 
-    @Slot(result=bool)
-    def applyBatchSettings(self):
-        updated = 0
-        for video_id in self._batch_video_ids:
-            video = video_store.get_video(video_id)
-            if not video or self._processing_queue.contains(video_id):
-                continue
-            video_store.update_video(
-                video_id,
-                mode=self._workflow_mode,
-                source_language="auto",
-                target_language=self._target_language,
-                tts_voice=self._tts_voice,
-                enable_audio_separation=self._enable_audio_separation,
-                original_video_volume=self._original_volume,
-            )
-            updated += 1
-        if not updated:
-            QMessageBox.information(None, "Batch settings", "Add at least one video before applying settings.")
-            return False
-        self.refreshVideos()
-        self.batchChanged.emit()
-        return True
-
-    @Slot()
-    def loadBatchSettings(self):
+    def _batch_settings_values(self) -> dict[str, object]:
         videos = [video_store.get_video(video_id) for video_id in self._batch_video_ids]
         videos = [video for video in videos if video]
         if not videos:
-            return
+            return {
+                "workflowMode": self._workflow_mode,
+                "targetLanguage": self._target_language,
+                "ttsVoice": self._tts_voice,
+                "enableAudioSeparation": self._enable_audio_separation,
+                "originalVolume": self._original_volume,
+            }
         common, _count = Counter(
             (
                 video.mode,
@@ -1707,11 +1697,88 @@ class HaizFlowController(QObject):
             for video in videos
         ).most_common(1)[0]
         workflow_mode, target_language, tts_voice, audio_separation, original_volume = common
-        self._workflow_mode = workflow_mode
-        self._target_language = str(target_language or "vi")
-        self._tts_voice = self._normalized_voice_for_language(self._target_language, tts_voice)
-        self._enable_audio_separation = audio_separation
-        self._original_volume = original_volume
+        target_language = str(target_language or "vi")
+        return {
+            "workflowMode": "review" if workflow_mode == "review" else "A",
+            "targetLanguage": target_language,
+            "ttsVoice": self._normalized_voice_for_language(target_language, tts_voice),
+            "enableAudioSeparation": bool(audio_separation),
+            "originalVolume": int(original_volume),
+        }
+
+    @Slot(result="QVariantMap")
+    def batchSettings(self):
+        """Return a batch draft without mutating shared editor state."""
+        return self._batch_settings_values()
+
+    def _apply_batch_settings(
+        self,
+        workflow_mode: str,
+        target_language: str,
+        tts_voice: str,
+        enable_audio_separation: bool,
+        original_volume: int,
+    ) -> bool:
+        mode = "review" if workflow_mode == "review" else "A"
+        language = str(target_language or "vi")
+        voice = self._normalized_voice_for_language(language, tts_voice)
+        updated = 0
+        for video_id in self._batch_video_ids:
+            video = video_store.get_video(video_id)
+            if not video or self._processing_queue.contains(video_id):
+                continue
+            video_store.update_video(
+                video_id,
+                mode=mode,
+                source_language="auto",
+                target_language=language,
+                tts_voice=voice,
+                enable_audio_separation=bool(enable_audio_separation),
+                original_video_volume=int(original_volume),
+            )
+            updated += 1
+        if not updated:
+            QMessageBox.information(None, "Batch settings", "Add at least one video before applying settings.")
+            return False
+        self.refreshVideos()
+        self.batchChanged.emit()
+        return True
+
+    @Slot(result=bool)
+    def applyBatchSettings(self):
+        return self._apply_batch_settings(
+            self._workflow_mode,
+            self._target_language,
+            self._tts_voice,
+            self._enable_audio_separation,
+            self._original_volume,
+        )
+
+    @Slot(str, str, str, bool, int, result=bool)
+    def applyBatchSettingsDraft(
+        self,
+        workflow_mode: str,
+        target_language: str,
+        tts_voice: str,
+        enable_audio_separation: bool,
+        original_volume: int,
+    ):
+        return self._apply_batch_settings(
+            workflow_mode,
+            target_language,
+            tts_voice,
+            enable_audio_separation,
+            original_volume,
+        )
+
+    @Slot()
+    def loadBatchSettings(self):
+        values = self._batch_settings_values()
+        self._workflow_mode = values["workflowMode"]
+        self._target_language = values["targetLanguage"]
+        self._tts_voice = values["ttsVoice"]
+        self._enable_audio_separation = values["enableAudioSeparation"]
+        self._original_volume = values["originalVolume"]
         self.workflowModeChanged.emit()
         self.targetLanguageChanged.emit()
         self.ttsVoiceChanged.emit()
@@ -2251,22 +2318,77 @@ class HaizFlowController(QObject):
         selected = video_store.get_video(self._selected_video_id) if self._selected_video_id else None
         self.tasks.set_video(selected)
         self.selectedVideoChanged.emit()
-        missing_thumbnails = [video.video_id for video in all_videos if not video.files.get("thumbnail")]
+        missing_thumbnails = self._missing_thumbnail_ids(all_videos)
         if missing_thumbnails and not self._thumbnail_refresh_running:
             self._thumbnail_refresh_running = True
             threading.Thread(target=self._create_missing_thumbnails, args=(missing_thumbnails,), daemon=True).start()
+
+    @staticmethod
+    def _thumbnail_retry_signature(source_path: str) -> str:
+        """Identify the exact source for which thumbnail creation failed."""
+        normalized_path = os.path.abspath(source_path) if source_path else "<missing-source>"
+        try:
+            source_stat = os.stat(normalized_path)
+        except OSError:
+            return f"{normalized_path}:missing"
+        return f"{normalized_path}:{source_stat.st_mtime_ns}:{source_stat.st_size}"
+
+    def _missing_thumbnail_ids(self, videos) -> list[str]:
+        known_video_ids = {video.video_id for video in videos}
+        with self._thumbnail_retry_lock:
+            self._thumbnail_retry_failures = {
+                video_id: failure
+                for video_id, failure in self._thumbnail_retry_failures.items()
+                if video_id in known_video_ids
+            }
+
+        missing = []
+        for video in videos:
+            if thumbnail_source(video.files.get("thumbnail") or ""):
+                continue
+            source_path = self._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
+            signature = self._thumbnail_retry_signature(source_path)
+            with self._thumbnail_retry_lock:
+                failure = self._thumbnail_retry_failures.get(video.video_id)
+                if failure and failure[0] != signature:
+                    self._thumbnail_retry_failures.pop(video.video_id, None)
+                    failure = None
+                if failure and (
+                    failure[1] >= self._THUMBNAIL_RETRY_MAX_ATTEMPTS or time.monotonic() < failure[2]
+                ):
+                    continue
+            missing.append(video.video_id)
+        return missing
+
+    def _record_thumbnail_failure(self, video_id: str, signature: str) -> None:
+        with self._thumbnail_retry_lock:
+            previous = self._thumbnail_retry_failures.get(video_id)
+            attempts = previous[1] + 1 if previous and previous[0] == signature else 1
+            delay = min(
+                300.0,
+                self._THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS * (2 ** (attempts - 1)),
+            )
+            self._thumbnail_retry_failures[video_id] = (signature, attempts, time.monotonic() + delay)
+
+    def _clear_thumbnail_failure(self, video_id: str) -> None:
+        with self._thumbnail_retry_lock:
+            self._thumbnail_retry_failures.pop(video_id, None)
 
     def _create_missing_thumbnails(self, video_ids):
         try:
             for video_id in video_ids:
                 video = video_store.get_video(video_id)
-                if not video or video.files.get("thumbnail"):
+                if not video or thumbnail_source(video.files.get("thumbnail") or ""):
                     continue
                 video_path = self._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
+                signature = self._thumbnail_retry_signature(video_path)
                 thumbnail_path = self._create_video_thumbnail_path(video_path, self._video_thumbnail_path(video.video_id))
                 if thumbnail_path:
                     video.files["thumbnail"] = thumbnail_path
                     video_store.save_video(video)
+                    self._clear_thumbnail_failure(video.video_id)
+                else:
+                    self._record_thumbnail_failure(video.video_id, signature)
         finally:
             self._log_queue.put("__THUMBNAILS_READY__")
 
