@@ -22,6 +22,7 @@ from haizflow.core.paths import (
     package_root,
     project_root,
     runtime_data_dir,
+    is_frozen,
     storage_dir,
 )
 
@@ -73,6 +74,10 @@ def _bounded_seconds(name: str, default: int, minimum: int, maximum: int) -> int
 # worker continues to emit progress or model-loading status events.
 HYMT2_WARM_TIMEOUT_SECONDS = _bounded_seconds("HYMT2_WARM_TIMEOUT_SECONDS", 1800, 300, 7200)
 HYMT2_REQUEST_TIMEOUT_SECONDS = _bounded_seconds("HYMT2_REQUEST_TIMEOUT_SECONDS", 3600, 600, 14400)
+# A stalled FFmpeg/Demucs process used to wait forever.  Keep the default
+# generous for long local videos while still giving the user a deterministic
+# failure instead of a permanently stuck pipeline.
+MEDIA_PROCESS_TIMEOUT_SECONDS = _bounded_seconds("MEDIA_PROCESS_TIMEOUT_SECONDS", 7200, 60, 86400)
 
 
 def _resolve_runtime_path(value: str | None, default: str) -> str:
@@ -87,7 +92,7 @@ def _resolve_runtime_path(value: str | None, default: str) -> str:
     return str((Path(RUNTIME_DATA_DIR) / path).resolve())
 
 
-_PORTABLE_HOME_SELECTED = bool(os.getenv("HAIZFLOW_HOME"))
+_PORTABLE_HOME_SELECTED = is_frozen() or bool(os.getenv("HAIZFLOW_HOME"))
 
 
 def _cache_override(name: str) -> str | None:
@@ -123,6 +128,11 @@ _RUNTIME_ENVIRONMENT = {
     "QML_DISK_CACHE_PATH": os.path.join(CACHE_DIR, "qt", "qmlcache"),
     "LOCALAPPDATA": os.path.join(CACHE_DIR, "windows", "local"),
     "APPDATA": os.path.join(APP_DATA_DIR, "config", "roaming"),
+    # Some Python/CLI dependencies ignore their dedicated cache variables and
+    # fall back to the current user's home directory. Keep that fallback under
+    # the portable runtime as well, rather than silently using C:\\Users.
+    "HOME": os.path.join(APP_DATA_DIR, "home"),
+    "USERPROFILE": os.path.join(APP_DATA_DIR, "home"),
     "TMP": TMP_DIR,
     "TEMP": TMP_DIR,
 }

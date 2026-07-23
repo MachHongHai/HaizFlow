@@ -1,6 +1,7 @@
 import subprocess
+from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.services.video_store import log_to_video
-from haizflow.pipeline.process_registry import register_process, unregister_process, check_cancellation
+from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 
 def extract_audio(video_path: str, output_wav_path: str, video_id: str):
     """Extracts audio from video to a 16kHz mono WAV file."""
@@ -18,9 +19,12 @@ def extract_audio(video_path: str, output_wav_path: str, video_id: str):
     check_cancellation(video_id)
     
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    register_process(video_id, p)
-    stdout, stderr = p.communicate()
-    unregister_process(video_id, p)
+    stdout, stderr = communicate_process(
+        video_id,
+        p,
+        label="FFmpeg audio extraction",
+        timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+    )
     
     check_cancellation(video_id)
     
@@ -29,4 +33,3 @@ def extract_audio(video_path: str, output_wav_path: str, video_id: str):
         raise RuntimeError(f"FFmpeg extraction failed with exit code {p.returncode}")
         
     log_to_video(video_id, f"Successfully extracted audio to: {output_wav_path}")
-

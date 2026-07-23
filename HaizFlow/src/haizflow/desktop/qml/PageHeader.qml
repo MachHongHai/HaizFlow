@@ -13,6 +13,7 @@ RowLayout {
 
     ColumnLayout {
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
         spacing: Theme.space4
 
         Text {
@@ -22,8 +23,9 @@ RowLayout {
             font.pixelSize: Theme.h1
             font.weight: Font.DemiBold
             textFormat: Text.PlainText
-            elide: Text.ElideNone
-            wrapMode: Text.WordWrap
+            elide: Text.ElideRight
+            maximumLineCount: 1
+            wrapMode: Text.NoWrap
         }
 
         Text {
@@ -33,8 +35,9 @@ RowLayout {
             color: Theme.textMuted
             font.pixelSize: Theme.body
             textFormat: Text.PlainText
-            elide: Text.ElideNone
-            wrapMode: Text.WordWrap
+            elide: Text.ElideRight
+            maximumLineCount: 1
+            wrapMode: Text.NoWrap
         }
     }
 

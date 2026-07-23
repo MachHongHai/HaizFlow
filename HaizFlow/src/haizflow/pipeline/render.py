@@ -3,7 +3,8 @@ import subprocess
 
 import srt
 
-from haizflow.pipeline.process_registry import check_cancellation, register_process, unregister_process
+from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
+from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.schemas.video import CropSettings, SubtitleStyle
 from haizflow.services.video_store import log_to_video
 from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration, preferred_video_encoder
@@ -133,9 +134,12 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         log_to_video(video_id, f"Running FFmpeg render with {encoder} in Cwd: {video_temp_dir}")
         check_cancellation(video_id)
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir)
-        register_process(video_id, process)
-        _stdout, process_stderr = process.communicate()
-        unregister_process(video_id, process)
+        _stdout, process_stderr = communicate_process(
+            video_id,
+            process,
+            label="FFmpeg video render",
+            timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+        )
         check_cancellation(video_id)
         return process.returncode, process_stderr
 

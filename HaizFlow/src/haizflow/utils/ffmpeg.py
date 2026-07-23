@@ -103,7 +103,7 @@ def get_video_duration(video_path: str) -> float:
         return 0.0
 
 
-def get_video_dimensions(video_path: str) -> tuple[int, int]:
+def get_video_dimensions(video_path: str, *, timeout_seconds: float = 15.0) -> tuple[int, int]:
     """Return the first video stream dimensions for subtitle positioning and crop math."""
     try:
         result = subprocess.run(
@@ -114,10 +114,10 @@ def get_video_dimensions(video_path: str) -> tuple[int, int]:
             capture_output=True,
             text=True,
             check=True,
+            timeout=max(1.0, float(timeout_seconds)),
         )
         width, height = result.stdout.strip().split(",")
         return int(width), int(height)
     except Exception as exc:
         raise RuntimeError(f"Cannot read video dimensions: {exc}") from exc
-
 

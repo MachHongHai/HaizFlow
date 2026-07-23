@@ -40,7 +40,12 @@ LANGUAGE_NAMES = {
     "fil": "Filipino",
 }
 
+# State changes are brief and protected separately from an active warm-up or
+# translation request.  Shutdown must be able to observe and terminate a busy
+# worker immediately; it must never wait for an inference-sized critical section.
 _WORKER_LOCK = threading.RLock()
+_WORKER_OPERATION_LOCK = threading.Lock()
+_WORKER_SHUTDOWN_EVENT = threading.Event()
 _WORKER_PROCESS = None
 _WORKER_OUTPUT = None
 _WORKER_READER = None
@@ -129,9 +134,10 @@ def _discard_hymt2_worker(process=None) -> None:
 
 
 def _worker_diagnostic_path(process=None) -> str:
-    if process is not None and process is not _WORKER_PROCESS:
-        return ""
-    return str(_WORKER_DIAGNOSTIC_PATH or "")
+    with _WORKER_LOCK:
+        if process is not None and process is not _WORKER_PROCESS:
+            return ""
+        return str(_WORKER_DIAGNOSTIC_PATH or "")
 
 
 def _prune_worker_diagnostics(directory: Path, keep: int = 25) -> None:
@@ -198,15 +204,28 @@ def _terminate_hymt2_worker(process) -> None:
     if process is not None and process.poll() is None:
         try:
             process.kill()
-            process.wait(timeout=5)
+            process.wait(timeout=1)
         except (OSError, subprocess.TimeoutExpired):
             pass
-    _discard_hymt2_worker(process)
+    with _WORKER_LOCK:
+        _discard_hymt2_worker(process)
+
+
+def _kill_hymt2_worker_immediately(process) -> None:
+    """Request immediate termination for UI shutdown without waiting on native code."""
+    if process is not None and process.poll() is None:
+        try:
+            process.kill()
+        except OSError:
+            pass
+    with _WORKER_LOCK:
+        _discard_hymt2_worker(process)
 
 
 def _collect_remaining_worker_output(process, output_queue, worker_output: list[str]) -> None:
     """Wait briefly for the reader to persist native stderr after worker exit."""
-    reader = _WORKER_READER if process is _WORKER_PROCESS else None
+    with _WORKER_LOCK:
+        reader = _WORKER_READER if process is _WORKER_PROCESS else None
     if reader is not None and reader.is_alive():
         reader.join(timeout=2)
     while True:
@@ -248,7 +267,14 @@ def is_hymt2_worker_warm() -> bool:
 
 
 def _ensure_hymt2_worker():
+    with _WORKER_LOCK:
+        return _ensure_hymt2_worker_locked()
+
+
+def _ensure_hymt2_worker_locked():
     global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM, _WORKER_DIAGNOSTIC_PATH
+    if _WORKER_SHUTDOWN_EVENT.is_set():
+        raise RuntimeError("HY-MT2 worker startup was cancelled because HaizFlow is shutting down.")
     _cancel_worker_idle_timer()
     if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is None and _WORKER_OUTPUT is not None:
         return _WORKER_PROCESS, _WORKER_OUTPUT
@@ -344,29 +370,37 @@ def _ensure_hymt2_worker():
     return process, output_queue
 
 
-def shutdown_hymt2_worker() -> None:
-    """Release the persistent translation model when the desktop session closes."""
+def shutdown_hymt2_worker(*, permanent: bool = False) -> None:
+    """Release the persistent translation model without waiting for inference."""
+    if permanent:
+        _WORKER_SHUTDOWN_EVENT.set()
     with _WORKER_LOCK:
         _cancel_worker_idle_timer()
         process = _WORKER_PROCESS
-        if process is None:
-            return
-        try:
-            if process.poll() is None and process.stdin is not None:
-                process.stdin.write(json.dumps({"request_id": uuid.uuid4().hex, "command": "shutdown"}) + "\n")
-                process.stdin.flush()
-                process.wait(timeout=5)
-        except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
-            if process.poll() is None:
-                process.kill()
-        finally:
+    if process is None:
+        return
+
+    # The worker handles requests serially.  A shutdown message would sit behind
+    # a warm-up/translation request, so terminate a busy worker immediately.
+    if _WORKER_OPERATION_LOCK.locked():
+        _kill_hymt2_worker_immediately(process)
+        return
+    try:
+        if process.poll() is None and process.stdin is not None:
+            process.stdin.write(json.dumps({"request_id": uuid.uuid4().hex, "command": "shutdown"}) + "\n")
+            process.stdin.flush()
+            process.wait(timeout=2)
+    except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+        _terminate_hymt2_worker(process)
+    finally:
+        with _WORKER_LOCK:
             _discard_hymt2_worker(process)
 
 
 def warm_hymt2_worker(status_callback=None) -> None:
     """Load HY-MT2 once in the persistent worker before the first video arrives."""
     global _WORKER_WARM
-    with _WORKER_LOCK:
+    with _WORKER_OPERATION_LOCK:
         process, output_queue = _ensure_hymt2_worker()
         request_id = uuid.uuid4().hex
         worker_output = []
@@ -379,8 +413,7 @@ def warm_hymt2_worker(status_callback=None) -> None:
             while True:
                 if time.monotonic() >= deadline:
                     diagnostic_path = _worker_diagnostic_path(process)
-                    process.kill()
-                    _discard_hymt2_worker(process)
+                    _terminate_hymt2_worker(process)
                     raise RuntimeError(
                         f"HY-MT2 warm-up produced no activity for {HYMT2_WARM_TIMEOUT_SECONDS} seconds. "
                         f"Diagnostic log: {diagnostic_path or 'unavailable'}"
@@ -407,12 +440,16 @@ def warm_hymt2_worker(status_callback=None) -> None:
                     _terminate_hymt2_worker(process)
                     raise RuntimeError(f"{error} Diagnostic log: {diagnostic_path or 'unavailable'}")
                 if event.get("warmed"):
-                    _WORKER_WARM = True
+                    with _WORKER_LOCK:
+                        if process is not _WORKER_PROCESS or process.poll() is not None:
+                            raise RuntimeError("HY-MT2 warm-up was stopped before it completed.")
+                        _WORKER_WARM = True
                     return
                 raise RuntimeError("HY-MT2 worker returned an invalid warm-up response.")
         except Exception:
             if process.poll() is not None:
-                _discard_hymt2_worker(process)
+                with _WORKER_LOCK:
+                    _discard_hymt2_worker(process)
             raise
 
         _collect_remaining_worker_output(process, output_queue, worker_output)
@@ -423,7 +460,8 @@ def warm_hymt2_worker(status_callback=None) -> None:
             worker_output,
             diagnostic_path,
         )
-        _discard_hymt2_worker(process)
+        with _WORKER_LOCK:
+            _discard_hymt2_worker(process)
         raise RuntimeError(error)
 
 
@@ -439,7 +477,7 @@ def _translate_with_hymt2_worker(
         return []
     if len(source_languages) != len(texts):
         raise ValueError("Each translation segment must have a source language.")
-    with _WORKER_LOCK:
+    with _WORKER_OPERATION_LOCK:
         process, output_queue = _ensure_hymt2_worker()
         request_id = uuid.uuid4().hex
         payload = {
@@ -454,8 +492,10 @@ def _translate_with_hymt2_worker(
         log_to_video(video_id, "Sending translation request to persistent HY-MT2 worker.")
         diagnostic_path = _worker_diagnostic_path(process)
         log_to_video(video_id, f"HY-MT2 diagnostic log: {diagnostic_path or 'unavailable'}")
-        register_process(video_id, process)
+        registered = False
         try:
+            register_process(video_id, process)
+            registered = True
             if process.stdin is None:
                 raise RuntimeError("HY-MT2 worker input channel is unavailable.")
             process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -463,8 +503,7 @@ def _translate_with_hymt2_worker(
             deadline = time.monotonic() + HYMT2_REQUEST_TIMEOUT_SECONDS
             while True:
                 if time.monotonic() >= deadline:
-                    process.kill()
-                    _discard_hymt2_worker(process)
+                    _terminate_hymt2_worker(process)
                     raise RuntimeError(
                         "HY-MT2 translation stopped producing progress for "
                         f"{HYMT2_REQUEST_TIMEOUT_SECONDS} seconds."
@@ -513,8 +552,11 @@ def _translate_with_hymt2_worker(
                 translations = event.get("translations")
                 if not isinstance(translations, list) or len(translations) != len(texts) or not all(isinstance(text, str) for text in translations):
                     raise RuntimeError("HY-MT2 worker returned an invalid translation result.")
-                _WORKER_WARM = True
-                _schedule_worker_idle_shutdown()
+                with _WORKER_LOCK:
+                    if process is not _WORKER_PROCESS or process.poll() is not None:
+                        raise RuntimeError("HY-MT2 translation worker was stopped before it completed.")
+                    _WORKER_WARM = True
+                    _schedule_worker_idle_shutdown()
                 if runtime_profile().is_cpu_only:
                     log_to_video(
                         video_id,
@@ -524,7 +566,8 @@ def _translate_with_hymt2_worker(
                     log_to_video(video_id, "HY-MT2 translation completed; model stays warm for the next video.")
                 return translations
         finally:
-            unregister_process(video_id, process)
+            if registered:
+                unregister_process(video_id, process, force=process.poll() is None)
 
         _collect_remaining_worker_output(process, output_queue, worker_output)
         return_code = process.returncode
@@ -535,7 +578,8 @@ def _translate_with_hymt2_worker(
             worker_output,
             diagnostic_path,
         )
-        _discard_hymt2_worker(process)
+        with _WORKER_LOCK:
+            _discard_hymt2_worker(process)
         raise RuntimeError(error)
 
 

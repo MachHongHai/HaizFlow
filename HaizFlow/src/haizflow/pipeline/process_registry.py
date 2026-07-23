@@ -1,19 +1,23 @@
 import os
 import subprocess
-import time
+import threading
 from typing import Dict, List, Set
+
+from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 
 
 _cancelled_videos: Set[str] = set()
 _paused_videos: Set[str] = set()
 _active_processes: Dict[str, List[subprocess.Popen]] = {}
 _windows_job_handles: Dict[int, object] = {}
+_REGISTRY_LOCK = threading.RLock()
 
 
 def _attach_windows_kill_on_close_job(process: subprocess.Popen) -> None:
     """Place a child process tree in a Windows Job Object killed with HaizFlow."""
-    if os.name != "nt" or id(process) in _windows_job_handles:
-        return
+    with _REGISTRY_LOCK:
+        if os.name != "nt" or id(process) in _windows_job_handles:
+            return
     try:
         import ctypes
         from ctypes import wintypes
@@ -81,7 +85,8 @@ def _attach_windows_kill_on_close_job(process: subprocess.Popen) -> None:
         if not configured or not kernel32.AssignProcessToJobObject(job_handle, process_handle):
             kernel32.CloseHandle(job_handle)
             return
-        _windows_job_handles[id(process)] = job_handle
+        with _REGISTRY_LOCK:
+            _windows_job_handles[id(process)] = job_handle
     except (AttributeError, OSError, TypeError, ValueError):
         return
 
@@ -89,7 +94,8 @@ def _attach_windows_kill_on_close_job(process: subprocess.Popen) -> None:
 def _release_windows_job(process: subprocess.Popen, *, force: bool = False) -> None:
     if os.name != "nt" or (process.poll() is None and not force):
         return
-    handle = _windows_job_handles.pop(id(process), None)
+    with _REGISTRY_LOCK:
+        handle = _windows_job_handles.pop(id(process), None)
     if handle is None:
         return
     try:
@@ -101,24 +107,35 @@ def _release_windows_job(process: subprocess.Popen, *, force: bool = False) -> N
 
 
 def start_video(video_id: str):
-    if video_id in _cancelled_videos:
-        _cancelled_videos.remove(video_id)
-    if video_id in _paused_videos:
-        _paused_videos.remove(video_id)
-    _active_processes[video_id] = []
+    with _REGISTRY_LOCK:
+        _cancelled_videos.discard(video_id)
+        _paused_videos.discard(video_id)
+        _active_processes[video_id] = []
 
 
 def _kill_process_tree(process: subprocess.Popen, timeout: float = 1.5):
     if process.poll() is not None:
         return
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=max(1.0, min(timeout, 5.0)),
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            try:
+                process.kill()
+            except Exception:
+                pass
     else:
+        try:
+            process.kill()
+        except Exception:
+            pass
+    if process.poll() is None:
         try:
             process.kill()
         except Exception:
@@ -130,35 +147,33 @@ def _kill_process_tree(process: subprocess.Popen, timeout: float = 1.5):
 
 
 def cancel_video(video_id: str):
-    _cancelled_videos.add(video_id)
-    # Kill active subprocesses and their children so Windows releases video files.
-    if video_id in _active_processes:
-        for process in list(_active_processes[video_id]):
-            try:
-                if process.poll() is not None:
-                    continue
-                print(f"Stopping subprocess tree PID {process.pid} for video {video_id}")
-                process.terminate()
-                process.wait(timeout=0.8)
-            except Exception:
-                _kill_process_tree(process)
-            finally:
-                _release_windows_job(process, force=True)
+    """Atomically mark a video cancelled and stop every registered child."""
+    with _REGISTRY_LOCK:
+        _cancelled_videos.add(video_id)
+        processes = list(_active_processes.get(video_id, ()))
         _active_processes[video_id] = []
-    time.sleep(0.1)
+    # Do not hold the registry lock while waiting for operating-system process
+    # teardown.  A process registered after the snapshot is still killed by
+    # register_process because the cancellation flag remains set.
+    for process in processes:
+        _kill_process_tree(process)
+        _release_windows_job(process, force=True)
 
 
 def pause_video(video_id: str):
-    _paused_videos.add(video_id)
+    with _REGISTRY_LOCK:
+        _paused_videos.add(video_id)
     cancel_video(video_id)
 
 
 def is_paused(video_id: str) -> bool:
-    return video_id in _paused_videos
+    with _REGISTRY_LOCK:
+        return video_id in _paused_videos
 
 
 def is_cancelled(video_id: str) -> bool:
-    return video_id in _cancelled_videos
+    with _REGISTRY_LOCK:
+        return video_id in _cancelled_videos
 
 
 def check_cancellation(video_id: str):
@@ -167,28 +182,58 @@ def check_cancellation(video_id: str):
 
 
 def register_process(video_id: str, process: subprocess.Popen):
-    if is_cancelled(video_id):
+    """Register a process without a cancel/register race."""
+    with _REGISTRY_LOCK:
+        cancelled = video_id in _cancelled_videos
+        if not cancelled:
+            _attach_windows_kill_on_close_job(process)
+            _active_processes.setdefault(video_id, []).append(process)
+    if cancelled:
         _kill_process_tree(process)
         raise RuntimeError("Video cancelled by user.")
-    if video_id not in _active_processes:
-        _active_processes[video_id] = []
-    _attach_windows_kill_on_close_job(process)
-    _active_processes[video_id].append(process)
 
 
-def unregister_process(video_id: str, process: subprocess.Popen):
-    if video_id in _active_processes:
+def unregister_process(video_id: str, process: subprocess.Popen, *, force: bool = False):
+    with _REGISTRY_LOCK:
         try:
-            _active_processes[video_id].remove(process)
+            _active_processes.get(video_id, []).remove(process)
         except ValueError:
             pass
-    _release_windows_job(process)
+    _release_windows_job(process, force=force)
+
+
+def communicate_process(
+    video_id: str,
+    process: subprocess.Popen,
+    *,
+    label: str,
+    timeout_seconds: float = MEDIA_PROCESS_TIMEOUT_SECONDS,
+) -> tuple[str, str]:
+    """Wait for a registered media process with cancellation-safe cleanup."""
+    registered = False
+    force_release = False
+    try:
+        register_process(video_id, process)
+        registered = True
+        return process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        force_release = True
+        _kill_process_tree(process)
+        raise RuntimeError(f"{label} timed out after {timeout_seconds} seconds.") from exc
+    except Exception:
+        force_release = True
+        _kill_process_tree(process)
+        raise
+    finally:
+        if registered:
+            unregister_process(video_id, process, force=force_release or process.poll() is None)
 
 
 def clean_video(video_id: str):
-    if video_id in _cancelled_videos:
-        _cancelled_videos.remove(video_id)
-    for process in _active_processes.pop(video_id, []):
-        if process.poll() is None:
-            _kill_process_tree(process)
+    with _REGISTRY_LOCK:
+        _cancelled_videos.discard(video_id)
+        _paused_videos.discard(video_id)
+        processes = _active_processes.pop(video_id, [])
+    for process in processes:
+        _kill_process_tree(process)
         _release_windows_job(process, force=True)

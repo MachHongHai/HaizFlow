@@ -3,6 +3,8 @@ import json
 from pydub import AudioSegment
 import subprocess
 import tempfile
+from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
+from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
 from haizflow.utils.ffmpeg import get_video_duration
 
@@ -50,7 +52,7 @@ def _atempo_filters(speed_factor: float) -> str:
     return ",".join(filters)
 
 
-def compress_to_fit(audio: AudioSegment, max_duration_ms: int, temp_dir: str) -> AudioSegment:
+def compress_to_fit(audio: AudioSegment, max_duration_ms: int, temp_dir: str, video_id: str) -> AudioSegment:
     """Tempo-compress speech without deleting its ending or changing its pitch."""
     target_duration_ms = max(1, max_duration_ms - 20)
     speed_factor = len(audio) / target_duration_ms
@@ -63,16 +65,25 @@ def compress_to_fit(audio: AudioSegment, max_duration_ms: int, temp_dir: str) ->
     os.close(output_handle)
     try:
         audio.export(input_path, format="wav")
-        subprocess.run(
+        process = subprocess.Popen(
             [
                 "ffmpeg", "-y", "-v", "error", "-i", input_path,
                 "-filter:a", _atempo_filters(speed_factor),
                 "-ac", "1", "-ar", "16000", output_path,
             ],
-            check=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
         )
+        _stdout, stderr = communicate_process(
+            video_id,
+            process,
+            label="FFmpeg speech tempo compression",
+            timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+        )
+        if process.returncode != 0:
+            raise RuntimeError(f"FFmpeg speech tempo compression failed with exit code {process.returncode}: {stderr}")
+        check_cancellation(video_id)
         fitted = AudioSegment.from_file(output_path)
         if len(fitted) > max_duration_ms:
             raise RuntimeError(
@@ -107,7 +118,9 @@ def build_audio_timeline(
         video_dur_ms = 1000  # Fallback duration
         
     # Create silent background audio or load original/background audio.
-    if background_audio_path and os.path.exists(background_audio_path):
+    if background_audio_path:
+        if not os.path.exists(background_audio_path):
+            raise FileNotFoundError(f"Required original/background audio track is missing: {background_audio_path}")
         log_to_video(video_id, f"Loading background/original audio track: {background_audio_path}")
         try:
             bg_audio = AudioSegment.from_file(background_audio_path)
@@ -123,9 +136,8 @@ def build_audio_timeline(
             # Convert background audio to mono and 16000Hz (the format whisperX/edge-tts uses)
             base_audio = bg_audio.set_frame_rate(16000).set_channels(1)
             log_to_video(video_id, f"Original/background audio loaded and pre-processed. Duration: {len(base_audio)}ms")
-        except Exception as e:
-            log_to_video(video_id, f"WARNING: Failed to load original/background audio track ({str(e)}). Falling back to silence.")
-            base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=16000)
+        except Exception as exc:
+            raise RuntimeError(f"Could not load required original/background audio track: {exc}") from exc
     else:
         base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=16000)
 
@@ -147,7 +159,7 @@ def build_audio_timeline(
         part_path = os.path.join(voice_parts_dir, part_filename)
         
         if not os.path.exists(part_path) or os.path.getsize(part_path) == 0:
-            continue
+            raise RuntimeError(f"Missing or empty generated voice segment {idx}: {part_filename}")
             
         start_ms = max(0, int(seg["start"] * 1000))
         
@@ -175,6 +187,7 @@ def build_audio_timeline(
             continue
         
         try:
+            check_cancellation(video_id)
             tts_segment = AudioSegment.from_file(part_path)
             # Trim leading/trailing silence from the generated TTS audio to remove delay/gaps
             tts_segment = trim_silence(tts_segment)
@@ -189,13 +202,14 @@ def build_audio_timeline(
                     f"[{idx}/{total}] TTS overran its {available_dur}ms slot. "
                     f"Applying pitch-preserving tempo {speed_factor:.2f}x without trimming.",
                 )
-                tts_segment = compress_to_fit(tts_segment, available_dur, voice_parts_dir)
+                tts_segment = compress_to_fit(tts_segment, available_dur, voice_parts_dir, video_id)
 
             base_audio = base_audio.overlay(tts_segment, position=start_ms)
-        except Exception as e:
-            log_to_video(video_id, f"Failed to overlay segment {idx} ({part_filename}): {str(e)}")
-            
+        except Exception as exc:
+            raise RuntimeError(f"Failed to overlay required voice segment {idx} ({part_filename}): {exc}") from exc
+
     # Export mono 16kHz WAV file
+    check_cancellation(video_id)
     base_audio[:video_dur_ms].export(output_wav_path, format="wav", parameters=["-ac", "1", "-ar", "16000"])
     log_to_video(video_id, f"Successfully exported dubbed audio to: {output_wav_path}")
 

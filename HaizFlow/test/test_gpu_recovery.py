@@ -1,5 +1,8 @@
 import sys
 import tempfile
+import queue
+import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -103,6 +106,77 @@ class GpuRecoveryTests(unittest.TestCase):
         self.assertIn("weights_load_start", message)
         self.assertIn("worker.log", message)
         self.assertIn("access violation", message)
+
+    def test_shutdown_does_not_wait_for_a_hanging_model_warmup(self):
+        class HangingWorker:
+            def __init__(self):
+                self.stdin = self
+                self.command_written = threading.Event()
+                self.returncode = None
+
+            def write(self, _value):
+                self.command_written.set()
+
+            def flush(self):
+                pass
+
+            def poll(self):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+
+            def wait(self, timeout=None):
+                self.returncode = -9
+                return self.returncode
+
+        worker = HangingWorker()
+        output = queue.Queue()
+        original_state = (
+            translation._WORKER_PROCESS,
+            translation._WORKER_OUTPUT,
+            translation._WORKER_READER,
+            translation._WORKER_WARM,
+            translation._WORKER_DIAGNOSTIC_PATH,
+        )
+        translation._WORKER_SHUTDOWN_EVENT.clear()
+        with translation._WORKER_LOCK:
+            translation._WORKER_PROCESS = worker
+            translation._WORKER_OUTPUT = output
+            translation._WORKER_READER = None
+            translation._WORKER_WARM = False
+            translation._WORKER_DIAGNOSTIC_PATH = None
+
+        warmup_errors = []
+
+        def warmup():
+            try:
+                translation.warm_hymt2_worker()
+            except RuntimeError as exc:
+                warmup_errors.append(str(exc))
+
+        thread = threading.Thread(target=warmup)
+        try:
+            thread.start()
+            self.assertTrue(worker.command_written.wait(1))
+            started = time.monotonic()
+            translation.shutdown_hymt2_worker()
+            self.assertLess(time.monotonic() - started, 1.0)
+            thread.join(2)
+            self.assertFalse(thread.is_alive())
+            self.assertTrue(warmup_errors)
+        finally:
+            worker.kill()
+            thread.join(1)
+            with translation._WORKER_LOCK:
+                (
+                    translation._WORKER_PROCESS,
+                    translation._WORKER_OUTPUT,
+                    translation._WORKER_READER,
+                    translation._WORKER_WARM,
+                    translation._WORKER_DIAGNOSTIC_PATH,
+                ) = original_state
+            translation._WORKER_SHUTDOWN_EVENT.clear()
 
 
 if __name__ == "__main__":

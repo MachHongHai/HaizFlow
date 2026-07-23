@@ -5,6 +5,7 @@ import stat
 import tempfile
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -23,6 +24,10 @@ from haizflow.services import project_store
 _VIDEO_LOCKS: dict[str, threading.RLock] = {}
 _VIDEO_LOCKS_GUARD = threading.Lock()
 _VIDEO_DIR_CACHE: dict[str, str] = {}
+_VIDEO_METADATA_CACHE: dict[str, tuple[VideoInfo, tuple[str, int, int]]] = {}
+_METADATA_REVISION = 0
+_METADATA_REVISION_LOCK = threading.Lock()
+_METADATA_CHANGES: deque[tuple[int, str]] = deque(maxlen=4_096)
 _LEGACY_METADATA_NAME = "job.json"
 
 
@@ -33,6 +38,52 @@ def _video_lock(video_id: str) -> threading.RLock:
             lock = threading.RLock()
             _VIDEO_LOCKS[video_id] = lock
         return lock
+
+
+def _mark_metadata_changed(video_id: str) -> None:
+    global _METADATA_REVISION
+    with _METADATA_REVISION_LOCK:
+        _METADATA_REVISION += 1
+        _METADATA_CHANGES.append((_METADATA_REVISION, video_id))
+
+
+def _copy_video(video: VideoInfo) -> VideoInfo:
+    """Return a detached metadata snapshot without re-reading video.json."""
+    if hasattr(video, "model_copy"):
+        return video.model_copy(deep=True)
+    return video.copy(deep=True)
+
+
+def _metadata_signature(path: str) -> tuple[str, int, int] | None:
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return os.path.abspath(path), stat.st_mtime_ns, stat.st_size
+
+
+def _cache_video(video: VideoInfo) -> None:
+    path = _existing_video_json_path(video.video_id)
+    signature = _metadata_signature(path)
+    if signature is not None:
+        _VIDEO_METADATA_CACHE[video.video_id] = (_copy_video(video), signature)
+
+
+def metadata_revision() -> int:
+    """Return the in-process revision for project/video metadata writes."""
+    with _METADATA_REVISION_LOCK:
+        return _METADATA_REVISION
+
+
+def metadata_changes_since(revision: int) -> tuple[int, set[str]] | None:
+    """Return changed video IDs, or None when a full catalog refresh is needed."""
+    with _METADATA_REVISION_LOCK:
+        current = _METADATA_REVISION
+        if revision >= current:
+            return current, set()
+        if not _METADATA_CHANGES or revision < _METADATA_CHANGES[0][0] - 1:
+            return None
+        return current, {video_id for change, video_id in _METADATA_CHANGES if change > revision}
 
 
 def _legacy_video_dir(video_id: str) -> str:
@@ -295,6 +346,8 @@ def _save_video_unlocked(video_info: VideoInfo) -> None:
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             pass
     _write_json_atomic(path, _video_data(video_info))
+    _cache_video(video_info)
+    _mark_metadata_changed(video_info.video_id)
 
 
 def save_video(video_info: VideoInfo):
@@ -303,8 +356,12 @@ def save_video(video_info: VideoInfo):
 
 
 def _get_video_unlocked(video_id: str) -> Optional[VideoInfo]:
+    cached = _VIDEO_METADATA_CACHE.get(video_id)
     path = _existing_video_json_path(video_id)
+    if cached is not None and cached[1] == _metadata_signature(path):
+        return _copy_video(cached[0])
     if not os.path.exists(path):
+        _VIDEO_METADATA_CACHE.pop(video_id, None)
         return None
     try:
         legacy_path = os.path.basename(path).lower() == _LEGACY_METADATA_NAME
@@ -315,7 +372,8 @@ def _get_video_unlocked(video_id: str) -> Optional[VideoInfo]:
             legacy_backup = f"{path}.legacy.bak"
             if not os.path.exists(legacy_backup):
                 shutil.copy2(path, legacy_backup)
-        return video
+        _cache_video(video)
+        return _copy_video(video)
     except UnsupportedVideoSchemaError as exc:
         raise RuntimeError(f"Video metadata was created by a newer application version: {path}") from exc
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, VideoMetadataError) as original_error:
@@ -330,7 +388,8 @@ def _get_video_unlocked(video_id: str) -> Optional[VideoInfo]:
             raise RuntimeError(f"Video metadata and backup are unreadable: {path}") from backup_error
         _write_json_atomic(path, _video_data(recovered))
         log_to_video(video_id, "Recovered video metadata from the last atomic backup.")
-        return recovered
+        _cache_video(recovered)
+        return _copy_video(recovered)
 
 
 def get_video(video_id: str) -> Optional[VideoInfo]:
@@ -608,12 +667,15 @@ def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) 
         video_dir = get_video_dir(video_id)
         if not os.path.exists(video_dir):
             _VIDEO_DIR_CACHE.pop(video_id, None)
+            _VIDEO_METADATA_CACHE.pop(video_id, None)
             return False
         last_error = None
         for attempt in range(attempts):
             try:
                 shutil.rmtree(video_dir, onerror=_force_remove_readonly)
                 _VIDEO_DIR_CACHE.pop(video_id, None)
+                _VIDEO_METADATA_CACHE.pop(video_id, None)
+                _mark_metadata_changed(video_id)
                 return True
             except Exception as exc:
                 last_error = exc
@@ -621,6 +683,8 @@ def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) 
         if os.path.exists(video_dir):
             raise RuntimeError(f"Could not delete video data after {attempts} attempts: {last_error}")
         _VIDEO_DIR_CACHE.pop(video_id, None)
+        _VIDEO_METADATA_CACHE.pop(video_id, None)
+        _mark_metadata_changed(video_id)
         return True
 
 

@@ -9,6 +9,18 @@ def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def runtime_overrides_allowed() -> bool:
+    """Whether test/source runs may redirect HaizFlow-owned runtime paths.
+
+    A released executable is portable: the folder containing ``HaizFlow.exe``
+    is the only root it may use for mutable data. Inherited machine variables
+    must not redirect it back to ``C:\\Users\\...`` after a user selected a
+    different installation drive. Frozen smoke tests deliberately opt out so
+    they can use an isolated temporary directory.
+    """
+    return not is_frozen() or os.getenv("HAIZFLOW_SMOKE_TEST") == "1"
+
+
 def bundle_root() -> Path:
     if is_frozen():
         return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
@@ -32,17 +44,19 @@ def project_root() -> Path:
 def install_root() -> Path:
     """Directory selected for the application installation.
 
-    Source builds use the repository application root. Frozen builds use the
-    directory containing the executable. An installer may set the override
-    explicitly before launching HaizFlow.
+    Source builds and frozen smoke tests may use an explicit override. A real
+    frozen release always uses the directory containing the executable, which
+    is the folder selected in the installer.
     """
     override = os.getenv("HAIZFLOW_INSTALL_ROOT")
-    if override:
+    if override and runtime_overrides_allowed():
         return Path(override).expanduser().resolve()
     return project_root()
 
 
 def app_data_dir() -> Path:
+    if not runtime_overrides_allowed():
+        return project_root() / "runtime"
     override = os.getenv("HAIZFLOW_HOME") or os.getenv("APP_DATA_DIR")
     if override:
         return Path(override).expanduser().resolve()
@@ -54,6 +68,8 @@ def app_data_dir() -> Path:
 
 def runtime_data_dir() -> Path:
     """All mutable app-level data: settings, diagnostics, model caches, and project index."""
+    if not runtime_overrides_allowed():
+        return app_data_dir() / "data"
     override = os.getenv("RUNTIME_DATA_DIR")
     if override:
         path = Path(override).expanduser()
@@ -75,6 +91,8 @@ def legacy_runtime_data_dir() -> Path:
 
 
 def models_dir() -> Path:
+    if not runtime_overrides_allowed():
+        return app_data_dir() / "models"
     override = os.getenv("MODELS_DIR")
     if override:
         path = Path(override).expanduser()
@@ -102,6 +120,10 @@ def logs_dir() -> Path:
 
 
 def bin_dir() -> Path:
+    if not runtime_overrides_allowed():
+        # Bundled binaries are immutable release payload, beside the selected
+        # installation directory. Do not prefer a machine-wide BIN_DIR value.
+        return (bundle_root() / "bin").resolve()
     override = os.getenv("BIN_DIR")
     if override:
         return Path(override).expanduser().resolve()

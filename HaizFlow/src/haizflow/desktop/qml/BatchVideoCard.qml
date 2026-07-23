@@ -37,6 +37,13 @@ Rectangle {
     Accessible.name: fileName
     scale: tapHandler.pressed ? 0.99 : 1
 
+    function resetFocusState() {
+        root.focus = false
+    }
+
+    GridView.onPooled: root.resetFocusState()
+    GridView.onReused: root.resetFocusState()
+
     Keys.onReturnPressed: root.activated()
     Keys.onSpacePressed: root.activated()
 
@@ -65,6 +72,7 @@ Rectangle {
             clip: true
 
             Image {
+                id: thumbnailImage
                 anchors.fill: parent
                 source: root.thumbnailSource
                 sourceSize.width: Math.round(root.width * 2)
@@ -76,7 +84,7 @@ Rectangle {
 
             AppIcon {
                 anchors.centerIn: parent
-                visible: root.thumbnailSource.length === 0
+                visible: root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error
                 width: 28
                 height: 28
                 glyph: "\uE714"

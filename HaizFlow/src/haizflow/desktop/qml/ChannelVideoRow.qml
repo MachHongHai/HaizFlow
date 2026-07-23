@@ -25,6 +25,15 @@ Rectangle {
     signal selectionChanged(bool selected)
     signal retryRequested()
 
+    function resetFocusState() {
+        selectionBox.focus = false
+        retryButton.focus = false
+        root.focus = false
+    }
+
+    ListView.onPooled: root.resetFocusState()
+    ListView.onReused: root.resetFocusState()
+
     readonly property bool locked: duplicate
         || candidateStatus === "downloading"
         || candidateStatus === "importing"
@@ -59,6 +68,7 @@ Rectangle {
         spacing: Theme.space12
 
         AppCheckBox {
+            id: selectionBox
             Layout.preferredWidth: 24
             Layout.alignment: Qt.AlignVCenter
             checked: root.selected
@@ -191,6 +201,7 @@ Rectangle {
             }
 
             AppButton {
+                id: retryButton
                 anchors.fill: parent
                 visible: root.candidateStatus === "failed"
                 text: I18n.t("Retry")

@@ -336,16 +336,22 @@ ApplicationWindow {
                     }
                 }
 
-                CreateVideoPage {
+                Loader {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.leftMargin: root.width < 1400 ? 18 : 26
                     Layout.rightMargin: root.width < 1400 ? 18 : 26
                     Layout.topMargin: 20
                     Layout.bottomMargin: 20
-                    onRequestReviewTranslation: translationReviewDialog.open()
-                    onRequestBack: root.navigate(root.routeSingleProjects)
-                    onRequestUrlImport: urlImportDialog.openForMode("single")
+                    active: root.currentRoute === root.routeSingleWorkspace
+                    asynchronous: true
+                    sourceComponent: Component {
+                        CreateVideoPage {
+                            onRequestReviewTranslation: translationReviewDialog.open()
+                            onRequestBack: root.navigate(root.routeSingleProjects)
+                            onRequestUrlImport: urlImportDialog.openForMode("single")
+                        }
+                    }
                 }
 
                 ProjectsPage {
@@ -389,16 +395,22 @@ ApplicationWindow {
                     }
                 }
 
-                CreateVideoPage {
+                Loader {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.leftMargin: root.width < 1400 ? 18 : 26
                     Layout.rightMargin: root.width < 1400 ? 18 : 26
                     Layout.topMargin: 20
                     Layout.bottomMargin: 20
-                    onRequestReviewTranslation: translationReviewDialog.open()
-                    onRequestBack: root.navigate(root.routeBatchWorkspace)
-                    onRequestUrlImport: urlImportDialog.openForMode("batch")
+                    active: root.currentRoute === root.routeBatchVideo
+                    asynchronous: true
+                    sourceComponent: Component {
+                        CreateVideoPage {
+                            onRequestReviewTranslation: translationReviewDialog.open()
+                            onRequestBack: root.navigate(root.routeBatchWorkspace)
+                            onRequestUrlImport: urlImportDialog.openForMode("batch")
+                        }
+                    }
                 }
 
                 Loader {

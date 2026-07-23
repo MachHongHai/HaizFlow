@@ -2,7 +2,10 @@ param(
   [switch]$SkipCpuModel,
   [switch]$SkipGpuModel,
   [switch]$SkipWhisperModel,
-  [switch]$SkipFrozenSmokeTest
+  [switch]$SkipFrozenSmokeTest,
+  [switch]$AllowDirtyBuild,
+  [string]$SignCertificatePath = "",
+  [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,6 +13,12 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $DistRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "dist"))
 $ArtifactPath = [System.IO.Path]::GetFullPath((Join-Path $DistRoot "HaizFlow"))
+$PyInstallerRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "build\pyinstaller"))
+$PyInstallerWorkPath = Join-Path $PyInstallerRoot "work"
+$PyInstallerSpecPath = Join-Path $PyInstallerRoot "spec"
+$BuildMetadataPath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-metadata"))
+$IconPath = Join-Path $BuildMetadataPath "HaizFlow.ico"
+$VersionResourcePath = Join-Path $BuildMetadataPath "HaizFlow-version.txt"
 $CompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-compliance"))
 $FfmpegCompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\compliance\ffmpeg"))
 $FfmpegManifestPath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\ffmpeg-manifest.json"))
@@ -25,9 +34,48 @@ function Invoke-PythonChecked {
   }
 }
 
+function Sign-ReleaseExecutable {
+  param([string]$Executable)
+  if (!$SignCertificatePath) {
+    return
+  }
+  if (!(Test-Path -LiteralPath $SignCertificatePath -PathType Leaf)) {
+    throw "Authenticode certificate was not found: $SignCertificatePath"
+  }
+  if (!$env:HAIZFLOW_SIGN_CERT_PASSWORD) {
+    throw "Set HAIZFLOW_SIGN_CERT_PASSWORD before signing the release executable."
+  }
+  $SignTool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+  if (!$SignTool) {
+    throw "signtool.exe is required for Authenticode signing. Install the Windows SDK."
+  }
+  & $SignTool.Source sign /fd SHA256 /f $SignCertificatePath /p $env:HAIZFLOW_SIGN_CERT_PASSWORD /tr $TimestampServer /td SHA256 $Executable
+  if ($LASTEXITCODE -ne 0) {
+    throw "Authenticode signing failed with exit code $LASTEXITCODE."
+  }
+  & $SignTool.Source verify /pa /v $Executable
+  if ($LASTEXITCODE -ne 0) {
+    throw "Authenticode verification failed with exit code $LASTEXITCODE."
+  }
+}
+
 if (!(Test-Path $Python)) {
   throw "Project environment is missing. Run scripts\install-desktop-env.ps1 first."
 }
+
+Push-Location -LiteralPath $Root
+try {
+
+$GitStatus = & git status --porcelain
+if ($LASTEXITCODE -ne 0) {
+  throw "Could not determine the Git worktree status. Refusing a release build."
+}
+if ($GitStatus -and !$AllowDirtyBuild) {
+  throw "Git worktree is dirty. Commit/stash changes before building a release, or use -AllowDirtyBuild for a non-installable development artifact."
+}
+
+Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "generate-app-icon.py"), "--output", $IconPath) -Label "Application icon generation"
+Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "generate-version-resource.py"), "--output", $VersionResourcePath) -Label "Windows version resource generation"
 
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-runtime.py"), "--for-build") -Label "Runtime verification"
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "test-ffmpeg-runtime.py")) -Label "FFmpeg codec regression"
@@ -68,6 +116,11 @@ $ArgsList = @(
   "--windowed",
   "--onedir",
   "--name", "HaizFlow",
+  "--distpath", $DistRoot,
+  "--workpath", $PyInstallerWorkPath,
+  "--specpath", $PyInstallerSpecPath,
+  "--icon", $IconPath,
+  "--version-file", $VersionResourcePath,
   "--paths", (Join-Path $Root "src"),
   (Join-Path $Root "haizflow_desktop.py")
 )
@@ -162,6 +215,8 @@ if (!(Test-Path -LiteralPath (Join-Path $ArtifactPath "HaizFlow.exe") -PathType 
   throw "PyInstaller did not create the expected artifact: $ArtifactPath"
 }
 
+Sign-ReleaseExecutable -Executable (Join-Path $ArtifactPath "HaizFlow.exe")
+
 Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination (Join-Path $ArtifactPath "LICENSE.txt") -Force
 Copy-Item -LiteralPath (Join-Path $Root "NOTICE") -Destination (Join-Path $ArtifactPath "NOTICE.txt") -Force
 Copy-Item -LiteralPath (Join-Path $CompliancePath "THIRD_PARTY_NOTICES.md") -Destination $ArtifactPath -Force
@@ -171,20 +226,12 @@ $ArtifactSources = Join-Path $ArtifactPath "sources"
 New-Item -ItemType Directory -Path $ArtifactSources -Force | Out-Null
 Copy-Item -LiteralPath $FfmpegCompliancePath -Destination $ArtifactSources -Recurse -Force
 
-$FinalizeArguments = @(
-  (Join-Path $PSScriptRoot "finalize-release.py"),
-  "--artifact", $ArtifactPath
-)
-if ($IncludeCpuModel) {
-  $FinalizeArguments += "--cpu-model"
-}
-if ($IncludeGpuModel) {
-  $FinalizeArguments += "--gpu-model"
-}
-if ($IncludeWhisperModel) {
-  $FinalizeArguments += "--whisper-model"
-}
-Invoke-PythonChecked -Arguments $FinalizeArguments -Label "Release manifest generation"
+Invoke-PythonChecked -Arguments @(
+  (Join-Path $PSScriptRoot "release-preflight.py"),
+  "--artifact", $ArtifactPath,
+  "--target-directory", $DistRoot,
+  "--write", (Join-Path $ArtifactPath "INSTALL-REQUIREMENTS.json")
+) -Label "Release disk preflight"
 
 if (!$SkipFrozenSmokeTest) {
   $SmokeArguments = @{ ArtifactPath = $ArtifactPath }
@@ -207,4 +254,28 @@ if (!$SkipFrozenSmokeTest) {
   }
 }
 
-Write-Output "Release artifact ready: $ArtifactPath"
+$FinalizeArguments = @(
+  (Join-Path $PSScriptRoot "finalize-release.py"),
+  "--artifact", $ArtifactPath
+)
+if ($IncludeCpuModel) {
+  $FinalizeArguments += "--cpu-model"
+}
+if ($IncludeGpuModel) {
+  $FinalizeArguments += "--gpu-model"
+}
+if ($IncludeWhisperModel) {
+  $FinalizeArguments += "--whisper-model"
+}
+Invoke-PythonChecked -Arguments $FinalizeArguments -Label "Release manifest generation"
+Invoke-PythonChecked -Arguments @(
+  (Join-Path $PSScriptRoot "finalize-release.py"),
+  "--artifact", $ArtifactPath,
+  "--verify"
+) -Label "Release manifest verification"
+
+  Write-Output "Release artifact ready: $ArtifactPath"
+}
+finally {
+  Pop-Location
+}

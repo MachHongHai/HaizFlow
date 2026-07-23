@@ -60,8 +60,6 @@ ComboBox {
         padding: 6
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
 
-        onOpened: voiceList.currentIndex = root.highlightedIndex
-
         enter: Transition {
             NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast }
         }

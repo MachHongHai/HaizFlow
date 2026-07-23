@@ -24,20 +24,29 @@ Dialog {
     property string draftLanguage: AppController.settingsLanguage
     property string draftDevice: AppController.processingDevice
     readonly property var hardwareInfo: AppController.hardwareInfo
+    readonly property bool draftDirty: draftTheme !== AppController.settingsTheme
+        || draftLanguage !== AppController.settingsLanguage
+        || draftDevice !== AppController.processingDevice
 
-    onOpened: {
+    function syncDrafts() {
         draftTheme = AppController.settingsTheme
         draftLanguage = AppController.settingsLanguage
         draftDevice = AppController.processingDevice
     }
 
+    onOpened: {
+        syncDrafts()
+        AppController.setHardwareTelemetryActive(true)
+    }
+
+    onClosed: AppController.setHardwareTelemetryActive(false)
+
     Connections {
         target: AppController
 
         function onSettingsChanged() {
-            root.draftTheme = AppController.settingsTheme
-            root.draftLanguage = AppController.settingsLanguage
-            root.draftDevice = AppController.processingDevice
+            if (!root.visible || !root.draftDirty)
+                root.syncDrafts()
         }
     }
 
@@ -437,7 +446,10 @@ Dialog {
                 text: I18n.t("Reset defaults")
                 iconGlyph: "\uE777"
                 tone: "ghost"
-                onClicked: AppController.resetSettings()
+                onClicked: {
+                    AppController.resetSettings()
+                    root.syncDrafts()
+                }
             }
 
             Item {

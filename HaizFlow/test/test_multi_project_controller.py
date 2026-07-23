@@ -76,6 +76,49 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertNotIn("AppController.enableAudioSeparation =", dialog_qml)
         self.assertNotIn("AppController.originalVolume =", dialog_qml)
 
+    def test_metadata_poll_skips_refresh_when_no_video_metadata_changed(self):
+        controller = SimpleNamespace(
+            _last_video_metadata_revision=7,
+            refreshVideos=Mock(),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+        with patch.object(qml_controller.video_store, "metadata_revision", return_value=7):
+            HaizFlowController.poll_videos(controller)
+
+        controller.refreshVideos.assert_not_called()
+        controller.batchChanged.emit.assert_not_called()
+
+        with patch.object(qml_controller.video_store, "metadata_revision", return_value=8):
+            HaizFlowController.poll_videos(controller)
+
+        controller.refreshVideos.assert_called_once()
+        controller.batchChanged.emit.assert_called_once()
+        self.assertEqual(controller._last_video_metadata_revision, 8)
+
+    def test_metadata_poll_patches_changed_rows_without_catalog_refresh(self):
+        controller = SimpleNamespace(
+            _last_video_metadata_revision=7,
+            _apply_video_metadata_changes=Mock(return_value=True),
+            refreshVideos=Mock(),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+        with (
+            patch.object(qml_controller.video_store, "metadata_revision", return_value=8),
+            patch.object(qml_controller.video_store, "metadata_changes_since", return_value=(8, {"video-1"})),
+        ):
+            HaizFlowController.poll_videos(controller)
+
+        controller._apply_video_metadata_changes.assert_called_once_with({"video-1"})
+        controller.refreshVideos.assert_not_called()
+        controller.batchChanged.emit.assert_called_once()
+        self.assertEqual(controller._last_video_metadata_revision, 8)
+
+    def test_hardware_probe_is_inactive_until_settings_are_opened(self):
+        controller = SimpleNamespace(_hardware_telemetry_active=False)
+        with patch.object(qml_controller, "detect_hardware_capabilities") as detect:
+            HaizFlowController._refresh_live_hardware(controller)
+        detect.assert_not_called()
+
     def test_failed_thumbnail_is_not_requeued_until_its_source_changes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "clip.mp4"
@@ -165,7 +208,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         unsubscribe.assert_called_once_with(controller._on_video_log)
         pause.assert_called_once_with(active.video_id)
         processing_queue.shutdown.assert_called_once_with(timeout_seconds=10.0)
-        shutdown_translation.assert_called_once()
+        shutdown_translation.assert_called_once_with(permanent=True)
         release_whisper.assert_called_once()
         update_video.assert_any_call(
             active.video_id,

@@ -16,14 +16,14 @@ Ngày rà soát: 2026-07-18
 | --- | --- | --- | --- |
 | 1 | Định danh và xóa project an toàn | **Hoàn tất** | Project mới dùng UUID; project đơn/batch cùng tên có root riêng; legacy root được giữ; manifest, shared-root và path traversal được kiểm tra trước khi xóa. |
 | 2 | License và third-party compliance | **Runtime đã nâng cấp, còn legal gate** | Source code dùng Apache-2.0; FFmpeg đã nâng lên 8.1.2 Essentials, pin SHA-256 và kèm source archive có chữ ký. Build sinh notices từ đúng `.venv`. Trước khi công khai vẫn phải cung cấp corresponding source/build material của các thư viện GPL liên kết tĩnh và được người chịu trách nhiệm pháp lý duyệt. |
-| 3 | Frozen acceptance và artifact mới | **Hoàn tất và đã kiểm chứng** | Build xóa artifact cũ có kiểm soát, tạo metadata/checksum, chạy self-test, CPU runtime probe, GPU probe khi khả dụng và Qt/QML smoke với data tạm. Artifact ngày 2026-07-16 đã vượt qua toàn bộ gate. |
-| 4 | Installer, nâng cấp và code signing | **Chặn phát hành** | Có Inno Setup/WiX/MSIX, uninstall sạch, giữ project khi nâng cấp, version resource và chữ ký Authenticode hợp lệ. |
+| 3 | Frozen acceptance và artifact mới | **Pipeline sẵn sàng; cần chạy ở revision phát hành** | Build xóa artifact cũ có kiểm soát, tạo metadata/checksum sau smoke, CPU runtime probe, GPU probe khi khả dụng và Qt/QML smoke với data tạm. `dist/` không được commit, nên mỗi revision phát hành phải chạy build để tạo và nghiệm thu artifact mới. Artifact ngày 2026-07-16 chỉ là bằng chứng lịch sử, không thay thế nghiệm thu revision hiện tại. |
+| 4 | Installer, nâng cấp và code signing | **Chờ certificate** | Có định nghĩa Inno Setup, kiểm tra dung lượng theo artifact thật, version resource/icon và cơ chế ký Authenticode. Cần certificate thật để ký EXE/installer và nghiệm thu trên Windows sạch. |
 | 5 | Khóa revision và checksum model | **Hoàn tất** | HY-MT2 GPU khóa `9a341cd1…`, HY-MT2 CPU khóa `1cd52087…`, Whisper small khóa `536b0662…`; các file model có size/SHA-256 cố định. Build mặc định nhúng cả ba model và frozen smoke xác minh integrity. |
 | 6 | Single-instance ứng dụng | **Hoàn tất** | `QLocalServer` tạo named pipe theo user. Instance thứ hai gửi yêu cầu activate rồi thoát; instance chính khôi phục cửa sổ. Stale server được xử lý và smoke mode không chiếm khóa. Khóa file/index là phạm vi riêng của ID 7. |
 | 7 | Phục hồi project index | **Hoàn tất** | `projects.json` được khóa liên tiến trình, ghi atomic, giữ last-known-good `.bak`, sao chép bản hỏng sang quarantine và rebuild từ manifest trong các project root đã đăng ký. Backup được hợp nhất với manifest mới hơn; lỗi không thể phục hồi chặn ghi thay vì tạo index rỗng. |
 | 8 | Schema migration | **Hoàn tất** | Project metadata dùng schema v4, video metadata dùng schema v5. Migration đổi `job.json`/`job_id` cũ thành `video.json`/`video_id`, lưu backup, giữ nguyên project root legacy và từ chối schema tương lai. |
 | 9 | Dependency lock tái lập | **Hoàn tất** | `requirements-lock-py313-win64.txt` khóa 137 dependency trực tiếp/gián tiếp bằng SHA-256 cho Windows x64/Python 3.13; Torch khóa đúng biến thể cu128. Manifest fingerprint phát hiện source/lock lệch, installer dùng `--require-hashes`, build gate đối chiếu toàn bộ `.venv`. |
-| 10 | Disk preflight và cache policy | **Còn lại** | Tính dung lượng theo component/model/video, kiểm tra trước tải/build và có cleanup UI. Mốc cố định 2 GB không đủ cho production. |
+| 10 | Disk preflight và cache policy | **Hoàn tất cho build/installer** | Runtime kiểm tra đúng dung lượng model hiện có cộng 2 GiB headroom. Installer tính từ artifact sau build, giữ hai bản khi upgrade và cộng 2 GiB workspace; với artifact ~10,7 GiB sẽ yêu cầu khoảng 23,4 GiB trống. |
 | 11 | Mô tả offline và quyền riêng tư | **Chặn phát hành** | UI và README nói rõ WhisperX/HY-MT2 local, Edge TTS và tải URL cần mạng; có thông báo dữ liệu gửi ra ngoài và hành vi khi offline. |
 | 12 | Chẩn đoán production | **Còn lại** | Log rotation, Qt/thread exception hooks, build ID và chức năng export diagnostics có redaction. |
 | 13 | Shutdown và phục hồi video gián đoạn | **Hoàn tất** | Close event hỏi xác nhận khi còn xử lý/tải; active video được pause, subprocess tree bị dừng, queue từ chối việc mới và chờ worker. Windows Job Object dọn process con khi app crash; lần mở sau chuyển metadata `processing` còn sót thành `paused` có thể resume. Smoke mode luôn dùng data tạm thay vì `.env` thật. |
@@ -58,7 +58,7 @@ Kết quả frozen bên dưới là mốc lịch sử trước khi hoàn thiện
 
 Kết quả kiểm chứng source hiện tại (2026-07-18):
 
-- 160/160 unit và integration test thành công, gồm shutdown/recovery, migration job-to-video, portable path containment, dependency lock và khóa liên tiến trình.
+- Bộ `scripts/test.ps1` phải đạt hoàn toàn ở commit phát hành; không ghi cố định số test trong tài liệu để tránh số liệu cũ.
 - Qt/QML source smoke test thành công.
 - Runtime gate xác nhận đúng ba revision model (Whisper, HY-MT2 CPU/GPU), CPU/GPU native runtime và FFmpeg.
 - Integration test liên tiến trình xác nhận instance thứ hai kích hoạt instance chính rồi thoát.
@@ -92,10 +92,17 @@ Quy trình bắt buộc của script:
 3. Xóa riêng artifact `dist\HaizFlow` cũ sau khi xác thực đường dẫn.
 4. Build PyInstaller `--onedir`.
 5. Chép application license, notices và license texts.
-6. Tạo `BUILD-INFO.json` và SHA-256 cho mọi file.
+6. Tính dung lượng cài đặt từ artifact thực tế; build bị chặn nếu ổ đích không đủ không gian an toàn.
 7. Chạy frozen self-test và FFmpeg/FFprobe.
 8. Chạy CPU native runtime probe; chạy GPU probe nếu CUDA khả dụng.
 9. Khởi tạo Qt/QML/Multimedia bằng data tạm, không warm model, rồi tự thoát.
+10. Sau smoke mới tạo `BUILD-INFO.json`, SHA-256, rồi tự xác minh lại toàn bộ manifest.
+
+`HaizFlow.spec` không còn là entrypoint build để tránh hai cấu hình PyInstaller khác nhau. Chỉ dùng `scripts\build-exe.ps1`; script cố định `cwd`, `distpath`, `workpath` và `specpath` dưới repository. Version resource và icon được sinh từ source trước khi chạy PyInstaller.
+
+## Installer
+
+`scripts\build-installer.ps1` chỉ nhận artifact đã có `SHA256SUMS.txt` hợp lệ, rồi gọi `installer\HaizFlow.iss`. Wizard cho người dùng chọn thư mục cài đặt writable; mặc định là per-user để tránh Program Files không có quyền ghi. `runtime\` là dữ liệu mutable và bị loại khỏi cả overwrite khi upgrade lẫn xóa khi uninstall, nên project, model và settings được giữ nguyên. Script có thể ký EXE/installer khi được cấp certificate qua `-SignCertificatePath` và mật khẩu qua biến môi trường `HAIZFLOW_SIGN_CERT_PASSWORD`; không có certificate thì artifact vẫn chỉ là unsigned RC.
 
 `-SkipFrozenSmokeTest` chỉ dành cho chẩn đoán build, không được dùng để tạo artifact phát hành.
 

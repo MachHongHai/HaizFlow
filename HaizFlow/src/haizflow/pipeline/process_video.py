@@ -230,7 +230,12 @@ def _finish_recovered_translation(video, reporter, video_dir, temp_audio_wav, so
     """Continue from a durable translation or post-translation artifact."""
     recovery_step = getattr(video, "runtime_recovery_step", "")
     late_stages = {"creating_subtitle", "creating_voice", "building_audio_timeline", "rendering"}
-    if recovery_step in late_stages and os.path.exists(transcript_json):
+    if recovery_step in late_stages and _recovery_checkpoint_valid(
+        video,
+        "translation",
+        translation_signature,
+        [transcript_json],
+    ):
         log_to_video(video.video_id, f"CPU recovery: keeping translated subtitles and retrying from {recovery_step}.")
         _finish_after_translation(video, reporter, video_dir, temp_audio_wav)
         return True
@@ -313,16 +318,17 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
             _finish_after_translation(video, reporter, video_dir, temp_audio_wav)
             return
 
-        if video.mode == "review" and video.review_approved:
-            _finish_after_translation(video, reporter, video_dir, temp_audio_wav)
-            return
-
         if video.resume_step and os.path.exists(transcript_json):
-            if _timing_file_is_current(transcript_json):
-                log_to_video(video_id, f"Resuming from translated segments after paused step '{video.resume_step}'.")
-                _finish_after_translation(video, reporter, video_dir, temp_audio_wav)
-                return
-            log_to_video(video_id, "Resume discarded legacy translated timestamps and will transcribe again.")
+            log_to_video(
+                video_id,
+                "Resume discarded translated segments because their checkpoint no longer matches the current input or translation settings.",
+            )
+        if video.mode == "review" and video.review_approved:
+            # A reviewed transcript is still tied to its source/signature.  Do
+            # not silently render it after target language or input changes.
+            video.review_approved = False
+            update_video(video_id, review_approved=False)
+            log_to_video(video_id, "Translation settings changed; the previous review must be approved again.")
 
         if _finish_recovered_translation(
             video,

@@ -40,6 +40,13 @@ Rectangle {
     Accessible.name: projectName
     scale: tapHandler.pressed ? 0.99 : 1
 
+    function resetFocusState() {
+        root.focus = false
+    }
+
+    GridView.onPooled: root.resetFocusState()
+    GridView.onReused: root.resetFocusState()
+
     Keys.onReturnPressed: root.activated()
     Keys.onSpacePressed: root.activated()
 
@@ -77,9 +84,6 @@ Rectangle {
                 asynchronous: true
                 visible: status === Image.Ready
 
-                Behavior on opacity {
-                    NumberAnimation { duration: Theme.motionStandard }
-                }
             }
 
             ThumbnailFallback {

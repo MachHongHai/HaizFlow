@@ -370,8 +370,7 @@ class CpuRuntimeTests(unittest.TestCase):
             mock.patch.object(audio_separation.subprocess, "Popen", FakeProcess),
             mock.patch.object(audio_separation.os, "walk", return_value=fake_walk),
             mock.patch.object(audio_separation.os.path, "exists", return_value=True),
-            mock.patch.object(audio_separation, "register_process"),
-            mock.patch.object(audio_separation, "unregister_process"),
+            mock.patch.object(audio_separation, "communicate_process", return_value=("", "")),
             mock.patch.object(audio_separation, "check_cancellation"),
             mock.patch.object(audio_separation, "log_to_video"),
         ):

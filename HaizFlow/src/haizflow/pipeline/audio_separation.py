@@ -2,8 +2,9 @@ import os
 import subprocess
 import sys
 from haizflow.core.hardware import runtime_profile
+from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.services.video_store import log_to_video
-from haizflow.pipeline.process_registry import register_process, unregister_process, check_cancellation
+from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 
 def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str, str]:
     """
@@ -41,11 +42,12 @@ def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str
     
     # Run Demucs separate as a subprocess
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    register_process(video_id, p)
-    
-    # Wait for completion and capture outputs
-    stdout, stderr = p.communicate()
-    unregister_process(video_id, p)
+    stdout, stderr = communicate_process(
+        video_id,
+        p,
+        label="Demucs audio separation",
+        timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+    )
     
     check_cancellation(video_id)
     
@@ -84,4 +86,3 @@ def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str
     log_to_video(video_id, f"No-vocals path: {no_vocals_path}")
     
     return vocals_path, no_vocals_path
-

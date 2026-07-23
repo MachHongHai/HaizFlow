@@ -20,6 +20,7 @@ class VideoListModel(QAbstractListModel):
     def __init__(self):
         super().__init__()
         self._videos = []
+        self._role_snapshots = []
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._videos)
@@ -27,7 +28,9 @@ class VideoListModel(QAbstractListModel):
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or index.row() < 0 or index.row() >= len(self._videos):
             return None
-        video = self._videos[index.row()]
+        return self._role_snapshots[index.row()].get(role)
+
+    def _role_values(self, video):
         return {
             self.VideoIdRole: video.video_id,
             self.FileRole: video.original_filename,
@@ -40,7 +43,7 @@ class VideoListModel(QAbstractListModel):
             self.ProjectNameRole: video.project_name or video.original_filename,
             self.VideoSizeRole: self._video_size(video),
             self.SubtitleOverrideRole: bool(getattr(video, "subtitle_override", False)),
-        }.get(role)
+        }
 
     def roleNames(self):
         return {
@@ -61,17 +64,39 @@ class VideoListModel(QAbstractListModel):
         current_ids = [video.video_id for video in self._videos]
         next_ids = [video.video_id for video in videos]
         if current_ids == next_ids:
+            changed_rows = []
+            updated_snapshots = [self._role_values(video) for video in videos]
+            for row, updated_values in enumerate(updated_snapshots):
+                current_values = self._role_snapshots[row]
+                changed_roles = [role for role in current_values if current_values[role] != updated_values[role]]
+                if changed_roles:
+                    changed_rows.append((row, changed_roles))
             self._videos = videos
-            if videos:
-                self.dataChanged.emit(
-                    self.index(0, 0),
-                    self.index(len(videos) - 1, 0),
-                    list(self.roleNames().keys()),
-                )
+            self._role_snapshots = updated_snapshots
+            for row, roles in changed_rows:
+                index = self.index(row, 0)
+                self.dataChanged.emit(index, index, roles)
             return
         self.beginResetModel()
         self._videos = videos
+        self._role_snapshots = [self._role_values(video) for video in videos]
         self.endResetModel()
+
+    def update_video(self, video) -> bool:
+        """Update one visible row without rebuilding a large view model."""
+        for row, existing in enumerate(self._videos):
+            if existing.video_id != video.video_id:
+                continue
+            updated_values = self._role_values(video)
+            previous_values = self._role_snapshots[row]
+            changed_roles = [role for role in previous_values if previous_values[role] != updated_values[role]]
+            self._videos[row] = video
+            self._role_snapshots[row] = updated_values
+            if changed_roles:
+                index = self.index(row, 0)
+                self.dataChanged.emit(index, index, changed_roles)
+            return True
+        return False
 
     def video_at(self, row: int):
         if row < 0 or row >= len(self._videos):
@@ -101,6 +126,7 @@ class ProjectListModel(QAbstractListModel):
     def __init__(self):
         super().__init__()
         self._projects = []
+        self._role_snapshots = []
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._projects)
@@ -108,7 +134,9 @@ class ProjectListModel(QAbstractListModel):
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or index.row() < 0 or index.row() >= len(self._projects):
             return None
-        project = self._projects[index.row()]
+        return self._role_snapshots[index.row()].get(role)
+
+    def _role_values(self, project):
         return {
             self.ProjectNameRole: project["project_name"],
             self.ProjectTypeRole: project["project_type"],
@@ -116,7 +144,7 @@ class ProjectListModel(QAbstractListModel):
             self.StatusRole: project["status"],
             self.ProgressRole: project["progress"],
             self.ThumbnailRole: project["thumbnail_source"],
-        }.get(role)
+        }
 
     def roleNames(self):
         return {
@@ -132,17 +160,38 @@ class ProjectListModel(QAbstractListModel):
         next_keys = [project["key"] for project in projects]
         current_keys = [project["key"] for project in self._projects]
         if current_keys == next_keys:
+            changed_rows = []
+            updated_snapshots = [self._role_values(project) for project in projects]
+            for row, updated_values in enumerate(updated_snapshots):
+                current_values = self._role_snapshots[row]
+                changed_roles = [role for role in current_values if current_values[role] != updated_values[role]]
+                if changed_roles:
+                    changed_rows.append((row, changed_roles))
             self._projects = projects
-            if projects:
-                self.dataChanged.emit(
-                    self.index(self._project_row_to_model_row(0), 0),
-                    self.index(self._project_row_to_model_row(len(projects) - 1), 0),
-                    list(self.roleNames().keys()),
-                )
+            self._role_snapshots = updated_snapshots
+            for row, roles in changed_rows:
+                index = self.index(self._project_row_to_model_row(row), 0)
+                self.dataChanged.emit(index, index, roles)
             return
         self.beginResetModel()
         self._projects = projects
+        self._role_snapshots = [self._role_values(project) for project in projects]
         self.endResetModel()
+
+    def update_project(self, project) -> bool:
+        for row, existing in enumerate(self._projects):
+            if existing["key"] != project["key"]:
+                continue
+            updated_values = self._role_values(project)
+            previous_values = self._role_snapshots[row]
+            changed_roles = [role for role in previous_values if previous_values[role] != updated_values[role]]
+            self._projects[row] = project
+            self._role_snapshots[row] = updated_values
+            if changed_roles:
+                index = self.index(self._project_row_to_model_row(row), 0)
+                self.dataChanged.emit(index, index, changed_roles)
+            return True
+        return False
 
     def _project_row_to_model_row(self, row: int) -> int:
         """Map a persisted-project row to the row exposed to a view."""
@@ -266,76 +315,3 @@ class ChannelCandidateListModel(QAbstractListModel):
                 index = self.index(row, 0)
                 self.dataChanged.emit(index, index, list(self.roleNames().keys()))
                 return
-
-
-class TaskListModel(QAbstractListModel):
-    NameRole = Qt.ItemDataRole.UserRole + 1
-    KeyRole = Qt.ItemDataRole.UserRole + 2
-    StateRole = Qt.ItemDataRole.UserRole + 3
-    DetailRole = Qt.ItemDataRole.UserRole + 4
-
-    STEPS = [
-        ("starting", "Prepare project"),
-        ("extracting_audio", "Extract audio"),
-        ("separating_audio", "Separate vocals"),
-        ("transcribing", "Transcribe speech"),
-        ("translating", "Translate segments"),
-        ("creating_subtitle", "Build subtitles"),
-        ("creating_voice", "Generate voice"),
-        ("building_audio_timeline", "Mix audio timeline"),
-        ("rendering", "Render final video"),
-        ("done", "Finish"),
-    ]
-
-    def __init__(self):
-        super().__init__()
-        self._tasks = self._build_tasks(None)
-
-    def rowCount(self, parent=QModelIndex()):
-        return 0 if parent.isValid() else len(self._tasks)
-
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or index.row() < 0 or index.row() >= len(self._tasks):
-            return None
-        task = self._tasks[index.row()]
-        return {
-            self.NameRole: task["name"],
-            self.KeyRole: task["key"],
-            self.StateRole: task["state"],
-            self.DetailRole: task["detail"],
-        }.get(role)
-
-    def roleNames(self):
-        return {
-            self.NameRole: b"name",
-            self.KeyRole: b"key",
-            self.StateRole: b"taskState",
-            self.DetailRole: b"detail",
-        }
-
-    def set_video(self, video):
-        self.beginResetModel()
-        self._tasks = self._build_tasks(video)
-        self.endResetModel()
-
-    def _build_tasks(self, video):
-        current_step = video.step if video else "pending"
-        status = video.status if video else "pending"
-        step_keys = [key for key, _name in self.STEPS]
-        current_index = step_keys.index(current_step) if current_step in step_keys else -1
-        tasks = []
-        for index, (key, name) in enumerate(self.STEPS):
-            if not video:
-                state = "pending"
-            elif status == "done":
-                state = "done"
-            elif status in {"failed", "cancelled"} and (key == current_step or index == max(current_index, 0)):
-                state = status
-            elif index < current_index:
-                state = "done"
-            elif index == current_index and status == "processing":
-                state = "active"
-            else:
-                state = "pending"
-            tasks.append({"key": key, "name": name, "state": state, "detail": key.replace("_", " ")})
-        return tasks

@@ -42,7 +42,7 @@ Panel {
             anchors.centerIn: parent
             width: Math.min(330, parent.width - 40)
             spacing: Theme.space8
-            visible: AppController.videoThumbnailSource.length === 0
+            visible: AppController.videoThumbnailSource.length === 0 || sourceThumbnail.status === Image.Error
 
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter

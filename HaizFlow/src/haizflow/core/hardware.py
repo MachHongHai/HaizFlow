@@ -22,7 +22,10 @@ _DEVICE_PREFERENCES = {"cpu", "gpu"}
 _WINDOWS_INFO_CACHE: dict = {}
 _WINDOWS_INFO_REFRESHING = False
 _WINDOWS_INFO_LOCK = threading.Lock()
-_WINDOWS_INFO_TTL_SECONDS = 2.0
+# CIM data is static for an app session (CPU, driver and adapter details).
+# Dynamic telemetry such as VRAM and battery status is collected without
+# PowerShell. Avoid launching a shell repeatedly while Settings is closed.
+_WINDOWS_INFO_TTL_SECONDS = 24 * 60 * 60
 
 
 @dataclass(frozen=True)

@@ -95,7 +95,7 @@ Item {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 88
+            Layout.preferredHeight: root.hasChannelImport ? 68 : 88
             radius: Theme.radius
             color: Theme.surface
             border.width: 1
@@ -173,7 +173,7 @@ Item {
             id: importStrip
 
             Layout.fillWidth: true
-            Layout.preferredHeight: 88
+            Layout.preferredHeight: root.hasChannelImport ? 68 : 88
             radius: Theme.radius
             color: root.dropActive ? Theme.interactiveMuted : Theme.surfaceElevated
             border.width: 1
@@ -278,7 +278,7 @@ Item {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: visible ? 102 : 0
+            Layout.preferredHeight: visible ? 72 : 0
             visible: root.hasChannelImport
             radius: Theme.radius
             color: AppController.channelImportBusy ? Theme.interactiveMuted : Theme.surfaceElevated
@@ -287,8 +287,11 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: Theme.space16
-                spacing: Theme.space12
+                anchors.topMargin: Theme.space8
+                anchors.bottomMargin: Theme.space8
+                anchors.leftMargin: Theme.space16
+                anchors.rightMargin: Theme.space16
+                spacing: Theme.space4
 
                 AppIcon {
                     Layout.preferredWidth: 28

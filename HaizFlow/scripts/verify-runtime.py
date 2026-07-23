@@ -14,6 +14,8 @@ from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
+GIB = 1024**3
+RUNTIME_WORKING_HEADROOM_BYTES = 2 * GIB
 
 
 def sha256(path: Path) -> str:
@@ -22,6 +24,10 @@ def sha256(path: Path) -> str:
         while chunk := file.read(8 * 1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def directory_size(path: Path) -> int:
+    return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
 
 def expected_packages() -> dict[str, str]:
@@ -152,8 +158,15 @@ def main() -> int:
         except OSError:
             writable = False
         check(writable, f"Writable runtime directory: {path}", failures)
-    free_gib = shutil.disk_usage(RUNTIME_DATA_DIR).free / (1024 ** 3)
-    check(free_gib >= 2, f"Runtime disk has {free_gib:.1f} GB free", failures)
+    model_bytes = directory_size(Path(MODELS_DIR))
+    required_free_bytes = model_bytes + RUNTIME_WORKING_HEADROOM_BYTES
+    free_bytes = shutil.disk_usage(RUNTIME_DATA_DIR).free
+    check(
+        free_bytes >= required_free_bytes,
+        f"Runtime disk has {free_bytes / GIB:.1f} GB free; requires {required_free_bytes / GIB:.1f} GB "
+        f"({model_bytes / GIB:.1f} GB installed models + 2.0 GB working headroom)",
+        failures,
+    )
 
     ffmpeg_manifest_path = ROOT / "runtime" / "ffmpeg-manifest.json"
     try:
