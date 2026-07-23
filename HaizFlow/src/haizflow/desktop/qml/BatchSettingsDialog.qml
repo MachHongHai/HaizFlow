@@ -329,7 +329,8 @@ Dialog {
                     }
 
                     Repeater {
-                        model: AppController.batchVideoSizeGroups
+                        // Do not ask the controller to group the batch while this dialog is closed.
+                        model: root.opened ? AppController.batchVideoSizeGroups : []
 
                         delegate: Rectangle {
                             id: sizePreset

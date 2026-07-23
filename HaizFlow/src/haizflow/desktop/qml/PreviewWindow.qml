@@ -234,6 +234,12 @@ Window {
                         }
                     }
 
+                    ThumbnailFallback {
+                        anchors.fill: parent
+                        visible: root.showPoster && posterFrame.status === Image.Error
+                        label: I18n.t("Preview unavailable")
+                    }
+
                     SubtitleEditBox {
                         id: subtitleBox
                         onEdited: function(xPercent, yPercent, widthPercent, heightPercent, fontSize) {

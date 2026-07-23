@@ -26,6 +26,13 @@ class RuntimeDeviceController:
         self._shutdown_translation = shutdown_translation or shutdown_hymt2_worker
         self._detect_hardware = detect_hardware or detect_hardware_capabilities
 
+    def _set_runtime_state(self, state: str) -> None:
+        host = self._host
+        host._runtime_state = state
+        signal = getattr(host, "runtimeStateChanged", None)
+        if signal:
+            signal.emit()
+
     def _confirm_application_close(self) -> bool:
         host = self._host
         background_work = (
@@ -146,6 +153,7 @@ class RuntimeDeviceController:
                 host._runtime_probe_error = probe.message
             if host._runtime_probe_error:
                 host._status_message = f"Model runtime unavailable: {host._runtime_probe_error}"
+                self._set_runtime_state("failed")
                 host.statusMessageChanged.emit()
                 return
             host._warm_models()
@@ -169,12 +177,15 @@ class RuntimeDeviceController:
                 if warmed
                 else f"Ready - {profile.summary}"
             )
+            self._set_runtime_state("ready")
         except Exception as exc:
             host._status_message = f"Model warm-up unavailable: {exc}"
+            self._set_runtime_state("failed")
         host.statusMessageChanged.emit()
     def _switch_processing_device(self, preference: str):
         host = self._host
         host._device_switching = True
+        self._set_runtime_state("warming")
         host._status_message = "Switching processing device"
         host.processingChanged.emit()
         host.statusMessageChanged.emit()
@@ -200,6 +211,7 @@ class RuntimeDeviceController:
                     except OSError:
                         pass
                     host._status_message = f"Cannot switch to {preference.upper()}: {probe.message}"
+                    self._set_runtime_state("ready")
                     host.settingsChanged.emit()
                     host.statusMessageChanged.emit()
                     return
@@ -216,6 +228,7 @@ class RuntimeDeviceController:
                 host.hardwareChanged.emit()
             except Exception as exc:
                 host._status_message = f"Processing device switch failed: {exc}"
+                self._set_runtime_state("ready")
                 host.statusMessageChanged.emit()
             finally:
                 host._device_switching = False

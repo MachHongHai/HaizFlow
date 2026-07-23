@@ -141,6 +141,14 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "runtimeState"
+            type: "QString"
+            read: "runtimeState"
+            notify: "runtimeStateChanged"
+            index: 87
+            isReadonly: true
+        }
+        Property {
             name: "isBatchRunning"
             type: "bool"
             read: "isBatchRunning"
@@ -416,7 +424,7 @@ Module {
             name: "selectedElapsed"
             type: "QString"
             read: "selectedElapsed"
-            notify: "selectedVideoChanged"
+            notify: "selectedElapsedChanged"
             index: 48
             isReadonly: true
         }
@@ -694,9 +702,11 @@ Module {
         Signal { name: "originalVolumeChanged" }
         Signal { name: "workflowModeChanged" }
         Signal { name: "selectedVideoChanged" }
+        Signal { name: "selectedElapsedChanged" }
         Signal { name: "processingChanged" }
         Signal { name: "logsChanged" }
         Signal { name: "statusMessageChanged" }
+        Signal { name: "runtimeStateChanged" }
         Signal { name: "previewChanged" }
         Signal { name: "previewOpenRequested" }
         Signal { name: "videoDeleted" }

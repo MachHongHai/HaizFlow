@@ -255,6 +255,7 @@ class ChannelCandidateListModel(QAbstractListModel):
     def __init__(self):
         super().__init__()
         self._candidates = []
+        self._rows_by_candidate_id = {}
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._candidates)
@@ -299,6 +300,9 @@ class ChannelCandidateListModel(QAbstractListModel):
     def set_candidates(self, candidates):
         self.beginResetModel()
         self._candidates = list(candidates)
+        self._rows_by_candidate_id = {
+            candidate.remote_video_id: row for row, candidate in enumerate(self._candidates)
+        }
         self.endResetModel()
 
     def candidate_at(self, row: int):
@@ -309,9 +313,10 @@ class ChannelCandidateListModel(QAbstractListModel):
     def candidates(self):
         return list(self._candidates)
 
-    def update_candidate(self, remote_video_id: str) -> None:
-        for row, candidate in enumerate(self._candidates):
-            if candidate.remote_video_id == remote_video_id:
-                index = self.index(row, 0)
-                self.dataChanged.emit(index, index, list(self.roleNames().keys()))
-                return
+    def update_candidate(self, remote_video_id: str, roles=None) -> None:
+        row = self._rows_by_candidate_id.get(remote_video_id)
+        if row is None:
+            return
+        index = self.index(row, 0)
+        changed_roles = list(self.roleNames().keys()) if roles is None else list(roles)
+        self.dataChanged.emit(index, index, changed_roles)

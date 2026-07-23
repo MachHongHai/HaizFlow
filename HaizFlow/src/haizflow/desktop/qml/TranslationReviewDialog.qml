@@ -134,8 +134,14 @@ Dialog {
                         resetEditorState()
                     }
 
-                    ListView.onPooled: resetEditorState()
-                    ListView.onReused: restoreEditorState()
+                    ListView.onPooled: {
+                        visible = false
+                        resetEditorState()
+                    }
+                    ListView.onReused: {
+                        visible = true
+                        restoreEditorState()
+                    }
 
                     RowLayout {
                         anchors.left: parent.left

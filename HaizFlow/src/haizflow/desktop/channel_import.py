@@ -53,6 +53,8 @@ class ChannelImportCoordinator(QObject):
         self._cancel_events: dict[str, threading.Event] = {}
         self._runner_threads: dict[str, threading.Thread] = {}
         self._workspaces: dict[tuple[str, str], str] = {}
+        self._candidate_maps: dict[str, dict[str, ChannelVideoCandidate]] = {}
+        self._session_metrics: dict[str, dict[str, int]] = {}
         self._cookie_browser = ""
         self._cookie_file = ""
         self._scan_progress = 0
@@ -84,6 +86,49 @@ class ChannelImportCoordinator(QObject):
     def _active_session(self) -> ChannelImportSession | None:
         return self._sessions.get(self._active_session_id)
 
+    @staticmethod
+    def _candidate_contribution(candidate: ChannelVideoCandidate) -> dict[str, int]:
+        locked = candidate.status in {"imported", "downloading", "importing"}
+        eligible = not candidate.duplicate and not locked
+        progress_eligible = candidate.selected and not candidate.duplicate
+        return {
+            "selected": int(candidate.selected and eligible),
+            "selectable": int(eligible),
+            "imported": int(candidate.status == "imported"),
+            "failed": int(candidate.status == "failed"),
+            "active": int(candidate.status in {"downloading", "importing"}),
+            "progress_count": int(progress_eligible),
+            "progress_sum": int(candidate.progress) if progress_eligible else 0,
+        }
+
+    def _rebuild_session_cache(self, session: ChannelImportSession) -> None:
+        metrics = {
+            "candidate_count": len(session.candidates), "selected": 0, "selectable": 0,
+            "imported": 0, "failed": 0, "active": 0, "progress_count": 0, "progress_sum": 0,
+        }
+        candidate_map = {}
+        for candidate in session.candidates:
+            candidate_map[candidate.remote_video_id] = candidate
+            for key, value in self._candidate_contribution(candidate).items():
+                metrics[key] += value
+        self._candidate_maps[session.session_id] = candidate_map
+        self._session_metrics[session.session_id] = metrics
+
+    def _metrics_for(self, session: ChannelImportSession) -> dict[str, int]:
+        if session.session_id not in self._session_metrics:
+            self._rebuild_session_cache(session)
+        return self._session_metrics[session.session_id]
+
+    def _candidate_for(self, session: ChannelImportSession, remote_video_id: str) -> ChannelVideoCandidate | None:
+        self._metrics_for(session)
+        return self._candidate_maps.get(session.session_id, {}).get(remote_video_id)
+
+    def _update_candidate_metrics(self, session: ChannelImportSession, before: dict[str, int], candidate) -> None:
+        metrics = self._metrics_for(session)
+        after = self._candidate_contribution(candidate)
+        for key, old_value in before.items():
+            metrics[key] += after[key] - old_value
+
     @Property(str, notify=changed)
     def state(self):
         session = self._active_session()
@@ -105,51 +150,39 @@ class ChannelImportCoordinator(QObject):
             return 0
         if session.state == "inspecting":
             return self._scan_progress
-        downloadable = [
-            candidate
-            for candidate in session.candidates
-            if candidate.selected and not candidate.duplicate
-        ]
-        if not downloadable:
+        metrics = self._metrics_for(session)
+        if not metrics["progress_count"]:
             return 0
-        return round(sum(candidate.progress for candidate in downloadable) / len(downloadable))
+        return round(metrics["progress_sum"] / metrics["progress_count"])
 
     @Property(int, notify=changed)
     def candidateCount(self):
         session = self._active_session()
-        return len(session.candidates) if session else 0
+        return self._metrics_for(session)["candidate_count"] if session else 0
 
     @Property(int, notify=changed)
     def selectedCount(self):
         session = self._active_session()
         if not session:
             return 0
-        return sum(
-            1
-            for candidate in session.candidates
-            if candidate.selected and not candidate.duplicate and candidate.status not in {"imported", "downloading", "importing"}
-        )
+        return self._metrics_for(session)["selected"]
 
     @Property(int, notify=changed)
     def selectableCount(self):
         session = self._active_session()
         if not session:
             return 0
-        return sum(
-            1
-            for candidate in session.candidates
-            if not candidate.duplicate and candidate.status not in {"imported", "downloading", "importing"}
-        )
+        return self._metrics_for(session)["selectable"]
 
     @Property(int, notify=changed)
     def importedCount(self):
         session = self._active_session()
-        return sum(candidate.status == "imported" for candidate in session.candidates) if session else 0
+        return self._metrics_for(session)["imported"] if session else 0
 
     @Property(int, notify=changed)
     def failedCount(self):
         session = self._active_session()
-        return sum(candidate.status == "failed" for candidate in session.candidates) if session else 0
+        return self._metrics_for(session)["failed"] if session else 0
 
     @Property(str, notify=changed)
     def channelName(self):
@@ -209,6 +242,7 @@ class ChannelImportCoordinator(QObject):
                     session.status = "Previous import can be resumed"
                 self._sessions[session.session_id] = session
                 self._project_sessions[session.project_key] = session.session_id
+                self._rebuild_session_cache(session)
                 try:
                     save_session(session)
                 except OSError:
@@ -219,6 +253,8 @@ class ChannelImportCoordinator(QObject):
 
     def _refresh_active_model(self) -> None:
         session = self._active_session()
+        if session:
+            self._metrics_for(session)
         self.candidates.set_candidates(session.candidates if session else [])
         self.changed.emit()
 
@@ -343,8 +379,12 @@ class ChannelImportCoordinator(QObject):
         candidate = self.candidates.candidate_at(int(row))
         if not candidate or candidate.duplicate or candidate.status in {"imported", "downloading", "importing"}:
             return
+        before = self._candidate_contribution(candidate)
         candidate.selected = bool(selected)
-        self.candidates.update_candidate(candidate.remote_video_id)
+        session = self._active_session()
+        if session:
+            self._update_candidate_metrics(session, before, candidate)
+        self.candidates.update_candidate(candidate.remote_video_id, [self.candidates.SelectedRole])
         self._save_active_session()
         self.changed.emit()
 
@@ -356,6 +396,7 @@ class ChannelImportCoordinator(QObject):
         for candidate in session.candidates:
             if not candidate.duplicate and candidate.status not in {"imported", "downloading", "importing"}:
                 candidate.selected = bool(selected)
+        self._rebuild_session_cache(session)
         self.candidates.set_candidates(session.candidates)
         self._save_active_session()
         self.changed.emit()
@@ -384,6 +425,7 @@ class ChannelImportCoordinator(QObject):
             candidate.status = "downloading"
             candidate.progress = 0
             candidate.error = ""
+        self._rebuild_session_cache(session)
         self.candidates.set_candidates(session.candidates)
         self._save_active_session()
         self.changed.emit()
@@ -508,15 +550,14 @@ class ChannelImportCoordinator(QObject):
         session = self._sessions.get(session_id)
         if not session:
             return
-        candidate = next(
-            (item for item in session.candidates if item.remote_video_id == remote_video_id),
-            None,
-        )
+        candidate = self._candidate_for(session, remote_video_id)
         if not candidate:
             return
+        before = self._candidate_contribution(candidate)
         candidate.status = "imported" if success else "failed"
         candidate.progress = 100 if success else 0
         candidate.error = "" if success else str(message)
+        self._update_candidate_metrics(session, before, candidate)
         if success:
             project_keys = self._existing_remote_keys.setdefault(session.project_key, set())
             project_keys.add(f"{candidate.platform.lower()}:{candidate.remote_video_id.lower()}")
@@ -527,7 +568,9 @@ class ChannelImportCoordinator(QObject):
         self._finalize_session_if_idle(session)
         self._save_session(session)
         if session_id == self._active_session_id:
-            self.candidates.update_candidate(remote_video_id)
+            self.candidates.update_candidate(remote_video_id, [
+                self.candidates.StatusRole, self.candidates.ProgressRole, self.candidates.ErrorRole,
+            ])
             self.changed.emit()
 
     def cancel_project(self, project_key: str) -> bool:
@@ -549,6 +592,8 @@ class ChannelImportCoordinator(QObject):
             return False
         for session_id in session_ids:
             self._sessions.pop(session_id, None)
+            self._candidate_maps.pop(session_id, None)
+            self._session_metrics.pop(session_id, None)
             self._cancel_events.pop(session_id, None)
             self._runner_threads.pop(session_id, None)
         self._project_sessions.pop(project_key, None)
@@ -580,6 +625,7 @@ class ChannelImportCoordinator(QObject):
             ChannelVideoCandidate.model_validate(candidate)
             for candidate in payload.get("candidates") or []
         ]
+        self._rebuild_session_cache(session)
         session.state = "ready"
         session.status = f"{len(session.candidates)} videos ready to review"
         self._save_session(session)
@@ -607,16 +653,15 @@ class ChannelImportCoordinator(QObject):
                 session.status = str(detail)
                 self.changed.emit()
             return
-        candidate = next(
-            (item for item in session.candidates if item.remote_video_id == remote_video_id),
-            None,
-        )
+        candidate = self._candidate_for(session, remote_video_id)
         if not candidate:
             return
+        before = self._candidate_contribution(candidate)
         candidate.progress = int(progress)
+        self._update_candidate_metrics(session, before, candidate)
         session.status = str(detail)
         if session_id == self._active_session_id:
-            self.candidates.update_candidate(remote_video_id)
+            self.candidates.update_candidate(remote_video_id, [self.candidates.ProgressRole])
             self.changed.emit()
 
     def _handle_download_resolved(self, session_id, candidate_payload, path):
@@ -625,38 +670,40 @@ class ChannelImportCoordinator(QObject):
         if not session:
             cleanup_channel_workspace(self._workspaces.pop((session_id, candidate.remote_video_id), ""))
             return
-        stored = next(
-            (item for item in session.candidates if item.remote_video_id == candidate.remote_video_id),
-            None,
-        )
+        stored = self._candidate_for(session, candidate.remote_video_id)
         if stored:
+            before = self._candidate_contribution(stored)
             stored.status = "importing"
             stored.progress = 100
+            self._update_candidate_metrics(session, before, stored)
         session.state = "importing"
         session.status = "Adding downloaded videos to the project"
         self._save_session(session)
         workspace = self._workspaces.get((session_id, candidate.remote_video_id), "")
         self.videoReady.emit(path, workspace, candidate_payload, session.project_key, session_id)
         if session_id == self._active_session_id:
-            self.candidates.update_candidate(candidate.remote_video_id)
+            self.candidates.update_candidate(candidate.remote_video_id, [
+                self.candidates.StatusRole, self.candidates.ProgressRole,
+            ])
             self.changed.emit()
 
     def _handle_download_rejected(self, session_id, remote_video_id, message, cancelled):
         session = self._sessions.get(session_id)
         if not session:
             return
-        candidate = next(
-            (item for item in session.candidates if item.remote_video_id == remote_video_id),
-            None,
-        )
+        candidate = self._candidate_for(session, remote_video_id)
         if candidate:
+            before = self._candidate_contribution(candidate)
             candidate.status = "failed"
             candidate.progress = 0
             candidate.error = "Download cancelled" if cancelled else self._safe_message(message)
+            self._update_candidate_metrics(session, before, candidate)
         self._finalize_session_if_idle(session)
         self._save_session(session)
         if session_id == self._active_session_id:
-            self.candidates.update_candidate(remote_video_id)
+            self.candidates.update_candidate(remote_video_id, [
+                self.candidates.StatusRole, self.candidates.ProgressRole, self.candidates.ErrorRole,
+            ])
             self.changed.emit()
 
     def _handle_batch_resolved(self, session_id):
@@ -670,10 +717,11 @@ class ChannelImportCoordinator(QObject):
             self.changed.emit()
 
     def _finalize_session_if_idle(self, session: ChannelImportSession) -> None:
-        if any(candidate.status in {"downloading", "importing"} for candidate in session.candidates):
+        metrics = self._metrics_for(session)
+        if metrics["active"]:
             return
-        failed = sum(candidate.status == "failed" for candidate in session.candidates)
-        imported = sum(candidate.status == "imported" for candidate in session.candidates)
+        failed = metrics["failed"]
+        imported = metrics["imported"]
         session.state = "partial" if failed else "success"
         if failed:
             session.status = f"Imported {imported} videos; {failed} need attention"

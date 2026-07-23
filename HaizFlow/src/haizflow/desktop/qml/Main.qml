@@ -25,8 +25,8 @@ ApplicationWindow {
     property string workspaceReturnRoute: routeSingleProjects
     property bool channelImportVisited: false
     readonly property bool compactNavigation: width < 1280
-    readonly property bool modelStatusFailed: AppController.statusMessage.toLowerCase().indexOf("unavailable") >= 0 || AppController.statusMessage.toLowerCase().indexOf("failed") >= 0
-    readonly property bool modelStatusBusy: !modelStatusFailed && AppController.statusMessage.toLowerCase().indexOf("ready") < 0
+    readonly property bool modelStatusFailed: AppController.runtimeState === "failed"
+    readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
 
     function routeIndex(route) {
         switch (route) {

@@ -185,13 +185,31 @@ Item {
                 width: projectGrid.cardWidth
                 height: projectGrid.cardHeight
 
+                function resetFocusState() {
+                    projectGridDelegate.focus = false
+                    projectCard.resetFocusState()
+                    if (newProjectCardLoader.item)
+                        newProjectCardLoader.item.focus = false
+                }
+
+                GridView.onPooled: {
+                    visible = false
+                    resetFocusState()
+                }
+                GridView.onReused: {
+                    visible = true
+                    resetFocusState()
+                }
+
                 Loader {
+                    id: newProjectCardLoader
                     anchors.fill: parent
                     active: projectGridDelegate.isCreateCard
                     sourceComponent: newProjectCardDelegate
                 }
 
                 ProjectCard {
+                    id: projectCard
                     visible: !projectGridDelegate.isCreateCard
                     width: parent.width
                     height: parent.height

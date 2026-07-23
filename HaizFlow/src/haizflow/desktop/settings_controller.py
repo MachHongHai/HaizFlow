@@ -51,6 +51,9 @@ class SettingsController:
             host._status_message = "Settings applied"
         host.settingsChanged.emit()
         host.languageOptionsChanged.emit()
+        voice_options_changed = getattr(host, "ttsVoiceOptionsChanged", None)
+        if voice_options_changed:
+            voice_options_changed.emit()
         host.statusMessageChanged.emit()
         if device_changed and not (pipeline_active or host._device_switching):
             host._switch_processing_device(host._settings_processing_device)
@@ -80,6 +83,9 @@ class SettingsController:
             host._status_message = "Settings reset to defaults"
         host.settingsChanged.emit()
         host.languageOptionsChanged.emit()
+        voice_options_changed = getattr(host, "ttsVoiceOptionsChanged", None)
+        if voice_options_changed:
+            voice_options_changed.emit()
         host.statusMessageChanged.emit()
         if device_changed and not (pipeline_active or host._device_switching):
             host._switch_processing_device(host._settings_processing_device)

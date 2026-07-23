@@ -44,9 +44,6 @@ Rectangle {
         root.focus = false
     }
 
-    GridView.onPooled: root.resetFocusState()
-    GridView.onReused: root.resetFocusState()
-
     Keys.onReturnPressed: root.activated()
     Keys.onSpacePressed: root.activated()
 

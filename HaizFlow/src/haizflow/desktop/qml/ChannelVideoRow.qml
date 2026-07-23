@@ -31,8 +31,14 @@ Rectangle {
         root.focus = false
     }
 
-    ListView.onPooled: root.resetFocusState()
-    ListView.onReused: root.resetFocusState()
+    ListView.onPooled: {
+        root.visible = false
+        root.resetFocusState()
+    }
+    ListView.onReused: {
+        root.visible = true
+        root.resetFocusState()
+    }
 
     readonly property bool locked: duplicate
         || candidateStatus === "downloading"

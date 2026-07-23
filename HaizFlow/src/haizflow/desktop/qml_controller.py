@@ -78,9 +78,11 @@ class HaizFlowController(QObject):
     originalVolumeChanged = Signal()
     workflowModeChanged = Signal()
     selectedVideoChanged = Signal()
+    selectedElapsedChanged = Signal()
     processingChanged = Signal()
     logsChanged = Signal()
     statusMessageChanged = Signal()
+    runtimeStateChanged = Signal()
     previewChanged = Signal()
     previewOpenRequested = Signal()
     videoDeleted = Signal()
@@ -113,6 +115,7 @@ class HaizFlowController(QObject):
         self._selected_video_id = None
         self._selected_video_snapshot = None
         self.selectedVideoChanged.connect(self._refresh_selected_video_snapshot)
+        self.selectedVideoChanged.connect(self.selectedElapsedChanged.emit)
         self._selected_project_key = ""
         self._device_switching = False
         self._pending_processing_device = ""
@@ -141,6 +144,7 @@ class HaizFlowController(QObject):
         self._log_buffer = ActivityLogBuffer()
         self._logs = ""
         self._status_message = "Ready"
+        self._runtime_state = "ready" if os.getenv("HAIZFLOW_SMOKE_TEST") == "1" else "warming"
         self._subtitle_position_x = 51
         self._subtitle_position_y = 96
         self._caption_font_size = 36
@@ -247,6 +251,10 @@ class HaizFlowController(QObject):
         self._status_timer.timeout.connect(self.poll_videos)
         self._status_timer.start(1000)
 
+        self._elapsed_timer = QTimer(self)
+        self._elapsed_timer.timeout.connect(self._refresh_selected_elapsed)
+        self._elapsed_timer.start(1000)
+
         self._hardware_timer = QTimer(self)
         self._hardware_timer.timeout.connect(self._refresh_live_hardware)
         self._hardware_timer.start(5000)
@@ -258,6 +266,11 @@ class HaizFlowController(QObject):
 
     def _drain_media_import_events(self) -> None:
         self._project_import.drain_background_events()
+
+    def _refresh_selected_elapsed(self) -> None:
+        video = self._selected_video()
+        if video and video.status == "processing" and video.started_at:
+            self.selectedElapsedChanged.emit()
 
     def _start_startup_maintenance(self) -> None:
         if self._shutdown_started or self._startup_maintenance_thread:
@@ -742,7 +755,7 @@ class HaizFlowController(QObject):
         item_detail = f"{video.current_item}/{video.total_items}" if video.total_items else ""
         return " | ".join(part for part in (video.step_detail, item_detail) if part)
 
-    @Property(str, notify=selectedVideoChanged)
+    @Property(str, notify=selectedElapsedChanged)
     def selectedElapsed(self):
         video = self._selected_video()
         if not video or not video.started_at:
@@ -817,6 +830,10 @@ class HaizFlowController(QObject):
     @Property(str, notify=statusMessageChanged)
     def statusMessage(self):
         return self._status_message
+
+    @Property(str, notify=runtimeStateChanged)
+    def runtimeState(self):
+        return self._runtime_state
 
     @Property(QObject, constant=True)
     def urlImporter(self):
