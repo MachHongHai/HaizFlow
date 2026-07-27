@@ -7,6 +7,7 @@ Slider {
 
     implicitHeight: 30
     activeFocusOnTab: true
+    property bool animateValueChanges: true
 
     background: Rectangle {
         x: root.leftPadding
@@ -23,6 +24,7 @@ Slider {
             color: root.enabled ? Theme.interactive : Theme.textDisabled
 
             Behavior on width {
+                enabled: root.animateValueChanges
                 NumberAnimation { duration: root.pressed ? 0 : Theme.motionFast; easing.type: Easing.OutCubic }
             }
         }

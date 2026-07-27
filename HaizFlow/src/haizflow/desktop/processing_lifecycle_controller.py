@@ -16,6 +16,10 @@ class ProcessingLifecycleController:
 
     def enqueue_video(self, video_id: str) -> bool:
         host = self._host
+        if getattr(host, "_model_setup_state", "ready") != "ready":
+            host._status_message = "Finish model setup before starting a video."
+            host.statusMessageChanged.emit()
+            return False
         video = video_store.get_video(video_id)
         if not video or video.status == "processing" or host._processing_queue.contains(video_id):
             return False
@@ -84,6 +88,8 @@ class ProcessingLifecycleController:
             runtime_probe_error = getattr(host, "_runtime_probe_error", "")
             if runtime_probe_error:
                 raise RuntimeError(f"Model runtime validation failed: {runtime_probe_error}")
+            if getattr(host, "_model_setup_state", "ready") != "ready":
+                raise RuntimeError("Required models are not ready.")
             with host._model_runtime_lock:
                 pass
             from haizflow.pipeline.process_video import process_video_sync
@@ -127,7 +133,12 @@ class ProcessingLifecycleController:
                 _kind, video_id, line = item
                 if video_id == host._selected_video_id:
                     pending_lines.append(line)
-            elif item.startswith("__QUEUE_STARTED__:"):
+                continue
+            if not isinstance(item, str):
+                # The queue is shared by worker callbacks.  Ignore malformed
+                # payloads instead of crashing the GUI timer.
+                continue
+            if item.startswith("__QUEUE_STARTED__:"):
                 host.refreshVideos()
                 host.selectedVideoChanged.emit()
                 host.processingChanged.emit()

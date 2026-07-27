@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -40,6 +41,7 @@ REQUIRED_CONFIGURATION = (
 )
 REQUIRED_FILTERS = ("adelay", "amix", "ass", "atempo")
 REQUIRED_ENCODERS = ("libx264",)
+DOWNLOAD_HOSTS = frozenset({"github.com", "ffmpeg.org"})
 
 
 def _sha256(path: Path) -> str:
@@ -57,9 +59,19 @@ def _verify(path: Path, expected_sha256: str) -> None:
 
 
 def _download(url: str, destination: Path, expected_sha256: str) -> Path:
+    parsed = urllib.parse.urlsplit(url)
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() not in DOWNLOAD_HOSTS
+        or parsed.username
+        or parsed.password
+    ):
+        raise RuntimeError(f"Refusing non-HTTPS or unapproved download source: {url}")
     request = urllib.request.Request(url, headers={"User-Agent": "HaizFlow-build/1"})
     print(f"Downloading {url}", flush=True)
-    with urllib.request.urlopen(request, timeout=120) as response, destination.open("wb") as output:
+    with urllib.request.urlopen(request, timeout=120) as response, destination.open("wb") as output:  # nosec B310
+        if urllib.parse.urlsplit(response.geturl()).scheme.lower() != "https":
+            raise RuntimeError("FFmpeg download redirected to a non-HTTPS location.")
         shutil.copyfileobj(response, output, length=1024 * 1024)
     _verify(destination, expected_sha256)
     return destination

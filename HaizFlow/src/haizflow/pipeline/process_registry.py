@@ -202,6 +202,11 @@ def unregister_process(video_id: str, process: subprocess.Popen, *, force: bool 
     _release_windows_job(process, force=force)
 
 
+def release_process_job(process: subprocess.Popen, *, force: bool = False) -> None:
+    """Release kill-on-close ownership after a persistent child has stopped."""
+    _release_windows_job(process, force=force)
+
+
 def communicate_process(
     video_id: str,
     process: subprocess.Popen,

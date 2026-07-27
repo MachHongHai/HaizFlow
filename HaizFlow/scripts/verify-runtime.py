@@ -215,10 +215,38 @@ def main() -> int:
         text=True,
         encoding="utf-8",
         errors="replace",
+        timeout=60,
+        check=False,
     )
     check(pip_check.returncode == 0, pip_check.stdout.strip() or pip_check.stderr.strip() or "pip check", failures)
 
     if args.for_build:
+        from haizflow.core.model_integrity import (
+            verify_alignment_models,
+            verify_demucs_model,
+        )
+
+        try:
+            demucs_directory = verify_demucs_model(Path(MODELS_DIR) / "demucs")
+            check(True, f"Pinned Demucs model: {demucs_directory}", failures)
+        except Exception as exc:
+            check(False, f"Pinned Demucs model: {exc}", failures)
+        try:
+            alignment_directory = verify_alignment_models(Path(MODELS_DIR) / "alignment")
+            check(True, f"Pinned alignment models: {alignment_directory}", failures)
+        except Exception as exc:
+            check(False, f"Pinned alignment models: {exc}", failures)
+        from haizflow.services.model_bootstrap import models_ready, required_download_bytes
+
+        for device in ("cpu", "gpu"):
+            check(
+                models_ready(Path(MODELS_DIR), device),
+                (
+                    f"First-run {device.upper()} model manifest "
+                    f"({required_download_bytes(device) / GIB:.1f} GiB)"
+                ),
+                failures,
+            )
         check((ROOT / "src" / "haizflow" / "desktop" / "qml" / "Main.qml").is_file(), "QML source tree", failures)
         check(importlib.metadata.version("pyinstaller") == "6.21.0", "PyInstaller 6.21.0", failures)
 

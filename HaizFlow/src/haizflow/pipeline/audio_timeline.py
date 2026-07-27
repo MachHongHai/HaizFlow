@@ -103,7 +103,7 @@ def build_audio_timeline(
     video_path: str,
     output_wav_path: str,
     video_id: str,
-    background_audio_path: str = None,
+    background_audio_path: str | None = None,
     original_video_volume: int = 60,
 ):
     """Overlays generated voice MP3 parts on top of the original/background audio track based on timestamps."""
@@ -115,11 +115,16 @@ def build_audio_timeline(
     
     video_dur_ms = int(video_dur * 1000)
     if video_dur_ms <= 0:
-        video_dur_ms = 1000  # Fallback duration
+        raise RuntimeError("Unable to determine a positive source-video duration for the audio timeline.")
+
+    with open(segments_json_path, "r", encoding="utf-8") as f:
+        segments = json.load(f)
+    if not isinstance(segments, list) or not segments:
+        raise RuntimeError("Audio timeline requires at least one translated voice segment.")
         
     # Create silent background audio or load original/background audio.
     if background_audio_path:
-        if not os.path.exists(background_audio_path):
+        if not os.path.exists(background_audio_path) or os.path.getsize(background_audio_path) <= 0:
             raise FileNotFoundError(f"Required original/background audio track is missing: {background_audio_path}")
         log_to_video(video_id, f"Loading background/original audio track: {background_audio_path}")
         try:
@@ -150,9 +155,6 @@ def build_audio_timeline(
             frame_rate=16000,
         )
     
-    with open(segments_json_path, "r", encoding="utf-8") as f:
-        segments = json.load(f)
-        
     total = len(segments)
     for idx, seg in enumerate(segments, 1):
         part_filename = f"voice_{idx:04d}.mp3"
@@ -208,46 +210,31 @@ def build_audio_timeline(
         except Exception as exc:
             raise RuntimeError(f"Failed to overlay required voice segment {idx} ({part_filename}): {exc}") from exc
 
-    # Export mono 16kHz WAV file
+    # Export mono 16kHz WAV file atomically so resume never sees a partial file.
     check_cancellation(video_id)
-    base_audio[:video_dur_ms].export(output_wav_path, format="wav", parameters=["-ac", "1", "-ar", "16000"])
+    output_directory = os.path.dirname(os.path.abspath(output_wav_path))
+    os.makedirs(output_directory, exist_ok=True)
+    handle, temporary_path = tempfile.mkstemp(
+        prefix=".audio-timeline-",
+        suffix=".wav",
+        dir=output_directory,
+    )
+    os.close(handle)
+    try:
+        base_audio[:video_dur_ms].export(
+            temporary_path,
+            format="wav",
+            parameters=["-ac", "1", "-ar", "16000"],
+        )
+        check_cancellation(video_id)
+        if os.path.getsize(temporary_path) <= 44:
+            raise RuntimeError("Audio timeline export produced an empty WAV file.")
+        os.replace(temporary_path, output_wav_path)
+        temporary_path = ""
+    finally:
+        if temporary_path:
+            try:
+                os.remove(temporary_path)
+            except FileNotFoundError:
+                pass
     log_to_video(video_id, f"Successfully exported dubbed audio to: {output_wav_path}")
-
-def convert_to_wav(input_path: str, output_path: str, video_id: str):
-    """Converts a general audio file format into a mono 16kHz WAV file."""
-    log_to_video(video_id, f"Converting voice file '{input_path}' to WAV '{output_path}'...")
-    try:
-        audio = AudioSegment.from_file(input_path)
-        audio.export(output_path, format="wav", parameters=["-ac", "1", "-ar", "16000"])
-        log_to_video(video_id, "Voice conversion successful.")
-    except Exception as e:
-        log_to_video(video_id, f"Failed to convert voice file: {str(e)}")
-        raise e
-
-def mix_accompaniment_and_voice(voice_path: str, background_audio_path: str, output_wav_path: str, original_video_volume: int, video_id: str):
-    """Mixes a full voice track and original/background audio track together into output_wav_path."""
-    log_to_video(video_id, f"Mixing full narration voice '{voice_path}' with original/background audio '{background_audio_path}'...")
-    try:
-        voice_audio = AudioSegment.from_file(voice_path).set_frame_rate(16000).set_channels(1)
-        bg_audio = AudioSegment.from_file(background_audio_path).set_frame_rate(16000).set_channels(1)
-        # Lower original/background audio by custom percentage.
-        import math
-        if original_video_volume <= 0:
-            db_change = -100
-            log_to_video(video_id, f"Background audio volume set to {original_video_volume}%. Muting the background track.")
-        else:
-            db_change = 20 * math.log10(original_video_volume / 100.0)
-            log_to_video(video_id, f"Background audio volume set to {original_video_volume}%. Applying {db_change:.2f} dB.")
-        bg_audio = bg_audio + db_change
-        
-        # Overlay voice onto bg_audio. Expand if voice is longer than bg_audio.
-        if len(voice_audio) > len(bg_audio):
-            extra_ms = len(voice_audio) - len(bg_audio)
-            bg_audio = bg_audio + AudioSegment.silent(duration=extra_ms, frame_rate=16000)
-            
-        mixed = bg_audio.overlay(voice_audio, position=0)
-        mixed.export(output_wav_path, format="wav", parameters=["-ac", "1", "-ar", "16000"])
-        log_to_video(video_id, f"Successfully mixed narration and accompaniment into: {output_wav_path}")
-    except Exception as e:
-        log_to_video(video_id, f"Failed to mix narration and accompaniment: {str(e)}")
-        raise e

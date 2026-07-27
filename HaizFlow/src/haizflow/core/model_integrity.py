@@ -1,4 +1,4 @@
-"""Pinned HY-MT2 model revisions and local integrity verification."""
+"""Pinned model revisions and local integrity verification."""
 
 from __future__ import annotations
 
@@ -16,6 +16,55 @@ HYMT2_CPU_FILE = "Hy-MT2-1.8B-Q4_K_M.gguf"
 HYMT2_CPU_SHA256 = "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699"
 WHISPER_REPO = "Systran/faster-whisper-small"
 WHISPER_REVISION = "536b0662742c02347bc0e980a01041f333bce120"
+WHISPERX_VAD_REVISION = "3ccc17b8de34f305300f8a3fd3c9f76ba820c0d0"
+WHISPERX_VAD_FILE = "pytorch_model.bin"
+WHISPERX_VAD_URL = (
+    "https://raw.githubusercontent.com/m-bain/whisperX/"
+    f"{WHISPERX_VAD_REVISION}/whisperx/assets/{WHISPERX_VAD_FILE}"
+)
+WHISPERX_VAD_SIZE = 17_719_103
+WHISPERX_VAD_SHA256 = "0b5b3216d60a2d32fc086b47ea8c67589aaeb26b7e07fcbe620d6d0b83e209ea"
+DEMUCS_MODEL_SIGNATURE = "955717e8"
+DEMUCS_MODEL_FILE = "955717e8-8726e21a.th"
+DEMUCS_MODEL_URL = (
+    "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/"
+    "955717e8-8726e21a.th"
+)
+DEMUCS_MODEL_SIZE = 84_141_911
+DEMUCS_MODEL_SHA256 = "8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4"
+ALIGNMENT_MODEL_BASE_URL = "https://download.pytorch.org/torchaudio/models/"
+ALIGNMENT_MODELS = {
+    "en": (
+        "WAV2VEC2_ASR_BASE_960H",
+        "wav2vec2_fairseq_base_ls960_asr_ls960.pth",
+        377_664_473,
+        "488fd4f16de84438ffc945334278c1b9fb9b7159a806c1080b16111a958c945d",
+    ),
+    "fr": (
+        "VOXPOPULI_ASR_BASE_10K_FR",
+        "wav2vec2_voxpopuli_base_10k_asr_fr.pt",
+        377_708_313,
+        "30eeb5e5000e011838a39328c21eadf5ddaedbef0ea3f7cf5a790fd8695b92b5",
+    ),
+    "de": (
+        "VOXPOPULI_ASR_BASE_10K_DE",
+        "wav2vec2_voxpopuli_base_10k_asr_de.pt",
+        377_677_593,
+        "5fcd937817d4cc358aa9730ccaa92cdae37af4b62959b67ba77ef1f5da7938cf",
+    ),
+    "es": (
+        "VOXPOPULI_ASR_BASE_10K_ES",
+        "wav2vec2_voxpopuli_base_10k_asr_es.pt",
+        377_686_809,
+        "272a92b156b78e697e6c7cf7c64f274250a36d0047440e27a895a377d3af818f",
+    ),
+    "it": (
+        "VOXPOPULI_ASR_BASE_10K_IT",
+        "wav2vec2_voxpopuli_base_10k_asr_it.pt",
+        377_689_881,
+        "620bad579ee46ba1f67df2e7c858c111d14a09b349a62b1c672f0275a68484eb",
+    ),
+}
 
 WHISPER_FILES = {
     "config.json": (2370, "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828"),
@@ -114,6 +163,7 @@ def _verify(
     kind: str,
     revision: str,
     expected: dict[str, tuple[int, str]],
+    marker_name: str = MARKER_NAME,
 ) -> Path:
     root = root.expanduser().resolve()
     files = {name: root / name for name in expected}
@@ -123,7 +173,7 @@ def _verify(
             raise ModelIntegrityError(f"{kind} file is missing or has the wrong size: {path}")
 
     manifest_id = _manifest_id(kind, revision, expected)
-    marker_path = root / MARKER_NAME
+    marker_path = root / marker_name
     if _marker_is_current(marker_path, manifest_id, files):
         return root
 
@@ -164,4 +214,53 @@ def verify_whisper_model(model_directory: Path) -> Path:
         kind="Whisper small",
         revision=WHISPER_REVISION,
         expected=WHISPER_FILES,
+    )
+
+
+def verify_whisperx_vad_model(model_directory: Path) -> Path:
+    root = _verify(
+        model_directory,
+        kind="WhisperX VAD",
+        revision=WHISPERX_VAD_REVISION,
+        expected={WHISPERX_VAD_FILE: (WHISPERX_VAD_SIZE, WHISPERX_VAD_SHA256)},
+    )
+    return root / WHISPERX_VAD_FILE
+
+
+def verify_demucs_model(model_directory: Path) -> Path:
+    return _verify(
+        model_directory,
+        kind="Demucs htdemucs",
+        revision=DEMUCS_MODEL_SHA256,
+        expected={DEMUCS_MODEL_FILE: (DEMUCS_MODEL_SIZE, DEMUCS_MODEL_SHA256)},
+    )
+
+
+def verify_alignment_model(model_directory: Path, language: str) -> Path:
+    try:
+        _bundle_name, filename, size, digest = ALIGNMENT_MODELS[language]
+    except KeyError as exc:
+        raise ModelIntegrityError(f"Unsupported alignment-model language: {language}") from exc
+    root = _verify(
+        model_directory,
+        kind=f"torchaudio alignment {language}",
+        revision=digest,
+        expected={filename: (size, digest)},
+        marker_name=f".haizflow-alignment-{language}-integrity.json",
+    )
+    return root / filename
+
+
+def verify_alignment_models(model_directory: Path) -> Path:
+    expected = {
+        filename: (size, digest)
+        for _language, (_bundle_name, filename, size, digest) in ALIGNMENT_MODELS.items()
+    }
+    revision = _manifest_id("torchaudio alignment bundle", "1", expected)
+    return _verify(
+        model_directory,
+        kind="torchaudio alignment bundle",
+        revision=revision,
+        expected=expected,
+        marker_name=".haizflow-alignment-integrity.json",
     )

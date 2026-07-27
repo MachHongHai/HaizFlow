@@ -149,6 +149,78 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "modelSetupVisible"
+            type: "bool"
+            read: "modelSetupVisible"
+            notify: "modelSetupChanged"
+            index: 88
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupBusy"
+            type: "bool"
+            read: "modelSetupBusy"
+            notify: "modelSetupChanged"
+            index: 89
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupCanCancel"
+            type: "bool"
+            read: "modelSetupCanCancel"
+            notify: "modelSetupChanged"
+            index: 90
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupProgress"
+            type: "int"
+            read: "modelSetupProgress"
+            notify: "modelSetupChanged"
+            index: 91
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupState"
+            type: "QString"
+            read: "modelSetupState"
+            notify: "modelSetupChanged"
+            index: 92
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupComponent"
+            type: "QString"
+            read: "modelSetupComponent"
+            notify: "modelSetupChanged"
+            index: 93
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupDetail"
+            type: "QString"
+            read: "modelSetupDetail"
+            notify: "modelSetupChanged"
+            index: 94
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupSizeText"
+            type: "QString"
+            read: "modelSetupSizeText"
+            notify: "modelSetupChanged"
+            index: 95
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupDirectory"
+            type: "QString"
+            read: "modelSetupDirectory"
+            notify: "modelSetupChanged"
+            index: 96
+            isReadonly: true
+        }
+        Property {
             name: "isBatchRunning"
             type: "bool"
             read: "isBatchRunning"
@@ -707,6 +779,7 @@ Module {
         Signal { name: "logsChanged" }
         Signal { name: "statusMessageChanged" }
         Signal { name: "runtimeStateChanged" }
+        Signal { name: "modelSetupChanged" }
         Signal { name: "previewChanged" }
         Signal { name: "previewOpenRequested" }
         Signal { name: "videoDeleted" }
@@ -764,6 +837,7 @@ Module {
             Parameter { name: "a3"; type: "QString" }
         }
         Method { name: "resetSettings" }
+        Method { name: "exportDiagnostics"; type: "bool" }
         Method {
             name: "importVideo"
             type: "bool"
@@ -800,6 +874,8 @@ Module {
             name: "setHardwareTelemetryActive"
             Parameter { name: "active"; type: "bool" }
         }
+        Method { name: "retryModelSetup" }
+        Method { name: "cancelModelSetup" }
         Method { name: "saveSelectedVideoSettings"; type: "bool" }
         Method { name: "stopBatch" }
         Method { name: "clearBatch" }

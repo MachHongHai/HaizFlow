@@ -3,20 +3,32 @@ import json
 import os
 import re
 import statistics
+import tempfile
 import threading
 from pathlib import Path
 
+from haizflow.config import HF_HOME, MODELS_DIR, WHISPER_MODEL
+
 import torch
+import torchaudio
 import whisperx
 
-from haizflow.config import HF_HOME, MODELS_DIR, WHISPER_MODEL
 from haizflow.core.hardware import runtime_profile
-from haizflow.core.model_integrity import ModelIntegrityError, verify_whisper_model
-from haizflow.core.paths import bundle_root
+from haizflow.core.model_integrity import (
+    ALIGNMENT_MODELS,
+    ModelIntegrityError,
+    WHISPERX_VAD_SHA256,
+    WHISPERX_VAD_SIZE,
+    verify_alignment_model,
+    verify_whisper_model,
+    verify_whisperx_vad_model,
+)
+from haizflow.pipeline.process_registry import check_cancellation, is_cancelled
 from haizflow.services.video_store import log_to_video
 
 
 _MODEL_LOCK = threading.Lock()
+_ALIGNMENT_PATCH_LOCK = threading.RLock()
 _WARM_ASR_MODEL = None
 _WARM_DEVICE = None
 _AUDIO_SAMPLE_RATE = 16000
@@ -27,29 +39,31 @@ TIMING_SOURCE = "whisperx-validated-sentences-v3"
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 _SENTENCE_END_CHARS = frozenset(".!?\u2026\u3002\uff01\uff1f")
 _SENTENCE_CLOSERS = frozenset("\"'\u2019\u201d)]}\u3009\u300b\u300d\u300f\u3011")
+_WHISPERX_VAD_SIZE = WHISPERX_VAD_SIZE
+_WHISPERX_VAD_SHA256 = WHISPERX_VAD_SHA256
+# WhisperX's Hugging Face alignment table is mutable and most entries expose
+# pickle checkpoints without safetensors. Production accepts only these fixed
+# torchaudio assets, verified on every load before PyTorch deserializes them.
+_VERIFIED_ALIGNMENT_MODELS = ALIGNMENT_MODELS
 
 
 def _whisper_model_source() -> tuple[str, bool]:
-    """Prefer the installer-owned pinned model and otherwise cache on the selected drive."""
+    """Resolve only the checksum-verified model installed by first-run setup."""
     if os.path.isdir(WHISPER_MODEL):
         return os.path.abspath(WHISPER_MODEL), True
     if WHISPER_MODEL != "small":
         return WHISPER_MODEL, False
-    candidates = (
-        os.path.join(MODELS_DIR, "whisper", "small"),
-        str(bundle_root() / "models" / "whisper" / "small"),
-    )
-    for candidate in candidates:
-        if not os.path.isdir(candidate):
-            continue
-        try:
-            return str(verify_whisper_model(Path(candidate))), True
-        except ModelIntegrityError as exc:
-            raise RuntimeError(f"Installed Whisper model failed integrity verification: {exc}") from exc
-    return WHISPER_MODEL, False
+    candidate = Path(MODELS_DIR) / "whisper" / "small"
+    try:
+        return str(verify_whisper_model(candidate)), True
+    except ModelIntegrityError as exc:
+        raise RuntimeError(
+            "Whisper is missing or corrupted. Return to the model setup screen and retry the download."
+        ) from exc
 
 
 def _load_whisper_model(device: str, compute_type: str, threads: int):
+    vad_model_path = _verify_whisperx_vad_asset()
     source, local_only = _whisper_model_source()
     return whisperx.load_model(
         source,
@@ -58,6 +72,7 @@ def _load_whisper_model(device: str, compute_type: str, threads: int):
         threads=threads,
         download_root=os.path.join(HF_HOME, "hub"),
         local_files_only=local_only,
+        vad_options={"model_fp": str(vad_model_path)},
     )
 
 
@@ -356,6 +371,67 @@ def _alignment_quality(source_segment: dict, aligned_segments: list[dict]) -> tu
     return True, f"coverage={coverage_ratio:.2f}"
 
 
+def _verify_whisperx_vad_asset() -> Path:
+    """Reject a missing or modified bootstrap-installed VAD checkpoint."""
+    try:
+        return verify_whisperx_vad_model(Path(MODELS_DIR) / "whisperx-vad")
+    except ModelIntegrityError as exc:
+        raise RuntimeError(
+            "WhisperX VAD is missing or corrupted. "
+            "Return to the model setup screen and retry the download."
+        ) from exc
+
+
+class _SingleSentenceSplitter:
+    """NLTK-compatible splitter for a source span already split by HaizFlow."""
+
+    @staticmethod
+    def span_tokenize(text: str):
+        return [(0, len(text))] if text else []
+
+
+def _align_without_nltk_download(*args, **kwargs):
+    """Run WhisperX alignment without its mutable punkt_tab download path."""
+    import whisperx.alignment as alignment_module
+
+    with _ALIGNMENT_PATCH_LOCK:
+        original_loader = alignment_module.nltk_load
+        alignment_module.nltk_load = lambda _resource: _SingleSentenceSplitter()
+        try:
+            return whisperx.align(*args, **kwargs)
+        finally:
+            alignment_module.nltk_load = original_loader
+
+
+def _verified_alignment_asset(language: str, video_id: str) -> tuple[object, dict]:
+    """Load one fixed torchaudio asset after size/SHA-256 verification."""
+    bundle_name, _filename, _expected_size, _expected_sha256 = _VERIFIED_ALIGNMENT_MODELS[language]
+    cache_directory = Path(MODELS_DIR) / "alignment"
+    try:
+        model_path = verify_alignment_model(cache_directory, language)
+    except ModelIntegrityError as exc:
+        raise RuntimeError(
+            f"The '{language}' alignment model is missing or corrupted. "
+            "Return to the model setup screen and retry the download."
+        ) from exc
+    check_cancellation(video_id)
+    # Verify immediately before the pickle-compatible official state
+    # dictionary is loaded. weights_only further narrows the deserializer.
+    bundle = getattr(torchaudio.pipelines, bundle_name)
+    align_model = bundle.get_model(
+        dl_kwargs={
+            "model_dir": str(cache_directory),
+            "weights_only": True,
+        }
+    )
+    labels = bundle.get_labels()
+    return align_model, {
+        "language": language,
+        "dictionary": {character.lower(): index for index, character in enumerate(labels)},
+        "type": "torchaudio",
+    }
+
+
 def _align_segments_by_language(audio, segments, device: str, video_id: str, progress_callback=None):
     """Align each source span and preserve it whenever the aligner is unreliable."""
     grouped_segments = {}
@@ -369,18 +445,34 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
 
     aligned_segments = []
     for language in ordered_languages:
-        language_segments = grouped_segments[language]
+        check_cancellation(video_id)
+        language_segments = [
+            sentence
+            for source_segment in grouped_segments[language]
+            for sentence in _split_segment_proportionally(source_segment)
+        ]
+        if language not in _VERIFIED_ALIGNMENT_MODELS:
+            log_to_video(
+                video_id,
+                f"WARNING: No checksum-pinned alignment model is supported for '{language}'. "
+                "Preserving Whisper spans with proportional sentence boundaries.",
+            )
+            for source_segment in language_segments:
+                aligned_segments.extend(_split_segment_proportionally(source_segment))
+            continue
         align_model = None
         try:
             log_to_video(video_id, f"Loading alignment model for language '{language}'.")
             if progress_callback:
                 progress_callback("loading_alignment", f"Loading subtitle alignment for {language}")
-            align_model, metadata = whisperx.load_align_model(language_code=language, device=device)
+            align_model, metadata = _verified_alignment_asset(language, video_id)
+            align_model = align_model.to(device)
             if progress_callback:
                 progress_callback("aligning", f"Aligning {language} subtitles")
             for source_index, source_segment in enumerate(language_segments, start=1):
+                check_cancellation(video_id)
                 try:
-                    aligned_result = whisperx.align(
+                    aligned_result = _align_without_nltk_download(
                         [source_segment],
                         align_model,
                         metadata,
@@ -399,6 +491,8 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
                         f"({quality_detail}). Preserving Whisper timing with proportional sentence boundaries.",
                     )
                 except Exception as exc:
+                    if is_cancelled(video_id):
+                        raise
                     log_to_video(
                         video_id,
                         f"WARNING: Alignment failed for '{language}' source span {source_index}. "
@@ -406,6 +500,8 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
                     )
                 aligned_segments.extend(_split_segment_proportionally(source_segment))
         except Exception as exc:
+            if is_cancelled(video_id):
+                raise
             log_to_video(
                 video_id,
                 f"WARNING: Alignment model failed or is unsupported for '{language}'. "
@@ -424,6 +520,10 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
 
 def _validate_timestamp_invariants(segments: list[dict], audio_duration: float) -> None:
     """Reject timestamp corruption before translation, subtitles or TTS can use it."""
+    if not segments:
+        raise RuntimeError(
+            "WhisperX found no speech segments. The video cannot be dubbed without spoken content."
+        )
     previous_start = -1.0
     previous_end = -1.0
     for index, segment in enumerate(segments, start=1):
@@ -556,8 +656,25 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, vid
         _validate_timestamp_invariants(output_segments, len(audio) / _AUDIO_SAMPLE_RATE)
         if progress_callback:
             progress_callback("detecting_languages", f"Validated {len(output_segments)} timed sentences")
-        with open(output_json_path, "w", encoding="utf-8") as file:
-            json.dump(output_segments, file, ensure_ascii=False, indent=2)
+        output_directory = os.path.dirname(os.path.abspath(output_json_path))
+        os.makedirs(output_directory, exist_ok=True)
+        handle, temporary_path = tempfile.mkstemp(
+            prefix=".transcript-",
+            suffix=".json.tmp",
+            dir=output_directory,
+        )
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as file:
+                json.dump(output_segments, file, ensure_ascii=False, indent=2)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary_path, output_json_path)
+        except Exception:
+            try:
+                os.remove(temporary_path)
+            except FileNotFoundError:
+                pass
+            raise
 
         log_to_video(video_id, f"Saved {len(output_segments)} timestamp-locked source sentences to: {output_json_path}")
         if progress_callback:

@@ -14,6 +14,26 @@ def _same_path(first: str, second: str) -> bool:
     return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
 
 
+def _copy_file_atomically(source_path: str, destination_path: str) -> None:
+    """Publish a complete input file without ever exposing a partial destination."""
+    destination_directory = os.path.dirname(destination_path)
+    os.makedirs(destination_directory, exist_ok=True)
+    temporary_path = os.path.join(
+        destination_directory,
+        f".{os.path.basename(destination_path)}.import-{uuid.uuid4().hex}.part",
+    )
+    try:
+        shutil.copyfile(source_path, temporary_path)
+        if os.path.getsize(temporary_path) <= 0:
+            raise RuntimeError(f"Imported video is empty: {source_path}")
+        os.replace(temporary_path, destination_path)
+    finally:
+        try:
+            os.remove(temporary_path)
+        except FileNotFoundError:
+            pass
+
+
 def migrate_legacy_single_export(video_info) -> bool:
     """Move a legacy single-project export out of the project root once."""
     if (
@@ -88,11 +108,10 @@ def create_desktop_video(
     video_info = video_store.create_video(video_id, os.path.basename(video_path), config, video_ext=ext)
     try:
         video_info.media_source = MediaSource.model_validate(media_source or {"type": "local_file"})
-        input_path = video_info.files["video_input"]
-        if move_input:
-            os.replace(video_path, input_path)
-        else:
-            shutil.copyfile(video_path, input_path)
+        input_path = (video_info.files or {}).get("video_input")
+        if not isinstance(input_path, str) or not input_path.strip():
+            raise RuntimeError("New video metadata did not provide an input-video path.")
+        _copy_file_atomically(video_path, input_path)
 
         try:
             video_info.video_width, video_info.video_height = get_video_dimensions(input_path)
@@ -103,6 +122,14 @@ def create_desktop_video(
 
         video_store.save_video(video_info)
         video_store.log_to_video(video_id, f"Imported input video: {video_path}")
+        if move_input and not _same_path(video_path, input_path):
+            try:
+                os.remove(video_path)
+            except OSError as exc:
+                video_store.log_to_video(
+                    video_id,
+                    f"Imported successfully, but the temporary source could not be removed: {exc}",
+                )
         return video_info
     except Exception:
         try:

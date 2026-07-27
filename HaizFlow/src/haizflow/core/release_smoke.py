@@ -41,7 +41,8 @@ def _sha256(path: Path) -> str:
 
 
 def run_release_smoke(
-    *, require_cpu_model: bool, require_gpu_model: bool, require_whisper_model: bool = False
+    *,
+    pre_finalize: bool = False,
 ) -> dict[str, object]:
     failures: list[str] = []
     details: list[str] = []
@@ -76,17 +77,29 @@ def run_release_smoke(
         expected = ffmpeg_manifest.get(hash_key)
         _check(path.is_file() and bool(expected) and _sha256(path) == expected, f"FFmpeg source: {filename}", failures, details)
 
-    for path, label in (
+    release_files = [
         (artifact / "LICENSE.txt", "Application license"),
         (artifact / "NOTICE.txt", "Application notice"),
         (artifact / "THIRD_PARTY_NOTICES.md", "Third-party notices"),
         (artifact / "licenses", "Third-party license directory"),
-        (artifact / "BUILD-INFO.json", "Build metadata"),
-        (artifact / "SHA256SUMS.txt", "Artifact checksum manifest"),
         (artifact / "sources" / "ffmpeg" / "LICENSE.txt", "FFmpeg package license"),
         (artifact / "sources" / "ffmpeg" / "README.txt", "FFmpeg package build information"),
-    ):
+    ]
+    if not pre_finalize:
+        release_files.extend(
+            (
+                (artifact / "BUILD-INFO.json", "Build metadata"),
+                (artifact / "SHA256SUMS.txt", "Artifact checksum manifest"),
+            )
+        )
+    for path, label in release_files:
         _check(path.exists(), label, failures, details)
+    _check(
+        not (artifact / "runtime").exists(),
+        "Mutable root runtime excluded from frozen artifact",
+        failures,
+        details,
+    )
 
     try:
         from PySide6 import QtCore, QtMultimedia, QtQml, QtQuick  # noqa: F401
@@ -95,42 +108,66 @@ def run_release_smoke(
     except Exception as exc:
         failures.append(f"Qt runtime import failed: {type(exc).__name__}: {exc}")
 
-    if require_cpu_model:
-        from haizflow.config import HYMT2_CPU_MODEL_FILE
-        from haizflow.core.model_integrity import verify_cpu_model
+    bundled_model_files = (
+        list((bundle / "models").rglob("*")) if (bundle / "models").exists() else []
+    )
+    _check(
+        not any(path.is_file() for path in bundled_model_files),
+        "Model payload excluded from frozen artifact",
+        failures,
+        details,
+    )
+    try:
+        from haizflow.core.model_integrity import (
+            ALIGNMENT_MODELS,
+            DEMUCS_MODEL_FILE,
+            DEMUCS_MODEL_SIZE,
+            HYMT2_CPU_FILE,
+            HYMT2_GPU_FILES,
+            WHISPER_FILES,
+            WHISPERX_VAD_FILE,
+            WHISPERX_VAD_SIZE,
+        )
+        from haizflow.services.model_bootstrap import required_assets
 
-        cpu_model = bundle / "models" / "hymt2-gguf" / HYMT2_CPU_MODEL_FILE
-        try:
-            verify_cpu_model(cpu_model)
-            cpu_model_valid = True
-        except Exception as exc:
-            cpu_model_valid = False
-            failures.append(f"Bundled HY-MT2 CPU model integrity failed: {type(exc).__name__}: {exc}")
-        _check(cpu_model_valid, "Bundled pinned HY-MT2 CPU model", failures, details)
-
-    if require_gpu_model:
-        from haizflow.core.model_integrity import verify_gpu_model
-
-        gpu_model = bundle / "models" / "hymt2-transformers"
-        try:
-            verify_gpu_model(gpu_model)
-            gpu_model_valid = True
-        except Exception as exc:
-            gpu_model_valid = False
-            failures.append(f"Bundled HY-MT2 GPU model integrity failed: {type(exc).__name__}: {exc}")
-        _check(gpu_model_valid, "Bundled pinned HY-MT2 GPU model", failures, details)
-
-    if require_whisper_model:
-        from haizflow.core.model_integrity import verify_whisper_model
-
-        whisper_model = bundle / "models" / "whisper" / "small"
-        try:
-            verify_whisper_model(whisper_model)
-            whisper_model_valid = True
-        except Exception as exc:
-            whisper_model_valid = False
-            failures.append(f"Bundled Whisper model integrity failed: {type(exc).__name__}: {exc}")
-        _check(whisper_model_valid, "Bundled pinned Whisper model", failures, details)
+        cpu_assets = required_assets("cpu")
+        gpu_assets = required_assets("gpu")
+        forbidden_model_files = {
+            (filename.lower(), size)
+            for filename, (size, _digest) in {**WHISPER_FILES, **HYMT2_GPU_FILES}.items()
+        }
+        forbidden_model_files.update(
+            {
+                (HYMT2_CPU_FILE.lower(), 1_133_080_448),
+                (DEMUCS_MODEL_FILE.lower(), DEMUCS_MODEL_SIZE),
+                (WHISPERX_VAD_FILE.lower(), WHISPERX_VAD_SIZE),
+                *(
+                    (filename.lower(), size)
+                    for _bundle, filename, size, _digest in ALIGNMENT_MODELS.values()
+                ),
+            }
+        )
+        accidental_models = [
+            path
+            for path in bundle.rglob("*")
+            if path.is_file() and (path.name.lower(), path.stat().st_size) in forbidden_model_files
+        ]
+        bootstrap_manifest_valid = (
+            bool(cpu_assets)
+            and bool(gpu_assets)
+            and not accidental_models
+            and all(asset.url.startswith("https://") for asset in (*cpu_assets, *gpu_assets))
+            and all(len(asset.sha256) == 64 and asset.size > 0 for asset in (*cpu_assets, *gpu_assets))
+        )
+    except Exception as exc:
+        bootstrap_manifest_valid = False
+        failures.append(f"Model bootstrap import failed: {type(exc).__name__}: {exc}")
+    _check(
+        bootstrap_manifest_valid,
+        "Pinned first-run model bootstrap manifest",
+        failures,
+        details,
+    )
 
     return {
         "event": "release_smoke",
@@ -144,14 +181,10 @@ def run_release_smoke(
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--require-cpu-model", action="store_true")
-    parser.add_argument("--require-gpu-model", action="store_true")
-    parser.add_argument("--require-whisper-model", action="store_true")
+    parser.add_argument("--pre-finalize", action="store_true")
     args = parser.parse_args(argv)
     result = run_release_smoke(
-        require_cpu_model=args.require_cpu_model,
-        require_gpu_model=args.require_gpu_model,
-        require_whisper_model=args.require_whisper_model,
+        pre_finalize=args.pre_finalize,
     )
     if sys.stdout is not None:
         print(json.dumps(result, ensure_ascii=True), flush=True)

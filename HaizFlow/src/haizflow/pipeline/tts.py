@@ -218,6 +218,11 @@ def generate_voice_parts(
     os.makedirs(voice_parts_dir, exist_ok=True)
     with open(segments_json_path, "r", encoding="utf-8") as file:
         segments = json.load(file)
+    if not isinstance(segments, list) or not segments:
+        raise RuntimeError("Voice generation requires at least one translated subtitle segment.")
+    for index, segment in enumerate(segments, 1):
+        if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
+            raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
 
     async def run_all():
         total = len(segments)

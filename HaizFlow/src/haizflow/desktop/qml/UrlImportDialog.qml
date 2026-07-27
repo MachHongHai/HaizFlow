@@ -9,7 +9,10 @@ Dialog {
 
     property string importMode: "single"
     property string inspectedText: ""
+    // Python's generated qmltypes omit the constant flag; the importer object is stable.
+    // qmllint disable stale-property-read
     readonly property var importer: AppController.urlImporter
+    // qmllint enable stale-property-read
     readonly property bool hasMetadata: importer.title.length > 0
     readonly property bool hasStatus: importer.status.length > 0
     readonly property bool showsProgress: importer.state === "downloading"

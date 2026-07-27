@@ -17,7 +17,7 @@ Item {
     property string syncedSessionId: "\u0000"
 
     function restoredPlatform() {
-        var value = String(importer.requestedPlatform || importer.platform || "").toLowerCase()
+        const value = String(importer.requestedPlatform || importer.platform || "").toLowerCase()
         return value === "tiktok" || value === "douyin" ? value : "youtube"
     }
 
@@ -55,10 +55,8 @@ Item {
 
     function syncSessionDraft() {
         const sessionId = String(importer.sessionId || "")
-        if (syncedSessionId === sessionId) {
-            syncAuthentication()
+        if (syncedSessionId === sessionId)
             return
-        }
 
         syncedSessionId = sessionId
         const request = importer.requestData || ({})
@@ -88,8 +86,12 @@ Item {
     Connections {
         target: root.importer
 
-        function onChanged() {
+        function onSessionChanged() {
             root.syncSessionDraft()
+        }
+
+        function onAuthenticationChanged() {
+            root.syncAuthentication()
         }
     }
 

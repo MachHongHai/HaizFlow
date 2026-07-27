@@ -98,8 +98,8 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
     """Reject a stale, partial, dirty, or differently-versioned frozen build.
 
     A checksum proves files did not change after finalization. This gate also
-    proves that they were finalised from this clean source revision and carry
-    every offline model component promised by the installer.
+    proves that they were finalised from this clean source revision. Model
+    payloads are intentionally forbidden because first-run bootstrap owns them.
     """
     artifact = artifact_directory.resolve()
     verify_manifest(artifact)
@@ -107,7 +107,20 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
-    from haizflow.core.model_integrity import HYMT2_CPU_FILE, HYMT2_CPU_REVISION, HYMT2_GPU_REVISION, WHISPER_REVISION
+    from haizflow.core.model_integrity import (
+        DEMUCS_MODEL_SHA256,
+        ALIGNMENT_MODELS,
+        DEMUCS_MODEL_FILE,
+        DEMUCS_MODEL_SIZE,
+        HYMT2_CPU_FILE,
+        HYMT2_CPU_REVISION,
+        HYMT2_GPU_FILES,
+        HYMT2_GPU_REVISION,
+        WHISPER_FILES,
+        WHISPER_REVISION,
+        WHISPERX_VAD_FILE,
+        WHISPERX_VAD_SIZE,
+    )
 
     current_commit = _git_value("rev-parse", "HEAD")
     current_status = _git_value("status", "--porcelain")
@@ -121,33 +134,76 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
     for name, expected in (
         ("application", "HaizFlow"),
         ("version", _release_version()),
+        ("build_id", f"{_release_version()}+{current_commit[:12]}"),
         ("git_commit", current_commit),
         ("git_dirty", False),
         ("packaging", "PyInstaller onedir"),
-        ("bundled_cpu_model", True),
-        ("bundled_gpu_model", True),
-        ("bundled_whisper_model", True),
+        ("model_delivery", "first-run-download"),
+        ("model_storage", "runtime/models"),
+        ("bundled_cpu_model", False),
+        ("bundled_gpu_model", False),
+        ("bundled_whisper_model", False),
+        ("bundled_demucs_model", False),
+        ("bundled_alignment_models", False),
         ("hymt2_cpu_revision", HYMT2_CPU_REVISION),
         ("hymt2_gpu_revision", HYMT2_GPU_REVISION),
         ("whisper_revision", WHISPER_REVISION),
+        ("demucs_model_sha256", DEMUCS_MODEL_SHA256),
+        (
+            "alignment_model_sha256",
+            {
+                language: digest
+                for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()
+            },
+        ),
     ):
         _require_build_value(build_info, name, expected)
 
-    required_paths = (
-        artifact / "HaizFlow.exe",
-        artifact / "_internal" / "models" / "whisper" / "small" / "model.bin",
-        artifact / "_internal" / "models" / "hymt2-gguf" / HYMT2_CPU_FILE,
-        artifact / "_internal" / "models" / "hymt2-transformers" / "config.json",
-    )
+    required_paths = (artifact / "HaizFlow.exe",)
     missing = [str(path.relative_to(artifact)) for path in required_paths if not path.is_file()]
-    gpu_weights = list((artifact / "_internal" / "models" / "hymt2-transformers").glob("*.safetensors"))
-    if missing or not gpu_weights:
-        details = missing + ([] if gpu_weights else ["_internal/models/hymt2-transformers/*.safetensors"])
-        raise RuntimeError(f"Required bundled model payload is missing: {', '.join(details)}")
+    if missing:
+        raise RuntimeError(f"Required release payload is missing: {', '.join(missing)}")
+    runtime_root = artifact / "runtime"
+    if runtime_root.exists():
+        raise RuntimeError(
+            "Mutable root runtime must not be present in the frozen artifact; "
+            "the installer creates and preserves it separately."
+        )
+    model_root = artifact / "_internal" / "models"
+    bundled_model_files = list(model_root.rglob("*")) if model_root.exists() else []
+    if any(path.is_file() for path in bundled_model_files):
+        raise RuntimeError(
+            "Model payload must not be bundled in the installer; first-run download owns _internal/models."
+        )
+    forbidden_model_files = {
+        (filename.lower(), size)
+        for filename, (size, _digest) in {**WHISPER_FILES, **HYMT2_GPU_FILES}.items()
+    }
+    forbidden_model_files.update(
+        {
+            (HYMT2_CPU_FILE.lower(), 1_133_080_448),
+            (DEMUCS_MODEL_FILE.lower(), DEMUCS_MODEL_SIZE),
+            (WHISPERX_VAD_FILE.lower(), WHISPERX_VAD_SIZE),
+            *(
+                (filename.lower(), size)
+                for _bundle, filename, size, _digest in ALIGNMENT_MODELS.values()
+            ),
+        }
+    )
+    accidental_models = [
+        path.relative_to(artifact).as_posix()
+        for path in artifact.rglob("*")
+        if path.is_file() and (path.name.lower(), path.stat().st_size) in forbidden_model_files
+    ]
+    if accidental_models:
+        raise RuntimeError(
+            "Known model payload must not be bundled in the installer: "
+            + ", ".join(accidental_models[:5])
+        )
     print("Release artifact is eligible for installer packaging.", flush=True)
 
 
-def finalize(artifact_directory: Path, *, cpu_model: bool, gpu_model: bool, whisper_model: bool) -> None:
+def finalize(artifact_directory: Path) -> None:
     artifact = artifact_directory.resolve()
     executable = artifact / "HaizFlow.exe"
     if not executable.is_file():
@@ -155,23 +211,42 @@ def finalize(artifact_directory: Path, *, cpu_model: bool, gpu_model: bool, whis
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
-    from haizflow.core.model_integrity import HYMT2_CPU_REVISION, HYMT2_GPU_REVISION, WHISPER_REVISION
+    from haizflow.core.model_integrity import (
+        ALIGNMENT_MODELS,
+        DEMUCS_MODEL_SHA256,
+        HYMT2_CPU_REVISION,
+        HYMT2_GPU_REVISION,
+        WHISPER_REVISION,
+    )
 
     version = _release_version()
+    git_commit = _git_value("rev-parse", "HEAD")
+    if git_commit == "unknown":
+        raise RuntimeError("Cannot establish the current Git commit; refusing to finalize the release artifact.")
     build_info = {
         "application": "HaizFlow",
         "version": version,
+        "build_id": f"{version}+{git_commit[:12]}",
         "built_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "git_commit": _git_value("rev-parse", "HEAD"),
+        "git_commit": git_commit,
         "git_branch": _git_value("branch", "--show-current"),
         "git_dirty": bool(_git_value("status", "--porcelain")),
         "python": sys.version.split()[0],
-        "bundled_cpu_model": cpu_model,
-        "bundled_gpu_model": gpu_model,
-        "bundled_whisper_model": whisper_model,
+        "model_delivery": "first-run-download",
+        "model_storage": "runtime/models",
+        "bundled_cpu_model": False,
+        "bundled_gpu_model": False,
+        "bundled_whisper_model": False,
+        "bundled_demucs_model": False,
+        "bundled_alignment_models": False,
         "hymt2_cpu_revision": HYMT2_CPU_REVISION,
         "hymt2_gpu_revision": HYMT2_GPU_REVISION,
         "whisper_revision": WHISPER_REVISION,
+        "demucs_model_sha256": DEMUCS_MODEL_SHA256,
+        "alignment_model_sha256": {
+            language: digest
+            for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()
+        },
         "packaging": "PyInstaller onedir",
     }
     (artifact / "BUILD-INFO.json").write_text(
@@ -197,9 +272,6 @@ def finalize(artifact_directory: Path, *, cpu_model: bool, gpu_model: bool, whis
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact", type=Path, required=True)
-    parser.add_argument("--cpu-model", action="store_true")
-    parser.add_argument("--gpu-model", action="store_true")
-    parser.add_argument("--whisper-model", action="store_true")
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--verify-installer-eligibility", action="store_true")
     args = parser.parse_args(argv)
@@ -210,12 +282,7 @@ def main(argv=None) -> int:
     elif args.verify_installer_eligibility:
         verify_installer_eligibility(args.artifact)
     else:
-        finalize(
-            args.artifact,
-            cpu_model=args.cpu_model,
-            gpu_model=args.gpu_model,
-            whisper_model=args.whisper_model,
-        )
+        finalize(args.artifact)
     return 0
 
 

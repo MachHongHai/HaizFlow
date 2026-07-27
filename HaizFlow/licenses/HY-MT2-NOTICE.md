@@ -11,4 +11,4 @@ Optional CPU and GPU distributions can include Tencent's HY-MT2 1.8B model or do
 - Declared license: Apache-2.0
 - Included license text: `Apache-2.0.txt`
 
-Downloads, local caches, optional bundled models, and release checks all use these immutable revisions. The application rejects a model when any required file size or SHA-256 value differs from the audited manifest.
+First-run downloads, local caches, and release checks all use these immutable revisions. Models are not bundled in the installer. The application rejects a model when any required file size or SHA-256 value differs from the audited manifest.

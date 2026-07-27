@@ -24,7 +24,9 @@ from huggingface_hub import hf_hub_download  # noqa: E402
 def main() -> int:
     destination = Path(MODELS_DIR) / "hymt2-gguf"
     destination.mkdir(parents=True, exist_ok=True)
-    model_path = hf_hub_download(
+    # Revision is a tested 40-character commit SHA from model_integrity.py;
+    # the downloaded GGUF is checksum-verified before it is accepted.
+    model_path = hf_hub_download(  # nosec B615
         repo_id=HYMT2_CPU_MODEL_REPO,
         filename=HYMT2_CPU_MODEL_FILE,
         revision=HYMT2_CPU_MODEL_REVISION,

@@ -2,8 +2,8 @@ import os
 import json
 import queue
 import threading
-import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Property, QTimer, Signal, Slot
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
@@ -11,7 +11,7 @@ from PySide6.QtQml import QmlNamedElement, QmlSingleton
 from haizflow.desktop.activity_log import ActivityLogBuffer
 from haizflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
 from haizflow.desktop.channel_import import ChannelImportCoordinator
-from haizflow.desktop.localization import QMessageBox, _set_ui_language, _ui_text
+from haizflow.desktop.localization import QMessageBox, _set_ui_language
 from haizflow.desktop.media import (
     collect_batch_video_paths,
     create_video_thumbnail_path,
@@ -28,6 +28,7 @@ from haizflow.desktop.project_workspace_controller import ProjectWorkspaceContro
 from haizflow.desktop.project_commands_controller import ProjectCommandsController
 from haizflow.desktop.project_import_controller import ProjectImportController
 from haizflow.desktop.catalog_media_controller import CatalogMediaController
+from haizflow.desktop.diagnostics_controller import DiagnosticsController
 from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
 from haizflow.desktop.settings_controller import SettingsController
 from haizflow.desktop.presenters import (
@@ -39,24 +40,23 @@ from haizflow.desktop.presenters import (
 )
 from haizflow.desktop.url_import import VideoUrlImportCoordinator
 
-from haizflow.config import RUNTIME_DATA_DIR
+from haizflow.config import MODELS_DIR, RUNTIME_DATA_DIR
 from haizflow.core.events import subscribe_log, unsubscribe_log
 from haizflow.core.hardware import (
     configure_processing_device,
     clear_runtime_profile_cache,
     detect_hardware_capabilities,
-    processing_device_preference,
     recommended_processing_device,
     runtime_profile,
     validate_processing_device,
 )
-from haizflow.core.runtime_probe import probe_runtime
 from haizflow.pipeline.process_registry import pause_video
 from haizflow.schemas.video import CropSettings, VideoConfig, SubtitleStyle
 from haizflow.services import desktop_settings, video_store, project_store
 from haizflow.services.desktop_videos import create_desktop_video, migrate_legacy_single_export
 from haizflow.services.processing_queue import SerialProcessingQueue
-from haizflow.services.translation import shutdown_hymt2_worker, warm_hymt2_worker
+from haizflow.services.model_bootstrap import models_ready
+from haizflow.services.translation import shutdown_hymt2_worker
 
 QML_IMPORT_NAME = "HaizFlow"
 QML_IMPORT_MAJOR_VERSION = 1
@@ -83,6 +83,7 @@ class HaizFlowController(QObject):
     logsChanged = Signal()
     statusMessageChanged = Signal()
     runtimeStateChanged = Signal()
+    modelSetupChanged = Signal()
     previewChanged = Signal()
     previewOpenRequested = Signal()
     videoDeleted = Signal()
@@ -126,8 +127,17 @@ class HaizFlowController(QObject):
         self._shutdown_started = False
         self._close_confirmed = False
         self._warmup_thread: threading.Thread | None = None
+        self._model_setup_cancel_event = threading.Event()
+        self._model_setup_events = queue.Queue()
+        self._model_setup_state = "ready" if os.getenv("HAIZFLOW_SMOKE_TEST") == "1" else "checking"
+        self._model_setup_component = ""
+        self._model_setup_detail = "Checking installed models"
+        self._model_setup_completed_bytes = 0
+        self._model_setup_total_bytes = 0
+        self._model_setup_target_device = ""
         self._startup_maintenance_thread: threading.Thread | None = None
         self._startup_maintenance_events = queue.Queue()
+        self._background_shutdown_event = threading.Event()
         self._processing_lifecycle = ProcessingLifecycleController(self)
         self._processing_queue = SerialProcessingQueue(
             self._execute_pipeline,
@@ -166,6 +176,7 @@ class HaizFlowController(QObject):
         self._project_commands = ProjectCommandsController(self)
         self._project_import = ProjectImportController(self)
         self._catalog_media = CatalogMediaController(self)
+        self._diagnostics = DiagnosticsController(self)
         self._runtime_device = RuntimeDeviceController(self)
         settings = desktop_settings.load_settings()
         self._settings_theme = settings["theme"]
@@ -198,6 +209,13 @@ class HaizFlowController(QObject):
             self._status_message = f"Saved GPU setting is unavailable: {device_message} Switched to CPU."
         configure_processing_device(self._settings_processing_device)
         self._active_processing_device = self._settings_processing_device
+        if os.getenv("HAIZFLOW_SMOKE_TEST") != "1" and models_ready(
+            Path(MODELS_DIR), self._active_processing_device
+        ):
+            # Integrity markers make this a small local check. A completed
+            # installation goes straight to background warm-up with no setup UI.
+            self._model_setup_state = "ready"
+            self._model_setup_detail = "Models are ready"
         self._project_directory = os.path.join(RUNTIME_DATA_DIR, "projects")
         self._project_name = ""
         self._project_type = "single"
@@ -208,6 +226,7 @@ class HaizFlowController(QObject):
         self._media_import_completed = 0
         self._media_import_status = ""
         self._thumbnail_refresh_running = False
+        self._thumbnail_refresh_thread: threading.Thread | None = None
         self._thumbnail_retry_failures: dict[str, tuple[str, int, float]] = {}
         self._thumbnail_retry_lock = threading.Lock()
         self._dimension_probe = VideoDimensionProbe(self._on_video_dimensions_ready)
@@ -247,6 +266,10 @@ class HaizFlowController(QObject):
         self._startup_maintenance_timer.timeout.connect(self._drain_startup_maintenance_events)
         self._startup_maintenance_timer.start(100)
 
+        self._model_setup_timer = QTimer(self)
+        self._model_setup_timer.timeout.connect(self._drain_model_setup_events)
+        self._model_setup_timer.start(100)
+
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self.poll_videos)
         self._status_timer.start(1000)
@@ -285,8 +308,14 @@ class HaizFlowController(QObject):
     def _run_startup_maintenance(self) -> None:
         try:
             migrated = video_store.migrate_legacy_project_data()
+            if self._background_shutdown_event.is_set():
+                return
             recovered = video_store.recover_interrupted_videos()
+            if self._background_shutdown_event.is_set():
+                return
             self._migrate_legacy_project_thumbnails()
+            if self._background_shutdown_event.is_set():
+                return
             self._startup_maintenance_events.put({"migrated": migrated, "recovered": recovered})
         except Exception as exc:
             self._startup_maintenance_events.put({"error": str(exc)})
@@ -309,6 +338,27 @@ class HaizFlowController(QObject):
                 self._status_message = f"Organized {len(migrated)} video workspace(s) into their projects."
             self.refreshVideos()
         self.statusMessageChanged.emit()
+
+    def _drain_model_setup_events(self) -> None:
+        changed = False
+        while True:
+            try:
+                event = self._model_setup_events.get_nowait()
+            except queue.Empty:
+                break
+            state = event.get("state", self._model_setup_state)
+            self._model_setup_state = state
+            self._model_setup_component = event.get("component", "")
+            self._model_setup_detail = event.get("detail", "")
+            self._model_setup_completed_bytes = max(
+                0, int(event.get("completed_bytes", self._model_setup_completed_bytes))
+            )
+            self._model_setup_total_bytes = max(
+                0, int(event.get("total_bytes", self._model_setup_total_bytes))
+            )
+            changed = True
+        if changed:
+            self.modelSetupChanged.emit()
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.Close and not self._close_confirmed:
@@ -353,6 +403,14 @@ class HaizFlowController(QObject):
 
     def _set_warmup_status(self, detail: str):
         return HaizFlowController._runtime_device_for(self)._set_warmup_status(detail)
+
+    @Slot()
+    def retryModelSetup(self):
+        return HaizFlowController._runtime_device_for(self).retryModelSetup()
+
+    @Slot()
+    def cancelModelSetup(self):
+        return HaizFlowController._runtime_device_for(self).cancelModelSetup()
 
     @Property(QObject, constant=True)
     def videoModel(self):
@@ -700,9 +758,13 @@ class HaizFlowController(QObject):
         video = self._selected_video()
         if not video or video.status != "awaiting_review":
             return []
+        transcript_path = (video.files or {}).get("transcript_json")
+        if not isinstance(transcript_path, str) or not transcript_path.strip():
+            return []
         try:
-            with open(video.files["transcript_json"], "r", encoding="utf-8") as file:
-                return json.load(file)
+            with open(transcript_path, "r", encoding="utf-8") as file:
+                segments = json.load(file)
+            return segments if isinstance(segments, list) else []
         except (OSError, json.JSONDecodeError):
             return []
 
@@ -834,6 +896,51 @@ class HaizFlowController(QObject):
     @Property(str, notify=runtimeStateChanged)
     def runtimeState(self):
         return self._runtime_state
+
+    @Property(bool, notify=modelSetupChanged)
+    def modelSetupVisible(self):
+        return self._model_setup_state != "ready"
+
+    @Property(bool, notify=modelSetupChanged)
+    def modelSetupBusy(self):
+        return self._model_setup_state in {"checking", "downloading", "verifying", "warming"}
+
+    @Property(bool, notify=modelSetupChanged)
+    def modelSetupCanCancel(self):
+        return self._model_setup_state in {"checking", "downloading", "verifying"}
+
+    @Property(int, notify=modelSetupChanged)
+    def modelSetupProgress(self):
+        if self._model_setup_total_bytes <= 0:
+            return 0
+        return min(
+            100,
+            round(self._model_setup_completed_bytes * 100 / self._model_setup_total_bytes),
+        )
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupState(self):
+        return self._model_setup_state
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupComponent(self):
+        return self._model_setup_component
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupDetail(self):
+        return self._model_setup_detail
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupSizeText(self):
+        completed = format_memory_size(self._model_setup_completed_bytes)
+        total = format_memory_size(self._model_setup_total_bytes)
+        return f"{completed} / {total}"
+
+    @Property(str, notify=modelSetupChanged)
+    def modelSetupDirectory(self):
+        from haizflow.config import MODELS_DIR
+
+        return MODELS_DIR
 
     @Property(QObject, constant=True)
     def urlImporter(self):
@@ -1048,6 +1155,14 @@ class HaizFlowController(QObject):
     @Slot()
     def resetSettings(self):
         HaizFlowController._settings_delegate_for(self).reset()
+
+    @staticmethod
+    def _diagnostics_for(host):
+        return getattr(host, "_diagnostics", None) or DiagnosticsController(host)
+
+    @Slot(result=bool)
+    def exportDiagnostics(self):
+        return HaizFlowController._diagnostics_for(self).export()
 
     @Slot(str, result=bool)
     def importVideo(self, path):
@@ -1389,8 +1504,10 @@ class HaizFlowController(QObject):
 
     @Slot(int, int, int, int, int)
     def updatePreviewEdits(self, subtitle_x, subtitle_y, box_width, box_height, font_size):
+        # SubtitleEditBox already owns the live geometry while dragging. Keep
+        # the Python draft current without invalidating every preview binding
+        # on each pointer move.
         self._apply_preview_edits(subtitle_x, subtitle_y, box_width, box_height, font_size)
-        self.previewChanged.emit()
 
     @Slot(result=bool)
     def commitPreviewEdits(self):

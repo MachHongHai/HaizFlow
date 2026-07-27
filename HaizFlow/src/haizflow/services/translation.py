@@ -3,6 +3,7 @@ import os
 import queue
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -12,7 +13,7 @@ from pathlib import Path
 from haizflow.config import HYMT2_REQUEST_TIMEOUT_SECONDS, HYMT2_WARM_TIMEOUT_SECONDS
 from haizflow.core.hardware import runtime_profile
 from haizflow.core.paths import is_frozen, project_root
-from haizflow.pipeline.process_registry import register_process, unregister_process
+from haizflow.pipeline.process_registry import register_process, release_process_job, unregister_process
 from haizflow.services.video_store import log_to_video
 
 try:
@@ -56,7 +57,8 @@ _WORKER_DIAGNOSTIC_PATH = None
 
 def language_name(language_code: str) -> str:
     normalized = (language_code or "").lower()
-    return LANGUAGE_NAMES.get(normalized, WHISPER_LANGUAGE_NAMES.get(normalized, normalized or "English").title())
+    fallback = str(WHISPER_LANGUAGE_NAMES.get(normalized) or normalized or "English").title()
+    return str(LANGUAGE_NAMES.get(normalized) or fallback)
 
 
 def translate_segments(
@@ -75,6 +77,18 @@ def translate_segments(
     log_to_video(video_id, f"Initializing HY-MT2 translation | target: {target_language_name}.")
     with open(input_json_path, "r", encoding="utf-8") as file:
         segments = json.load(file)
+    if not isinstance(segments, list) or not segments:
+        raise RuntimeError("Translation requires at least one timestamped source sentence.")
+    for index, segment in enumerate(segments, 1):
+        if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
+            raise RuntimeError(f"Source sentence {index} is missing text.")
+        try:
+            start = float(segment["start"])
+            end = float(segment["end"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(f"Source sentence {index} has invalid timestamps.") from exc
+        if start < 0 or end <= start:
+            raise RuntimeError(f"Source sentence {index} has an invalid time range.")
 
     source_texts = [segment["text"] for segment in segments]
     source_codes = [str(segment.get("language") or source_language or "en").lower() for segment in segments]
@@ -110,8 +124,25 @@ def translate_segments(
             }
         )
 
-    with open(output_json_path, "w", encoding="utf-8") as file:
-        json.dump(translated_segments, file, ensure_ascii=False, indent=2)
+    output_directory = os.path.dirname(os.path.abspath(output_json_path))
+    os.makedirs(output_directory, exist_ok=True)
+    handle, temporary_path = tempfile.mkstemp(
+        prefix=".translation-",
+        suffix=".json.tmp",
+        dir=output_directory,
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            json.dump(translated_segments, file, ensure_ascii=False, indent=2)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary_path, output_json_path)
+    except Exception:
+        try:
+            os.remove(temporary_path)
+        except FileNotFoundError:
+            pass
+        raise
     log_to_video(video_id, f"Saved translated segments to: {output_json_path}")
     return translated_segments
 
@@ -126,11 +157,14 @@ def _discard_hymt2_worker(process=None) -> None:
     global _WORKER_PROCESS, _WORKER_OUTPUT, _WORKER_READER, _WORKER_WARM, _WORKER_DIAGNOSTIC_PATH
     if process is not None and process is not _WORKER_PROCESS:
         return
+    discarded_process = _WORKER_PROCESS
     _WORKER_PROCESS = None
     _WORKER_OUTPUT = None
     _WORKER_READER = None
     _WORKER_WARM = False
     _WORKER_DIAGNOSTIC_PATH = None
+    if discarded_process is not None and discarded_process.poll() is not None:
+        release_process_job(discarded_process)
 
 
 def _worker_diagnostic_path(process=None) -> str:
@@ -207,6 +241,8 @@ def _terminate_hymt2_worker(process) -> None:
             process.wait(timeout=1)
         except (OSError, subprocess.TimeoutExpired):
             pass
+    if process is not None:
+        release_process_job(process, force=process.poll() is None)
     with _WORKER_LOCK:
         _discard_hymt2_worker(process)
 
@@ -218,6 +254,8 @@ def _kill_hymt2_worker_immediately(process) -> None:
             process.kill()
         except OSError:
             pass
+    if process is not None:
+        release_process_job(process, force=True)
     with _WORKER_LOCK:
         _discard_hymt2_worker(process)
 
@@ -393,6 +431,7 @@ def shutdown_hymt2_worker(*, permanent: bool = False) -> None:
     except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
         _terminate_hymt2_worker(process)
     finally:
+        release_process_job(process, force=process.poll() is None)
         with _WORKER_LOCK:
             _discard_hymt2_worker(process)
 
@@ -565,9 +604,15 @@ def _translate_with_hymt2_worker(
                 else:
                     log_to_video(video_id, "HY-MT2 translation completed; model stays warm for the next video.")
                 return translations
+        except Exception:
+            _terminate_hymt2_worker(process)
+            raise
         finally:
             if registered:
-                unregister_process(video_id, process, force=process.poll() is None)
+                # The worker is intentionally persistent. Keep its Windows Job
+                # Object handle alive between requests so closing the handle
+                # does not trigger JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
+                unregister_process(video_id, process)
 
         _collect_remaining_worker_output(process, output_queue, worker_output)
         return_code = process.returncode

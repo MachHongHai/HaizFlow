@@ -40,8 +40,8 @@ class ActivityLogBuffer:
             self._character_count -= len(self._lines.popleft()) + 1
         return added
 
-    @classmethod
-    def read_tail(cls, path: str, *, max_characters: int = 60_000) -> str:
+    @staticmethod
+    def read_tail(path: str, *, max_characters: int = 60_000) -> str:
         if not path or not os.path.exists(path):
             return ""
         # UTF-8 needs up to four bytes per character. Read a little extra, then

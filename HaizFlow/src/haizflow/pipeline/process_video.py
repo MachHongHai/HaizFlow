@@ -1,6 +1,7 @@
 import os
 import hashlib
 import json
+import shutil
 import time
 import traceback
 from datetime import datetime, timezone
@@ -38,6 +39,22 @@ def _file_state(path):
         return None
     stat = os.stat(path)
     return (os.path.abspath(path), stat.st_size, stat.st_mtime_ns)
+
+
+def _required_video_path(video, key: str, *, must_exist: bool = False) -> str:
+    """Return a non-empty path from persisted video metadata.
+
+    Legacy or interrupted migrations can leave nullable entries in ``files``.
+    Failing here gives the user a useful pipeline error instead of an obscure
+    ``TypeError`` from ``os.path`` or FFmpeg.
+    """
+    path = (video.files or {}).get(key)
+    if not isinstance(path, str) or not path.strip():
+        raise RuntimeError(f"Video metadata is missing the required '{key}' path.")
+    path = os.path.abspath(path)
+    if must_exist and (not os.path.isfile(path) or os.path.getsize(path) <= 0):
+        raise FileNotFoundError(f"Required video artifact is missing or empty: {path}")
+    return path
 
 
 def _timing_file_is_current(path):
@@ -168,7 +185,7 @@ def _resolve_audio_mix(video, fallback_audio_path: str) -> tuple[str, int]:
     if not video.enable_audio_separation:
         return fallback_audio_path, video.original_video_volume
     separated_background = video.files.get("background_audio") or ""
-    if separated_background and os.path.exists(separated_background) and os.path.getsize(separated_background) > 0:
+    if separated_background and os.path.exists(separated_background) and os.path.getsize(separated_background) > 44:
         return separated_background, 100
     return "", 100
 
@@ -182,7 +199,11 @@ def _prepare_audio_mix(video, reporter, video_dir: str, fallback_audio_path: str
     _ensure_gpu_available("audio separation")
     if not os.path.exists(fallback_audio_path):
         reporter.update(12, "extracting_audio", "Restoring source audio")
-        extract_audio(video.files["video_input"], fallback_audio_path, video.video_id)
+        extract_audio(
+            _required_video_path(video, "video_input", must_exist=True),
+            fallback_audio_path,
+            video.video_id,
+        )
     reporter.update(14, "separating_audio", "Restoring separated background audio")
     separation_dir = os.path.join(video_dir, "temp", "separation")
     vocals_path, background_audio_path = separate_audio(
@@ -268,6 +289,7 @@ def _finish_recovered_translation(video, reporter, video_dir, temp_audio_wav, so
             status="awaiting_review",
             progress=62,
             step="review_translation",
+            resume_step="creating_subtitle",
             step_detail="Translation ready for review",
             runtime_recovery_step="",
         )
@@ -278,11 +300,14 @@ def _finish_recovered_translation(video, reporter, video_dir, temp_audio_wav, so
 
 def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None):
     """Run the full-auto desktop dubbing pipeline."""
+    # Keep this bound even when start_video() itself fails; the GPU recovery
+    # branch must never mask the original exception with UnboundLocalError.
+    reporter = _reporter
     try:
         start_video(video_id)
         # A recovery re-enters this function with the existing reporter so
         # elapsed processing time remains the total time for the video.
-        reporter = _reporter or ProgressReporter(video_id)
+        reporter = reporter or ProgressReporter(video_id)
         video = get_video(video_id)
         if not video:
             return
@@ -295,14 +320,10 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         reporter.update(3, "starting", "Preparing video")
         log_to_video(video_id, "Processing started | Mode: Full Auto | Translator: HY-MT2")
 
-        video_input = video.files["video_input"]
-        final_video = video.files["final_video"]
-        srt_output = video.files["srt_output"]
-        voice_output = video.files["voice_output"]
-        transcript_json = video.files["transcript_json"]
+        video_input = _required_video_path(video, "video_input", must_exist=True)
+        transcript_json = _required_video_path(video, "transcript_json")
 
         video_dir = os.path.dirname(os.path.dirname(video_input))
-        voice_parts_dir = os.path.join(video_dir, "temp", "voice_parts")
         temp_audio_wav = os.path.join(video_dir, "temp", "audio.wav")
         source_segments_json = os.path.join(video_dir, "temp", "source_segments.json")
         translation_signature = _signature(
@@ -313,7 +334,14 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         if _checkpoint_valid(video, "translation", translation_signature, [transcript_json]):
             log_to_video(video_id, "Checkpoint hit: reusing translated segments; skipping audio extraction, transcription and translation.")
             if video.mode == "review" and not video.review_approved:
-                update_video(video_id, status="awaiting_review", progress=62, step="review_translation", step_detail="Translation ready for review")
+                update_video(
+                    video_id,
+                    status="awaiting_review",
+                    progress=62,
+                    step="review_translation",
+                    resume_step="creating_subtitle",
+                    step_detail="Translation ready for review",
+                )
                 return
             _finish_after_translation(video, reporter, video_dir, temp_audio_wav)
             return
@@ -420,7 +448,14 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         _mark_checkpoint(video, "translation", translation_signature)
 
         if video.mode == "review" and not video.review_approved:
-            update_video(video_id, status="awaiting_review", progress=62, step="review_translation", step_detail="Translation ready for review")
+            update_video(
+                video_id,
+                status="awaiting_review",
+                progress=62,
+                step="review_translation",
+                resume_step="creating_subtitle",
+                step_detail="Translation ready for review",
+            )
             log_to_video(video_id, "Translation review is ready. Edit the translated segments, then continue the video.")
             return
 
@@ -458,11 +493,11 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
 
 def _finish_after_translation(video, reporter, video_dir, original_audio_target):
         video_id = video.video_id
-        video_input = video.files["video_input"]
-        final_video = video.files["final_video"]
-        srt_output = video.files["srt_output"]
-        voice_output = video.files["voice_output"]
-        transcript_json = video.files["transcript_json"]
+        video_input = _required_video_path(video, "video_input", must_exist=True)
+        final_video = _required_video_path(video, "final_video")
+        srt_output = _required_video_path(video, "srt_output")
+        voice_output = _required_video_path(video, "voice_output")
+        transcript_json = _required_video_path(video, "transcript_json", must_exist=True)
         voice_parts_dir = os.path.join(video_dir, "temp", "voice_parts")
         transcript_state = _file_state(transcript_json)
         subtitle_signature = _signature(transcript_state, video.subtitle_style.max_chars_per_line)
@@ -477,12 +512,21 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         check_cancellation(video_id)
         voice_signature = _signature(transcript_state, video.tts_voice)
         with open(transcript_json, "r", encoding="utf-8") as transcript_file:
-            expected_parts = len(json.load(transcript_file))
+            transcript_segments = json.load(transcript_file)
+        if not isinstance(transcript_segments, list) or not transcript_segments:
+            raise RuntimeError("The translated transcript contains no subtitle segments.")
+        for index, segment in enumerate(transcript_segments, 1):
+            if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
+                raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
+        expected_parts = len(transcript_segments)
         voice_outputs = [os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3") for index in range(1, expected_parts + 1)]
         if _checkpoint_valid(video, "voice", voice_signature, voice_outputs) or _recovery_checkpoint_valid(video, "voice", voice_signature, voice_outputs):
             reporter.update(82, "creating_voice", "Reusing generated voices", expected_parts, expected_parts)
         else:
             reporter.update(65, "creating_voice", "Starting voice synthesis")
+            if os.path.isdir(voice_parts_dir):
+                shutil.rmtree(voice_parts_dir)
+            os.makedirs(voice_parts_dir, exist_ok=True)
             def report_voice_progress(current, total):
                 detail = f"Verified voice audio {current} of {total}"
                 reporter.update(65 + round(17 * current / max(1, total)), "creating_voice", detail, current, total)

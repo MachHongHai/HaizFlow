@@ -92,7 +92,8 @@ class PreviewMediaController:
         host._preview_interactive = interactive
         host._preview_source = QUrl.fromLocalFile(path).toString()
         selected_video = host._selected_video()
-        thumbnail_path = (selected_video.files or {}).get("thumbnail", "") if selected_video else ""
+        thumbnail_value = (selected_video.files or {}).get("thumbnail") if selected_video else ""
+        thumbnail_path = thumbnail_value if isinstance(thumbnail_value, str) else ""
         if not os.path.exists(thumbnail_path):
             thumbnail_path = host._video_thumbnail_path(selected_video.video_id) if selected_video else self.draft_thumbnail_path()
             thumbnail_path = host._create_video_thumbnail_path(path, thumbnail_path)
@@ -114,8 +115,11 @@ class PreviewMediaController:
 
     def assign_project_thumbnail(self, video) -> None:
         host = self._host
+        input_path = (video.files or {}).get("video_input")
+        if not isinstance(input_path, str) or not input_path.strip():
+            raise RuntimeError("Video metadata is missing its input-video path.")
         thumbnail_path = host._create_video_thumbnail_path(
-            video.files["video_input"],
+            input_path,
             host._video_thumbnail_path(video.video_id),
         )
         if thumbnail_path:

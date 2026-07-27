@@ -261,13 +261,14 @@ class CpuRuntimeTests(unittest.TestCase):
 
     def test_hymt2_resolves_an_installed_transformers_snapshot_without_network(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            snapshot = Path(temp_dir) / "snapshot"
+            snapshot = Path(temp_dir) / "hymt2-transformers"
             snapshot.mkdir()
             for filename in ("config.json", "tokenizer_config.json", "tokenizer.json", "model.safetensors"):
                 (snapshot / filename).write_bytes(b"installed")
 
             with (
-                mock.patch("huggingface_hub.snapshot_download", return_value=str(snapshot)) as resolve_snapshot,
+                mock.patch("haizflow.config.MODELS_DIR", temp_dir),
+                mock.patch("huggingface_hub.snapshot_download") as resolve_snapshot,
                 mock.patch("haizflow.core.model_integrity.verify_gpu_model", return_value=snapshot),
             ):
                 model_source, local_files_only = hymt2_worker._local_transformers_model_source(
@@ -276,14 +277,24 @@ class CpuRuntimeTests(unittest.TestCase):
 
         self.assertEqual(model_source, str(snapshot.resolve()))
         self.assertTrue(local_files_only)
-        from haizflow.config import HF_HOME
+        resolve_snapshot.assert_not_called()
 
-        resolve_snapshot.assert_called_once_with(
-            repo_id="tencent/Hy-MT2-1.8B",
-            revision="9a341cd1b679d3efd23b46e847b01745a71ed792",
-            cache_dir=str(Path(HF_HOME) / "hub"),
-            local_files_only=True,
-        )
+    def test_frozen_hymt2_models_never_download_when_payload_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                mock.patch("haizflow.config.MODELS_DIR", temp_dir),
+                mock.patch("haizflow.core.paths.bundle_root", return_value=Path(temp_dir)),
+                mock.patch("haizflow.core.paths.is_frozen", return_value=True),
+                mock.patch("huggingface_hub.hf_hub_download") as cpu_download,
+                mock.patch("huggingface_hub.snapshot_download") as gpu_download,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "CPU is missing"):
+                    hymt2_worker._cpu_model_path()
+                with self.assertRaisesRegex(RuntimeError, "GPU is missing"):
+                    hymt2_worker._local_transformers_model_source("tencent/Hy-MT2-1.8B")
+
+        cpu_download.assert_not_called()
+        gpu_download.assert_not_called()
 
     def test_hymt2_rejects_an_incomplete_sharded_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -359,22 +370,29 @@ class CpuRuntimeTests(unittest.TestCase):
 
             def __init__(self, command, **_kwargs):
                 captured["command"] = command
+                output_root = Path(command[command.index("-o") + 1])
+                track_root = output_root / "htdemucs" / "audio"
+                track_root.mkdir(parents=True)
+                (track_root / "vocals.wav").write_bytes(b"V" * 100)
+                (track_root / "no_vocals.wav").write_bytes(b"B" * 100)
 
             def communicate(self):
                 return "", ""
 
         profile = SimpleNamespace(cuda_available=False, key="cpu_low_memory", cpu_threads=4)
-        fake_walk = [("out", [], ["vocals.wav", "no_vocals.wav"])]
-        with (
-            mock.patch.object(audio_separation, "runtime_profile", return_value=profile),
-            mock.patch.object(audio_separation.subprocess, "Popen", FakeProcess),
-            mock.patch.object(audio_separation.os, "walk", return_value=fake_walk),
-            mock.patch.object(audio_separation.os.path, "exists", return_value=True),
-            mock.patch.object(audio_separation, "communicate_process", return_value=("", "")),
-            mock.patch.object(audio_separation, "check_cancellation"),
-            mock.patch.object(audio_separation, "log_to_video"),
-        ):
-            audio_separation.separate_audio("audio.wav", "out", "video")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                mock.patch.object(audio_separation, "runtime_profile", return_value=profile),
+                mock.patch.object(audio_separation.subprocess, "Popen", FakeProcess),
+                mock.patch.object(audio_separation, "communicate_process", return_value=("", "")),
+                mock.patch.object(audio_separation, "check_cancellation"),
+                mock.patch.object(audio_separation, "log_to_video"),
+            ):
+                audio_separation.separate_audio(
+                    "audio.wav",
+                    str(Path(temp_dir) / "out"),
+                    "video",
+                )
 
         command = captured["command"]
         self.assertEqual(command[command.index("-j") + 1], "1")

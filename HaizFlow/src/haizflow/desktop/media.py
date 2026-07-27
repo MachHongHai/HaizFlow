@@ -2,11 +2,14 @@
 
 import os
 import subprocess
+import tempfile
+import time
 
 from PySide6.QtCore import QUrl
 
 from haizflow.services import video_store
 from haizflow.services.desktop_videos import SUPPORTED_VIDEO_EXTENSIONS
+from haizflow.utils.ffmpeg import _binary
 
 
 def normalize_video_path(value) -> str:
@@ -75,37 +78,80 @@ def resolve_video_file(video, keys, fallback_parts):
     return video.files.get(keys[0]) or fallback
 
 
-def create_video_thumbnail_path(path: str, output_path: str = "", *, timeout_seconds: float = 30.0) -> str:
+def create_video_thumbnail_path(
+    path: str,
+    output_path: str = "",
+    *,
+    timeout_seconds: float = 30.0,
+    cancel_event=None,
+) -> str:
     if not path or not output_path or not os.path.exists(path):
         return ""
+    temporary_path = ""
     try:
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        if not os.path.exists(output_path):
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-ss",
-                    "00:00:01",
-                    "-i",
-                    path,
-                    "-frames:v",
-                    "1",
-                    "-vf",
-                    "scale=320:-1",
-                    output_path,
-                ],
+        output_directory = os.path.dirname(os.path.abspath(output_path))
+        os.makedirs(output_directory, exist_ok=True)
+        handle, temporary_path = tempfile.mkstemp(
+            prefix=".thumbnail-",
+            suffix=".jpg",
+            dir=output_directory,
+        )
+        os.close(handle)
+        command = [
+            _binary("ffmpeg"),
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            "00:00:01",
+            "-i",
+            path,
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=320:-1",
+            temporary_path,
+        ]
+        if cancel_event is None:
+            result = subprocess.run(
+                command,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
                 timeout=timeout_seconds,
             )
-        return output_path if os.path.exists(output_path) else ""
+            return_code = result.returncode
+        else:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            deadline = time.monotonic() + max(1.0, timeout_seconds)
+            while process.poll() is None:
+                if cancel_event.is_set() or time.monotonic() >= deadline:
+                    process.kill()
+                    try:
+                        process.wait(timeout=2.0)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    return ""
+                cancel_event.wait(0.1)
+            return_code = process.returncode
+        if return_code != 0 or os.path.getsize(temporary_path) <= 0:
+            return ""
+        os.replace(temporary_path, output_path)
+        temporary_path = ""
+        return output_path
     except (OSError, subprocess.SubprocessError):
         return ""
+    finally:
+        if temporary_path:
+            try:
+                os.remove(temporary_path)
+            except FileNotFoundError:
+                pass
 
 
 def thumbnail_source(path: str) -> str:

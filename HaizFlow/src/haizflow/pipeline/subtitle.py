@@ -1,6 +1,8 @@
 import datetime
 import json
+import os
 import re
+import tempfile
 
 import srt
 
@@ -88,8 +90,28 @@ def generate_srt(segments_json_path: str, output_srt_path: str, max_chars_per_li
                 end=datetime.timedelta(seconds=cue["end"]),
                 content=cue["text"],
             ))
-    with open(output_srt_path, "w", encoding="utf-8") as file:
-        file.write(srt.compose(subtitles))
+    if not subtitles:
+        raise RuntimeError("Subtitle generation produced no timed cues.")
+
+    output_directory = os.path.dirname(os.path.abspath(output_srt_path))
+    os.makedirs(output_directory, exist_ok=True)
+    handle, temporary_path = tempfile.mkstemp(
+        prefix=".subtitles-",
+        suffix=".srt.tmp",
+        dir=output_directory,
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            file.write(srt.compose(subtitles))
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary_path, output_srt_path)
+    except Exception:
+        try:
+            os.remove(temporary_path)
+        except FileNotFoundError:
+            pass
+        raise
     log_to_video(video_id, f"Saved {len(subtitles)} sequential subtitle cues to: {output_srt_path}")
 
 

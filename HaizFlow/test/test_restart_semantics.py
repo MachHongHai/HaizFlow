@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -14,11 +15,117 @@ if str(SRC) not in sys.path:
 
 from haizflow.pipeline import process_video
 from haizflow.pipeline.process_video import _checkpoint_valid
+from haizflow.desktop.project_commands_controller import ProjectCommandsController
 from haizflow.schemas.video import VideoConfig
 from haizflow.services import video_store, project_store
 
 
 class RestartCheckpointTests(unittest.TestCase):
+    def test_review_approval_resumes_from_edited_translation_without_retranslating(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            transcript = Path(temp_dir) / "translated.json"
+            transcript.write_text(
+                '[{"start": 0, "end": 1, "text": "old"}]',
+                encoding="utf-8",
+            )
+            video = SimpleNamespace(
+                video_id="video-1",
+                status="awaiting_review",
+                files={"transcript_json": str(transcript)},
+                checkpoints={"translation": "translation-signature", "voice": "stale"},
+            )
+            host = SimpleNamespace(
+                _selected_video_id=video.video_id,
+                _enqueue_video=mock.Mock(return_value=True),
+                selectedVideoChanged=SimpleNamespace(emit=mock.Mock()),
+            )
+            controller = ProjectCommandsController(host)
+            payload = '[{"start": 0, "end": 1, "text": "edited"}]'
+
+            with (
+                mock.patch.object(
+                    process_video,
+                    "get_video",
+                    return_value=video,
+                ),
+                mock.patch(
+                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    return_value=video,
+                ),
+                mock.patch(
+                    "haizflow.desktop.project_commands_controller.video_store.update_video"
+                ) as update_video,
+                mock.patch(
+                    "haizflow.desktop.project_commands_controller.video_store.log_to_video"
+                ),
+            ):
+                controller.approve_translation_review(payload)
+
+            saved = json.loads(transcript.read_text(encoding="utf-8"))
+
+        self.assertEqual(saved[0]["text"], "edited")
+        self.assertEqual(update_video.call_args.kwargs["resume_step"], "creating_subtitle")
+        self.assertEqual(
+            update_video.call_args.kwargs["checkpoints"],
+            {"translation": "translation-signature"},
+        )
+        host._enqueue_video.assert_called_once_with(video.video_id)
+
+    def test_changed_voice_signature_discards_all_old_voice_parts_before_tts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            transcript = root / "temp" / "vi_segments.json"
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text(
+                '[{"start": 0, "end": 1, "text": "hello"}]',
+                encoding="utf-8",
+            )
+            (root / "input.mp4").write_bytes(b"source-video")
+            old_part = root / "temp" / "voice_parts" / "voice_0001.mp3"
+            old_part.parent.mkdir()
+            old_part.write_bytes(b"old-voice" * 100)
+            video = SimpleNamespace(
+                video_id="video-1",
+                files={
+                    "video_input": str(root / "input.mp4"),
+                    "final_video": str(root / "final.mp4"),
+                    "srt_output": str(root / "temp" / "vi.srt"),
+                    "voice_output": str(root / "temp" / "voice.wav"),
+                    "transcript_json": str(transcript),
+                },
+                subtitle_style=SimpleNamespace(max_chars_per_line=24),
+                tts_voice="new-voice",
+                resume_step="creating_voice",
+                runtime_recovery_step="",
+                checkpoints={"voice": "stale-signature"},
+            )
+            reporter = SimpleNamespace(update=mock.Mock())
+            stale_was_removed = []
+
+            def stop_after_check(*_args, **_kwargs):
+                stale_was_removed.append(not old_part.exists())
+                raise RuntimeError("stop after stale voice check")
+
+            with (
+                mock.patch.object(process_video, "check_cancellation"),
+                mock.patch.object(process_video, "generate_srt"),
+                mock.patch.object(process_video, "_mark_checkpoint"),
+                mock.patch.object(
+                    process_video,
+                    "generate_voice_parts",
+                    side_effect=stop_after_check,
+                ),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "stop after stale voice check"):
+                    process_video._finish_after_translation(
+                        video,
+                        reporter,
+                        str(root),
+                        str(root / "temp" / "audio.wav"),
+                    )
+
+        self.assertEqual(stale_was_removed, [True])
+
     def test_checkpoint_is_only_valid_for_a_paused_video_being_resumed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             artifact = Path(temp_dir) / "translation.json"

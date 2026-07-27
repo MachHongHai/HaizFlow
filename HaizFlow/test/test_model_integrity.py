@@ -14,7 +14,15 @@ class ModelIntegrityTests(unittest.TestCase):
         self.assertRegex(model_integrity.HYMT2_CPU_REVISION, r"^[0-9a-f]{40}$")
         self.assertRegex(model_integrity.HYMT2_CPU_SHA256, r"^[0-9a-f]{64}$")
         self.assertRegex(model_integrity.WHISPER_REVISION, r"^[0-9a-f]{40}$")
+        self.assertRegex(model_integrity.DEMUCS_MODEL_SIGNATURE, r"^[0-9a-f]{8}$")
+        self.assertRegex(model_integrity.DEMUCS_MODEL_SHA256, r"^[0-9a-f]{64}$")
+        self.assertIn(model_integrity.DEMUCS_MODEL_SHA256[:8], model_integrity.DEMUCS_MODEL_FILE)
         for _name, (_size, digest) in model_integrity.WHISPER_FILES.items():
+            self.assertRegex(digest, r"^[0-9a-f]{64}$")
+        self.assertEqual(set(model_integrity.ALIGNMENT_MODELS), {"en", "fr", "de", "es", "it"})
+        for _bundle, filename, size, digest in model_integrity.ALIGNMENT_MODELS.values():
+            self.assertTrue(filename.endswith((".pt", ".pth")))
+            self.assertGreater(size, 300_000_000)
             self.assertRegex(digest, r"^[0-9a-f]{64}$")
 
     def test_integrity_marker_avoids_rehashing_unchanged_model(self):

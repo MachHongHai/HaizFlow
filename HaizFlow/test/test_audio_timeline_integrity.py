@@ -29,6 +29,40 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
                         "video-1",
                     )
 
+    def test_unknown_video_duration_is_not_replaced_with_fake_one_second_audio(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (
+                mock.patch.object(audio_timeline, "get_video_duration", return_value=0.0),
+                mock.patch.object(audio_timeline, "log_to_video"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "positive source-video duration"):
+                    audio_timeline.build_audio_timeline(
+                        str(self._segments_file(root)),
+                        str(root / "voices"),
+                        str(root / "input.mp4"),
+                        str(root / "output.wav"),
+                        "video-1",
+                    )
+
+    def test_empty_transcript_cannot_create_a_background_only_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            segments = root / "segments.json"
+            segments.write_text("[]", encoding="utf-8")
+            with (
+                mock.patch.object(audio_timeline, "get_video_duration", return_value=2.0),
+                mock.patch.object(audio_timeline, "log_to_video"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "at least one translated voice"):
+                    audio_timeline.build_audio_timeline(
+                        str(segments),
+                        str(root / "voices"),
+                        str(root / "input.mp4"),
+                        str(root / "output.wav"),
+                        "video-1",
+                    )
+
     def test_missing_required_background_track_fails_the_timeline(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -1,9 +1,6 @@
 param(
   [string]$ArtifactPath = "",
-  [switch]$RequireCpuModel,
-  [switch]$RequireGpuModel,
-  [switch]$RequireWhisperModel,
-  [switch]$ProbeGpu
+  [switch]$PreFinalize
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,28 +15,38 @@ if (!(Test-Path -LiteralPath $Executable -PathType Leaf)) {
 }
 
 function Invoke-FrozenCheck {
-  param([string[]]$Arguments, [string]$Label)
-  $Process = Start-Process -FilePath $Executable -ArgumentList $Arguments -WindowStyle Hidden -Wait -PassThru
+  param(
+    [string[]]$Arguments,
+    [string]$Label,
+    [int]$TimeoutSeconds = 600
+  )
+  $QuotedArguments = @(
+    foreach ($Argument in $Arguments) {
+      if ($Argument -match '[\s"]') {
+        '"' + $Argument.Replace('"', '\"') + '"'
+      }
+      else {
+        $Argument
+      }
+    }
+  )
+  $Process = Start-Process `
+    -FilePath $Executable `
+    -ArgumentList ($QuotedArguments -join " ") `
+    -WindowStyle Hidden `
+    -PassThru
+  try {
+    Wait-Process -Id $Process.Id -Timeout $TimeoutSeconds -ErrorAction Stop
+  }
+  catch {
+    Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+    throw "$Label timed out after $TimeoutSeconds seconds."
+  }
+  $Process.Refresh()
   if ($Process.ExitCode -ne 0) {
     throw "$Label failed with exit code $($Process.ExitCode)."
   }
   Write-Output "[OK] $Label"
-}
-
-$ReleaseArguments = @("--release-smoke")
-if ($RequireCpuModel) {
-  $ReleaseArguments += "--require-cpu-model"
-}
-if ($RequireGpuModel) {
-  $ReleaseArguments += "--require-gpu-model"
-}
-if ($RequireWhisperModel) {
-  $ReleaseArguments += "--require-whisper-model"
-}
-Invoke-FrozenCheck -Arguments $ReleaseArguments -Label "Frozen files and native media tools"
-Invoke-FrozenCheck -Arguments @("--runtime-probe", "cpu") -Label "Frozen CPU runtime"
-if ($ProbeGpu) {
-  Invoke-FrozenCheck -Arguments @("--runtime-probe", "gpu") -Label "Frozen GPU runtime"
 }
 
 $SmokeParent = [System.IO.Path]::GetFullPath((Join-Path $Root "build\smoke-runtime"))
@@ -47,18 +54,37 @@ $SmokeRoot = [System.IO.Path]::GetFullPath((Join-Path $SmokeParent ([guid]::NewG
 if (![System.IO.Path]::GetDirectoryName($SmokeRoot).Equals($SmokeParent, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Refusing to use an unsafe smoke-test directory: $SmokeRoot"
 }
+$SmokeData = Join-Path $SmokeRoot "data"
+$SmokeModels = Join-Path $SmokeRoot "models"
+$SmokeTemp = Join-Path $SmokeRoot "tmp"
+$ReleaseArguments = @("--release-smoke")
+if ($PreFinalize) {
+  $ReleaseArguments += "--pre-finalize"
+}
+
+$PreviousHome = $env:HAIZFLOW_HOME
 $PreviousRuntimeData = $env:RUNTIME_DATA_DIR
+$PreviousModels = $env:MODELS_DIR
+$PreviousTemp = $env:HAIZFLOW_TMP_DIR
 $PreviousQtPlatform = $env:QT_QPA_PLATFORM
 $PreviousSmokeFlag = $env:HAIZFLOW_SMOKE_TEST
 try {
   New-Item -ItemType Directory -Path $SmokeRoot -Force | Out-Null
-  $env:RUNTIME_DATA_DIR = $SmokeRoot
+  $env:HAIZFLOW_HOME = $SmokeRoot
+  $env:RUNTIME_DATA_DIR = $SmokeData
+  $env:MODELS_DIR = $SmokeModels
+  $env:HAIZFLOW_TMP_DIR = $SmokeTemp
   $env:QT_QPA_PLATFORM = "offscreen"
   $env:HAIZFLOW_SMOKE_TEST = "1"
+
+  Invoke-FrozenCheck -Arguments $ReleaseArguments -Label "Frozen files and native media tools"
   Invoke-FrozenCheck -Arguments @("--ui-smoke-test") -Label "Frozen Qt/QML startup"
 }
 finally {
+  $env:HAIZFLOW_HOME = $PreviousHome
   $env:RUNTIME_DATA_DIR = $PreviousRuntimeData
+  $env:MODELS_DIR = $PreviousModels
+  $env:HAIZFLOW_TMP_DIR = $PreviousTemp
   $env:QT_QPA_PLATFORM = $PreviousQtPlatform
   $env:HAIZFLOW_SMOKE_TEST = $PreviousSmokeFlag
   if (Test-Path -LiteralPath $SmokeRoot) {

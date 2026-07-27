@@ -177,7 +177,10 @@ def _cuda_precision_details() -> tuple[tuple[int, int], bool]:
 
         if not torch.cuda.is_available():
             return (0, 0), False
-        capability = tuple(int(value) for value in torch.cuda.get_device_capability(0))
+        raw_capability = torch.cuda.get_device_capability(0)
+        if len(raw_capability) < 2:
+            return (0, 0), False
+        capability = (int(raw_capability[0]), int(raw_capability[1]))
         bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
         return capability, bf16_supported
     except Exception:

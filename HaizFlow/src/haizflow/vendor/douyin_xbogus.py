@@ -25,7 +25,9 @@ class XBogus:
 
     def _md5(self, value: str | list[int]) -> str:
         data = self._md5_str_to_array(value) if isinstance(value, str) else value
-        return hashlib.md5(bytes(data)).hexdigest()
+        # Douyin's X-Bogus protocol specifies MD5; this is not used for
+        # passwords, integrity, signatures, or any local security decision.
+        return hashlib.md5(bytes(data), usedforsecurity=False).hexdigest()
 
     def _md5_encrypt(self, value: str) -> list[int]:
         return self._md5_str_to_array(self._md5(self._md5_str_to_array(self._md5(value))))

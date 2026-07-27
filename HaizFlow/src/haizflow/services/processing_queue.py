@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+import threading
 from collections import deque
 from collections.abc import Callable
-import threading
+
+LOGGER = logging.getLogger(__name__)
 
 
 class SerialProcessingQueue:
@@ -130,4 +133,4 @@ class SerialProcessingQueue:
             self._on_error(video_id, exc)
         except Exception:
             # Error reporting must never strand the remaining queue.
-            pass
+            LOGGER.exception("Processing queue error callback failed for %s", video_id or "<idle>")

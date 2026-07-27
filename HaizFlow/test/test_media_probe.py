@@ -31,12 +31,38 @@ class MediaProbeTests(unittest.TestCase):
         self.assertEqual(results, [("video-1", 1920, 1080)])
         probe.assert_called_once_with(str(path), timeout_seconds=15)
 
+    def test_shutdown_does_not_wait_for_an_active_probe(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def blocked_probe(*_args, **_kwargs):
+            started.set()
+            release.wait(2.0)
+            return 1920, 1080
+
+        with patch("haizflow.desktop.media_probe.get_video_dimensions", side_effect=blocked_probe):
+            worker = VideoDimensionProbe(lambda *_result: None, workers=1)
+            worker.request("video-1", "clip.mp4")
+            self.assertTrue(started.wait(1.0))
+            worker.shutdown()
+            self.assertTrue(all(thread.daemon for thread in worker._workers))
+            self.assertTrue(worker._shutdown.is_set())
+            release.set()
+
     def test_ffprobe_dimension_call_has_a_timeout(self):
         completed = type("Completed", (), {"stdout": "1920,1080\n"})()
         with patch.object(ffmpeg.subprocess, "run", return_value=completed) as run:
             self.assertEqual(ffmpeg.get_video_dimensions("clip.mp4", timeout_seconds=7), (1920, 1080))
 
         self.assertEqual(run.call_args.kwargs["timeout"], 7.0)
+
+    def test_ffprobe_duration_call_has_a_timeout(self):
+        completed = type("Completed", (), {"stdout": "42.5\n"})()
+        with patch.object(ffmpeg.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(ffmpeg.get_video_duration("clip.mp4", timeout_seconds=9), 42.5)
+
+        self.assertEqual(run.call_args.kwargs["timeout"], 9.0)
+        self.assertTrue(str(run.call_args.args[0][0]).lower().endswith("ffprobe.exe"))
 
 
 if __name__ == "__main__":

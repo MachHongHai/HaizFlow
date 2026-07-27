@@ -30,7 +30,7 @@ class AudioSourceModeTests(unittest.TestCase):
     def test_separated_mode_uses_no_vocals_at_full_volume(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             background_path = Path(temporary_directory) / "no_vocals.wav"
-            background_path.write_bytes(b"audio")
+            background_path.write_bytes(b"audio" * 20)
             video = SimpleNamespace(
                 enable_audio_separation=True,
                 original_video_volume=20,
@@ -82,4 +82,3 @@ class AudioSourceModeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -5,8 +5,11 @@ dialogs aligned with the persisted UI language.
 """
 
 import re
+from pathlib import Path
 
 from PySide6.QtWidgets import QFileDialog as QtFileDialog, QMessageBox as QtMessageBox
+
+from haizflow.core.paths import app_data_dir
 
 _UI_LANGUAGE = "en"
 
@@ -55,6 +58,7 @@ def _ui_text(value) -> str:
         "Open input video": "Mở video nguồn",
         "Open output": "Mở video đầu ra",
         "Open export folder": "Mở thư mục video xuất",
+        "Export diagnostics": "Xuất dữ liệu chẩn đoán",
         "Choose input video": "Chọn video nguồn",
         "Choose project storage location": "Chọn vị trí lưu dự án",
         "Choose videos for batch processing": "Chọn video để xử lý hàng loạt",
@@ -62,6 +66,7 @@ def _ui_text(value) -> str:
         "Choose cookies.txt": "Chọn cookies.txt",
         "Video files (*.mp4 *.mov *.mkv);;All files (*.*)": "Tệp video (*.mp4 *.mov *.mkv);;Tất cả tệp (*.*)",
         "Netscape cookie files (*.txt);;All files (*.*)": "Tệp cookie Netscape (*.txt);;Tất cả tệp (*.*)",
+        "ZIP archives (*.zip)": "Tệp ZIP (*.zip)",
         "Pause or finish this video before replacing it.": "Hãy tạm dừng hoặc hoàn tất video này trước khi thay thế.",
         "Choose an MP4, MOV, or MKV video file.": "Hãy chọn tệp video MP4, MOV hoặc MKV.",
         "Enter a project name.": "Hãy nhập tên dự án.",
@@ -98,6 +103,11 @@ def _ui_text(value) -> str:
         ("Cannot create the project at this location: ", "Không thể tạo dự án tại vị trí này: "),
         ("Cannot save settings: ", "Không thể lưu cài đặt: "),
         ("Cannot restore defaults: ", "Không thể khôi phục cài đặt mặc định: "),
+        ("Cannot export diagnostics: ", "Không thể xuất dữ liệu chẩn đoán: "),
+        (
+            "A redacted diagnostics archive was created. It excludes project media, project names, and project logs.",
+            "Đã tạo gói chẩn đoán được ẩn thông tin nhạy cảm. Gói này không chứa video, tên dự án hoặc nhật ký dự án.",
+        ),
         ("GPU mode requires at least ", "Chế độ GPU cần ít nhất "),
         ("CPU mode requires approximately ", "Chế độ CPU cần khoảng "),
         ("CUDA-compatible NVIDIA GPU was not detected.", "Không phát hiện GPU NVIDIA tương thích CUDA."),
@@ -114,6 +124,23 @@ def _ui_text(value) -> str:
     if skipped:
         return f"{skipped.group(1)} mục không được hỗ trợ hoặc không thể đọc:{skipped.group(2)}"
     return text
+
+
+def _existing_dialog_directory(directory: str) -> str:
+    """Return an existing, HaizFlow-owned fallback for native file dialogs.
+
+    Passing an empty location makes the Windows native picker ask for the
+    user's Desktop.  HaizFlow redirects USERPROFILE to its portable runtime
+    so third-party caches cannot write to C:, therefore that Desktop must not
+    be an implicit dependency of a media picker.
+    """
+    if directory:
+        candidate = Path(directory).expanduser()
+        if candidate.is_dir():
+            return str(candidate.resolve())
+    fallback = app_data_dir()
+    fallback.mkdir(parents=True, exist_ok=True)
+    return str(fallback.resolve())
 
 
 class QMessageBox(QtMessageBox):
@@ -141,12 +168,24 @@ class QFileDialog(QtFileDialog):
 
     @staticmethod
     def getOpenFileName(parent=None, caption="", directory="", filter="", *args):
-        return QtFileDialog.getOpenFileName(parent, _ui_text(caption), directory, _ui_text(filter), *args)
+        return QtFileDialog.getOpenFileName(
+            parent, _ui_text(caption), _existing_dialog_directory(directory), _ui_text(filter), *args
+        )
 
     @staticmethod
     def getOpenFileNames(parent=None, caption="", directory="", filter="", *args):
-        return QtFileDialog.getOpenFileNames(parent, _ui_text(caption), directory, _ui_text(filter), *args)
+        return QtFileDialog.getOpenFileNames(
+            parent, _ui_text(caption), _existing_dialog_directory(directory), _ui_text(filter), *args
+        )
+
+    @staticmethod
+    def getSaveFileName(parent=None, caption="", directory="", filter="", *args):
+        return QtFileDialog.getSaveFileName(
+            parent, _ui_text(caption), directory, _ui_text(filter), *args
+        )
 
     @staticmethod
     def getExistingDirectory(parent=None, caption="", directory="", options=QtFileDialog.Option.ShowDirsOnly):
-        return QtFileDialog.getExistingDirectory(parent, _ui_text(caption), directory, options)
+        return QtFileDialog.getExistingDirectory(
+            parent, _ui_text(caption), _existing_dialog_directory(directory), options
+        )

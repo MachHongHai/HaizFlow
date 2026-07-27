@@ -1,2 +1,1 @@
-﻿
-
+"""Persisted data schemas."""

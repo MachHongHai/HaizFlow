@@ -7,6 +7,7 @@ import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 
@@ -49,6 +50,10 @@ class _AsrModel:
 
 
 class MixedLanguagePipelineTests(unittest.TestCase):
+    def test_empty_whisper_result_is_rejected_before_translation(self):
+        with self.assertRaisesRegex(RuntimeError, "found no speech segments"):
+            transcribe._validate_timestamp_invariants([], 10.0)
+
     def test_segment_language_detection_uses_immutable_sentence_clips(self):
         original_log = transcribe.log_to_video
         transcribe.log_to_video = lambda *_args, **_kwargs: None
@@ -156,7 +161,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             "start": 0.031,
             "end": 19.893,
             "text": "Cau thu nhat rat dai. Cau thu hai cung dai. Cau thu ba. Cau thu bon.",
-            "language": "vi",
+            "language": "en",
         }
         compressed = [
             {
@@ -169,12 +174,12 @@ class MixedLanguagePipelineTests(unittest.TestCase):
                 ],
             }
         ]
-        original_load_align_model = transcribe.whisperx.load_align_model
-        original_align = transcribe.whisperx.align
+        original_load_align_model = transcribe._verified_alignment_asset
+        original_align = transcribe._align_without_nltk_download
         original_release = transcribe._release_cuda
         original_log = transcribe.log_to_video
-        transcribe.whisperx.load_align_model = lambda **_kwargs: (object(), {})
-        transcribe.whisperx.align = lambda *_args, **_kwargs: {"segments": compressed}
+        transcribe._verified_alignment_asset = lambda *_args, **_kwargs: (SimpleNamespace(to=lambda _device: object()), {})
+        transcribe._align_without_nltk_download = lambda *_args, **_kwargs: {"segments": compressed}
         transcribe._release_cuda = lambda *_args, **_kwargs: None
         transcribe.log_to_video = lambda *_args, **_kwargs: None
         try:
@@ -185,8 +190,8 @@ class MixedLanguagePipelineTests(unittest.TestCase):
                 "test-video",
             )
         finally:
-            transcribe.whisperx.load_align_model = original_load_align_model
-            transcribe.whisperx.align = original_align
+            transcribe._verified_alignment_asset = original_load_align_model
+            transcribe._align_without_nltk_download = original_align
             transcribe._release_cuda = original_release
             transcribe.log_to_video = original_log
 
@@ -195,6 +200,78 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual(aligned[-1]["end"], source["end"])
         self.assertEqual(" ".join(segment["text"] for segment in aligned), source["text"])
         self.assertTrue(all(left["end"] <= right["start"] for left, right in zip(aligned, aligned[1:])))
+
+    def test_unpinned_huggingface_alignment_model_is_never_downloaded(self):
+        source = {
+            "start": 0.0,
+            "end": 4.0,
+            "text": "Cau thu nhat. Cau thu hai.",
+            "language": "vi",
+        }
+        original_loader = transcribe._verified_alignment_asset
+        original_release = transcribe._release_cuda
+        original_log = transcribe.log_to_video
+        transcribe._verified_alignment_asset = lambda *_args, **_kwargs: self.fail(
+            "An unpinned alignment checkpoint was requested"
+        )
+        transcribe._release_cuda = lambda *_args, **_kwargs: None
+        transcribe.log_to_video = lambda *_args, **_kwargs: None
+        try:
+            aligned = transcribe._align_segments_by_language(
+                np.zeros(16_000 * 4, dtype=np.float32),
+                [source],
+                "cpu",
+                "test-video",
+            )
+        finally:
+            transcribe._verified_alignment_asset = original_loader
+            transcribe._release_cuda = original_release
+            transcribe.log_to_video = original_log
+
+        self.assertEqual(len(aligned), 2)
+        self.assertEqual(aligned[0]["start"], 0.0)
+        self.assertEqual(aligned[-1]["end"], 4.0)
+
+    def test_verified_alignment_manifest_uses_full_sha256_and_fixed_sizes(self):
+        for bundle_name, filename, size, digest in transcribe._VERIFIED_ALIGNMENT_MODELS.values():
+            self.assertTrue(bundle_name)
+            self.assertTrue(filename.endswith((".pt", ".pth")))
+            self.assertGreater(size, 300_000_000)
+            self.assertRegex(digest, r"^[0-9a-f]{64}$")
+
+    def test_pipeline_never_downloads_a_missing_alignment_model(self):
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            mock.patch.object(transcribe, "MODELS_DIR", temp_dir),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "missing or corrupted"):
+                transcribe._verified_alignment_asset("en", "video-1")
+
+    def test_pipeline_never_downloads_a_missing_whisper_model(self):
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            mock.patch.object(transcribe, "MODELS_DIR", temp_dir),
+            mock.patch.object(transcribe, "WHISPER_MODEL", "small"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "missing or corrupted"):
+                transcribe._whisper_model_source()
+
+    def test_bootstrap_whisperx_vad_asset_matches_pinned_manifest(self):
+        self.assertEqual(transcribe._WHISPERX_VAD_SIZE, 17_719_103)
+        self.assertRegex(transcribe._WHISPERX_VAD_SHA256, r"^[0-9a-f]{64}$")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir) / "pytorch_model.bin"
+            model_path.write_bytes(b"verified")
+            with (
+                mock.patch.object(transcribe, "MODELS_DIR", temp_dir),
+                mock.patch.object(
+                    transcribe,
+                    "verify_whisperx_vad_model",
+                    return_value=model_path,
+                ) as verify,
+            ):
+                self.assertEqual(transcribe._verify_whisperx_vad_asset(), model_path)
+        verify.assert_called_once_with(Path(temp_dir) / "whisperx-vad")
 
     def test_valid_alignment_keeps_model_sentence_timestamps(self):
         source = {"start": 1.0, "end": 6.0, "text": "First sentence. Second sentence.", "language": "en"}

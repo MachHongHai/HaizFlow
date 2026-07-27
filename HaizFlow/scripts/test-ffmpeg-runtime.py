@@ -34,7 +34,9 @@ def main() -> int:
     if not FFMPEG.is_file() or not FFPROBE.is_file():
         raise RuntimeError("Bundled FFmpeg runtime is missing")
 
-    with tempfile.TemporaryDirectory(prefix="haizflow-ffmpeg-") as temporary:
+    temporary_root = ROOT / "build" / "ffmpeg-regression"
+    temporary_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="haizflow-ffmpeg-", dir=temporary_root) as temporary:
         work = Path(temporary)
         source = work / "source.mp4"
         voice = work / "voice.wav"

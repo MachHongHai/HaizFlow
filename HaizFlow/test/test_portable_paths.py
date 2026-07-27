@@ -12,6 +12,30 @@ SRC = ROOT / "src"
 
 
 class PortablePathTests(unittest.TestCase):
+    def test_portable_profile_includes_native_dialog_shell_folders(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "PYTHONPATH": str(SRC),
+                    "HAIZFLOW_SMOKE_TEST": "1",
+                    "HAIZFLOW_HOME": temporary,
+                }
+            )
+            script = (
+                "import json, os; import haizflow.config; "
+                "profile = os.environ['USERPROFILE']; "
+                "print(json.dumps({name: os.path.isdir(os.path.join(profile, name)) for name in "
+                "('Desktop', 'Documents', 'Downloads', 'Music', 'Pictures', 'Videos')}))"
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=15, check=False,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(all(json.loads(completed.stdout.strip()).values()))
+
     def test_runtime_environment_stays_under_the_selected_home(self):
         with tempfile.TemporaryDirectory() as temporary:
             environment = os.environ.copy()
@@ -31,7 +55,7 @@ class PortablePathTests(unittest.TestCase):
                 "import json, os; import haizflow.config as c; "
                 "values = {name: os.environ[name] for name in "
                 "('HF_HOME','TORCH_HOME','XDG_CACHE_HOME','NUMBA_CACHE_DIR','MPLCONFIGDIR',"
-                "'CUDA_CACHE_PATH','QML_DISK_CACHE_PATH','LOCALAPPDATA','APPDATA','TMP','TEMP')}; "
+                "'CUDA_CACHE_PATH','QML_DISK_CACHE_PATH','NLTK_DATA','LOCALAPPDATA','APPDATA','TMP','TEMP')}; "
                 "values['MODELS_DIR'] = c.MODELS_DIR; print(json.dumps(values))"
             )
             completed = subprocess.run(
@@ -86,7 +110,7 @@ class PortablePathTests(unittest.TestCase):
                 "import haizflow.config as c; "
                 "names = ('APP_DATA_DIR','RUNTIME_DATA_DIR','MODELS_DIR','BIN_DIR','HF_HOME','TORCH_HOME',"
                 "'XDG_CACHE_HOME','NUMBA_CACHE_DIR','MPLCONFIGDIR','CUDA_CACHE_PATH','QML_DISK_CACHE_PATH',"
-                "'LOCALAPPDATA','APPDATA','HOME','USERPROFILE','TMP','TEMP'); "
+                "'LOCALAPPDATA','APPDATA','HOME','USERPROFILE','NLTK_DATA','TMP','TEMP'); "
                 "print(json.dumps({name: getattr(c, name, os.environ.get(name)) for name in names}))"
             )
             completed = subprocess.run(

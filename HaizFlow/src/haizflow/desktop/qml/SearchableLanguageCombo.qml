@@ -18,7 +18,7 @@ Item {
     implicitHeight: 42
 
     function labelFor(code) {
-        for (var i = 0; i < options.length; i++) {
+        for (let i = 0; i < options.length; i++) {
             if (options[i].code === code)
                 return options[i].label
         }
@@ -26,8 +26,8 @@ Item {
     }
 
     function indexFor(code, model) {
-        var source = model || options
-        for (var i = 0; i < source.length; i++) {
+        const source = model || options
+        for (let i = 0; i < source.length; i++) {
             if (source[i].code === code)
                 return i
         }
@@ -35,12 +35,12 @@ Item {
     }
 
     function filterOptions(queryText) {
-        var query = queryText.toLowerCase().trim()
+        const query = queryText.toLowerCase().trim()
         if (query.length === 0)
             return options
 
-        var result = []
-        for (var i = 0; i < options.length; i++) {
+        const result = []
+        for (let i = 0; i < options.length; i++) {
             if (options[i].search.indexOf(query) !== -1)
                 result.push(options[i])
         }
@@ -289,7 +289,7 @@ Item {
             }
 
             Keys.onReturnPressed: function(event) {
-                var option = root.filteredModel[currentIndex]
+                const option = root.filteredModel[currentIndex]
                 if (option)
                     root.selected(option.code)
                 languagePopup.close()

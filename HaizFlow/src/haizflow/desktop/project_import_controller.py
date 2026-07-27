@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from queue import Empty
 
 from haizflow.desktop.localization import QFileDialog, QMessageBox
 from haizflow.desktop.media import collect_batch_video_paths, create_video_thumbnail_path, normalize_video_path
+from haizflow.core.paths import app_data_dir
 from haizflow.schemas.video import VideoConfig
 from haizflow.services import project_store, video_store
 from haizflow.services.channel_import import normalize_remote_url
@@ -28,6 +30,26 @@ class ProjectImportController:
         self._tasks: dict[int, dict] = {}
         self._task_threads: dict[int, threading.Thread] = {}
         self._next_task_id = 0
+        self._last_media_directory = ""
+
+    def _media_dialog_directory(self) -> str:
+        """Choose a real folder without relying on the portable Desktop."""
+        candidates = (
+            self._last_media_directory,
+            os.path.dirname(str(getattr(self._host, "videoPath", "") or "")),
+            str(getattr(self._host, "_project_directory", "") or ""),
+        )
+        for candidate in candidates:
+            if candidate and os.path.isdir(candidate):
+                return os.path.abspath(candidate)
+        fallback = app_data_dir()
+        fallback.mkdir(parents=True, exist_ok=True)
+        return str(fallback.resolve())
+
+    def _remember_media_directory(self, path: str) -> None:
+        directory = path if os.path.isdir(path) else os.path.dirname(path)
+        if directory and os.path.isdir(directory):
+            self._last_media_directory = os.path.abspath(directory)
 
     def _can_import_in_background(self) -> bool:
         """Keep the small controller doubles used by unit tests synchronous."""
@@ -68,10 +90,14 @@ class ProjectImportController:
                         video = video_store.replace_video_input(
                             job["video_id"], job["path"], media_source=job.get("media_source")
                         )
+                        if video is None:
+                            raise RuntimeError("The video was removed before its replacement completed.")
                         video.video_width, video.video_height = 0, 0
                     else:
                         kwargs = dict(job.get("create_kwargs") or {})
                         video = self._create_video(job["path"], job["config"], **kwargs)
+                    if video is None:
+                        raise RuntimeError("The imported video could not be loaded from storage.")
                     self._assign_thumbnail_in_worker(video)
                 created_ids.append(video.video_id)
             except Exception as exc:  # The GUI reports the individual file after the batch finishes.
@@ -85,8 +111,13 @@ class ProjectImportController:
         })
 
     def _assign_thumbnail_in_worker(self, video) -> None:
+        input_path = (video.files or {}).get("video_input")
+        if not isinstance(input_path, str) or not input_path.strip():
+            raise RuntimeError("Video metadata is missing its input-video path.")
         thumbnail = create_video_thumbnail_path(
-            video.files["video_input"], os.path.join(video_store.get_video_dir(video.video_id), "thumbnail.jpg")
+            input_path,
+            os.path.join(video_store.get_video_dir(video.video_id), "thumbnail.jpg"),
+            cancel_event=self._shutdown_event,
         )
         if thumbnail:
             video.files["thumbnail"] = thumbnail
@@ -148,9 +179,12 @@ class ProjectImportController:
         elif operation == "replace" and created_ids:
             video = video_store.get_video(created_ids[0])
             if video:
-                destination = video.files["video_input"]
+                destination = (video.files or {}).get("video_input")
+                if not isinstance(destination, str) or not destination.strip():
+                    errors.append("Replacement metadata is missing its input-video path.")
+                    destination = ""
                 update_open_view = host._selected_video_id == video.video_id
-                if update_open_view:
+                if update_open_view and destination:
                     host._set_video_path(destination, refresh_thumbnail=True)
                 video_store.log_to_video(video.video_id, f"Input video replaced with: {video.original_filename}")
                 if update_open_view:
@@ -172,8 +206,19 @@ class ProjectImportController:
         if errors and not context.get("channel_import") and not context.get("url_import"):
             QMessageBox.warning(None, "Some videos were skipped", self.batch_rejection_message(errors))
 
-    def shutdown(self) -> None:
+    def shutdown(self, timeout_seconds: float = 5.0) -> bool:
+        """Stop accepting work and wait a bounded time for atomic imports to settle."""
         self._shutdown_event.set()
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        current_thread = threading.current_thread()
+        for worker in tuple(self._task_threads.values()):
+            if worker is current_thread or not worker.is_alive():
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            worker.join(timeout=remaining)
+        return not any(worker.is_alive() for worker in self._task_threads.values())
 
     def download_inspected_video(self) -> None:
         host = self._host
@@ -260,7 +305,7 @@ class ProjectImportController:
             QMessageBox.warning(None, "Import video", "The destination project no longer exists.")
             return False
         try:
-            kwargs = {
+            kwargs: dict[str, object] = {
                 "project_name": str(target.get("project_name") or ""),
                 "project_directory": str(target.get("project_directory") or ""),
                 "project_key_value": str(target.get("project_key") or ""),
@@ -349,6 +394,7 @@ class ProjectImportController:
 
     def handle_channel_video_ready(self, path, _workspace, candidate_payload, project_key, session_id) -> None:
         host = self._host
+        project_key = str(project_key or "")
         target = host._channel_import_targets.get(session_id)
         candidate = dict(candidate_payload or {})
         remote_id = str(candidate.get("remote_video_id") or "")
@@ -403,8 +449,12 @@ class ProjectImportController:
         self._host._channel_import_targets.pop(str(session_id), None)
 
     def browse_video(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(None, "Choose input video", "", "Video files (*.mp4 *.mov *.mkv);;All files (*.*)")
+        path, _ = QFileDialog.getOpenFileName(
+            None, "Choose input video", self._media_dialog_directory(),
+            "Video files (*.mp4 *.mov *.mkv);;All files (*.*)",
+        )
         if path:
+            self._remember_media_directory(path)
             self.import_video(path, replace_selected=True)
 
     def browse_project_directory(self) -> None:
@@ -495,7 +545,13 @@ class ProjectImportController:
         except (OSError, RuntimeError) as exc:
             QMessageBox.warning(None, "Replace video", str(exc))
             return False
-        destination = video.files["video_input"]
+        if video is None:
+            QMessageBox.warning(None, "Replace video", "The video was removed before its replacement completed.")
+            return False
+        destination = (video.files or {}).get("video_input")
+        if not isinstance(destination, str) or not destination.strip():
+            QMessageBox.warning(None, "Replace video", "Replacement metadata is missing its input-video path.")
+            return False
         video.video_width, video.video_height = 0, 0
         thumbnail = host._create_video_thumbnail_path(destination, host._video_thumbnail_path(video.video_id))
         if thumbnail:
@@ -515,13 +571,21 @@ class ProjectImportController:
         return True
 
     def browse_batch_videos(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(None, "Choose videos for batch processing", "", "Video files (*.mp4 *.mov *.mkv);;All files (*.*)")
+        paths, _ = QFileDialog.getOpenFileNames(
+            None, "Choose videos for batch processing", self._media_dialog_directory(),
+            "Video files (*.mp4 *.mov *.mkv);;All files (*.*)",
+        )
         if paths:
+            self._remember_media_directory(paths[0])
             self.import_batch_videos(paths)
 
     def browse_batch_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(None, "Choose a folder of videos for batch processing", "", QFileDialog.Option.ShowDirsOnly)
+        folder = QFileDialog.getExistingDirectory(
+            None, "Choose a folder of videos for batch processing", self._media_dialog_directory(),
+            QFileDialog.Option.ShowDirsOnly,
+        )
         if folder:
+            self._remember_media_directory(folder)
             self.import_batch_videos([folder])
 
     def import_batch_videos(self, paths) -> None:
@@ -607,7 +671,10 @@ class ProjectImportController:
 
     def _assign_thumbnail(self, video) -> None:
         host = self._host
-        thumbnail = host._create_video_thumbnail_path(video.files["video_input"], host._video_thumbnail_path(video.video_id))
+        input_path = (video.files or {}).get("video_input")
+        if not isinstance(input_path, str) or not input_path.strip():
+            raise RuntimeError("Video metadata is missing its input-video path.")
+        thumbnail = host._create_video_thumbnail_path(input_path, host._video_thumbnail_path(video.video_id))
         if thumbnail:
             video.files["thumbnail"] = thumbnail
             video_store.save_video(video)

@@ -17,6 +17,8 @@ from haizflow.schemas.video import (
     VideoConfig,
     VideoInfo,
     MediaSource,
+    CropSettings,
+    SubtitleStyle,
 )
 from haizflow.services import project_store
 
@@ -315,6 +317,66 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
+    # Canonicalize fields even for an already-current schema. Older builds
+    # could write legacy provider/layout values without bumping the schema;
+    # strict production models must remain able to open and repair them.
+    data["mode"] = data.get("mode") if data.get("mode") in {"A", "review"} else "A"
+    data["translator_provider"] = "hymt2"
+    data["output_format"] = (
+        data.get("output_format")
+        if data.get("output_format") in {
+            "keep_ratio",
+            "tiktok_9_16_crop",
+            "blur_background_9_16",
+        }
+        else "keep_ratio"
+    )
+    data["project_type"] = "batch" if data.get("project_type") == "batch" else "single"
+    style_defaults = SubtitleStyle().model_dump()
+    style_value = data.get("subtitle_style")
+    style_source = style_value if isinstance(style_value, dict) else {}
+    style_limits = {
+        "font_size": (10, 160),
+        "margin_bottom": (0, 1000),
+        "outline": (0, 20),
+        "max_chars_per_line": (12, 200),
+        "position_x_percent": (0, 100),
+        "position_y_percent": (0, 100),
+        "box_width_percent": (20, 100),
+        "box_height_percent": (1, 100),
+    }
+    for key, (minimum, maximum) in style_limits.items():
+        try:
+            value = int(style_source.get(key, style_defaults[key]))
+        except (TypeError, ValueError):
+            value = style_defaults[key]
+        style_defaults[key] = max(minimum, min(maximum, value))
+    data["subtitle_style"] = style_defaults
+
+    crop_defaults = CropSettings().model_dump()
+    crop_value = data.get("crop")
+    crop_source = crop_value if isinstance(crop_value, dict) else {}
+    crop_limits = {
+        "zoom_percent": (1, 400),
+        "pan_x_percent": (-100, 100),
+        "pan_y_percent": (-100, 100),
+        "left_percent": (0, 84),
+        "right_percent": (0, 84),
+        "top_percent": (0, 84),
+        "bottom_percent": (0, 84),
+    }
+    for key, (minimum, maximum) in crop_limits.items():
+        try:
+            value = int(crop_source.get(key, crop_defaults[key]))
+        except (TypeError, ValueError):
+            value = crop_defaults[key]
+        crop_defaults[key] = max(minimum, min(maximum, value))
+    data["crop"] = crop_defaults
+    try:
+        volume = int(data.get("original_video_volume", 60))
+    except (TypeError, ValueError):
+        volume = 60
+    data["original_video_volume"] = max(0, min(100, volume))
     return data, data != original
 
 
@@ -437,13 +499,6 @@ def replace_video_input(
         if os.path.normcase(source_path) == os.path.normcase(os.path.abspath(input_path)):
             return video
 
-        staged_source = source_path
-        staging_directory = ""
-        if _is_inside(source_path, video_dir):
-            staging_directory = tempfile.mkdtemp(prefix=".replace-source-", dir=os.path.dirname(video_dir))
-            staged_source = os.path.join(staging_directory, os.path.basename(source_path))
-            shutil.copy2(source_path, staged_source)
-
         final_video = (video.files or {}).get("final_video") or ""
         previous_thumbnail = (video.files or {}).get("thumbnail") or ""
         project_root = (
@@ -453,65 +508,110 @@ def replace_video_input(
             if video.project_name and video.project_directory
             else video_dir
         )
-        try:
-            for directory in ("input", "temp"):
-                path = os.path.join(video_dir, directory)
-                if os.path.isdir(path):
-                    shutil.rmtree(path, onerror=_force_remove_readonly)
-                os.makedirs(path, exist_ok=True)
 
-            legacy_output_dir = os.path.join(video_dir, "output")
+        transaction_directory = tempfile.mkdtemp(prefix=".replace-input-", dir=video_dir)
+        staged_input_directory = os.path.join(transaction_directory, "new-input")
+        staged_input_path = os.path.join(staged_input_directory, f"video{extension}")
+        backup_input_directory = os.path.join(transaction_directory, "old-input")
+        metadata_snapshot_path = os.path.join(transaction_directory, "video.json")
+        input_directory = os.path.join(video_dir, "input")
+        os.makedirs(staged_input_directory, exist_ok=True)
+        input_backed_up = False
+        new_input_published = False
+        try:
+            shutil.copy2(get_video_json_path(video_id), metadata_snapshot_path)
+            shutil.copy2(source_path, staged_input_path)
+            if os.path.getsize(staged_input_path) <= 0:
+                raise RuntimeError(f"Replacement video is empty: {source_path}")
+
+            if os.path.isdir(input_directory):
+                os.replace(input_directory, backup_input_directory)
+                input_backed_up = True
+            os.replace(staged_input_directory, input_directory)
+            new_input_published = True
+
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            video.files["video_input"] = input_path
+            video.files["srt_output"] = os.path.join(video_dir, "temp", "vi.srt")
+            video.files["voice_output"] = os.path.join(video_dir, "temp", "voice_final.wav")
+            video.files["transcript_json"] = os.path.join(video_dir, "temp", "vi_segments.json")
+            video.files["thumbnail"] = os.path.join(video_dir, "thumbnail.jpg")
+            video.original_filename = os.path.basename(source_path)
+            video.media_source = MediaSource.model_validate(media_source or {"type": "local_file"})
+            video.video_width = 0
+            video.video_height = 0
+            video.review_approved = False
+            video.status = "pending"
+            video.progress = 0
+            video.step = "pending"
+            video.resume_step = ""
+            video.runtime_recovery_step = ""
+            video.gpu_recovery_attempted = False
+            video.checkpoints = {}
+            video.started_at = None
+            video.estimated_remaining_seconds = None
+            video.step_detail = "New source video imported"
+            video.current_item = 0
+            video.total_items = 0
+            video.error = None
+            video.created_at = now
+            video.updated_at = now
+            _save_video_unlocked(video)
+        except Exception:
+            if new_input_published and os.path.isdir(input_directory):
+                shutil.rmtree(input_directory, onerror=_force_remove_readonly)
+            if input_backed_up and os.path.isdir(backup_input_directory):
+                os.replace(backup_input_directory, input_directory)
+            if os.path.isfile(metadata_snapshot_path):
+                os.replace(metadata_snapshot_path, get_video_json_path(video_id))
+            _VIDEO_METADATA_CACHE.pop(video_id, None)
+            raise
+        finally:
+            shutil.rmtree(transaction_directory, ignore_errors=True)
+
+        cleanup_errors: list[str] = []
+        temp_directory = os.path.join(video_dir, "temp")
+        try:
+            if os.path.isdir(temp_directory):
+                shutil.rmtree(temp_directory, onerror=_force_remove_readonly)
+            os.makedirs(os.path.join(temp_directory, "voice_parts"), exist_ok=True)
+        except OSError as exc:
+            cleanup_errors.append(f"temporary workspace: {exc}")
+
+        legacy_output_dir = os.path.join(video_dir, "output")
+        try:
             if os.path.isdir(legacy_output_dir):
                 shutil.rmtree(legacy_output_dir, onerror=_force_remove_readonly)
+        except OSError as exc:
+            cleanup_errors.append(f"legacy output: {exc}")
 
+        try:
             if final_video and _is_inside(final_video, project_root) and os.path.isfile(final_video):
                 os.remove(final_video)
-            thumbnail_candidates = {
-                previous_thumbnail,
-                os.path.join(video_dir, "thumbnail.jpg"),
-            }
-            for thumbnail_path in thumbnail_candidates:
+        except OSError as exc:
+            cleanup_errors.append(f"previous export: {exc}")
+        thumbnail_candidates = {
+            previous_thumbnail,
+            os.path.join(video_dir, "thumbnail.jpg"),
+        }
+        for thumbnail_path in thumbnail_candidates:
+            try:
                 if thumbnail_path and _is_inside(thumbnail_path, video_dir) and os.path.isfile(thumbnail_path):
                     os.remove(thumbnail_path)
+            except OSError as exc:
+                cleanup_errors.append(f"thumbnail: {exc}")
 
-            shutil.copy2(staged_source, input_path)
-        finally:
-            if staging_directory:
-                shutil.rmtree(staging_directory, ignore_errors=True)
-
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        video.files["video_input"] = input_path
-        video.files["srt_output"] = os.path.join(video_dir, "temp", "vi.srt")
-        video.files["voice_output"] = os.path.join(video_dir, "temp", "voice_final.wav")
-        video.files["transcript_json"] = os.path.join(video_dir, "temp", "vi_segments.json")
-        video.files["thumbnail"] = os.path.join(video_dir, "thumbnail.jpg")
-        video.original_filename = os.path.basename(source_path)
-        video.media_source = MediaSource.model_validate(media_source or {"type": "local_file"})
-        video.video_width = 0
-        video.video_height = 0
-        video.review_approved = False
-        video.status = "pending"
-        video.progress = 0
-        video.step = "pending"
-        video.resume_step = ""
-        video.runtime_recovery_step = ""
-        video.gpu_recovery_attempted = False
-        video.checkpoints = {}
-        video.started_at = None
-        video.estimated_remaining_seconds = None
-        video.step_detail = "New source video imported"
-        video.current_item = 0
-        video.total_items = 0
-        video.error = None
-        video.created_at = now
-        video.updated_at = now
-        _save_video_unlocked(video)
         try:
             os.remove(_get_video_backup_path(video_id))
         except FileNotFoundError:
             pass
         with open(get_video_logs_path(video_id), "w", encoding="utf-8") as file:
             file.write(f"[{now}] Input video replaced. Previous processing data was removed.\n")
+            for cleanup_error in cleanup_errors:
+                file.write(
+                    f"[{now}] Old artifact cleanup was deferred ({cleanup_error}). "
+                    "It will not be reused because all processing checkpoints were cleared.\n"
+                )
         return video
 
 
@@ -720,10 +820,29 @@ def migrate_legacy_project_data() -> list[str]:
             video_id,
         )
         if os.path.exists(destination):
+            # A previous cross-volume migration may have published the complete
+            # destination before the old copy could be removed.
+            destination_metadata = os.path.join(destination, "video.json")
+            try:
+                migrated_video = _load_video_metadata(
+                    destination_metadata,
+                    persist_migration=False,
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, VideoMetadataError):
+                continue
+            if migrated_video.video_id == video_id:
+                shutil.rmtree(source, onerror=_force_remove_readonly)
+                _VIDEO_DIR_CACHE[video_id] = destination
+                _cache_video(migrated_video)
+                migrated.append(video_id)
             continue
-        os.makedirs(os.path.dirname(destination), exist_ok=True)
-        shutil.move(source, destination)
-        _VIDEO_DIR_CACHE[video_id] = destination
+
+        destination_parent = os.path.dirname(destination)
+        os.makedirs(destination_parent, exist_ok=True)
+        staging = os.path.join(destination_parent, f".{video_id}.migrating")
+        if os.path.isdir(staging):
+            shutil.rmtree(staging, onerror=_force_remove_readonly)
+
         video.project_key = key
         video.project_id = str(record.get("project_id") or "")
         for file_key, file_path in (video.files or {}).items():
@@ -740,7 +859,24 @@ def migrate_legacy_project_data() -> list[str]:
                     video.checkpoints[checkpoint_key] = os.path.join(destination, os.path.relpath(checkpoint_path, source))
             except (TypeError, ValueError):
                 continue
-        save_video(video)
+
+        try:
+            # Copy first and publish with one directory rename. The legacy
+            # workspace remains intact if copying or metadata rewriting fails.
+            shutil.copytree(source, staging)
+            _write_json_atomic(
+                os.path.join(staging, "video.json"),
+                _video_data(video),
+            )
+            os.replace(staging, destination)
+        finally:
+            if os.path.isdir(staging):
+                shutil.rmtree(staging, onerror=_force_remove_readonly)
+
+        _VIDEO_DIR_CACHE[video_id] = destination
+        _cache_video(video)
+        _mark_metadata_changed(video_id)
+        shutil.rmtree(source, onerror=_force_remove_readonly)
         migrated.append(video_id)
     try:
         os.rmdir(LEGACY_VIDEO_WORKSPACES_DIR)
@@ -765,13 +901,35 @@ def migrate_legacy_thumbnails(legacy_directory: str) -> list[str]:
         except ValueError:
             continue
         destination = os.path.join(get_video_dir(video.video_id), "thumbnail.jpg")
+        temporary_path = ""
         try:
             os.makedirs(os.path.dirname(destination), exist_ok=True)
-            if not os.path.exists(destination):
-                shutil.move(current_path, destination)
+            if os.path.normcase(os.path.abspath(current_path)) != os.path.normcase(os.path.abspath(destination)):
+                handle, temporary_path = tempfile.mkstemp(
+                    prefix=".thumbnail-migration-",
+                    suffix=".jpg",
+                    dir=os.path.dirname(destination),
+                )
+                os.close(handle)
+                shutil.copy2(current_path, temporary_path)
+                if os.path.getsize(temporary_path) <= 0:
+                    raise RuntimeError(f"Legacy thumbnail is empty: {current_path}")
+                os.replace(temporary_path, destination)
+                temporary_path = ""
             video.files["thumbnail"] = destination
             save_video(video)
+            if os.path.normcase(os.path.abspath(current_path)) != os.path.normcase(os.path.abspath(destination)):
+                try:
+                    os.remove(current_path)
+                except OSError:
+                    pass
             migrated.append(video.video_id)
-        except OSError:
+        except (OSError, RuntimeError):
             continue
+        finally:
+            if temporary_path:
+                try:
+                    os.remove(temporary_path)
+                except FileNotFoundError:
+                    pass
     return migrated

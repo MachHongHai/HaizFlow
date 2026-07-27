@@ -308,7 +308,9 @@ def _translate_prompt_batch(
             except (KeyError, IndexError, TypeError) as exc:
                 raise RuntimeError("HY-MT2 GGUF returned an invalid response.") from exc
             results.append(_clean_single_translation(content))
-        return results
+        if any(not isinstance(result, str) for result in results):
+            raise RuntimeError("HY-MT2 GGUF did not return one translation per subtitle prompt.")
+        return [str(result) for result in results]
 
     grouped_indices: dict[int, list[int]] = {}
     for index, source_text in enumerate(source_texts):
@@ -354,16 +356,11 @@ def _translate_prompt_batch(
 
 
 def _cpu_model_path() -> str:
-    from huggingface_hub import hf_hub_download
-
     from haizflow.config import (
         HYMT2_CPU_MODEL_FILE,
-        HYMT2_CPU_MODEL_REPO,
-        HYMT2_CPU_MODEL_REVISION,
         MODELS_DIR,
     )
     from haizflow.core.model_integrity import ModelIntegrityError, verify_cpu_model
-    from haizflow.core.paths import bundle_root
 
     model_directory = Path(MODELS_DIR) / "hymt2-gguf"
     model_path = model_directory / HYMT2_CPU_MODEL_FILE
@@ -372,38 +369,9 @@ def _cpu_model_path() -> str:
             return str(verify_cpu_model(model_path))
         except ModelIntegrityError as exc:
             raise RuntimeError(f"Installed HY-MT2 CPU model failed integrity verification: {exc}") from exc
-    bundled_model = bundle_root() / "models" / "hymt2-gguf" / HYMT2_CPU_MODEL_FILE
-    if bundled_model.is_file() and bundled_model.stat().st_size >= _MIN_GGUF_BYTES:
-        try:
-            return str(verify_cpu_model(bundled_model))
-        except ModelIntegrityError as exc:
-            raise RuntimeError(f"Bundled HY-MT2 CPU model failed integrity verification: {exc}") from exc
-    if model_path.exists():
-        model_path.unlink(missing_ok=True)
-    _emit_event(
-        {
-            "event": "status",
-            "detail": f"Downloading CPU translation model {HYMT2_CPU_MODEL_FILE}",
-        }
+    raise RuntimeError(
+        "HY-MT2 CPU is missing or corrupted. Return to the model setup screen and retry the download."
     )
-    model_directory.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(model_directory).free < _MIN_CPU_MODEL_DISK_BYTES:
-        raise RuntimeError(
-            f"At least 2 GB of free disk space is required to install {HYMT2_CPU_MODEL_FILE}."
-        )
-    try:
-        downloaded = Path(hf_hub_download(
-            repo_id=HYMT2_CPU_MODEL_REPO,
-            filename=HYMT2_CPU_MODEL_FILE,
-            revision=HYMT2_CPU_MODEL_REVISION,
-            local_dir=str(model_directory),
-        ))
-        return str(verify_cpu_model(downloaded))
-    except Exception as exc:
-        raise RuntimeError(
-            "The HY-MT2 CPU model is not installed. Connect once to download the official "
-            f"{HYMT2_CPU_MODEL_FILE} model, or include it in the installer at {model_path}."
-        ) from exc
 
 
 def _transformers_snapshot_complete(snapshot_path: Path) -> bool:
@@ -431,9 +399,8 @@ def _transformers_snapshot_complete(snapshot_path: Path) -> bool:
 
 def _local_transformers_model_source(model_name: str) -> tuple[str, bool]:
     """Resolve an installed Hub model to its snapshot so startup stays offline."""
-    from haizflow.config import HF_HOME, HYMT2_MODEL_REVISION
+    from haizflow.config import MODELS_DIR
     from haizflow.core.model_integrity import ModelIntegrityError, verify_gpu_model
-    from haizflow.core.paths import bundle_root
 
     configured_path = Path(model_name).expanduser()
     if _transformers_snapshot_complete(configured_path):
@@ -444,57 +411,20 @@ def _local_transformers_model_source(model_name: str) -> tuple[str, bool]:
     if configured_path.exists():
         raise RuntimeError(f"Configured HY-MT2 model directory is incomplete: {configured_path}")
 
-    bundled_model = bundle_root() / "models" / "hymt2-transformers"
-    if _transformers_snapshot_complete(bundled_model):
+    installed_model = Path(MODELS_DIR) / "hymt2-transformers"
+    if _transformers_snapshot_complete(installed_model):
         try:
-            return str(verify_gpu_model(bundled_model)), True
+            return str(verify_gpu_model(installed_model)), True
         except ModelIntegrityError as exc:
-            raise RuntimeError(f"Bundled HY-MT2 GPU model failed integrity verification: {exc}") from exc
-    if bundled_model.exists():
-        raise RuntimeError(f"Bundled HY-MT2 model is incomplete: {bundled_model}")
-
-    from huggingface_hub import snapshot_download
-
-    snapshot_path = None
-    try:
-        snapshot_path = Path(
-            snapshot_download(
-                repo_id=model_name,
-                revision=HYMT2_MODEL_REVISION,
-                cache_dir=str(Path(HF_HOME) / "hub"),
-                local_files_only=True,
-            )
-        )
-    except Exception:
-        pass
-
-    if snapshot_path is not None and _transformers_snapshot_complete(snapshot_path):
-        try:
-            return str(verify_gpu_model(snapshot_path)), True
-        except ModelIntegrityError as exc:
-            raise RuntimeError(f"Cached HY-MT2 GPU model failed integrity verification: {exc}") from exc
-    cache_root = Path(HF_HOME)
-    cache_root.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(cache_root).free < _MIN_GPU_MODEL_DISK_BYTES:
-        raise RuntimeError(
-            "At least 6 GB of free disk space is required to install the HY-MT2 GPU model."
-        )
-    try:
-        snapshot_path = Path(
-            snapshot_download(
-                repo_id=model_name,
-                revision=HYMT2_MODEL_REVISION,
-                cache_dir=str(Path(HF_HOME) / "hub"),
-            )
-        )
-        return str(verify_gpu_model(snapshot_path)), True
-    except Exception as exc:
-        raise RuntimeError(
-            f"Unable to install pinned HY-MT2 GPU revision {HYMT2_MODEL_REVISION}."
-        ) from exc
+            raise RuntimeError(f"Installed HY-MT2 GPU model failed integrity verification: {exc}") from exc
+    raise RuntimeError(
+        "HY-MT2 GPU is missing or corrupted. Return to the model setup screen and retry the download."
+    )
 
 
 def _load_model(model_name: str):
+    from haizflow.config import HYMT2_MODEL_REVISION
+
     # Configure Torch before runtime_profile() probes CUDA. CUDA telemetry can
     # initialize Torch's parallel runtime, after which interop threads are
     # immutable for the lifetime of this worker process.
@@ -571,9 +501,14 @@ def _load_model(model_name: str):
             "detail": "Loading HY-MT2 tokenizer from local cache" if local_files_only else "Loading HY-MT2 tokenizer",
         }
     )
-    tokenizer = AutoTokenizer.from_pretrained(
+    # model_source is the checksum-verified local snapshot resolved above;
+    # remote model code is explicitly disabled.
+    tokenizer = AutoTokenizer.from_pretrained(  # nosec B615
         model_source,
-        trust_remote_code=True,
+        revision=HYMT2_MODEL_REVISION,
+        # HaizFlow accepts only its pinned, checksum-verified HY-MT2 bundle.
+        # Never execute Python code supplied by a model repository.
+        trust_remote_code=False,
         local_files_only=local_files_only,
         # Transformers 4.57 misclassifies this local Hunyuan tokenizer as
         # Mistral. Keep Tencent's tokenizer unchanged while suppressing that fix.
@@ -583,7 +518,7 @@ def _load_model(model_name: str):
     staged_cuda_load = device == "cuda" and profile.key == "cuda_low_memory"
     load_options = {
         "dtype": dtype,
-        "trust_remote_code": True,
+        "trust_remote_code": False,
         "use_safetensors": True,
         "local_files_only": local_files_only,
     }
@@ -616,7 +551,13 @@ def _load_model(model_name: str):
             ),
         }
     )
-    model = AutoModelForCausalLM.from_pretrained(model_source, **load_options)
+    # model_source is the checksum-verified local safetensors snapshot and
+    # load_options disables remote code while requiring safetensors.
+    model = AutoModelForCausalLM.from_pretrained(  # nosec B615
+        model_source,
+        revision=HYMT2_MODEL_REVISION,
+        **load_options,
+    )
     _emit_diagnostic(
         "weights_load_complete",
         torch,
@@ -682,7 +623,7 @@ def translate(payload: dict) -> list[str]:
         return list(texts)
 
     model, tokenizer, torch, device = _model_runtime()
-    translations = [None] * len(texts)
+    translations: list[str | None] = [None] * len(texts)
     for batch_start, batch_end in _inference_batches(texts):
         _emit_event(
             {
@@ -721,7 +662,7 @@ def translate(payload: dict) -> list[str]:
         _emit_event({"event": "progress", "current": batch_end, "total": len(texts)})
     if any(not isinstance(text, str) for text in translations):
         raise RuntimeError("HY-MT2 inference did not return one translation per subtitle prompt.")
-    return translations
+    return [str(text) for text in translations]
 
 
 def _serve() -> int:

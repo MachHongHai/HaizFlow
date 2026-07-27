@@ -28,7 +28,7 @@ Item {
     }
 
     function edgeAt(localX, localY) {
-        var threshold = 12
+        const threshold = 12
         if (localX <= threshold) {
             return "left"
         }
@@ -45,7 +45,7 @@ Item {
     }
 
     function emitEdit() {
-        var fontSize = Math.max(10, Math.min(160, Math.round(Math.min(boxHeightPercent * 6, boxWidthPercent * 1.5))))
+        const fontSize = Math.max(10, Math.min(160, Math.round(Math.min(boxHeightPercent * 6, boxWidthPercent * 1.5))))
         storedFontSize = fontSize
         edited(Math.round(xPercent), Math.round(yPercent), Math.round(boxWidthPercent), Math.round(boxHeightPercent), fontSize)
     }
@@ -83,7 +83,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: {
-            var edge = root.edgeAt(mouseX, mouseY)
+            const edge = root.edgeAt(mouseX, mouseY)
             if (edge === "left" || edge === "right") {
                 return Qt.SizeHorCursor
             }
@@ -107,30 +107,30 @@ Item {
             if (!pressed || !root.parent) {
                 return
             }
-            var mapped = mapToItem(root.parent, mouse.x, mouse.y)
-            var dxPercent = (mapped.x - root.originMouseX) * 100 / root.parent.width
-            var dyPercent = (mapped.y - root.originMouseY) * 100 / root.parent.height
+            const mapped = mapToItem(root.parent, mouse.x, mouse.y)
+            const dxPercent = (mapped.x - root.originMouseX) * 100 / root.parent.width
+            const dyPercent = (mapped.y - root.originMouseY) * 100 / root.parent.height
             if (root.mode === "move") {
                 root.xPercent = Math.max(root.boxWidthPercent / 2, Math.min(100 - root.boxWidthPercent / 2, root.originXPercent + dxPercent))
                 root.yPercent = Math.max(root.boxHeightPercent / 2, Math.min(100 - root.boxHeightPercent / 2, root.originYPercent + dyPercent))
             } else if (root.mode === "left") {
-                var nextLeft = root.originXPercent - root.originWidthPercent / 2 + dxPercent
-                var right = root.originXPercent + root.originWidthPercent / 2
+                const nextLeft = root.originXPercent - root.originWidthPercent / 2 + dxPercent
+                const right = root.originXPercent + root.originWidthPercent / 2
                 root.boxWidthPercent = Math.max(20, Math.min(95, right - nextLeft))
                 root.xPercent = right - root.boxWidthPercent / 2
             } else if (root.mode === "right") {
-                var left = root.originXPercent - root.originWidthPercent / 2
-                var nextRight = root.originXPercent + root.originWidthPercent / 2 + dxPercent
+                const left = root.originXPercent - root.originWidthPercent / 2
+                const nextRight = root.originXPercent + root.originWidthPercent / 2 + dxPercent
                 root.boxWidthPercent = Math.max(20, Math.min(95, nextRight - left))
                 root.xPercent = left + root.boxWidthPercent / 2
             } else if (root.mode === "top") {
-                var nextTop = root.originYPercent - root.originHeightPercent / 2 + dyPercent
-                var bottom = root.originYPercent + root.originHeightPercent / 2
+                const nextTop = root.originYPercent - root.originHeightPercent / 2 + dyPercent
+                const bottom = root.originYPercent + root.originHeightPercent / 2
                 root.boxHeightPercent = Math.max(6, Math.min(35, bottom - nextTop))
                 root.yPercent = bottom - root.boxHeightPercent / 2
             } else if (root.mode === "bottom") {
-                var top = root.originYPercent - root.originHeightPercent / 2
-                var nextBottom = root.originYPercent + root.originHeightPercent / 2 + dyPercent
+                const top = root.originYPercent - root.originHeightPercent / 2
+                const nextBottom = root.originYPercent + root.originHeightPercent / 2 + dyPercent
                 root.boxHeightPercent = Math.max(6, Math.min(35, nextBottom - top))
                 root.yPercent = top + root.boxHeightPercent / 2
             }

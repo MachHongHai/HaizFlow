@@ -106,6 +106,15 @@ TORCH_HOME = _resolve_runtime_path(_cache_override("TORCH_HOME"), os.path.join(C
 PIP_CACHE_DIR = _resolve_runtime_path(_cache_override("PIP_CACHE_DIR"), os.path.join(CACHE_DIR, "pip"))
 UV_CACHE_DIR = _resolve_runtime_path(_cache_override("UV_CACHE_DIR"), os.path.join(CACHE_DIR, "uv"))
 TMP_DIR = _resolve_runtime_path(_cache_override("HAIZFLOW_TMP_DIR"), os.path.join(APP_DATA_DIR, "tmp"))
+PORTABLE_PROFILE_DIR = os.path.join(APP_DATA_DIR, "home")
+# Qt's native Windows dialogs and a few command-line dependencies resolve
+# standard user folders relative to USERPROFILE.  The portable profile is
+# deliberately kept under the HaizFlow runtime, so materialize its shell
+# folders instead of letting a file dialog fall back to (or error on) C:.
+PORTABLE_PROFILE_SHELL_DIRS = tuple(
+    os.path.join(PORTABLE_PROFILE_DIR, name)
+    for name in ("Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos")
+)
 
 # Third-party libraries otherwise scatter caches under %LOCALAPPDATA%,
 # %APPDATA%, %USERPROFILE%\.cache, and the system temporary directory. Set
@@ -122,6 +131,7 @@ _RUNTIME_ENVIRONMENT = {
     "UV_CACHE_DIR": UV_CACHE_DIR,
     "XDG_CACHE_HOME": CACHE_DIR,
     "NUMBA_CACHE_DIR": os.path.join(CACHE_DIR, "numba"),
+    "NLTK_DATA": os.path.join(CACHE_DIR, "nltk"),
     "MPLCONFIGDIR": os.path.join(CACHE_DIR, "matplotlib"),
     "CUDA_CACHE_PATH": os.path.join(CACHE_DIR, "nvidia", "compute-cache"),
     "TRITON_CACHE_DIR": os.path.join(CACHE_DIR, "triton"),
@@ -131,8 +141,8 @@ _RUNTIME_ENVIRONMENT = {
     # Some Python/CLI dependencies ignore their dedicated cache variables and
     # fall back to the current user's home directory. Keep that fallback under
     # the portable runtime as well, rather than silently using C:\\Users.
-    "HOME": os.path.join(APP_DATA_DIR, "home"),
-    "USERPROFILE": os.path.join(APP_DATA_DIR, "home"),
+    "HOME": PORTABLE_PROFILE_DIR,
+    "USERPROFILE": PORTABLE_PROFILE_DIR,
     "TMP": TMP_DIR,
     "TEMP": TMP_DIR,
 }
@@ -152,6 +162,7 @@ for directory in (
     UV_CACHE_DIR,
     TMP_DIR,
     *_RUNTIME_ENVIRONMENT.values(),
+    *PORTABLE_PROFILE_SHELL_DIRS,
 ):
     os.makedirs(directory, exist_ok=True)
 

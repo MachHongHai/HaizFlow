@@ -16,11 +16,43 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from haizflow.desktop import qml_controller
+from haizflow.desktop import project_import_controller
 from haizflow.desktop.qml_controller import HaizFlowController
+from haizflow.desktop.project_import_controller import ProjectImportController
 from haizflow.schemas.video import VideoConfig
 
 
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_project_import_shutdown_wait_is_bounded_and_reports_live_workers(self):
+        importer = ProjectImportController(SimpleNamespace())
+        release = threading.Event()
+        worker = threading.Thread(target=release.wait, daemon=True)
+        importer._task_threads[1] = worker
+        worker.start()
+        try:
+            self.assertFalse(importer.shutdown(timeout_seconds=0.001))
+            release.set()
+            self.assertTrue(importer.shutdown(timeout_seconds=1.0))
+        finally:
+            release.set()
+            worker.join(timeout=1.0)
+
+    def test_media_picker_starts_in_the_existing_project_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_directory = Path(temp_dir) / "project"
+            project_directory.mkdir()
+            host = SimpleNamespace(
+                _project_directory=str(project_directory), videoPath="", _selected_video_id=None,
+            )
+            importer = ProjectImportController(host)
+
+            with patch.object(
+                project_import_controller.QFileDialog, "getOpenFileName", return_value=("", "")
+            ) as choose_video:
+                importer.browse_video()
+
+        self.assertEqual(choose_video.call_args.args[2], str(project_directory.resolve()))
+
     def test_batch_settings_draft_applies_without_mutating_editor_state(self):
         video = SimpleNamespace(video_id="batch-video")
         controller = SimpleNamespace(
@@ -183,6 +215,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             _processing_queue=processing_queue,
             _url_importer=SimpleNamespace(shutdown=Mock(return_value=True)),
             _channel_importer=SimpleNamespace(shutdown=Mock(return_value=True)),
+            _dimension_probe=SimpleNamespace(shutdown=Mock()),
             _warmup_thread=None,
             _on_video_log=Mock(),
         )
@@ -208,6 +241,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         unsubscribe.assert_called_once_with(controller._on_video_log)
         pause.assert_called_once_with(active.video_id)
         processing_queue.shutdown.assert_called_once_with(timeout_seconds=10.0)
+        controller._dimension_probe.shutdown.assert_called_once_with()
         shutdown_translation.assert_called_once_with(permanent=True)
         release_whisper.assert_called_once()
         update_video.assert_any_call(

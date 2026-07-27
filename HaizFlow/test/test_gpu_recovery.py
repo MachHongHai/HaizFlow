@@ -178,6 +178,37 @@ class GpuRecoveryTests(unittest.TestCase):
                 ) = original_state
             translation._WORKER_SHUTDOWN_EVENT.clear()
 
+    def test_successful_translation_keeps_persistent_worker_job_alive(self):
+        process = mock.Mock()
+        process.poll.return_value = None
+        process.stdin = mock.Mock()
+        output = queue.Queue()
+        output.put(
+            '{"event":"response","request_id":"request-1","translations":["Xin chào"]}\n'
+        )
+        profile = SimpleNamespace(is_cpu_only=False)
+
+        with (
+            mock.patch.object(translation, "_ensure_hymt2_worker", return_value=(process, output)),
+            mock.patch.object(translation, "_WORKER_PROCESS", process),
+            mock.patch.object(translation, "_WORKER_WARM", False),
+            mock.patch.object(translation.uuid, "uuid4", return_value=SimpleNamespace(hex="request-1")),
+            mock.patch.object(translation, "register_process") as register,
+            mock.patch.object(translation, "unregister_process") as unregister,
+            mock.patch.object(translation, "runtime_profile", return_value=profile),
+            mock.patch.object(translation, "log_to_video"),
+        ):
+            result = translation._translate_with_hymt2_worker(
+                ["Hello"],
+                video_id="video-1",
+                source_languages=["English"],
+                target_language_name="Vietnamese",
+            )
+
+        self.assertEqual(result, ["Xin chào"])
+        register.assert_called_once_with("video-1", process)
+        unregister.assert_called_once_with("video-1", process)
+
 
 if __name__ == "__main__":
     unittest.main()

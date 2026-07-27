@@ -65,6 +65,7 @@ import haizflow.config as _runtime_config  # noqa: E402,F401
 
 _INTERNAL_STREAM_MODES = {
     "--douyin-channel-worker",
+    "--demucs-separate",
     "--hymt2-worker",
     "--runtime-probe",
     "--release-smoke",
@@ -82,6 +83,12 @@ if "--douyin-channel-worker" in sys.argv:
     from haizflow.services.douyin_channel_worker import main as run_douyin_channel_worker
 
     raise SystemExit(run_douyin_channel_worker())
+
+if "--demucs-separate" in sys.argv:
+    from demucs.separate import main as run_demucs
+
+    demucs_index = sys.argv.index("--demucs-separate")
+    raise SystemExit(run_demucs(sys.argv[demucs_index + 1 :]))
 
 if "--runtime-probe" in sys.argv:
     from haizflow.core.runtime_probe import main as run_runtime_probe

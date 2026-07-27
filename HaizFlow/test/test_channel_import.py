@@ -1,7 +1,9 @@
 import json
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +22,7 @@ from haizflow.services.channel_import import (
     _hydrate_candidate,
     _is_non_video_metadata,
     _needs_hydration,
+    _scan_douyin,
     _scan_with_ytdlp,
     _youtube_collection_urls,
     load_latest_session,
@@ -31,12 +34,27 @@ from haizflow.services.channel_import import (
 )
 from haizflow.services.douyin_channel_worker import (
     _candidate as douyin_candidate,
+    _validated_douyin_url,
     inspect_profile as inspect_douyin_profile,
 )
 from haizflow.services import project_store
+from haizflow.services.video_download import DownloadCancelled
 
 
 class ChannelUrlTests(unittest.TestCase):
+    def test_douyin_worker_rejects_non_http_and_lookalike_hosts(self):
+        for url in (
+            "file:///C:/secret.txt",
+            "https://douyin.com.evil.example/user/test",
+            "https://evil.example/?next=douyin.com",
+        ):
+            with self.subTest(url=url), self.assertRaisesRegex(ValueError, "douyin.com URL"):
+                _validated_douyin_url(url)
+        self.assertEqual(
+            _validated_douyin_url("https://v.douyin.com/example"),
+            "https://v.douyin.com/example",
+        )
+
     def test_supported_channel_urls_are_normalized(self):
         youtube, youtube_platform = validate_channel_url("youtube.com/@creator")
         tiktok, tiktok_platform = validate_channel_url("https://www.tiktok.com/@creator/")
@@ -48,6 +66,49 @@ class ChannelUrlTests(unittest.TestCase):
         self.assertEqual(tiktok_platform, "TikTok")
         self.assertEqual(douyin, "https://www.douyin.com/user/example")
         self.assertEqual(douyin_platform, "Douyin")
+
+    def test_douyin_worker_drains_large_output_without_poll_deadlock(self):
+        response = json.dumps(
+            {
+                "channel_name": "Creator",
+                "candidates": [
+                    {
+                        "remote_video_id": "123",
+                        "source_url": "https://www.douyin.com/video/123",
+                        "title": "Video",
+                        "platform": "Douyin",
+                    }
+                ],
+            }
+        )
+
+        class FakeProcess:
+            def __init__(self):
+                self.calls = []
+                self.returncode = 0
+
+            def communicate(self, *, input=None, timeout=None):
+                self.calls.append((input, timeout))
+                if len(self.calls) == 1:
+                    raise subprocess.TimeoutExpired(["worker"], timeout)
+                return response, ""
+
+            def kill(self):
+                self.returncode = -9
+
+        process = FakeProcess()
+        request = ChannelImportRequest(
+            url="https://www.douyin.com/user/creator",
+            platform="douyin",
+            limit=1,
+        )
+        with patch("haizflow.services.channel_import.subprocess.Popen", return_value=process):
+            channel_name, candidates = _scan_douyin(request, None, threading.Event())
+
+        self.assertEqual(channel_name, "Creator")
+        self.assertEqual([candidate.remote_video_id for candidate in candidates], ["123"])
+        self.assertIsNotNone(process.calls[0][0])
+        self.assertIsNone(process.calls[1][0])
 
     def test_video_urls_and_unknown_hosts_are_rejected(self):
         invalid = (
@@ -462,6 +523,49 @@ class ChannelScanTests(unittest.TestCase):
 
         self.assertEqual(options_used[0]["playlistend"], 20)
         self.assertEqual([candidate.remote_video_id for candidate in candidates], ["123"])
+
+    def test_metadata_hydration_cancels_without_waiting_for_blocked_worker(self):
+        request = ChannelImportRequest(
+            url="https://www.youtube.com/@creator",
+            platform="youtube",
+            limit=1,
+            duration_filter="all",
+        )
+        cancel_event = threading.Event()
+        worker_started = threading.Event()
+        release_worker = threading.Event()
+        playlist = {
+            "channel": "Creator",
+            "entries": [{"id": "video-1", "title": "Video"}],
+        }
+
+        def blocked_hydration(candidate, *_args):
+            worker_started.set()
+            release_worker.wait(3)
+            return candidate
+
+        timer = threading.Thread(
+            target=lambda: (worker_started.wait(1), cancel_event.set()),
+            daemon=True,
+        )
+        timer.start()
+        started_at = time.monotonic()
+        try:
+            with (
+                patch(
+                    "haizflow.services.channel_import._extract_info_with_platform_retry",
+                    return_value=playlist,
+                ),
+                patch(
+                    "haizflow.services.channel_import._hydrate_candidate",
+                    side_effect=blocked_hydration,
+                ),
+            ):
+                with self.assertRaises(DownloadCancelled):
+                    _scan_with_ytdlp(request, "YouTube", None, cancel_event)
+        finally:
+            release_worker.set()
+        self.assertLess(time.monotonic() - started_at, 1.5)
 
 
 class ChannelSessionTests(unittest.TestCase):

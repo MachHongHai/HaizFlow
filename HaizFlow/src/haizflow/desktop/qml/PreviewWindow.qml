@@ -31,6 +31,9 @@ Window {
     onVisibleChanged: {
         if (!visible) {
             player.stop()
+            // Release the Windows multimedia backend and its source file
+            // handle while this long-lived window is hidden.
+            player.source = ""
             if (returnToBatchSetup) {
                 returnToBatchSetup = false
                 batchSetupReturnRequested()
@@ -66,9 +69,9 @@ Window {
     }
 
     function formatTime(milliseconds) {
-        var total = Math.max(0, Math.floor(milliseconds / 1000))
-        var minutes = Math.floor(total / 60)
-        var seconds = total % 60
+        const total = Math.max(0, Math.floor(milliseconds / 1000))
+        const minutes = Math.floor(total / 60)
+        const seconds = total % 60
         return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0")
     }
 
@@ -288,6 +291,7 @@ Window {
                     from: 0
                     to: Math.max(1, player.duration)
                     value: player.position
+                    animateValueChanges: false
                     Accessible.name: I18n.t("Video timeline")
                     onMoved: {
                         root.showPoster = false

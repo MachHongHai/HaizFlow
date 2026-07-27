@@ -1,5 +1,5 @@
+import json
 import subprocess
-import os
 import shutil
 from functools import lru_cache
 from pathlib import Path
@@ -78,28 +78,41 @@ def is_ffmpeg_available() -> bool:
     """Checks if both ffmpeg and ffprobe are available in the PATH."""
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
-def get_ffmpeg_version() -> str:
+def get_ffmpeg_version(*, timeout_seconds: float = 15.0) -> str:
     """Retrieves the first line of ffmpeg's version details."""
     try:
-        result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            [_binary("ffmpeg"), "-version"],
+            capture_output=True,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=True,
+        )
         if result.stdout:
             return result.stdout.splitlines()[0]
         return "Unknown version"
-    except Exception as e:
-        return f"Unknown (Error: {str(e)})"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"Unknown (Error: {exc})"
 
-def get_video_duration(video_path: str) -> float:
+
+def get_video_duration(video_path: str, *, timeout_seconds: float = 15.0) -> float:
     """Calculates the duration of a video file using ffprobe."""
     try:
         cmd = [
-            "ffprobe", "-v", "error",
+            _binary("ffprobe"), "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
             video_path
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=True,
+        )
         return float(result.stdout.strip())
-    except Exception:
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
         return 0.0
 
 
@@ -108,7 +121,7 @@ def get_video_dimensions(video_path: str, *, timeout_seconds: float = 15.0) -> t
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                _binary("ffprobe"), "-v", "error", "-select_streams", "v:0",
                 "-show_entries", "stream=width,height", "-of", "csv=p=0", video_path,
             ],
             capture_output=True,
@@ -121,3 +134,31 @@ def get_video_dimensions(video_path: str, *, timeout_seconds: float = 15.0) -> t
     except Exception as exc:
         raise RuntimeError(f"Cannot read video dimensions: {exc}") from exc
 
+
+def get_media_stream_types(media_path: str, *, timeout_seconds: float = 15.0) -> set[str]:
+    """Return codec stream types from a bounded ffprobe call."""
+    try:
+        result = subprocess.run(
+            [
+                _binary("ffprobe"),
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "json",
+                media_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=True,
+        )
+        payload = json.loads(result.stdout)
+        return {
+            str(stream.get("codec_type") or "")
+            for stream in payload.get("streams", [])
+            if isinstance(stream, dict) and stream.get("codec_type")
+        }
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError, ValueError):
+        return set()

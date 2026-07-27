@@ -20,6 +20,19 @@ def _write_test_mp3(path: str) -> None:
 
 
 class TtsReliabilityTests(unittest.TestCase):
+    def test_empty_transcript_is_rejected_before_reporting_tts_success(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            segments_path = Path(temp_dir) / "segments.json"
+            segments_path.write_text("[]", encoding="utf-8")
+            with mock.patch.object(tts, "log_to_video"):
+                with self.assertRaisesRegex(RuntimeError, "at least one translated subtitle"):
+                    tts.generate_voice_parts(
+                        str(segments_path),
+                        str(Path(temp_dir) / "voice"),
+                        "voice",
+                        "video",
+                    )
+
     def test_text_normalization_removes_transport_sensitive_punctuation(self):
         normalized = tts.preprocess_text_for_tts(
             "  Xin\u00a0chao\u200b \u2013 tu nhien\u2026  "

@@ -1,8 +1,10 @@
+import logging
 from collections.abc import Callable
 from threading import RLock
 
 LogListener = Callable[[str, str], None]
 
+LOGGER = logging.getLogger(__name__)
 _log_listeners: list[LogListener] = []
 _lock = RLock()
 
@@ -27,5 +29,6 @@ def emit_log(video_id: str, message: str) -> None:
         try:
             listener(video_id, message)
         except Exception:
-            pass
-
+            # One listener must not break pipeline logging, but the failure
+            # still belongs in the bounded diagnostic application log.
+            LOGGER.exception("Log listener failed for video %s", video_id)

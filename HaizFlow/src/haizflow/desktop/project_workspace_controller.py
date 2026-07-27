@@ -95,7 +95,13 @@ class ProjectWorkspaceController:
             host._thumbnail_refresh_running = True
             import threading
 
-            threading.Thread(target=host._create_missing_thumbnails, args=(missing_thumbnails,), daemon=True).start()
+            host._thumbnail_refresh_thread = threading.Thread(
+                target=host._create_missing_thumbnails,
+                args=(missing_thumbnails,),
+                name="haizflow-thumbnail-refresh",
+                daemon=True,
+            )
+            host._thumbnail_refresh_thread.start()
         host._last_video_metadata_revision = video_store.metadata_revision()
 
     def apply_video_metadata_changes(self, video_ids: set[str]) -> bool:

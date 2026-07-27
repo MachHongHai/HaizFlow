@@ -1,5 +1,6 @@
 import os
 import subprocess
+import tempfile
 
 import srt
 
@@ -7,7 +8,12 @@ from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.schemas.video import CropSettings, SubtitleStyle
 from haizflow.services.video_store import log_to_video
-from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration, preferred_video_encoder
+from haizflow.utils.ffmpeg import (
+    get_media_stream_types,
+    get_video_dimensions,
+    get_video_duration,
+    preferred_video_encoder,
+)
 
 
 def _escape_ass_text(text: str) -> str:
@@ -26,6 +32,8 @@ def _write_positioned_ass(srt_path: str, ass_path: str, subtitle_style: Subtitle
     """Convert SRT to ASS so a dragged preview position is reproduced exactly in FFmpeg."""
     with open(srt_path, "r", encoding="utf-8") as file:
         subtitles = list(srt.parse(file.read()))
+    if not subtitles:
+        raise RuntimeError("Final render requires at least one valid subtitle cue.")
     x = round(width * subtitle_style.position_x_percent / 100)
     y = round(height * subtitle_style.position_y_percent / 100)
     header = "\n".join([
@@ -85,6 +93,15 @@ def _ffmpeg_path(path: str, working_dir: str) -> str:
 def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
+    supported_formats = {"keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"}
+    if output_format not in supported_formats:
+        raise ValueError(f"Unsupported output format: {output_format!r}.")
+    if crop.zoom_percent <= 0:
+        raise ValueError("Crop zoom must be greater than zero.")
+    if not os.path.isfile(voice_wav_path) or os.path.getsize(voice_wav_path) <= 44:
+        raise RuntimeError("Final render requires a non-empty dubbed WAV track.")
+    if not os.path.isfile(srt_path) or os.path.getsize(srt_path) <= 0:
+        raise RuntimeError("Final render requires a non-empty subtitle file.")
     video_temp_dir = os.path.dirname(os.path.abspath(srt_path))
     source_width, source_height = get_video_dimensions(video_path)
     if output_format in {"tiktok_9_16_crop", "blur_background_9_16"}:
@@ -98,23 +115,32 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     rel_video = _ffmpeg_path(video_path, video_temp_dir)
     rel_voice = _ffmpeg_path(voice_wav_path, video_temp_dir)
     rel_ass = _ffmpeg_path(ass_path, video_temp_dir)
-    rel_output = _ffmpeg_path(output_path, video_temp_dir)
+    output_directory = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(output_directory, exist_ok=True)
+    output_extension = os.path.splitext(output_path)[1] or ".mp4"
+    handle, temporary_output = tempfile.mkstemp(
+        prefix=".render-",
+        suffix=output_extension,
+        dir=output_directory,
+    )
+    os.close(handle)
+    rel_output = _ffmpeg_path(temporary_output, video_temp_dir)
     ass_filter_path = rel_ass.replace(":", "\\:").replace("'", "'\\\\''")
     ass_filter = f"ass='{ass_filter_path}'"
     filters = []
     crop_filter = _crop_filter(crop)
     if crop_filter:
         filters.append(crop_filter)
-    if output_format == "tiktok_9_16_crop":
-        filters.extend(["scale=1080:1920:force_original_aspect_ratio=increase", "crop=1080:1920"])
-    elif output_format == "blur_background_9_16":
+    if output_format == "blur_background_9_16":
         prefix = ",".join(filters)
         source = f"[0:v]{prefix + ',' if prefix else ''}split[base][fg]"
         vf_filter = (
             f"{source};[base]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=15:3[bg];"
             f"[fg]scale=1080:1920:force_original_aspect_ratio=decrease[front];[bg][front]overlay=(W-w)/2:(H-h)/2,{ass_filter}"
         )
-    if output_format != "blur_background_9_16":
+    else:
+        if output_format == "tiktok_9_16_crop":
+            filters.extend(["scale=1080:1920:force_original_aspect_ratio=increase", "crop=1080:1920"])
         filters.append(ass_filter)
         vf_filter = ",".join(filters)
 
@@ -143,11 +169,27 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         check_cancellation(video_id)
         return process.returncode, process_stderr
 
-    return_code, stderr = run_render(video_encoder, video_encoder_args)
-    if return_code != 0 and video_encoder != "libx264":
-        log_to_video(video_id, f"Hardware encoder {video_encoder} failed; retrying with libx264.")
-        return_code, stderr = run_render("libx264", ["-preset", "veryfast", "-crf", "23"])
-    if return_code != 0:
-        log_to_video(video_id, f"FFmpeg Render Error output:\n{stderr}")
-        raise RuntimeError(f"FFmpeg render failed with exit code {return_code}")
+    try:
+        return_code, stderr = run_render(video_encoder, video_encoder_args)
+        if return_code != 0 and video_encoder != "libx264":
+            log_to_video(video_id, f"Hardware encoder {video_encoder} failed; retrying with libx264.")
+            return_code, stderr = run_render("libx264", ["-preset", "veryfast", "-crf", "23"])
+        if return_code != 0:
+            log_to_video(video_id, f"FFmpeg Render Error output:\n{stderr}")
+            raise RuntimeError(f"FFmpeg render failed with exit code {return_code}")
+        if os.path.getsize(temporary_output) <= 0 or get_video_duration(temporary_output) <= 0:
+            raise RuntimeError("FFmpeg render produced an empty or unreadable video.")
+        stream_types = get_media_stream_types(temporary_output)
+        if not {"video", "audio"}.issubset(stream_types):
+            raise RuntimeError(
+                "FFmpeg render output is missing its video or dubbed-audio stream."
+            )
+        os.replace(temporary_output, output_path)
+        temporary_output = ""
+    finally:
+        if temporary_output:
+            try:
+                os.remove(temporary_output)
+            except FileNotFoundError:
+                pass
     log_to_video(video_id, f"Successfully rendered final video to: {output_path}")

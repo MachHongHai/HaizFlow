@@ -6,7 +6,7 @@ import os
 import threading
 import time
 import uuid
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from queue import Empty, Queue
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
@@ -32,6 +32,12 @@ from haizflow.services.video_download import DownloadCancelled
 
 class ChannelImportCoordinator(QObject):
     changed = Signal()
+    stateChanged = Signal()
+    statusChanged = Signal()
+    progressChanged = Signal()
+    countsChanged = Signal()
+    sessionChanged = Signal()
+    authenticationChanged = Signal()
     videoReady = Signal(str, str, object, str, str)
     downloadsFinished = Signal(str)
     _scanResolved = Signal(str, object)
@@ -129,21 +135,38 @@ class ChannelImportCoordinator(QObject):
         for key, old_value in before.items():
             metrics[key] += after[key] - old_value
 
-    @Property(str, notify=changed)
+    def _notify(self, *signals) -> None:
+        for signal in signals:
+            signal.emit()
+        # The facade uses this one aggregate notifier for the small summary
+        # shown outside ChannelImportPage.
+        self.changed.emit()
+
+    def _notify_all(self) -> None:
+        self._notify(
+            self.stateChanged,
+            self.statusChanged,
+            self.progressChanged,
+            self.countsChanged,
+            self.sessionChanged,
+            self.authenticationChanged,
+        )
+
+    @Property(str, notify=stateChanged)
     def state(self):
         session = self._active_session()
         return session.state if session else "idle"
 
-    @Property(str, notify=changed)
+    @Property(str, notify=statusChanged)
     def status(self):
         session = self._active_session()
         return session.status if session else ""
 
-    @Property(bool, notify=changed)
+    @Property(bool, notify=stateChanged)
     def busy(self):
         return self.state in {"inspecting", "downloading", "importing", "cancelling"}
 
-    @Property(int, notify=changed)
+    @Property(int, notify=progressChanged)
     def progress(self):
         session = self._active_session()
         if not session:
@@ -155,72 +178,72 @@ class ChannelImportCoordinator(QObject):
             return 0
         return round(metrics["progress_sum"] / metrics["progress_count"])
 
-    @Property(int, notify=changed)
+    @Property(int, notify=countsChanged)
     def candidateCount(self):
         session = self._active_session()
         return self._metrics_for(session)["candidate_count"] if session else 0
 
-    @Property(int, notify=changed)
+    @Property(int, notify=countsChanged)
     def selectedCount(self):
         session = self._active_session()
         if not session:
             return 0
         return self._metrics_for(session)["selected"]
 
-    @Property(int, notify=changed)
+    @Property(int, notify=countsChanged)
     def selectableCount(self):
         session = self._active_session()
         if not session:
             return 0
         return self._metrics_for(session)["selectable"]
 
-    @Property(int, notify=changed)
+    @Property(int, notify=countsChanged)
     def importedCount(self):
         session = self._active_session()
         return self._metrics_for(session)["imported"] if session else 0
 
-    @Property(int, notify=changed)
+    @Property(int, notify=countsChanged)
     def failedCount(self):
         session = self._active_session()
         return self._metrics_for(session)["failed"] if session else 0
 
-    @Property(str, notify=changed)
+    @Property(str, notify=sessionChanged)
     def channelName(self):
         session = self._active_session()
         return session.channel_name if session else ""
 
-    @Property(str, notify=changed)
+    @Property(str, notify=sessionChanged)
     def channelUrl(self):
         session = self._active_session()
         return session.channel_url if session else ""
 
-    @Property(str, notify=changed)
+    @Property(str, notify=sessionChanged)
     def platform(self):
         session = self._active_session()
         return session.platform if session else ""
 
-    @Property(str, notify=changed)
+    @Property(str, notify=sessionChanged)
     def requestedPlatform(self):
         session = self._active_session()
         if not session:
             return ""
         return str(session.request.get("platform") or "")
 
-    @Property("QVariantMap", notify=changed)
+    @Property("QVariantMap", notify=sessionChanged)
     def requestData(self):
         """Persisted scan options for the active project session."""
         session = self._active_session()
         return dict(session.request) if session else {}
 
-    @Property(str, notify=changed)
+    @Property(str, notify=sessionChanged)
     def sessionId(self):
         return self._active_session_id
 
-    @Property(str, notify=changed)
+    @Property(str, notify=authenticationChanged)
     def cookieBrowser(self):
         return self._cookie_browser
 
-    @Property(str, notify=changed)
+    @Property(str, notify=authenticationChanged)
     def cookieFile(self):
         return self._cookie_file
 
@@ -256,7 +279,7 @@ class ChannelImportCoordinator(QObject):
         if session:
             self._metrics_for(session)
         self.candidates.set_candidates(session.candidates if session else [])
-        self.changed.emit()
+        self._notify_all()
 
     def _safe_message(self, message) -> str:
         text = str(message or "")
@@ -273,7 +296,7 @@ class ChannelImportCoordinator(QObject):
         self._cookie_browser = normalized if normalized in {"chrome", "edge"} else ""
         if self._cookie_browser:
             self._cookie_file = ""
-        self.changed.emit()
+        self._notify(self.authenticationChanged)
 
     @Slot()
     def browseCookieFile(self):
@@ -288,13 +311,13 @@ class ChannelImportCoordinator(QObject):
             self._cookie_browser = ""
         # Also refresh the selector after a cancelled native dialog so it does
         # not remain visually stuck on an authentication mode that was not set.
-        self.changed.emit()
+        self._notify(self.authenticationChanged)
 
     @Slot()
     def clearAuthentication(self):
         self._cookie_browser = ""
         self._cookie_file = ""
-        self.changed.emit()
+        self._notify(self.authenticationChanged)
 
     @Slot(str, str, str, int, str, int)
     def inspect(self, url, platform, ranking, limit, duration_filter, scan_scope):
@@ -386,7 +409,7 @@ class ChannelImportCoordinator(QObject):
             self._update_candidate_metrics(session, before, candidate)
         self.candidates.update_candidate(candidate.remote_video_id, [self.candidates.SelectedRole])
         self._save_active_session()
-        self.changed.emit()
+        self._notify(self.countsChanged, self.progressChanged)
 
     @Slot(bool)
     def selectAll(self, selected):
@@ -399,7 +422,7 @@ class ChannelImportCoordinator(QObject):
         self._rebuild_session_cache(session)
         self.candidates.set_candidates(session.candidates)
         self._save_active_session()
-        self.changed.emit()
+        self._notify(self.countsChanged, self.progressChanged)
 
     def start_downloads(self, requested_workers: int = 2, only_candidate_id: str = "") -> str:
         self._prune_finished_runners()
@@ -428,7 +451,7 @@ class ChannelImportCoordinator(QObject):
         self._rebuild_session_cache(session)
         self.candidates.set_candidates(session.candidates)
         self._save_active_session()
-        self.changed.emit()
+        self._notify(self.stateChanged, self.statusChanged, self.countsChanged, self.progressChanged)
         max_workers = max(1, min(2, int(requested_workers)))
 
         def download_one(candidate: ChannelVideoCandidate):
@@ -450,74 +473,97 @@ class ChannelImportCoordinator(QObject):
 
         def run_downloads() -> None:
             pending = list(selected)
-            with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="channel-download") as executor:
-                futures = {}
-                while pending or futures:
-                    if cancel_event.is_set() and pending:
-                        for candidate in pending:
-                            self._downloadRejected.emit(
-                                session.session_id,
-                                candidate.remote_video_id,
-                                "Channel import cancelled.",
-                                True,
-                            )
-                        pending.clear()
+            completed_queue: Queue = Queue()
+            active: dict[str, tuple[threading.Thread, ChannelVideoCandidate]] = {}
 
-                    try:
-                        live_limit = int(self._worker_limit_provider())
-                    except (TypeError, ValueError, RuntimeError):
-                        live_limit = 1
-                    live_limit = max(1, min(max_workers, live_limit))
-                    while pending and len(futures) < live_limit:
-                        restricted_active = any(
-                            candidate.platform in {"TikTok", "Douyin"}
-                            for candidate in futures.values()
-                        )
-                        candidate_index = next(
-                            (
-                                index
-                                for index, candidate in enumerate(pending)
-                                if candidate.platform not in {"TikTok", "Douyin"}
-                                or not restricted_active
-                            ),
-                            None,
-                        )
-                        if candidate_index is None:
-                            break
-                        candidate = pending.pop(candidate_index)
-                        futures[executor.submit(download_one, candidate)] = candidate
-
-                    if not futures:
-                        cancel_event.wait(0.15)
-                        continue
-                    completed, _pending_futures = wait(
-                        tuple(futures),
-                        timeout=0.25,
-                        return_when=FIRST_COMPLETED,
+            def run_one(candidate: ChannelVideoCandidate) -> None:
+                try:
+                    completed_queue.put(
+                        (candidate.remote_video_id, "resolved", download_one(candidate))
                     )
-                    for future in completed:
-                        candidate = futures.pop(future)
-                        try:
-                            resolved_candidate, path, workspace = future.result()
-                            self._downloadResolved.emit(
-                                session.session_id,
-                                resolved_candidate.model_dump(mode="json"),
-                                path,
-                            )
-                        except DownloadCancelled as exc:
-                            self._downloadRejected.emit(
-                                session.session_id,
-                                candidate.remote_video_id,
-                                str(exc),
-                                True,
-                            )
-                        except Exception as exc:
-                            self._downloadRejected.emit(
-                                session.session_id,
-                                candidate.remote_video_id,
-                                str(exc),
-                                False,
-                            )
+                except DownloadCancelled as exc:
+                    completed_queue.put(
+                        (candidate.remote_video_id, "cancelled", str(exc))
+                    )
+                except Exception as exc:
+                    completed_queue.put(
+                        (candidate.remote_video_id, "failed", str(exc))
+                    )
+
+            while pending or active:
+                if cancel_event.is_set() and pending:
+                    for candidate in pending:
+                        self._downloadRejected.emit(
+                            session.session_id,
+                            candidate.remote_video_id,
+                            "Channel import cancelled.",
+                            True,
+                        )
+                    pending.clear()
+
+                try:
+                    live_limit = int(self._worker_limit_provider())
+                except (TypeError, ValueError, RuntimeError):
+                    live_limit = 1
+                live_limit = max(1, min(max_workers, live_limit))
+                while pending and len(active) < live_limit:
+                    restricted_active = any(
+                        candidate.platform in {"TikTok", "Douyin"}
+                        for _thread, candidate in active.values()
+                    )
+                    candidate_index = next(
+                        (
+                            index
+                            for index, candidate in enumerate(pending)
+                            if candidate.platform not in {"TikTok", "Douyin"}
+                            or not restricted_active
+                        ),
+                        None,
+                    )
+                    if candidate_index is None:
+                        break
+                    candidate = pending.pop(candidate_index)
+                    thread = threading.Thread(
+                        target=run_one,
+                        args=(candidate,),
+                        name=f"channel-download-{candidate.remote_video_id}",
+                        daemon=True,
+                    )
+                    active[candidate.remote_video_id] = (thread, candidate)
+                    thread.start()
+
+                if not active:
+                    cancel_event.wait(0.15)
+                    continue
+                try:
+                    remote_video_id, outcome, payload = completed_queue.get(timeout=0.25)
+                except Empty:
+                    continue
+                active_item = active.pop(remote_video_id, None)
+                if not active_item:
+                    continue
+                _thread, candidate = active_item
+                if outcome == "resolved" and cancel_event.is_set():
+                    self._downloadRejected.emit(
+                        session.session_id,
+                        candidate.remote_video_id,
+                        "Channel import cancelled.",
+                        True,
+                    )
+                elif outcome == "resolved":
+                    resolved_candidate, path, _workspace = payload
+                    self._downloadResolved.emit(
+                        session.session_id,
+                        resolved_candidate.model_dump(mode="json"),
+                        path,
+                    )
+                else:
+                    self._downloadRejected.emit(
+                        session.session_id,
+                        candidate.remote_video_id,
+                        str(payload),
+                        outcome == "cancelled",
+                    )
             self._batchResolved.emit(session.session_id)
 
         thread = threading.Thread(target=run_downloads, name="channel-download-manager", daemon=True)
@@ -544,7 +590,7 @@ class ChannelImportCoordinator(QObject):
         session.state = "cancelling"
         session.status = "Cancelling channel import"
         self._save_active_session()
-        self.changed.emit()
+        self._notify(self.stateChanged, self.statusChanged)
 
     def complete_video(self, session_id: str, remote_video_id: str, success: bool, message: str = "") -> None:
         session = self._sessions.get(session_id)
@@ -571,7 +617,7 @@ class ChannelImportCoordinator(QObject):
             self.candidates.update_candidate(remote_video_id, [
                 self.candidates.StatusRole, self.candidates.ProgressRole, self.candidates.ErrorRole,
             ])
-            self.changed.emit()
+            self._notify(self.stateChanged, self.statusChanged, self.countsChanged, self.progressChanged)
 
     def cancel_project(self, project_key: str) -> bool:
         self._prune_finished_runners()
@@ -641,7 +687,7 @@ class ChannelImportCoordinator(QObject):
         session.status = "Channel inspection cancelled" if cancelled else self._safe_message(message)
         self._save_session(session)
         if session_id == self._active_session_id:
-            self.changed.emit()
+            self._notify(self.stateChanged, self.statusChanged, self.progressChanged)
 
     def _handle_download_progress(self, session_id, remote_video_id, progress, detail):
         session = self._sessions.get(session_id)
@@ -651,7 +697,7 @@ class ChannelImportCoordinator(QObject):
             if session_id == self._active_session_id:
                 self._scan_progress = int(progress)
                 session.status = str(detail)
-                self.changed.emit()
+                self._notify(self.progressChanged, self.statusChanged)
             return
         candidate = self._candidate_for(session, remote_video_id)
         if not candidate:
@@ -662,7 +708,7 @@ class ChannelImportCoordinator(QObject):
         session.status = str(detail)
         if session_id == self._active_session_id:
             self.candidates.update_candidate(remote_video_id, [self.candidates.ProgressRole])
-            self.changed.emit()
+            self._notify(self.progressChanged, self.statusChanged)
 
     def _handle_download_resolved(self, session_id, candidate_payload, path):
         session = self._sessions.get(session_id)
@@ -685,7 +731,7 @@ class ChannelImportCoordinator(QObject):
             self.candidates.update_candidate(candidate.remote_video_id, [
                 self.candidates.StatusRole, self.candidates.ProgressRole,
             ])
-            self.changed.emit()
+            self._notify(self.stateChanged, self.statusChanged, self.countsChanged, self.progressChanged)
 
     def _handle_download_rejected(self, session_id, remote_video_id, message, cancelled):
         session = self._sessions.get(session_id)
@@ -704,7 +750,7 @@ class ChannelImportCoordinator(QObject):
             self.candidates.update_candidate(remote_video_id, [
                 self.candidates.StatusRole, self.candidates.ProgressRole, self.candidates.ErrorRole,
             ])
-            self.changed.emit()
+            self._notify(self.stateChanged, self.statusChanged, self.countsChanged, self.progressChanged)
 
     def _handle_batch_resolved(self, session_id):
         session = self._sessions.get(session_id)
@@ -714,7 +760,7 @@ class ChannelImportCoordinator(QObject):
         self._save_session(session)
         self.downloadsFinished.emit(session_id)
         if session_id == self._active_session_id:
-            self.changed.emit()
+            self._notify(self.stateChanged, self.statusChanged, self.countsChanged, self.progressChanged)
 
     def _finalize_session_if_idle(self, session: ChannelImportSession) -> None:
         metrics = self._metrics_for(session)

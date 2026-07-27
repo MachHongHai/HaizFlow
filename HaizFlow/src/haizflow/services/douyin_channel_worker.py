@@ -22,6 +22,18 @@ USER_AGENT = (
 )
 
 
+def _validated_douyin_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(str(url or ""))
+    hostname = str(parsed.hostname or "").lower().rstrip(".")
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not hostname
+        or not (hostname == "douyin.com" or hostname.endswith(".douyin.com"))
+    ):
+        raise ValueError("Douyin channel requests must use an HTTP(S) douyin.com URL.")
+    return url
+
+
 def _cookie_header(auth: dict) -> str:
     yt_dlp = _load_yt_dlp()
     options = _youtube_dl_options(auth)
@@ -35,6 +47,7 @@ def _cookie_header(auth: dict) -> str:
 
 
 def _request(url: str, cookie_header: str, *, timeout: int = 25) -> tuple[bytes, str]:
+    url = _validated_douyin_url(url)
     headers = {
         "User-Agent": USER_AGENT,
         "Accept": "application/json,text/plain,*/*",
@@ -44,8 +57,11 @@ def _request(url: str, cookie_header: str, *, timeout: int = 25) -> tuple[bytes,
     if cookie_header:
         headers["Cookie"] = cookie_header
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read(), response.geturl()
+    # Both the requested URL and the final redirect are restricted to
+    # HTTP(S) subdomains of douyin.com by _validated_douyin_url.
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
+        resolved_url = _validated_douyin_url(response.geturl())
+        return response.read(), resolved_url
 
 
 def _resolve_profile_url(url: str, cookie_header: str) -> str:
@@ -135,8 +151,10 @@ def _cover_url(video: dict) -> str:
         if not isinstance(value, dict):
             continue
         urls = value.get("url_list") or []
-        if urls:
-            return str(urls[0])
+        if isinstance(urls, list):
+            for url in urls:
+                if isinstance(url, str) and url.startswith(("http://", "https://")):
+                    return url
     return ""
 
 
@@ -144,24 +162,39 @@ def _candidate(aweme: dict) -> dict | None:
     # Photo notes and slideshows are not valid inputs for the video pipeline.
     if aweme.get("images"):
         return None
-    video = aweme.get("video")
-    play_address = video.get("play_addr") if isinstance(video, dict) else None
+    video_value = aweme.get("video")
+    if not isinstance(video_value, dict):
+        return None
+    video: dict = video_value
+    play_address = video.get("play_addr")
     if not isinstance(play_address, dict):
         return None
     play_urls = play_address.get("url_list") or []
-    if not any(isinstance(url, str) and url.startswith(("http://", "https://")) for url in play_urls):
+    if not isinstance(play_urls, list) or not any(
+        isinstance(url, str) and url.startswith(("http://", "https://"))
+        for url in play_urls
+    ):
         return None
     remote_id = str(aweme.get("aweme_id") or "").strip()
     if not remote_id:
         return None
-    author = aweme.get("author") if isinstance(aweme.get("author"), dict) else {}
-    statistics = aweme.get("statistics") if isinstance(aweme.get("statistics"), dict) else {}
+    author_value = aweme.get("author")
+    author: dict = author_value if isinstance(author_value, dict) else {}
+    statistics_value = aweme.get("statistics")
+    statistics: dict = statistics_value if isinstance(statistics_value, dict) else {}
     timestamp = aweme.get("create_time")
     try:
-        published_at = datetime.fromtimestamp(float(timestamp), timezone.utc).strftime("%Y%m%d")
+        published_at = (
+            datetime.fromtimestamp(float(timestamp), timezone.utc).strftime("%Y%m%d")
+            if timestamp is not None
+            else ""
+        )
     except (TypeError, ValueError, OSError):
         published_at = ""
-    duration = int(video.get("duration") or aweme.get("duration") or 0)
+    try:
+        duration = int(video.get("duration") or aweme.get("duration") or 0)
+    except (TypeError, ValueError):
+        duration = 0
     if duration > 10_000:
         duration //= 1000
     raw_view_count = statistics.get("play_count")

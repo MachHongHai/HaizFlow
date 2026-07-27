@@ -9,10 +9,11 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+from queue import Empty, Queue
 from typing import Callable, Iterable
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
@@ -41,6 +42,7 @@ SUPPORTED_CHANNEL_HOSTS = {
 SHORT_VIDEO_SECONDS = 180
 SESSION_SCHEMA_VERSION = 1
 VIDEO_EXTENSIONS = {"mkv", "mov", "mp4", "webm"}
+DOUYIN_WORKER_TIMEOUT_SECONDS = 30 * 60
 
 
 def _now() -> str:
@@ -140,6 +142,8 @@ def _published_value(entry: dict) -> str:
         return upload_date
     timestamp = entry.get("timestamp") or entry.get("release_timestamp")
     try:
+        if timestamp is None:
+            return ""
         return datetime.fromtimestamp(float(timestamp), timezone.utc).strftime("%Y%m%d")
     except (TypeError, ValueError, OSError):
         return ""
@@ -171,14 +175,19 @@ def _entry_candidate(
         view_count = int(view_count) if view_count is not None else None
     except (TypeError, ValueError):
         view_count = None
+    try:
+        duration_seconds = max(0, int(entry.get("duration") or 0))
+    except (TypeError, ValueError):
+        duration_seconds = 0
+    normalized_content_type = content_type if content_type in {"short", "long"} else ""
     return ChannelVideoCandidate(
         remote_video_id=remote_id,
         source_url=source_url,
         title=str(entry.get("title") or entry.get("description") or f"Video {remote_id}").strip(),
         platform=platform,
-        content_type=content_type if content_type in {"short", "long"} else "",
+        content_type=normalized_content_type,
         uploader=str(entry.get("uploader") or entry.get("channel") or entry.get("creator") or "").strip(),
-        duration_seconds=max(0, int(entry.get("duration") or 0)),
+        duration_seconds=duration_seconds,
         published_at=_published_value(entry),
         view_count=view_count,
         thumbnail_url=thumbnail,
@@ -375,35 +384,62 @@ def _scan_with_ytdlp(
     if to_hydrate:
         workers = 1 if platform == "TikTok" else min(4, len(to_hydrate))
         hydrated_by_id = {}
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="channel-metadata") as executor:
-            futures = {
-                executor.submit(_hydrate_candidate, candidate, _auth_options(request), cancel_event): candidate
-                for candidate in to_hydrate
-            }
-            completed = 0
-            for future in as_completed(futures):
-                if cancel_event.is_set():
-                    for pending in futures:
-                        pending.cancel()
-                    raise DownloadCancelled("Channel inspection cancelled.")
-                candidate = futures[future]
+        task_queue: Queue = Queue()
+        result_queue: Queue = Queue()
+        for candidate in to_hydrate:
+            task_queue.put(candidate)
+
+        def hydrate_worker() -> None:
+            while not cancel_event.is_set():
                 try:
-                    hydrated_by_id[candidate.remote_video_id] = future.result()
-                except DownloadCancelled:
-                    raise
-                except Exception:
-                    # TikTok photo posts and slideshows can look like ordinary
-                    # flat-playlist entries. If details cannot prove that the
-                    # entry has a video stream, exclude it from a video batch.
-                    hydrated_by_id[candidate.remote_video_id] = (
-                        None if platform == "TikTok" else candidate
+                    candidate = task_queue.get_nowait()
+                except Empty:
+                    return
+                try:
+                    resolved = _hydrate_candidate(
+                        candidate,
+                        _auth_options(request),
+                        cancel_event,
                     )
-                completed += 1
-                if progress_callback:
-                    progress_callback(
-                        10 + round(completed * 75 / len(to_hydrate)),
-                        f"Reading video details {completed}/{len(to_hydrate)}",
-                    )
+                    result_queue.put((candidate, resolved, None))
+                except Exception as exc:
+                    result_queue.put((candidate, None, exc))
+
+        hydration_threads = [
+            threading.Thread(
+                target=hydrate_worker,
+                name=f"channel-metadata-{index + 1}",
+                daemon=True,
+            )
+            for index in range(workers)
+        ]
+        for thread in hydration_threads:
+            thread.start()
+
+        completed = 0
+        while completed < len(to_hydrate):
+            if cancel_event.is_set():
+                raise DownloadCancelled("Channel inspection cancelled.")
+            try:
+                candidate, resolved, error = result_queue.get(timeout=0.2)
+            except Empty:
+                if not any(thread.is_alive() for thread in hydration_threads):
+                    raise RuntimeError("Channel metadata workers stopped before completing the scan.")
+                continue
+            if isinstance(error, DownloadCancelled):
+                raise error
+            if error is not None:
+                # TikTok photo posts and slideshows can look like ordinary
+                # flat-playlist entries. If details cannot prove that the
+                # entry has a video stream, exclude it from a video batch.
+                resolved = None if platform == "TikTok" else candidate
+            hydrated_by_id[candidate.remote_video_id] = resolved
+            completed += 1
+            if progress_callback:
+                progress_callback(
+                    10 + round(completed * 75 / len(to_hydrate)),
+                    f"Reading video details {completed}/{len(to_hydrate)}",
+                )
         hydrated_candidates = []
         for candidate in candidates:
             resolved = hydrated_by_id.get(candidate.remote_video_id, candidate)
@@ -439,21 +475,38 @@ def _scan_douyin(
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     input_text = json.dumps(payload, ensure_ascii=False)
-    while process.poll() is None:
-        if cancel_event.wait(0.15):
-            process.terminate()
+    deadline = time.monotonic() + DOUYIN_WORKER_TIMEOUT_SECONDS
+    stdout = ""
+    stderr = ""
+    while True:
+        if cancel_event.is_set():
+            process.kill()
             try:
-                process.wait(timeout=3)
+                process.communicate(timeout=3)
             except subprocess.TimeoutExpired:
                 process.kill()
             raise DownloadCancelled("Channel inspection cancelled.")
-        if process.stdin:
-            process.stdin.write(input_text)
-            process.stdin.close()
-            process.stdin = None
-            input_text = ""
-    stdout = process.stdout.read() if process.stdout else ""
-    stderr = process.stderr.read() if process.stderr else ""
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            process.kill()
+            try:
+                process.communicate(timeout=3)
+            except subprocess.TimeoutExpired:
+                pass
+            raise RuntimeError(
+                f"Douyin Beta inspector timed out after {DOUYIN_WORKER_TIMEOUT_SECONDS} seconds."
+            )
+        try:
+            # communicate() drains stdout/stderr while the worker is running.
+            # Waiting on poll() first can deadlock once a large JSON response
+            # fills either OS pipe before the child is able to exit.
+            stdout, stderr = process.communicate(
+                input=input_text,
+                timeout=min(0.2, remaining),
+            )
+            break
+        except subprocess.TimeoutExpired:
+            input_text = None
     if process.returncode != 0:
         raise RuntimeError((stderr or stdout or "Douyin Beta inspector stopped unexpectedly.").strip())
     try:

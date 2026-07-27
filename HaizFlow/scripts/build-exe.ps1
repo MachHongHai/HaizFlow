@@ -1,7 +1,4 @@
 param(
-  [switch]$SkipCpuModel,
-  [switch]$SkipGpuModel,
-  [switch]$SkipWhisperModel,
   [switch]$SkipFrozenSmokeTest,
   [switch]$AllowDirtyBuild,
   [string]$SignCertificatePath = "",
@@ -22,9 +19,6 @@ $VersionResourcePath = Join-Path $BuildMetadataPath "HaizFlow-version.txt"
 $CompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-compliance"))
 $FfmpegCompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\compliance\ffmpeg"))
 $FfmpegManifestPath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\ffmpeg-manifest.json"))
-$IncludeCpuModel = !$SkipCpuModel
-$IncludeGpuModel = !$SkipGpuModel
-$IncludeWhisperModel = !$SkipWhisperModel
 
 function Invoke-PythonChecked {
   param([string[]]$Arguments, [string]$Label)
@@ -77,7 +71,15 @@ if ($GitStatus -and !$AllowDirtyBuild) {
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "generate-app-icon.py"), "--output", $IconPath) -Label "Application icon generation"
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "generate-version-resource.py"), "--output", $VersionResourcePath) -Label "Windows version resource generation"
 
+& (Join-Path $PSScriptRoot "test.ps1")
+if ($LASTEXITCODE -ne 0) {
+  throw "Source test and QML lint gate failed with exit code $LASTEXITCODE."
+}
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-runtime.py"), "--for-build") -Label "Runtime verification"
+& (Join-Path $PSScriptRoot "audit-dependencies.ps1")
+if ($LASTEXITCODE -ne 0) {
+  throw "Dependency vulnerability audit failed with exit code $LASTEXITCODE."
+}
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "test-ffmpeg-runtime.py")) -Label "FFmpeg codec regression"
 Invoke-PythonChecked -Arguments @(
   (Join-Path $PSScriptRoot "generate-third-party-notices.py"),
@@ -163,51 +165,16 @@ if (Test-Path $QmlPath) {
 
 $ArgsList += @("--collect-all", "llama_cpp")
 $ArgsList += @("--collect-all", "accelerate")
+$ArgsList += @("--collect-all", "demucs")
 $ArgsList += @("--collect-all", "yt_dlp")
+$WhisperxAssetsPath = & $Python -c "import importlib.util, pathlib; spec=importlib.util.find_spec('whisperx'); print(pathlib.Path(next(iter(spec.submodule_search_locations))) / 'assets')"
+$WhisperxMelFilters = Join-Path $WhisperxAssetsPath "mel_filters.npz"
+if (!(Test-Path -LiteralPath $WhisperxMelFilters -PathType Leaf)) {
+  throw "WhisperX mel filter data is missing: $WhisperxMelFilters"
+}
+$ArgsList += @("--add-data", "$WhisperxMelFilters;whisperx\assets")
 $ArgsList += @("--hidden-import", "haizflow.services.douyin_channel_worker")
 $ArgsList += @("--hidden-import", "haizflow.vendor.douyin_xbogus")
-
-if ($IncludeWhisperModel) {
-  $SourcePath = Join-Path $Root "src"
-  $ModelPath = & $Python -c "import sys; sys.path.insert(0, r'$SourcePath'); from haizflow.config import MODELS_DIR; from pathlib import Path; print(Path(MODELS_DIR) / 'whisper' / 'small')"
-  if (!(Test-Path -LiteralPath (Join-Path $ModelPath "model.bin") -PathType Leaf)) {
-    throw "Whisper model is missing. Run: .venv\Scripts\python.exe scripts\prepare-whisper-model.py"
-  }
-  Invoke-PythonChecked -Arguments @(
-    "-c", "import sys; sys.path.insert(0, r'$SourcePath'); from pathlib import Path; from haizflow.core.model_integrity import verify_whisper_model; verify_whisper_model(Path(r'$ModelPath'))"
-  ) -Label "Pinned Whisper model integrity"
-  $ArgsList += @("--add-data", "$ModelPath;models\whisper\small")
-}
-
-if ($IncludeCpuModel) {
-  $SourcePath = Join-Path $Root "src"
-  $ModelPath = & $Python -c "import sys; sys.path.insert(0, r'$SourcePath'); from haizflow.config import HYMT2_CPU_MODEL_FILE, MODELS_DIR; from pathlib import Path; print(Path(MODELS_DIR) / 'hymt2-gguf' / HYMT2_CPU_MODEL_FILE)"
-  if (!(Test-Path -LiteralPath $ModelPath)) {
-    throw "CPU model is missing. Run: .venv\Scripts\python.exe scripts\prepare-cpu-model.py"
-  }
-  if ((Get-Item -LiteralPath $ModelPath).Length -lt 500MB) {
-    throw "CPU model is incomplete or unexpectedly small: $ModelPath"
-  }
-  Invoke-PythonChecked -Arguments @(
-    "-c", "import sys; sys.path.insert(0, r'$SourcePath'); from pathlib import Path; from haizflow.core.model_integrity import verify_cpu_model; verify_cpu_model(Path(r'$ModelPath'))"
-  ) -Label "Pinned CPU model integrity"
-  $ModelDirectory = Split-Path -Parent $ModelPath
-  $ArgsList += @("--add-data", "$ModelDirectory;models\hymt2-gguf")
-}
-
-if ($IncludeGpuModel) {
-  $SourcePath = Join-Path $Root "src"
-  $ModelPath = & $Python -c "import sys; sys.path.insert(0, r'$SourcePath'); from haizflow.config import MODELS_DIR; from pathlib import Path; print(Path(MODELS_DIR) / 'hymt2-transformers')"
-  $GpuWeights = Get-ChildItem -LiteralPath $ModelPath -Filter "*.safetensors" -File -ErrorAction SilentlyContinue
-  $GpuWeightBytes = ($GpuWeights | Measure-Object -Property Length -Sum).Sum
-  if (!(Test-Path -LiteralPath (Join-Path $ModelPath "config.json")) -or $GpuWeightBytes -lt 2GB) {
-    throw "GPU model is missing. Run: .venv\Scripts\python.exe scripts\prepare-gpu-model.py"
-  }
-  Invoke-PythonChecked -Arguments @(
-    "-c", "import sys; sys.path.insert(0, r'$SourcePath'); from pathlib import Path; from haizflow.core.model_integrity import verify_gpu_model; verify_gpu_model(Path(r'$ModelPath'))"
-  ) -Label "Pinned GPU model integrity"
-  $ArgsList += @("--add-data", "$ModelPath;models\hymt2-transformers")
-}
 
 Invoke-PythonChecked -Arguments $ArgsList -Label "PyInstaller build"
 
@@ -234,19 +201,9 @@ Invoke-PythonChecked -Arguments @(
 ) -Label "Release disk preflight"
 
 if (!$SkipFrozenSmokeTest) {
-  $SmokeArguments = @{ ArtifactPath = $ArtifactPath }
-  if ($IncludeCpuModel) {
-    $SmokeArguments.RequireCpuModel = $true
-  }
-  if ($IncludeGpuModel) {
-    $SmokeArguments.RequireGpuModel = $true
-  }
-  if ($IncludeWhisperModel) {
-    $SmokeArguments.RequireWhisperModel = $true
-  }
-  $GpuAvailable = (& $Python -c "import torch; print('1' if torch.cuda.is_available() else '0')") -eq "1"
-  if ($GpuAvailable) {
-    $SmokeArguments.ProbeGpu = $true
+  $SmokeArguments = @{
+    ArtifactPath = $ArtifactPath
+    PreFinalize = $true
   }
   & (Join-Path $PSScriptRoot "smoke-test-frozen.ps1") @SmokeArguments
   if ($LASTEXITCODE -ne 0) {
@@ -258,15 +215,6 @@ $FinalizeArguments = @(
   (Join-Path $PSScriptRoot "finalize-release.py"),
   "--artifact", $ArtifactPath
 )
-if ($IncludeCpuModel) {
-  $FinalizeArguments += "--cpu-model"
-}
-if ($IncludeGpuModel) {
-  $FinalizeArguments += "--gpu-model"
-}
-if ($IncludeWhisperModel) {
-  $FinalizeArguments += "--whisper-model"
-}
 Invoke-PythonChecked -Arguments $FinalizeArguments -Label "Release manifest generation"
 Invoke-PythonChecked -Arguments @(
   (Join-Path $PSScriptRoot "finalize-release.py"),

@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 import stat
 from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -343,6 +344,54 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertTrue(workspace_has_metadata)
         self.assertEqual(saved_input_parent, workspace)
 
+    def test_interrupted_legacy_workspace_copy_keeps_the_original(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_videos_dir = video_store.LEGACY_VIDEO_WORKSPACES_DIR
+            original_project_index = project_store.PROJECT_INDEX_PATH
+            video_store.LEGACY_VIDEO_WORKSPACES_DIR = str(root / "videos")
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                project = project_store.ensure_project(
+                    "Migration rollback",
+                    str(root / "projects"),
+                    "single",
+                )
+                video = video_store.create_video(
+                    "migration-rollback",
+                    "clip.mp4",
+                    VideoConfig(),
+                )
+                legacy_workspace = Path(video_store.get_video_dir(video.video_id))
+                Path(video.files["video_input"]).write_bytes(b"source-video")
+                video.project_name = "Migration rollback"
+                video.project_directory = str(root / "projects")
+                video.project_type = "single"
+                video_store.save_video(video)
+
+                def fail_copy(_source, staging):
+                    Path(staging).mkdir(parents=True)
+                    (Path(staging) / "partial").write_bytes(b"partial")
+                    raise OSError("simulated interrupted migration")
+
+                with mock.patch.object(video_store.shutil, "copytree", side_effect=fail_copy):
+                    with self.assertRaisesRegex(OSError, "simulated interrupted migration"):
+                        video_store.migrate_legacy_project_data()
+
+                destination = Path(project["project_root"]) / "videos" / video.video_id
+                source_still_exists = legacy_workspace.is_dir()
+                source_bytes = Path(video.files["video_input"]).read_bytes()
+                destination_exists = destination.exists()
+                staging_paths = list(destination.parent.glob(".*.migrating"))
+            finally:
+                video_store.LEGACY_VIDEO_WORKSPACES_DIR = original_videos_dir
+                project_store.PROJECT_INDEX_PATH = original_project_index
+
+        self.assertTrue(source_still_exists)
+        self.assertEqual(source_bytes, b"source-video")
+        self.assertFalse(destination_exists)
+        self.assertEqual(staging_paths, [])
+
     def test_legacy_thumbnail_moves_into_its_video_workspace(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -630,6 +679,81 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertIn("Previous processing data was removed", logs)
         self.assertNotIn("old log", logs)
 
+    def test_failed_replacement_keeps_the_previous_source_and_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_videos_dir = video_store.LEGACY_VIDEO_WORKSPACES_DIR
+            original_project_index = project_store.PROJECT_INDEX_PATH
+            video_store.LEGACY_VIDEO_WORKSPACES_DIR = str(root / "legacy-videos")
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                project_store.ensure_project("Replace rollback", str(root / "projects"), "single")
+                config = VideoConfig(project_name="Replace rollback", project_directory=str(root / "projects"))
+                video = video_store.create_video("replace-rollback", "old.mp4", config)
+                old_input = Path(video.files["video_input"])
+                old_input.write_bytes(b"old-video")
+                old_transcript = Path(video.files["transcript_json"])
+                old_transcript.write_text('[{"text": "old"}]', encoding="utf-8")
+                video.status = "paused"
+                video.checkpoints = {"translation": "old-checkpoint"}
+                video_store.save_video(video)
+                replacement = root / "new.mov"
+                replacement.write_bytes(b"new-video")
+
+                original_copy = video_store.shutil.copy2
+
+                def fail_replacement_copy(source, destination, *args, **kwargs):
+                    if Path(source) == replacement:
+                        Path(destination).write_bytes(b"partial")
+                        raise OSError("simulated copy failure")
+                    return original_copy(source, destination, *args, **kwargs)
+
+                with mock.patch.object(video_store.shutil, "copy2", side_effect=fail_replacement_copy):
+                    with self.assertRaisesRegex(OSError, "simulated copy failure"):
+                        video_store.replace_video_input(video.video_id, str(replacement))
+
+                recovered = video_store.get_video(video.video_id)
+                transaction_paths = list(Path(video_store.get_video_dir(video.video_id)).glob(".replace-input-*"))
+                old_input_bytes = old_input.read_bytes()
+                old_transcript_text = old_transcript.read_text(encoding="utf-8")
+            finally:
+                video_store.LEGACY_VIDEO_WORKSPACES_DIR = original_videos_dir
+                project_store.PROJECT_INDEX_PATH = original_project_index
+
+        self.assertEqual(old_input_bytes, b"old-video")
+        self.assertEqual(old_transcript_text, '[{"text": "old"}]')
+        self.assertEqual(recovered.original_filename, "old.mp4")
+        self.assertEqual(recovered.status, "paused")
+        self.assertEqual(recovered.checkpoints, {"translation": "old-checkpoint"})
+        self.assertEqual(transaction_paths, [])
+
+    def test_failed_new_import_does_not_publish_a_partial_input(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_videos_dir = video_store.LEGACY_VIDEO_WORKSPACES_DIR
+            video_store.LEGACY_VIDEO_WORKSPACES_DIR = str(root / "videos")
+            source = root / "source.mp4"
+            source.write_bytes(b"source-video")
+
+            def fail_copy(_source, destination):
+                Path(destination).write_bytes(b"partial")
+                raise OSError("simulated import failure")
+
+            try:
+                with mock.patch(
+                    "haizflow.services.desktop_videos.shutil.copyfile",
+                    side_effect=fail_copy,
+                ):
+                    with self.assertRaisesRegex(OSError, "simulated import failure"):
+                        create_desktop_video(str(source), VideoConfig())
+                remaining_files = list((root / "videos").rglob("*")) if (root / "videos").exists() else []
+                source_bytes = source.read_bytes()
+            finally:
+                video_store.LEGACY_VIDEO_WORKSPACES_DIR = original_videos_dir
+
+        self.assertEqual(source_bytes, b"source-video")
+        self.assertEqual(remaining_files, [])
+
     def test_replacing_a_video_removes_an_untracked_legacy_thumbnail(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -664,7 +788,7 @@ class ProjectGroupingTests(unittest.TestCase):
             video_store.LEGACY_VIDEO_WORKSPACES_DIR = str(root / "legacy-videos")
             project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
             try:
-                project = project_store.ensure_project("Restart", str(root / "projects"), "single")
+                project_store.ensure_project("Restart", str(root / "projects"), "single")
                 config = VideoConfig(project_name="Restart", project_directory=str(root / "projects"))
                 video = video_store.create_video("restart-video", "source.mp4", config)
                 input_path = Path(video.files["video_input"])

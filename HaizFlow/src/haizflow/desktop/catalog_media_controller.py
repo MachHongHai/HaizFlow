@@ -65,14 +65,21 @@ class CatalogMediaController:
 
     def create_missing_thumbnails(self, video_ids) -> None:
         host = self._host
+        shutdown_event = getattr(host, "_background_shutdown_event", None)
         try:
             for video_id in video_ids:
+                if shutdown_event is not None and shutdown_event.is_set():
+                    break
                 video = video_store.get_video(video_id)
                 if not video or thumbnail_source(video.files.get("thumbnail") or ""):
                     continue
                 path = host._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
                 signature = self.thumbnail_retry_signature(path)
-                thumbnail = host._create_video_thumbnail_path(path, host._video_thumbnail_path(video.video_id))
+                thumbnail = host._create_video_thumbnail_path(
+                    path,
+                    host._video_thumbnail_path(video.video_id),
+                    cancel_event=shutdown_event,
+                )
                 if thumbnail:
                     video.files["thumbnail"] = thumbnail
                     video_store.save_video(video)

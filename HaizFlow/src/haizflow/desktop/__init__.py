@@ -1,2 +1,1 @@
-﻿
-
+"""Qt desktop application package."""

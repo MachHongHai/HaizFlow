@@ -4,6 +4,10 @@ from typing import Dict, Literal, Optional
 
 VIDEO_METADATA_SCHEMA_VERSION = 5
 VIDEO_METADATA_TYPE = "haizflow.video"
+WorkflowMode = Literal["A", "review"]
+TranslatorProvider = Literal["hymt2"]
+OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
+ProjectType = Literal["single", "batch"]
 
 
 class MediaSource(BaseModel):
@@ -18,40 +22,40 @@ class MediaSource(BaseModel):
 
 
 class SubtitleStyle(BaseModel):
-    font_size: int = 36
-    margin_bottom: int = 40
-    outline: int = 2
-    max_chars_per_line: int = 32
-    position_x_percent: int = 51
-    position_y_percent: int = 96
-    box_width_percent: int = 72
-    box_height_percent: int = 6
+    font_size: int = Field(default=36, ge=10, le=160)
+    margin_bottom: int = Field(default=40, ge=0, le=1000)
+    outline: int = Field(default=2, ge=0, le=20)
+    max_chars_per_line: int = Field(default=32, ge=12, le=200)
+    position_x_percent: int = Field(default=51, ge=0, le=100)
+    position_y_percent: int = Field(default=96, ge=0, le=100)
+    box_width_percent: int = Field(default=72, ge=20, le=100)
+    box_height_percent: int = Field(default=6, ge=1, le=100)
 
 
 class CropSettings(BaseModel):
-    zoom_percent: int = 100
-    pan_x_percent: int = 0
-    pan_y_percent: int = 0
-    left_percent: int = 0
-    right_percent: int = 0
-    top_percent: int = 0
-    bottom_percent: int = 0
+    zoom_percent: int = Field(default=100, ge=1, le=400)
+    pan_x_percent: int = Field(default=0, ge=-100, le=100)
+    pan_y_percent: int = Field(default=0, ge=-100, le=100)
+    left_percent: int = Field(default=0, ge=0, le=84)
+    right_percent: int = Field(default=0, ge=0, le=84)
+    top_percent: int = Field(default=0, ge=0, le=84)
+    bottom_percent: int = Field(default=0, ge=0, le=84)
 
 
 class VideoConfig(BaseModel):
-    mode: str = "A"  # A = full auto, review = pause after translation.
+    mode: WorkflowMode = "A"  # A = full auto, review = pause after translation.
     source_language: str = "auto"  # Automatic detection is performed for every speech segment.
     target_language: str = "vi"
-    translator_provider: str = "hymt2"
+    translator_provider: TranslatorProvider = "hymt2"
     tts_voice: str = "vi-VN-HoaiMyNeural"
     subtitle_style: SubtitleStyle = Field(default_factory=SubtitleStyle)
-    output_format: str = "keep_ratio"  # The desktop workflow preserves the original aspect ratio.
+    output_format: OutputFormat = "keep_ratio"  # The desktop workflow preserves the original aspect ratio.
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = False
-    original_video_volume: int = 60
+    original_video_volume: int = Field(default=60, ge=0, le=100)
     project_name: str = ""
     project_directory: str = ""
-    project_type: str = "single"
+    project_type: ProjectType = "single"
     project_id: str = ""
     project_key: str = ""
     review_approved: bool = False
@@ -62,19 +66,19 @@ class VideoInfo(BaseModel):
     metadata_type: str = VIDEO_METADATA_TYPE
     video_id: str
     original_filename: str
-    mode: str
+    mode: WorkflowMode
     source_language: str
     target_language: str
-    translator_provider: str = "hymt2"
+    translator_provider: TranslatorProvider = "hymt2"
     tts_voice: str
     subtitle_style: SubtitleStyle
-    output_format: str
+    output_format: OutputFormat
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = False
-    original_video_volume: int = 60
+    original_video_volume: int = Field(default=60, ge=0, le=100)
     project_name: str = ""
     project_directory: str = ""
-    project_type: str = "single"
+    project_type: ProjectType = "single"
     project_id: str = ""
     project_key: str = ""
     video_width: int = 0

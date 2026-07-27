@@ -426,6 +426,84 @@ Dialog {
                     }
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: privacyContent.implicitHeight + Theme.space32
+                    radius: Theme.radiusSmall
+                    color: Theme.surfaceElevated
+                    border.width: 1
+                    border.color: Theme.outline
+
+                    ColumnLayout {
+                        id: privacyContent
+
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: Theme.space16
+                        spacing: Theme.space8
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: I18n.t("Privacy and diagnostics")
+                            color: Theme.text
+                            font.pixelSize: Theme.body
+                            font.weight: Font.DemiBold
+                            textFormat: Text.PlainText
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: I18n.t("Local processing") + " — "
+                                + I18n.t("Speech recognition, translation and media processing use installed models on this computer.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            wrapMode: Text.Wrap
+                            textFormat: Text.PlainText
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: I18n.t("Online services") + " — "
+                                + I18n.t("Edge TTS receives translated subtitle text to synthesize speech. Importing a URL or channel connects to that platform. HaizFlow does not upload source video for local processing.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            wrapMode: Text.Wrap
+                            textFormat: Text.PlainText
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: I18n.t("Offline behavior") + " — "
+                                + I18n.t("Without a network connection, local files can be transcribed and translated, but online voice generation and URL imports are unavailable.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            wrapMode: Text.Wrap
+                            textFormat: Text.PlainText
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.space12
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: I18n.t("Exported diagnostics are redacted and exclude project names, media, and project logs.")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.caption
+                                wrapMode: Text.Wrap
+                                textFormat: Text.PlainText
+                            }
+
+                            AppButton {
+                                text: I18n.t("Export diagnostics")
+                                tone: "ghost"
+                                onClicked: AppController.exportDiagnostics()
+                            }
+                        }
+                    }
+                }
+
             }
         }
 

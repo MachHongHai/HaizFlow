@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -327,7 +329,10 @@ ApplicationWindow {
 
                 ProjectsPage {
                     projectType: "single"
+                    // Python's generated qmltypes omit the constant flag; this model is stable.
+                    // qmllint disable stale-property-read
                     projectModel: AppController.singleProjectModel
+                    // qmllint enable stale-property-read
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.leftMargin: root.width < 1400 ? 22 : 30
@@ -364,7 +369,10 @@ ApplicationWindow {
 
                 ProjectsPage {
                     projectType: "batch"
+                    // Python's generated qmltypes omit the constant flag; this model is stable.
+                    // qmllint disable stale-property-read
                     projectModel: AppController.batchProjectModel
+                    // qmllint enable stale-property-read
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.leftMargin: root.width < 1400 ? 22 : 30
@@ -381,25 +389,31 @@ ApplicationWindow {
                     }
                 }
 
-                BatchPage {
+                Loader {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.leftMargin: root.width < 1400 ? 22 : 30
                     Layout.rightMargin: root.width < 1400 ? 22 : 30
                     Layout.topMargin: root.width < 1400 ? 30 : 36
                     Layout.bottomMargin: 24
-                    onRequestBack: root.navigate(root.routeBatchProjects)
-                    onRequestBatchSettings: batchSettingsDialog.open()
-                    onRequestUrlImport: urlImportDialog.openForMode("batch")
-                    onRequestChannelImport: {
-                        if (AppController.prepareChannelImport()) {
-                            root.channelImportVisited = true
-                            root.navigate(root.routeChannelImport)
+                    active: root.currentRoute === root.routeBatchWorkspace
+                    asynchronous: true
+                    sourceComponent: Component {
+                        BatchPage {
+                            onRequestBack: root.navigate(root.routeBatchProjects)
+                            onRequestBatchSettings: batchSettingsDialog.open()
+                            onRequestUrlImport: urlImportDialog.openForMode("batch")
+                            onRequestChannelImport: {
+                                if (AppController.prepareChannelImport()) {
+                                    root.channelImportVisited = true
+                                    root.navigate(root.routeChannelImport)
+                                }
+                            }
+                            onOpenVideoDetail: {
+                                root.workspaceReturnRoute = root.routeBatchWorkspace
+                                root.navigate(root.routeBatchVideo)
+                            }
                         }
-                    }
-                    onOpenVideoDetail: {
-                        root.workspaceReturnRoute = root.routeBatchWorkspace
-                        root.navigate(root.routeBatchVideo)
                     }
                 }
 
@@ -447,5 +461,9 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    ModelSetupOverlay {
+        anchors.fill: parent
     }
 }

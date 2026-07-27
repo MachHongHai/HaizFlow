@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 from collections import Counter
 
 from haizflow.desktop.localization import QMessageBox
@@ -68,7 +69,7 @@ class ProjectCommandsController:
         voice = host._normalized_voice_for_language(language, tts_voice)
         updated = 0
         for video_id in host._batch_video_ids:
-            if not (video := video_store.get_video(video_id)) or host._processing_queue.contains(video_id):
+            if not video_store.get_video(video_id) or host._processing_queue.contains(video_id):
                 continue
             video_store.update_video(
                 video_id, mode=mode, source_language="auto", target_language=language, tts_voice=voice,
@@ -325,15 +326,56 @@ class ProjectCommandsController:
             return
         try:
             segments = json.loads(payload)
-            if not isinstance(segments, list) or any(not str(item.get("text", "")).strip() for item in segments):
-                raise ValueError("Every translation must contain text.")
-            with open(video.files["transcript_json"], "w", encoding="utf-8") as file:
-                json.dump(segments, file, ensure_ascii=False, indent=2)
+            if not isinstance(segments, list) or not segments:
+                raise ValueError("The review must contain at least one translated segment.")
+            for index, item in enumerate(segments, 1):
+                if not isinstance(item, dict) or not str(item.get("text", "")).strip():
+                    raise ValueError(f"Translation segment {index} must contain text.")
+                try:
+                    start = float(item["start"])
+                    end = float(item["end"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(f"Translation segment {index} has invalid timestamps.") from exc
+                if start < 0 or end <= start:
+                    raise ValueError(f"Translation segment {index} has an invalid time range.")
+
+            transcript_path = (video.files or {}).get("transcript_json")
+            if not isinstance(transcript_path, str) or not transcript_path.strip():
+                raise ValueError("Video metadata is missing its translation-review path.")
+            transcript_directory = os.path.dirname(os.path.abspath(transcript_path))
+            os.makedirs(transcript_directory, exist_ok=True)
+            handle, temporary_path = tempfile.mkstemp(
+                prefix=".reviewed-translation-",
+                suffix=".json.tmp",
+                dir=transcript_directory,
+            )
+            try:
+                with os.fdopen(handle, "w", encoding="utf-8") as file:
+                    json.dump(segments, file, ensure_ascii=False, indent=2)
+                    file.flush()
+                    os.fsync(file.fileno())
+                os.replace(temporary_path, transcript_path)
+            except Exception:
+                try:
+                    os.remove(temporary_path)
+                except FileNotFoundError:
+                    pass
+                raise
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             QMessageBox.warning(None, "Translation review", str(exc))
             return
-        video_store.update_video(video.video_id, review_approved=True, status="pending", step="queued",
-                                 step_detail="Queued to create dub")
+        translation_checkpoint = video.checkpoints.get("translation")
+        checkpoints = {"translation": translation_checkpoint} if translation_checkpoint else {}
+        video_store.update_video(
+            video.video_id,
+            review_approved=True,
+            status="pending",
+            step="queued",
+            resume_step="creating_subtitle",
+            runtime_recovery_step="",
+            checkpoints=checkpoints,
+            step_detail="Queued to create dub",
+        )
         video_store.log_to_video(video.video_id, f"Translation review approved with {len(segments)} edited segments. Added to the processing queue.")
         host._enqueue_video(video.video_id)
         host.selectedVideoChanged.emit()

@@ -1,7 +1,9 @@
 param(
   [switch]$SkipCpuModel,
   [switch]$SkipGpuModel,
-  [switch]$SkipWhisperModel
+  [switch]$SkipWhisperModel,
+  [switch]$SkipDemucsModel,
+  [switch]$SkipAlignmentModels
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +18,8 @@ $Scripts = @()
 if (!$SkipWhisperModel) { $Scripts += "prepare-whisper-model.py" }
 if (!$SkipCpuModel) { $Scripts += "prepare-cpu-model.py" }
 if (!$SkipGpuModel) { $Scripts += "prepare-gpu-model.py" }
+if (!$SkipDemucsModel) { $Scripts += "prepare-demucs-model.py" }
+if (!$SkipAlignmentModels) { $Scripts += "prepare-alignment-models.py" }
 
 foreach ($Script in $Scripts) {
   & $Python (Join-Path $PSScriptRoot $Script)

@@ -46,6 +46,14 @@ class ProcessRegistryTests(unittest.TestCase):
         with process_registry._REGISTRY_LOCK:
             self.assertEqual(process_registry._active_processes.get("video-2"), [])
 
+    def test_persistent_process_job_is_not_released_while_process_is_alive(self):
+        process = mock.Mock()
+        process.poll.return_value = None
+        with mock.patch.object(process_registry, "_release_windows_job") as release:
+            process_registry.unregister_process("video-3", process)
+
+        release.assert_called_once_with(process, force=False)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,9 +24,9 @@ Dialog {
     property var segments: []
 
     function formatTime(secondsValue) {
-        var total = Math.max(0, Math.floor(Number(secondsValue) || 0))
-        var minutes = Math.floor(total / 60)
-        var seconds = total % 60
+        const total = Math.max(0, Math.floor(Number(secondsValue) || 0))
+        const minutes = Math.floor(total / 60)
+        const seconds = total % 60
         return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0")
     }
 

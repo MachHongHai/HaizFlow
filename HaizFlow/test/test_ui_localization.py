@@ -1,6 +1,6 @@
 import unittest
 
-from haizflow.desktop.qml_controller import _set_ui_language, _ui_text
+from haizflow.desktop.localization import _set_ui_language, _ui_text
 
 
 class UiLocalizationTests(unittest.TestCase):

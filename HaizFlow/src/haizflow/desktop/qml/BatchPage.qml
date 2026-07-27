@@ -260,8 +260,8 @@ Item {
                     root.dropActive = false
                     if (!drop.urls || drop.urls.length === 0)
                         return
-                    var paths = []
-                    for (var i = 0; i < drop.urls.length; i++)
+                    const paths = []
+                    for (let i = 0; i < drop.urls.length; i++)
                         paths.push(String(drop.urls[i]))
                     AppController.importBatchVideos(paths)
                 }
@@ -290,8 +290,8 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.topMargin: Theme.space8
-                anchors.bottomMargin: Theme.space8
+                anchors.topMargin: root.compactHeight ? Theme.space4 : Theme.space8
+                anchors.bottomMargin: root.compactHeight ? Theme.space4 : Theme.space8
                 anchors.leftMargin: Theme.space16
                 anchors.rightMargin: Theme.space16
                 spacing: Theme.space4
@@ -306,7 +306,7 @@ Item {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: Theme.space8
+                    spacing: root.compactHeight ? Theme.space4 : Theme.space8
 
                     RowLayout {
                         Layout.fillWidth: true
