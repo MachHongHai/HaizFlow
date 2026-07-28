@@ -35,8 +35,9 @@ _AUDIO_SAMPLE_RATE = 16000
 _SEGMENT_LANGUAGE_CONFIDENCE = 0.55
 _ALIGNMENT_MIN_COVERAGE_RATIO = 0.55
 _ALIGNMENT_MIN_MEDIAN_WORD_SCORE = 0.03
-TIMING_SOURCE = "whisperx-validated-sentences-v3"
+TIMING_SOURCE = "whisperx-validated-sentences-v4"
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
+_CJK_LANGUAGE_CODES = frozenset({"zh", "ja", "ko"})
 _SENTENCE_END_CHARS = frozenset(".!?\u2026\u3002\uff01\uff1f")
 _SENTENCE_CLOSERS = frozenset("\"'\u2019\u201d)]}\u3009\u300b\u300d\u300f\u3011")
 _WHISPERX_VAD_SIZE = WHISPERX_VAD_SIZE
@@ -184,23 +185,53 @@ def _detect_segment_languages(asr_model, audio, segments, fallback_language: str
     return detected_segments
 
 
+def _retranscription_language(segment: dict, primary_language: str) -> tuple[str, str | None]:
+    """Choose a forced language without turning a detector outlier into new text.
+
+    Whisper's full-pass transcript is produced with the primary language detected
+    for the video.  A short Vietnamese sentence can occasionally receive a CJK
+    language label during the later, per-sentence detector pass.  Re-running that
+    Latin-script sentence with ``zh`` replaces otherwise usable Vietnamese text
+    with a hallucinated Chinese phrase.  Prefer the primary language for that
+    conflicting case, while retaining real CJK speech whose original transcript
+    already uses a CJK script.
+    """
+    detected_language = str(segment.get("language") or primary_language).lower()
+    normalized_primary = (primary_language or "en").lower()
+    text_has_cjk = bool(_CJK_RE.search(str(segment.get("text") or "")))
+    detected_is_cjk = detected_language in _CJK_LANGUAGE_CODES
+    primary_is_cjk = normalized_primary in _CJK_LANGUAGE_CODES
+
+    if detected_is_cjk and not primary_is_cjk and not text_has_cjk:
+        return normalized_primary, (
+            f"detector reported '{detected_language}' for a non-CJK transcript; "
+            f"using primary language '{normalized_primary}'"
+        )
+    return detected_language, None
+
+
 def _retranscribe_mixed_language_segments(asr_model, audio, segments, primary_language: str, video_id: str):
     """Correct switched-language text while preserving every original timestamp."""
-    primary_language = primary_language or "en"
+    primary_language = (primary_language or "en").lower()
     corrected_segments = []
 
     for index, segment in enumerate(segments, start=1):
-        language = segment.get("language") or primary_language
+        language, correction_reason = _retranscription_language(segment, primary_language)
         confidence = float(segment.get("language_confidence", 0.0))
         start = max(0.0, float(segment.get("start", 0.0)))
         end = min(len(audio) / _AUDIO_SAMPLE_RATE, float(segment.get("end", start)))
         corrected_segment = dict(segment)
         if language == primary_language or confidence < _SEGMENT_LANGUAGE_CONFIDENCE or end <= start:
+            if correction_reason:
+                corrected_segment["language"] = language
+                log_to_video(video_id, f"Sentence {index}: {correction_reason}.")
             corrected_segments.append(corrected_segment)
             continue
 
         try:
-            log_to_video(video_id, f"Re-transcribing sentence {index} with detected language '{language}'.")
+            if correction_reason:
+                log_to_video(video_id, f"Sentence {index}: {correction_reason}.")
+            log_to_video(video_id, f"Re-transcribing sentence {index} with language '{language}'.")
             clip = audio[int(start * _AUDIO_SAMPLE_RATE): int(end * _AUDIO_SAMPLE_RATE)]
             local_result = asr_model.transcribe(clip, batch_size=1, language=language)
             corrected_text = ""
@@ -211,6 +242,7 @@ def _retranscribe_mixed_language_segments(asr_model, audio, segments, primary_la
                 )
             if corrected_text.strip():
                 corrected_segment["text"] = corrected_text.strip()
+            corrected_segment["language"] = language
         except Exception as exc:
             log_to_video(video_id, f"Could not re-transcribe sentence {index} in '{language}'; keeping its text: {exc}")
         corrected_segments.append(corrected_segment)

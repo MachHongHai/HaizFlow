@@ -18,7 +18,7 @@ class ModelUpdateTests(unittest.TestCase):
         current = SimpleNamespace(
             video_id="video-a", original_filename="a.mp4", status="pending", step="pending",
             updated_at="first", progress=0, files={}, project_name="Project", video_width=0,
-            video_height=0, subtitle_override=False,
+            video_height=0,
         )
         updated = SimpleNamespace(**{**current.__dict__, "status": "processing", "updated_at": "second"})
         model.set_videos([current])
@@ -50,7 +50,7 @@ class ModelUpdateTests(unittest.TestCase):
         first = SimpleNamespace(
             video_id="video-1", original_filename="one.mp4", status="pending", step="pending",
             updated_at="first", progress=0, files={}, project_name="One", video_width=0,
-            video_height=0, subtitle_override=False,
+            video_height=0,
         )
         updated = SimpleNamespace(**{**first.__dict__, "progress": 45, "updated_at": "second"})
         model = VideoListModel()

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Property, QTimer, Signal, Slot
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
 
 from haizflow.desktop.activity_log import ActivityLogBuffer
@@ -29,6 +30,7 @@ from haizflow.desktop.project_commands_controller import ProjectCommandsControll
 from haizflow.desktop.project_import_controller import ProjectImportController
 from haizflow.desktop.catalog_media_controller import CatalogMediaController
 from haizflow.desktop.diagnostics_controller import DiagnosticsController
+from haizflow.desktop.external_links import open_external_url
 from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
 from haizflow.desktop.settings_controller import SettingsController
 from haizflow.desktop.presenters import (
@@ -76,7 +78,6 @@ class HaizFlowController(QObject):
     ttsVoiceOptionsChanged = Signal()
     enableAudioSeparationChanged = Signal()
     originalVolumeChanged = Signal()
-    removeOriginalSubtitlesChanged = Signal()
     workflowModeChanged = Signal()
     selectedVideoChanged = Signal()
     selectedElapsedChanged = Signal()
@@ -85,8 +86,6 @@ class HaizFlowController(QObject):
     statusMessageChanged = Signal()
     runtimeStateChanged = Signal()
     modelSetupChanged = Signal()
-    previewChanged = Signal()
-    previewOpenRequested = Signal()
     videoDeleted = Signal()
     batchDeleted = Signal()
     batchChanged = Signal()
@@ -113,7 +112,6 @@ class HaizFlowController(QObject):
         self._tts_voice = "vi-VN-HoaiMyNeural"
         self._enable_audio_separation = False
         self._original_volume = 60
-        self._remove_original_subtitles = False
         self._workflow_mode = "A"
         self._selected_video_id = None
         self._selected_video_snapshot = None
@@ -157,21 +155,6 @@ class HaizFlowController(QObject):
         self._logs = ""
         self._status_message = "Ready"
         self._runtime_state = "ready" if os.getenv("HAIZFLOW_SMOKE_TEST") == "1" else "warming"
-        self._subtitle_position_x = 51
-        self._subtitle_position_y = 96
-        self._caption_font_size = 36
-        self._subtitle_box_width = 72
-        self._subtitle_box_height = 6
-        self._preview_source = ""
-        self._preview_poster_source = ""
-        self._preview_title = "Preview"
-        self._preview_interactive = False
-        self._preview_aspect_ratio = 16 / 9
-        self._preview_edit_scope = "draft"
-        self._preview_target_video_ids = []
-        self._preview_group_keys = []
-        self._preview_group_index = -1
-        self._preview_original_style = None
         self._preview_media = PreviewMediaController(self)
         self._settings_controller = SettingsController(self)
         self._project_workspace = ProjectWorkspaceController(self)
@@ -535,19 +518,6 @@ class HaizFlowController(QObject):
             return "Mixed settings"
         return self._language_label(next(iter(languages))) if languages else self._language_label(self._target_language)
 
-    @Property("QVariantList", notify=batchChanged)
-    def batchVideoSizeGroups(self):
-        return [
-            {
-                "sizeKey": group["size_key"],
-                "label": group["label"],
-                "count": len(group["videos"]),
-                "customizedCount": sum(1 for video in group["videos"] if video.subtitle_override),
-                "thumbnailSource": VideoListModel._thumbnail_source(group["videos"][0]),
-            }
-            for group in self._batch_dimension_groups()
-        ]
-
     @Property(str, notify=videoPathChanged)
     def videoPath(self):
         return self._video_path
@@ -662,17 +632,6 @@ class HaizFlowController(QObject):
         if self._original_volume != value:
             self._original_volume = value
             self.originalVolumeChanged.emit()
-
-    @Property(bool, notify=removeOriginalSubtitlesChanged)
-    def removeOriginalSubtitles(self):
-        return self._remove_original_subtitles
-
-    @removeOriginalSubtitles.setter
-    def removeOriginalSubtitles(self, value):
-        value = bool(value)
-        if self._remove_original_subtitles != value:
-            self._remove_original_subtitles = value
-            self.removeOriginalSubtitlesChanged.emit()
 
     @Property(str, notify=workflowModeChanged)
     def workflowMode(self): return self._workflow_mode
@@ -959,14 +918,6 @@ class HaizFlowController(QObject):
     def urlImporter(self):
         return self._url_importer
 
-    @Property(str, notify=previewChanged)
-    def previewSource(self):
-        return self._preview_source
-
-    @Property(str, notify=previewChanged)
-    def previewPosterSource(self):
-        return self._preview_poster_source
-
     @Property(str, notify=settingsChanged)
     def settingsTheme(self):
         return self._settings_theme
@@ -1066,42 +1017,6 @@ class HaizFlowController(QObject):
     @Property(str, notify=projectSetupChanged)
     def projectType(self):
         return self._project_type
-
-    @Property(str, notify=previewChanged)
-    def previewTitle(self):
-        return self._preview_title
-
-    @Property(bool, notify=previewChanged)
-    def previewInteractive(self):
-        return self._preview_interactive
-
-    @Property(float, notify=previewChanged)
-    def previewAspectRatio(self):
-        return self._preview_aspect_ratio
-
-    @Property(int, notify=previewChanged)
-    def subtitleX(self):
-        return self._subtitle_position_x
-
-    @Property(int, notify=previewChanged)
-    def subtitleY(self):
-        return self._subtitle_position_y
-
-    @Property(int, notify=previewChanged)
-    def subtitleBoxWidth(self):
-        return self._subtitle_box_width
-
-    @Property(int, notify=previewChanged)
-    def subtitleBoxHeight(self):
-        return self._subtitle_box_height
-
-    @Property(int, notify=previewChanged)
-    def subtitleFontSize(self):
-        return self._caption_font_size
-
-    @Property(str, notify=previewChanged)
-    def previewSaveLabel(self):
-        return "Apply to this size" if self._preview_edit_scope == "size_group" else "Save subtitle frame"
 
     @Slot()
     def downloadInspectedVideo(self):
@@ -1411,6 +1326,14 @@ class HaizFlowController(QObject):
             self._selected_project_root()
         )
 
+    @Slot(str, result=bool)
+    def openExternalUrl(self, url: str) -> bool:
+        return open_external_url(url)
+
+    @Slot(str)
+    def copyText(self, text: str) -> None:
+        QGuiApplication.clipboard().setText(str(text or ""))
+
     @Slot()
     def deleteCurrentProject(self):
         HaizFlowController._project_commands_for(self).delete_current_project()
@@ -1437,41 +1360,6 @@ class HaizFlowController(QObject):
 
     def _create_missing_thumbnails(self, video_ids):
         HaizFlowController._catalog_media_for(self).create_missing_thumbnails(video_ids)
-
-    @Slot()
-    def openInputPreview(self):
-        selected_video = video_store.get_video(self._selected_video_id) if self._selected_video_id else None
-        video_path = self._resolve_video_file(selected_video, ("video_input", "input_video"), ("input", "video.mp4")) if selected_video else self._video_path.strip()
-        if not video_path or not os.path.exists(video_path):
-            QMessageBox.information(None, "Input preview", "Choose an input video before opening the preview editor.")
-            return
-        self._preview_edit_scope = "single_video" if selected_video else "draft"
-        self._preview_target_video_ids = [selected_video.video_id] if selected_video else []
-        self._preview_group_keys = []
-        self._preview_group_index = -1
-        self._preview_original_style = self._copy_subtitle_style(selected_video.subtitle_style) if selected_video else self._current_subtitle_style()
-        self._open_preview(video_path, "Input Preview Editor", True)
-
-    @Slot(result=bool)
-    def openBatchSubtitleEditor(self):
-        groups = self._batch_dimension_groups()
-        if not groups:
-            QMessageBox.information(None, "Subtitle presets", "Add at least one video before editing subtitles.")
-            return False
-        self._preview_group_keys = [group["size_key"] for group in groups]
-        self._preview_group_index = 0
-        self._open_batch_group_preview(self._preview_group_keys[0])
-        return True
-
-    @Slot(str, result=bool)
-    def openBatchSizeEditor(self, size_key):
-        group = self._batch_dimension_group(size_key)
-        if not group:
-            return False
-        self._preview_group_keys = [size_key]
-        self._preview_group_index = 0
-        self._open_batch_group_preview(size_key)
-        return True
 
     @Slot()
     def openInputFile(self):
@@ -1515,60 +1403,6 @@ class HaizFlowController(QObject):
             return
         QMessageBox.information(None, "Open export folder", "The export folder is not available yet.")
 
-    @Slot(int, int, int, int, int)
-    def updatePreviewEdits(self, subtitle_x, subtitle_y, box_width, box_height, font_size):
-        # SubtitleEditBox already owns the live geometry while dragging. Keep
-        # the Python draft current without invalidating every preview binding
-        # on each pointer move.
-        self._apply_preview_edits(subtitle_x, subtitle_y, box_width, box_height, font_size)
-
-    @Slot(result=bool)
-    def commitPreviewEdits(self):
-        style = self._current_subtitle_style(self._preview_original_style)
-        if self._preview_edit_scope == "size_group":
-            target_ids = [video_id for video_id in self._preview_target_video_ids if video_store.get_video(video_id)]
-            if not target_ids:
-                self._clear_preview_edit_session()
-                return False
-            for video_id in target_ids:
-                video_store.update_video(video_id, subtitle_style=style, subtitle_override=False)
-            self._refresh_batch_model()
-            self.batchChanged.emit()
-            next_index = self._preview_group_index + 1
-            if next_index < len(self._preview_group_keys):
-                self._preview_group_index = next_index
-                self._open_batch_group_preview(self._preview_group_keys[next_index])
-                return False
-        elif self._preview_edit_scope == "single_video" and self._preview_target_video_ids:
-            video_id = self._preview_target_video_ids[0]
-            video = video_store.get_video(video_id)
-            if video:
-                video_store.update_video(
-                    video_id,
-                    subtitle_style=style,
-                    subtitle_override=video.project_type == "batch",
-                )
-                video_store.log_to_video(video_id, "Custom subtitle frame saved for this video.")
-                self.refreshVideos()
-                self.selectedVideoChanged.emit()
-                self.batchChanged.emit()
-            else:
-                self._clear_preview_edit_session()
-                return False
-        elif self._preview_edit_scope != "draft" or self._preview_original_style is None:
-            # A terminal save clears the target.  Never acknowledge a later save that
-            # has nowhere to persist its subtitle style.
-            return False
-        self._clear_preview_edit_session()
-        return True
-
-    @Slot()
-    def cancelPreviewEdits(self):
-        if self._preview_original_style:
-            self._set_preview_style(self._preview_original_style)
-        self._clear_preview_edit_session()
-        self.previewChanged.emit()
-
     @Slot()
     def openVideoFolder(self):
         if self._selected_video_id:
@@ -1601,21 +1435,11 @@ class HaizFlowController(QObject):
             target_language=self._target_language,
             translator_provider="hymt2",
             tts_voice=self._tts_voice,
-            subtitle_style=SubtitleStyle(
-                font_size=self._caption_font_size,
-                margin_bottom=40,
-                outline=2,
-                max_chars_per_line=32,
-                position_x_percent=self._subtitle_position_x,
-                position_y_percent=self._subtitle_position_y,
-                box_width_percent=self._subtitle_box_width,
-                box_height_percent=self._subtitle_box_height,
-            ),
+            subtitle_style=SubtitleStyle(),
             output_format="keep_ratio",
             crop=CropSettings(),
             enable_audio_separation=self._enable_audio_separation,
             original_video_volume=self._original_volume,
-            remove_original_subtitles=self._remove_original_subtitles,
             project_name=self._project_name,
             project_directory=self._project_directory,
             project_type=self._project_type,
@@ -1635,7 +1459,6 @@ class HaizFlowController(QObject):
             "crop": config.crop,
             "enable_audio_separation": config.enable_audio_separation,
             "original_video_volume": config.original_video_volume,
-            "remove_original_subtitles": config.remove_original_subtitles,
             "project_type": config.project_type,
         }
         if review_approved is not None:
@@ -1700,12 +1523,6 @@ class HaizFlowController(QObject):
     def _on_video_dimensions_ready(self, video_id: str, width: int, height: int) -> None:
         HaizFlowController._catalog_media_for(self).on_video_dimensions_ready(video_id, width, height)
 
-    def _batch_dimension_groups(self):
-        return HaizFlowController._catalog_media_for(self).batch_dimension_groups()
-
-    def _batch_dimension_group(self, size_key):
-        return HaizFlowController._catalog_media_for(self).batch_dimension_group(size_key)
-
     _build_project_summaries = staticmethod(build_project_summaries)
     _normalize_video_path = staticmethod(normalize_video_path)
     _collect_batch_video_paths = staticmethod(collect_batch_video_paths)
@@ -1730,30 +1547,6 @@ class HaizFlowController(QObject):
         if voice in supported_voices:
             return voice
         return supported_voices[0] if supported_voices else ""
-
-    def _load_video_preview(self, video):
-        self._preview_media.load_video_preview(video)
-
-    def _copy_subtitle_style(self, style):
-        return self._preview_media.copy_subtitle_style(style)
-
-    def _current_subtitle_style(self, base=None):
-        return self._preview_media.current_subtitle_style(base)
-
-    def _set_preview_style(self, style):
-        self._preview_media.set_preview_style(style)
-
-    def _open_batch_group_preview(self, size_key):
-        self._preview_media.open_batch_group_preview(size_key)
-
-    def _clear_preview_edit_session(self):
-        self._preview_media.clear_preview_edit_session()
-
-    def _apply_preview_edits(self, subtitle_x, subtitle_y, box_width, box_height, font_size):
-        self._preview_media.apply_preview_edits(subtitle_x, subtitle_y, box_width, box_height, font_size)
-
-    def _open_preview(self, path: str, title: str, interactive: bool):
-        self._preview_media.open_preview(path, title, interactive)
 
     def _draft_thumbnail_path(self) -> str:
         return self._preview_media.draft_thumbnail_path()

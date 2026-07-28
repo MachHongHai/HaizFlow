@@ -17,6 +17,7 @@ Dialog {
     readonly property bool hasStatus: importer.status.length > 0
     readonly property bool showsProgress: importer.state === "downloading"
         || importer.state === "importing"
+    readonly property bool canDownload: importer.state === "ready" || importer.state === "retry"
 
     function openForMode(mode) {
         importMode = mode === "batch" ? "batch" : "single"
@@ -50,7 +51,7 @@ Dialog {
         target: root.importer
 
         function onChanged() {
-            if (root.importer.state === "ready" && root.inspectedText.length === 0)
+            if (root.canDownload && root.inspectedText.length === 0)
                 root.inspectedText = videoUrl.text.trim()
         }
     }
@@ -301,10 +302,10 @@ Dialog {
                     AppIcon {
                         Layout.preferredWidth: 18
                         Layout.preferredHeight: 18
-                        glyph: root.importer.state === "error" ? "\uEA39"
+                        glyph: root.importer.state === "error" || root.importer.state === "retry" ? "\uEA39"
                             : root.importer.state === "ready" ? "\uE73E"
                             : "\uE895"
-                        iconColor: root.importer.state === "error" ? Theme.danger
+                        iconColor: root.importer.state === "error" || root.importer.state === "retry" ? Theme.danger
                             : root.importer.state === "ready" ? Theme.success
                             : Theme.interactive
                         iconSize: Theme.iconSmall
@@ -313,7 +314,8 @@ Dialog {
                     Text {
                         Layout.fillWidth: true
                         text: I18n.t(root.importer.status)
-                        color: root.importer.state === "error" ? Theme.danger : Theme.textMuted
+                        color: root.importer.state === "error" || root.importer.state === "retry"
+                            ? Theme.danger : Theme.textMuted
                         font.pixelSize: Theme.caption
                         wrapMode: Text.Wrap
                         textFormat: Text.PlainText
@@ -357,16 +359,16 @@ Dialog {
                 }
 
                 AppButton {
-                    text: root.importer.state === "ready" && root.inspectedText.length > 0
-                        ? I18n.t("Download and import")
+                    text: root.canDownload && root.inspectedText.length > 0
+                        ? I18n.t(root.importer.state === "retry" ? "Retry download" : "Download and import")
                         : I18n.t("Check link")
-                    iconGlyph: root.importer.state === "ready" && root.inspectedText.length > 0
+                    iconGlyph: root.canDownload && root.inspectedText.length > 0
                         ? "\uE896"
                         : "\uE721"
                     tone: "primary"
                     enabled: !root.importer.busy && videoUrl.text.trim().length > 0
                     onClicked: {
-                        if (root.importer.state === "ready" && root.inspectedText.length > 0)
+                        if (root.canDownload && root.inspectedText.length > 0)
                             AppController.downloadInspectedVideo()
                         else {
                             root.inspectedText = ""

@@ -47,13 +47,12 @@ class ProjectCommandsController:
                 "ttsVoice": host._tts_voice,
                 "enableAudioSeparation": host._enable_audio_separation,
                 "originalVolume": host._original_volume,
-                "removeOriginalSubtitles": host._remove_original_subtitles,
             }
         common, _count = Counter(
-            (video.mode, video.target_language, video.tts_voice, video.enable_audio_separation, video.original_video_volume, video.remove_original_subtitles)
+            (video.mode, video.target_language, video.tts_voice, video.enable_audio_separation, video.original_video_volume)
             for video in videos
         ).most_common(1)[0]
-        workflow_mode, target_language, tts_voice, audio_separation, original_volume, remove_original_subtitles = common
+        workflow_mode, target_language, tts_voice, audio_separation, original_volume = common
         target_language = str(target_language or "vi")
         return {
             "workflowMode": "review" if workflow_mode == "review" else "A",
@@ -61,7 +60,6 @@ class ProjectCommandsController:
             "ttsVoice": host._normalized_voice_for_language(target_language, tts_voice),
             "enableAudioSeparation": bool(audio_separation),
             "originalVolume": int(original_volume),
-            "removeOriginalSubtitles": bool(remove_original_subtitles),
         }
 
     def apply_batch_settings(self, workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume) -> bool:
@@ -93,14 +91,12 @@ class ProjectCommandsController:
         host._tts_voice = values["ttsVoice"]
         host._enable_audio_separation = values["enableAudioSeparation"]
         host._original_volume = values["originalVolume"]
-        host._remove_original_subtitles = values["removeOriginalSubtitles"]
         host.workflowModeChanged.emit()
         host.targetLanguageChanged.emit()
         host.ttsVoiceChanged.emit()
         host.ttsVoiceOptionsChanged.emit()
         host.enableAudioSeparationChanged.emit()
         host.originalVolumeChanged.emit()
-        host.removeOriginalSubtitlesChanged.emit()
 
     def save_selected_video_settings(self) -> bool:
         host = self._host

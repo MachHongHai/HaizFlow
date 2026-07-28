@@ -141,7 +141,7 @@ class VideoUrlImportCoordinator(QObject):
         self._start_worker(inspect_link, "video-link-inspection")
 
     def start_download(self, project_root: str) -> bool:
-        if self._state != "ready" or not self._metadata:
+        if self._state not in {"ready", "retry"} or not self._metadata:
             return False
         try:
             workspace = create_download_workspace(project_root)
@@ -258,6 +258,10 @@ class VideoUrlImportCoordinator(QObject):
         if generation != self._generation:
             return
         self._workspace = ""
-        self._state = "idle" if cancelled else "error"
+        # A download can fail after metadata is already valid (for example, a
+        # TikTok media URL expires between inspection and download).  Preserve
+        # that metadata and make the next primary action a direct retry rather
+        # than forcing the user to inspect the same link again.
+        self._state = "idle" if cancelled else ("retry" if self._metadata else "error")
         self._status = "Import cancelled" if cancelled else str(message)
         self.changed.emit()

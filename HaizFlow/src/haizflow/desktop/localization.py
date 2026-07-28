@@ -52,8 +52,6 @@ def _ui_text(value) -> str:
         "Already removed": "Đã xóa",
         "Project folder": "Thư mục dự án",
         "Delete project": "Xóa dự án",
-        "Input preview": "Xem trước đầu vào",
-        "Subtitle presets": "Khung phụ đề",
         "GPU mode requires AC power for stable processing. Connect the charger and try again.": "Chế độ GPU cần cắm sạc để xử lý ổn định. Hãy cắm sạc rồi thử lại.",
         "Open input video": "Mở video nguồn",
         "Open output": "Mở video đầu ra",

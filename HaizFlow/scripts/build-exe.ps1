@@ -163,6 +163,15 @@ if (Test-Path $QmlPath) {
   $ArgsList += @("--add-data", "$QmlPath;haizflow\desktop\qml")
 }
 
+$BrandingAssetsPath = Join-Path $Root "src\haizflow\desktop\assets\branding"
+foreach ($BrandingAsset in ("haizflow-mark.png", "haizflow.ico")) {
+  $BrandingAssetPath = Join-Path $BrandingAssetsPath $BrandingAsset
+  if (!(Test-Path -LiteralPath $BrandingAssetPath -PathType Leaf)) {
+    throw "Branding asset is missing: $BrandingAssetPath"
+  }
+  $ArgsList += @("--add-data", "$BrandingAssetPath;haizflow\desktop\assets\branding")
+}
+
 $ArgsList += @("--collect-all", "llama_cpp")
 $ArgsList += @("--collect-all", "accelerate")
 $ArgsList += @("--collect-all", "demucs")

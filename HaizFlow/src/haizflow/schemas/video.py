@@ -53,8 +53,6 @@ class VideoConfig(BaseModel):
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = False
     original_video_volume: int = Field(default=60, ge=0, le=100)
-    # Opt-in because a false positive must never alter the source video.
-    remove_original_subtitles: bool = False
     project_name: str = ""
     project_directory: str = ""
     project_type: ProjectType = "single"
@@ -78,7 +76,6 @@ class VideoInfo(BaseModel):
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = False
     original_video_volume: int = Field(default=60, ge=0, le=100)
-    remove_original_subtitles: bool = False
     project_name: str = ""
     project_directory: str = ""
     project_type: ProjectType = "single"
@@ -86,7 +83,6 @@ class VideoInfo(BaseModel):
     project_key: str = ""
     video_width: int = 0
     video_height: int = 0
-    subtitle_override: bool = False
     review_approved: bool = False
     media_source: MediaSource = Field(default_factory=MediaSource)
     status: str  # pending, processing, done, failed

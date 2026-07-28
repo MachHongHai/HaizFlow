@@ -15,7 +15,6 @@ class VideoListModel(QAbstractListModel):
     ThumbnailRole = Qt.ItemDataRole.UserRole + 8
     ProjectNameRole = Qt.ItemDataRole.UserRole + 9
     VideoSizeRole = Qt.ItemDataRole.UserRole + 10
-    SubtitleOverrideRole = Qt.ItemDataRole.UserRole + 11
 
     def __init__(self):
         super().__init__()
@@ -42,7 +41,6 @@ class VideoListModel(QAbstractListModel):
             self.ThumbnailRole: self._thumbnail_source(video),
             self.ProjectNameRole: video.project_name or video.original_filename,
             self.VideoSizeRole: self._video_size(video),
-            self.SubtitleOverrideRole: bool(getattr(video, "subtitle_override", False)),
         }
 
     def roleNames(self):
@@ -57,7 +55,6 @@ class VideoListModel(QAbstractListModel):
             self.ThumbnailRole: b"thumbnailSource",
             self.ProjectNameRole: b"projectName",
             self.VideoSizeRole: b"videoSize",
-            self.SubtitleOverrideRole: b"subtitleOverride",
         }
 
     def set_videos(self, videos):

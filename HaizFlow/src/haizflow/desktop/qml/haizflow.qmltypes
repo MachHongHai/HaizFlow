@@ -357,14 +357,6 @@ Module {
             index: 30
         }
         Property {
-            name: "removeOriginalSubtitles"
-            type: "bool"
-            read: "removeOriginalSubtitles"
-            write: "removeOriginalSubtitles"
-            notify: "removeOriginalSubtitlesChanged"
-            index: 83
-        }
-        Property {
             name: "workflowMode"
             type: "QString"
             read: "workflowMode"
@@ -606,22 +598,6 @@ Module {
         }
         Property { name: "urlImporter"; type: "QObject"; read: "urlImporter"; index: 61; isReadonly: true }
         Property {
-            name: "previewSource"
-            type: "QString"
-            read: "previewSource"
-            notify: "previewChanged"
-            index: 62
-            isReadonly: true
-        }
-        Property {
-            name: "previewPosterSource"
-            type: "QString"
-            read: "previewPosterSource"
-            notify: "previewChanged"
-            index: 63
-            isReadonly: true
-        }
-        Property {
             name: "settingsTheme"
             type: "QString"
             read: "settingsTheme"
@@ -701,78 +677,6 @@ Module {
             index: 73
             isReadonly: true
         }
-        Property {
-            name: "previewTitle"
-            type: "QString"
-            read: "previewTitle"
-            notify: "previewChanged"
-            index: 74
-            isReadonly: true
-        }
-        Property {
-            name: "previewInteractive"
-            type: "bool"
-            read: "previewInteractive"
-            notify: "previewChanged"
-            index: 75
-            isReadonly: true
-        }
-        Property {
-            name: "previewAspectRatio"
-            type: "float"
-            read: "previewAspectRatio"
-            notify: "previewChanged"
-            index: 76
-            isReadonly: true
-        }
-        Property {
-            name: "subtitleX"
-            type: "int"
-            read: "subtitleX"
-            notify: "previewChanged"
-            index: 77
-            isReadonly: true
-        }
-        Property {
-            name: "subtitleY"
-            type: "int"
-            read: "subtitleY"
-            notify: "previewChanged"
-            index: 78
-            isReadonly: true
-        }
-        Property {
-            name: "subtitleBoxWidth"
-            type: "int"
-            read: "subtitleBoxWidth"
-            notify: "previewChanged"
-            index: 79
-            isReadonly: true
-        }
-        Property {
-            name: "subtitleBoxHeight"
-            type: "int"
-            read: "subtitleBoxHeight"
-            notify: "previewChanged"
-            index: 80
-            isReadonly: true
-        }
-        Property {
-            name: "subtitleFontSize"
-            type: "int"
-            read: "subtitleFontSize"
-            notify: "previewChanged"
-            index: 81
-            isReadonly: true
-        }
-        Property {
-            name: "previewSaveLabel"
-            type: "QString"
-            read: "previewSaveLabel"
-            notify: "previewChanged"
-            index: 82
-            isReadonly: true
-        }
         Signal { name: "videoPathChanged" }
         Signal { name: "videoThumbnailChanged" }
         Signal { name: "targetLanguageChanged" }
@@ -780,7 +684,6 @@ Module {
         Signal { name: "ttsVoiceOptionsChanged" }
         Signal { name: "enableAudioSeparationChanged" }
         Signal { name: "originalVolumeChanged" }
-        Signal { name: "removeOriginalSubtitlesChanged" }
         Signal { name: "workflowModeChanged" }
         Signal { name: "selectedVideoChanged" }
         Signal { name: "selectedElapsedChanged" }
@@ -789,8 +692,6 @@ Module {
         Signal { name: "statusMessageChanged" }
         Signal { name: "runtimeStateChanged" }
         Signal { name: "modelSetupChanged" }
-        Signal { name: "previewChanged" }
-        Signal { name: "previewOpenRequested" }
         Signal { name: "videoDeleted" }
         Signal { name: "batchDeleted" }
         Signal { name: "batchChanged" }
@@ -917,28 +818,20 @@ Module {
         }
         Method { name: "deleteSelectedVideo" }
         Method { name: "openProjectFolder" }
-        Method { name: "deleteCurrentProject" }
-        Method { name: "refreshVideos" }
-        Method { name: "openInputPreview" }
-        Method { name: "openBatchSubtitleEditor"; type: "bool" }
         Method {
-            name: "openBatchSizeEditor"
+            name: "openExternalUrl"
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
         }
+        Method {
+            name: "copyText"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method { name: "deleteCurrentProject" }
+        Method { name: "refreshVideos" }
         Method { name: "openInputFile" }
         Method { name: "openOutputFile" }
         Method { name: "openOutputFolder" }
-        Method {
-            name: "updatePreviewEdits"
-            Parameter { name: "a1"; type: "int" }
-            Parameter { name: "a2"; type: "int" }
-            Parameter { name: "a3"; type: "int" }
-            Parameter { name: "a4"; type: "int" }
-            Parameter { name: "a5"; type: "int" }
-        }
-        Method { name: "commitPreviewEdits"; type: "bool" }
-        Method { name: "cancelPreviewEdits" }
         Method { name: "openVideoFolder" }
     }
 }

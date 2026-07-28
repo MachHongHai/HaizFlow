@@ -25,6 +25,7 @@ dependencies = [
   "faster-whisper==1.2.1",
   "numpy==2.5.1",
   "pandas==3.0.3",
+  "Pillow==12.3.0",
   "audioop-lts==0.2.2; python_version >= '3.13'",
   "edge-tts==7.2.8",
   "yt-dlp==2026.7.4",
@@ -42,7 +43,7 @@ haizflow = "haizflow.desktop.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"haizflow.desktop" = ["qml/*.qml", "qml/qmldir"]
+"haizflow.desktop" = ["qml/*.qml", "qml/qmldir", "assets/branding/haizflow-mark.png", "assets/branding/haizflow.ico"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }

@@ -206,7 +206,6 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         crop=config.crop,
         enable_audio_separation=config.enable_audio_separation,
         original_video_volume=config.original_video_volume,
-        remove_original_subtitles=config.remove_original_subtitles,
         project_name=config.project_name,
         project_directory=config.project_directory,
         project_type=config.project_type,

@@ -36,11 +36,9 @@ class ProjectWorkspaceController:
             video_store.log_to_video(video.video_id, "Updated an incompatible saved TTS voice to match the target language.")
         host._enable_audio_separation = video.enable_audio_separation
         host._original_volume = video.original_video_volume
-        host._remove_original_subtitles = video.remove_original_subtitles
         input_path = host._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
         host._video_path = input_path
         host._video_thumbnail_source = thumbnail_source(video.files.get("thumbnail") or "")
-        host._load_video_preview(video)
         host._replace_logs(host._read_video_logs(video.video_id))
         host.videoPathChanged.emit()
         host.videoThumbnailChanged.emit()
@@ -49,7 +47,6 @@ class ProjectWorkspaceController:
         host.ttsVoiceOptionsChanged.emit()
         host.enableAudioSeparationChanged.emit()
         host.originalVolumeChanged.emit()
-        host.removeOriginalSubtitlesChanged.emit()
         host.workflowModeChanged.emit()
         host.projectSetupChanged.emit()
         host.selectedVideoChanged.emit()

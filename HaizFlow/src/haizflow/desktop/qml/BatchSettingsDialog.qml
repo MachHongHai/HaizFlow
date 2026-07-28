@@ -9,10 +9,7 @@ Dialog {
     id: root
     objectName: "batchSettingsDialog"
 
-    signal requestEditAllSubtitles()
-    signal requestEditSubtitleSize(string sizeKey)
     property bool changesApplied: false
-    property bool preserveDraftOnNextOpen: false
     property string draftWorkflowMode: "A"
     property string draftTargetLanguage: "vi"
     property string draftTtsVoice: ""
@@ -45,10 +42,6 @@ Dialog {
         draftOriginalVolume = Number(settings.originalVolume !== undefined ? settings.originalVolume : 60)
     }
 
-    function preserveDraftForSubtitleEditor() {
-        preserveDraftOnNextOpen = true
-    }
-
     modal: true
     focus: true
     width: Math.min(720, parent ? parent.width - 48 : 720)
@@ -64,10 +57,7 @@ Dialog {
 
     onOpened: {
         changesApplied = false
-        if (preserveDraftOnNextOpen)
-            preserveDraftOnNextOpen = false
-        else
-            loadDraft()
+        loadDraft()
     }
 
     enter: Transition {
@@ -116,7 +106,7 @@ Dialog {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Configure dubbing and subtitle presets for this batch")
+                    text: I18n.t("Configure dubbing settings for this batch")
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     textFormat: Text.PlainText
@@ -288,109 +278,6 @@ Dialog {
                     color: Theme.divider
                 }
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: Theme.space24
-                    Layout.rightMargin: Theme.space24
-                    Layout.bottomMargin: Theme.space20
-                    spacing: Theme.space12
-
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: I18n.t("Subtitle presets")
-                                color: Theme.text
-                                font.pixelSize: Theme.body
-                                font.weight: Font.DemiBold
-                                textFormat: Text.PlainText
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: I18n.t("One subtitle frame is shared by each video size")
-                                color: Theme.textMuted
-                                font.pixelSize: Theme.caption
-                                textFormat: Text.PlainText
-                            }
-                        }
-
-                        AppButton {
-                            text: I18n.t("Edit all subtitles")
-                            iconGlyph: "\uE70F"
-                            enabled: AppController.batchCount > 0 && !AppController.isBatchRunning
-                            onClicked: root.requestEditAllSubtitles()
-                        }
-                    }
-
-                    Repeater {
-                        // Do not ask the controller to group the batch while this dialog is closed.
-                        model: root.opened ? AppController.batchVideoSizeGroups : []
-
-                        delegate: Rectangle {
-                            id: sizePreset
-
-                            required property var modelData
-
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 58
-                            radius: Theme.radiusSmall
-                            color: Theme.surfaceElevated
-                            border.width: 1
-                            border.color: Theme.outline
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: Theme.space12
-                                anchors.rightMargin: Theme.space8
-                                spacing: Theme.space12
-
-                                AppIcon {
-                                    Layout.preferredWidth: Theme.icon
-                                    Layout.preferredHeight: Theme.icon
-                                    glyph: "\uE714"
-                                    iconColor: Theme.textMuted
-                                    iconSize: Theme.iconSmall
-                                }
-
-                                Text {
-                                    Layout.preferredWidth: 110
-                                    text: I18n.t(sizePreset.modelData.label)
-                                    color: Theme.text
-                                    font.pixelSize: Theme.caption
-                                    font.weight: Font.DemiBold
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                }
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: qsTr("%1 %2").arg(sizePreset.modelData.count).arg(I18n.t("videos"))
-                                        + (sizePreset.modelData.customizedCount > 0
-                                            ? qsTr(" | %1 %2").arg(sizePreset.modelData.customizedCount).arg(I18n.t("custom"))
-                                            : "")
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.caption
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                }
-
-                                AppButton {
-                                    text: I18n.t("Edit")
-                                    iconGlyph: "\uE70F"
-                                    compact: true
-                                    enabled: !AppController.isBatchRunning
-                                    onClicked: root.requestEditSubtitleSize(sizePreset.modelData.sizeKey)
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
 

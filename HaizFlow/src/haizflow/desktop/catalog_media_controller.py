@@ -114,29 +114,3 @@ class CatalogMediaController:
             return
         video_store.update_video(video_id, video_width=width, video_height=height)
         host._log_queue.put("__VIDEO_DIMENSIONS_READY__")
-
-    def batch_dimension_groups(self):
-        host = self._host
-        grouped = {}
-        catalog = getattr(host, "_catalog_videos", {})
-        for video_id in host._batch_video_ids:
-            video = catalog.get(video_id) or video_store.get_video(video_id)
-            if not video:
-                continue
-            video = self.ensure_video_dimensions(video)
-            if video.video_width > 0 and video.video_height > 0:
-                size_key = f"{video.video_width}x{video.video_height}"
-                label = f"{video.video_width} x {video.video_height}"
-            else:
-                size_key, label = f"unknown:{video.video_id}", "Unknown size"
-            grouped.setdefault(size_key, {"size_key": size_key, "label": label, "videos": []})["videos"].append(video)
-        return sorted(
-            grouped.values(),
-            key=lambda group: (
-                -(group["videos"][0].video_width * group["videos"][0].video_height),
-                group["label"],
-            ),
-        )
-
-    def batch_dimension_group(self, size_key):
-        return next((group for group in self.batch_dimension_groups() if group["size_key"] == size_key), None)

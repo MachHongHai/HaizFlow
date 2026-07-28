@@ -150,6 +150,50 @@ class VideoDownloadTests(unittest.TestCase):
         self.assertEqual(progress[-1], (100, "Download complete"))
         self.assertTrue(any(value == 50 for value, _detail in progress))
 
+    def test_tiktok_download_refreshes_a_stale_format_automatically(self):
+        first_downloader = mock.MagicMock()
+        first_downloader.__enter__.return_value = first_downloader
+        first_downloader.extract_info.side_effect = RuntimeError(
+            "ERROR: [TikTok] Requested format is not available"
+        )
+        second_downloader = mock.MagicMock()
+        second_downloader.__enter__.return_value = second_downloader
+
+        with tempfile.TemporaryDirectory() as workspace:
+            output = Path(workspace) / "fresh.mp4"
+            output.write_bytes(b"video")
+            second_downloader.extract_info.return_value = {
+                "filepath": str(output), "title": "fresh", "ext": "mp4",
+            }
+            second_downloader.prepare_filename.return_value = str(output)
+            yt_dlp = mock.MagicMock()
+            yt_dlp.YoutubeDL.side_effect = [first_downloader, second_downloader]
+            progress = []
+            metadata = video_download.VideoMetadata(
+                url="https://www.tiktok.com/@creator/video/123",
+                title="TikTok clip",
+                platform="TikTok",
+                duration_seconds=10,
+                thumbnail_url="",
+                uploader="",
+            )
+            with (
+                mock.patch.object(video_download, "_load_yt_dlp", return_value=yt_dlp),
+                mock.patch.object(video_download, "_wait_for_retry") as wait_for_retry,
+            ):
+                path = video_download.download_video(
+                    metadata,
+                    workspace,
+                    lambda value, detail: progress.append((value, detail)),
+                    threading.Event(),
+                )
+
+        self.assertEqual(path, str(output))
+        self.assertEqual(yt_dlp.YoutubeDL.call_count, 2)
+        self.assertEqual(yt_dlp.YoutubeDL.call_args_list[0].args[0]["format"], "best")
+        wait_for_retry.assert_called_once()
+        self.assertIn((0, "Refreshing video stream and retrying"), progress)
+
     def test_cancelled_download_stops_before_network_work(self):
         event = threading.Event()
         event.set()

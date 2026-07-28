@@ -22,6 +22,7 @@ from haizflow.pipeline.subtitle_ocr import detect_original_subtitle_region
 from haizflow.pipeline.subtitle import generate_srt
 from haizflow.pipeline.transcribe import TIMING_SOURCE, transcribe
 from haizflow.pipeline.tts import generate_voice_parts
+from haizflow.schemas.video import SubtitleStyle
 from haizflow.services.video_store import get_video, log_to_video, update_video
 from haizflow.services.translation import (
     is_hymt2_worker_warm,
@@ -501,13 +502,14 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         transcript_json = _required_video_path(video, "transcript_json", must_exist=True)
         voice_parts_dir = os.path.join(video_dir, "temp", "voice_parts")
         transcript_state = _file_state(transcript_json)
-        subtitle_signature = _signature(transcript_state, video.subtitle_style.max_chars_per_line)
+        default_subtitle_style = SubtitleStyle()
+        subtitle_signature = _signature(transcript_state, default_subtitle_style.max_chars_per_line)
         check_cancellation(video_id)
         if _checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]) or _recovery_checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]):
             reporter.update(64, "creating_subtitle", "Reusing subtitles checkpoint")
         else:
             reporter.update(63, "creating_subtitle", "Formatting timed subtitles")
-            generate_srt(transcript_json, srt_output, video.subtitle_style.max_chars_per_line, video_id)
+            generate_srt(transcript_json, srt_output, default_subtitle_style.max_chars_per_line, video_id)
             _mark_checkpoint(video, "subtitles", subtitle_signature)
 
         check_cancellation(video_id)
@@ -569,15 +571,17 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             _mark_checkpoint(video, "timeline", timeline_signature)
 
         check_cancellation(video_id)
-        style_data = video.subtitle_style.model_dump() if hasattr(video.subtitle_style, "model_dump") else video.subtitle_style.dict()
+        style_data = (
+            default_subtitle_style.model_dump()
+            if hasattr(default_subtitle_style, "model_dump")
+            else default_subtitle_style.dict()
+        )
         crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
-        original_subtitle_region = None
-        if video.remove_original_subtitles:
-            reporter.update(87, "detecting_original_subtitles", "Scanning the lower subtitle band")
-            original_subtitle_region = detect_original_subtitle_region(video_input, os.path.join(video_dir, "temp"), video_id)
+        reporter.update(87, "detecting_original_subtitles", "Scanning the lower subtitle band")
+        original_subtitle_region = detect_original_subtitle_region(video_input, os.path.join(video_dir, "temp"), video_id)
         render_signature = _signature(
             timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
-            video.remove_original_subtitles, original_subtitle_region,
+            "automatic-original-subtitle-ocr-v1", original_subtitle_region,
         )
         if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(video, "render", render_signature, [final_video]):
             reporter.update(99, "rendering", "Reusing rendered video checkpoint")
@@ -586,7 +590,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             reporter.update(88, "rendering", "Rendering final video")
             render_video(
                 video_input, voice_output, srt_output, final_video, video.output_format,
-                video.subtitle_style, video.crop, video_id, original_subtitle_region,
+                default_subtitle_style, video.crop, video_id, original_subtitle_region,
             )
             _mark_checkpoint(video, "render", render_signature)
 

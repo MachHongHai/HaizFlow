@@ -61,6 +61,17 @@ class ReleaseToolingTests(unittest.TestCase):
             self.assertEqual(struct.unpack("<H", icon.read_bytes()[4:6])[0], 5)
             self.assertIn("VSVersionInfo(", version.read_text(encoding="utf-8"))
 
+    def test_desktop_branding_assets_are_packaged_from_the_runtime_location(self):
+        main_source = (ROOT / "src" / "haizflow" / "desktop" / "main.py").read_text(encoding="utf-8")
+        build_script = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+        self.assertIn('parent / "assets" / "branding"', main_source)
+        self.assertNotIn('parent / "qml" / "assets" / "branding"', main_source)
+        self.assertIn('$BrandingAssetsPath', build_script)
+        self.assertIn('"haizflow-mark.png", "haizflow.ico"', build_script)
+        self.assertIn('"assets/branding/haizflow.ico"', pyproject)
+
     def test_manifest_verification_detects_the_final_artifact_set(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             artifact = Path(temp_dir) / "HaizFlow"

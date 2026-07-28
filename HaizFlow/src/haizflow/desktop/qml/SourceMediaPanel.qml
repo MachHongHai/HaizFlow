@@ -11,7 +11,7 @@ Panel {
     property bool dropActive: false
 
     title: I18n.t("Source media")
-    subtitle: I18n.t("Input video and subtitle placement")
+    subtitle: I18n.t("Input video")
 
     Rectangle {
         id: videoFrame
@@ -204,14 +204,6 @@ Panel {
                 }
             }
         }
-    }
-
-    AppButton {
-        Layout.fillWidth: true
-        text: I18n.t("Edit subtitle frame")
-        iconGlyph: "\uE70F"
-        enabled: AppController.videoPath.length > 0 && AppController.canEditSelectedVideo
-        onClicked: AppController.openInputPreview()
     }
 
     Item {

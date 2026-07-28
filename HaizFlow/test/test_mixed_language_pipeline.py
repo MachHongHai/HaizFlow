@@ -156,6 +156,72 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual(corrected[0]["text"], "Xin chao.")
         self.assertEqual(model.language, "vi")
 
+    def test_cjk_detector_outlier_keeps_the_primary_language_transcript(self):
+        class WhisperModel:
+            def transcribe(self, *_args, **_kwargs):
+                self.fail("A contradictory CJK label must not overwrite the primary transcript")
+
+            def fail(self, message):
+                raise AssertionError(message)
+
+        original_log = transcribe.log_to_video
+        transcribe.log_to_video = lambda *_args, **_kwargs: None
+        try:
+            source = [
+                {
+                    "start": 1.25,
+                    "end": 3.75,
+                    "text": "Tổng kết có đạt không?",
+                    "language": "zh",
+                    "language_confidence": 0.95,
+                },
+            ]
+            corrected = transcribe._retranscribe_mixed_language_segments(
+                WhisperModel(),
+                np.zeros(16_000 * 5, dtype=np.float32),
+                source,
+                "vi",
+                "test-video",
+            )
+        finally:
+            transcribe.log_to_video = original_log
+
+        self.assertEqual(corrected[0]["text"], "Tổng kết có đạt không?")
+        self.assertEqual(corrected[0]["language"], "vi")
+
+    def test_actual_cjk_transcript_is_still_retranscribed_as_cjk(self):
+        class WhisperModel:
+            def transcribe(self, _audio, **kwargs):
+                self.language = kwargs["language"]
+                return {"segments": [{"text": " 总结合不合格？"}]}
+
+        model = WhisperModel()
+        original_log = transcribe.log_to_video
+        transcribe.log_to_video = lambda *_args, **_kwargs: None
+        try:
+            source = [
+                {
+                    "start": 1.25,
+                    "end": 3.75,
+                    "text": "總結合不合格?",
+                    "language": "zh",
+                    "language_confidence": 0.95,
+                },
+            ]
+            corrected = transcribe._retranscribe_mixed_language_segments(
+                model,
+                np.zeros(16_000 * 5, dtype=np.float32),
+                source,
+                "vi",
+                "test-video",
+            )
+        finally:
+            transcribe.log_to_video = original_log
+
+        self.assertEqual(model.language, "zh")
+        self.assertEqual(corrected[0]["text"], "总结合不合格？")
+        self.assertEqual(corrected[0]["language"], "zh")
+
     def test_bad_alignment_is_rejected_without_compressing_the_source_span(self):
         source = {
             "start": 0.031,

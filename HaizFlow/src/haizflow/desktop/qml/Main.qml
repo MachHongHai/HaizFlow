@@ -12,7 +12,7 @@ ApplicationWindow {
     height: 900
     minimumWidth: 1120
     minimumHeight: 720
-    visible: true
+    visible: false
     visibility: Window.Maximized
     title: I18n.t("HaizFlow")
     color: Theme.window
@@ -61,12 +61,6 @@ ApplicationWindow {
         onActivated: settingsDialog.open()
     }
 
-    PreviewWindow {
-        id: previewWindow
-        transientParent: root
-        onBatchSetupReturnRequested: batchSettingsDialog.open()
-    }
-
     ProjectSetupDialog {
         id: projectSetupDialog
     }
@@ -75,32 +69,16 @@ ApplicationWindow {
         id: urlImportDialog
     }
 
+    AboutDialog {
+        id: aboutDialog
+    }
+
     SettingsDialog {
         id: settingsDialog
     }
 
     BatchSettingsDialog {
         id: batchSettingsDialog
-
-        onRequestEditAllSubtitles: {
-            batchSettingsDialog.preserveDraftForSubtitleEditor()
-            close()
-            previewWindow.returnToBatchSetup = true
-            if (!AppController.openBatchSubtitleEditor()) {
-                previewWindow.returnToBatchSetup = false
-                batchSettingsDialog.open()
-            }
-        }
-
-        onRequestEditSubtitleSize: function (sizeKey) {
-            batchSettingsDialog.preserveDraftForSubtitleEditor()
-            close()
-            previewWindow.returnToBatchSetup = true
-            if (!AppController.openBatchSizeEditor(sizeKey)) {
-                previewWindow.returnToBatchSetup = false
-                batchSettingsDialog.open()
-            }
-        }
     }
 
     TranslationReviewDialog {
@@ -109,10 +87,6 @@ ApplicationWindow {
 
     Connections {
         target: AppController
-
-        function onPreviewOpenRequested() {
-            previewWindow.openFromController()
-        }
 
         function onVideoDeleted() {
             root.navigate(root.workspaceReturnRoute)
@@ -306,6 +280,12 @@ ApplicationWindow {
                     iconGlyph: "\uE713"
                     text: I18n.t("Settings")
                     onClicked: settingsDialog.open()
+                }
+
+                SidebarAboutLink {
+                    Layout.fillWidth: true
+                    compact: root.compactNavigation
+                    onClicked: aboutDialog.open()
                 }
             }
 

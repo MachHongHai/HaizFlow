@@ -11,7 +11,6 @@ Rectangle {
     required property int progress
     required property string thumbnailSource
     required property string videoSize
-    required property bool subtitleOverride
 
     signal activated()
 
@@ -121,23 +120,6 @@ Rectangle {
                     }
                 }
 
-                Rectangle {
-                    visible: root.subtitleOverride
-                    width: customLabel.implicitWidth + Theme.space12
-                    height: 26
-                    radius: Theme.radiusSmall
-                    color: Theme.interactive
-
-                    Text {
-                        id: customLabel
-                        anchors.centerIn: parent
-                        text: I18n.t("Custom")
-                        color: Theme.textOnAccent
-                        font.pixelSize: Theme.label
-                        font.weight: Font.DemiBold
-                        textFormat: Text.PlainText
-                    }
-                }
             }
         }
 

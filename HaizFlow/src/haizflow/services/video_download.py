@@ -34,6 +34,13 @@ _TIKTOK_TRANSIENT_ERROR_MARKERS = (
     "timed out",
     "timeout",
 )
+_FORMAT_REFRESH_ERROR_MARKERS = (
+    "requested format is not available",
+    "no video formats found",
+    "no formats found",
+    "unable to download video data",
+    "video data is empty",
+)
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
@@ -147,6 +154,27 @@ def _friendly_error(exc: Exception) -> str:
 def _is_retryable_tiktok_error(exc: Exception) -> bool:
     message = _ANSI_ESCAPE.sub("", str(exc)).lower()
     return any(marker in message for marker in _TIKTOK_TRANSIENT_ERROR_MARKERS)
+
+
+def _is_retryable_download_error(exc: Exception, platform: str) -> bool:
+    """Return whether a fresh extractor session is likely to recover the media URL."""
+    message = _ANSI_ESCAPE.sub("", str(exc)).lower()
+    if any(marker in message for marker in _FORMAT_REFRESH_ERROR_MARKERS):
+        return True
+    return platform == "TikTok" and _is_retryable_tiktok_error(exc)
+
+
+def _download_format_selector(platform: str) -> str:
+    """Use platform-safe format selection while retaining a 1080p cap elsewhere."""
+    # TikTok/Douyin commonly expose one progressive stream and omit height or
+    # separate M4A metadata.  Selecting `best` lets yt-dlp use that fresh
+    # stream rather than rejecting it against web-video-only constraints.
+    if platform in {"TikTok", "Douyin"}:
+        return "best"
+    return (
+        "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
+        "best[height<=1080][ext=mp4]/best[height<=1080]/best"
+    )
 
 
 def _wait_for_retry(cancel_event: threading.Event | None, seconds: float) -> None:
@@ -281,14 +309,18 @@ def download_video(
     """Download one video and return its final MP4/MOV/MKV path."""
     os.makedirs(workspace, exist_ok=True)
     yt_dlp = _load_yt_dlp()
-    last_update = {"progress": -1, "time": 0.0}
+    last_update = {"progress": -1, "detail": "", "time": 0.0}
 
     def report(progress: int, detail: str) -> None:
         progress = max(0, min(100, int(progress)))
         now = time.monotonic()
-        if progress == last_update["progress"] and now - last_update["time"] < 0.25:
+        if (
+            progress == last_update["progress"]
+            and detail == last_update["detail"]
+            and now - last_update["time"] < 0.25
+        ):
             return
-        last_update.update(progress=progress, time=now)
+        last_update.update(progress=progress, detail=detail, time=now)
         if progress_callback:
             progress_callback(progress, detail)
 
@@ -314,27 +346,41 @@ def download_video(
     options.update(
         {
             "outtmpl": os.path.join(workspace, "%(title).120B [%(id)s].%(ext)s"),
-            "format": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]",
+            "format": _download_format_selector(metadata.platform),
             "merge_output_format": "mp4",
             "postprocessors": [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}],
             "progress_hooks": [progress_hook],
             "concurrent_fragment_downloads": 4,
+            "nopart": True,
+            "overwrites": True,
         }
     )
 
     report(0, "Starting download")
-    try:
-        with yt_dlp.YoutubeDL(options) as downloader:
-            info = downloader.extract_info(metadata.url, download=True)
+    attempts = 3 if metadata.platform == "TikTok" else 2
+    for attempt in range(attempts):
+        try:
+            # A new YoutubeDL instance on every attempt forces a fresh media
+            # manifest.  TikTok's signed URLs can expire between inspection
+            # and download, especially in a multi-video channel import.
+            with yt_dlp.YoutubeDL(options) as downloader:
+                info = downloader.extract_info(metadata.url, download=True)
+                if cancel_event and cancel_event.is_set():
+                    raise DownloadCancelled("Video download cancelled.")
+                video_path = _downloaded_video_path(workspace, info, downloader)
+            break
+        except DownloadCancelled:
+            raise
+        except Exception as exc:
             if cancel_event and cancel_event.is_set():
-                raise DownloadCancelled("Video download cancelled.")
-            video_path = _downloaded_video_path(workspace, info, downloader)
-    except DownloadCancelled:
-        raise
-    except Exception as exc:
-        if cancel_event and cancel_event.is_set():
-            raise DownloadCancelled("Video download cancelled.") from exc
-        raise RuntimeError(_friendly_error(exc)) from exc
+                raise DownloadCancelled("Video download cancelled.") from exc
+            if attempt + 1 < attempts and _is_retryable_download_error(exc, metadata.platform):
+                report(0, "Refreshing video stream and retrying")
+                _wait_for_retry(cancel_event, 0.8 * (attempt + 1))
+                continue
+            raise RuntimeError(_friendly_error(exc)) from exc
+    else:  # pragma: no cover - all non-returning paths raise above
+        raise RuntimeError("Video download did not produce a result.")
 
     report(100, "Download complete")
     return video_path
