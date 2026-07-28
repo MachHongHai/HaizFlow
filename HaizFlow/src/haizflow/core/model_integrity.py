@@ -32,6 +32,15 @@ DEMUCS_MODEL_URL = (
 )
 DEMUCS_MODEL_SIZE = 84_141_911
 DEMUCS_MODEL_SHA256 = "8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4"
+# PP-OCRv5 Mobile is intentionally external to the frozen application.  The
+# small ONNX bundle is checksum-pinned and fetched once by model_bootstrap.
+SUBTITLE_OCR_REVISION = "rapidocr-v3.8.0-pp-ocrv5-mobile"
+SUBTITLE_OCR_BASE_URL = "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.8.0/onnx/PP-OCRv5/"
+SUBTITLE_OCR_FILES = {
+    "subtitle-det.onnx": (4_819_576, "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae"),
+    "subtitle-rec.onnx": (7_904_513, "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a"),
+    "subtitle-cls.onnx": (1_018_508, "54379ae5174d026780215fc748a7f31910dee36818e63d49e17dc598ecc82df7"),
+}
 ALIGNMENT_MODEL_BASE_URL = "https://download.pytorch.org/torchaudio/models/"
 ALIGNMENT_MODELS = {
     "en": (
@@ -233,6 +242,17 @@ def verify_demucs_model(model_directory: Path) -> Path:
         kind="Demucs htdemucs",
         revision=DEMUCS_MODEL_SHA256,
         expected={DEMUCS_MODEL_FILE: (DEMUCS_MODEL_SIZE, DEMUCS_MODEL_SHA256)},
+    )
+
+
+def verify_subtitle_ocr_models(model_directory: Path) -> Path:
+    """Verify the lightweight, local-only OCR bundle used for subtitle detection."""
+    return _verify(
+        model_directory,
+        kind="subtitle OCR",
+        revision=SUBTITLE_OCR_REVISION,
+        expected=SUBTITLE_OCR_FILES,
+        marker_name=".haizflow-subtitle-ocr-integrity.json",
     )
 
 

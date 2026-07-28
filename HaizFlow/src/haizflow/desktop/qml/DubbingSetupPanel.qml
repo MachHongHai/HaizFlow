@@ -163,6 +163,36 @@ Panel {
         }
     }
 
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 1
+        Layout.topMargin: Theme.space4
+        Layout.bottomMargin: Theme.space4
+        color: Theme.divider
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Theme.space4
+
+        AppCheckBox {
+            Layout.fillWidth: true
+            enabled: AppController.canEditSelectedVideo
+            checked: AppController.removeOriginalSubtitles
+            text: I18n.t("Remove original subtitles")
+            onToggled: AppController.removeOriginalSubtitles = checked
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: I18n.t("Scans only the lower subtitle band. Blur is used only for a repeated, high-confidence subtitle region.")
+            color: Theme.textMuted
+            font.pixelSize: Theme.caption
+            wrapMode: Text.Wrap
+            textFormat: Text.PlainText
+        }
+    }
+
     Item {
         Layout.fillHeight: true
         Layout.minimumHeight: Theme.space8

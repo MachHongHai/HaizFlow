@@ -18,6 +18,7 @@ from haizflow.pipeline.audio_timeline import build_audio_timeline
 from haizflow.pipeline.extract_audio import extract_audio
 from haizflow.pipeline.process_registry import check_cancellation, clean_video, is_cancelled, is_paused, start_video
 from haizflow.pipeline.render import render_video
+from haizflow.pipeline.subtitle_ocr import detect_original_subtitle_region
 from haizflow.pipeline.subtitle import generate_srt
 from haizflow.pipeline.transcribe import TIMING_SOURCE, transcribe
 from haizflow.pipeline.tts import generate_voice_parts
@@ -570,13 +571,23 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         check_cancellation(video_id)
         style_data = video.subtitle_style.model_dump() if hasattr(video.subtitle_style, "model_dump") else video.subtitle_style.dict()
         crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
-        render_signature = _signature(timeline_signature, subtitle_signature, video.output_format, style_data, crop_data)
+        original_subtitle_region = None
+        if video.remove_original_subtitles:
+            reporter.update(87, "detecting_original_subtitles", "Scanning the lower subtitle band")
+            original_subtitle_region = detect_original_subtitle_region(video_input, os.path.join(video_dir, "temp"), video_id)
+        render_signature = _signature(
+            timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
+            video.remove_original_subtitles, original_subtitle_region,
+        )
         if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(video, "render", render_signature, [final_video]):
             reporter.update(99, "rendering", "Reusing rendered video checkpoint")
         else:
             _ensure_gpu_available("final video render")
             reporter.update(88, "rendering", "Rendering final video")
-            render_video(video_input, voice_output, srt_output, final_video, video.output_format, video.subtitle_style, video.crop, video_id)
+            render_video(
+                video_input, voice_output, srt_output, final_video, video.output_format,
+                video.subtitle_style, video.crop, video_id, original_subtitle_region,
+            )
             _mark_checkpoint(video, "render", render_signature)
 
         update_video(

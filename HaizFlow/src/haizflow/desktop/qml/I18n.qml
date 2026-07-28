@@ -393,6 +393,8 @@ QtObject {
             "Audio source": "Nguồn âm thanh",
             "Keep original audio": "Giữ âm thanh gốc",
             "Original audio volume": "Âm lượng gốc",
+            "Remove original subtitles": "Xóa phụ đề gốc bằng OCR",
+            "Scans only the lower subtitle band. Blur is used only for a repeated, high-confidence subtitle region.": "Chỉ quét dải phụ đề phía dưới. Vùng chỉ được làm mờ khi OCR nhận diện lặp lại với độ tin cậy cao.",
             "Another project is already processing": "Một dự án khác đang được xử lý",
             "Add to processing queue": "Đưa vào hàng đợi xử lý",
             "Create and process": "Tạo và xử lý",

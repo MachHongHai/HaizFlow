@@ -32,6 +32,8 @@ from haizflow.core.model_integrity import (
     HYMT2_GPU_FILES,
     HYMT2_GPU_REPO,
     HYMT2_GPU_REVISION,
+    SUBTITLE_OCR_BASE_URL,
+    SUBTITLE_OCR_FILES,
     WHISPER_FILES,
     WHISPER_REPO,
     WHISPER_REVISION,
@@ -43,6 +45,7 @@ from haizflow.core.model_integrity import (
     verify_cpu_model,
     verify_demucs_model,
     verify_gpu_model,
+    verify_subtitle_ocr_models,
     verify_whisper_model,
     verify_whisperx_vad_model,
 )
@@ -163,6 +166,22 @@ def required_assets(device: str) -> tuple[ModelAsset, ...]:
         )
         for _language, (_bundle, filename, size, digest) in ALIGNMENT_MODELS.items()
     )
+    ocr_paths = {
+        "subtitle-det.onnx": "det/ch_PP-OCRv5_det_mobile.onnx",
+        "subtitle-rec.onnx": "rec/latin_PP-OCRv5_rec_mobile.onnx",
+        "subtitle-cls.onnx": "cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx",
+    }
+    assets.extend(
+        ModelAsset(
+            "subtitle-ocr",
+            "Original subtitle detection",
+            SUBTITLE_OCR_BASE_URL + ocr_paths[filename],
+            f"subtitle-ocr/{filename}",
+            size,
+            digest,
+        )
+        for filename, (size, digest) in SUBTITLE_OCR_FILES.items()
+    )
     return tuple(assets)
 
 
@@ -222,6 +241,8 @@ def _approved_download_url(url: str) -> bool:
         or host == "raw.githubusercontent.com"
         or host == "download.pytorch.org"
         or host == "dl.fbaipublicfiles.com"
+        or host == "modelscope.cn"
+        or host.endswith(".modelscope.cn")
     )
 
 
@@ -366,6 +387,7 @@ def _verify_installed_components(root: Path, device: str) -> None:
         verify_cpu_model(root / "hymt2-gguf" / HYMT2_CPU_FILE)
     verify_demucs_model(root / "demucs")
     verify_alignment_models(root / "alignment")
+    verify_subtitle_ocr_models(root / "subtitle-ocr")
 
 
 def models_ready(root: Path, device: str) -> bool:

@@ -6,6 +6,7 @@ import queue
 
 from haizflow.desktop.activity_log import ActivityLogBuffer
 from haizflow.core.hardware import runtime_profile
+from haizflow.pipeline.process_registry import is_cancelled, is_paused
 from haizflow.services import video_store
 from haizflow.services.translation import warm_hymt2_worker
 
@@ -82,8 +83,27 @@ class ProcessingLifecycleController:
         try:
             if not host._initial_model_warmup_done.is_set():
                 video_store.log_to_video(video_id, "Waiting for startup model warm-up to finish.")
-                host._initial_model_warmup_done.wait()
+                video_store.update_video(
+                    video_id,
+                    status="processing",
+                    step="waiting_for_models",
+                    step_detail="Waiting for startup model warm-up",
+                )
+                # Do not use one uninterruptible wait here.  The project is
+                # already the queue's active item, so a user may pause it
+                # before warm-up has finished.  In that case it must stay
+                # paused; process_video_sync() calls start_video(), which
+                # deliberately clears cancellation flags for a *new* run.
+                while not host._initial_model_warmup_done.wait(timeout=0.20):
+                    if is_cancelled(video_id) or is_paused(video_id) or getattr(host, "_shutdown_started", False):
+                        return
+            if is_cancelled(video_id) or is_paused(video_id):
+                video_store.log_to_video(video_id, "Startup warm-up completed after this video was paused; it remains paused.")
+                return
             if getattr(host, "_shutdown_started", False):
+                return
+            current_video = video_store.get_video(video_id)
+            if not current_video or current_video.status in {"paused", "cancelled"}:
                 return
             runtime_probe_error = getattr(host, "_runtime_probe_error", "")
             if runtime_probe_error:
@@ -92,6 +112,12 @@ class ProcessingLifecycleController:
                 raise RuntimeError("Required models are not ready.")
             with host._model_runtime_lock:
                 pass
+            video_store.update_video(
+                video_id,
+                status="processing",
+                step="starting",
+                step_detail="Model warm-up complete; starting video",
+            )
             from haizflow.pipeline.process_video import process_video_sync
 
             process_video_sync(video_id)

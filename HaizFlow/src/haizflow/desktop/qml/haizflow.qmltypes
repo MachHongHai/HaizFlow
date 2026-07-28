@@ -357,6 +357,14 @@ Module {
             index: 30
         }
         Property {
+            name: "removeOriginalSubtitles"
+            type: "bool"
+            read: "removeOriginalSubtitles"
+            write: "removeOriginalSubtitles"
+            notify: "removeOriginalSubtitlesChanged"
+            index: 83
+        }
+        Property {
             name: "workflowMode"
             type: "QString"
             read: "workflowMode"
@@ -772,6 +780,7 @@ Module {
         Signal { name: "ttsVoiceOptionsChanged" }
         Signal { name: "enableAudioSeparationChanged" }
         Signal { name: "originalVolumeChanged" }
+        Signal { name: "removeOriginalSubtitlesChanged" }
         Signal { name: "workflowModeChanged" }
         Signal { name: "selectedVideoChanged" }
         Signal { name: "selectedElapsedChanged" }

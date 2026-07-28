@@ -116,6 +116,8 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
         HYMT2_CPU_REVISION,
         HYMT2_GPU_FILES,
         HYMT2_GPU_REVISION,
+        SUBTITLE_OCR_FILES,
+        SUBTITLE_OCR_REVISION,
         WHISPER_FILES,
         WHISPER_REVISION,
         WHISPERX_VAD_FILE,
@@ -145,10 +147,12 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
         ("bundled_whisper_model", False),
         ("bundled_demucs_model", False),
         ("bundled_alignment_models", False),
+        ("bundled_subtitle_ocr_models", False),
         ("hymt2_cpu_revision", HYMT2_CPU_REVISION),
         ("hymt2_gpu_revision", HYMT2_GPU_REVISION),
         ("whisper_revision", WHISPER_REVISION),
         ("demucs_model_sha256", DEMUCS_MODEL_SHA256),
+        ("subtitle_ocr_revision", SUBTITLE_OCR_REVISION),
         (
             "alignment_model_sha256",
             {
@@ -190,6 +194,17 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
             ),
         }
     )
+    forbidden_model_files.update(
+        (filename.lower(), size)
+        for filename, (size, _digest) in SUBTITLE_OCR_FILES.items()
+    )
+    # RapidOCR's wheel includes unpinned default ONNX files.  The executable
+    # may carry the library and its YAML configuration, never its model data.
+    forbidden_model_files.update({
+        ("ch_pp-ocrv4_det_infer.onnx", 4_745_517),
+        ("ch_pp-ocrv4_rec_infer.onnx", 10_855_758),
+        ("ch_ppocr_mobile_v2.0_cls_infer.onnx", 585_532),
+    })
     accidental_models = [
         path.relative_to(artifact).as_posix()
         for path in artifact.rglob("*")
@@ -216,6 +231,7 @@ def finalize(artifact_directory: Path) -> None:
         DEMUCS_MODEL_SHA256,
         HYMT2_CPU_REVISION,
         HYMT2_GPU_REVISION,
+        SUBTITLE_OCR_REVISION,
         WHISPER_REVISION,
     )
 
@@ -239,10 +255,12 @@ def finalize(artifact_directory: Path) -> None:
         "bundled_whisper_model": False,
         "bundled_demucs_model": False,
         "bundled_alignment_models": False,
+        "bundled_subtitle_ocr_models": False,
         "hymt2_cpu_revision": HYMT2_CPU_REVISION,
         "hymt2_gpu_revision": HYMT2_GPU_REVISION,
         "whisper_revision": WHISPER_REVISION,
         "demucs_model_sha256": DEMUCS_MODEL_SHA256,
+        "subtitle_ocr_revision": SUBTITLE_OCR_REVISION,
         "alignment_model_sha256": {
             language: digest
             for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()

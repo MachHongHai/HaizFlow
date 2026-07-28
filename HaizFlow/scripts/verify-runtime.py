@@ -224,6 +224,7 @@ def main() -> int:
         from haizflow.core.model_integrity import (
             verify_alignment_models,
             verify_demucs_model,
+            verify_subtitle_ocr_models,
         )
 
         try:
@@ -236,6 +237,11 @@ def main() -> int:
             check(True, f"Pinned alignment models: {alignment_directory}", failures)
         except Exception as exc:
             check(False, f"Pinned alignment models: {exc}", failures)
+        try:
+            ocr_directory = verify_subtitle_ocr_models(Path(MODELS_DIR) / "subtitle-ocr")
+            check(True, f"Pinned original-subtitle OCR models: {ocr_directory}", failures)
+        except Exception as exc:
+            check(False, f"Pinned original-subtitle OCR models: {exc}", failures)
         from haizflow.services.model_bootstrap import models_ready, required_download_bytes
 
         for device in ("cpu", "gpu"):

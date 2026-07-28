@@ -76,6 +76,7 @@ class HaizFlowController(QObject):
     ttsVoiceOptionsChanged = Signal()
     enableAudioSeparationChanged = Signal()
     originalVolumeChanged = Signal()
+    removeOriginalSubtitlesChanged = Signal()
     workflowModeChanged = Signal()
     selectedVideoChanged = Signal()
     selectedElapsedChanged = Signal()
@@ -112,6 +113,7 @@ class HaizFlowController(QObject):
         self._tts_voice = "vi-VN-HoaiMyNeural"
         self._enable_audio_separation = False
         self._original_volume = 60
+        self._remove_original_subtitles = False
         self._workflow_mode = "A"
         self._selected_video_id = None
         self._selected_video_snapshot = None
@@ -660,6 +662,17 @@ class HaizFlowController(QObject):
         if self._original_volume != value:
             self._original_volume = value
             self.originalVolumeChanged.emit()
+
+    @Property(bool, notify=removeOriginalSubtitlesChanged)
+    def removeOriginalSubtitles(self):
+        return self._remove_original_subtitles
+
+    @removeOriginalSubtitles.setter
+    def removeOriginalSubtitles(self, value):
+        value = bool(value)
+        if self._remove_original_subtitles != value:
+            self._remove_original_subtitles = value
+            self.removeOriginalSubtitlesChanged.emit()
 
     @Property(str, notify=workflowModeChanged)
     def workflowMode(self): return self._workflow_mode
@@ -1602,6 +1615,7 @@ class HaizFlowController(QObject):
             crop=CropSettings(),
             enable_audio_separation=self._enable_audio_separation,
             original_video_volume=self._original_volume,
+            remove_original_subtitles=self._remove_original_subtitles,
             project_name=self._project_name,
             project_directory=self._project_directory,
             project_type=self._project_type,
@@ -1621,6 +1635,7 @@ class HaizFlowController(QObject):
             "crop": config.crop,
             "enable_audio_separation": config.enable_audio_separation,
             "original_video_volume": config.original_video_volume,
+            "remove_original_subtitles": config.remove_original_subtitles,
             "project_type": config.project_type,
         }
         if review_approved is not None:

@@ -31,6 +31,7 @@ dependencies = [
   "pydub==0.25.1",
   "srt==3.5.3",
   "demucs==4.0.1",
+  "rapidocr==3.8.1",
   "pyinstaller==6.21.0",
 ]
 

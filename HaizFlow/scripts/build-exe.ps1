@@ -167,6 +167,18 @@ $ArgsList += @("--collect-all", "llama_cpp")
 $ArgsList += @("--collect-all", "accelerate")
 $ArgsList += @("--collect-all", "demucs")
 $ArgsList += @("--collect-all", "yt_dlp")
+$RapidOcrPackagePath = & $Python -c "import pathlib, rapidocr; print(pathlib.Path(rapidocr.__file__).parent)"
+foreach ($RapidOcrDataFile in @("config.yaml", "default_models.yaml")) {
+  $RapidOcrDataPath = Join-Path $RapidOcrPackagePath $RapidOcrDataFile
+  if (!(Test-Path -LiteralPath $RapidOcrDataPath -PathType Leaf)) {
+    throw "RapidOCR package data is missing: $RapidOcrDataPath"
+  }
+  # Do not use --collect-all here: RapidOCR ships default ONNX weights which
+  # must stay out of the installer.  HaizFlow fetches pinned OCR weights on
+  # first launch into runtime\models instead.
+  $ArgsList += @("--add-data", "$RapidOcrDataPath;rapidocr")
+}
+$ArgsList += @("--collect-submodules", "rapidocr")
 $WhisperxAssetsPath = & $Python -c "import importlib.util, pathlib; spec=importlib.util.find_spec('whisperx'); print(pathlib.Path(next(iter(spec.submodule_search_locations))) / 'assets')"
 $WhisperxMelFilters = Join-Path $WhisperxAssetsPath "mel_filters.npz"
 if (!(Test-Path -LiteralPath $WhisperxMelFilters -PathType Leaf)) {

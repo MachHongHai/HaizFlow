@@ -49,6 +49,14 @@ class ModelBootstrapTests(unittest.TestCase):
         self.assertTrue(any(path.startswith("whisper/") for path in cpu_paths))
         self.assertTrue(any(path.startswith("demucs/") for path in gpu_paths))
         self.assertEqual(
+            {path for path in cpu_paths if path.startswith("subtitle-ocr/")},
+            {
+                "subtitle-ocr/subtitle-det.onnx",
+                "subtitle-ocr/subtitle-rec.onnx",
+                "subtitle-ocr/subtitle-cls.onnx",
+            },
+        )
+        self.assertEqual(
             sum(path.startswith("alignment/") for path in cpu_paths),
             len(model_bootstrap.ALIGNMENT_MODELS),
         )
@@ -203,6 +211,11 @@ class ModelBootstrapTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(model_bootstrap.ModelBootstrapError, "unapproved host"):
                 model_bootstrap._open_download(asset, 0)
+
+    def test_modelscope_ocr_source_is_approved(self):
+        self.assertTrue(model_bootstrap._approved_download_url(
+            "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.8.0/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
+        ))
 
     def test_completed_install_skips_setup_ui_and_only_warms_models(self):
         class _Host:
