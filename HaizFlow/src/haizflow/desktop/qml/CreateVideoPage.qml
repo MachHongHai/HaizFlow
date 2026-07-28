@@ -31,10 +31,7 @@ Item {
             Layout.fillWidth: true
             spacing: Theme.space12
 
-            AppButton {
-                text: I18n.t("Back")
-                iconGlyph: "\uE72B"
-                tone: "secondary"
+            BackButton {
                 onClicked: {
                     if (AppController.isSelectedBatchVideo && !AppController.isSelectedVideoProcessing)
                         AppController.saveSelectedVideoSettings()

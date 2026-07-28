@@ -12,7 +12,7 @@ Button {
 
     implicitWidth: controlSize
     implicitHeight: controlSize
-    activeFocusOnTab: true
+    focusPolicy: Qt.TabFocus
     Accessible.name: toolTipText
     scale: down ? 0.96 : 1
 

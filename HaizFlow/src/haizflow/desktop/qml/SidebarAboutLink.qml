@@ -11,14 +11,17 @@ Button {
     implicitHeight: 36
     leftPadding: compact ? 0 : 14
     rightPadding: compact ? 0 : 14
-    activeFocusOnTab: true
+    focusPolicy: Qt.TabFocus
     Accessible.name: I18n.t("About & contact")
 
     contentItem: RowLayout {
         spacing: root.compact ? 0 : 8
 
         AppIcon {
+            visible: root.compact
             Layout.alignment: Qt.AlignHCenter
+            Layout.preferredWidth: visible ? Theme.iconSmall : 0
+            Layout.preferredHeight: visible ? Theme.iconSmall : 0
             glyph: "\uE946"
             iconColor: root.hovered || root.activeFocus ? Theme.interactive : Theme.textSubtle
             iconSize: Theme.iconSmall

@@ -14,18 +14,19 @@ Button {
     rightPadding: compact ? 0 : 12
     font.pixelSize: Theme.body
     font.weight: selected ? Font.DemiBold : Font.Medium
-    activeFocusOnTab: true
+    focusPolicy: Qt.TabFocus
     Accessible.name: text
 
     contentItem: Item {
         Row {
             id: navContent
             anchors.centerIn: parent
-            spacing: root.compact ? 0 : 12
+            spacing: 0
 
             AppIcon {
-                width: Theme.iconLarge
-                height: 24
+                visible: root.compact
+                width: visible ? Theme.iconLarge : 0
+                height: visible ? 24 : 0
                 glyph: root.iconGlyph
                 iconSize: Theme.icon
                 iconColor: root.selected ? Theme.interactive : Theme.textOnDarkMuted

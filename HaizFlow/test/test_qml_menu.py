@@ -99,6 +99,30 @@ ApplicationWindow {{
         command_bar = (QML_DIR / "VideoCommandBar.qml").read_text(encoding="utf-8")
         self.assertIn("visible: root.hasProject && !AppController.isSelectedBatchVideo", command_bar)
 
+    def test_navigation_settings_and_project_page_actions_stay_uncluttered(self):
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        projects_page = (QML_DIR / "ProjectsPage.qml").read_text(encoding="utf-8")
+        sidebar_button = (QML_DIR / "SidebarButton.qml").read_text(encoding="utf-8")
+        about_link = (QML_DIR / "SidebarAboutLink.qml").read_text(encoding="utf-8")
+
+        self.assertIn('text: I18n.t("Settings")', main)
+        self.assertIn('toolTipText: "Ctrl+,"', main)
+        self.assertNotIn('iconGlyph: "\\uE713"', main)
+        self.assertNotIn('Layout.preferredHeight: 1\n                color: Theme.divider\n            }\n\n            StackLayout', main)
+        self.assertNotIn('color: Theme.divider\n        }\n\n        RowLayout', projects_page)
+        self.assertNotIn('toolTipText: I18n.t("Refresh")', projects_page)
+        self.assertIn('subtitle: root.projectType === "batch"', projects_page)
+        self.assertIn("focusPolicy: Qt.TabFocus", sidebar_button)
+        self.assertIn("focusPolicy: Qt.TabFocus", about_link)
+
+    def test_back_navigation_uses_the_shared_header_position(self):
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        for filename in ("CreateVideoPage.qml", "BatchPage.qml", "ChannelImportPage.qml"):
+            source = (QML_DIR / filename).read_text(encoding="utf-8")
+            self.assertIn("BackButton {", source, filename)
+        self.assertEqual(main.count("Layout.leftMargin: root.width < 1400 ? 22 : 30"), 7)
+        self.assertNotIn("Layout.topMargin: root.width < 1400 ? 30 : 36", main)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -33,12 +33,9 @@ Item {
             title: root.projectType === "batch"
                 ? I18n.t("Batch projects")
                 : I18n.t("Single projects")
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
+            subtitle: root.projectType === "batch"
+                ? I18n.t("Manage multiple source videos in one workspace")
+                : I18n.t("Manage one source video per project")
         }
 
         RowLayout {
@@ -54,11 +51,6 @@ Item {
                 textFormat: Text.PlainText
             }
 
-            IconButton {
-                glyph: "\uE72C"
-                toolTipText: I18n.t("Refresh")
-                onClicked: AppController.refreshVideos()
-            }
         }
 
         GridView {
@@ -92,7 +84,7 @@ Item {
                     color: newProjectHover.hovered ? Theme.interactiveMuted : Theme.surfaceElevated
                     border.width: activeFocus ? 2 : 1
                     border.color: activeFocus || newProjectHover.hovered ? Theme.focus : Theme.outline
-                    activeFocusOnTab: true
+                    focusPolicy: Qt.TabFocus
                     Accessible.role: Accessible.Button
                     Accessible.name: root.projectType === "batch"
                         ? I18n.t("New batch project")
@@ -110,7 +102,6 @@ Item {
                     TapHandler {
                         id: newProjectTap
                         onTapped: {
-                            newProjectCard.forceActiveFocus()
                             root.requestNewProject()
                         }
                     }

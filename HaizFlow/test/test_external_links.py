@@ -76,6 +76,9 @@ class ExternalLinkTests(unittest.TestCase):
         self.assertNotIn("mail.google.com", about_dialog)
         self.assertIn('AppController.copyText("machhonghaipr@gmail.com")', about_dialog)
         self.assertIn('AppController.copyText("https://github.com/MachHongHai")', about_dialog)
+        self.assertIn('text: "MachHongHai/HaizFlow"', about_dialog)
+        self.assertIn('destination: "https://github.com/MachHongHai/HaizFlow"', about_dialog)
+        self.assertIn('AppController.copyText("https://github.com/MachHongHai/HaizFlow")', about_dialog)
 
 
 if __name__ == "__main__":

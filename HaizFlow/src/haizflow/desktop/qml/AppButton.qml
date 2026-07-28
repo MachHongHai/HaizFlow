@@ -16,7 +16,7 @@ Button {
     rightPadding: compact ? 12 : 16
     font.pixelSize: compact ? Theme.caption : Theme.body
     font.weight: Font.DemiBold
-    activeFocusOnTab: true
+    focusPolicy: Qt.TabFocus
     Accessible.name: text
     Accessible.description: toolTipText
     scale: down ? 0.98 : 1

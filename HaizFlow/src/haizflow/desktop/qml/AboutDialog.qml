@@ -91,7 +91,7 @@ Dialog {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Local batch video reupload tool — no API fees")
+                    text: I18n.t("Open-source batch video reupload tool, runs locally — no API fees")
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     horizontalAlignment: Text.AlignHCenter
@@ -146,6 +146,29 @@ Dialog {
             ColumnLayout {
                 Layout.alignment: Qt.AlignHCenter
                 spacing: Theme.space8
+
+                RowLayout {
+                    spacing: Theme.space8
+
+                    Text {
+                        text: I18n.t("Repository") + ":"
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.caption
+                        textFormat: Text.PlainText
+                    }
+
+                    ExternalTextLink {
+                        text: "MachHongHai/HaizFlow"
+                        destination: "https://github.com/MachHongHai/HaizFlow"
+                    }
+
+                    IconButton {
+                        controlSize: 28
+                        glyph: "\uE8C8"
+                        toolTipText: I18n.t("Copy")
+                        onClicked: AppController.copyText("https://github.com/MachHongHai/HaizFlow")
+                    }
+                }
 
                 RowLayout {
                     spacing: Theme.space8

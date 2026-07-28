@@ -37,7 +37,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 enabled: root.enabled
-                activeFocusOnTab: true
+                focusPolicy: Qt.TabFocus
                 Accessible.name: modelData.label
                 Accessible.role: Accessible.RadioButton
                 Accessible.checked: selected

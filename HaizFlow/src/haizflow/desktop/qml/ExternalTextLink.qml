@@ -10,7 +10,7 @@ Button {
     implicitWidth: linkLabel.implicitWidth
     implicitHeight: linkLabel.implicitHeight
     padding: 0
-    activeFocusOnTab: true
+    focusPolicy: Qt.TabFocus
     Accessible.name: text
 
     contentItem: Text {

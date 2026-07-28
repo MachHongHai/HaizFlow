@@ -35,7 +35,7 @@ Rectangle {
     color: hoverHandler.hovered ? Theme.surfaceMuted : Theme.surface
     border.width: activeFocus ? 2 : 1
     border.color: activeFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : Theme.outline
-    activeFocusOnTab: true
+    focusPolicy: Qt.TabFocus
     Accessible.role: Accessible.Button
     Accessible.name: projectName
     scale: tapHandler.pressed ? 0.99 : 1
@@ -55,7 +55,6 @@ Rectangle {
     TapHandler {
         id: tapHandler
         onTapped: {
-            root.forceActiveFocus()
             root.activated()
         }
     }

@@ -99,24 +99,26 @@ Item {
         anchors.fill: parent
         spacing: Theme.space16
 
-        PageHeader {
+        RowLayout {
             Layout.fillWidth: true
-            title: I18n.t("Import from channel")
-            subtitle: root.appController.projectName
+            spacing: Theme.space12
 
-            AppButton {
-                text: I18n.t("Back")
-                iconGlyph: "\uE72B"
-                tone: "secondary"
+            BackButton {
                 onClicked: root.requestBack()
             }
 
-            AppButton {
-                visible: root.importer.busy
-                text: I18n.t("Cancel import")
-                iconGlyph: "\uE711"
-                tone: "danger"
-                onClicked: root.importer.cancel()
+            PageHeader {
+                Layout.fillWidth: true
+                title: I18n.t("Import from channel")
+                subtitle: root.appController.projectName
+
+                AppButton {
+                    visible: root.importer.busy
+                    text: I18n.t("Cancel import")
+                    iconGlyph: "\uE711"
+                    tone: "danger"
+                    onClicked: root.importer.cancel()
+                }
             }
         }
 

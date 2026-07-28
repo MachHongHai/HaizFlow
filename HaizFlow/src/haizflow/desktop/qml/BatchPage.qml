@@ -36,61 +36,62 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.topMargin: root.compactHeight ? Theme.space12 : Theme.space20
-        spacing: root.compactHeight ? Theme.space12 : Theme.space20
+        spacing: root.compactHeight ? Theme.space12 : Theme.space16
 
-        PageHeader {
+        RowLayout {
             Layout.fillWidth: true
-            Layout.minimumHeight: root.compactHeight ? 52 : 58
-            Layout.preferredHeight: root.compactHeight ? 52 : 58
-            title: AppController.projectName || I18n.t("Batch project")
-            subtitle: qsTr("%1 %2").arg(AppController.batchCount).arg(I18n.t("videos"))
+            spacing: Theme.space12
 
-            AppButton {
-                text: I18n.t("Back")
-                iconGlyph: "\uE72B"
-                tone: "secondary"
+            BackButton {
                 onClicked: root.requestBack()
             }
 
-            AppButton {
-                text: I18n.t("Batch setup")
-                iconGlyph: "\uE713"
-                toolTipText: I18n.t("Configure this batch")
-                enabled: AppController.batchCount > 0
-                onClicked: root.requestBatchSettings()
-            }
+            PageHeader {
+                Layout.fillWidth: true
+                Layout.minimumHeight: root.compactHeight ? 52 : 58
+                Layout.preferredHeight: root.compactHeight ? 52 : 58
+                title: AppController.projectName || I18n.t("Batch project")
+                subtitle: qsTr("%1 %2").arg(AppController.batchCount).arg(I18n.t("videos"))
 
-            AppButton {
-                text: I18n.t("Open project folder")
-                iconGlyph: "\uE8B7"
-                enabled: AppController.hasOpenProject
-                onClicked: AppController.openProjectFolder()
-            }
+                AppButton {
+                    text: I18n.t("Batch setup")
+                    iconGlyph: "\uE713"
+                    toolTipText: I18n.t("Configure this batch")
+                    enabled: AppController.batchCount > 0
+                    onClicked: root.requestBatchSettings()
+                }
 
-            AppButton {
-                text: I18n.t("Delete project")
-                iconGlyph: "\uE74D"
-                tone: "danger"
-                enabled: AppController.hasOpenProject
-                onClicked: AppController.deleteCurrentBatch()
-            }
+                AppButton {
+                    text: I18n.t("Open project folder")
+                    iconGlyph: "\uE8B7"
+                    enabled: AppController.hasOpenProject
+                    onClicked: AppController.openProjectFolder()
+                }
 
-            AppButton {
-                visible: !AppController.isBatchRunning
-                text: I18n.t("Start queue")
-                iconGlyph: "\uE768"
-                tone: "primary"
-                enabled: AppController.batchPendingCount > 0
-                onClicked: AppController.startBatch()
-            }
+                AppButton {
+                    text: I18n.t("Delete project")
+                    iconGlyph: "\uE74D"
+                    tone: "danger"
+                    enabled: AppController.hasOpenProject
+                    onClicked: AppController.deleteCurrentBatch()
+                }
 
-            AppButton {
-                visible: AppController.isBatchRunning
-                text: I18n.t("Stop queue")
-                iconGlyph: "\uE71A"
-                tone: "danger"
-                onClicked: AppController.stopBatch()
+                AppButton {
+                    visible: !AppController.isBatchRunning
+                    text: I18n.t("Start queue")
+                    iconGlyph: "\uE768"
+                    tone: "primary"
+                    enabled: AppController.batchPendingCount > 0
+                    onClicked: AppController.startBatch()
+                }
+
+                AppButton {
+                    visible: AppController.isBatchRunning
+                    text: I18n.t("Stop queue")
+                    iconGlyph: "\uE71A"
+                    tone: "danger"
+                    onClicked: AppController.stopBatch()
+                }
             }
         }
 

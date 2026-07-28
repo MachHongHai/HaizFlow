@@ -152,29 +152,28 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 48
 
-                    Row {
-                        anchors.left: root.compactNavigation ? undefined : parent.left
-                        anchors.horizontalCenter: root.compactNavigation ? parent.horizontalCenter : undefined
-                        anchors.verticalCenter: parent.verticalCenter
+                    RowLayout {
+                        anchors.fill: parent
                         spacing: 11
 
                         AppIcon {
-                            width: 30
-                            height: 30
+                            Layout.preferredWidth: 30
+                            Layout.preferredHeight: 30
                             glyph: "\uE714"
                             iconColor: Theme.interactive
                             iconSize: 22
                         }
 
                         Text {
+                            Layout.fillWidth: true
                             visible: !root.compactNavigation
-                            anchors.verticalCenter: parent.verticalCenter
                             text: I18n.t("HaizFlow")
                             color: Theme.textOnDark
                             font.pixelSize: Theme.bodyLarge
                             font.weight: Font.DemiBold
                             textFormat: Text.PlainText
                         }
+
                     }
                 }
 
@@ -201,7 +200,7 @@ ApplicationWindow {
                 SidebarButton {
                     Layout.fillWidth: true
                     compact: root.compactNavigation
-                    iconGlyph: "\uE714"
+                    iconGlyph: "\uE714" // Used only by the compact navigation fallback.
                     text: I18n.t("Single")
                     selected: root.currentRoute === root.routeSingleProjects || root.currentRoute === root.routeSingleWorkspace
                     onClicked: {
@@ -213,7 +212,7 @@ ApplicationWindow {
                 SidebarButton {
                     Layout.fillWidth: true
                     compact: root.compactNavigation
-                    iconGlyph: "\uE8FD"
+                    iconGlyph: "\uE8FD" // Used only by the compact navigation fallback.
                     text: I18n.t("Batch")
                     selected: root.currentRoute === root.routeBatchProjects || root.currentRoute === root.routeBatchWorkspace || root.currentRoute === root.routeBatchVideo || root.currentRoute === root.routeChannelImport
                     onClicked: {
@@ -274,14 +273,6 @@ ApplicationWindow {
                     color: Theme.divider
                 }
 
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    iconGlyph: "\uE713"
-                    text: I18n.t("Settings")
-                    onClicked: settingsDialog.open()
-                }
-
                 SidebarAboutLink {
                     Layout.fillWidth: true
                     compact: root.compactNavigation
@@ -301,6 +292,26 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 58
+                Layout.leftMargin: root.width < 1400 ? 22 : 30
+                Layout.rightMargin: root.width < 1400 ? 22 : 30
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                AppButton {
+                    Layout.alignment: Qt.AlignVCenter
+                    tone: "ghost"
+                    compact: true
+                    text: I18n.t("Settings")
+                    toolTipText: "Ctrl+,"
+                    onClicked: settingsDialog.open()
+                }
+            }
 
             StackLayout {
                 Layout.fillWidth: true
@@ -332,10 +343,10 @@ ApplicationWindow {
                 Loader {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 18 : 26
-                    Layout.rightMargin: root.width < 1400 ? 18 : 26
-                    Layout.topMargin: 20
-                    Layout.bottomMargin: 20
+                    Layout.leftMargin: root.width < 1400 ? 22 : 30
+                    Layout.rightMargin: root.width < 1400 ? 22 : 30
+                    Layout.topMargin: 24
+                    Layout.bottomMargin: 24
                     active: root.currentRoute === root.routeSingleWorkspace
                     asynchronous: true
                     sourceComponent: Component {
@@ -374,7 +385,7 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     Layout.leftMargin: root.width < 1400 ? 22 : 30
                     Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: root.width < 1400 ? 30 : 36
+                    Layout.topMargin: 24
                     Layout.bottomMargin: 24
                     active: root.currentRoute === root.routeBatchWorkspace
                     asynchronous: true
@@ -400,10 +411,10 @@ ApplicationWindow {
                 Loader {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 18 : 26
-                    Layout.rightMargin: root.width < 1400 ? 18 : 26
-                    Layout.topMargin: 20
-                    Layout.bottomMargin: 20
+                    Layout.leftMargin: root.width < 1400 ? 22 : 30
+                    Layout.rightMargin: root.width < 1400 ? 22 : 30
+                    Layout.topMargin: 24
+                    Layout.bottomMargin: 24
                     active: root.currentRoute === root.routeBatchVideo
                     asynchronous: true
                     sourceComponent: Component {
