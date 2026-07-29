@@ -364,6 +364,41 @@ def _subtitle_blur_filter(width: int, height: int) -> str:
     )
 
 
+def _feathered_blur_region(
+    region: tuple[int, int, int, int], source_width: int, source_height: int,
+) -> tuple[int, int, int, int, int]:
+    """Expand a subtitle region so the blur can fade into the source frame."""
+    x, y, width, height = region
+    # The expanded border is only a transition zone. The detected region stays
+    # fully blurred, while this outer rim prevents a visible rectangular seam.
+    feather = max(4, min(24, round(min(width, height) * 0.12)))
+    if feather % 2:
+        feather += 1
+    left = max(0, x - feather) // 2 * 2
+    top = max(0, y - feather) // 2 * 2
+    right = min(source_width, x + width + feather) // 2 * 2
+    bottom = min(source_height, y + height + feather) // 2 * 2
+    return left, top, max(2, right - left), max(2, bottom - top), feather
+
+
+def _subtitle_blur_prefix(
+    region: tuple[int, int, int, int], source_width: int, source_height: int,
+) -> str:
+    """Return a feathered, fully blurred replacement for a subtitle region."""
+    x, y, width, height, feather = _feathered_blur_region(region, source_width, source_height)
+    blur_filter = _subtitle_blur_filter(width, height)
+    edge_distance = f"min(min(X,W-1-X),min(Y,H-1-Y))"
+    blur_weight = f"min(1,{edge_distance}/{feather})"
+    blend_filter = f"blend=all_expr='A*(1-{blur_weight})+B*{blur_weight}'"
+    return (
+        f"[0:v]split=3[source_clean][source_region][source_blur];"
+        f"[source_region]crop={width}:{height}:{x}:{y}[original_region];"
+        f"[source_blur]crop={width}:{height}:{x}:{y},{blur_filter}[subtitle_blur];"
+        f"[original_region][subtitle_blur]{blend_filter}[subtitle_blended];"
+        f"[source_clean][subtitle_blended]overlay={x}:{y}[source_without_original];"
+    )
+
+
 def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
@@ -418,13 +453,7 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         input_label = "[0:v]"
         blur_prefix = ""
         if blur_region:
-            x, y, width, height = blur_region
-            subtitle_blur_filter = _subtitle_blur_filter(width, height)
-            blur_prefix = (
-                f"[0:v]split=2[source_clean][source_blur];"
-                f"[source_blur]crop={width}:{height}:{x}:{y},{subtitle_blur_filter}[subtitle_blur];"
-                f"[source_clean][subtitle_blur]overlay={x}:{y}[source_without_original];"
-            )
+            blur_prefix = _subtitle_blur_prefix(blur_region, source_width, source_height)
             input_label = "[source_without_original]"
         source = f"{input_label}{prefix + ',' if prefix else ''}split[base][fg]"
         vf_filter = (
@@ -436,12 +465,9 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
             filters.extend(["scale=1080:1920:force_original_aspect_ratio=increase", "crop=1080:1920"])
         filters.append(ass_filter)
         if blur_region:
-            x, y, width, height = blur_region
-            subtitle_blur_filter = _subtitle_blur_filter(width, height)
+            blur_prefix = _subtitle_blur_prefix(blur_region, source_width, source_height)
             vf_filter = (
-                f"[0:v]split=2[source_clean][source_blur];"
-                f"[source_blur]crop={width}:{height}:{x}:{y},{subtitle_blur_filter}[subtitle_blur];"
-                f"[source_clean][subtitle_blur]overlay={x}:{y},{','.join(filters)}[outv]"
+                f"{blur_prefix}[source_without_original]{','.join(filters)}[outv]"
             )
         else:
             vf_filter = ",".join(filters)

@@ -587,7 +587,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         original_subtitle_region = detect_original_subtitle_region(video_input, os.path.join(video_dir, "temp"), video_id)
         render_signature = _signature(
             timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
-            "automatic-original-subtitle-ocr-v5", original_subtitle_region,
+            "automatic-original-subtitle-ocr-v6", original_subtitle_region,
         )
         if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(video, "render", render_signature, [final_video]):
             reporter.update(99, "rendering", "Reusing rendered video checkpoint")

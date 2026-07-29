@@ -178,6 +178,7 @@ class TimelineRenderTests(unittest.TestCase):
             "boxblur=luma_radius=18:luma_power=4:chroma_radius=9:chroma_power=4",
             command[command.index("-filter_complex") + 1],
         )
+        self.assertIn("blend=all_expr=", command[command.index("-filter_complex") + 1])
         self.assertIn("\\an5\\pos(960,886)\\fs", ass_text)
         self.assertIn("\\fscx", ass_text)
         self.assertIn(",1,5,0,0,40,1", ass_text)
@@ -198,6 +199,14 @@ class TimelineRenderTests(unittest.TestCase):
             blur_filter,
             "boxblur=luma_radius=0:luma_power=4:chroma_radius=0:chroma_power=4",
         )
+
+    def test_subtitle_blur_expands_and_feathers_the_outer_edge(self):
+        geometry = render._feathered_blur_region((78, 562, 418, 110), 576, 1024)
+        filter_prefix = render._subtitle_blur_prefix((78, 562, 418, 110), 576, 1024)
+
+        self.assertEqual(geometry, (64, 548, 446, 138, 14))
+        self.assertIn("crop=446:138:64:548", filter_prefix)
+        self.assertIn("min(1,min(min(X,W-1-X),min(Y,H-1-Y))/14)", filter_prefix)
 
     def test_multiline_removal_region_uses_single_source_line_for_font_size(self):
         region = {
