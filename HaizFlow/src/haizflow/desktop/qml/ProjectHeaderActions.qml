@@ -31,7 +31,9 @@ RowLayout {
 
         controlSize: 34
         glyph: "\uE712"
-        toolTipText: I18n.t("More actions")
+        // The ellipsis already communicates a menu.  Suppress the hover tooltip
+        // so it cannot remain above the popup after the menu is opened.
+        Accessible.name: I18n.t("More actions")
         onPressed: menuWasOpenOnPress = actionMenu.visible
         onClicked: {
             if (menuWasOpenOnPress || actionMenu.visible)

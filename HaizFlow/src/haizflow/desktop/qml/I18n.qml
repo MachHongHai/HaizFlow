@@ -531,6 +531,7 @@ QtObject {
             "Starting HY-MT2 translation": "Đang bắt đầu dịch bằng HY-MT2",
             "Reusing subtitles checkpoint": "Đang dùng lại checkpoint phụ đề",
             "Formatting timed subtitles": "Đang định dạng phụ đề theo thời gian",
+            "Scanning the full frame for original subtitles": "Đang quét toàn bộ khung hình để tìm phụ đề gốc",
             "Reusing generated voices": "Đang dùng lại giọng đọc đã tạo",
             "Starting voice synthesis": "Đang bắt đầu tạo giọng đọc",
             "Reusing mixed audio checkpoint": "Đang dùng lại checkpoint âm thanh",

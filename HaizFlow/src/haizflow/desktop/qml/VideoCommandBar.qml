@@ -174,7 +174,9 @@ Rectangle {
                 property bool menuWasOpenOnPress: false
 
                 glyph: "\uE712"
-                toolTipText: I18n.t("More actions")
+                // Keep the screen-reader label without showing a tooltip over
+                // the menu trigger after it has been clicked.
+                Accessible.name: I18n.t("More actions")
                 onPressed: menuWasOpenOnPress = videoMenu.visible
                 onClicked: {
                     if (menuWasOpenOnPress || videoMenu.visible)

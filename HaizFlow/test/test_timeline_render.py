@@ -174,11 +174,50 @@ class TimelineRenderTests(unittest.TestCase):
 
         command = captured["command"]
         self.assertIn("-filter_complex", command)
-        self.assertIn("boxblur=18:4", command[command.index("-filter_complex") + 1])
+        self.assertIn(
+            "boxblur=luma_radius=18:luma_power=4:chroma_radius=9:chroma_power=4",
+            command[command.index("-filter_complex") + 1],
+        )
         self.assertIn("\\an5\\pos(960,886)\\fs", ass_text)
         self.assertIn("\\fscx", ass_text)
         self.assertIn(",1,5,0,0,40,1", ass_text)
         self.assertIn("\\pos(960,886)", ass_text)
+
+    def test_subtitle_blur_radius_fits_a_short_detected_region(self):
+        blur_filter = render._subtitle_blur_filter(398, 64)
+
+        self.assertEqual(
+            blur_filter,
+            "boxblur=luma_radius=18:luma_power=4:chroma_radius=9:chroma_power=4",
+        )
+
+    def test_subtitle_blur_radius_fits_the_smallest_supported_region(self):
+        blur_filter = render._subtitle_blur_filter(40, 2)
+
+        self.assertEqual(
+            blur_filter,
+            "boxblur=luma_radius=0:luma_power=4:chroma_radius=0:chroma_power=4",
+        )
+
+    def test_multiline_removal_region_uses_single_source_line_for_font_size(self):
+        region = {
+            "x_percent": 14,
+            "y_percent": 53,
+            "width_percent": 72,
+            "height_percent": 15,
+            "line_height_percent": 5.8,
+        }
+        layout = render._output_subtitle_region_layout(
+            region, 576, 1024, "keep_ratio", CropSettings(), 576, 1024,
+        )
+        style = render._style_for_original_subtitle_region(
+            SubtitleStyle(font_size=36), layout, 576, 1024,
+        )
+
+        self.assertIsNotNone(layout)
+        self.assertAlmostEqual(layout.height, 153.6)
+        self.assertAlmostEqual(layout.line_height, 59.392)
+        self.assertEqual(style.font_size, 45)
 
     def test_long_region_cue_is_shown_as_sequential_single_line_phrases(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -206,11 +245,45 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertGreater(len(dialogue_lines), 1)
         self.assertTrue(all("\\N" not in line for line in dialogue_lines))
         self.assertTrue(all("\\fs" in line for line in dialogue_lines))
+        rendered_phrases = [
+            line.split("}", 1)[1].split()
+            for line in dialogue_lines
+        ]
+        self.assertTrue(all(len(words) >= 2 for words in rendered_phrases))
         font_sizes = [
             int(line.split("\\fs", 1)[1].split("\\", 1)[0].split("}", 1)[0])
             for line in dialogue_lines
         ]
         self.assertTrue(all(font_size >= 30 for font_size in font_sizes))
+
+    def test_contiguous_sentence_fragments_are_joined_before_phrase_splitting(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subtitle_path = root / "subtitles.srt"
+            ass_path = root / "positioned_subtitles.ass"
+            subtitle_path.write_text(
+                "1\n00:00:04,481 --> 00:00:05,570\n"
+                "Vậy tôi nên đi đến nơi này như\n\n"
+                "2\n00:00:05,570 --> 00:00:05,861\n"
+                "thế nào?\n",
+                encoding="utf-8",
+            )
+            render._write_positioned_ass(
+                str(subtitle_path),
+                str(ass_path),
+                SubtitleStyle(font_size=45),
+                576,
+                1024,
+                render.SubtitleRegionLayout(78, 550, 418, 116, 59),
+            )
+            dialogue_lines = [
+                line for line in ass_path.read_text(encoding="utf-8-sig").splitlines()
+                if line.startswith("Dialogue:")
+            ]
+            rendered_text = [line.split("}", 1)[1] for line in dialogue_lines]
+
+        self.assertNotIn("thế nào?", rendered_text)
+        self.assertTrue(any("thế nào?" in phrase and len(phrase.split()) >= 4 for phrase in rendered_text))
 
 
 if __name__ == "__main__":

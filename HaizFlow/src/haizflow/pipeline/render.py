@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import tempfile
 from dataclasses import dataclass, replace
@@ -36,6 +37,7 @@ class SubtitleRegionLayout:
     y: float
     width: float
     height: float
+    line_height: float | None = None
 
 
 def _wrap_subtitle_for_region(
@@ -82,9 +84,41 @@ def _split_subtitle_words(text: str, max_chars: int) -> list[str]:
     # previous phrase with only a small amount of horizontal condensation.
     if len(pieces) >= 2 and len(pieces[-1]) < max(4, round(max_chars * 0.40)):
         combined = f"{pieces[-2]} {pieces[-1]}"
-        if len(combined) <= round(max_chars * 1.15):
+        if len(combined) <= round(max_chars * 1.30):
             pieces[-2:] = [combined]
     return pieces or [""]
+
+
+def _merge_contiguous_subtitles(subtitles: list[srt.Subtitle]) -> list[srt.Subtitle]:
+    """Rejoin sentence fragments split only to preserve source timestamps."""
+    if not subtitles:
+        return []
+    merged: list[srt.Subtitle] = []
+    current = subtitles[0]
+    for following in subtitles[1:]:
+        current_text = " ".join(current.content.split())
+        following_text = " ".join(following.content.split())
+        gap_seconds = (following.start - current.end).total_seconds()
+        combined_duration = (following.end - current.start).total_seconds()
+        combined_length = len(current_text) + 1 + len(following_text)
+        ends_sentence = bool(re.search(r"[.!?。！？…][\"'”’)]*$", current_text))
+        if (
+            -0.12 <= gap_seconds <= 0.12
+            and not ends_sentence
+            and combined_duration <= 8.0
+            and combined_length <= 180
+        ):
+            current = srt.Subtitle(
+                index=current.index,
+                start=current.start,
+                end=max(current.end, following.end),
+                content=f"{current_text} {following_text}".strip(),
+            )
+        else:
+            merged.append(current)
+            current = following
+    merged.append(current)
+    return merged
 
 
 def _subtitle_parts_for_region(subtitle, layout: SubtitleRegionLayout, subtitle_style: SubtitleStyle):
@@ -99,7 +133,9 @@ def _subtitle_parts_for_region(subtitle, layout: SubtitleRegionLayout, subtitle_
     display_font = max(10, display_font)
     # Split early enough that each phrase keeps large, normally proportioned
     # glyphs.  The phrases replace one another; they never form two rows.
-    max_chars = max(5, int(inner_width / (display_font * 0.50 * 0.80)))
+    # Prefer readable multi-word phrases. If the region is narrow, the fitting
+    # step reduces the font mildly instead of flashing isolated words.
+    max_chars = max(12, int(inner_width / (display_font * 0.50 * 0.80)))
     parts = _split_subtitle_words(content, max_chars)
     duration_seconds = max(0.0, (subtitle.end - subtitle.start).total_seconds())
     if len(parts) == 1:
@@ -155,6 +191,8 @@ def _write_positioned_ass(
         "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
     ])
     lines = [header]
+    if region_layout:
+        subtitles = _merge_contiguous_subtitles(subtitles)
     for subtitle in subtitles:
         if region_layout:
             for start_time, end_time, content, font_size, scale_x in _subtitle_parts_for_region(
@@ -237,6 +275,9 @@ def _output_subtitle_region_layout(
         source_y = source_height * float(region["y_percent"]) / 100
         source_region_width = source_width * float(region["width_percent"]) / 100
         source_region_height = source_height * float(region["height_percent"]) / 100
+        source_line_height = source_height * float(
+            region.get("line_height_percent", region["height_percent"])
+        ) / 100
     except (KeyError, TypeError, ValueError):
         return None
     crop_x, crop_y, crop_width, crop_height = _crop_geometry(source_width, source_height, crop)
@@ -244,21 +285,24 @@ def _output_subtitle_region_layout(
     y = (source_y - crop_y) / max(1, crop_height) * output_height
     width = source_region_width / max(1, crop_width) * output_width
     height = source_region_height / max(1, crop_height) * output_height
+    line_height = source_line_height / max(1, crop_height) * output_height
     if output_format == "tiktok_9_16_crop":
         scale = max(1080 / crop_width, 1920 / crop_height)
         x = (source_x - crop_x) * scale - (crop_width * scale - output_width) / 2
         y = (source_y - crop_y) * scale - (crop_height * scale - output_height) / 2
         width, height = source_region_width * scale, source_region_height * scale
+        line_height = source_line_height * scale
     elif output_format == "blur_background_9_16":
         scale = min(1080 / crop_width, 1920 / crop_height)
         x = (source_x - crop_x) * scale + (output_width - crop_width * scale) / 2
         y = (source_y - crop_y) * scale + (output_height - crop_height * scale) / 2
         width, height = source_region_width * scale, source_region_height * scale
+        line_height = source_line_height * scale
     left, top = max(0, x), max(0, y)
     right, bottom = min(output_width, x + width), min(output_height, y + height)
     if right - left < 24 or bottom - top < 20:
         return None
-    return SubtitleRegionLayout(left, top, right - left, bottom - top)
+    return SubtitleRegionLayout(left, top, right - left, bottom - top, line_height)
 
 
 def _style_for_original_subtitle_region(
@@ -272,10 +316,10 @@ def _style_for_original_subtitle_region(
         return subtitle_style
     x_percent = round(max(0, min(100, (region_layout.x + region_layout.width / 2) * 100 / output_width)))
     y_percent = round(max(0, min(100, (region_layout.y + region_layout.height / 2) * 100 / output_height)))
-    # OCR mode owns the output scale: a small source caption produces a small
-    # replacement and a tall source caption produces a correspondingly large
-    # one, regardless of the generic subtitle-editor default.
-    font_size = max(12, min(120, round(region_layout.height * 0.70)))
+    # The removal region can contain two or three source rows. Replacement
+    # glyphs should match one source row rather than scale with the whole block.
+    detected_line_height = region_layout.line_height or region_layout.height
+    font_size = max(12, min(120, round(detected_line_height * 0.75)))
     outline = min(subtitle_style.outline, max(1, font_size // 14))
     return subtitle_style.model_copy(update={
         "position_x_percent": x_percent,
@@ -304,6 +348,20 @@ def _source_blur_region(region: dict | None, source_width: int, source_height: i
     width = min(width, source_width - x)
     height = min(height, source_height - y)
     return (x, y, width, height) if width >= 2 and height >= 2 else None
+
+
+def _subtitle_blur_filter(width: int, height: int) -> str:
+    """Build a box blur whose luma and chroma radii fit the cropped region."""
+    shortest_side = max(2, min(width, height))
+    # FFmpeg requires the radius to be strictly smaller than half the
+    # corresponding plane dimension. Chroma is typically 4:2:0, so its plane
+    # is half-sized and needs a separate, smaller radius.
+    luma_radius = min(18, max(0, (shortest_side - 2) // 2))
+    chroma_radius = min(9, max(0, (shortest_side - 2) // 4))
+    return (
+        f"boxblur=luma_radius={luma_radius}:luma_power=4:"
+        f"chroma_radius={chroma_radius}:chroma_power=4"
+    )
 
 
 def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None):
@@ -361,9 +419,10 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         blur_prefix = ""
         if blur_region:
             x, y, width, height = blur_region
+            subtitle_blur_filter = _subtitle_blur_filter(width, height)
             blur_prefix = (
                 f"[0:v]split=2[source_clean][source_blur];"
-                f"[source_blur]crop={width}:{height}:{x}:{y},boxblur=18:4[subtitle_blur];"
+                f"[source_blur]crop={width}:{height}:{x}:{y},{subtitle_blur_filter}[subtitle_blur];"
                 f"[source_clean][subtitle_blur]overlay={x}:{y}[source_without_original];"
             )
             input_label = "[source_without_original]"
@@ -378,9 +437,10 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         filters.append(ass_filter)
         if blur_region:
             x, y, width, height = blur_region
+            subtitle_blur_filter = _subtitle_blur_filter(width, height)
             vf_filter = (
                 f"[0:v]split=2[source_clean][source_blur];"
-                f"[source_blur]crop={width}:{height}:{x}:{y},boxblur=18:4[subtitle_blur];"
+                f"[source_blur]crop={width}:{height}:{x}:{y},{subtitle_blur_filter}[subtitle_blur];"
                 f"[source_clean][subtitle_blur]overlay={x}:{y},{','.join(filters)}[outv]"
             )
         else:
