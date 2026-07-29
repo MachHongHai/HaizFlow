@@ -4,11 +4,19 @@ import tempfile
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.services.video_store import log_to_video
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
-from haizflow.utils.ffmpeg import _binary
+from haizflow.utils.ffmpeg import _binary, get_media_stream_types
 
 def extract_audio(video_path: str, output_wav_path: str, video_id: str):
     """Extracts audio from video to a 16kHz mono WAV file."""
     log_to_video(video_id, f"Extracting audio from: {video_path}")
+    stream_types = get_media_stream_types(video_path)
+    if "audio" not in stream_types:
+        message = (
+            "The source video has no audio track, so speech cannot be transcribed or dubbed. "
+            "Replace it with a video that includes audio."
+        )
+        log_to_video(video_id, message)
+        raise RuntimeError(message)
 
     output_directory = os.path.dirname(os.path.abspath(output_wav_path))
     os.makedirs(output_directory, exist_ok=True)

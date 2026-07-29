@@ -140,7 +140,12 @@ class VideoDownloadTests(unittest.TestCase):
         )
         progress = []
         with tempfile.TemporaryDirectory() as workspace:
-            with mock.patch("yt_dlp.YoutubeDL", FakeDownloader):
+            with (
+                mock.patch("yt_dlp.YoutubeDL", FakeDownloader),
+                mock.patch.object(
+                    video_download, "get_media_stream_types", return_value={"video", "audio"}
+                ),
+            ):
                 path = video_download.download_video(
                     metadata,
                     workspace,
@@ -183,6 +188,9 @@ class VideoDownloadTests(unittest.TestCase):
             with (
                 mock.patch.object(video_download, "_load_yt_dlp", return_value=yt_dlp),
                 mock.patch.object(video_download, "_wait_for_retry") as wait_for_retry,
+                mock.patch.object(
+                    video_download, "get_media_stream_types", return_value={"video", "audio"}
+                ),
             ):
                 path = video_download.download_video(
                     metadata,
@@ -193,9 +201,38 @@ class VideoDownloadTests(unittest.TestCase):
 
         self.assertEqual(path, str(output))
         self.assertEqual(yt_dlp.YoutubeDL.call_count, 2)
-        self.assertEqual(yt_dlp.YoutubeDL.call_args_list[0].args[0]["format"], "best")
+        selector = yt_dlp.YoutubeDL.call_args_list[0].args[0]["format"]
+        self.assertIn("acodec!=none", selector)
         wait_for_retry.assert_called_once()
         self.assertIn((0, "Refreshing video stream and retrying"), progress)
+
+    def test_download_rejects_a_video_only_result_before_project_import(self):
+        downloader = mock.MagicMock()
+        downloader.__enter__.return_value = downloader
+        metadata = video_download.VideoMetadata(
+            url="https://www.tiktok.com/@creator/video/123",
+            title="Video-only clip",
+            platform="TikTok",
+            duration_seconds=10,
+            thumbnail_url="",
+            uploader="",
+        )
+
+        with tempfile.TemporaryDirectory() as workspace:
+            output = Path(workspace) / "video-only.mp4"
+            output.write_bytes(b"video")
+            downloader.extract_info.return_value = {
+                "filepath": str(output), "title": "video-only", "ext": "mp4",
+            }
+            downloader.prepare_filename.return_value = str(output)
+            yt_dlp = mock.MagicMock()
+            yt_dlp.YoutubeDL.return_value = downloader
+            with (
+                mock.patch.object(video_download, "_load_yt_dlp", return_value=yt_dlp),
+                mock.patch.object(video_download, "get_media_stream_types", return_value={"video"}),
+                self.assertRaisesRegex(RuntimeError, "does not contain an audio track"),
+            ):
+                video_download.download_video(metadata, workspace)
 
     def test_cancelled_download_stops_before_network_work(self):
         event = threading.Event()

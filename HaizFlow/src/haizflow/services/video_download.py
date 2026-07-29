@@ -14,6 +14,7 @@ from typing import Callable
 from urllib.parse import urlparse
 
 from haizflow.config import BIN_DIR
+from haizflow.utils.ffmpeg import get_media_stream_types
 
 
 SUPPORTED_VIDEO_HOSTS = {
@@ -183,15 +184,20 @@ def _is_retryable_download_error(exc: Exception, platform: str) -> bool:
 
 
 def _download_format_selector(platform: str) -> str:
-    """Use platform-safe format selection while retaining a 1080p cap elsewhere."""
-    # TikTok/Douyin commonly expose one progressive stream and omit height or
-    # separate M4A metadata.  Selecting `best` lets yt-dlp use that fresh
-    # stream rather than rejecting it against web-video-only constraints.
+    """Select a processable video: both picture and audio are mandatory."""
+    # `best` does not guarantee a progressive stream. TikTok/Douyin sometimes
+    # rank a high-quality video-only HEVC format above the playable stream,
+    # which used to import successfully and then fail during audio extraction.
     if platform in {"TikTok", "Douyin"}:
-        return "best"
+        return (
+            "best[vcodec!=none][acodec!=none]/"
+            "bestvideo[vcodec!=none]+bestaudio[acodec!=none]"
+        )
     return (
-        "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
-        "best[height<=1080][ext=mp4]/best[height<=1080]/best"
+        "bestvideo[height<=1080][vcodec!=none]+bestaudio[acodec!=none]/"
+        "best[height<=1080][vcodec!=none][acodec!=none]/"
+        "best[vcodec!=none][acodec!=none]/"
+        "bestvideo[vcodec!=none]+bestaudio[acodec!=none]"
     )
 
 
@@ -319,6 +325,18 @@ def _downloaded_video_path(workspace: str, info: dict, downloader) -> str:
     return str(max(discovered, key=lambda path: path.stat().st_mtime))
 
 
+def _validate_processable_video(video_path: str) -> None:
+    """Reject downloads that cannot enter the dubbing pipeline."""
+    stream_types = get_media_stream_types(video_path)
+    if "video" not in stream_types:
+        raise RuntimeError("The downloaded media does not contain a video track.")
+    if "audio" not in stream_types:
+        raise RuntimeError(
+            "The downloaded video does not contain an audio track. "
+            "Try the link again or choose another source video."
+        )
+
+
 def download_video(
     metadata: VideoMetadata,
     workspace: str,
@@ -388,6 +406,7 @@ def download_video(
                 if cancel_event and cancel_event.is_set():
                     raise DownloadCancelled("Video download cancelled.")
                 video_path = _downloaded_video_path(workspace, info, downloader)
+                _validate_processable_video(video_path)
             break
         except DownloadCancelled:
             raise
