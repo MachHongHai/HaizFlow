@@ -8,7 +8,21 @@ from pydantic import BaseModel, Field
 
 class ChannelImportRequest(BaseModel):
     url: str
-    platform: Literal["", "youtube", "tiktok", "douyin"] = ""
+    platform: Literal[
+        "",
+        "youtube",
+        "tiktok",
+        "douyin",
+        "bilibili",
+        "instagram",
+        "facebook",
+        "x",
+        "vimeo",
+        "dailymotion",
+        "twitch",
+        "reddit",
+        "vk",
+    ] = ""
     ranking: Literal["newest", "popular"] = "newest"
     limit: int = Field(default=20, ge=1, le=100)
     duration_filter: Literal["all", "short", "long"] = "short"

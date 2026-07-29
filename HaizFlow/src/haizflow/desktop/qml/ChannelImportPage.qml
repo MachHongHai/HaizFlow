@@ -8,8 +8,6 @@ import "."
 Item {
     id: root
 
-    signal requestBack()
-
     required property var appController
     readonly property var importer: appController.channelImporter
     readonly property bool hasResults: importer.candidateCount > 0
@@ -97,28 +95,20 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: Theme.space20
         spacing: Theme.space16
 
-        RowLayout {
+        PageHeader {
             Layout.fillWidth: true
-            spacing: Theme.space12
+            title: I18n.t("Import from channel")
+            subtitle: root.appController.projectName
 
-            BackButton {
-                onClicked: root.requestBack()
-            }
-
-            PageHeader {
-                Layout.fillWidth: true
-                title: I18n.t("Import from channel")
-                subtitle: root.appController.projectName
-
-                AppButton {
-                    visible: root.importer.busy
-                    text: I18n.t("Cancel import")
-                    iconGlyph: "\uE711"
-                    tone: "danger"
-                    onClicked: root.importer.cancel()
-                }
+            AppButton {
+                visible: root.importer.busy
+                text: I18n.t("Cancel import")
+                iconGlyph: "\uE711"
+                tone: "danger"
+                onClicked: root.importer.cancel()
             }
         }
 

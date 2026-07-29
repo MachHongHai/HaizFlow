@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -7,10 +8,29 @@ Panel {
 
     title: I18n.t("Dubbing setup")
     subtitle: I18n.t("Language, voice and output behavior")
+    contentPadding: Theme.space16
+    contentSpacing: Theme.space8
+
+    Flickable {
+        id: setupScroll
+
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.minimumHeight: 0
+        contentWidth: width
+        contentHeight: settingsColumn.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+
+        ColumnLayout {
+            id: settingsColumn
+
+            width: setupScroll.width
+            spacing: Theme.space8
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: Theme.space8
+        spacing: Theme.space4
 
         Text {
             text: I18n.t("Workflow")
@@ -36,7 +56,7 @@ Panel {
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: Theme.space8
+        spacing: Theme.space4
 
         Text {
             text: I18n.t("Translate to")
@@ -60,7 +80,7 @@ Panel {
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: Theme.space8
+        spacing: Theme.space4
 
         Text {
             text: I18n.t("Voice")
@@ -91,7 +111,7 @@ Panel {
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: Theme.space8
+        spacing: Theme.space4
 
         Text {
             text: I18n.t("Audio source")
@@ -125,47 +145,120 @@ Panel {
         textFormat: Text.PlainText
     }
 
+    AppButton {
+        Layout.fillWidth: true
+        text: I18n.t("Adjust audio levels")
+        tone: "secondary"
+        enabled: AppController.canEditSelectedVideo
+        onClicked: audioMixDialog.open()
+    }
+
     ColumnLayout {
         Layout.fillWidth: true
-        visible: !AppController.enableAudioSeparation
         spacing: Theme.space8
+
+        Text {
+            text: I18n.t("Background music")
+            color: Theme.textMuted
+            font.pixelSize: Theme.caption
+            font.weight: Font.Medium
+            textFormat: Text.PlainText
+        }
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: Theme.space8
 
             Text {
                 Layout.fillWidth: true
-                text: I18n.t("Original audio volume")
-                color: Theme.textMuted
+                text: AppController.backgroundMusicPath.length > 0
+                    ? AppController.backgroundMusicPath : I18n.t("No background music")
+                color: AppController.backgroundMusicPath.length > 0 ? Theme.text : Theme.textMuted
                 font.pixelSize: Theme.caption
-                font.weight: Font.Medium
+                elide: Text.ElideMiddle
                 textFormat: Text.PlainText
             }
 
-            Text {
-                text: qsTr("%1%").arg(AppController.originalVolume)
-                color: Theme.text
-                font.pixelSize: Theme.caption
-                font.weight: Font.DemiBold
-                textFormat: Text.PlainText
+            AppButton {
+                id: backgroundMusicButton
+
+                property bool menuWasOpenOnPress: false
+
+                text: AppController.backgroundMusicPath.length > 0
+                    ? I18n.t("Replace background music") : I18n.t("Choose background music")
+                compact: true
+                enabled: AppController.canEditSelectedVideo
+                onPressed: menuWasOpenOnPress = backgroundMusicMenu.visible
+                onClicked: {
+                    if (menuWasOpenOnPress || backgroundMusicMenu.visible)
+                        backgroundMusicMenu.close()
+                    else
+                        backgroundMusicMenu.open()
+                }
+
+                Menu {
+                    id: backgroundMusicMenu
+
+                    width: 220
+                    y: backgroundMusicButton.height + Theme.space4
+                    padding: 6
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+
+                    background: Rectangle {
+                        color: Theme.surfaceElevated
+                        radius: Theme.radius
+                        border.width: 1
+                        border.color: Theme.outlineStrong
+                    }
+
+                    AppMenuItem {
+                        text: I18n.t("From file")
+                        iconGlyph: "\uE8B7"
+                        onTriggered: AppController.browseBackgroundMusic()
+                    }
+
+                    AppMenuItem {
+                        text: I18n.t("From link")
+                        iconGlyph: "\uE71B"
+                        onTriggered: backgroundMusicLinkDialog.open()
+                    }
+                }
+            }
+
+            IconButton {
+                visible: AppController.backgroundMusicPath.length > 0
+                glyph: "\uE74D"
+                toolTipText: I18n.t("Remove background music")
+                enabled: AppController.canEditSelectedVideo
+                onClicked: AppController.clearBackgroundMusic()
             }
         }
 
-        AppSlider {
+        Text {
             Layout.fillWidth: true
-            enabled: AppController.canEditSelectedVideo
-            from: 0
-            to: 100
-            stepSize: 1
-            value: AppController.originalVolume
-            Accessible.name: I18n.t("Original audio volume")
-            onMoved: AppController.originalVolume = Math.round(value)
+            text: I18n.t("Audio or video files are supported") + "."
+            color: Theme.textSubtle
+            font.pixelSize: Theme.caption
+            wrapMode: Text.Wrap
+            textFormat: Text.PlainText
+        }
+
+    }
+
+        }
+
+        ScrollBar.vertical: ScrollBar {
+            policy: setupScroll.contentHeight > setupScroll.height
+                ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
         }
     }
 
-    Item {
-        Layout.fillHeight: true
-        Layout.minimumHeight: Theme.space8
+    AudioMixDialog {
+        id: audioMixDialog
+    }
+
+    BackgroundMusicLinkDialog {
+        id: backgroundMusicLinkDialog
     }
 
     AppButton {

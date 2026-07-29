@@ -209,6 +209,8 @@ class VideoMetadataMigrationTests(unittest.TestCase):
                 "output_format": "legacy-square",
                 "project_type": "job",
                 "original_video_volume": 999,
+                "background_music_volume": -4,
+                "tts_volume": 444,
                 "subtitle_style": {"font_size": -2, "position_y_percent": 999},
                 "crop": {"zoom_percent": 0, "pan_x_percent": -999},
             }
@@ -223,12 +225,29 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.output_format, "keep_ratio")
         self.assertEqual(migrated.project_type, "single")
         self.assertEqual(migrated.original_video_volume, 100)
+        self.assertEqual(migrated.background_music_volume, 0)
+        self.assertEqual(migrated.tts_volume, 100)
         self.assertEqual(migrated.subtitle_style.font_size, 10)
         self.assertEqual(migrated.subtitle_style.position_y_percent, 100)
         self.assertEqual(migrated.crop.zoom_percent, 1)
         self.assertEqual(migrated.crop.pan_x_percent, -100)
         self.assertEqual(saved["translator_provider"], "hymt2")
         self.assertTrue(Path(f"{path}.schema-migration.bak").is_file())
+
+    def test_v5_metadata_gets_safe_audio_mix_defaults(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        legacy = json.loads(path.read_text(encoding="utf-8"))
+        legacy["schema_version"] = 5
+        legacy.pop("background_music_volume", None)
+        legacy.pop("tts_volume", None)
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
+        self.assertEqual(migrated.background_music_volume, 30)
+        self.assertEqual(migrated.tts_volume, 100)
 
     def test_future_video_schema_is_rejected_without_falling_back(self):
         video = self._create_video()

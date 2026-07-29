@@ -8,14 +8,11 @@ import "."
 Item {
     id: root
 
-    signal requestBack
     signal openVideoDetail
     signal requestBatchSettings
     signal requestUrlImport
-    signal requestChannelImport
 
     property bool dropActive: false
-    readonly property bool hasChannelImport: AppController.hasChannelImportSession
     readonly property bool compactHeight: height < 740
 
     opacity: visible ? 1 : 0
@@ -36,68 +33,47 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: Theme.space20
         spacing: root.compactHeight ? Theme.space12 : Theme.space16
 
-        RowLayout {
+        PageHeader {
             Layout.fillWidth: true
-            spacing: Theme.space12
+            Layout.minimumHeight: root.compactHeight ? 52 : 58
+            Layout.preferredHeight: root.compactHeight ? 52 : 58
+            title: AppController.projectName || I18n.t("Batch project")
+            subtitle: qsTr("%1 %2").arg(AppController.batchCount).arg(I18n.t("videos"))
 
-            BackButton {
-                onClicked: root.requestBack()
+            AppButton {
+                visible: !AppController.isBatchRunning
+                text: I18n.t("Start queue")
+                iconGlyph: "\uE768"
+                tone: "primary"
+                enabled: AppController.batchPendingCount > 0
+                onClicked: AppController.startBatch()
             }
 
-            PageHeader {
-                Layout.fillWidth: true
-                Layout.minimumHeight: root.compactHeight ? 52 : 58
-                Layout.preferredHeight: root.compactHeight ? 52 : 58
-                title: AppController.projectName || I18n.t("Batch project")
-                subtitle: qsTr("%1 %2").arg(AppController.batchCount).arg(I18n.t("videos"))
-
-                AppButton {
-                    text: I18n.t("Batch setup")
-                    iconGlyph: "\uE713"
-                    toolTipText: I18n.t("Configure this batch")
-                    enabled: AppController.batchCount > 0
-                    onClicked: root.requestBatchSettings()
-                }
-
-                AppButton {
-                    text: I18n.t("Open project folder")
-                    iconGlyph: "\uE8B7"
-                    enabled: AppController.hasOpenProject
-                    onClicked: AppController.openProjectFolder()
-                }
-
-                AppButton {
-                    text: I18n.t("Delete project")
-                    iconGlyph: "\uE74D"
-                    tone: "danger"
-                    enabled: AppController.hasOpenProject
-                    onClicked: AppController.deleteCurrentBatch()
-                }
-
-                AppButton {
-                    visible: !AppController.isBatchRunning
-                    text: I18n.t("Start queue")
-                    iconGlyph: "\uE768"
-                    tone: "primary"
-                    enabled: AppController.batchPendingCount > 0
-                    onClicked: AppController.startBatch()
-                }
-
-                AppButton {
+            AppButton {
                     visible: AppController.isBatchRunning
                     text: I18n.t("Stop queue")
                     iconGlyph: "\uE71A"
                     tone: "danger"
                     onClicked: AppController.stopBatch()
-                }
+            }
+
+            ProjectHeaderActions {
+                projectFolderEnabled: AppController.hasOpenProject
+                setupVisible: true
+                setupEnabled: AppController.batchCount > 0
+                deleteEnabled: AppController.hasOpenProject
+                onProjectFolderRequested: AppController.openProjectFolder()
+                onSetupRequested: root.requestBatchSettings()
+                onDeleteRequested: AppController.deleteCurrentBatch()
             }
         }
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: root.hasChannelImport ? (root.compactHeight ? 60 : 68) : 88
+            Layout.preferredHeight: 88
             radius: Theme.radius
             color: Theme.surface
             border.width: 1
@@ -175,7 +151,7 @@ Item {
             id: importStrip
 
             Layout.fillWidth: true
-            Layout.preferredHeight: root.hasChannelImport ? (root.compactHeight ? 60 : 68) : 88
+            Layout.preferredHeight: 88
             radius: Theme.radius
             color: root.dropActive ? Theme.interactiveMuted : Theme.surfaceElevated
             border.width: 1
@@ -239,12 +215,6 @@ Item {
                     onClicked: root.requestUrlImport()
                 }
 
-                AppButton {
-                    text: root.hasChannelImport ? I18n.t("View progress") : I18n.t("Import channel")
-                    iconGlyph: "\uE896"
-                    tone: "primary"
-                    onClicked: root.requestChannelImport()
-                }
             }
 
             DropArea {
@@ -276,82 +246,6 @@ Item {
             Behavior on border.color {
                 ColorAnimation {
                     duration: Theme.motionFast
-                }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: visible ? (root.compactHeight ? 60 : 72) : 0
-            visible: root.hasChannelImport
-            radius: Theme.radius
-            color: AppController.channelImportBusy ? Theme.interactiveMuted : Theme.surfaceElevated
-            border.width: 1
-            border.color: AppController.channelImportBusy ? Theme.focus : Theme.outline
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.topMargin: root.compactHeight ? Theme.space4 : Theme.space8
-                anchors.bottomMargin: root.compactHeight ? Theme.space4 : Theme.space8
-                anchors.leftMargin: Theme.space16
-                anchors.rightMargin: Theme.space16
-                spacing: Theme.space4
-
-                AppIcon {
-                    Layout.preferredWidth: 28
-                    Layout.preferredHeight: 28
-                    glyph: "\uE896"
-                    iconColor: AppController.channelImportBusy ? Theme.interactive : Theme.textMuted
-                    iconSize: Theme.iconLarge
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: root.compactHeight ? Theme.space4 : Theme.space8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Theme.space8
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: AppController.channelImportName.length > 0 ? AppController.channelImportName : I18n.t("Import channel")
-                            color: Theme.text
-                            font.pixelSize: Theme.body
-                            font.weight: Font.DemiBold
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            text: qsTr("%1 / %2").arg(AppController.channelImportImportedCount).arg(AppController.channelImportCandidateCount)
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.caption
-                            textFormat: Text.PlainText
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: I18n.channelImportStatus(AppController.channelImportStatus)
-                        color: AppController.channelImportFailedCount > 0 ? Theme.warning : Theme.textMuted
-                        font.pixelSize: Theme.caption
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                    }
-
-                    AppProgressBar {
-                        Layout.fillWidth: true
-                        visible: AppController.channelImportBusy
-                        value: AppController.channelImportProgress
-                    }
-                }
-
-                AppButton {
-                    text: I18n.t("View progress")
-                    iconGlyph: "\uE76C"
-                    tone: "secondary"
-                    onClicked: root.requestChannelImport()
                 }
             }
         }

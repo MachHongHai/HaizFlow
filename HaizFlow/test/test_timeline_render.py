@@ -22,20 +22,30 @@ class TimelineRenderTests(unittest.TestCase):
                 "video-1",
             )
 
-    def test_only_last_voice_slot_keeps_a_small_tail_margin(self):
+    def test_voice_slot_ends_with_the_original_spoken_segment(self):
         self.assertEqual(
-            _segment_slot_end_ms(1000, 3000, 5000, is_last=False),
+            _segment_slot_end_ms(1000, 2200, 3000, 5000, is_last=False),
+            2200,
+        )
+        self.assertEqual(
+            _segment_slot_end_ms(3000, 4100, 5000, 5000, is_last=True),
+            4100,
+        )
+
+    def test_voice_slot_never_crosses_the_next_segment(self):
+        self.assertEqual(
+            _segment_slot_end_ms(1000, 3500, 3000, 5000, is_last=False),
+            3000,
+        )
+
+    def test_invalid_legacy_end_uses_safe_fallback_boundary(self):
+        self.assertEqual(
+            _segment_slot_end_ms(1000, 1000, 3000, 5000, is_last=False),
             3000,
         )
         self.assertEqual(
-            _segment_slot_end_ms(3000, 5000, 5000, is_last=True),
+            _segment_slot_end_ms(3000, 0, 5000, 5000, is_last=True),
             4880,
-        )
-
-    def test_very_short_final_slot_is_not_overcompressed_for_margin(self):
-        self.assertEqual(
-            _segment_slot_end_ms(4800, 5000, 5000, is_last=True),
-            5000,
         )
 
     def test_render_is_limited_by_source_duration_instead_of_shortest_stream(self):

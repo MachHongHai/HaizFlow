@@ -183,13 +183,13 @@ def _mark_checkpoint(video, name, signature):
 
 
 def _resolve_audio_mix(video, fallback_audio_path: str) -> tuple[str, int]:
-    """Return the mutually exclusive background source and its effective volume."""
+    """Return the source/Demucs track and its user-selected mix volume."""
     if not video.enable_audio_separation:
         return fallback_audio_path, video.original_video_volume
     separated_background = video.files.get("background_audio") or ""
     if separated_background and os.path.exists(separated_background) and os.path.getsize(separated_background) > 44:
-        return separated_background, 100
-    return "", 100
+        return separated_background, video.original_video_volume
+    return "", video.original_video_volume
 
 
 def _prepare_audio_mix(video, reporter, video_dir: str, fallback_audio_path: str) -> tuple[str, int]:
@@ -219,7 +219,7 @@ def _prepare_audio_mix(video, reporter, video_dir: str, fallback_audio_path: str
     video.files = files
     update_video(video.video_id, files=files)
     log_to_video(video.video_id, "Separated background audio restored for the final mix.")
-    return background_audio_path, 100
+    return background_audio_path, video.original_video_volume
 
 
 class ProgressReporter:
@@ -553,7 +553,10 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             _file_state(mix_audio_path),
             video.enable_audio_separation,
             mix_audio_volume,
-            "exclusive-audio-source-v3-final-tail-margin",
+            _file_state((video.files or {}).get("background_music") or ""),
+            getattr(video, "background_music_volume", 30),
+            getattr(video, "tts_volume", 100),
+            "exclusive-audio-source-v4-source-speech-window-sync",
         )
         if _checkpoint_valid(video, "timeline", timeline_signature, [voice_output]) or _recovery_checkpoint_valid(video, "timeline", timeline_signature, [voice_output]):
             reporter.update(87, "building_audio_timeline", "Reusing mixed audio checkpoint")
@@ -567,6 +570,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
                 video_id,
                 background_audio_path=mix_audio_path,
                 original_video_volume=mix_audio_volume,
+                background_music_path=(video.files or {}).get("background_music") or None,
+                background_music_volume=getattr(video, "background_music_volume", 30),
+                tts_volume=getattr(video, "tts_volume", 100),
             )
             _mark_checkpoint(video, "timeline", timeline_signature)
 

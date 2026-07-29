@@ -2,29 +2,52 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
 import "."
 
 ComboBox {
     id: root
 
+    property string logoRole: ""
+    property var logoModel: []
     implicitHeight: 42
     leftPadding: 12
     rightPadding: 38
     font.pixelSize: Theme.body
-    activeFocusOnTab: true
+    focusPolicy: Qt.TabFocus
     Accessible.name: displayText
 
     Component.onCompleted: voicePopup.close()
 
-    contentItem: Text {
-        text: root.displayText
-        color: root.enabled ? Theme.text : Theme.textDisabled
-        font: root.font
-        fontSizeMode: Text.HorizontalFit
-        minimumPixelSize: Theme.label
-        verticalAlignment: Text.AlignVCenter
-        textFormat: Text.PlainText
-        elide: Text.ElideNone
+    function logoAt(index) {
+        if (!logoRole || index < 0 || !logoModel || logoModel[index] === undefined)
+            return ""
+        const entry = logoModel[index]
+        return entry && entry[logoRole] !== undefined ? String(entry[logoRole]) : ""
+    }
+
+    contentItem: RowLayout {
+        spacing: 8
+
+        PlatformLogo {
+            Layout.preferredWidth: 22
+            Layout.preferredHeight: 22
+            platform: root.logoAt(root.currentIndex)
+            visible: platform.length > 0
+        }
+
+        Text {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            text: root.displayText
+            color: root.enabled ? Theme.text : Theme.textDisabled
+            font: root.font
+            fontSizeMode: Text.HorizontalFit
+            minimumPixelSize: Theme.label
+            verticalAlignment: Text.AlignVCenter
+            textFormat: Text.PlainText
+            elide: Text.ElideNone
+        }
     }
 
     indicator: AppIcon {
@@ -95,16 +118,29 @@ ComboBox {
         height: 40
         highlighted: root.highlightedIndex === voiceDelegate.index
 
-        contentItem: Text {
-            text: root.textAt(voiceDelegate.index)
-            color: voiceDelegate.highlighted ? Theme.interactive : Theme.text
-            font.pixelSize: Theme.body
-            fontSizeMode: Text.HorizontalFit
-            minimumPixelSize: Theme.label
-            font.weight: voiceDelegate.highlighted ? Font.DemiBold : Font.Normal
-            verticalAlignment: Text.AlignVCenter
-            textFormat: Text.PlainText
-            elide: Text.ElideNone
+        contentItem: RowLayout {
+            spacing: 8
+
+            PlatformLogo {
+                Layout.preferredWidth: 22
+                Layout.preferredHeight: 22
+                platform: root.logoAt(voiceDelegate.index)
+                visible: platform.length > 0
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                text: root.textAt(voiceDelegate.index)
+                color: voiceDelegate.highlighted ? Theme.interactive : Theme.text
+                font.pixelSize: Theme.body
+                fontSizeMode: Text.HorizontalFit
+                minimumPixelSize: Theme.label
+                font.weight: voiceDelegate.highlighted ? Font.DemiBold : Font.Normal
+                verticalAlignment: Text.AlignVCenter
+                textFormat: Text.PlainText
+                elide: Text.ElideNone
+            }
         }
 
         background: Rectangle {

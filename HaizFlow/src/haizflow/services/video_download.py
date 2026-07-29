@@ -17,8 +17,23 @@ from haizflow.config import BIN_DIR
 
 
 SUPPORTED_VIDEO_HOSTS = {
+    "b23.tv": "Bilibili",
+    "bilibili.com": "Bilibili",
+    "dai.ly": "Dailymotion",
+    "dailymotion.com": "Dailymotion",
     "douyin.com": "Douyin",
+    "facebook.com": "Facebook",
+    "fb.watch": "Facebook",
+    "instagram.com": "Instagram",
+    "redd.it": "Reddit",
+    "reddit.com": "Reddit",
+    "streamable.com": "Streamable",
     "tiktok.com": "TikTok",
+    "twitch.tv": "Twitch",
+    "clips.twitch.tv": "Twitch",
+    "vimeo.com": "Vimeo",
+    "vk.com": "VK",
+    "x.com": "X",
     "youtu.be": "YouTube",
     "youtube.com": "YouTube",
 }
@@ -102,7 +117,10 @@ def validate_video_url(value: str) -> tuple[str, str]:
         raise ValueError("Enter a valid HTTP or HTTPS video link.")
     platform = _matching_platform(parsed.hostname)
     if not platform:
-        raise ValueError("Only YouTube, TikTok, and Douyin links are supported.")
+        raise ValueError(
+            "This link is not from a supported source. Use YouTube, TikTok, Douyin, Bilibili, "
+            "Instagram, Facebook, X, Vimeo, Dailymotion, Twitch, Reddit, Streamable, or VK."
+        )
     return url, platform
 
 
@@ -226,6 +244,8 @@ def inspect_video_url(url: str, cancel_event: threading.Event | None = None) -> 
         resolved_platform = "TikTok"
     elif "douyin" in resolved_platform.lower():
         resolved_platform = "Douyin"
+    elif "bilibili" in resolved_platform.lower():
+        resolved_platform = "Bilibili"
 
     title = str(info.get("title") or "Untitled video").strip()
     return VideoMetadata(

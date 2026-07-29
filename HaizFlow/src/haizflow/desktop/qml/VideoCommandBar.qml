@@ -167,27 +167,28 @@ Rectangle {
                 onClicked: AppController.openOutputFile()
             }
 
-            AppButton {
-                visible: root.hasProject && !AppController.hasSelectedVideo
-                text: I18n.t("Open project folder")
-                iconGlyph: "\uE8B7"
-                tone: "secondary"
-                onClicked: AppController.openProjectFolder()
-            }
-
             IconButton {
                 id: moreButton
-                visible: AppController.hasSelectedVideo || root.hasProject
+                visible: AppController.isSelectedBatchVideo
+
+                property bool menuWasOpenOnPress: false
+
                 glyph: "\uE712"
                 toolTipText: I18n.t("More actions")
-                onClicked: videoMenu.open()
+                onPressed: menuWasOpenOnPress = videoMenu.visible
+                onClicked: {
+                    if (menuWasOpenOnPress || videoMenu.visible)
+                        videoMenu.close()
+                    else
+                        videoMenu.open()
+                }
 
                 Menu {
                     id: videoMenu
                     width: 242
                     y: -height - 8
                     padding: 6
-                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
 
                     enter: Transition {
                         NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast }
@@ -206,41 +207,25 @@ Rectangle {
                     AppMenuItem {
                         text: I18n.t("Open input video")
                         iconGlyph: "\uE714"
-                        visible: AppController.hasSelectedVideo
+                        collapsed: !AppController.isSelectedBatchVideo
                         onTriggered: AppController.openInputFile()
                     }
 
                     AppMenuItem {
                         text: I18n.t("Open export folder")
                         iconGlyph: "\uE8B7"
-                        visible: AppController.hasSelectedVideo
+                        collapsed: !AppController.isSelectedBatchVideo
                         onTriggered: AppController.openOutputFolder()
-                    }
-
-                    AppMenuItem {
-                        text: I18n.t("Open project folder")
-                        iconGlyph: "\uE8B7"
-                        visible: root.hasProject
-                        onTriggered: AppController.openProjectFolder()
                     }
 
                     AppMenuItem {
                         text: I18n.t("Remove video")
                         iconGlyph: "\uE74D"
                         tone: "danger"
-                        visible: AppController.isSelectedBatchVideo
+                        collapsed: !AppController.isSelectedBatchVideo
                         onTriggered: AppController.deleteSelectedVideo()
                     }
 
-                    AppMenuItem {
-                        text: I18n.t("Delete project")
-                        iconGlyph: "\uE74D"
-                        tone: "danger"
-                        // Batch deletion belongs to the batch-level action bar.
-                        // An opened batch video can only remove that video here.
-                        visible: root.hasProject && !AppController.isSelectedBatchVideo
-                        onTriggered: AppController.deleteCurrentProject()
-                    }
                 }
             }
         }

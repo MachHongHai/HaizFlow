@@ -13,6 +13,8 @@ Item {
     signal requestNewProject()
     signal openProject(string projectType)
 
+    readonly property bool downloadMode: projectType === "download"
+
     opacity: visible ? 1 : 0
     transform: Translate {
         y: root.visible ? 0 : 8
@@ -26,45 +28,23 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: Theme.space20
-
-        PageHeader {
-            Layout.fillWidth: true
-            title: root.projectType === "batch"
-                ? I18n.t("Batch projects")
-                : I18n.t("Single projects")
-            subtitle: root.projectType === "batch"
-                ? I18n.t("Manage multiple source videos in one workspace")
-                : I18n.t("Manage one source video per project")
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.space12
-
-            Text {
-                Layout.fillWidth: true
-                text: I18n.t("Recent projects")
-                color: Theme.text
-                font.pixelSize: Theme.h2
-                font.weight: Font.DemiBold
-                textFormat: Text.PlainText
-            }
-
-        }
+        spacing: 0
 
         GridView {
             id: projectGrid
 
             // GridView advances by cellWidth.  Keeping the gap inside each cell prevents
             // the last card from overflowing and silently losing an otherwise valid column.
-            readonly property int columnCount: Math.max(1, Math.floor((width + Theme.space16) / (270 + Theme.space16)))
+            readonly property int columnCount: Math.max(1, Math.floor((width + Theme.space16) / (200 + Theme.space16)))
             readonly property real cellContentWidth: Math.floor(width / columnCount)
-            readonly property real cardWidth: Math.min(320, Math.max(1, cellContentWidth - Theme.space16))
-            readonly property real cardHeight: Math.round(cardWidth * 0.58 + 82)
+            readonly property real cardWidth: Math.min(220, Math.max(1, cellContentWidth - Theme.space16))
+            readonly property real cardHeight: Math.round(cardWidth * 0.56 + 64)
 
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.leftMargin: Theme.space20
+            Layout.rightMargin: Theme.space20
+            Layout.topMargin: Theme.space20
             model: root.projectModel
             cellWidth: cellContentWidth
             cellHeight: cardHeight + Theme.space16
@@ -88,7 +68,9 @@ Item {
                     Accessible.role: Accessible.Button
                     Accessible.name: root.projectType === "batch"
                         ? I18n.t("New batch project")
-                        : I18n.t("New single project")
+                        : root.downloadMode
+                            ? I18n.t("New download project")
+                            : I18n.t("New single project")
                     scale: newProjectTap.pressed ? 0.99 : 1
 
                     Keys.onReturnPressed: root.requestNewProject()
@@ -113,18 +95,18 @@ Item {
 
                         Rectangle {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            width: 44
-                            height: 44
-                            radius: 22
+                            width: 32
+                            height: 32
+                            radius: 16
                             color: Theme.interactive
 
                             AppIcon {
                                 anchors.centerIn: parent
-                                width: 20
-                                height: 20
+                                width: 14
+                                height: 14
                                 glyph: "\uE710"
                                 iconColor: Theme.textOnAccent
-                                iconSize: Theme.icon
+                                iconSize: Theme.iconSmall
                             }
                         }
 
@@ -132,23 +114,33 @@ Item {
                             width: parent.width
                             text: root.projectType === "batch"
                                 ? I18n.t("New batch project")
-                                : I18n.t("New single project")
+                                : root.downloadMode
+                                    ? I18n.t("New download project")
+                                    : I18n.t("New single project")
                             color: Theme.text
                             font.pixelSize: Theme.bodyLarge
                             font.weight: Font.DemiBold
                             horizontalAlignment: Text.AlignHCenter
                             textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                            wrapMode: Text.NoWrap
                         }
 
                         Text {
                             width: parent.width
                             text: root.projectType === "batch"
-                                ? I18n.t("Files, folders, links, or channels")
-                                : I18n.t("One source video per project")
+                                ? I18n.t("Process videos in batch")
+                                : root.downloadMode
+                                    ? I18n.t("Channels, videos, and audio")
+                                    : I18n.t("Process one video")
                             color: Theme.textMuted
                             font.pixelSize: Theme.caption
                             horizontalAlignment: Text.AlignHCenter
                             textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                            wrapMode: Text.NoWrap
                         }
                     }
 
@@ -212,8 +204,8 @@ Item {
                     progress: projectGridDelegate.progress
                     thumbnailSource: projectGridDelegate.thumbnailSource
                     onActivated: {
-                        AppController.selectProjectInMode(index, root.projectType)
-                        root.openProject(root.projectType)
+                        if (AppController.selectProjectInMode(index, root.projectType))
+                            root.openProject(root.projectType)
                     }
                 }
             }

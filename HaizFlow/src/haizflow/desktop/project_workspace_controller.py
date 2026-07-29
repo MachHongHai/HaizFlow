@@ -36,6 +36,9 @@ class ProjectWorkspaceController:
             video_store.log_to_video(video.video_id, "Updated an incompatible saved TTS voice to match the target language.")
         host._enable_audio_separation = video.enable_audio_separation
         host._original_volume = video.original_video_volume
+        host._background_music_volume = getattr(video, "background_music_volume", 30)
+        host._tts_volume = getattr(video, "tts_volume", 100)
+        host._background_music_path = str((video.files or {}).get("background_music") or "")
         input_path = host._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
         host._video_path = input_path
         host._video_thumbnail_source = thumbnail_source(video.files.get("thumbnail") or "")
@@ -47,6 +50,9 @@ class ProjectWorkspaceController:
         host.ttsVoiceOptionsChanged.emit()
         host.enableAudioSeparationChanged.emit()
         host.originalVolumeChanged.emit()
+        host.backgroundMusicVolumeChanged.emit()
+        host.ttsVolumeChanged.emit()
+        host.backgroundMusicChanged.emit()
         host.workflowModeChanged.emit()
         host.projectSetupChanged.emit()
         host.selectedVideoChanged.emit()
@@ -62,6 +68,11 @@ class ProjectWorkspaceController:
         host._selected_project_key = project["key"]
         host._batch_video_ids = [video.video_id for video in videos] if host._project_type == "batch" else []
         host._refresh_batch_model()
+        if host._project_type == "download":
+            host._media_downloader.attach_project(
+                host._selected_project_key,
+                project_store.project_root_for_key(host._selected_project_key),
+            )
         if videos:
             self.select_video(videos[0])
         else:
@@ -86,6 +97,7 @@ class ProjectWorkspaceController:
         host.projects.set_projects(summaries)
         host.single_projects.set_projects([project for project in summaries if project["project_type"] == "single"])
         host.batch_projects.set_projects([project for project in summaries if project["project_type"] == "batch"])
+        host.download_projects.set_projects([project for project in summaries if project["project_type"] == "download"])
         host._refresh_batch_model()
         host._selected_video_snapshot = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         host.selectedVideoChanged.emit()

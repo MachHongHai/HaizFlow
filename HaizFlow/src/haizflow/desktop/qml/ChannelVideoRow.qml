@@ -21,6 +21,8 @@ Rectangle {
     required property string candidateStatus
     required property int candidateProgress
     required property string candidateError
+    property bool downloadedMode: false
+    property bool downloadsEnabled: true
 
     signal selectionChanged(bool selected)
     signal retryRequested()
@@ -50,8 +52,8 @@ Rectangle {
             return I18n.t("Already in project")
         switch (candidateStatus) {
         case "downloading": return I18n.t("Downloading")
-        case "importing": return I18n.t("Adding to project")
-        case "imported": return I18n.t("Imported")
+        case "importing": return downloadedMode ? I18n.t("Saving to folder") : I18n.t("Adding to project")
+        case "imported": return downloadedMode ? I18n.t("Saved") : I18n.t("Imported")
         case "failed": return I18n.t("Failed")
         default: return I18n.t("Ready")
         }
@@ -213,6 +215,7 @@ Rectangle {
                 text: I18n.t("Retry")
                 iconGlyph: "\uE72C"
                 tone: "secondary"
+                enabled: root.downloadsEnabled
                 onClicked: root.retryRequested()
             }
         }

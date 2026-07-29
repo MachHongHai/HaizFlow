@@ -5,9 +5,11 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, QUrl
+from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
+from PySide6.QtQuick import QQuickItem
+from PySide6.QtTest import QTest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,13 +30,13 @@ class QmlMenuTests(unittest.TestCase):
         try:
             label = item.findChild(QObject, "menuItemLabel")
             self.assertIsNotNone(label)
-            for visible in (False, True, False, True):
-                item.setProperty("visible", visible)
+            for collapsed in (True, False, True, False):
+                item.setProperty("collapsed", collapsed)
                 self.app.processEvents()
             self.assertEqual(label.property("text"), "Open project folder")
             self.assertGreater(label.property("implicitWidth"), 0)
             self.assertGreater(label.property("implicitHeight"), 0)
-            item.setProperty("visible", False)
+            item.setProperty("collapsed", True)
             self.app.processEvents()
             self.assertEqual(item.property("implicitWidth"), 0)
             self.assertEqual(item.property("implicitHeight"), 0)
@@ -97,31 +99,271 @@ ApplicationWindow {{
 
     def test_batch_video_menu_does_not_offer_project_deletion(self):
         command_bar = (QML_DIR / "VideoCommandBar.qml").read_text(encoding="utf-8")
-        self.assertIn("visible: root.hasProject && !AppController.isSelectedBatchVideo", command_bar)
+        project_actions = (QML_DIR / "ProjectHeaderActions.qml").read_text(encoding="utf-8")
+        batch_page = (QML_DIR / "BatchPage.qml").read_text(encoding="utf-8")
+        self.assertNotIn('text: I18n.t("Delete project")', command_bar)
+        self.assertIn("collapsed: !AppController.isSelectedBatchVideo", command_bar)
+        self.assertIn("ProjectHeaderActions {", batch_page)
+        self.assertIn("onDeleteRequested: AppController.deleteCurrentBatch()", batch_page)
+        self.assertIn("projectFolderText", project_actions)
+        self.assertIn("showInputVideo", project_actions)
+        self.assertIn("showOutputFolder", project_actions)
+        self.assertIn("onInputVideoRequested: AppController.openInputFile()", (QML_DIR / "CreateVideoPage.qml").read_text(encoding="utf-8"))
+        self.assertIn("onOutputFolderRequested: AppController.openOutputFolder()", (QML_DIR / "CreateVideoPage.qml").read_text(encoding="utf-8"))
+        self.assertIn("collapsed: !AppController.isSelectedBatchVideo", command_bar)
+        self.assertIn("visible: AppController.isSelectedBatchVideo", command_bar)
+        self.assertIn("Popup.CloseOnReleaseOutside", project_actions)
+        self.assertIn("Popup.CloseOnReleaseOutside", command_bar)
+        self.assertIn("menuWasOpenOnPress || actionMenu.visible", project_actions)
+        self.assertIn("closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside", project_actions)
 
     def test_navigation_settings_and_project_page_actions_stay_uncluttered(self):
         main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
         projects_page = (QML_DIR / "ProjectsPage.qml").read_text(encoding="utf-8")
         sidebar_button = (QML_DIR / "SidebarButton.qml").read_text(encoding="utf-8")
         about_link = (QML_DIR / "SidebarAboutLink.qml").read_text(encoding="utf-8")
+        title_bar = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
 
-        self.assertIn('text: I18n.t("Settings")', main)
-        self.assertIn('toolTipText: "Ctrl+,"', main)
+        self.assertIn('text: I18n.t("Project")', title_bar)
+        self.assertIn('text: I18n.t("Settings")', title_bar)
+        self.assertNotIn('text: I18n.t("Single projects")', title_bar)
+        self.assertNotIn('text: I18n.t("Batch projects")', title_bar)
+        self.assertNotIn('text: I18n.t("Download projects")', title_bar)
+        self.assertNotIn("MenuSeparator", title_bar)
+        self.assertIn("root.toggleMenu(projectMenu, projectButton, menuWasOpenOnPress)", title_bar)
+        self.assertIn("root.toggleMenu(settingsMenu, settingsButton, menuWasOpenOnPress)", title_bar)
+        self.assertIn("parent: Overlay.overlay", title_bar)
+        self.assertIn("component AppPopupMenu: Menu", title_bar)
+        self.assertIn("border.width: 0", title_bar)
+        self.assertIn('sequence: "Ctrl+,"', main)
+        self.assertNotIn('toolTipText: "Ctrl+,"', main)
         self.assertNotIn('iconGlyph: "\\uE713"', main)
         self.assertNotIn('Layout.preferredHeight: 1\n                color: Theme.divider\n            }\n\n            StackLayout', main)
         self.assertNotIn('color: Theme.divider\n        }\n\n        RowLayout', projects_page)
         self.assertNotIn('toolTipText: I18n.t("Refresh")', projects_page)
-        self.assertIn('subtitle: root.projectType === "batch"', projects_page)
+        self.assertNotIn("PageHeader {", projects_page)
+        self.assertNotIn('I18n.t("Recent projects")', projects_page)
+        self.assertIn("Layout.leftMargin: Theme.space20", projects_page)
+        self.assertIn("Layout.topMargin: Theme.space20", projects_page)
+        self.assertIn("Math.min(220", projects_page)
+        self.assertIn('I18n.t("Process one video")', projects_page)
+        self.assertIn('I18n.t("Process videos in batch")', projects_page)
+        for filename in ("CreateVideoPage.qml", "BatchPage.qml", "ChannelImportPage.qml"):
+            page = (QML_DIR / filename).read_text(encoding="utf-8")
+            self.assertIn("anchors.margins: Theme.space20", page, filename)
+        downloads = (QML_DIR / "DownloadsPage.qml").read_text(encoding="utf-8")
+        self.assertIn("anchors.margins: Theme.space20", downloads)
         self.assertIn("focusPolicy: Qt.TabFocus", sidebar_button)
         self.assertIn("focusPolicy: Qt.TabFocus", about_link)
 
-    def test_back_navigation_uses_the_shared_header_position(self):
+    def test_application_menu_buttons_open_visible_overlay_popups(self):
+        engine = QQmlEngine()
+        component = QQmlComponent(engine)
+        qml_directory = QML_DIR.as_uri()
+        component.setData(
+            f'''import QtQuick
+import QtQuick.Controls.Basic
+import "{qml_directory}"
+
+ApplicationWindow {{
+    width: 480
+    height: 240
+    visible: true
+    AppMenuBar {{ anchors.left: parent.left; anchors.right: parent.right; height: 40 }}
+}}'''.encode("utf-8"),
+            QUrl(),
+        )
+        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+        window = component.create()
+        self.assertIsNotNone(window, "\n".join(error.toString() for error in component.errors()))
+        try:
+            self.app.processEvents()
+            for button_name, popup_name in (
+                ("projectMenuButton", "projectMenuPopup"),
+                ("settingsMenuButton", "settingsMenuPopup"),
+            ):
+                button = window.findChild(QQuickItem, button_name)
+                popup = window.findChild(QObject, popup_name)
+                self.assertIsNotNone(button)
+                self.assertIsNotNone(popup)
+                center = button.mapToScene(QPointF(button.property("width") / 2, button.property("height") / 2))
+                QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(round(center.x()), round(center.y())))
+                self.app.processEvents()
+                self.assertTrue(popup.property("visible"), popup_name)
+                self.assertAlmostEqual(
+                    float(popup.property("width")),
+                    min(float(popup.property("menuContentWidth")) + 8.0, 210.0),
+                    delta=1.0,
+                )
+                self.assertGreater(popup.property("width"), 150)
+                self.assertLess(popup.property("width"), 238)
+                self.assertGreater(popup.property("height"), 1)
+                QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(round(center.x()), round(center.y())))
+                self.app.processEvents()
+                self.assertFalse(popup.property("visible"), popup_name)
+        finally:
+            window.close()
+            window.deleteLater()
+            engine.deleteLater()
+            self.app.processEvents()
+
+    def test_back_navigation_uses_the_shared_application_header(self):
         main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
-        for filename in ("CreateVideoPage.qml", "BatchPage.qml", "ChannelImportPage.qml"):
+        title_bar = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
+        downloads = (QML_DIR / "DownloadsPage.qml").read_text(encoding="utf-8")
+        for filename in (
+            "CreateVideoPage.qml",
+            "BatchPage.qml",
+            "DownloadsPage.qml",
+            "ChannelDownloadPage.qml",
+            "VideoDownloadPage.qml",
+            "AudioDownloadPage.qml",
+        ):
             source = (QML_DIR / filename).read_text(encoding="utf-8")
-            self.assertIn("BackButton {", source, filename)
+            self.assertNotIn("BackButton {", source, filename)
+            self.assertNotIn("signal requestBack", source, filename)
+        self.assertIn("signal backRequested", title_bar)
+        self.assertIn("signal forwardRequested", title_bar)
+        self.assertIn('glyph: "\\uE72B"', title_bar)
+        self.assertIn('glyph: "\\uE72A"', title_bar)
+        self.assertIn("onBackRequested: root.navigateBack()", main)
+        self.assertIn("onForwardRequested: root.navigateForward()", main)
+        self.assertIn('sequence: "Alt+Left"', main)
+        self.assertIn('sequence: "Alt+Right"', main)
+        self.assertIn("function navigateBack()", main)
+        self.assertIn("function navigateForward()", main)
+        self.assertIn("function navigateTo(page)", downloads)
+        self.assertIn("function navigateBack()", downloads)
+        self.assertIn("function navigateForward()", downloads)
         self.assertEqual(main.count("Layout.leftMargin: root.width < 1400 ? 22 : 30"), 7)
         self.assertNotIn("Layout.topMargin: root.width < 1400 ? 30 : 36", main)
+
+    def test_main_uses_the_branded_window_chrome(self):
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        brand_mark = (QML_DIR / "BrandMark.qml").read_text(encoding="utf-8")
+        title_bar = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "flags: Qt.Window",
+            main,
+        )
+        self.assertNotIn("Qt.FramelessWindowHint", main)
+        self.assertNotIn("Qt.ExpandedClientAreaHint", main)
+        self.assertNotIn("Qt.NoTitleBarBackgroundHint", main)
+        self.assertNotIn("visibility: Window.FullScreen", main)
+        self.assertNotIn("visibility: Window.Maximized", main)
+        self.assertIn('title: ""', main)
+        self.assertIn("AppMenuBar {", main)
+        self.assertNotIn("WindowResizeBorder {", main)
+        self.assertNotIn("Behavior on Layout.preferredWidth", main)
+        self.assertIn('source: "../assets/branding/haizflow-mark.png"', brand_mark)
+        self.assertNotIn("startSystemMove()", title_bar)
+        self.assertNotIn("SafeArea.margins", title_bar)
+        self.assertIn("signal settingsRequested", title_bar)
+        self.assertIn("signal newSingleProjectRequested", title_bar)
+        self.assertNotIn("showMinimized()", title_bar)
+        self.assertNotIn("CaptionButton", title_bar)
+
+    def test_desktop_launcher_sets_native_window_icons_and_uses_windowed_maximize(self):
+        main_py = (ROOT / "src" / "haizflow" / "desktop" / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn("LoadImageW", main_py)
+        self.assertIn("wm_seticon = 0x0080", main_py)
+        self.assertIn("SetClassLongPtrW", main_py)
+        self.assertIn("gclp_hicon = -14", main_py)
+        self.assertIn("gclp_hiconsm = -34", main_py)
+        self.assertIn("_set_windows_native_window_icon(window, app_icon_path)", main_py)
+        self.assertIn('if sys.platform != "win32":', main_py)
+        self.assertNotIn('or not getattr(sys, "frozen", False)', main_py)
+        self.assertIn('app.setApplicationDisplayName("\\u200B")', main_py)
+        self.assertIn("window.showMaximized()", main_py)
+        self.assertNotIn("window.showFullScreen()", main_py)
+
+    def test_dubbing_setup_exposes_independent_audio_mix_controls(self):
+        setup = (QML_DIR / "DubbingSetupPanel.qml").read_text(encoding="utf-8")
+        audio_dialog = (QML_DIR / "AudioMixDialog.qml").read_text(encoding="utf-8")
+        create_page = (QML_DIR / "CreateVideoPage.qml").read_text(encoding="utf-8")
+        self.assertIn("audioMixDialog.open()", setup)
+        self.assertIn("AppController.browseBackgroundMusic()", setup)
+        self.assertIn("backgroundMusicLinkDialog.open()", setup)
+        self.assertIn("BackgroundMusicLinkDialog", setup)
+        self.assertIn("AppController.originalVolume", audio_dialog)
+        self.assertIn("AppController.ttsVolume", audio_dialog)
+        self.assertIn("AppController.backgroundMusicVolume", audio_dialog)
+        self.assertIn("AppController.previewAudioMix()", audio_dialog)
+        self.assertIn("!AppController.enableAudioSeparation", audio_dialog)
+        self.assertIn("AppController.originalVolume / 100.0", audio_dialog)
+        self.assertIn("AppController.ttsVolume / 100.0", audio_dialog)
+        self.assertIn("AppController.backgroundMusicVolume / 100.0", audio_dialog)
+        # The desktop workspace is fixed; only compact layouts may scroll the
+        # page while the individual panels keep their own local overflow.
+        self.assertIn("interactive: !root.wideLayout", create_page)
+        self.assertIn("policy: root.wideLayout ? ScrollBar.AlwaysOff", create_page)
+        self.assertIn("Flickable {", setup)
+
+    def test_background_music_link_import_stays_in_the_project_audio_flow(self):
+        dialog = (QML_DIR / "BackgroundMusicLinkDialog.qml").read_text(encoding="utf-8")
+        self.assertIn("AppController.importBackgroundMusicFromLink", dialog)
+        self.assertIn("AppController.cancelBackgroundMusicLinkImport()", dialog)
+        self.assertIn("AppController.backgroundMusicImportBusy", dialog)
+
+    def test_audio_download_source_switch_enables_local_file_import(self):
+        page = (QML_DIR / "AudioDownloadPage.qml").read_text(encoding="utf-8")
+        self.assertIn('property string sourceMode: "link"', page)
+        self.assertIn('currentValue: root.sourceMode', page)
+        self.assertIn('root.sourceMode = value', page)
+        self.assertIn('root.downloader.chooseAudioSource()', page)
+
+    def test_download_choice_cards_have_equal_columns_without_open_labels(self):
+        card = (QML_DIR / "DownloadActionCard.qml").read_text(encoding="utf-8")
+        page = (QML_DIR / "DownloadsPage.qml").read_text(encoding="utf-8")
+        self.assertIn("Layout.preferredWidth: 1", card)
+        self.assertIn("Layout.preferredHeight: 112", card)
+        self.assertIn("maximumLineCount: 2", card)
+        self.assertNotIn("property string actionText", card)
+        self.assertNotIn("actionText:", page)
+        self.assertIn('I18n.t("Browse public channel videos")', page)
+        self.assertIn('I18n.t("Download one video from a link")', page)
+
+    def test_downloads_are_project_backed_and_available_from_the_project_menu(self):
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        menu = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
+        setup = (QML_DIR / "ProjectSetupDialog.qml").read_text(encoding="utf-8")
+        downloads = (QML_DIR / "DownloadsPage.qml").read_text(encoding="utf-8")
+
+        self.assertIn('readonly property string routeDownloadProjects: "download-projects"', main)
+        self.assertIn("AppController.downloadProjectModel", main)
+        self.assertIn('projectSetupDialog.openForType("download")', main)
+        self.assertIn("signal newDownloadProjectRequested", menu)
+        self.assertIn('I18n.t("New download project")', menu)
+        self.assertIn('type === "download" ? "download"', setup)
+        self.assertIn("required property string projectName", downloads)
+        self.assertIn("function navigateTo(page)", downloads)
+
+    def test_platform_selector_uses_rendered_marks_and_languages_stay_textual(self):
+        platform_picker = (QML_DIR / "ChannelDownloadPage.qml").read_text(encoding="utf-8")
+        language_picker = (QML_DIR / "SearchableLanguageCombo.qml").read_text(encoding="utf-8")
+        settings = (QML_DIR / "SettingsDialog.qml").read_text(encoding="utf-8")
+        self.assertIn('logoRole: "platform"', platform_picker)
+        self.assertIn("logoModel: root.platformOptions", platform_picker)
+        self.assertIn("PlatformLogo", (QML_DIR / "AppComboBox.qml").read_text(encoding="utf-8"))
+        self.assertIn('"youtube": { "glyph": "▶"', (QML_DIR / "PlatformLogo.qml").read_text(encoding="utf-8"))
+        self.assertNotIn("LanguageFlag", language_picker)
+        self.assertNotIn('"flag": "vi"', settings)
+
+    def test_language_labels_are_names_without_codes(self):
+        from haizflow.desktop.presenters import language_label
+
+        self.assertEqual(language_label("vi", "vi"), "Tiếng Việt")
+        self.assertEqual(language_label("en", "en"), "English")
+
+    def test_combo_focus_is_keyboard_only_and_language_search_is_stable(self):
+        combo = (QML_DIR / "AppComboBox.qml").read_text(encoding="utf-8")
+        language_picker = (QML_DIR / "SearchableLanguageCombo.qml").read_text(encoding="utf-8")
+        self.assertIn("focusPolicy: Qt.TabFocus", combo)
+        self.assertIn("contentItem: ColumnLayout", language_picker)
+        self.assertIn("onClicked: root.openPicker(true)", language_picker)
+        self.assertNotIn("property bool userEditing", language_picker)
 
 
 if __name__ == "__main__":

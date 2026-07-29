@@ -356,6 +356,86 @@ Module {
             notify: "originalVolumeChanged"
             index: 30
         }
+        Property { name: "mediaDownloader"; type: "QObject"; read: "mediaDownloader"; index: 107; isReadonly: true }
+        Property {
+            name: "backgroundMusicVolume"
+            type: "int"
+            read: "backgroundMusicVolume"
+            write: "backgroundMusicVolume"
+            notify: "backgroundMusicVolumeChanged"
+            index: 100
+        }
+        Property {
+            name: "ttsVolume"
+            type: "int"
+            read: "ttsVolume"
+            write: "ttsVolume"
+            notify: "ttsVolumeChanged"
+            index: 101
+        }
+        Property {
+            name: "backgroundMusicPath"
+            type: "QString"
+            read: "backgroundMusicPath"
+            notify: "backgroundMusicChanged"
+            index: 102
+            isReadonly: true
+        }
+        Property {
+            name: "downloadProjectModel"
+            type: "QObject"
+            read: "downloadProjectModel"
+            index: 108
+            isReadonly: true
+        }
+        Property {
+            name: "backgroundMusicImportBusy"
+            type: "bool"
+            read: "backgroundMusicImportBusy"
+            notify: "backgroundMusicImportChanged"
+            index: 108
+            isReadonly: true
+        }
+        Property {
+            name: "backgroundMusicImportStatus"
+            type: "QString"
+            read: "backgroundMusicImportStatus"
+            notify: "backgroundMusicImportChanged"
+            index: 109
+            isReadonly: true
+        }
+        Property {
+            name: "audioPreviewSource"
+            type: "QString"
+            read: "audioPreviewSource"
+            notify: "audioPreviewChanged"
+            index: 103
+            isReadonly: true
+        }
+        Property {
+            name: "audioPreviewOriginalSource"
+            type: "QString"
+            read: "audioPreviewOriginalSource"
+            notify: "audioPreviewChanged"
+            index: 105
+            isReadonly: true
+        }
+        Property {
+            name: "audioPreviewBackgroundMusicSource"
+            type: "QString"
+            read: "audioPreviewBackgroundMusicSource"
+            notify: "audioPreviewChanged"
+            index: 106
+            isReadonly: true
+        }
+        Property {
+            name: "audioPreviewState"
+            type: "QString"
+            read: "audioPreviewState"
+            notify: "audioPreviewChanged"
+            index: 104
+            isReadonly: true
+        }
         Property {
             name: "workflowMode"
             type: "QString"
@@ -677,6 +757,22 @@ Module {
             index: 73
             isReadonly: true
         }
+        Property {
+            name: "projectRoot"
+            type: "QString"
+            read: "projectRoot"
+            notify: "projectSetupChanged"
+            index: 109
+            isReadonly: true
+        }
+        Property {
+            name: "downloadOutputRoot"
+            type: "QString"
+            read: "downloadOutputRoot"
+            notify: "projectSetupChanged"
+            index: 110
+            isReadonly: true
+        }
         Signal { name: "videoPathChanged" }
         Signal { name: "videoThumbnailChanged" }
         Signal { name: "targetLanguageChanged" }
@@ -684,6 +780,10 @@ Module {
         Signal { name: "ttsVoiceOptionsChanged" }
         Signal { name: "enableAudioSeparationChanged" }
         Signal { name: "originalVolumeChanged" }
+        Signal { name: "backgroundMusicVolumeChanged" }
+        Signal { name: "ttsVolumeChanged" }
+        Signal { name: "backgroundMusicChanged" }
+        Signal { name: "audioPreviewChanged" }
         Signal { name: "workflowModeChanged" }
         Signal { name: "selectedVideoChanged" }
         Signal { name: "selectedElapsedChanged" }
@@ -703,6 +803,7 @@ Module {
         Signal { name: "urlImportFinished" }
         Signal { name: "channelImportChanged" }
         Signal { name: "mediaImportChanged" }
+        Signal { name: "backgroundMusicImportChanged" }
         Method {
             name: "processingDeviceCompatible"
             type: "bool"
@@ -726,12 +827,25 @@ Module {
             Parameter { name: "a1"; type: "QString" }
         }
         Method { name: "browseVideo" }
+        Method { name: "browseBackgroundMusic" }
+        Method {
+            name: "importBackgroundMusicFromLink"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method { name: "cancelBackgroundMusicLinkImport" }
+        Method { name: "clearBackgroundMusic"; type: "bool" }
+        Method { name: "previewAudioMix"; type: "bool" }
         Method {
             name: "replaceSelectedVideoVideo"
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
         }
         Method { name: "browseProjectDirectory" }
+        Method {
+            name: "browseProjectDirectoryForType"
+            Parameter { name: "a1"; type: "QString" }
+        }
         Method {
             name: "prepareProject"
             type: "bool"
@@ -773,6 +887,8 @@ Module {
             Parameter { name: "tts_voice"; type: "QString" }
             Parameter { name: "enable_audio_separation"; type: "bool" }
             Parameter { name: "original_volume"; type: "int" }
+            Parameter { name: "background_music_volume"; type: "int" }
+            Parameter { name: "tts_volume"; type: "int" }
         }
         Method { name: "loadBatchSettings" }
         Method {
@@ -813,11 +929,13 @@ Module {
         }
         Method {
             name: "selectProjectInMode"
+            type: "bool"
             Parameter { name: "a1"; type: "int" }
             Parameter { name: "a2"; type: "QString" }
         }
         Method { name: "deleteSelectedVideo" }
         Method { name: "openProjectFolder" }
+        Method { name: "openDownloadOutputFolder" }
         Method {
             name: "openExternalUrl"
             type: "bool"

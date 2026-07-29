@@ -20,7 +20,8 @@ Button {
     contentItem: Item {
         Row {
             id: navContent
-            anchors.centerIn: parent
+            x: root.compact ? Math.round((parent.width - width) / 2) : root.leftPadding
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 0
 
             AppIcon {

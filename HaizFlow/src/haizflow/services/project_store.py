@@ -32,6 +32,12 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{number}" for number in range(1, 10)),
     *(f"LPT{number}" for number in range(1, 10)),
 }
+PROJECT_TYPES = frozenset({"single", "batch", "download"})
+
+
+def normalize_project_type(project_type: Any) -> str:
+    kind = str(project_type or "").strip().lower()
+    return kind if kind in PROJECT_TYPES else "single"
 
 
 def _force_remove_readonly(func, path, _exc_info) -> None:
@@ -96,7 +102,7 @@ def project_key(project_name: str, project_directory: str, project_type: str) ->
     intentionally retained for migration and legacy discovery only.
     """
     directory = os.path.abspath(project_directory).lower()
-    kind = "batch" if project_type == "batch" else "single"
+    kind = normalize_project_type(project_type)
     return f"{kind}:{directory}:{project_name.strip().lower()}"
 
 
@@ -151,13 +157,13 @@ def _matching_records(
 ) -> list[dict[str, Any]]:
     directory = os.path.abspath(project_directory).lower()
     name = project_name.strip().lower()
-    kind = "batch" if project_type == "batch" else "single" if project_type is not None else None
+    kind = normalize_project_type(project_type) if project_type is not None else None
     return [
         record
         for record in records
         if os.path.abspath(str(record.get("project_directory") or "")).lower() == directory
         and str(record.get("project_name") or "").strip().lower() == name
-        and (kind is None or ("batch" if record.get("project_type") == "batch" else "single") == kind)
+        and (kind is None or normalize_project_type(record.get("project_type")) == kind)
     ]
 
 
@@ -202,6 +208,13 @@ def project_exports_dir_for_key(project_key_value: str) -> str:
 
 def project_videos_dir_for_key(project_key_value: str) -> str:
     return os.path.join(project_root_for_key(project_key_value), "videos")
+
+
+def project_downloads_dir_for_key(project_key_value: str) -> str:
+    record = get_project(project_key_value)
+    if not record or normalize_project_type(record.get("project_type")) != "download":
+        raise ValueError("The selected project is not a download project.")
+    return os.path.join(_record_root(record), "downloads")
 
 
 def resolve_project_key(project_name: str, project_directory: str, project_type: str | None = None) -> str:
@@ -302,7 +315,7 @@ def _migrate_project_record(raw_record: dict[str, Any]) -> tuple[dict[str, Any],
             if not name or not directory_value:
                 raise ProjectMetadataError("Legacy project metadata is missing its name or directory.")
             directory = os.path.abspath(directory_value)
-            kind = "batch" if record.get("project_type") == "batch" else "single"
+            kind = normalize_project_type(record.get("project_type"))
             key = project_key(name, directory, kind)
             root = str(record.get("project_root") or _legacy_project_root(name, directory))
             record.update(
@@ -330,7 +343,7 @@ def _migrate_project_record(raw_record: dict[str, Any]) -> tuple[dict[str, Any],
         if version == 3:
             name = str(record.get("project_name") or "").strip()
             directory_value = str(record.get("project_directory") or "").strip()
-            kind = "batch" if record.get("project_type") == "batch" else "single"
+            kind = normalize_project_type(record.get("project_type"))
             legacy_key = project_key(name, os.path.abspath(directory_value), kind)
             project_id = str(record.get("project_id") or uuid.uuid5(uuid.NAMESPACE_URL, f"haizflow:{legacy_key}"))
             record["schema_version"] = 4
@@ -345,7 +358,7 @@ def _migrate_project_record(raw_record: dict[str, Any]) -> tuple[dict[str, Any],
     if not name or not directory_value:
         raise ProjectMetadataError("Project metadata is missing its name or directory.")
     directory = os.path.abspath(directory_value)
-    kind = "batch" if record.get("project_type") == "batch" else "single"
+    kind = normalize_project_type(record.get("project_type"))
     legacy_key = project_key(name, directory, kind)
     project_id = str(record.get("project_id") or uuid.uuid5(uuid.NAMESPACE_URL, f"haizflow:{legacy_key}"))
     key = project_identity_key(project_id)
@@ -562,6 +575,9 @@ def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any])
     os.makedirs(root, exist_ok=True)
     os.makedirs(os.path.join(root, "exports"), exist_ok=True)
     os.makedirs(os.path.join(root, "videos"), exist_ok=True)
+    if normalize_project_type(record.get("project_type")) == "download":
+        for category in ("channel", "video", "audio"):
+            os.makedirs(os.path.join(root, "downloads", category), exist_ok=True)
     _write_json_atomic(os.path.join(root, PROJECT_MANIFEST_NAME), record)
     records = [item for item in records if item.get("key") != record["key"]]
     records.append(record)
@@ -581,7 +597,7 @@ def create_project(project_name: str, project_directory: str, project_type: str)
         raise ValueError("Choose a project folder.")
     name = validate_new_project_name(name)
     directory = os.path.abspath(directory_input)
-    kind = "batch" if project_type == "batch" else "single"
+    kind = normalize_project_type(project_type)
     now = _now()
 
     with _index_guard():
@@ -659,6 +675,21 @@ def list_projects() -> list[dict[str, Any]]:
         records = _load_index()
     valid = [record for record in records if record.get("key") and record.get("project_name")]
     return sorted(valid, key=lambda record: record.get("updated_at", ""), reverse=True)
+
+
+def touch_project_by_key(project_key_value: str) -> bool:
+    """Move a project to the top of the recent list after meaningful activity."""
+    key = str(project_key_value or "").strip()
+    if not key:
+        return False
+    with _index_guard():
+        records = _load_index()
+        record = next((item for item in records if item.get("key") == key), None)
+        if not record:
+            return False
+        record["updated_at"] = _now()
+        _write_project_record(records, record)
+        return True
 
 
 def _validated_deletion_record(records: list[dict[str, Any]], key: str) -> tuple[dict[str, Any], str] | None:

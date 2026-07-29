@@ -35,7 +35,10 @@ _AUDIO_SAMPLE_RATE = 16000
 _SEGMENT_LANGUAGE_CONFIDENCE = 0.55
 _ALIGNMENT_MIN_COVERAGE_RATIO = 0.55
 _ALIGNMENT_MIN_MEDIAN_WORD_SCORE = 0.03
-TIMING_SOURCE = "whisperx-validated-sentences-v4"
+_ALIGNMENT_GROUP_PADDING_SECONDS = 2.5
+_ALIGNMENT_GROUP_SPLIT_GAP_SECONDS = 3.0
+_ALIGNMENT_GROUP_MAX_SECONDS = 75.0
+TIMING_SOURCE = "whisperx-context-aligned-sentences-v5"
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 _CJK_LANGUAGE_CODES = frozenset({"zh", "ja", "ko"})
 _SENTENCE_END_CHARS = frozenset(".!?\u2026\u3002\uff01\uff1f")
@@ -367,6 +370,91 @@ def _split_segment_proportionally(segment: dict) -> list[dict]:
     return fallback_segments
 
 
+def _alignment_groups(segments: list[dict]) -> list[list[dict]]:
+    """Group consecutive same-language sentences for context-aware alignment."""
+    groups = []
+    current = []
+    for segment in segments:
+        if current:
+            previous = current[-1]
+            gap = float(segment.get("start", 0.0)) - float(previous.get("end", 0.0))
+            group_span = float(segment.get("end", 0.0)) - float(current[0].get("start", 0.0))
+            language_changed = (
+                str(segment.get("language") or "en")
+                != str(current[0].get("language") or "en")
+            )
+            if (
+                language_changed
+                or gap >= _ALIGNMENT_GROUP_SPLIT_GAP_SECONDS
+                or group_span > _ALIGNMENT_GROUP_MAX_SECONDS
+            ):
+                groups.append(current)
+                current = []
+        current.append(segment)
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _split_context_alignment(
+    source_segments: list[dict],
+    candidate_segments: list[dict],
+    search_start: float,
+    search_end: float,
+) -> tuple[list[dict] | None, str]:
+    """Split one context alignment back into its original ordered sentences."""
+    expected_word_counts = [len(str(segment.get("text") or "").split()) for segment in source_segments]
+    if not expected_word_counts or any(count <= 0 for count in expected_word_counts):
+        return None, "source sentence has no alignable words"
+
+    words = [
+        word
+        for candidate in candidate_segments
+        for word in candidate.get("words", [])
+        if word.get("start") is not None and word.get("end") is not None
+    ]
+    expected_total = sum(expected_word_counts)
+    if len(words) != expected_total:
+        return None, f"aligned word count {len(words)} does not match source count {expected_total}"
+
+    previous_end = search_start
+    scores = []
+    for word in words:
+        start = float(word["start"])
+        end = float(word["end"])
+        if start < search_start - 0.25 or end > search_end + 0.25:
+            return None, "aligned words escaped the context search window"
+        if end <= start or start < previous_end - 0.05:
+            return None, "aligned words have invalid or overlapping timestamps"
+        previous_end = end
+        if word.get("score") is not None:
+            scores.append(float(word["score"]))
+
+    if scores:
+        median_score = statistics.median(scores)
+        if median_score < _ALIGNMENT_MIN_MEDIAN_WORD_SCORE:
+            return None, (
+                f"median word score {median_score:.3f} is below "
+                f"{_ALIGNMENT_MIN_MEDIAN_WORD_SCORE:.3f}"
+            )
+
+    aligned = []
+    offset = 0
+    for source, count in zip(source_segments, expected_word_counts):
+        sentence_words = words[offset: offset + count]
+        offset += count
+        sentence = dict(source)
+        sentence.update(
+            {
+                "start": float(sentence_words[0]["start"]),
+                "end": float(sentence_words[-1]["end"]),
+                "words": sentence_words,
+            }
+        )
+        aligned.append(sentence)
+    return aligned, f"aligned {len(aligned)} sentences with {len(words)} timed words"
+
+
 def _alignment_quality(source_segment: dict, aligned_segments: list[dict]) -> tuple[bool, str]:
     """Reject aligners that return legal-looking but physically impossible timing."""
     if not aligned_segments:
@@ -465,32 +553,34 @@ def _verified_alignment_asset(language: str, video_id: str) -> tuple[object, dic
 
 
 def _align_segments_by_language(audio, segments, device: str, video_id: str, progress_callback=None):
-    """Align each source span and preserve it whenever the aligner is unreliable."""
+    """Align ordered sentence groups with enough context to correct ASR drift."""
+    sentence_segments = [
+        sentence
+        for source_segment in segments
+        for sentence in _split_segment_proportionally(source_segment)
+    ]
+    context_groups = _alignment_groups(sentence_segments)
     grouped_segments = {}
     ordered_languages = []
-    for segment in segments:
-        language = segment.get("language") or "en"
+    for group in context_groups:
+        language = group[0].get("language") or "en"
         if language not in grouped_segments:
             grouped_segments[language] = []
             ordered_languages.append(language)
-        grouped_segments[language].append(segment)
+        grouped_segments[language].append(group)
 
     aligned_segments = []
     for language in ordered_languages:
         check_cancellation(video_id)
-        language_segments = [
-            sentence
-            for source_segment in grouped_segments[language]
-            for sentence in _split_segment_proportionally(source_segment)
-        ]
+        language_groups = grouped_segments[language]
         if language not in _VERIFIED_ALIGNMENT_MODELS:
             log_to_video(
                 video_id,
                 f"WARNING: No checksum-pinned alignment model is supported for '{language}'. "
                 "Preserving Whisper spans with proportional sentence boundaries.",
             )
-            for source_segment in language_segments:
-                aligned_segments.extend(_split_segment_proportionally(source_segment))
+            for group in language_groups:
+                aligned_segments.extend(group)
             continue
         align_model = None
         try:
@@ -501,11 +591,30 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
             align_model = align_model.to(device)
             if progress_callback:
                 progress_callback("aligning", f"Aligning {language} subtitles")
-            for source_index, source_segment in enumerate(language_segments, start=1):
+            source_index = 0
+            audio_duration = len(audio) / _AUDIO_SAMPLE_RATE
+            for group in language_groups:
                 check_cancellation(video_id)
+                group_start_index = source_index + 1
+                source_index += len(group)
+                group_end_index = source_index
+                search_start = max(
+                    0.0,
+                    float(group[0].get("start", 0.0)) - _ALIGNMENT_GROUP_PADDING_SECONDS,
+                )
+                search_end = min(
+                    audio_duration,
+                    float(group[-1].get("end", 0.0)) + _ALIGNMENT_GROUP_PADDING_SECONDS,
+                )
+                context_segment = {
+                    **group[0],
+                    "start": search_start,
+                    "end": search_end,
+                    "text": " ".join(str(segment.get("text") or "").strip() for segment in group),
+                }
                 try:
                     aligned_result = _align_without_nltk_download(
-                        [source_segment],
+                        [context_segment],
                         align_model,
                         metadata,
                         audio,
@@ -513,13 +622,24 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
                         return_char_alignments=False,
                     )
                     candidate_segments = aligned_result.get("segments", [])
-                    is_valid, quality_detail = _alignment_quality(source_segment, candidate_segments)
-                    if is_valid:
-                        aligned_segments.extend(candidate_segments)
+                    context_aligned, quality_detail = _split_context_alignment(
+                        group,
+                        candidate_segments,
+                        search_start,
+                        search_end,
+                    )
+                    if context_aligned:
+                        aligned_segments.extend(context_aligned)
+                        log_to_video(
+                            video_id,
+                            f"Aligned '{language}' source sentences {group_start_index}-{group_end_index} "
+                            f"with surrounding speech context ({quality_detail}).",
+                        )
                         continue
                     log_to_video(
                         video_id,
-                        f"WARNING: Rejected '{language}' alignment for source span {source_index} "
+                        f"WARNING: Rejected '{language}' context alignment for source sentences "
+                        f"{group_start_index}-{group_end_index} "
                         f"({quality_detail}). Preserving Whisper timing with proportional sentence boundaries.",
                     )
                 except Exception as exc:
@@ -527,10 +647,11 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
                         raise
                     log_to_video(
                         video_id,
-                        f"WARNING: Alignment failed for '{language}' source span {source_index}. "
+                        f"WARNING: Context alignment failed for '{language}' source sentences "
+                        f"{group_start_index}-{group_end_index}. "
                         f"Preserving Whisper timing: {exc}",
                     )
-                aligned_segments.extend(_split_segment_proportionally(source_segment))
+                aligned_segments.extend(group)
         except Exception as exc:
             if is_cancelled(video_id):
                 raise
@@ -539,8 +660,8 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
                 f"WARNING: Alignment model failed or is unsupported for '{language}'. "
                 f"Preserving Whisper spans with proportional sentence boundaries: {exc}",
             )
-            for source_segment in language_segments:
-                aligned_segments.extend(_split_segment_proportionally(source_segment))
+            for group in language_groups:
+                aligned_segments.extend(group)
         finally:
             if align_model is not None:
                 del align_model

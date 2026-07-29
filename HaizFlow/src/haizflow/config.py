@@ -26,6 +26,11 @@ from haizflow.core.paths import (
     storage_dir,
 )
 
+# Keep the Windows profile only as a read-only navigation hint for native file
+# pickers.  Runtime caches are still redirected below before any heavy library
+# is imported.
+NATIVE_WINDOWS_USERPROFILE = os.environ.get("USERPROFILE", "")
+
 BASE_DIR = str(package_root())
 PROJECT_ROOT = str(project_root())
 _SMOKE_TEST = os.getenv("HAIZFLOW_SMOKE_TEST") == "1"

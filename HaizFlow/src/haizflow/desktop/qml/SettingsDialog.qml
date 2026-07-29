@@ -235,14 +235,8 @@ Dialog {
                         Layout.preferredWidth: 260
                         currentValue: root.draftLanguage
                         options: [
-                            {
-                                "label": I18n.t("English"),
-                                "value": "en"
-                            },
-                            {
-                                "label": I18n.t("Vietnamese"),
-                                "value": "vi"
-                            }
+                            { "label": I18n.t("English"), "value": "en" },
+                            { "label": I18n.t("Vietnamese"), "value": "vi" }
                         ]
                         onActivated: function (value) {
                             root.draftLanguage = value

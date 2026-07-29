@@ -15,6 +15,8 @@ Dialog {
     property string draftTtsVoice: ""
     property bool draftEnableAudioSeparation: false
     property int draftOriginalVolume: 60
+    property int draftBackgroundMusicVolume: 30
+    property int draftTtsVolume: 100
     readonly property var draftVoiceOptions: AppController.voiceOptionsForLanguage(draftTargetLanguage)
     readonly property int draftTtsVoiceIndex: {
         for (let index = 0; index < draftVoiceOptions.length; ++index) {
@@ -40,6 +42,8 @@ Dialog {
         draftTtsVoice = normalizedDraftVoice(draftTargetLanguage, settings.ttsVoice || "")
         draftEnableAudioSeparation = Boolean(settings.enableAudioSeparation)
         draftOriginalVolume = Number(settings.originalVolume !== undefined ? settings.originalVolume : 60)
+        draftBackgroundMusicVolume = Number(settings.backgroundMusicVolume !== undefined ? settings.backgroundMusicVolume : 30)
+        draftTtsVolume = Number(settings.ttsVolume !== undefined ? settings.ttsVolume : 100)
     }
 
     modal: true
@@ -238,19 +242,18 @@ Dialog {
                     }
 
                     Text {
-                        visible: !root.draftEnableAudioSeparation
-                        text: I18n.t("Original audio volume")
-                        color: Theme.textMuted
+                        text: I18n.t("Source audio volume")
+                        color: root.draftEnableAudioSeparation ? Theme.textSubtle : Theme.textMuted
                         font.pixelSize: Theme.caption
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: !root.draftEnableAudioSeparation
                         spacing: Theme.space12
 
                         AppSlider {
                             Layout.fillWidth: true
+                            enabled: !root.draftEnableAudioSeparation
                             from: 0
                             to: 100
                             stepSize: 1
@@ -264,6 +267,70 @@ Dialog {
                         Text {
                             Layout.preferredWidth: 44
                             text: qsTr("%1%").arg(root.draftOriginalVolume)
+                            color: root.draftEnableAudioSeparation ? Theme.textSubtle : Theme.text
+                            horizontalAlignment: Text.AlignRight
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.DemiBold
+                        }
+                    }
+
+                    Text {
+                        text: I18n.t("TTS volume")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.caption
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.space12
+
+                        AppSlider {
+                            Layout.fillWidth: true
+                            from: 0
+                            to: 100
+                            stepSize: 1
+                            value: root.draftTtsVolume
+                            onMoved: {
+                                root.changesApplied = false
+                                root.draftTtsVolume = Math.round(value)
+                            }
+                        }
+
+                        Text {
+                            Layout.preferredWidth: 44
+                            text: qsTr("%1%").arg(root.draftTtsVolume)
+                            color: Theme.text
+                            horizontalAlignment: Text.AlignRight
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.DemiBold
+                        }
+                    }
+
+                    Text {
+                        text: I18n.t("Background music volume")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.caption
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.space12
+
+                        AppSlider {
+                            Layout.fillWidth: true
+                            from: 0
+                            to: 100
+                            stepSize: 1
+                            value: root.draftBackgroundMusicVolume
+                            onMoved: {
+                                root.changesApplied = false
+                                root.draftBackgroundMusicVolume = Math.round(value)
+                            }
+                        }
+
+                        Text {
+                            Layout.preferredWidth: 44
+                            text: qsTr("%1%").arg(root.draftBackgroundMusicVolume)
                             color: Theme.text
                             horizontalAlignment: Text.AlignRight
                             font.pixelSize: Theme.caption
@@ -318,7 +385,9 @@ Dialog {
                             root.draftTargetLanguage,
                             root.draftTtsVoice,
                             root.draftEnableAudioSeparation,
-                            root.draftOriginalVolume
+                            root.draftOriginalVolume,
+                            root.draftBackgroundMusicVolume,
+                            root.draftTtsVolume
                         ))
                         root.changesApplied = true
                 }

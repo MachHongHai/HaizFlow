@@ -37,12 +37,14 @@ def build_project_summaries(videos, persisted_projects=None):
             "key": key,
             "project_name": persisted["project_name"],
             "project_directory": persisted.get("project_directory", ""),
-            "project_type": "batch" if persisted.get("project_type") == "batch" else "single",
+            "project_type": project_store.normalize_project_type(persisted.get("project_type")),
             "videos": [],
             "updated_at": persisted.get("updated_at", ""),
         }
     for video in videos:
-        project_type = "batch" if getattr(video, "project_type", "single") == "batch" else "single"
+        project_type = (
+            "batch" if getattr(video, "project_type", "single") == "batch" else "single"
+        )
         project_name = video.project_name or os.path.splitext(video.original_filename)[0]
         project_directory = video.project_directory or ""
         key = str(getattr(video, "project_key", "") or "")
@@ -74,7 +76,7 @@ def build_project_summaries(videos, persisted_projects=None):
                 {
                     **project,
                     "video_count": 0,
-                    "status": "empty",
+                    "status": "ready" if project["project_type"] == "download" else "empty",
                     "progress": 0,
                     "thumbnail_source": "",
                     "updated_at": project.get("updated_at", ""),
@@ -120,8 +122,8 @@ def language_label(code: str, ui_language: str) -> str:
     for language_code, english_name, native_name in POPULAR_TARGET_LANGUAGES:
         if language_code == code:
             if ui_language == "vi":
-                return f"{VIETNAMESE_LANGUAGE_NAMES.get(language_code, native_name)} ({language_code})"
-            return f"{english_name} ({language_code})"
+                return VIETNAMESE_LANGUAGE_NAMES.get(language_code, native_name)
+            return english_name
     return code
 
 

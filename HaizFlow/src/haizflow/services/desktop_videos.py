@@ -34,6 +34,72 @@ def _copy_file_atomically(source_path: str, destination_path: str) -> None:
             pass
 
 
+def _remove_stale_background_music_files(workspace: str, keep_path: str = "") -> list[str]:
+    """Delete only superseded HaizFlow-managed background music inputs."""
+    input_directory = os.path.join(workspace, "input")
+    retained = os.path.abspath(keep_path) if keep_path else ""
+    errors: list[str] = []
+    try:
+        entries = list(os.scandir(input_directory))
+    except FileNotFoundError:
+        return errors
+    for entry in entries:
+        if not entry.is_file() or not entry.name.startswith("background_music."):
+            continue
+        candidate = os.path.abspath(entry.path)
+        if retained and _same_path(candidate, retained):
+            continue
+        try:
+            os.remove(candidate)
+        except OSError as exc:
+            errors.append(f"{entry.name}: {exc}")
+    return errors
+
+
+def set_desktop_background_music(video_info, source_path: str) -> str:
+    """Copy optional music into its video's workspace for final mixing only."""
+    source_path = os.path.abspath(str(source_path or "").strip()) if source_path else ""
+    files = dict(video_info.files or {})
+    previous_path = str(files.get("background_music") or "")
+    workspace = os.path.abspath(video_store.get_video_dir(video_info.video_id))
+
+    if not source_path:
+        files.pop("background_music", None)
+        video_info.files = files
+        video_store.save_video(video_info)
+        cleanup_errors = _remove_stale_background_music_files(workspace)
+        if previous_path:
+            try:
+                if os.path.commonpath([os.path.abspath(previous_path), workspace]) == workspace:
+                    os.remove(previous_path)
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+        video_store.log_to_video(video_info.video_id, "Removed the optional background music source.")
+        for error in cleanup_errors:
+            video_store.log_to_video(video_info.video_id, f"Deferred stale background-music cleanup: {error}")
+        return ""
+
+    if not os.path.isfile(source_path) or os.path.getsize(source_path) <= 0:
+        raise ValueError("Choose an available, non-empty audio or video file for background music.")
+    extension = os.path.splitext(source_path)[1].lower() or ".media"
+    destination = os.path.join(workspace, "input", f"background_music{extension}")
+    _copy_file_atomically(source_path, destination)
+    files["background_music"] = destination
+    video_info.files = files
+    video_store.save_video(video_info)
+    cleanup_errors = _remove_stale_background_music_files(workspace, destination)
+    if previous_path and not _same_path(previous_path, destination):
+        try:
+            if os.path.commonpath([os.path.abspath(previous_path), workspace]) == workspace:
+                os.remove(previous_path)
+        except (FileNotFoundError, OSError, ValueError):
+            pass
+    video_store.log_to_video(video_info.video_id, f"Imported background music source: {os.path.basename(source_path)}")
+    for error in cleanup_errors:
+        video_store.log_to_video(video_info.video_id, f"Deferred stale background-music cleanup: {error}")
+    return destination
+
+
 def migrate_legacy_single_export(video_info) -> bool:
     """Move a legacy single-project export out of the project root once."""
     if (
@@ -112,6 +178,9 @@ def create_desktop_video(
         if not isinstance(input_path, str) or not input_path.strip():
             raise RuntimeError("New video metadata did not provide an input-video path.")
         _copy_file_atomically(video_path, input_path)
+
+        if config.background_music_path.strip():
+            set_desktop_background_music(video_info, config.background_music_path)
 
         try:
             video_info.video_width, video_info.video_height = get_video_dimensions(input_path)

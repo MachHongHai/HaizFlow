@@ -74,10 +74,19 @@ class ChannelImportQmlTests(unittest.TestCase):
             engine.deleteLater()
             self.app.processEvents()
 
-    def test_channel_import_loader_is_kept_alive_after_the_first_visit(self):
+    def test_channel_download_is_owned_by_downloads_page_not_batch(self):
         main_qml = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
-        self.assertIn("property bool channelImportVisited: false", main_qml)
-        self.assertIn("active: root.channelImportVisited", main_qml)
+        batch_qml = (QML_DIR / "BatchPage.qml").read_text(encoding="utf-8")
+        downloads_qml = (QML_DIR / "DownloadsPage.qml").read_text(encoding="utf-8")
+        channel_download_qml = (QML_DIR / "ChannelDownloadPage.qml").read_text(encoding="utf-8")
+        self.assertNotIn("routeChannelImport", main_qml)
+        self.assertNotIn("requestChannelImport", batch_qml)
+        self.assertIn("ChannelDownloadPage", downloads_qml)
+        self.assertIn("inspectChannel", channel_download_qml)
+        self.assertIn("downloadSelectedChannel", channel_download_qml)
+        self.assertIn("AppComboBox", channel_download_qml)
+        self.assertIn('"Bilibili", "value": "bilibili"', channel_download_qml)
+        self.assertNotIn("SegmentedControl", channel_download_qml)
 
     def test_channel_import_form_resyncs_only_when_the_project_session_changes(self):
         page_qml = (QML_DIR / "ChannelImportPage.qml").read_text(encoding="utf-8")

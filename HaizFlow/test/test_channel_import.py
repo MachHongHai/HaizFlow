@@ -67,6 +67,17 @@ class ChannelUrlTests(unittest.TestCase):
         self.assertEqual(douyin, "https://www.douyin.com/user/example")
         self.assertEqual(douyin_platform, "Douyin")
 
+        bilibili, bilibili_platform = validate_channel_url("https://space.bilibili.com/12345")
+        instagram, instagram_platform = validate_channel_url("instagram.com/creator")
+        twitch, twitch_platform = validate_channel_url("https://www.twitch.tv/creator")
+
+        self.assertEqual(bilibili, "https://space.bilibili.com/12345")
+        self.assertEqual(bilibili_platform, "Bilibili")
+        self.assertEqual(instagram, "https://instagram.com/creator")
+        self.assertEqual(instagram_platform, "Instagram")
+        self.assertEqual(twitch, "https://www.twitch.tv/creator")
+        self.assertEqual(twitch_platform, "Twitch")
+
     def test_douyin_worker_drains_large_output_without_poll_deadlock(self):
         response = json.dumps(
             {
@@ -115,6 +126,10 @@ class ChannelUrlTests(unittest.TestCase):
             "https://www.youtube.com/watch?v=abc",
             "https://www.tiktok.com/@creator/video/123",
             "https://www.douyin.com/video/123",
+            "https://www.bilibili.com/video/BV1xx411c7mD",
+            "https://www.instagram.com/reel/example/",
+            "https://www.x.com/creator/status/123",
+            "https://www.twitch.tv/creator/videos/123",
             "https://example.com/@creator",
         )
         for url in invalid:

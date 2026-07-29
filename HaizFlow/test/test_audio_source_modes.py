@@ -27,7 +27,7 @@ class AudioSourceModeTests(unittest.TestCase):
         self.assertEqual(path, "source.wav")
         self.assertEqual(volume, 35)
 
-    def test_separated_mode_uses_no_vocals_at_full_volume(self):
+    def test_separated_mode_uses_no_vocals_at_selected_source_volume(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             background_path = Path(temporary_directory) / "no_vocals.wav"
             background_path.write_bytes(b"audio" * 20)
@@ -40,7 +40,7 @@ class AudioSourceModeTests(unittest.TestCase):
             path, volume = process_video._resolve_audio_mix(video, "source.wav")
 
         self.assertEqual(path, str(background_path))
-        self.assertEqual(volume, 100)
+        self.assertEqual(volume, 20)
 
     def test_missing_separated_track_is_regenerated_and_persisted(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -74,7 +74,7 @@ class AudioSourceModeTests(unittest.TestCase):
                 )
 
         self.assertEqual(path, str(background_path))
-        self.assertEqual(volume, 100)
+        self.assertEqual(volume, 20)
         self.assertEqual(video.files["speech_audio"], str(vocals_path))
         self.assertEqual(video.files["background_audio"], str(background_path))
         update_video.assert_called_once_with("audio-test", files=video.files)

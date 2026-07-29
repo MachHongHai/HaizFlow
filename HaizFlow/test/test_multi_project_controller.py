@@ -37,7 +37,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             release.set()
             worker.join(timeout=1.0)
 
-    def test_media_picker_starts_in_the_existing_project_directory(self):
+    def test_media_picker_starts_in_the_native_windows_media_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_directory = Path(temp_dir) / "project"
             project_directory.mkdir()
@@ -51,7 +51,10 @@ class MultiProjectControllerTests(unittest.TestCase):
             ) as choose_video:
                 importer.browse_video()
 
-        self.assertEqual(choose_video.call_args.args[2], str(project_directory.resolve()))
+        self.assertEqual(
+            choose_video.call_args.args[2],
+            project_import_controller.native_media_dialog_directory(),
+        )
 
     def test_batch_settings_draft_applies_without_mutating_editor_state(self):
         video = SimpleNamespace(video_id="batch-video")

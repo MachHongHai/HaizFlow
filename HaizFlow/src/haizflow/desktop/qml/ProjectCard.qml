@@ -30,7 +30,7 @@ Rectangle {
         : status === "awaiting_review" ? Theme.blue
         : Theme.textMuted
 
-    height: Math.round(width * 0.58 + 82)
+    height: Math.round(width * 0.56 + 64)
     radius: Theme.radius
     color: hoverHandler.hovered ? Theme.surfaceMuted : Theme.surface
     border.width: activeFocus ? 2 : 1
@@ -84,7 +84,18 @@ Rectangle {
 
             ThumbnailFallback {
                 anchors.fill: parent
-                visible: root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error
+                visible: root.projectType !== "download"
+                    && (root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error)
+            }
+
+            AppIcon {
+                anchors.centerIn: parent
+                visible: root.projectType === "download"
+                width: 42
+                height: 42
+                glyph: "\uE896"
+                iconColor: Theme.interactive
+                iconSize: 42
             }
 
             Rectangle {
@@ -113,6 +124,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: 3
+                visible: root.projectType !== "download"
                 color: Theme.surfaceStrong
 
                 Rectangle {
@@ -161,6 +173,8 @@ Rectangle {
                     Layout.fillWidth: true
                     text: root.projectType === "batch"
                         ? qsTr("%1 - %2").arg(root.videoCount).arg(I18n.t("videos"))
+                        : root.projectType === "download"
+                            ? I18n.t("Download workspace")
                         : root.statusLabel
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
@@ -169,6 +183,7 @@ Rectangle {
                 }
 
                 Text {
+                    visible: root.projectType !== "download"
                     text: qsTr("%1%").arg(root.progress)
                     color: root.statusColor
                     font.pixelSize: Theme.caption

@@ -206,6 +206,8 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         crop=config.crop,
         enable_audio_separation=config.enable_audio_separation,
         original_video_volume=config.original_video_volume,
+        background_music_volume=config.background_music_volume,
+        tts_volume=config.tts_volume,
         project_name=config.project_name,
         project_directory=config.project_directory,
         project_type=config.project_type,
@@ -314,6 +316,12 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data["schema_version"] = 5
             version = 5
             continue
+        if version == 5:
+            data["schema_version"] = 6
+            data.setdefault("background_music_volume", 30)
+            data.setdefault("tts_volume", 100)
+            version = 6
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -377,6 +385,12 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     except (TypeError, ValueError):
         volume = 60
     data["original_video_volume"] = max(0, min(100, volume))
+    for key, default in (("background_music_volume", 30), ("tts_volume", 100)):
+        try:
+            volume = int(data.get(key, default))
+        except (TypeError, ValueError):
+            volume = default
+        data[key] = max(0, min(100, volume))
     return data, data != original
 
 

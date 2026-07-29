@@ -3,6 +3,7 @@ import json
 from pydub import AudioSegment
 import subprocess
 import tempfile
+import math
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
@@ -12,11 +13,54 @@ from haizflow.utils.ffmpeg import get_video_duration
 _FINAL_AUDIO_TAIL_MARGIN_MS = 120
 
 
-def _segment_slot_end_ms(start_ms: int, next_start_ms: int, video_duration_ms: int, *, is_last: bool) -> int:
-    slot_end_ms = min(video_duration_ms, max(start_ms, next_start_ms))
-    if is_last and slot_end_ms - start_ms > _FINAL_AUDIO_TAIL_MARGIN_MS * 2:
-        slot_end_ms -= _FINAL_AUDIO_TAIL_MARGIN_MS
-    return slot_end_ms
+def _apply_volume(audio: AudioSegment, volume: int, label: str, video_id: str) -> AudioSegment:
+    """Apply a linear percentage without changing track selection."""
+    volume = max(0, min(100, int(volume)))
+    if volume == 0:
+        log_to_video(video_id, f"{label} volume set to 0%. Muting this track.")
+        return audio - 100
+    db_change = 20 * math.log10(volume / 100.0)
+    log_to_video(video_id, f"{label} volume set to {volume}%. Applying {db_change:.2f} dB.")
+    return audio + db_change
+
+
+def _fit_to_duration(audio: AudioSegment, duration_ms: int) -> AudioSegment:
+    """Loop a non-empty music source, then trim it exactly to the video."""
+    if len(audio) <= 0:
+        raise RuntimeError("Background music contains no playable audio.")
+    return (audio * max(1, math.ceil(duration_ms / len(audio))))[:duration_ms]
+
+
+def _segment_slot_end_ms(
+    start_ms: int,
+    segment_end_ms: int,
+    next_start_ms: int,
+    video_duration_ms: int,
+    *,
+    is_last: bool,
+) -> int:
+    """Return the end of the original spoken window for one dubbed line.
+
+    The previous implementation used the next line's start as the slot end.
+    That prevented overlap, but let translated speech occupy pauses after the
+    actor had stopped speaking.  Matching the source segment's own end keeps
+    both ends of the dubbed line synchronized with fast dialogue.
+
+    Invalid legacy timestamps fall back to the next safe boundary so an old
+    project remains recoverable.
+    """
+    video_duration_ms = max(0, video_duration_ms)
+    hard_end_ms = video_duration_ms
+    if next_start_ms > start_ms:
+        hard_end_ms = min(hard_end_ms, next_start_ms)
+
+    if segment_end_ms > start_ms:
+        return min(hard_end_ms, segment_end_ms)
+
+    fallback_end_ms = min(video_duration_ms, max(start_ms, next_start_ms))
+    if is_last and fallback_end_ms - start_ms > _FINAL_AUDIO_TAIL_MARGIN_MS * 2:
+        fallback_end_ms -= _FINAL_AUDIO_TAIL_MARGIN_MS
+    return fallback_end_ms
 
 def trim_silence(audio: AudioSegment, silence_threshold_db: float = -50.0) -> AudioSegment:
     """Trims leading and trailing silence from an AudioSegment to remove delay and trailing padding."""
@@ -105,6 +149,9 @@ def build_audio_timeline(
     video_id: str,
     background_audio_path: str | None = None,
     original_video_volume: int = 60,
+    background_music_path: str | None = None,
+    background_music_volume: int = 30,
+    tts_volume: int = 100,
 ):
     """Overlays generated voice MP3 parts on top of the original/background audio track based on timestamps."""
     log_to_video(video_id, "Starting build of the audio timeline...")
@@ -129,15 +176,7 @@ def build_audio_timeline(
         log_to_video(video_id, f"Loading background/original audio track: {background_audio_path}")
         try:
             bg_audio = AudioSegment.from_file(background_audio_path)
-            # Lower background/original audio by custom percentage so dubbed speech stands out.
-            import math
-            if original_video_volume <= 0:
-                db_change = -100
-                log_to_video(video_id, f"Background audio volume set to {original_video_volume}%. Muting the background track.")
-            else:
-                db_change = 20 * math.log10(original_video_volume / 100.0)
-                log_to_video(video_id, f"Background audio volume set to {original_video_volume}%. Applying {db_change:.2f} dB.")
-            bg_audio = bg_audio + db_change
+            bg_audio = _apply_volume(bg_audio, original_video_volume, "Source audio", video_id)
             # Convert background audio to mono and 16000Hz (the format whisperX/edge-tts uses)
             base_audio = bg_audio.set_frame_rate(16000).set_channels(1)
             log_to_video(video_id, f"Original/background audio loaded and pre-processed. Duration: {len(base_audio)}ms")
@@ -154,6 +193,21 @@ def build_audio_timeline(
             duration=video_dur_ms - len(base_audio),
             frame_rate=16000,
         )
+
+    # The user-selected track never enters Demucs.  AudioSegment decodes both
+    # audio and video containers through FFmpeg, so MP3, MP4 and other
+    # FFmpeg-supported formats follow the same safe final-mix path.
+    if background_music_path:
+        if not os.path.isfile(background_music_path) or os.path.getsize(background_music_path) <= 0:
+            raise FileNotFoundError(f"Required background music track is missing: {background_music_path}")
+        try:
+            music = AudioSegment.from_file(background_music_path)
+            music = _fit_to_duration(music, video_dur_ms).set_frame_rate(16000).set_channels(1)
+            music = _apply_volume(music, background_music_volume, "Background music", video_id)
+            base_audio = base_audio.overlay(music)
+            log_to_video(video_id, f"Mixed background music: {background_music_path}")
+        except Exception as exc:
+            raise RuntimeError(f"Could not load background music: {exc}") from exc
     
     total = len(segments)
     for idx, seg in enumerate(segments, 1):
@@ -169,7 +223,9 @@ def build_audio_timeline(
             log_to_video(video_id, f"[{idx}/{total}] Skipping TTS: its slot starts after the video ends.")
             continue
         
-        # Determine target end time: start of the next segment (original) or end of video
+        # Keep the dubbed line inside the source actor's spoken window. The
+        # next start remains a hard boundary for malformed/overlapping timing.
+        segment_end_ms = int(float(seg.get("end", seg["start"])) * 1000)
         if idx < total:
             next_start_ms = int(segments[idx]["start"] * 1000)
         else:
@@ -179,6 +235,7 @@ def build_audio_timeline(
         # must not push every following line later and create a cascade of cuts.
         slot_end_ms = _segment_slot_end_ms(
             start_ms,
+            segment_end_ms,
             next_start_ms,
             video_dur_ms,
             is_last=idx == total,
@@ -193,6 +250,7 @@ def build_audio_timeline(
             tts_segment = AudioSegment.from_file(part_path)
             # Trim leading/trailing silence from the generated TTS audio to remove delay/gaps
             tts_segment = trim_silence(tts_segment)
+            tts_segment = _apply_volume(tts_segment, tts_volume, "TTS", video_id)
             tts_dur = len(tts_segment)
             
             # Fit speech with FFmpeg's pitch-preserving atempo filter. Unlike
@@ -201,7 +259,7 @@ def build_audio_timeline(
                 speed_factor = tts_dur / available_dur
                 log_to_video(
                     video_id,
-                    f"[{idx}/{total}] TTS overran its {available_dur}ms slot. "
+                    f"[{idx}/{total}] TTS overran its {available_dur}ms source-speech window. "
                     f"Applying pitch-preserving tempo {speed_factor:.2f}x without trimming.",
                 )
                 tts_segment = compress_to_fit(tts_segment, available_dur, voice_parts_dir, video_id)

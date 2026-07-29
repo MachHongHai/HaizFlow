@@ -4,14 +4,39 @@ QML owns visible application copy; this module keeps native file and message
 dialogs aligned with the persisted UI language.
 """
 
+import os
 import re
+from contextlib import contextmanager
 from pathlib import Path
 
 from PySide6.QtWidgets import QFileDialog as QtFileDialog, QMessageBox as QtMessageBox
 
+from haizflow.config import NATIVE_WINDOWS_USERPROFILE
 from haizflow.core.paths import app_data_dir
 
 _UI_LANGUAGE = "en"
+
+
+@contextmanager
+def _native_explorer_profile():
+    """Expose Windows' actual profile only while its native picker is open."""
+    profile = NATIVE_WINDOWS_USERPROFILE
+    if not profile or not Path(profile).is_dir():
+        yield
+        return
+    previous = {key: os.environ.get(key) for key in ("USERPROFILE", "HOMEDRIVE", "HOMEPATH")}
+    drive, tail = os.path.splitdrive(profile)
+    os.environ["USERPROFILE"] = profile
+    os.environ["HOMEDRIVE"] = drive
+    os.environ["HOMEPATH"] = tail or "\\"
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def _set_ui_language(language: str) -> None:
@@ -141,6 +166,23 @@ def _existing_dialog_directory(directory: str) -> str:
     return str(fallback.resolve())
 
 
+def native_media_dialog_directory() -> str:
+    """Return the real Windows Downloads folder for read-only media browsing.
+
+    HaizFlow redirects its process profile so models and third-party caches
+    stay under the installer-selected runtime.  That must not hide the user's
+    regular Explorer folders when they are *selecting* an existing source.
+    """
+    profile = Path(NATIVE_WINDOWS_USERPROFILE).expanduser()
+    if profile.is_dir():
+        for name in ("Downloads", "Videos", "Desktop", "Documents"):
+            candidate = profile / name
+            if candidate.is_dir():
+                return str(candidate.resolve())
+        return str(profile.resolve())
+    return ""
+
+
 class QMessageBox(QtMessageBox):
     """Keep native dialogs aligned with the application language setting."""
 
@@ -166,15 +208,13 @@ class QFileDialog(QtFileDialog):
 
     @staticmethod
     def getOpenFileName(parent=None, caption="", directory="", filter="", *args):
-        return QtFileDialog.getOpenFileName(
-            parent, _ui_text(caption), _existing_dialog_directory(directory), _ui_text(filter), *args
-        )
+        with _native_explorer_profile():
+            return QtFileDialog.getOpenFileName(parent, _ui_text(caption), _existing_dialog_directory(directory), _ui_text(filter), *args)
 
     @staticmethod
     def getOpenFileNames(parent=None, caption="", directory="", filter="", *args):
-        return QtFileDialog.getOpenFileNames(
-            parent, _ui_text(caption), _existing_dialog_directory(directory), _ui_text(filter), *args
-        )
+        with _native_explorer_profile():
+            return QtFileDialog.getOpenFileNames(parent, _ui_text(caption), _existing_dialog_directory(directory), _ui_text(filter), *args)
 
     @staticmethod
     def getSaveFileName(parent=None, caption="", directory="", filter="", *args):
@@ -184,6 +224,5 @@ class QFileDialog(QtFileDialog):
 
     @staticmethod
     def getExistingDirectory(parent=None, caption="", directory="", options=QtFileDialog.Option.ShowDirsOnly):
-        return QtFileDialog.getExistingDirectory(
-            parent, _ui_text(caption), _existing_dialog_directory(directory), options
-        )
+        with _native_explorer_profile():
+            return QtFileDialog.getExistingDirectory(parent, _ui_text(caption), _existing_dialog_directory(directory), options)

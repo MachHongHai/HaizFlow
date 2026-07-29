@@ -47,6 +47,10 @@ class RuntimeDeviceController:
             host._processing_queue.has_work
             or host._url_importer.busy
             or host._channel_importer.busy
+            or (
+                getattr(host, "_media_downloader", None)
+                and host._media_downloader.hasWork
+            )
             or getattr(host, "_media_import_busy", False)
             or getattr(host, "_model_setup_state", "ready")
             in {"checking", "downloading", "verifying"}
@@ -111,6 +115,9 @@ class RuntimeDeviceController:
 
         host._url_importer.shutdown()
         host._channel_importer.shutdown()
+        media_downloader = getattr(host, "_media_downloader", None)
+        if media_downloader:
+            media_downloader.shutdown()
         project_import = getattr(host, "_project_import", None)
         if project_import:
             project_import.shutdown()

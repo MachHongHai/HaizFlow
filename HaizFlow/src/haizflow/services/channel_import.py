@@ -38,6 +38,16 @@ SUPPORTED_CHANNEL_HOSTS = {
     "youtube.com": "YouTube",
     "tiktok.com": "TikTok",
     "douyin.com": "Douyin",
+    "bilibili.com": "Bilibili",
+    "instagram.com": "Instagram",
+    "facebook.com": "Facebook",
+    "x.com": "X",
+    "twitter.com": "X",
+    "vimeo.com": "Vimeo",
+    "dailymotion.com": "Dailymotion",
+    "twitch.tv": "Twitch",
+    "reddit.com": "Reddit",
+    "vk.com": "VK",
 }
 SHORT_VIDEO_SECONDS = 180
 SESSION_SCHEMA_VERSION = 1
@@ -68,7 +78,10 @@ def validate_channel_url(value: str, expected_platform: str = "") -> tuple[str, 
         raise ValueError("Enter a valid HTTP or HTTPS channel link.")
     platform = _platform_for_host(parsed.hostname)
     if not platform:
-        raise ValueError("Only YouTube, TikTok, and Douyin channels are supported.")
+        raise ValueError(
+            "Only public YouTube, TikTok, Douyin, Bilibili, Instagram, Facebook, X, Vimeo, "
+            "Dailymotion, Twitch, Reddit, and VK profiles are supported."
+        )
     expected = str(expected_platform or "").strip().lower()
     platform_key = platform.lower()
     if expected and expected != platform_key:
@@ -89,6 +102,20 @@ def validate_channel_url(value: str, expected_platform: str = "") -> tuple[str, 
         raise ValueError("Paste a Douyin profile link, not an individual video link.")
     elif platform == "Douyin" and "/user/" not in lowered_path and not parsed.hostname.lower().startswith("v."):
         raise ValueError("Paste a Douyin profile link.")
+    else:
+        individual_video_markers = {
+            "Bilibili": ("/video/",),
+            "Instagram": ("/p/", "/reel/", "/tv/", "/stories/"),
+            "Facebook": ("/watch", "/reel/", "/share/"),
+            "X": ("/status/",),
+            "Vimeo": ("/video/",),
+            "Dailymotion": ("/video/",),
+            "Twitch": ("/videos/", "/clip/", "/clips/"),
+            "Reddit": ("/comments/",),
+            "VK": ("video",),
+        }
+        if any(marker in lowered_path for marker in individual_video_markers.get(platform, ())):
+            raise ValueError("Paste a public profile or channel link, not an individual video link.")
 
     normalized = urlunparse(("https", parsed.netloc.lower(), path or "/", "", "", ""))
     return normalized, platform

@@ -8,24 +8,27 @@ MenuItem {
 
     property string iconGlyph: ""
     property string tone: "normal"
+    property bool collapsed: false
 
-    // Qt's Menu still consults implicit size for hidden entries. Collapse them
-    // fully so conditional actions never leave an empty menu row behind.
-    implicitWidth: visible ? 230 : 0
-    implicitHeight: visible ? 40 : 0
+    visible: !collapsed
+    implicitWidth: collapsed ? 0 : menuContent.implicitWidth + leftPadding + rightPadding
+    implicitHeight: collapsed ? 0 : 40
     leftPadding: 11
     rightPadding: 11
     activeFocusOnTab: true
     Accessible.name: text
 
     contentItem: RowLayout {
-        spacing: 10
-        implicitWidth: menuIcon.implicitWidth + spacing + menuLabel.implicitWidth
+        id: menuContent
+
+        spacing: menuIcon.visible ? 10 : 0
+        implicitWidth: (menuIcon.visible ? Theme.icon : 0) + spacing + menuLabel.implicitWidth
         implicitHeight: Math.max(menuIcon.implicitHeight, menuLabel.implicitHeight)
 
         AppIcon {
             id: menuIcon
-            Layout.preferredWidth: Theme.icon
+            visible: root.iconGlyph.length > 0
+            Layout.preferredWidth: visible ? Theme.icon : 0
             Layout.preferredHeight: 22
             glyph: root.iconGlyph
             iconColor: !root.enabled ? Theme.textDisabled

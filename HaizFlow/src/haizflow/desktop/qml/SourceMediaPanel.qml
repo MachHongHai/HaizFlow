@@ -170,11 +170,20 @@ Panel {
 
         AppButton {
             visible: AppController.videoPath.length > 0
+
+            property bool menuWasOpenOnPress: false
+
             text: I18n.t("Replace")
             iconGlyph: "\uE8B7"
             compact: true
             enabled: AppController.canEditSelectedVideo
-            onClicked: replaceMenu.open()
+            onPressed: menuWasOpenOnPress = replaceMenu.visible
+            onClicked: {
+                if (menuWasOpenOnPress || replaceMenu.visible)
+                    replaceMenu.close()
+                else
+                    replaceMenu.open()
+            }
 
             Menu {
                 id: replaceMenu
@@ -182,7 +191,7 @@ Panel {
                 width: 238
                 y: parent.height + Theme.space4
                 padding: 6
-                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
 
                 background: Rectangle {
                     color: Theme.surfaceElevated

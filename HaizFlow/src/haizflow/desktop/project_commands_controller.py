@@ -47,12 +47,17 @@ class ProjectCommandsController:
                 "ttsVoice": host._tts_voice,
                 "enableAudioSeparation": host._enable_audio_separation,
                 "originalVolume": host._original_volume,
+                "backgroundMusicVolume": host._background_music_volume,
+                "ttsVolume": host._tts_volume,
             }
         common, _count = Counter(
-            (video.mode, video.target_language, video.tts_voice, video.enable_audio_separation, video.original_video_volume)
+            (
+                video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
+                video.original_video_volume, getattr(video, "background_music_volume", 30), getattr(video, "tts_volume", 100),
+            )
             for video in videos
         ).most_common(1)[0]
-        workflow_mode, target_language, tts_voice, audio_separation, original_volume = common
+        workflow_mode, target_language, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume = common
         target_language = str(target_language or "vi")
         return {
             "workflowMode": "review" if workflow_mode == "review" else "A",
@@ -60,21 +65,39 @@ class ProjectCommandsController:
             "ttsVoice": host._normalized_voice_for_language(target_language, tts_voice),
             "enableAudioSeparation": bool(audio_separation),
             "originalVolume": int(original_volume),
+            "backgroundMusicVolume": int(background_music_volume),
+            "ttsVolume": int(tts_volume),
         }
 
-    def apply_batch_settings(self, workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume) -> bool:
+    def apply_batch_settings(
+        self, workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
+        background_music_volume=None, tts_volume=None,
+    ) -> bool:
         host = self._host
         mode = "review" if workflow_mode == "review" else "A"
         language = str(target_language or "vi")
         voice = host._normalized_voice_for_language(language, tts_voice)
+        apply_mix_volumes = background_music_volume is not None or tts_volume is not None
+        background_music_volume = getattr(host, "_background_music_volume", 30) if background_music_volume is None else int(background_music_volume)
+        tts_volume = getattr(host, "_tts_volume", 100) if tts_volume is None else int(tts_volume)
         updated = 0
         for video_id in host._batch_video_ids:
             if not video_store.get_video(video_id) or host._processing_queue.contains(video_id):
                 continue
-            video_store.update_video(
-                video_id, mode=mode, source_language="auto", target_language=language, tts_voice=voice,
-                enable_audio_separation=bool(enable_audio_separation), original_video_volume=int(original_volume),
-            )
+            changes = {
+                "mode": mode,
+                "source_language": "auto",
+                "target_language": language,
+                "tts_voice": voice,
+                "enable_audio_separation": bool(enable_audio_separation),
+                "original_video_volume": int(original_volume),
+            }
+            if apply_mix_volumes:
+                changes.update(
+                    background_music_volume=max(0, min(100, background_music_volume)),
+                    tts_volume=max(0, min(100, tts_volume)),
+                )
+            video_store.update_video(video_id, **changes)
             updated += 1
         if not updated:
             QMessageBox.information(None, "Batch settings", "Add at least one video before applying settings.")
@@ -91,12 +114,16 @@ class ProjectCommandsController:
         host._tts_voice = values["ttsVoice"]
         host._enable_audio_separation = values["enableAudioSeparation"]
         host._original_volume = values["originalVolume"]
+        host._background_music_volume = values["backgroundMusicVolume"]
+        host._tts_volume = values["ttsVolume"]
         host.workflowModeChanged.emit()
         host.targetLanguageChanged.emit()
         host.ttsVoiceChanged.emit()
         host.ttsVoiceOptionsChanged.emit()
         host.enableAudioSeparationChanged.emit()
         host.originalVolumeChanged.emit()
+        host.backgroundMusicVolumeChanged.emit()
+        host.ttsVolumeChanged.emit()
 
     def save_selected_video_settings(self) -> bool:
         host = self._host
@@ -223,8 +250,10 @@ class ProjectCommandsController:
             return
         host._assign_project_thumbnail(video)
         host._selected_video_id = video.video_id
+        host._background_music_path = str((video.files or {}).get("background_music") or "")
         host._replace_logs(host._read_video_logs(video.video_id))
         host.selectedVideoChanged.emit()
+        host.backgroundMusicChanged.emit()
         host.logsChanged.emit()
         host.refreshVideos()
         host._enqueue_video(video.video_id)
@@ -264,8 +293,10 @@ class ProjectCommandsController:
             return False
         host._assign_project_thumbnail(video)
         host._selected_video_id = video.video_id
+        host._background_music_path = str((video.files or {}).get("background_music") or "")
         host._replace_logs(host._read_video_logs(video.video_id))
         host.selectedVideoChanged.emit()
+        host.backgroundMusicChanged.emit()
         host.logsChanged.emit()
         host.refreshVideos()
         host._enqueue_video(video.video_id)
@@ -423,6 +454,16 @@ class ProjectCommandsController:
             QMessageBox.information(None, "Delete project", "Select a project first.")
             return
         current_key = host._selected_project_key
+        if (
+            host._project_type == "download"
+            and host._media_downloader.has_project_work(current_key)
+        ):
+            QMessageBox.information(
+                None,
+                "Delete project",
+                "Finish or cancel this project's downloads before deleting it.",
+            )
+            return
         project_videos = [
             video for video in video_store.list_videos()
             if video.project_directory and host._video_project_key(video) == current_key
@@ -458,6 +499,8 @@ class ProjectCommandsController:
             return
         host._selected_video_id = None
         host._selected_project_key = ""
+        if host._project_type == "download":
+            host._media_downloader.attach_project("", "")
         host._batch_video_ids = []
         host._clear_logs()
         host.videoPath = ""

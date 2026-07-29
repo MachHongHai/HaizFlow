@@ -7,10 +7,14 @@ Item {
     id: root
 
     signal requestReviewTranslation()
-    signal requestBack()
     signal requestUrlImport()
 
     readonly property bool wideLayout: width >= 1380
+
+    onWideLayoutChanged: {
+        if (wideLayout)
+            workspaceScroll.contentY = 0
+    }
 
     opacity: visible ? 1 : 0
     transform: Translate {
@@ -25,40 +29,47 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: Theme.space20
         spacing: Theme.space16
 
-        RowLayout {
+        PageHeader {
             Layout.fillWidth: true
-            spacing: Theme.space12
+            title: AppController.projectName || AppController.selectedFileName || I18n.t("Create a new dub")
+            subtitle: AppController.projectDirectory || I18n.t("Turn one source video into a translated, voiced and captioned export.")
 
-            BackButton {
-                onClicked: {
-                    if (AppController.isSelectedBatchVideo && !AppController.isSelectedVideoProcessing)
-                        AppController.saveSelectedVideoSettings()
-                    root.requestBack()
-                }
-            }
-
-            PageHeader {
-                Layout.fillWidth: true
-                title: AppController.projectName || AppController.selectedFileName || I18n.t("Create a new dub")
-                subtitle: AppController.projectDirectory || I18n.t("Turn one source video into a translated, voiced and captioned export.")
+            ProjectHeaderActions {
+                visible: AppController.hasOpenProject
+                projectFolderEnabled: AppController.hasOpenProject
+                showInputVideo: AppController.hasSelectedVideo
+                inputVideoEnabled: AppController.hasSelectedVideo
+                showOutputFolder: AppController.hasSelectedVideo
+                outputFolderEnabled: AppController.hasSelectedVideo
+                deleteEnabled: AppController.hasOpenProject
+                onProjectFolderRequested: AppController.openProjectFolder()
+                onInputVideoRequested: AppController.openInputFile()
+                onOutputFolderRequested: AppController.openOutputFolder()
+                onDeleteRequested: AppController.deleteCurrentProject()
             }
         }
 
-        ScrollView {
+        Flickable {
             id: workspaceScroll
 
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumHeight: 0
             clip: true
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            contentWidth: width
+            contentHeight: root.wideLayout ? height : workspaceGrid.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: root.wideLayout ? Flickable.HorizontalFlick : Flickable.VerticalFlick
+            interactive: !root.wideLayout
 
             GridLayout {
                 id: workspaceGrid
 
-                width: workspaceScroll.availableWidth
-                height: root.wideLayout ? Math.max(implicitHeight, workspaceScroll.availableHeight) : implicitHeight
+                width: workspaceScroll.width
+                height: root.wideLayout ? workspaceScroll.height : implicitHeight
                 columns: root.wideLayout ? 3 : 2
                 columnSpacing: Theme.space16
                 rowSpacing: Theme.space16
@@ -70,7 +81,8 @@ Item {
                     Layout.fillHeight: root.wideLayout
                     Layout.minimumWidth: 390
                     Layout.preferredWidth: root.wideLayout ? 440 : 480
-                    Layout.preferredHeight: 536
+                    Layout.minimumHeight: 460
+                    Layout.preferredHeight: 660
                     onRequestUrlImport: root.requestUrlImport()
                 }
 
@@ -81,7 +93,8 @@ Item {
                     Layout.fillHeight: root.wideLayout
                     Layout.minimumWidth: 330
                     Layout.preferredWidth: root.wideLayout ? 370 : 440
-                    Layout.preferredHeight: 536
+                    Layout.minimumHeight: 460
+                    Layout.preferredHeight: 660
                 }
 
                 ActivityLogPanel {
@@ -91,9 +104,14 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: root.wideLayout
                     Layout.minimumWidth: root.wideLayout ? 390 : 0
+                    Layout.minimumHeight: root.wideLayout ? 460 : 260
                     Layout.preferredWidth: 540
-                    Layout.preferredHeight: root.wideLayout ? 536 : 300
+                    Layout.preferredHeight: root.wideLayout ? 660 : 300
                 }
+            }
+
+            ScrollBar.vertical: ScrollBar {
+                policy: root.wideLayout ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
             }
         }
 

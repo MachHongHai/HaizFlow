@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from queue import Empty
+from pathlib import Path
 
-from haizflow.desktop.localization import QFileDialog, QMessageBox
+from haizflow.config import TMP_DIR
+from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import collect_batch_video_paths, create_video_thumbnail_path, normalize_video_path
 from haizflow.core.paths import app_data_dir
 from haizflow.schemas.video import VideoConfig
 from haizflow.services import project_store, video_store
 from haizflow.services.channel_import import normalize_remote_url
-from haizflow.services.desktop_videos import create_desktop_video
+from haizflow.services.desktop_videos import create_desktop_video, set_desktop_background_music
+from haizflow.services.video_download import DownloadCancelled, _load_yt_dlp, _youtube_dl_options, validate_video_url
 
 
 class ProjectImportController:
@@ -30,12 +35,20 @@ class ProjectImportController:
         self._tasks: dict[int, dict] = {}
         self._task_threads: dict[int, threading.Thread] = {}
         self._next_task_id = 0
-        self._last_media_directory = ""
+        self._background_music_cancel = threading.Event()
+        self._background_music_thread: threading.Thread | None = None
+        self._background_music_task: dict | None = None
 
     def _media_dialog_directory(self) -> str:
-        """Choose a real folder without relying on the portable Desktop."""
+        """Start imports in the user's normal Explorer media locations.
+
+        A selected source is read-only until HaizFlow copies it into the
+        project workspace, so this does not weaken portable runtime storage.
+        """
+        native_directory = native_media_dialog_directory()
+        if native_directory:
+            return native_directory
         candidates = (
-            self._last_media_directory,
             os.path.dirname(str(getattr(self._host, "videoPath", "") or "")),
             str(getattr(self._host, "_project_directory", "") or ""),
         )
@@ -45,11 +58,6 @@ class ProjectImportController:
         fallback = app_data_dir()
         fallback.mkdir(parents=True, exist_ok=True)
         return str(fallback.resolve())
-
-    def _remember_media_directory(self, path: str) -> None:
-        directory = path if os.path.isdir(path) else os.path.dirname(path)
-        if directory and os.path.isdir(directory):
-            self._last_media_directory = os.path.abspath(directory)
 
     def _can_import_in_background(self) -> bool:
         """Keep the small controller doubles used by unit tests synchronous."""
@@ -134,6 +142,10 @@ class ProjectImportController:
                 event = host._media_import_events.get_nowait()
             except Empty:
                 break
+            if event.get("type") == "background_music_finished":
+                self._finish_background_music_download(event)
+                changed = True
+                continue
             if event.get("type") == "progress":
                 host._media_import_completed += int(event.get("completed", 0))
                 changed = True
@@ -153,6 +165,134 @@ class ProjectImportController:
             changed = True
         if changed:
             host.mediaImportChanged.emit()
+
+    def _finish_background_music_download(self, event: dict) -> None:
+        host = self._host
+        task = self._background_music_task
+        if not task or event.get("task_id") != task.get("task_id"):
+            return
+        self._background_music_thread = None
+        self._background_music_task = None
+        host._background_music_import_busy = False
+        temporary_directory = str(event.get("temporary_directory") or "")
+        try:
+            error = str(event.get("error") or "")
+            if error:
+                host._background_music_import_status = error
+                return
+            selected = video_store.get_video(str(task.get("video_id") or ""))
+            if not selected:
+                host._background_music_import_status = "The selected video is no longer available."
+                return
+            if host._processing_queue.contains(selected.video_id):
+                host._background_music_import_status = "Pause or finish this video before changing its background music."
+                return
+            source_path = str(event.get("path") or "")
+            stored_path = set_desktop_background_music(selected, source_path)
+            if host._selected_video_id == selected.video_id:
+                host._background_music_path = stored_path
+                host.selectedVideoChanged.emit()
+            host.refreshVideos()
+            host._background_music_import_status = "Background music imported"
+        except (OSError, RuntimeError, ValueError) as exc:
+            host._background_music_import_status = str(exc)
+        finally:
+            if temporary_directory:
+                shutil.rmtree(temporary_directory, ignore_errors=True)
+            host.backgroundMusicImportChanged.emit()
+
+    def import_background_music_link(self, url: str) -> bool:
+        host = self._host
+        value = str(url or "").strip()
+        if not value:
+            host._background_music_import_status = "Paste a background music link first."
+            host.backgroundMusicImportChanged.emit()
+            return False
+        if host._background_music_import_busy:
+            return False
+        if not host._selected_video_id:
+            host._background_music_import_status = "Select a video before importing background music."
+            host.backgroundMusicImportChanged.emit()
+            return False
+        if host._processing_queue.contains(host._selected_video_id):
+            host._background_music_import_status = "Pause or finish this video before changing its background music."
+            host.backgroundMusicImportChanged.emit()
+            return False
+        try:
+            normalized_url, _platform = validate_video_url(value)
+        except ValueError as exc:
+            host._background_music_import_status = str(exc)
+            host.backgroundMusicImportChanged.emit()
+            return False
+
+        task_id = uuid.uuid4().hex
+        self._background_music_cancel = threading.Event()
+        self._background_music_task = {
+            "task_id": task_id,
+            "video_id": host._selected_video_id,
+            "url": normalized_url,
+        }
+        host._background_music_import_busy = True
+        host._background_music_import_status = "Downloading background music"
+        host.backgroundMusicImportChanged.emit()
+        self._background_music_thread = threading.Thread(
+            target=self._run_background_music_download,
+            args=(dict(self._background_music_task), self._background_music_cancel),
+            name="haizflow-background-music-download",
+            daemon=True,
+        )
+        self._background_music_thread.start()
+        return True
+
+    def cancel_background_music_link_import(self) -> None:
+        if self._background_music_thread and self._background_music_thread.is_alive():
+            self._background_music_cancel.set()
+            self._host._background_music_import_status = "Cancelling background music download"
+            self._host.backgroundMusicImportChanged.emit()
+
+    def _run_background_music_download(self, task: dict, cancel_event: threading.Event) -> None:
+        temporary_directory = os.path.join(TMP_DIR, "background-music", str(task["task_id"]))
+        output_path = os.path.join(temporary_directory, "background.m4a")
+        event = {
+            "type": "background_music_finished",
+            "task_id": task["task_id"],
+            "temporary_directory": temporary_directory,
+            "path": "",
+            "error": "",
+        }
+        try:
+            os.makedirs(temporary_directory, exist_ok=True)
+            if cancel_event.is_set():
+                raise DownloadCancelled("Background music download cancelled.")
+            yt_dlp = _load_yt_dlp()
+
+            def progress_hook(progress: dict) -> None:
+                if cancel_event.is_set():
+                    raise DownloadCancelled("Background music download cancelled.")
+
+            options = _youtube_dl_options()
+            options.update({
+                "outtmpl": str(Path(output_path).with_suffix(".%(ext)s")),
+                "format": "bestaudio/best",
+                "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
+                "progress_hooks": [progress_hook],
+                "nopart": True,
+                "overwrites": True,
+            })
+            with yt_dlp.YoutubeDL(options) as downloader:
+                downloader.extract_info(task["url"], download=True)
+            if cancel_event.is_set():
+                raise DownloadCancelled("Background music download cancelled.")
+            produced = Path(output_path)
+            if not produced.is_file():
+                candidates = list(Path(temporary_directory).glob("background.*"))
+                produced = max(candidates, key=lambda item: item.stat().st_mtime) if candidates else Path()
+            if not produced.is_file() or produced.stat().st_size <= 0:
+                raise RuntimeError("The link did not produce a playable audio file.")
+            event["path"] = str(produced)
+        except Exception as exc:
+            event["error"] = str(exc)
+        self._host._media_import_events.put(event)
 
     def _apply_finished_import(self, context: dict, created_ids: list[str], errors: list[str]) -> None:
         host = self._host
@@ -218,7 +358,16 @@ class ProjectImportController:
             if remaining <= 0:
                 break
             worker.join(timeout=remaining)
-        return not any(worker.is_alive() for worker in self._task_threads.values())
+        self._background_music_cancel.set()
+        music_worker = self._background_music_thread
+        if music_worker and music_worker is not current_thread and music_worker.is_alive():
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                music_worker.join(timeout=remaining)
+        return (
+            not any(worker.is_alive() for worker in self._task_threads.values())
+            and not (music_worker and music_worker.is_alive())
+        )
 
     def download_inspected_video(self) -> None:
         host = self._host
@@ -454,13 +603,51 @@ class ProjectImportController:
             "Video files (*.mp4 *.mov *.mkv);;All files (*.*)",
         )
         if path:
-            self._remember_media_directory(path)
             self.import_video(path, replace_selected=True)
 
-    def browse_project_directory(self) -> None:
+    def browse_background_music(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Choose background music",
+            self._media_dialog_directory(),
+            "Audio or video files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.mp4 *.mov *.mkv *.webm *.avi);;All files (*.*)",
+        )
+        if path:
+            self.set_background_music(path)
+
+    def set_background_music(self, path: str) -> bool:
+        host = self._host
+        source_path = os.path.abspath(str(path or "").strip()) if path else ""
+        if source_path and (not os.path.isfile(source_path) or os.path.getsize(source_path) <= 0):
+            QMessageBox.warning(None, "Background music", "Choose an available audio or video file.")
+            return False
+        selected = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        if selected:
+            if host._processing_queue.contains(selected.video_id):
+                QMessageBox.information(None, "Background music", "Pause or finish this video before changing its background music.")
+                return False
+            try:
+                stored_path = set_desktop_background_music(selected, source_path)
+            except (OSError, RuntimeError, ValueError) as exc:
+                QMessageBox.warning(None, "Background music", str(exc))
+                return False
+            host._background_music_path = stored_path
+            host.refreshVideos()
+            host.selectedVideoChanged.emit()
+        else:
+            host._background_music_path = source_path
+        host.backgroundMusicChanged.emit()
+        return True
+
+    def browse_project_directory(self, project_type: str = "single") -> None:
         host = self._host
         os.makedirs(host._project_directory, exist_ok=True)
-        path = QFileDialog.getExistingDirectory(None, "Choose project storage location", host._project_directory)
+        title = (
+            "Choose download output location"
+            if project_store.normalize_project_type(project_type) == "download"
+            else "Choose project storage location"
+        )
+        path = QFileDialog.getExistingDirectory(None, title, host._project_directory)
         if path:
             host._project_directory = os.path.abspath(path)
             host.projectSetupChanged.emit()
@@ -474,14 +661,27 @@ class ProjectImportController:
         if not project_directory:
             QMessageBox.warning(None, "Project storage location", "Choose a location for this project.")
             return False
+        normalized_type = project_store.normalize_project_type(project_type)
+        if (
+            normalized_type == "download"
+            and not host._media_downloader.can_switch_project("__new_download_project__")
+        ):
+            QMessageBox.information(
+                None,
+                "Download project",
+                "Wait for the current channel task to finish or cancel it before creating another download project.",
+            )
+            return False
         host._project_name, host._project_directory = project_name, os.path.abspath(project_directory)
-        host._project_type = "batch" if project_type == "batch" else "single"
+        host._project_type = normalized_type
         try:
             project = project_store.create_project(host._project_name, host._project_directory, host._project_type)
         except (OSError, ValueError, RuntimeError) as exc:
             QMessageBox.warning(None, "Project storage location", f"Cannot create the project at this location: {exc}")
             return False
         host._selected_project_key = project["key"]
+        if host._project_type == "download":
+            host._media_downloader.attach_project(project["key"], project["project_root"])
         host.videoPath = ""
         host._selected_video_id, host._batch_video_ids = None, []
         host._refresh_batch_model()
@@ -576,7 +776,6 @@ class ProjectImportController:
             "Video files (*.mp4 *.mov *.mkv);;All files (*.*)",
         )
         if paths:
-            self._remember_media_directory(paths[0])
             self.import_batch_videos(paths)
 
     def browse_batch_folder(self) -> None:
@@ -585,7 +784,6 @@ class ProjectImportController:
             QFileDialog.Option.ShowDirsOnly,
         )
         if folder:
-            self._remember_media_directory(folder)
             self.import_batch_videos([folder])
 
     def import_batch_videos(self, paths) -> None:

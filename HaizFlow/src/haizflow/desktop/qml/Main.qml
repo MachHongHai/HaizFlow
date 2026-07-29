@@ -13,22 +13,43 @@ ApplicationWindow {
     minimumWidth: 1120
     minimumHeight: 720
     visible: false
-    visibility: Window.Maximized
-    title: I18n.t("HaizFlow")
+    flags: Qt.Window
+    title: ""
     color: Theme.window
+    topPadding: 0
+    leftPadding: 0
+    rightPadding: 0
+    bottomPadding: 0
 
     readonly property string routeSingleProjects: "single-projects"
     readonly property string routeSingleWorkspace: "single-workspace"
     readonly property string routeBatchProjects: "batch-projects"
     readonly property string routeBatchWorkspace: "batch-workspace"
     readonly property string routeBatchVideo: "batch-video"
-    readonly property string routeChannelImport: "channel-import"
+    readonly property string routeDownloadProjects: "download-projects"
+    readonly property string routeDownloadWorkspace: "download-workspace"
     property string currentRoute: routeSingleProjects
     property string workspaceReturnRoute: routeSingleProjects
-    property bool channelImportVisited: false
+    property var routeHistory: [routeSingleProjects]
+    property int routeHistoryIndex: 0
     readonly property bool compactNavigation: width < 1280
     readonly property bool modelStatusFailed: AppController.runtimeState === "failed"
     readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
+    readonly property bool routeCanGoBack: routeHistoryIndex > 0
+    readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
+    // Loader.item is a QObject to qmllint, but its source component is DownloadsPage.
+    // qmllint disable missing-property
+    readonly property bool downloadCanGoBack: currentRoute === routeDownloadWorkspace
+        && downloadWorkspaceLoader.status === Loader.Ready
+        && downloadWorkspaceLoader.item !== null
+        && downloadWorkspaceLoader.item.canGoBack
+    readonly property bool downloadCanGoForward: currentRoute === routeDownloadWorkspace
+        && downloadWorkspaceLoader.status === Loader.Ready
+        && downloadWorkspaceLoader.item !== null
+        && downloadWorkspaceLoader.item.canGoForward
+    // qmllint enable missing-property
+    readonly property bool canNavigateBack: downloadCanGoBack || routeCanGoBack
+    readonly property bool canNavigateForward: downloadCanGoForward || routeCanGoForward
 
     function routeIndex(route) {
         switch (route) {
@@ -40,15 +61,62 @@ ApplicationWindow {
             return 3
         case routeBatchVideo:
             return 4
-        case routeChannelImport:
+        case routeDownloadProjects:
             return 5
+        case routeDownloadWorkspace:
+            return 6
         default:
             return 0
         }
     }
 
     function navigate(route) {
+        if (route === currentRoute)
+            return
+
+        saveCurrentVideoSettings()
+        let nextHistory = routeHistory.slice(0, routeHistoryIndex + 1)
+        nextHistory.push(route)
+        routeHistory = nextHistory
+        routeHistoryIndex = nextHistory.length - 1
         currentRoute = route
+    }
+
+    function navigateBack() {
+        if (downloadCanGoBack) {
+            // qmllint disable missing-property
+            downloadWorkspaceLoader.item.navigateBack()
+            // qmllint enable missing-property
+            return
+        }
+        if (!routeCanGoBack)
+            return
+
+        saveCurrentVideoSettings()
+        routeHistoryIndex -= 1
+        currentRoute = routeHistory[routeHistoryIndex]
+    }
+
+    function navigateForward() {
+        if (downloadCanGoForward) {
+            // qmllint disable missing-property
+            downloadWorkspaceLoader.item.navigateForward()
+            // qmllint enable missing-property
+            return
+        }
+        if (!routeCanGoForward)
+            return
+
+        saveCurrentVideoSettings()
+        routeHistoryIndex += 1
+        currentRoute = routeHistory[routeHistoryIndex]
+    }
+
+    function saveCurrentVideoSettings() {
+        if (currentRoute === routeBatchVideo
+                && AppController.isSelectedBatchVideo
+                && !AppController.isSelectedVideoProcessing)
+            AppController.saveSelectedVideoSettings()
     }
 
     Component.onCompleted: {
@@ -59,6 +127,18 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+,"
         onActivated: settingsDialog.open()
+    }
+
+    Shortcut {
+        sequence: "Alt+Left"
+        enabled: root.canNavigateBack
+        onActivated: root.navigateBack()
+    }
+
+    Shortcut {
+        sequence: "Alt+Right"
+        enabled: root.canNavigateForward
+        onActivated: root.navigateForward()
     }
 
     ProjectSetupDialog {
@@ -107,8 +187,13 @@ ApplicationWindow {
                 root.workspaceReturnRoute = root.routeBatchProjects
                 root.navigate(root.routeBatchWorkspace)
             } else {
-                root.workspaceReturnRoute = root.routeSingleProjects
-                root.navigate(root.routeSingleWorkspace)
+                if (AppController.projectType === "download") {
+                    root.workspaceReturnRoute = root.routeDownloadProjects
+                    root.navigate(root.routeDownloadWorkspace)
+                } else {
+                    root.workspaceReturnRoute = root.routeSingleProjects
+                    root.navigate(root.routeSingleWorkspace)
+                }
             }
         }
     }
@@ -122,9 +207,37 @@ ApplicationWindow {
         }
     }
 
-    RowLayout {
+    ColumnLayout {
         anchors.fill: parent
         spacing: 0
+
+        AppMenuBar {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 40
+            canGoBack: root.canNavigateBack
+            canGoForward: root.canNavigateForward
+            onBackRequested: root.navigateBack()
+            onForwardRequested: root.navigateForward()
+            onNewSingleProjectRequested: {
+                root.workspaceReturnRoute = root.routeSingleProjects
+                projectSetupDialog.openForType("single")
+            }
+            onNewBatchProjectRequested: {
+                root.workspaceReturnRoute = root.routeBatchProjects
+                projectSetupDialog.openForType("batch")
+            }
+            onNewDownloadProjectRequested: {
+                root.workspaceReturnRoute = root.routeDownloadProjects
+                projectSetupDialog.openForType("download")
+            }
+            onSettingsRequested: settingsDialog.open()
+            onAboutRequested: aboutDialog.open()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 0
 
         Rectangle {
             id: navigation
@@ -132,13 +245,6 @@ ApplicationWindow {
             Layout.preferredWidth: root.compactNavigation ? Theme.navigationCompact : Theme.navigationExpanded
             Layout.fillHeight: true
             color: Theme.sidebar
-
-            Behavior on Layout.preferredWidth {
-                NumberAnimation {
-                    duration: Theme.motionStandard
-                    easing.type: Easing.OutCubic
-                }
-            }
 
             ColumnLayout {
                 anchors.fill: parent
@@ -156,12 +262,9 @@ ApplicationWindow {
                         anchors.fill: parent
                         spacing: 11
 
-                        AppIcon {
+                        BrandMark {
                             Layout.preferredWidth: 30
                             Layout.preferredHeight: 30
-                            glyph: "\uE714"
-                            iconColor: Theme.interactive
-                            iconSize: 22
                         }
 
                         Text {
@@ -200,6 +303,19 @@ ApplicationWindow {
                 SidebarButton {
                     Layout.fillWidth: true
                     compact: root.compactNavigation
+                    iconGlyph: "\uE896"
+                    text: I18n.t("Downloads")
+                    selected: root.currentRoute === root.routeDownloadProjects
+                        || root.currentRoute === root.routeDownloadWorkspace
+                    onClicked: {
+                        AppController.refreshVideos()
+                        root.navigate(root.routeDownloadProjects)
+                    }
+                }
+
+                SidebarButton {
+                    Layout.fillWidth: true
+                    compact: root.compactNavigation
                     iconGlyph: "\uE714" // Used only by the compact navigation fallback.
                     text: I18n.t("Single")
                     selected: root.currentRoute === root.routeSingleProjects || root.currentRoute === root.routeSingleWorkspace
@@ -209,12 +325,13 @@ ApplicationWindow {
                     }
                 }
 
+
                 SidebarButton {
                     Layout.fillWidth: true
                     compact: root.compactNavigation
                     iconGlyph: "\uE8FD" // Used only by the compact navigation fallback.
                     text: I18n.t("Batch")
-                    selected: root.currentRoute === root.routeBatchProjects || root.currentRoute === root.routeBatchWorkspace || root.currentRoute === root.routeBatchVideo || root.currentRoute === root.routeChannelImport
+                    selected: root.currentRoute === root.routeBatchProjects || root.currentRoute === root.routeBatchWorkspace || root.currentRoute === root.routeBatchVideo
                     onClicked: {
                         AppController.refreshVideos()
                         root.navigate(root.routeBatchProjects)
@@ -293,26 +410,6 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 58
-                Layout.leftMargin: root.width < 1400 ? 22 : 30
-                Layout.rightMargin: root.width < 1400 ? 22 : 30
-
-                Item {
-                    Layout.fillWidth: true
-                }
-
-                AppButton {
-                    Layout.alignment: Qt.AlignVCenter
-                    tone: "ghost"
-                    compact: true
-                    text: I18n.t("Settings")
-                    toolTipText: "Ctrl+,"
-                    onClicked: settingsDialog.open()
-                }
-            }
-
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -352,7 +449,6 @@ ApplicationWindow {
                     sourceComponent: Component {
                         CreateVideoPage {
                             onRequestReviewTranslation: translationReviewDialog.open()
-                            onRequestBack: root.navigate(root.routeSingleProjects)
                             onRequestUrlImport: urlImportDialog.openForMode("single")
                         }
                     }
@@ -391,15 +487,8 @@ ApplicationWindow {
                     asynchronous: true
                     sourceComponent: Component {
                         BatchPage {
-                            onRequestBack: root.navigate(root.routeBatchProjects)
                             onRequestBatchSettings: batchSettingsDialog.open()
                             onRequestUrlImport: urlImportDialog.openForMode("batch")
-                            onRequestChannelImport: {
-                                if (AppController.prepareChannelImport()) {
-                                    root.channelImportVisited = true
-                                    root.navigate(root.routeChannelImport)
-                                }
-                            }
                             onOpenVideoDetail: {
                                 root.workspaceReturnRoute = root.routeBatchWorkspace
                                 root.navigate(root.routeBatchVideo)
@@ -420,37 +509,52 @@ ApplicationWindow {
                     sourceComponent: Component {
                         CreateVideoPage {
                             onRequestReviewTranslation: translationReviewDialog.open()
-                            onRequestBack: root.navigate(root.routeBatchWorkspace)
                             onRequestUrlImport: urlImportDialog.openForMode("batch")
                         }
                     }
                 }
 
-                Loader {
-                    id: channelImportLoader
-
+                ProjectsPage {
+                    projectType: "download"
+                    // Python's generated qmltypes omit the constant flag; this model is stable.
+                    // qmllint disable stale-property-read
+                    projectModel: AppController.downloadProjectModel
+                    // qmllint enable stale-property-read
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.leftMargin: root.width < 1400 ? 22 : 30
                     Layout.rightMargin: root.width < 1400 ? 22 : 30
                     Layout.topMargin: 24
                     Layout.bottomMargin: 24
-                    active: root.channelImportVisited
-                    asynchronous: true
-                    sourceComponent: ChannelImportPage {
-                        appController: AppController
+                    onRequestNewProject: {
+                        root.workspaceReturnRoute = root.routeDownloadProjects
+                        projectSetupDialog.openForType("download")
                     }
+                    onOpenProject: {
+                        root.workspaceReturnRoute = root.routeDownloadProjects
+                        root.navigate(root.routeDownloadWorkspace)
+                    }
+                }
 
-                    Connections {
-                        target: channelImportLoader.item
-                        ignoreUnknownSignals: true
-
-                        function onRequestBack() {
-                            root.navigate(root.routeBatchWorkspace)
+                Loader {
+                    id: downloadWorkspaceLoader
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.leftMargin: root.width < 1400 ? 22 : 30
+                    Layout.rightMargin: root.width < 1400 ? 22 : 30
+                    Layout.topMargin: 24
+                    Layout.bottomMargin: 24
+                    active: root.currentRoute === root.routeDownloadWorkspace
+                    asynchronous: true
+                    sourceComponent: Component {
+                        DownloadsPage {
+                            projectName: AppController.projectName
+                            projectRoot: AppController.downloadOutputRoot
                         }
                     }
                 }
             }
+        }
         }
     }
 

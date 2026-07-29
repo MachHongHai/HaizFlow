@@ -14,7 +14,9 @@ Dialog {
     padding: 0
     title: root.projectType === "batch"
         ? I18n.t("Create batch project")
-        : I18n.t("Create single project")
+        : root.projectType === "download"
+            ? I18n.t("Create download project")
+            : I18n.t("Create single project")
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     parent: Overlay.overlay
     x: Math.round((parent.width - width) / 2)
@@ -24,7 +26,7 @@ Dialog {
     property string projectType: "single"
 
     function openForType(type) {
-        projectType = type === "batch" ? "batch" : "single"
+        projectType = type === "batch" ? "batch" : type === "download" ? "download" : "single"
         open()
     }
 
@@ -131,7 +133,9 @@ Dialog {
                 spacing: Theme.space8
 
                 Text {
-                    text: I18n.t("Project storage location")
+                    text: root.projectType === "download"
+                        ? I18n.t("Download output location")
+                        : I18n.t("Project storage location")
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     font.weight: Font.Medium
@@ -166,7 +170,7 @@ Dialog {
                     AppButton {
                         text: I18n.t("Browse")
                         iconGlyph: "\uE8B7"
-                        onClicked: AppController.browseProjectDirectory()
+                        onClicked: AppController.browseProjectDirectoryForType(root.projectType)
                     }
                 }
             }

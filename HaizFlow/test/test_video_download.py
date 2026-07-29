@@ -22,6 +22,9 @@ class VideoDownloadTests(unittest.TestCase):
             "https://www.youtube.com/watch?v=BaW_jenozKc": "YouTube",
             "https://vm.tiktok.com/example": "TikTok",
             "https://v.douyin.com/example": "Douyin",
+            "https://www.bilibili.com/video/BV1xx411c7mD": "Bilibili",
+            "https://www.instagram.com/reel/example": "Instagram",
+            "https://vimeo.com/123": "Vimeo",
         }
         for value, expected_platform in cases.items():
             with self.subTest(value=value):
@@ -30,7 +33,7 @@ class VideoDownloadTests(unittest.TestCase):
                 self.assertEqual(platform, expected_platform)
 
     def test_lookalike_and_unrelated_hosts_are_rejected(self):
-        for value in ("https://youtube.com.evil.example/video", "https://vimeo.com/1", "file:///clip.mp4"):
+        for value in ("https://youtube.com.evil.example/video", "https://example.invalid/1", "file:///clip.mp4"):
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
                     video_download.validate_video_url(value)

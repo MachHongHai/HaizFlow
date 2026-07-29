@@ -267,6 +267,92 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual(" ".join(segment["text"] for segment in aligned), source["text"])
         self.assertTrue(all(left["end"] <= right["start"] for left, right in zip(aligned, aligned[1:])))
 
+    def test_context_alignment_can_correct_timestamps_outside_the_whisper_span(self):
+        source = [
+            {"start": 10.0, "end": 11.0, "text": "Oh, thank you.", "language": "en"},
+            {"start": 11.0, "end": 13.0, "text": "Where do we go?", "language": "en"},
+        ]
+        candidate_words = [
+            {"word": "Oh,", "start": 8.0, "end": 8.1, "score": 0.9},
+            {"word": "thank", "start": 8.2, "end": 8.3, "score": 0.9},
+            {"word": "you.", "start": 8.4, "end": 8.5, "score": 0.9},
+            {"word": "Where", "start": 9.0, "end": 9.1, "score": 0.9},
+            {"word": "do", "start": 9.2, "end": 9.3, "score": 0.9},
+            {"word": "we", "start": 9.4, "end": 9.5, "score": 0.9},
+            {"word": "go?", "start": 9.6, "end": 9.7, "score": 0.9},
+        ]
+        captured = {}
+
+        def align(segments, *_args, **_kwargs):
+            captured["context"] = segments[0]
+            return {
+                "segments": [
+                    {
+                        "start": 8.0,
+                        "end": 9.7,
+                        "text": segments[0]["text"],
+                        "words": candidate_words,
+                    }
+                ]
+            }
+
+        with (
+            mock.patch.object(
+                transcribe,
+                "_verified_alignment_asset",
+                return_value=(SimpleNamespace(to=lambda _device: object()), {}),
+            ),
+            mock.patch.object(transcribe, "_align_without_nltk_download", side_effect=align),
+            mock.patch.object(transcribe, "_release_cuda"),
+            mock.patch.object(transcribe, "log_to_video"),
+        ):
+            aligned = transcribe._align_segments_by_language(
+                np.zeros(16_000 * 20, dtype=np.float32),
+                source,
+                "cpu",
+                "test-video",
+            )
+
+        self.assertEqual(captured["context"]["start"], 7.5)
+        self.assertEqual(captured["context"]["text"], "Oh, thank you. Where do we go?")
+        self.assertEqual([(item["start"], item["end"]) for item in aligned], [(8.0, 8.5), (9.0, 9.7)])
+        self.assertEqual([item["text"] for item in aligned], [item["text"] for item in source])
+
+    def test_context_alignment_rejects_missing_words_instead_of_shifting_sentences(self):
+        source = [
+            {"start": 2.0, "end": 3.0, "text": "First sentence.", "language": "en"},
+            {"start": 3.0, "end": 4.0, "text": "Second sentence.", "language": "en"},
+        ]
+        candidate = [
+            {
+                "start": 1.0,
+                "end": 2.0,
+                "text": "incomplete",
+                "words": [{"word": "First", "start": 1.0, "end": 1.2, "score": 0.9}],
+            }
+        ]
+
+        aligned, detail = transcribe._split_context_alignment(source, candidate, 0.0, 6.5)
+
+        self.assertIsNone(aligned)
+        self.assertIn("word count", detail)
+
+    def test_alignment_groups_split_on_language_and_long_silence(self):
+        segments = [
+            {"start": 0.0, "end": 1.0, "text": "One.", "language": "en"},
+            {"start": 1.2, "end": 2.0, "text": "Two.", "language": "en"},
+            {"start": 2.1, "end": 3.0, "text": "Trois.", "language": "fr"},
+            {"start": 7.0, "end": 8.0, "text": "Quatre.", "language": "fr"},
+        ]
+
+        groups = transcribe._alignment_groups(segments)
+
+        self.assertEqual([[item["text"] for item in group] for group in groups], [
+            ["One.", "Two."],
+            ["Trois."],
+            ["Quatre."],
+        ])
+
     def test_unpinned_huggingface_alignment_model_is_never_downloaded(self):
         source = {
             "start": 0.0,

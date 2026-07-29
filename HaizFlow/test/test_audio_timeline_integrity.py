@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from haizflow.pipeline import audio_timeline
+from pydub import AudioSegment
 
 
 class AudioTimelineIntegrityTests(unittest.TestCase):
@@ -79,6 +80,20 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
                         "video-1",
                         background_audio_path=str(root / "missing-background.wav"),
                     )
+
+    def test_background_music_is_looped_to_the_video_duration(self):
+        music = AudioSegment.silent(duration=300, frame_rate=16000)
+
+        looped = audio_timeline._fit_to_duration(music, 1000)
+
+        self.assertEqual(len(looped), 1000)
+
+    def test_zero_volume_mutes_a_track_without_affecting_other_mix_inputs(self):
+        tone = AudioSegment.silent(duration=100, frame_rate=16000)
+        with mock.patch.object(audio_timeline, "log_to_video"):
+            muted = audio_timeline._apply_volume(tone, 0, "Background music", "video-1")
+
+        self.assertEqual(muted.rms, 0)
 
 
 if __name__ == "__main__":

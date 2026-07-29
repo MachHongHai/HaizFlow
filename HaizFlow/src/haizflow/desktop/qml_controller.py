@@ -24,6 +24,8 @@ from haizflow.desktop.media import (
 from haizflow.desktop.media_probe import VideoDimensionProbe
 from haizflow.desktop.models import VideoListModel, ProjectGridModel, ProjectListModel
 from haizflow.desktop.preview_media_controller import PreviewMediaController
+from haizflow.desktop.audio_preview_controller import AudioPreviewController
+from haizflow.desktop.media_download_controller import MediaDownloadController
 from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
 from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
 from haizflow.desktop.project_commands_controller import ProjectCommandsController
@@ -78,6 +80,11 @@ class HaizFlowController(QObject):
     ttsVoiceOptionsChanged = Signal()
     enableAudioSeparationChanged = Signal()
     originalVolumeChanged = Signal()
+    backgroundMusicVolumeChanged = Signal()
+    ttsVolumeChanged = Signal()
+    backgroundMusicChanged = Signal()
+    backgroundMusicImportChanged = Signal()
+    audioPreviewChanged = Signal()
     workflowModeChanged = Signal()
     selectedVideoChanged = Signal()
     selectedElapsedChanged = Signal()
@@ -105,6 +112,7 @@ class HaizFlowController(QObject):
         self.projects = ProjectListModel()
         self.single_projects = ProjectGridModel()
         self.batch_projects = ProjectGridModel()
+        self.download_projects = ProjectGridModel()
         self.batch_videos = VideoListModel()
         self._video_path = ""
         self._video_thumbnail_source = ""
@@ -112,6 +120,16 @@ class HaizFlowController(QObject):
         self._tts_voice = "vi-VN-HoaiMyNeural"
         self._enable_audio_separation = False
         self._original_volume = 60
+        self._background_music_volume = 30
+        self._tts_volume = 100
+        self._background_music_path = ""
+        self._background_music_import_busy = False
+        self._background_music_import_status = ""
+        self._audio_preview_events = queue.Queue()
+        self._audio_preview_source = ""
+        self._audio_preview_original_source = ""
+        self._audio_preview_background_music_source = ""
+        self._audio_preview_state = "idle"
         self._workflow_mode = "A"
         self._selected_video_id = None
         self._selected_video_snapshot = None
@@ -156,6 +174,8 @@ class HaizFlowController(QObject):
         self._status_message = "Ready"
         self._runtime_state = "ready" if os.getenv("HAIZFLOW_SMOKE_TEST") == "1" else "warming"
         self._preview_media = PreviewMediaController(self)
+        self._audio_preview = AudioPreviewController(self)
+        self._media_downloader = MediaDownloadController(self)
         self._settings_controller = SettingsController(self)
         self._project_workspace = ProjectWorkspaceController(self)
         self._project_commands = ProjectCommandsController(self)
@@ -247,6 +267,10 @@ class HaizFlowController(QObject):
         self._media_import_timer.timeout.connect(self._drain_media_import_events)
         self._media_import_timer.start(100)
 
+        self._audio_preview_timer = QTimer(self)
+        self._audio_preview_timer.timeout.connect(self._drain_audio_preview_events)
+        self._audio_preview_timer.start(100)
+
         self._startup_maintenance_timer = QTimer(self)
         self._startup_maintenance_timer.timeout.connect(self._drain_startup_maintenance_events)
         self._startup_maintenance_timer.start(100)
@@ -274,6 +298,9 @@ class HaizFlowController(QObject):
 
     def _drain_media_import_events(self) -> None:
         self._project_import.drain_background_events()
+
+    def _drain_audio_preview_events(self) -> None:
+        self._audio_preview.drain_events()
 
     def _refresh_selected_elapsed(self) -> None:
         video = self._selected_video()
@@ -414,8 +441,16 @@ class HaizFlowController(QObject):
         return self.batch_projects
 
     @Property(QObject, constant=True)
+    def downloadProjectModel(self):
+        return self.download_projects
+
+    @Property(QObject, constant=True)
     def channelImporter(self):
         return self._channel_importer
+
+    @Property(QObject, constant=True)
+    def mediaDownloader(self):
+        return self._media_downloader
 
     @Property(bool, notify=mediaImportChanged)
     def mediaImportBusy(self):
@@ -632,6 +667,56 @@ class HaizFlowController(QObject):
         if self._original_volume != value:
             self._original_volume = value
             self.originalVolumeChanged.emit()
+
+    @Property(int, notify=backgroundMusicVolumeChanged)
+    def backgroundMusicVolume(self):
+        return self._background_music_volume
+
+    @backgroundMusicVolume.setter
+    def backgroundMusicVolume(self, value):
+        value = max(0, min(100, int(value)))
+        if self._background_music_volume != value:
+            self._background_music_volume = value
+            self.backgroundMusicVolumeChanged.emit()
+
+    @Property(int, notify=ttsVolumeChanged)
+    def ttsVolume(self):
+        return self._tts_volume
+
+    @ttsVolume.setter
+    def ttsVolume(self, value):
+        value = max(0, min(100, int(value)))
+        if self._tts_volume != value:
+            self._tts_volume = value
+            self.ttsVolumeChanged.emit()
+
+    @Property(str, notify=backgroundMusicChanged)
+    def backgroundMusicPath(self):
+        return self._background_music_path
+
+    @Property(bool, notify=backgroundMusicImportChanged)
+    def backgroundMusicImportBusy(self):
+        return self._background_music_import_busy
+
+    @Property(str, notify=backgroundMusicImportChanged)
+    def backgroundMusicImportStatus(self):
+        return self._background_music_import_status
+
+    @Property(str, notify=audioPreviewChanged)
+    def audioPreviewSource(self):
+        return self._audio_preview_source
+
+    @Property(str, notify=audioPreviewChanged)
+    def audioPreviewOriginalSource(self):
+        return self._audio_preview_original_source
+
+    @Property(str, notify=audioPreviewChanged)
+    def audioPreviewBackgroundMusicSource(self):
+        return self._audio_preview_background_music_source
+
+    @Property(str, notify=audioPreviewChanged)
+    def audioPreviewState(self):
+        return self._audio_preview_state
 
     @Property(str, notify=workflowModeChanged)
     def workflowMode(self): return self._workflow_mode
@@ -1018,6 +1103,24 @@ class HaizFlowController(QObject):
     def projectType(self):
         return self._project_type
 
+    @Property(str, notify=projectSetupChanged)
+    def projectRoot(self):
+        if not self._selected_project_key:
+            return ""
+        try:
+            return project_store.project_root_for_key(self._selected_project_key)
+        except (RuntimeError, ValueError):
+            return ""
+
+    @Property(str, notify=projectSetupChanged)
+    def downloadOutputRoot(self):
+        if self._project_type != "download" or not self._selected_project_key:
+            return ""
+        try:
+            return project_store.project_downloads_dir_for_key(self._selected_project_key)
+        except (RuntimeError, ValueError):
+            return ""
+
     @Slot()
     def downloadInspectedVideo(self):
         HaizFlowController._project_import_for(self).download_inspected_video()
@@ -1057,6 +1160,26 @@ class HaizFlowController(QObject):
     def browseVideo(self):
         HaizFlowController._project_import_for(self).browse_video()
 
+    @Slot()
+    def browseBackgroundMusic(self):
+        HaizFlowController._project_import_for(self).browse_background_music()
+
+    @Slot(str, result=bool)
+    def importBackgroundMusicFromLink(self, url):
+        return HaizFlowController._project_import_for(self).import_background_music_link(url)
+
+    @Slot()
+    def cancelBackgroundMusicLinkImport(self):
+        HaizFlowController._project_import_for(self).cancel_background_music_link_import()
+
+    @Slot(result=bool)
+    def clearBackgroundMusic(self):
+        return HaizFlowController._project_import_for(self).set_background_music("")
+
+    @Slot(result=bool)
+    def previewAudioMix(self):
+        return self._audio_preview.start()
+
     @Slot(str, result=bool)
     def replaceSelectedVideoVideo(self, path):
         return HaizFlowController._project_import_for(self).replace_video(self._selected_video_id, path)
@@ -1067,6 +1190,10 @@ class HaizFlowController(QObject):
     @Slot()
     def browseProjectDirectory(self):
         HaizFlowController._project_import_for(self).browse_project_directory()
+
+    @Slot(str)
+    def browseProjectDirectoryForType(self, project_type):
+        HaizFlowController._project_import_for(self).browse_project_directory(project_type)
 
     @Slot(str, str, str, result=bool)
     def prepareProject(self, project_name, project_directory, project_type):
@@ -1156,9 +1283,12 @@ class HaizFlowController(QObject):
         tts_voice: str,
         enable_audio_separation: bool,
         original_volume: int,
+        background_music_volume=None,
+        tts_volume=None,
     ) -> bool:
         return HaizFlowController._project_commands_for(self).apply_batch_settings(
-            workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume
+            workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
+            background_music_volume, tts_volume,
         )
 
     @Slot(result=bool)
@@ -1169,9 +1299,11 @@ class HaizFlowController(QObject):
             self._tts_voice,
             self._enable_audio_separation,
             self._original_volume,
+            self._background_music_volume,
+            self._tts_volume,
         )
 
-    @Slot(str, str, str, bool, int, result=bool)
+    @Slot(str, str, str, bool, int, int, int, result=bool)
     def applyBatchSettingsDraft(
         self,
         workflow_mode: str,
@@ -1179,6 +1311,8 @@ class HaizFlowController(QObject):
         tts_voice: str,
         enable_audio_separation: bool,
         original_volume: int,
+        background_music_volume: int | None = None,
+        tts_volume: int | None = None,
     ):
         return self._apply_batch_settings(
             workflow_mode,
@@ -1186,6 +1320,8 @@ class HaizFlowController(QObject):
             tts_voice,
             enable_audio_separation,
             original_volume,
+            background_music_volume,
+            tts_volume,
         )
 
     @Slot()
@@ -1298,13 +1434,28 @@ class HaizFlowController(QObject):
             return
         self._open_project_summary(project)
 
-    @Slot(int, str)
+    @Slot(int, str, result=bool)
     def selectProjectInMode(self, row: int, project_type: str):
-        model = self.batch_projects if project_type == "batch" else self.single_projects
+        model = (
+            self.batch_projects if project_type == "batch"
+            else self.download_projects if project_type == "download"
+            else self.single_projects
+        )
         project = model.project_at(row)
         if not project:
-            return
+            return False
+        if (
+            project_type == "download"
+            and not self._media_downloader.can_switch_project(project["key"])
+        ):
+            QMessageBox.information(
+                None,
+                "Download project",
+                "Wait for the current channel task to finish or cancel it before opening another download project.",
+            )
+            return False
         self._open_project_summary(project)
+        return True
 
     def _open_project_summary(self, project):
         HaizFlowController._project_workspace_for(self).open_project_summary(project)
@@ -1325,6 +1476,13 @@ class HaizFlowController(QObject):
         self._open_path(
             self._selected_project_root()
         )
+
+    @Slot()
+    def openDownloadOutputFolder(self):
+        if self._project_type != "download" or not self.hasOpenProject:
+            QMessageBox.information(None, "Download folder", "Open a download project first.")
+            return
+        self._open_path(project_store.project_downloads_dir_for_key(self._selected_project_key))
 
     @Slot(str, result=bool)
     def openExternalUrl(self, url: str) -> bool:
@@ -1440,6 +1598,9 @@ class HaizFlowController(QObject):
             crop=CropSettings(),
             enable_audio_separation=self._enable_audio_separation,
             original_video_volume=self._original_volume,
+            background_music_volume=self._background_music_volume,
+            tts_volume=self._tts_volume,
+            background_music_path=self._background_music_path,
             project_name=self._project_name,
             project_directory=self._project_directory,
             project_type=self._project_type,
@@ -1459,6 +1620,8 @@ class HaizFlowController(QObject):
             "crop": config.crop,
             "enable_audio_separation": config.enable_audio_separation,
             "original_video_volume": config.original_video_volume,
+            "background_music_volume": config.background_music_volume,
+            "tts_volume": config.tts_volume,
             "project_type": config.project_type,
         }
         if review_approved is not None:
