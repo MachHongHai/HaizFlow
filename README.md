@@ -1,53 +1,10 @@
 # HaizFlow
 
-**Công cụ desktop mã nguồn mở để reup video hàng loạt — xử lí local, không tốn phí API.**
+**Open-source desktop tool for batch video repurposing: download, replace subtitles, dub, and export — no API fees.**
 
-[Tiếng Việt](#tieng-viet) · [English](#english) · [Tải cho Windows](https://github.com/MachHongHai/HaizFlow/releases) · [Báo lỗi](https://github.com/MachHongHai/HaizFlow/issues)
+[English](#english) · [Tiếng Việt](#tieng-viet) · [Download for Windows](https://github.com/MachHongHai/HaizFlow/releases) · [Report an issue](https://github.com/MachHongHai/HaizFlow/issues)
 
-HaizFlow đưa việc tải video, dịch, lồng tiếng, làm phụ đề và xuất video vào một quy trình desktop rõ ràng. Bạn chỉ cần tạo dự án, chọn media và thiết lập cần dùng, sau đó theo dõi toàn bộ tiến độ trên giao diện dễ sử dụng.
-
-<a id="tieng-viet"></a>
-
-## Tiếng Việt
-
-### Vì sao dùng HaizFlow?
-
-- **Dễ sử dụng** — có không gian riêng cho tải xuống, một video và hàng loạt; điều hướng cùng thao tác được bố trí nhất quán.
-- **Tối ưu cho hàng loạt** — quản lí nhiều video trong hàng đợi, lưu lại tiến độ và thiết lập của từng dự án.
-- **Mọi thứ trong một ứng dụng** — nhập media, dịch, lồng tiếng, chèn phụ đề, phối âm và xuất video mà không phải chuyển qua nhiều công cụ.
-- **Ưu tiên xử lí local** — các bước xử lí media chính chạy trên máy của bạn. Quy trình mặc định không cần API key.
-- **Dự án luôn gọn gàng** — media, thiết lập, video xuất, lịch sử hoạt động và dữ liệu khôi phục được quản lí trong cùng một dự án.
-
-### Bạn có thể làm gì?
-
-| Nhu cầu | HaizFlow hỗ trợ |
-| --- | --- |
-| Xử lí một video | Nhập video từ máy hoặc liên kết công khai, chọn ngôn ngữ đích và giọng đọc, sau đó xuất video đã dịch, lồng tiếng và có phụ đề mới. |
-| Xử lí hàng loạt | Thêm nhiều video vào một dự án, theo dõi trạng thái trong hàng đợi, rồi bắt đầu hoặc tiếp tục xử lí khi phù hợp. |
-| Tải media | Tải video công khai, duyệt video từ kênh công khai được hỗ trợ, hoặc tải/trích âm thanh vào thư mục đầu ra bạn chọn. |
-| Âm thanh và phụ đề | Giữ âm thanh gốc hoặc tách giọng, thêm nhạc nền từ tệp/liên kết, nghe thử phối âm và chỉnh âm lượng trước khi xử lí. |
-| Phụ đề gốc | Tự nhận diện vùng phụ đề cứng có độ tin cậy cao để đặt phụ đề mới gọn gàng lên trên. |
-
-### Bắt đầu sử dụng
-
-1. Tải installer Windows tại [Releases](https://github.com/MachHongHai/HaizFlow/releases).
-2. Chọn thư mục muốn cài HaizFlow.
-3. Mở ứng dụng và tạo dự án Tải xuống, Đơn lẻ hoặc Hàng loạt.
-4. Thêm media, chọn đầu ra mong muốn và bắt đầu xử lí.
-
-Các model lớn chỉ được tải khi lần đầu cần dùng. HaizFlow hiển thị tiến độ tải, kiểm tra file trước khi dùng và sẽ tái sử dụng model ở những lần mở sau.
-
-### Quyền riêng tư và kết nối mạng
-
-Các bước xử lí media chính được thiết kế để chạy trên máy của bạn. Khi tải từ liên kết công khai, ứng dụng sẽ kết nối tới nền tảng nguồn tương ứng. Giọng đọc Edge TTS mặc định là dịch vụ trực tuyến, vì vậy văn bản cần tổng hợp giọng nói sẽ được gửi tới dịch vụ này.
-
-### Sử dụng có trách nhiệm
-
-Chỉ tải, xử lí và xuất bản nội dung bạn sở hữu hoặc được cho phép sử dụng. Hãy tuân thủ điều khoản của từng nền tảng media.
-
-### Hỗ trợ và góp ý
-
-Nếu gặp vấn đề hoặc cần hỗ trợ, hãy tạo [issue trên GitHub](https://github.com/MachHongHai/HaizFlow/issues). Mọi góp ý về sản phẩm và trải nghiệm sử dụng đều rất được chào đón.
+HaizFlow creates localized, reupload-ready versions of public videos. Download a source video, cover its existing subtitles, generate a new voice and subtitles, then export a finished version — all from one project-based desktop workflow.
 
 <a id="english"></a>
 
@@ -102,3 +59,61 @@ Created by **Mạch Hồng Hải**.
 ## License
 
 HaizFlow is released under the [Apache License 2.0](HaizFlow/LICENSE). Third-party dependencies, models, and bundled binaries retain their own licenses; see [NOTICE](HaizFlow/NOTICE) and `HaizFlow/licenses/`.
+
+<a id="tieng-viet"></a>
+
+## Tiếng Việt
+
+**Công cụ desktop mã nguồn mở để reup video hàng loạt: tải video, che phụ đề gốc, lồng tiếng, thêm phụ đề mới và xuất video sẵn sàng để reup — không tốn phí API.**
+
+HaizFlow tạo phiên bản video sẵn sàng để reup từ các nguồn công khai. Tải video nguồn, che vùng phụ đề cũ, tạo giọng đọc và phụ đề mới, rồi xuất video hoàn chỉnh — tất cả trong một quy trình theo dự án, rõ ràng và dễ theo dõi.
+
+### Vì sao dùng HaizFlow?
+
+- **Dễ sử dụng** — có không gian riêng cho tải xuống, một video và hàng loạt; điều hướng cùng thao tác được bố trí nhất quán.
+- **Tối ưu cho hàng loạt** — quản lí nhiều video trong hàng đợi, lưu lại tiến độ và thiết lập của từng dự án.
+- **Mọi thứ trong một ứng dụng** — nhập tệp, dịch, lồng tiếng, chèn phụ đề, phối âm và xuất video mà không phải chuyển qua nhiều công cụ.
+- **Ưu tiên xử lí trên máy** — các bước xử lí chính chạy trên máy của bạn. Quy trình mặc định không cần khóa API.
+- **Dự án luôn gọn gàng** — tệp nguồn, thiết lập, video xuất, lịch sử hoạt động và dữ liệu khôi phục được quản lí trong cùng một dự án.
+
+### Bạn có thể làm gì?
+
+| Nhu cầu | HaizFlow hỗ trợ |
+| --- | --- |
+| Xử lí một video | Nhập video từ máy hoặc liên kết công khai, chọn ngôn ngữ đích và giọng đọc, sau đó xuất video đã dịch, lồng tiếng và có phụ đề mới. |
+| Xử lí hàng loạt | Thêm nhiều video vào một dự án, theo dõi trạng thái trong hàng đợi, rồi bắt đầu hoặc tiếp tục xử lí khi phù hợp. |
+| Tải nội dung | Tải video công khai, duyệt video từ kênh công khai được hỗ trợ, hoặc tải/trích âm thanh vào thư mục đầu ra bạn chọn. |
+| Âm thanh và phụ đề | Giữ âm thanh gốc hoặc tách giọng, thêm nhạc nền từ tệp/liên kết, nghe thử phối âm và chỉnh âm lượng trước khi xử lí. |
+| Phụ đề gốc | Tự nhận diện vùng phụ đề cứng có độ tin cậy cao để đặt phụ đề mới gọn gàng lên trên. |
+
+### Bắt đầu sử dụng
+
+1. Tải bộ cài đặt Windows tại [trang phát hành](https://github.com/MachHongHai/HaizFlow/releases).
+2. Chọn thư mục muốn cài HaizFlow.
+3. Mở ứng dụng và tạo dự án Tải xuống, Đơn lẻ hoặc Hàng loạt.
+4. Thêm tệp nguồn, chọn đầu ra mong muốn và bắt đầu xử lí.
+
+Các mô hình lớn chỉ được tải khi lần đầu cần dùng. HaizFlow hiển thị tiến độ tải, kiểm tra tệp trước khi dùng và sẽ tái sử dụng ở những lần mở sau.
+
+### Quyền riêng tư và kết nối mạng
+
+Các bước xử lí chính được thiết kế để chạy trên máy của bạn. Khi tải từ liên kết công khai, ứng dụng sẽ kết nối tới nền tảng nguồn tương ứng. Giọng đọc Edge TTS mặc định là dịch vụ trực tuyến, vì vậy văn bản cần tổng hợp giọng nói sẽ được gửi tới dịch vụ này.
+
+### Sử dụng có trách nhiệm
+
+Chỉ tải, xử lí và xuất bản nội dung bạn sở hữu hoặc được cho phép sử dụng. Hãy tuân thủ điều khoản của từng nền tảng.
+
+### Hỗ trợ và góp ý
+
+Nếu gặp vấn đề hoặc cần hỗ trợ, hãy tạo [báo cáo trên GitHub](https://github.com/MachHongHai/HaizFlow/issues). Mọi góp ý về sản phẩm và trải nghiệm sử dụng đều rất được chào đón.
+
+## Tác giả
+
+Dự án được tạo bởi **Mạch Hồng Hải**.
+
+- GitHub: [MachHongHai](https://github.com/MachHongHai)
+- Email: machhonghaipr@gmail.com
+
+## Giấy phép
+
+HaizFlow sử dụng [Apache License 2.0](HaizFlow/LICENSE). Thư viện phụ thuộc, mô hình và tệp nhị phân của bên thứ ba giữ giấy phép riêng; xem [NOTICE](HaizFlow/NOTICE) và `HaizFlow/licenses/`.
