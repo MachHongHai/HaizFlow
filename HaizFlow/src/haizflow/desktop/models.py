@@ -109,7 +109,7 @@ class VideoListModel(QAbstractListModel):
     def _video_size(video):
         width = int(getattr(video, "video_width", 0) or 0)
         height = int(getattr(video, "video_height", 0) or 0)
-        return f"{width} x {height}" if width and height else "Unknown size"
+        return f"{width} x {height}" if width and height else ""
 
 
 class ProjectListModel(QAbstractListModel):
@@ -119,6 +119,7 @@ class ProjectListModel(QAbstractListModel):
     StatusRole = Qt.ItemDataRole.UserRole + 4
     ProgressRole = Qt.ItemDataRole.UserRole + 5
     ThumbnailRole = Qt.ItemDataRole.UserRole + 6
+    VideoSizeRole = Qt.ItemDataRole.UserRole + 7
 
     def __init__(self):
         super().__init__()
@@ -141,6 +142,7 @@ class ProjectListModel(QAbstractListModel):
             self.StatusRole: project["status"],
             self.ProgressRole: project["progress"],
             self.ThumbnailRole: project["thumbnail_source"],
+            self.VideoSizeRole: project.get("video_size", ""),
         }
 
     def roleNames(self):
@@ -151,6 +153,7 @@ class ProjectListModel(QAbstractListModel):
             self.StatusRole: b"status",
             self.ProgressRole: b"progress",
             self.ThumbnailRole: b"thumbnailSource",
+            self.VideoSizeRole: b"videoSize",
         }
 
     def set_projects(self, projects):
@@ -203,7 +206,7 @@ class ProjectListModel(QAbstractListModel):
 class ProjectGridModel(ProjectListModel):
     """Project model with a synthetic first cell for creating a project."""
 
-    IsCreateCardRole = Qt.ItemDataRole.UserRole + 7
+    IsCreateCardRole = Qt.ItemDataRole.UserRole + 8
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._projects) + 1
@@ -225,6 +228,7 @@ class ProjectGridModel(ProjectListModel):
                 self.StatusRole: "",
                 self.ProgressRole: 0,
                 self.ThumbnailRole: "",
+                self.VideoSizeRole: "",
             }.get(role)
         return super().data(self.index(index.row() - 1, 0), role)
 

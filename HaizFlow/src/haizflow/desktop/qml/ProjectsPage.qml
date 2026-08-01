@@ -164,6 +164,7 @@ Item {
                 required property string status
                 required property int progress
                 required property string thumbnailSource
+                required property string videoSize
 
                 width: projectGrid.cardWidth
                 height: projectGrid.cardHeight
@@ -203,6 +204,7 @@ Item {
                     status: projectGridDelegate.status
                     progress: projectGridDelegate.progress
                     thumbnailSource: projectGridDelegate.thumbnailSource
+                    videoSize: projectGridDelegate.videoSize
                     onActivated: {
                         if (AppController.selectProjectInMode(index, root.projectType))
                             root.openProject(root.projectType)

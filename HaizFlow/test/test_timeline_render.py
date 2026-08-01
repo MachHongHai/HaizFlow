@@ -9,6 +9,36 @@ from haizflow.schemas.video import CropSettings, SubtitleStyle
 
 
 class TimelineRenderTests(unittest.TestCase):
+    def test_default_subtitle_size_is_legible_without_an_ocr_region(self):
+        self.assertEqual(SubtitleStyle().font_size, 60)
+
+    def test_fallback_subtitles_are_large_sequential_single_line_phrases(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subtitle_path = root / "subtitles.srt"
+            ass_path = root / "positioned_subtitles.ass"
+            subtitle_path.write_text(
+                "1\n00:00:00,000 --> 00:00:03,000\n"
+                "This fallback caption is deliberately long enough to need multiple readable phrases\n\n"
+                "2\n00:00:03,000 --> 00:00:06,000\n"
+                "A second long fallback caption must retain exactly the same font size\n",
+                encoding="utf-8",
+            )
+            style = SubtitleStyle()
+            layout = render._default_subtitle_layout(style, 1080, 1920)
+            render._write_positioned_ass(
+                str(subtitle_path), str(ass_path), style, 1080, 1920, layout,
+                fixed_font_size=True,
+            )
+            dialogue_lines = [
+                line for line in ass_path.read_text(encoding="utf-8-sig").splitlines()
+                if line.startswith("Dialogue:")
+            ]
+
+        self.assertGreater(len(dialogue_lines), 1)
+        self.assertTrue(all("\\N" not in line for line in dialogue_lines))
+        self.assertTrue(all("\\fs60" in line for line in dialogue_lines))
+
     def test_render_rejects_unknown_output_format_before_invoking_ffmpeg(self):
         with self.assertRaisesRegex(ValueError, "Unsupported output format"):
             render.render_video(

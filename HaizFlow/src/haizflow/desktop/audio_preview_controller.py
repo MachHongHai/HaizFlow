@@ -52,6 +52,16 @@ class AudioPreviewController:
         self._thread: threading.Thread | None = None
         self._token = ""
 
+    def invalidate(self) -> None:
+        """Discard an unfinished preview when its project context changes."""
+        self._token = uuid.uuid4().hex
+        host = self._host
+        host._audio_preview_source = ""
+        host._audio_preview_original_source = ""
+        host._audio_preview_background_music_source = ""
+        host._audio_preview_state = "idle"
+        host.audioPreviewChanged.emit()
+
     def start(
         self,
         *,

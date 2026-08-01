@@ -38,7 +38,8 @@ _ALIGNMENT_MIN_MEDIAN_WORD_SCORE = 0.03
 _ALIGNMENT_GROUP_PADDING_SECONDS = 2.5
 _ALIGNMENT_GROUP_SPLIT_GAP_SECONDS = 3.0
 _ALIGNMENT_GROUP_MAX_SECONDS = 75.0
-TIMING_SOURCE = "whisperx-context-aligned-sentences-v5"
+_MIN_SENTENCE_SPAN_SECONDS = 0.45
+TIMING_SOURCE = "whisperx-context-aligned-sentences-v7"
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 _CJK_LANGUAGE_CODES = frozenset({"zh", "ja", "ko"})
 _SENTENCE_END_CHARS = frozenset(".!?\u2026\u3002\uff01\uff1f")
@@ -340,6 +341,40 @@ def _speech_weight(text: str) -> int:
     return max(1, sum(character.isalnum() for character in str(text or "")))
 
 
+def _coalesce_short_sentence_segments(segments: list[dict]) -> list[dict]:
+    """Join unusably short contiguous speech fragments to a neighbour."""
+    coalesced = []
+    for source in segments:
+        current = dict(source)
+        duration = float(current.get("end", 0.0)) - float(current.get("start", 0.0))
+        if duration < _MIN_SENTENCE_SPAN_SECONDS and coalesced:
+            previous = coalesced[-1]
+            gap = float(current.get("start", 0.0)) - float(previous.get("end", 0.0))
+            if gap <= 0.15:
+                previous["end"] = max(float(previous.get("end", 0.0)), float(current.get("end", 0.0)))
+                previous["text"] = (
+                    f'{str(previous.get("text") or "").rstrip()} '
+                    f'{str(current.get("text") or "").lstrip()}'
+                ).strip()
+                previous.pop("words", None)
+                continue
+        coalesced.append(current)
+
+    if len(coalesced) > 1:
+        first = coalesced[0]
+        first_duration = float(first.get("end", 0.0)) - float(first.get("start", 0.0))
+        forward_gap = float(coalesced[1].get("start", 0.0)) - float(first.get("end", 0.0))
+        if first_duration < _MIN_SENTENCE_SPAN_SECONDS and forward_gap <= 0.15:
+            first = coalesced.pop(0)
+            coalesced[0]["start"] = min(float(first.get("start", 0.0)), float(coalesced[0].get("start", 0.0)))
+            coalesced[0]["text"] = (
+                f'{str(first.get("text") or "").rstrip()} '
+                f'{str(coalesced[0].get("text") or "").lstrip()}'
+            ).strip()
+            coalesced[0].pop("words", None)
+    return coalesced
+
+
 def _split_segment_proportionally(segment: dict) -> list[dict]:
     """Keep Whisper's trusted span while deriving sentence-level fallback timing."""
     sentences = _split_sentence_text(segment.get("text", ""))
@@ -367,7 +402,9 @@ def _split_segment_proportionally(segment: dict) -> list[dict]:
         )
         fallback_segment.pop("words", None)
         fallback_segments.append(fallback_segment)
-    return fallback_segments
+    # Punctuation-only sentence splitting can otherwise create impossible
+    # 100ms voice slots from a perfectly valid multi-second Whisper span.
+    return _coalesce_short_sentence_segments(fallback_segments)
 
 
 def _alignment_groups(segments: list[dict]) -> list[list[dict]]:
@@ -453,6 +490,42 @@ def _split_context_alignment(
         )
         aligned.append(sentence)
     return aligned, f"aligned {len(aligned)} sentences with {len(words)} timed words"
+
+
+def _alignment_intrusion_detail(
+    source_group: list[dict],
+    aligned_group: list[dict],
+    all_source_segments: list[dict],
+) -> str | None:
+    """Describe alignment that newly intrudes into another spoken sentence.
+
+    Language-specific alignment runs against padded audio context.  A short
+    phrase can therefore lock onto similar sounds inside a neighbouring
+    sentence.  Only reject overlap introduced by alignment; overlap already
+    present in Whisper's source spans is left for the final boundary validator.
+    """
+    if len(source_group) != len(aligned_group):
+        return "aligned sentence count changed"
+
+    group_ids = {id(segment) for segment in source_group}
+    for source, aligned in zip(source_group, aligned_group):
+        source_start = float(source.get("start", 0.0))
+        source_end = float(source.get("end", source_start))
+        aligned_start = float(aligned.get("start", source_start))
+        aligned_end = float(aligned.get("end", aligned_start))
+        for other in all_source_segments:
+            if id(other) in group_ids:
+                continue
+            other_start = float(other.get("start", 0.0))
+            other_end = float(other.get("end", other_start))
+            source_overlap = max(0.0, min(source_end, other_end) - max(source_start, other_start))
+            aligned_overlap = max(0.0, min(aligned_end, other_end) - max(aligned_start, other_start))
+            if aligned_overlap > source_overlap + 0.05:
+                return (
+                    f"new {aligned_overlap:.3f}s overlap with another source sentence "
+                    f"(previously {source_overlap:.3f}s)"
+                )
+    return None
 
 
 def _alignment_quality(source_segment: dict, aligned_segments: list[dict]) -> tuple[bool, str]:
@@ -554,11 +627,11 @@ def _verified_alignment_asset(language: str, video_id: str) -> tuple[object, dic
 
 def _align_segments_by_language(audio, segments, device: str, video_id: str, progress_callback=None):
     """Align ordered sentence groups with enough context to correct ASR drift."""
-    sentence_segments = [
+    sentence_segments = _coalesce_short_sentence_segments([
         sentence
         for source_segment in segments
         for sentence in _split_segment_proportionally(source_segment)
-    ]
+    ])
     context_groups = _alignment_groups(sentence_segments)
     grouped_segments = {}
     ordered_languages = []
@@ -628,7 +701,16 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
                         search_start,
                         search_end,
                     )
-                    if context_aligned:
+                    intrusion_detail = (
+                        _alignment_intrusion_detail(
+                            group,
+                            context_aligned,
+                            sentence_segments,
+                        )
+                        if context_aligned
+                        else None
+                    )
+                    if context_aligned and not intrusion_detail:
                         aligned_segments.extend(context_aligned)
                         log_to_video(
                             video_id,
@@ -636,6 +718,8 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
                             f"with surrounding speech context ({quality_detail}).",
                         )
                         continue
+                    if intrusion_detail:
+                        quality_detail = intrusion_detail
                     log_to_video(
                         video_id,
                         f"WARNING: Rejected '{language}' context alignment for source sentences "
@@ -669,6 +753,51 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
 
     aligned_segments.sort(key=lambda segment: float(segment.get("start", 0.0)))
     return aligned_segments
+
+
+def _normalize_sentence_timestamps(segments: list[dict], audio_duration: float) -> int:
+    """Make independently aligned sentence spans safe for one sequential timeline.
+
+    WhisperX can align a short foreign-language sentence against surrounding
+    context.  That improves the word timing, but its independently aligned span
+    may overlap the preceding primary-language span.  Two spoken sentences
+    cannot be rendered concurrently by the downstream TTS/subtitle pipeline, so
+    split just the ambiguous overlap at its midpoint rather than aborting an
+    otherwise valid transcription.
+
+    The function mutates ``segments`` in place and returns the number of joined
+    boundaries.  Invalid spans remain the responsibility of the validator below.
+    """
+    if len(segments) < 2:
+        return 0
+
+    minimum_duration = 0.25
+    repaired_boundaries = 0
+    for previous, current in zip(segments, segments[1:]):
+        previous_start = float(previous.get("start", 0.0))
+        previous_end = float(previous.get("end", previous_start))
+        current_start = float(current.get("start", 0.0))
+        current_end = float(current.get("end", current_start))
+        overlap = previous_end - current_start
+        if overlap <= 0.05:
+            continue
+
+        # Keep a short, usable duration for both sentences whenever their
+        # source timings make that possible.  The midpoint only affects the
+        # region where two independently derived timings disagree.
+        previous_minimum = min(minimum_duration, max(0.001, (previous_end - previous_start) / 2.0))
+        current_minimum = min(minimum_duration, max(0.001, (current_end - current_start) / 2.0))
+        lower_bound = previous_start + previous_minimum
+        upper_bound = min(current_end - current_minimum, audio_duration)
+        if lower_bound > upper_bound:
+            # Leave genuinely malformed spans for _validate_timestamp_invariants
+            # so the error remains explicit instead of silently discarding text.
+            continue
+        boundary = min(max((previous_end + current_start) / 2.0, lower_bound), upper_bound)
+        previous["end"] = round(boundary, 3)
+        current["start"] = round(boundary, 3)
+        repaired_boundaries += 1
+    return repaired_boundaries
 
 
 def _validate_timestamp_invariants(segments: list[dict], audio_duration: float) -> None:
@@ -790,11 +919,12 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, vid
 
         output_segments = []
         for segment in aligned_segments:
-            language, confidence = _language_for_aligned_segment(
-                segment,
-                source_segments,
-                detected_language or "en",
-            )
+            # Both proportional fallback and context alignment preserve the
+            # originating sentence dictionary.  Keep its language metadata;
+            # inferring it again from a corrected timestamp can assign a
+            # neighbouring sentence's language after a legitimate time shift.
+            language = segment.get("language") or detected_language or "en"
+            confidence = float(segment.get("language_confidence", 0.0))
             output_segments.append(
                 {
                     "start": round(float(segment["start"]), 3),
@@ -806,7 +936,16 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, vid
                 }
             )
 
-        _validate_timestamp_invariants(output_segments, len(audio) / _AUDIO_SAMPLE_RATE)
+        audio_duration = len(audio) / _AUDIO_SAMPLE_RATE
+        repaired_boundaries = _normalize_sentence_timestamps(output_segments, audio_duration)
+        if repaired_boundaries:
+            log_to_video(
+                video_id,
+                "Normalized "
+                f"{repaired_boundaries} overlapping WhisperX sentence boundary/boundaries "
+                "after mixed-language alignment.",
+            )
+        _validate_timestamp_invariants(output_segments, audio_duration)
         if progress_callback:
             progress_callback("detecting_languages", f"Validated {len(output_segments)} timed sentences")
         output_directory = os.path.dirname(os.path.abspath(output_json_path))

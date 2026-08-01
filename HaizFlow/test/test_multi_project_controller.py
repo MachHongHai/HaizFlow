@@ -26,6 +26,70 @@ from haizflow.schemas.video import VideoConfig
 
 
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_new_project_setup_resets_all_project_local_settings(self):
+        changed = {
+            name: SimpleNamespace(emit=Mock())
+            for name in (
+                "workflowModeChanged", "targetLanguageChanged", "ttsVoiceChanged",
+                "ttsVoiceOptionsChanged", "enableAudioSeparationChanged", "originalVolumeChanged",
+                "backgroundMusicVolumeChanged", "ttsVolumeChanged", "watermarkTextChanged",
+                "backgroundMusicChanged",
+            )
+        }
+        preview = SimpleNamespace(invalidate=Mock())
+        host = SimpleNamespace(
+            _workflow_mode="review", _target_language="en", _tts_voice="en-US-GuyNeural",
+            _enable_audio_separation=True, _original_volume=15, _background_music_volume=75,
+            _tts_volume=55, _watermark_text="Previous project", _background_music_path="old.m4a",
+            _audio_preview=preview, **changed,
+        )
+        controller = ProjectImportController(host)
+        controller.cancel_background_music_link_import = Mock()
+
+        controller._reset_new_project_setup()
+
+        self.assertEqual(host._workflow_mode, "A")
+        self.assertEqual(host._target_language, "vi")
+        self.assertEqual(host._tts_voice, "vi-VN-HoaiMyNeural")
+        self.assertFalse(host._enable_audio_separation)
+        self.assertEqual((host._original_volume, host._background_music_volume, host._tts_volume), (60, 30, 100))
+        self.assertEqual(host._watermark_text, "")
+        self.assertEqual(host._background_music_path, "")
+        preview.invalidate.assert_called_once_with()
+        controller.cancel_background_music_link_import.assert_called_once_with()
+
+    def test_new_batch_import_is_persisted_before_existing_cards(self):
+        project_key = "batch:campaign"
+        existing = SimpleNamespace(
+            video_id="existing", project_type="batch", project_key=project_key,
+            batch_import_order=0, created_at="2026-08-01T10:00:00Z",
+        )
+        newly_imported = SimpleNamespace(
+            video_id="new", project_type="batch", project_key=project_key,
+            batch_import_order=0, created_at="2026-08-01T11:00:00Z",
+        )
+        videos = {video.video_id: video for video in (existing, newly_imported)}
+        host = SimpleNamespace(
+            _batch_video_ids=[existing.video_id],
+            _selected_project_key=project_key,
+            _video_project_key=lambda video: video.project_key,
+        )
+
+        def update_video(video_id, **changes):
+            video = videos[video_id]
+            for key, value in changes.items():
+                setattr(video, key, value)
+            return video
+
+        with (
+            patch.object(project_import_controller.video_store, "list_videos", return_value=list(videos.values())),
+            patch.object(project_import_controller.video_store, "update_video", side_effect=update_video),
+        ):
+            ProjectImportController(host)._prepend_batch_import([newly_imported.video_id])
+
+        self.assertEqual(host._batch_video_ids, ["new", "existing"])
+        self.assertLess(newly_imported.batch_import_order, existing.batch_import_order)
+
     def test_batch_card_opens_the_selected_video_settings(self):
         batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(
             encoding="utf-8"
@@ -37,6 +101,18 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("AppController.selectBatchVideo(index)", batch_page)
         self.assertIn("root.openVideoDetail()", batch_page)
         self.assertIn('I18n.t("Edit video settings")', card)
+        self.assertIn("required property string videoSize", card)
+        self.assertIn("id: sizeLabel", card)
+        self.assertIn('glyph: "\\uE76C"', card)
+        self.assertNotIn('glyph: "\\uE70F"', card)
+        self.assertIn("ThumbnailFallback", card)
+
+        project_card = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectCard.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("required property string videoSize", project_card)
+        self.assertIn("id: sizeLabel", project_card)
+        self.assertIn("root.videoSize.length > 0", project_card)
 
     def test_saving_batch_video_settings_updates_only_the_selected_video(self):
         selected = SimpleNamespace(video_id="video-custom", project_type="batch")
@@ -295,6 +371,11 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("root.audioSeparationEnabled", batch_audio_dialog)
         self.assertIn("backgroundMusicPath.length > 0", batch_audio_dialog)
         self.assertIn("AppController.previewBatchAudioMix(", batch_audio_dialog)
+        self.assertIn("function pausePreview()", batch_audio_dialog)
+        self.assertIn("onClosed: pausePreview()", batch_audio_dialog)
+        self.assertIn("root.visible && AppController.audioPreviewState === \"ready\"", batch_audio_dialog)
+        self.assertIn("readonly property bool previewPlaying", batch_audio_dialog)
+        self.assertIn('root.previewPlaying ? "\\uE769" : "\\uE768"', batch_audio_dialog)
 
         dubbing_setup = (
             ROOT / "src" / "haizflow" / "desktop" / "qml" / "DubbingSetupPanel.qml"

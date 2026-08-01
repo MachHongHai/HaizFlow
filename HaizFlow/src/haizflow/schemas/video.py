@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 7
+VIDEO_METADATA_SCHEMA_VERSION = 8
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
@@ -22,7 +22,9 @@ class MediaSource(BaseModel):
 
 
 class SubtitleStyle(BaseModel):
-    font_size: int = Field(default=36, ge=10, le=160)
+    # Used when OCR finds no source subtitle region. 60 is legible on the
+    # standard 1080x1920 vertical export without overwhelming the frame.
+    font_size: int = Field(default=60, ge=10, le=160)
     margin_bottom: int = Field(default=40, ge=0, le=1000)
     outline: int = Field(default=2, ge=0, le=20)
     max_chars_per_line: int = Field(default=32, ge=12, le=200)
@@ -89,6 +91,9 @@ class VideoInfo(BaseModel):
     project_type: ProjectType = "single"
     project_id: str = ""
     project_key: str = ""
+    # A stable, project-local position for batch cards.  Processing updates
+    # must never affect this, otherwise the queue appears to shuffle.
+    batch_import_order: int = 0
     video_width: int = 0
     video_height: int = 0
     review_approved: bool = False

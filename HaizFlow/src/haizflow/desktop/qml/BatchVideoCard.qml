@@ -95,14 +95,9 @@ Rectangle {
                 visible: status === Image.Ready
             }
 
-            AppIcon {
-                anchors.centerIn: parent
+            ThumbnailFallback {
+                anchors.fill: parent
                 visible: root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error
-                width: 28
-                height: 28
-                glyph: "\uE714"
-                iconColor: Theme.textSubtle
-                iconSize: Theme.iconLarge
             }
 
             Row {
@@ -110,6 +105,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.margins: Theme.space8
                 spacing: Theme.space4
+                visible: root.videoSize.length > 0
 
                 Rectangle {
                     width: sizeLabel.implicitWidth + Theme.space12
@@ -127,8 +123,26 @@ Rectangle {
                         textFormat: Text.PlainText
                     }
                 }
-
             }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 3
+                color: Theme.surfaceStrong
+
+                Rectangle {
+                    width: parent.width * Math.max(0, Math.min(100, root.progress)) / 100
+                    height: parent.height
+                    color: root.progress >= 100 ? Theme.success : Theme.interactive
+
+                    Behavior on width {
+                        NumberAnimation { duration: Theme.motionStandard; easing.type: Easing.OutCubic }
+                    }
+                }
+            }
+
         }
 
         ColumnLayout {
@@ -144,7 +158,7 @@ Rectangle {
                 Layout.fillWidth: true
                 text: root.fileName
                 color: Theme.text
-                font.pixelSize: Theme.body
+                font.pixelSize: Theme.bodyLarge
                 font.weight: Font.DemiBold
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
@@ -179,10 +193,10 @@ Rectangle {
                 }
 
                 AppIcon {
-                    Layout.preferredWidth: 16
-                    Layout.preferredHeight: 16
-                    glyph: "\uE70F"
-                    iconColor: hoverHandler.hovered ? Theme.violet : Theme.textSubtle
+                    Layout.preferredWidth: Theme.icon
+                    Layout.preferredHeight: Theme.icon
+                    glyph: "\uE76C"
+                    iconColor: hoverHandler.hovered ? Theme.text : Theme.textSubtle
                     iconSize: Theme.iconSmall
                     Accessible.ignored: true
                 }

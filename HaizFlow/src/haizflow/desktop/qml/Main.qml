@@ -70,9 +70,76 @@ ApplicationWindow {
         }
     }
 
+    function routeIsAvailable(route) {
+        if (route === routeSingleProjects || route === routeBatchProjects || route === routeDownloadProjects)
+            return true
+        if (!AppController.hasOpenProject)
+            return false
+        if (route === routeSingleWorkspace)
+            return AppController.projectType === "single"
+        if (route === routeBatchWorkspace)
+            return AppController.projectType === "batch"
+        if (route === routeBatchVideo)
+            return AppController.projectType === "batch" && AppController.isSelectedBatchVideo
+        if (route === routeDownloadWorkspace)
+            return AppController.projectType === "download"
+        return false
+    }
+
+    function resetRouteHistory(route) {
+        routeHistory = [route]
+        routeHistoryIndex = 0
+        currentRoute = route
+    }
+
+    function pruneRouteHistory() {
+        let filtered = []
+        let nextIndex = 0
+        for (let index = 0; index < routeHistory.length; ++index) {
+            const route = routeHistory[index]
+            if (!routeIsAvailable(route))
+                continue
+            if (index <= routeHistoryIndex)
+                nextIndex = filtered.length
+            filtered.push(route)
+        }
+        if (filtered.length === 0) {
+            resetRouteHistory(workspaceReturnRoute)
+            return
+        }
+        routeHistory = filtered
+        routeHistoryIndex = Math.max(0, Math.min(nextIndex, filtered.length - 1))
+        if (!routeIsAvailable(currentRoute))
+            currentRoute = filtered[routeHistoryIndex]
+    }
+
+    function openProjectWorkspace(projectsRoute, workspaceRoute) {
+        workspaceReturnRoute = projectsRoute
+        resetRouteHistory(projectsRoute)
+        navigate(workspaceRoute)
+    }
+
+    function replaceCurrentRoute(route) {
+        if (route === currentRoute)
+            return
+        saveCurrentVideoSettings()
+        let nextHistory = routeHistory.slice()
+        nextHistory[routeHistoryIndex] = route
+        if (routeHistoryIndex > 0 && nextHistory[routeHistoryIndex - 1] === route) {
+            nextHistory = nextHistory.slice(0, routeHistoryIndex)
+            routeHistoryIndex = nextHistory.length - 1
+        }
+        routeHistory = nextHistory
+        currentRoute = route
+    }
+
     function navigate(route) {
         if (route === currentRoute)
             return
+        if (!routeIsAvailable(route)) {
+            pruneRouteHistory()
+            return
+        }
 
         saveCurrentVideoSettings()
         let nextHistory = routeHistory.slice(0, routeHistoryIndex + 1)
@@ -89,6 +156,7 @@ ApplicationWindow {
             // qmllint enable missing-property
             return
         }
+        pruneRouteHistory()
         if (!routeCanGoBack)
             return
 
@@ -104,6 +172,7 @@ ApplicationWindow {
             // qmllint enable missing-property
             return
         }
+        pruneRouteHistory()
         if (!routeCanGoForward)
             return
 
@@ -169,12 +238,25 @@ ApplicationWindow {
         target: AppController
 
         function onVideoDeleted() {
-            root.navigate(root.workspaceReturnRoute)
+            if (!AppController.hasOpenProject) {
+                root.resetRouteHistory(root.workspaceReturnRoute)
+                return
+            }
+            root.replaceCurrentRoute(root.workspaceReturnRoute)
+            root.pruneRouteHistory()
         }
 
         function onBatchDeleted() {
             root.workspaceReturnRoute = root.routeBatchProjects
-            root.navigate(root.routeBatchProjects)
+            root.resetRouteHistory(root.routeBatchProjects)
+        }
+
+        function onProjectSetupChanged() {
+            root.pruneRouteHistory()
+        }
+
+        function onSelectedVideoChanged() {
+            root.pruneRouteHistory()
         }
 
         function onSettingsChanged() {
@@ -184,15 +266,12 @@ ApplicationWindow {
 
         function onProjectPrepared() {
             if (AppController.projectType === "batch") {
-                root.workspaceReturnRoute = root.routeBatchProjects
-                root.navigate(root.routeBatchWorkspace)
+                root.openProjectWorkspace(root.routeBatchProjects, root.routeBatchWorkspace)
             } else {
                 if (AppController.projectType === "download") {
-                    root.workspaceReturnRoute = root.routeDownloadProjects
-                    root.navigate(root.routeDownloadWorkspace)
+                    root.openProjectWorkspace(root.routeDownloadProjects, root.routeDownloadWorkspace)
                 } else {
-                    root.workspaceReturnRoute = root.routeSingleProjects
-                    root.navigate(root.routeSingleWorkspace)
+                    root.openProjectWorkspace(root.routeSingleProjects, root.routeSingleWorkspace)
                 }
             }
         }
@@ -432,8 +511,7 @@ ApplicationWindow {
                         projectSetupDialog.openForType("single")
                     }
                     onOpenProject: {
-                        root.workspaceReturnRoute = root.routeSingleProjects
-                        root.navigate(root.routeSingleWorkspace)
+                        root.openProjectWorkspace(root.routeSingleProjects, root.routeSingleWorkspace)
                     }
                 }
 
@@ -471,8 +549,7 @@ ApplicationWindow {
                         projectSetupDialog.openForType("batch")
                     }
                     onOpenProject: {
-                        root.workspaceReturnRoute = root.routeBatchProjects
-                        root.navigate(root.routeBatchWorkspace)
+                        root.openProjectWorkspace(root.routeBatchProjects, root.routeBatchWorkspace)
                     }
                 }
 
@@ -531,8 +608,7 @@ ApplicationWindow {
                         projectSetupDialog.openForType("download")
                     }
                     onOpenProject: {
-                        root.workspaceReturnRoute = root.routeDownloadProjects
-                        root.navigate(root.routeDownloadWorkspace)
+                        root.openProjectWorkspace(root.routeDownloadProjects, root.routeDownloadWorkspace)
                     }
                 }
 

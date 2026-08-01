@@ -12,6 +12,7 @@ Rectangle {
     required property string status
     required property int progress
     required property string thumbnailSource
+    required property string videoSize
 
     signal activated()
 
@@ -113,6 +114,27 @@ Rectangle {
                     anchors.centerIn: parent
                     text: qsTr("%1 %2").arg(root.videoCount).arg(I18n.t("videos"))
                     color: Theme.text
+                    font.pixelSize: Theme.label
+                    font.weight: Font.DemiBold
+                    textFormat: Text.PlainText
+                }
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: Theme.space8
+                visible: root.projectType === "single" && root.videoSize.length > 0
+                implicitWidth: sizeLabel.implicitWidth + Theme.space12
+                implicitHeight: 26
+                radius: Theme.radiusSmall
+                color: Theme.scrim
+
+                Text {
+                    id: sizeLabel
+                    anchors.centerIn: parent
+                    text: root.videoSize
+                    color: Theme.textOnDark
                     font.pixelSize: Theme.label
                     font.weight: Font.DemiBold
                     textFormat: Text.PlainText

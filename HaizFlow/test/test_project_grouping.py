@@ -125,6 +125,18 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(batch["progress"], 75)
         self.assertEqual([video.video_id for video in batch["videos"]], ["one", "two"])
 
+    def test_batch_card_order_is_stable_when_processing_updates_timestamps(self):
+        imported_first = _video("first", "first.mp4", "Campaign", "batch", "done", 100, "2026-07-14T14:00:00Z")
+        imported_first.created_at = "2026-07-14T10:00:00Z"
+        imported_first.batch_import_order = 1000
+        imported_later = _video("later", "later.mp4", "Campaign", "batch", "processing", 50, "2026-07-14T15:00:00Z")
+        imported_later.created_at = "2026-07-14T11:00:00Z"
+        imported_later.batch_import_order = 1001
+
+        summary = HaizFlowController._build_project_summaries([imported_later, imported_first])[0]
+
+        self.assertEqual([video.video_id for video in summary["videos"]], ["first", "later"])
+
     def test_project_library_models_keep_single_and_batch_projects_separate(self):
         summaries = HaizFlowController._build_project_summaries(
             [

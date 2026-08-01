@@ -328,6 +328,14 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("watermark_text", "")
             version = 7
             continue
+        if version == 7:
+            data["schema_version"] = 8
+            # Legacy batch videos are assigned a durable order when the user
+            # next adds to that batch.  Until then, their creation time is the
+            # stable compatibility fallback used by the presenter.
+            data.setdefault("batch_import_order", 0)
+            version = 8
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -346,6 +354,11 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
         else "keep_ratio"
     )
     data["project_type"] = "batch" if data.get("project_type") == "batch" else "single"
+    try:
+        batch_import_order = int(data.get("batch_import_order", 0))
+    except (TypeError, ValueError):
+        batch_import_order = 0
+    data["batch_import_order"] = max(0, batch_import_order)
     style_defaults = SubtitleStyle().model_dump()
     style_value = data.get("subtitle_style")
     style_source = style_value if isinstance(style_value, dict) else {}

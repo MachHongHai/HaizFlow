@@ -262,6 +262,19 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
         self.assertEqual(migrated.watermark_text, "")
 
+    def test_v7_metadata_gets_a_safe_empty_batch_import_order(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        legacy = json.loads(path.read_text(encoding="utf-8"))
+        legacy["schema_version"] = 7
+        legacy.pop("batch_import_order", None)
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
+        self.assertEqual(migrated.batch_import_order, 0)
+
     def test_current_metadata_normalizes_unsafe_watermark_text(self):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))

@@ -95,6 +95,19 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
 
         self.assertEqual(muted.rms, 0)
 
+    def test_tempo_rounding_tail_is_trimmed_to_the_exact_slot(self):
+        audio = AudioSegment.silent(duration=1002, frame_rate=16000)
+
+        fitted = audio_timeline._trim_tempo_rounding(audio, 1000)
+
+        self.assertEqual(len(fitted), 1000)
+
+    def test_large_tempo_mismatch_is_not_silently_truncated(self):
+        audio = AudioSegment.silent(duration=1100, frame_rate=16000)
+
+        with self.assertRaisesRegex(RuntimeError, "exceeding its 1000ms slot by 100ms"):
+            audio_timeline._trim_tempo_rounding(audio, 1000)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,7 +60,7 @@ def _wrap_subtitle_for_region(
     return content, font_size, 100
 
 
-def _split_subtitle_words(text: str, max_chars: int) -> list[str]:
+def _split_subtitle_words(text: str, max_chars: int, *, strict_max_chars: bool = False) -> list[str]:
     """Split into balanced, natural phrases that each fit one line."""
     words = " ".join(text.split()).split(" ")
     if not words or words == [""]:
@@ -79,7 +79,7 @@ def _split_subtitle_words(text: str, max_chars: int) -> list[str]:
             cursor += size
         return pieces
     content_length = len(" ".join(words))
-    soft_limit = max(max(len(word) for word in words), round(max_chars * 1.30))
+    soft_limit = max_chars if strict_max_chars else max(max(len(word) for word in words), round(max_chars * 1.30))
     minimum_parts = max(1, math.ceil(content_length / soft_limit))
 
     # Find the smallest feasible phrase count, then choose the most even word
@@ -151,15 +151,22 @@ def _merge_contiguous_subtitles(subtitles: list[srt.Subtitle]) -> list[srt.Subti
     return merged
 
 
-def _subtitle_parts_for_region(subtitle, layout: SubtitleRegionLayout, subtitle_style: SubtitleStyle):
+def _subtitle_parts_for_region(
+    subtitle,
+    layout: SubtitleRegionLayout,
+    subtitle_style: SubtitleStyle,
+    *,
+    fixed_font_size: bool = False,
+):
     """Split a long cue over time, never into two simultaneous text rows."""
     content = " ".join(subtitle.content.split())
     inner_width = max(24, layout.width - subtitle_style.outline * 4)
     text_row_height = min(layout.height, layout.line_height or layout.height)
     inner_height = max(20, text_row_height - subtitle_style.outline * 2)
-    display_font = min(
-        subtitle_style.font_size,
-        int(inner_height / 1.05),
+    display_font = (
+        subtitle_style.font_size
+        if fixed_font_size
+        else min(subtitle_style.font_size, int(inner_height / 1.05))
     )
     display_font = max(10, display_font)
     # Split early enough that each phrase keeps large, normally proportioned
@@ -167,8 +174,20 @@ def _subtitle_parts_for_region(subtitle, layout: SubtitleRegionLayout, subtitle_
     # Prefer readable multi-word phrases. If the region is narrow, the fitting
     # step reduces the font mildly instead of flashing isolated words.
     max_chars = max(10, int(inner_width / (display_font * 0.48)))
-    parts = _split_subtitle_words(content, max_chars)
+    parts = _split_subtitle_words(content, max_chars, strict_max_chars=fixed_font_size)
     duration_seconds = max(0.0, (subtitle.end - subtitle.start).total_seconds())
+    if fixed_font_size:
+        total_weight = sum(max(1, len(part)) for part in parts)
+        cursor = subtitle.start
+        result = []
+        for index, part in enumerate(parts):
+            if index == len(parts) - 1:
+                end = subtitle.end
+            else:
+                end = cursor + timedelta(seconds=duration_seconds * max(1, len(part)) / total_weight)
+            result.append((cursor, end, part, subtitle_style.font_size, 100))
+            cursor = end
+        return result
     if len(parts) == 1:
         text, font_size, scale_x = _wrap_subtitle_for_region(
             content, layout, subtitle_style.font_size, subtitle_style.outline,
@@ -207,6 +226,7 @@ def _write_positioned_ass(
     width: int,
     height: int,
     region_layout: SubtitleRegionLayout | None = None,
+    fixed_font_size: bool = False,
 ):
     """Convert SRT to ASS so a dragged preview position is reproduced exactly in FFmpeg."""
     with open(srt_path, "r", encoding="utf-8") as file:
@@ -235,7 +255,7 @@ def _write_positioned_ass(
     for subtitle in subtitles:
         if region_layout:
             for start_time, end_time, content, font_size, scale_x in _subtitle_parts_for_region(
-                subtitle, region_layout, subtitle_style,
+                subtitle, region_layout, subtitle_style, fixed_font_size=fixed_font_size,
             ):
                 lines.append(
                     f"Dialogue: 0,{_ass_timestamp(start_time)},{_ass_timestamp(end_time)},Default,,0,0,0,,"
@@ -376,6 +396,18 @@ def _style_for_original_subtitle_region(
     )
 
 
+def _default_subtitle_layout(
+    subtitle_style: SubtitleStyle, output_width: int, output_height: int,
+) -> SubtitleRegionLayout:
+    """Reserve a wide single caption row when the source has no subtitles."""
+    width = max(160, output_width * max(0.82, subtitle_style.box_width_percent / 100))
+    height = max(72, output_height * 0.07)
+    x = (output_width - width) / 2
+    y = output_height * subtitle_style.position_y_percent / 100 - height / 2
+    y = max(height / 2, min(output_height - height / 2, y))
+    return SubtitleRegionLayout(x, y, min(width, output_width), height)
+
+
 def _source_blur_region(region: dict | None, source_width: int, source_height: int) -> tuple[int, int, int, int] | None:
     if not region:
         return None
@@ -492,7 +524,21 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     effective_style = _style_for_original_subtitle_region(
         subtitle_style, region_layout, subtitle_width, subtitle_height,
     )
-    _write_positioned_ass(srt_path, ass_path, effective_style, subtitle_width, subtitle_height, region_layout)
+    # A virtual layout keeps captions in one large row even when OCR finds no
+    # original subtitle box. Long text is shown as sequential phrases instead
+    # of wrapping into two simultaneous lines.
+    ass_layout = region_layout or _default_subtitle_layout(
+        effective_style, subtitle_width, subtitle_height,
+    )
+    _write_positioned_ass(
+        srt_path,
+        ass_path,
+        effective_style,
+        subtitle_width,
+        subtitle_height,
+        ass_layout,
+        fixed_font_size=region_layout is None,
+    )
     rel_video = _ffmpeg_path(video_path, video_temp_dir)
     rel_voice = _ffmpeg_path(voice_wav_path, video_temp_dir)
     rel_ass = _ffmpeg_path(ass_path, video_temp_dir)

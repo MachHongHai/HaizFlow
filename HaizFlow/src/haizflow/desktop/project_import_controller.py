@@ -301,17 +301,14 @@ class ProjectImportController:
         project_key = context.get("project_key", "")
         if operation == "batch":
             if project_key == host._selected_project_key and host._project_type == "batch":
-                host._batch_video_ids.extend(
-                    video_id for video_id in created_ids if video_id not in host._batch_video_ids
-                )
+                self._prepend_batch_import(created_ids)
                 host._refresh_batch_model()
                 host.batchChanged.emit()
         elif operation == "create" and created_ids:
             video = video_store.get_video(created_ids[0])
             if video and project_key == host._selected_project_key:
                 if context.get("as_batch"):
-                    if video.video_id not in host._batch_video_ids:
-                        host._batch_video_ids.append(video.video_id)
+                    self._prepend_batch_import(created_ids)
                     host._refresh_batch_model()
                     host.batchChanged.emit()
                 else:
@@ -469,7 +466,7 @@ class ProjectImportController:
 
         if target.get("project_key") == host._selected_project_key:
             if mode == "batch":
-                host._batch_video_ids.append(video.video_id)
+                self._prepend_batch_import([video.video_id])
                 host._refresh_batch_model()
                 host.batchChanged.emit()
             else:
@@ -587,8 +584,7 @@ class ProjectImportController:
             host._channel_importer.complete_video(session_id, remote_id, False, str(exc))
             return
         if project_key == host._selected_project_key and host._project_type == "batch":
-            if video.video_id not in host._batch_video_ids:
-                host._batch_video_ids.append(video.video_id)
+            self._prepend_batch_import([video.video_id])
             host._refresh_batch_model()
             host.batchChanged.emit()
         host.refreshVideos()
@@ -668,6 +664,51 @@ class ProjectImportController:
             host._project_directory = os.path.abspath(path)
             host.projectSetupChanged.emit()
 
+    def _reset_new_project_setup(self) -> None:
+        """Restore project-local defaults before the first import of a project."""
+        host = self._host
+        defaults = {
+            "_workflow_mode": "A",
+            "_target_language": "vi",
+            "_tts_voice": "vi-VN-HoaiMyNeural",
+            "_enable_audio_separation": False,
+            "_original_volume": 60,
+            "_background_music_volume": 30,
+            "_tts_volume": 100,
+            "_watermark_text": "",
+            "_background_music_path": "",
+        }
+        changed_signals = {
+            "_workflow_mode": "workflowModeChanged",
+            "_target_language": "targetLanguageChanged",
+            "_tts_voice": "ttsVoiceChanged",
+            "_enable_audio_separation": "enableAudioSeparationChanged",
+            "_original_volume": "originalVolumeChanged",
+            "_background_music_volume": "backgroundMusicVolumeChanged",
+            "_tts_volume": "ttsVolumeChanged",
+            "_watermark_text": "watermarkTextChanged",
+            "_background_music_path": "backgroundMusicChanged",
+        }
+        voice_changed = getattr(host, "_tts_voice", None) != defaults["_tts_voice"]
+        for attribute, value in defaults.items():
+            if getattr(host, attribute, None) == value:
+                continue
+            setattr(host, attribute, value)
+            signal = getattr(host, changed_signals[attribute], None)
+            if signal:
+                signal.emit()
+        if voice_changed:
+            signal = getattr(host, "ttsVoiceOptionsChanged", None)
+            if signal:
+                signal.emit()
+
+        # A late event from a preview or music-link download belonging to the
+        # previous project must never populate the new project's setup.
+        self.cancel_background_music_link_import()
+        preview = getattr(host, "_audio_preview", None)
+        if preview:
+            preview.invalidate()
+
     def prepare_project(self, project_name: str, project_directory: str, project_type: str) -> bool:
         host = self._host
         project_name, project_directory = project_name.strip(), project_directory.strip()
@@ -696,6 +737,7 @@ class ProjectImportController:
             QMessageBox.warning(None, "Project storage location", f"Cannot create the project at this location: {exc}")
             return False
         host._selected_project_key = project["key"]
+        self._reset_new_project_setup()
         if host._project_type == "download":
             host._media_downloader.attach_project(project["key"], project["project_root"])
         host.videoPath = ""
@@ -825,13 +867,102 @@ class ProjectImportController:
                 created_ids.append(video.video_id)
             except Exception as exc:
                 errors.append(f"{os.path.basename(path)}: {exc}")
-        host._batch_video_ids.extend(created_ids)
+        self._prepend_batch_import(created_ids)
         host._refresh_batch_model()
         host.refreshVideos()
         host.batchChanged.emit()
         rejected = invalid_names + errors
         if rejected:
             QMessageBox.warning(None, "Some videos were skipped", self.batch_rejection_message(rejected))
+
+    def _prepend_batch_import(self, created_ids) -> None:
+        """Persist a newly imported batch group before the existing queue.
+
+        A batch can refresh while any card is processing.  Keeping the order
+        in controller memory would therefore reintroduce a timestamp-based
+        shuffle after reopening the project.  The integer positions here are
+        project-local and intentionally untouched by status/progress writes.
+        """
+        host = self._host
+        new_ids = list(dict.fromkeys(
+            str(video_id) for video_id in created_ids
+            if video_id and str(video_id) not in host._batch_video_ids
+        ))
+        if not new_ids:
+            return
+
+        def belongs_to_current_batch(video) -> bool:
+            return (
+                getattr(video, "project_type", "") == "batch"
+                and host._video_project_key(video) == host._selected_project_key
+            )
+
+        # Assign durable compatibility positions to old batch entries once.
+        # Prefer the order currently being viewed, then fall back to creation
+        # time for a batch opened for the first time after migration.
+        try:
+            catalog_videos = video_store.list_videos()
+        except (OSError, RuntimeError, ValueError):
+            # A project can disappear while an asynchronous channel import is
+            # delivering its final result.  The caller still owns the current
+            # in-memory queue, so preserve the new card without failing the
+            # whole import completion path.
+            catalog_videos = []
+        all_batch_videos = [video for video in catalog_videos if belongs_to_current_batch(video)]
+        by_id = {video.video_id: video for video in all_batch_videos}
+        visible_order = {
+            video_id: index for index, video_id in enumerate(host._batch_video_ids)
+        }
+        existing = [video for video in all_batch_videos if video.video_id not in new_ids]
+        existing.sort(key=lambda video: (
+            0 if video.video_id in visible_order else 1,
+            visible_order.get(video.video_id, 0),
+            str(getattr(video, "created_at", "")),
+        ))
+        for index, video in enumerate(existing, start=1):
+            if int(getattr(video, "batch_import_order", 0) or 0) <= 0:
+                try:
+                    refreshed = video_store.update_video(video.video_id, batch_import_order=index * 1000)
+                except (OSError, RuntimeError, ValueError):
+                    refreshed = None
+                if refreshed:
+                    by_id[video.video_id] = refreshed
+
+        existing_orders = [
+            int(getattr(by_id[video.video_id], "batch_import_order", 0) or 0)
+            for video in existing
+            if int(getattr(by_id[video.video_id], "batch_import_order", 0) or 0) > 0
+        ]
+        first_order = min(existing_orders, default=1000)
+        # Keep room before the first item indefinitely.  A very active batch
+        # can receive many one-by-one imports, so compact its project-local
+        # positions before they would reach the zero compatibility sentinel.
+        if existing and first_order <= len(new_ids):
+            for index, video in enumerate(existing, start=1):
+                try:
+                    refreshed = video_store.update_video(video.video_id, batch_import_order=index * 1000)
+                except (OSError, RuntimeError, ValueError):
+                    refreshed = None
+                if refreshed:
+                    by_id[video.video_id] = refreshed
+            first_order = 1000
+        for offset, video_id in enumerate(new_ids, start=1):
+            try:
+                video_store.update_video(
+                    video_id,
+                    batch_import_order=first_order - len(new_ids) + offset - 1,
+                )
+            except (OSError, RuntimeError, ValueError):
+                # The project can be deleted between importing and this UI
+                # update.  Do not turn a completed background task into an
+                # exception merely because its target no longer exists.
+                pass
+
+        # Importing a later group places that group at the top.  Its internal
+        # order remains the order in which the user selected the files.
+        host._batch_video_ids = new_ids + [
+            video_id for video_id in host._batch_video_ids if video_id not in new_ids
+        ]
 
     def _queue_project_video(self, path: str, *, url_import: bool = False) -> bool:
         host = self._host

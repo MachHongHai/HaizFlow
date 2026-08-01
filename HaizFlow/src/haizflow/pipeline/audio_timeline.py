@@ -96,6 +96,20 @@ def _atempo_filters(speed_factor: float) -> str:
     return ",".join(filters)
 
 
+def _trim_tempo_rounding(audio: AudioSegment, max_duration_ms: int) -> AudioSegment:
+    """Trim only FFmpeg's small resampling tail, never meaningful speech."""
+    overflow_ms = len(audio) - max_duration_ms
+    if overflow_ms <= 0:
+        return audio
+    tolerance_ms = max(20, int(max_duration_ms * 0.05))
+    if overflow_ms > tolerance_ms:
+        raise RuntimeError(
+            f"FFmpeg tempo output is {len(audio)}ms, exceeding its "
+            f"{max_duration_ms}ms slot by {overflow_ms}ms."
+        )
+    return audio[:max_duration_ms]
+
+
 def compress_to_fit(audio: AudioSegment, max_duration_ms: int, temp_dir: str, video_id: str) -> AudioSegment:
     """Tempo-compress speech without deleting its ending or changing its pitch."""
     target_duration_ms = max(1, max_duration_ms - 20)
@@ -129,11 +143,7 @@ def compress_to_fit(audio: AudioSegment, max_duration_ms: int, temp_dir: str, vi
             raise RuntimeError(f"FFmpeg speech tempo compression failed with exit code {process.returncode}: {stderr}")
         check_cancellation(video_id)
         fitted = AudioSegment.from_file(output_path)
-        if len(fitted) > max_duration_ms:
-            raise RuntimeError(
-                f"FFmpeg tempo output is {len(fitted)}ms, exceeding its {max_duration_ms}ms slot."
-            )
-        return fitted
+        return _trim_tempo_rounding(fitted, max_duration_ms)
     finally:
         for path in (input_path, output_path):
             try:

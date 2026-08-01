@@ -68,6 +68,9 @@ class ProjectWorkspaceController:
         host._project_directory = project["project_directory"] or host._project_directory
         host._project_type = project["project_type"]
         host._selected_project_key = project["key"]
+        # ``videos`` is already ordered by the persistent batch import order
+        # prepared by the presenter; never rebuild this queue from status or
+        # updated timestamps.
         host._batch_video_ids = [video.video_id for video in videos] if host._project_type == "batch" else []
         host._refresh_batch_model()
         if host._project_type == "download":
@@ -91,7 +94,13 @@ class ProjectWorkspaceController:
 
     def refresh_videos(self) -> None:
         host = self._host
-        all_videos = video_store.list_videos()
+        # Probe every catalog entry in the background before building project
+        # cards.  Previously only the open batch queue requested dimensions,
+        # leaving single-project cards permanently labelled as unknown.
+        all_videos = [
+            host._ensure_video_dimensions(video)
+            for video in video_store.list_videos()
+        ]
         host._catalog_videos = {video.video_id: video for video in all_videos}
         host.videos.set_videos(all_videos[:40])
         summaries = host._build_project_summaries(all_videos, project_store.list_projects())

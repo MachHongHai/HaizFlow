@@ -24,6 +24,9 @@ Dialog {
         && !AppController.enableAudioSeparation
     readonly property bool backgroundMusicAdjustable: AppController.canEditSelectedVideo
         && AppController.backgroundMusicPath.length > 0
+    readonly property bool previewReady: AppController.audioPreviewState === "ready"
+        && AppController.audioPreviewSource.length > 0
+    readonly property bool previewPlaying: voicePreviewPlayer.playbackState === MediaPlayer.PlayingState
 
     function stopPreview() {
         previewStopTimer.stop()
@@ -41,12 +44,30 @@ Dialog {
         previewStopTimer.start()
     }
 
+    function pausePreview() {
+        previewStopTimer.stop()
+        sourcePreviewPlayer.pause()
+        musicPreviewPlayer.pause()
+        voicePreviewPlayer.pause()
+    }
+
+    function requestPreview() {
+        if (root.previewReady)
+            root.playPreview()
+        else
+            AppController.previewAudioMix()
+    }
+
     function scheduleBatchVideoSave() {
         if (AppController.isSelectedBatchVideo)
             batchVideoSaveTimer.restart()
     }
 
-    onClosed: stopPreview()
+    onClosed: pausePreview()
+    onVisibleChanged: {
+        if (!visible)
+            pausePreview()
+    }
 
     background: Rectangle {
         radius: Theme.radius
@@ -140,14 +161,31 @@ Dialog {
 
             Item { Layout.fillHeight: true }
 
-            AppButton {
+            RowLayout {
                 Layout.fillWidth: true
-                text: AppController.audioPreviewState === "preparing"
-                    ? I18n.t("Preparing audio preview") : I18n.t("Preview audio mix")
-                tone: "secondary"
-                enabled: AppController.canEditSelectedVideo && AppController.videoPath.length > 0
-                    && AppController.audioPreviewState !== "preparing"
-                onClicked: AppController.previewAudioMix()
+                spacing: Theme.space8
+
+                Text {
+                    Layout.fillWidth: true
+                    text: AppController.audioPreviewState === "preparing"
+                        ? I18n.t("Preparing audio preview") : I18n.t("Preview audio mix")
+                    color: Theme.text
+                    font.pixelSize: Theme.body
+                    textFormat: Text.PlainText
+                }
+
+                IconButton {
+                    glyph: root.previewPlaying ? "\uE769" : "\uE768"
+                    toolTipText: root.previewPlaying ? I18n.t("Pause") : I18n.t("Play")
+                    enabled: AppController.canEditSelectedVideo && AppController.videoPath.length > 0
+                        && AppController.audioPreviewState !== "preparing"
+                    onClicked: {
+                        if (root.previewPlaying)
+                            root.pausePreview()
+                        else
+                            root.requestPreview()
+                    }
+                }
             }
         }
 
@@ -218,7 +256,8 @@ Dialog {
         function onAudioPreviewChanged() {
             if (AppController.audioPreviewState === "preparing")
                 root.stopPreview()
-            else if (AppController.audioPreviewState === "ready" && AppController.audioPreviewSource.length > 0)
+            else if (root.visible && AppController.audioPreviewState === "ready"
+                     && AppController.audioPreviewSource.length > 0)
                 root.playPreview()
         }
     }

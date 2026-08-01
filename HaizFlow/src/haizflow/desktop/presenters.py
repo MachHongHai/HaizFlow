@@ -71,6 +71,18 @@ def build_project_summaries(videos, persisted_projects=None):
     summaries = []
     for project in grouped.values():
         project_videos = project["videos"]
+        if project["project_type"] == "batch":
+            # The visual batch queue is defined by import order, never by a
+            # volatile timestamp such as a processing completion.  Videos
+            # created by older versions have no persisted order yet, so keep
+            # their original creation order as a deterministic fallback.
+            project_videos.sort(
+                key=lambda video: (
+                    0 if int(getattr(video, "batch_import_order", 0) or 0) > 0 else 1,
+                    int(getattr(video, "batch_import_order", 0) or 0),
+                    str(getattr(video, "created_at", "")),
+                )
+            )
         if not project_videos:
             summaries.append(
                 {
@@ -79,6 +91,7 @@ def build_project_summaries(videos, persisted_projects=None):
                     "status": "ready" if project["project_type"] == "download" else "empty",
                     "progress": 0,
                     "thumbnail_source": "",
+                    "video_size": "",
                     "updated_at": project.get("updated_at", ""),
                 }
             )
@@ -112,6 +125,7 @@ def build_project_summaries(videos, persisted_projects=None):
                 "status": status,
                 "progress": round(sum(video.progress for video in project_videos) / len(project_videos)),
                 "thumbnail_source": thumbnail_source,
+                "video_size": VideoListModel._video_size(project_videos[0]),
                 "updated_at": max(video.updated_at for video in project_videos),
             }
         )

@@ -61,6 +61,11 @@ class ModelUpdateTests(unittest.TestCase):
         self.assertTrue(model.update_video(updated))
         self.assertEqual(changed, [(0, [VideoListModel.UpdatedRole, VideoListModel.ProgressRole])])
 
+    def test_missing_video_dimensions_do_not_render_an_unknown_size_label(self):
+        video = SimpleNamespace(video_width=0, video_height=0)
+
+        self.assertEqual(VideoListModel._video_size(video), "")
+
 
 if __name__ == "__main__":
     unittest.main()

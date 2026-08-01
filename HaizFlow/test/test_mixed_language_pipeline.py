@@ -54,6 +54,51 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "found no speech segments"):
             transcribe._validate_timestamp_invariants([], 10.0)
 
+    def test_overlapping_mixed_language_timings_are_joined_without_losing_text(self):
+        segments = [
+            {"start": 1.0, "end": 3.0, "text": "Cau tieng Viet.", "language": "vi"},
+            {"start": 2.5, "end": 4.0, "text": "A short English phrase.", "language": "en"},
+            {"start": 4.1, "end": 5.0, "text": "Cau tiep theo.", "language": "vi"},
+        ]
+
+        repaired = transcribe._normalize_sentence_timestamps(segments, 6.0)
+
+        self.assertEqual(repaired, 1)
+        self.assertEqual(segments[0]["end"], 2.75)
+        self.assertEqual(segments[1]["start"], 2.75)
+        self.assertEqual([segment["text"] for segment in segments], [
+            "Cau tieng Viet.",
+            "A short English phrase.",
+            "Cau tiep theo.",
+        ])
+        transcribe._validate_timestamp_invariants(segments, 6.0)
+
+    def test_context_alignment_cannot_intrude_into_a_neighbouring_language(self):
+        vietnamese = {"start": 19.2, "end": 21.7, "text": "Cau tieng Viet", "language": "vi"}
+        english = {"start": 21.7, "end": 22.4, "text": "you", "language": "en"}
+        shifted_english = {**english, "start": 19.3, "end": 19.5}
+
+        detail = transcribe._alignment_intrusion_detail(
+            [english],
+            [shifted_english],
+            [vietnamese, english],
+        )
+
+        self.assertIsNotNone(detail)
+        self.assertIn("overlap", detail)
+
+    def test_context_alignment_may_move_when_it_does_not_intrude_on_another_sentence(self):
+        first = {"start": 10.0, "end": 11.0, "text": "Thank you", "language": "en"}
+        second = {"start": 11.0, "end": 13.0, "text": "Where now", "language": "en"}
+        aligned = [
+            {**first, "start": 8.0, "end": 8.5},
+            {**second, "start": 9.0, "end": 9.7},
+        ]
+
+        self.assertIsNone(
+            transcribe._alignment_intrusion_detail([first, second], aligned, [first, second])
+        )
+
     def test_segment_language_detection_uses_immutable_sentence_clips(self):
         original_log = transcribe.log_to_video
         transcribe.log_to_video = lambda *_args, **_kwargs: None
@@ -155,6 +200,49 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual((corrected[0]["start"], corrected[0]["end"]), (1.25, 3.75))
         self.assertEqual(corrected[0]["text"], "Xin chao.")
         self.assertEqual(model.language, "vi")
+
+    def test_proportional_sentence_split_coalesces_impossible_voice_slots(self):
+        segment = {
+            "start": 18.0,
+            "end": 19.2,
+            "text": "Cam tren tay rat on, nhung den luc dung thi... Thank you very much.",
+            "language": "vi",
+        }
+
+        split = transcribe._split_segment_proportionally(segment)
+
+        self.assertEqual(len(split), 1)
+        self.assertEqual(split[0]["start"], 18.0)
+        self.assertEqual(split[0]["end"], 19.2)
+        self.assertIn("Thank you very much.", split[0]["text"])
+
+    def test_short_first_sentence_is_coalesced_forward(self):
+        segment = {
+            "start": 10.0,
+            "end": 11.0,
+            "text": "40%! Phan noi dung tiep theo.",
+            "language": "vi",
+        }
+
+        split = transcribe._split_segment_proportionally(segment)
+
+        self.assertEqual(len(split), 1)
+        self.assertEqual(split[0]["text"], "40%! Phan noi dung tiep theo.")
+        self.assertEqual((split[0]["start"], split[0]["end"]), (10.0, 11.0))
+
+    def test_short_raw_whisper_segment_is_coalesced_before_language_detection(self):
+        segments = [
+            {"start": 19.2, "end": 21.75, "text": "Cau tieng Viet", "language": "vi"},
+            {"start": 21.75, "end": 21.874, "text": "Thank you very much.", "language": "en"},
+            {"start": 21.874, "end": 23.1, "text": "Cau tiep theo", "language": "vi"},
+        ]
+
+        coalesced = transcribe._coalesce_short_sentence_segments(segments)
+
+        self.assertEqual(len(coalesced), 2)
+        self.assertEqual((coalesced[0]["start"], coalesced[0]["end"]), (19.2, 21.874))
+        self.assertIn("Thank you very much.", coalesced[0]["text"])
+        self.assertEqual(coalesced[0]["language"], "vi")
 
     def test_cjk_detector_outlier_keeps_the_primary_language_transcript(self):
         class WhisperModel:
