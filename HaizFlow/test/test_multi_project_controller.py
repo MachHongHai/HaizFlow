@@ -703,6 +703,7 @@ class MultiProjectControllerTests(unittest.TestCase):
 
     def test_pipeline_waits_for_startup_warmup_without_blocking_the_ui_thread(self):
         warmup_done = threading.Event()
+        pipeline_started = threading.Event()
         selected_video = SimpleNamespace(status="pending")
         controller = SimpleNamespace(
             _deleted_video_ids=set(),
@@ -715,6 +716,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             patch.object(qml_controller.video_store, "log_to_video"),
             patch("haizflow.pipeline.process_video.process_video_sync") as process_video,
         ):
+            process_video.side_effect = lambda _video_id: pipeline_started.set()
             worker = threading.Thread(
                 target=HaizFlowController._execute_pipeline,
                 args=(controller, "project-a-video"),
@@ -725,6 +727,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             process_video.assert_not_called()
 
             warmup_done.set()
+            self.assertTrue(pipeline_started.wait(5), "Pipeline did not resume after model warm-up")
             worker.join(1)
 
         self.assertFalse(worker.is_alive())

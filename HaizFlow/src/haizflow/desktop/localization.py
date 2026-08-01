@@ -118,6 +118,10 @@ def _ui_text(value) -> str:
         "The destination project no longer exists.": "Dự án đích không còn tồn tại.",
         "Open or create a batch project before importing a channel.": "Hãy mở hoặc tạo một dự án hàng loạt trước khi nhập video từ kênh.",
         "Channel import is still stopping. Try deleting the project again in a moment.": "Tiến trình nhập từ kênh vẫn đang dừng. Hãy thử xóa lại dự án sau giây lát.",
+        "TikTok publishing": "Đăng video lên TikTok",
+        "Clear TikTok login": "Xóa phiên đăng nhập TikTok",
+        "Close HaizFlow's TikTok browser and remove its saved login? Publishing projects and videos are kept.": "Đóng cửa sổ TikTok của HaizFlow và xóa phiên đăng nhập đã lưu? Các dự án và video đăng vẫn được giữ lại.",
+        "Wait for the current TikTok task to finish.": "Hãy chờ tác vụ TikTok hiện tại hoàn tất.",
     }
     if text in translations:
         return translations[text]

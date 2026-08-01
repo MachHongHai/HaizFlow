@@ -789,6 +789,17 @@ Module {
             index: 110
             isReadonly: true
         }
+        Property { name: "publishProjectModel"; type: "QObject"; read: "publishProjectModel"; index: 111; isReadonly: true }
+        Property { name: "tiktokPublishModel"; type: "QObject"; read: "tiktokPublishModel"; index: 112; isReadonly: true }
+        Property { name: "tiktokProjectSourceModel"; type: "QObject"; read: "tiktokProjectSourceModel"; index: 113; isReadonly: true }
+        Property { name: "tiktokPublishBusy"; type: "bool"; read: "tiktokPublishBusy"; notify: "tiktokPublishChanged"; index: 114; isReadonly: true }
+        Property { name: "tiktokPublishStatus"; type: "QString"; read: "tiktokPublishStatus"; notify: "tiktokPublishChanged"; index: 115; isReadonly: true }
+        Property { name: "tiktokDefaultCaption"; type: "QString"; read: "tiktokDefaultCaption"; notify: "tiktokPublishChanged"; index: 116; isReadonly: true }
+        Property { name: "tiktokDefaultHashtags"; type: "QString"; read: "tiktokDefaultHashtags"; notify: "tiktokPublishChanged"; index: 117; isReadonly: true }
+        Property { name: "tiktokPublishCount"; type: "int"; read: "tiktokPublishCount"; notify: "tiktokPublishChanged"; index: 118; isReadonly: true }
+        Property { name: "tiktokPostedCount"; type: "int"; read: "tiktokPostedCount"; notify: "tiktokPublishChanged"; index: 119; isReadonly: true }
+        Property { name: "tiktokAwaitingCount"; type: "int"; read: "tiktokAwaitingCount"; notify: "tiktokPublishChanged"; index: 120; isReadonly: true }
+        Property { name: "tiktokProjectSourceSelectedCount"; type: "int"; read: "tiktokProjectSourceSelectedCount"; notify: "tiktokPublishChanged"; index: 121; isReadonly: true }
         Signal { name: "videoPathChanged" }
         Signal { name: "videoThumbnailChanged" }
         Signal { name: "targetLanguageChanged" }
@@ -820,6 +831,7 @@ Module {
         Signal { name: "urlImportFinished" }
         Signal { name: "channelImportChanged" }
         Signal { name: "mediaImportChanged" }
+        Signal { name: "tiktokPublishChanged" }
         Signal { name: "backgroundMusicImportChanged" }
         Method {
             name: "processingDeviceCompatible"
@@ -970,6 +982,44 @@ Module {
         Method { name: "deleteSelectedVideo" }
         Method { name: "openProjectFolder" }
         Method { name: "openDownloadOutputFolder" }
+        Method { name: "browseTikTokPublishVideos" }
+        Method { name: "browseTikTokPublishFolder" }
+        Method { name: "prepareTikTokLogin"; type: "bool" }
+        Method { name: "clearTikTokLoginSession"; type: "bool" }
+        Method { name: "refreshTikTokProjectSources" }
+        Method {
+            name: "setTikTokProjectSourceSelected"
+            type: "bool"
+            Parameter { name: "row"; type: "int" }
+            Parameter { name: "selected"; type: "bool" }
+        }
+        Method { name: "addSelectedTikTokProjectVideos"; type: "bool" }
+        Method {
+            name: "addTikTokPublishVideos"
+            type: "bool"
+            Parameter { name: "a1"; type: "QVariantList" }
+        }
+        Method {
+            name: "saveTikTokPublishDefaults"
+            type: "bool"
+            Parameter { name: "caption"; type: "QString" }
+            Parameter { name: "hashtags"; type: "QString" }
+            Parameter { name: "apply_to_existing"; type: "bool" }
+        }
+        Method {
+            name: "updateTikTokPublishItem"
+            type: "bool"
+            Parameter { name: "row"; type: "int" }
+            Parameter { name: "caption"; type: "QString" }
+            Parameter { name: "hashtags"; type: "QString" }
+        }
+        Method { name: "prepareTikTokPublishItem"; type: "bool"; Parameter { name: "row"; type: "int" } }
+        Method { name: "prepareNextTikTokPublishItem"; type: "bool" }
+        Method { name: "markTikTokPublishPosted"; type: "bool"; Parameter { name: "row"; type: "int" } }
+        Method { name: "confirmTikTokPublishAndNext"; type: "bool"; Parameter { name: "row"; type: "int" } }
+        Method { name: "resetTikTokPublishItem"; type: "bool"; Parameter { name: "row"; type: "int" } }
+        Method { name: "copyTikTokPublishCaption"; type: "bool"; Parameter { name: "row"; type: "int" } }
+        Method { name: "removeTikTokPublishItem"; type: "bool"; Parameter { name: "row"; type: "int" } }
         Method {
             name: "openExternalUrl"
             type: "bool"

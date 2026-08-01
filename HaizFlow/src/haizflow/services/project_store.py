@@ -32,7 +32,7 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{number}" for number in range(1, 10)),
     *(f"LPT{number}" for number in range(1, 10)),
 }
-PROJECT_TYPES = frozenset({"single", "batch", "download"})
+PROJECT_TYPES = frozenset({"single", "batch", "download", "publish"})
 
 
 def normalize_project_type(project_type: Any) -> str:
@@ -215,6 +215,13 @@ def project_downloads_dir_for_key(project_key_value: str) -> str:
     if not record or normalize_project_type(record.get("project_type")) != "download":
         raise ValueError("The selected project is not a download project.")
     return os.path.join(_record_root(record), "downloads")
+
+
+def project_publishing_dir_for_key(project_key_value: str) -> str:
+    record = get_project(project_key_value)
+    if not record or normalize_project_type(record.get("project_type")) != "publish":
+        raise ValueError("The selected project is not a publishing project.")
+    return os.path.join(_record_root(record), "publishing")
 
 
 def resolve_project_key(project_name: str, project_directory: str, project_type: str | None = None) -> str:
@@ -578,6 +585,9 @@ def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any])
     if normalize_project_type(record.get("project_type")) == "download":
         for category in ("channel", "video", "audio"):
             os.makedirs(os.path.join(root, "downloads", category), exist_ok=True)
+    elif normalize_project_type(record.get("project_type")) == "publish":
+        os.makedirs(os.path.join(root, "publishing", "media"), exist_ok=True)
+        os.makedirs(os.path.join(root, "publishing", "thumbnails"), exist_ok=True)
     _write_json_atomic(os.path.join(root, PROJECT_MANIFEST_NAME), record)
     records = [item for item in records if item.get("key") != record["key"]]
     records.append(record)

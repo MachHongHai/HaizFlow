@@ -729,6 +729,16 @@ class ProjectImportController:
                 "Wait for the current channel task to finish or cancel it before creating another download project.",
             )
             return False
+        if (
+            normalized_type == "publish"
+            and not host._tiktok_publisher.can_switch_project("__new_publish_project__")
+        ):
+            QMessageBox.information(
+                None,
+                "TikTok publishing",
+                "Wait for the current video import to finish before creating another publishing project.",
+            )
+            return False
         host._project_name, host._project_directory = project_name, os.path.abspath(project_directory)
         host._project_type = normalized_type
         try:
@@ -740,6 +750,8 @@ class ProjectImportController:
         self._reset_new_project_setup()
         if host._project_type == "download":
             host._media_downloader.attach_project(project["key"], project["project_root"])
+        elif host._project_type == "publish":
+            host._tiktok_publisher.attach_project(project["key"], project["project_root"])
         host.videoPath = ""
         host._selected_video_id, host._batch_video_ids = None, []
         host._refresh_batch_model()

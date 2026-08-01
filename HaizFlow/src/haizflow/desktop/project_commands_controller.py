@@ -591,6 +591,16 @@ class ProjectCommandsController:
                 "Finish or cancel this project's downloads before deleting it.",
             )
             return
+        if (
+            host._project_type == "publish"
+            and host._tiktok_publisher.has_project_work(current_key)
+        ):
+            QMessageBox.information(
+                None,
+                "Delete project",
+                "Wait for this project's video import to finish before deleting it.",
+            )
+            return
         project_videos = [
             video for video in video_store.list_videos()
             if video.project_directory and host._video_project_key(video) == current_key
@@ -628,6 +638,8 @@ class ProjectCommandsController:
         host._selected_project_key = ""
         if host._project_type == "download":
             host._media_downloader.attach_project("", "")
+        elif host._project_type == "publish":
+            host._tiktok_publisher.detach_project()
         host._batch_video_ids = []
         host._clear_logs()
         host.videoPath = ""

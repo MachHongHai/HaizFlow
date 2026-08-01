@@ -153,6 +153,33 @@ QtObject {
         return source
     }
 
+    function tiktokPublishStatus(source) {
+        if (language !== "vi" || !source)
+            return source
+
+        const direct = t(source)
+        if (direct !== source)
+            return direct
+
+        let match = source.match(/^Adding video (\d+) \/ (\d+)$/)
+        if (match)
+            return "Đang thêm video " + match[1] + " / " + match[2]
+
+        match = source.match(/^Skipped (\d+) unsupported or unavailable file\(s\)\.$/)
+        if (match)
+            return "Đã bỏ qua " + match[1] + " tệp không hỗ trợ hoặc không khả dụng."
+
+        match = source.match(/^Added (\d+) video\(s\); (\d+) failed\.$/)
+        if (match)
+            return "Đã thêm " + match[1] + " video; " + match[2] + " video bị lỗi."
+
+        match = source.match(/^Added (\d+) video\(s\)\.$/)
+        if (match)
+            return "Đã thêm " + match[1] + " video."
+
+        return source
+    }
+
     readonly property var vietnamese: ({
             "Expand log": "Mở rộng nhật ký",
             "Add to queue": "Thêm vào hàng đợi",
@@ -179,6 +206,7 @@ QtObject {
             "Projects": "Dự án",
             "Single": "Đơn lẻ",
             "Batch": "Hàng loạt",
+            "Publish": "Đăng TikTok",
             "Single projects": "Dự án đơn lẻ",
             "Batch projects": "Dự án hàng loạt",
             "Download projects": "Dự án tải xuống",
@@ -607,9 +635,81 @@ QtObject {
             "New single project": "Dự án đơn mới",
             "New batch project": "Dự án hàng loạt mới",
             "New download project": "Dự án tải xuống mới",
+            "New TikTok publishing project": "Dự án đăng TikTok mới",
             "Create single project": "Tạo dự án đơn",
             "Create batch project": "Tạo dự án hàng loạt",
             "Create download project": "Tạo dự án tải xuống",
+            "Create TikTok publishing project": "Tạo dự án đăng TikTok",
+            "Prepare and publish videos": "Chuẩn bị và đăng video",
+            "TikTok publishing": "Đăng video lên TikTok",
+            "TikTok publishing workspace": "Không gian đăng TikTok",
+            "Assisted TikTok publishing": "Đăng TikTok có hỗ trợ",
+            "TikTok account": "Tài khoản TikTok",
+            "Sign in once; Chrome keeps this session for HaizFlow": "Đăng nhập một lần; Chrome sẽ lưu phiên này cho HaizFlow",
+            "Sign in to TikTok": "Đăng nhập TikTok",
+            "Clear login": "Xóa phiên đăng nhập",
+            "From files": "Từ tệp",
+            "Choose a single-project video or an entire batch project": "Chọn video từ dự án đơn hoặc toàn bộ một dự án hàng loạt",
+            "videos ready": "video sẵn sàng",
+            "Preparing": "Đang chuẩn bị",
+            "Review each post before the final TikTok confirmation": "Kiểm tra từng bài trước khi xác nhận đăng trên TikTok",
+            "Add videos": "Thêm video",
+            "From projects": "Từ dự án",
+            "Add from projects": "Thêm từ dự án",
+            "Choose rendered videos from single or batch projects": "Chọn video đã xuất từ dự án đơn hoặc hàng loạt",
+            "No rendered videos are available yet": "Chưa có video đầu ra nào sẵn sàng",
+            "Add selected videos": "Thêm video đã chọn",
+            "Adding videos": "Đang thêm video",
+            "Prepare next": "Chuẩn bị video tiếp theo",
+            "Default caption": "Caption mặc định",
+            "Caption for newly added videos": "Caption cho video mới thêm",
+            "Default hashtags": "Hashtag mặc định",
+            "Example: #review #video #fyp": "Ví dụ: #review #video #fyp",
+            "New videos inherit this template": "Video mới sẽ dùng mẫu này",
+            "Apply to queue": "Áp dụng cho hàng đợi",
+            "HaizFlow opens TikTok Studio and copies the prepared caption. You review and confirm the post in TikTok.": "HaizFlow mở TikTok Studio và sao chép caption đã chuẩn bị. Bạn kiểm tra rồi xác nhận đăng trên TikTok.",
+            "Publishing queue": "Hàng đợi đăng video",
+            "posted": "đã đăng",
+            "Edit TikTok post": "Chỉnh bài đăng TikTok",
+            "Caption": "Caption",
+            "Write a caption for this video": "Viết caption cho video này",
+            "Hashtags": "Hashtag",
+            "Separate hashtags with spaces or commas. Duplicates are removed automatically.": "Phân tách hashtag bằng dấu cách hoặc dấu phẩy. Hashtag trùng sẽ tự được loại bỏ.",
+            "Save": "Lưu",
+            "Posted": "Đã đăng",
+            "Awaiting confirmation": "Chờ xác nhận",
+            "File missing": "Thiếu tệp",
+            "Ready": "Sẵn sàng",
+            "No caption or hashtags": "Chưa có caption hoặc hashtag",
+            "Mark posted": "Đánh dấu đã đăng",
+            "Posted & next": "Đã đăng & tiếp tục",
+            "Prepare again": "Chuẩn bị lại",
+            "Prepare": "Chuẩn bị",
+            "Edit": "Chỉnh sửa",
+            "Copy caption": "Sao chép caption",
+            "Remove": "Xóa",
+            "Added videos": "Đã thêm video",
+            "Video import stopped.": "Đã dừng thêm video.",
+            "Caption and hashtags copied.": "Đã sao chép caption và hashtag.",
+            "TikTok Studio opened. The caption is on the clipboard; choose the selected video file.": "Đã mở TikTok Studio. Caption đã được sao chép; hãy chọn tệp video đang được đánh dấu.",
+            "TikTok Studio opened in HaizFlow's saved session. Sign in once; Chrome will keep the login for future app sessions.": "Đã mở TikTok Studio trong phiên riêng của HaizFlow. Hãy đăng nhập một lần; Chrome sẽ giữ đăng nhập cho các lần mở ứng dụng sau.",
+            "Google Chrome is required to prepare the saved TikTok session.": "Cần cài Google Chrome để chuẩn bị phiên đăng nhập TikTok đã lưu.",
+            "Opening TikTok Studio and adding the video": "Đang mở TikTok Studio và thêm video",
+            "Waiting for TikTok Studio": "Đang chờ TikTok Studio",
+            "Video added to TikTok Studio": "Đã thêm video vào TikTok Studio",
+            "Video and caption are ready for review": "Video và nội dung đã sẵn sàng để kiểm tra",
+            "Video, caption, and hashtags are ready in TikTok Studio. Review and publish there.": "Video, caption và hashtag đã sẵn sàng trong TikTok Studio. Hãy kiểm tra và đăng tại đó.",
+            "Video added to TikTok Studio. Caption remains on the clipboard for manual paste.": "Đã thêm video vào TikTok Studio. Caption vẫn nằm trong bộ nhớ tạm để bạn dán thủ công.",
+            "The video was added, but TikTok did not retain the caption automatically. The text remains on the clipboard.": "Đã thêm video nhưng TikTok không giữ lại caption tự động. Nội dung vẫn nằm trong bộ nhớ tạm.",
+            "TikTok Studio could not be prepared automatically.": "Không thể tự động chuẩn bị TikTok Studio.",
+            "TikTok preparation was cancelled.": "Đã hủy chuẩn bị video cho TikTok.",
+            "TikTok Studio automation did not start. Close the HaizFlow Chrome window once, then try again.": "Không thể kết nối với phiên TikTok Studio. Hãy đóng cửa sổ Chrome của HaizFlow một lần rồi thử lại.",
+            "TikTok Studio did not expose its video upload control in time.": "TikTok Studio chưa hiển thị vùng tải video trong thời gian chờ.",
+            "Clearing the saved TikTok login": "Đang xóa phiên đăng nhập TikTok đã lưu",
+            "Saved TikTok login removed. Sign in to use another account.": "Đã xóa phiên đăng nhập TikTok. Hãy đăng nhập để dùng tài khoản khác.",
+            "No saved TikTok login was found.": "Không tìm thấy phiên đăng nhập TikTok đã lưu.",
+            "Close the HaizFlow TikTok browser and try again.": "Hãy đóng cửa sổ TikTok của HaizFlow rồi thử lại.",
+            "All queued videos are marked as posted.": "Tất cả video trong hàng đợi đã được đánh dấu là đã đăng.",
             "Platform": "Nền tảng",
             "Douyin Beta": "Douyin Beta",
             "Choose a platform, then paste its channel or profile link": "Chọn nền tảng, sau đó dán liên kết kênh hoặc trang cá nhân",

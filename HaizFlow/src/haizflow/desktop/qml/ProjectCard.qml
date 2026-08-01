@@ -18,6 +18,7 @@ Rectangle {
 
     readonly property string statusLabel: status === "pending" ? I18n.t("Queued")
         : status === "empty" ? I18n.t("No source selected")
+        : status === "ready" ? I18n.t("Ready")
         : status === "processing" ? I18n.t("Processing")
         : status === "done" ? I18n.t("Complete")
         : status === "failed" ? I18n.t("Failed")
@@ -103,7 +104,7 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.margins: Theme.space8
-                visible: root.projectType === "batch"
+                visible: root.projectType === "batch" || root.projectType === "publish"
                 implicitWidth: batchLabel.implicitWidth + 16
                 implicitHeight: 24
                 radius: Theme.radiusTiny
@@ -195,6 +196,8 @@ Rectangle {
                     Layout.fillWidth: true
                     text: root.projectType === "batch"
                         ? qsTr("%1 - %2").arg(root.videoCount).arg(I18n.t("videos"))
+                        : root.projectType === "publish"
+                            ? I18n.t("TikTok publishing workspace")
                         : root.projectType === "download"
                             ? I18n.t("Download workspace")
                         : root.statusLabel

@@ -28,6 +28,7 @@ dependencies = [
   "Pillow==12.3.0",
   "audioop-lts==0.2.2; python_version >= '3.13'",
   "edge-tts==7.2.8",
+  "websockets==16.0",
   "yt-dlp==2026.7.4",
   "pydub==0.25.1",
   "srt==3.5.3",

@@ -14,6 +14,8 @@ Dialog {
     padding: 0
     title: root.projectType === "batch"
         ? I18n.t("Create batch project")
+        : root.projectType === "publish"
+            ? I18n.t("Create TikTok publishing project")
         : root.projectType === "download"
             ? I18n.t("Create download project")
             : I18n.t("Create single project")
@@ -26,7 +28,10 @@ Dialog {
     property string projectType: "single"
 
     function openForType(type) {
-        projectType = type === "batch" ? "batch" : type === "download" ? "download" : "single"
+        projectType = type === "batch" ? "batch"
+            : type === "download" ? "download"
+            : type === "publish" ? "publish"
+            : "single"
         open()
     }
 
