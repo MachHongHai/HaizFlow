@@ -33,8 +33,8 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         ], sample_count=12)
 
         self.assertIsNotNone(region)
-        self.assertLessEqual(region["x_percent"], 17)
-        self.assertGreaterEqual(region["x_percent"] + region["width_percent"], 77)
+        self.assertEqual(region["x_percent"], 18)
+        self.assertEqual(region["x_percent"] + region["width_percent"], 76)
 
     def test_merges_separate_word_boxes_before_measuring_caption_width(self):
         items = []
@@ -52,8 +52,8 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         region = select_subtitle_region(items, sample_count=12)
 
         self.assertIsNotNone(region)
-        self.assertLessEqual(region["x_percent"], 21.5)
-        self.assertGreaterEqual(region["x_percent"] + region["width_percent"], 78.5)
+        self.assertEqual(region["x_percent"], 23)
+        self.assertEqual(region["x_percent"] + region["width_percent"], 77)
 
     def test_merges_two_subtitle_lines_into_the_detected_region(self):
         items = []
@@ -71,8 +71,8 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         region = select_subtitle_region(items, sample_count=12)
 
         self.assertIsNotNone(region)
-        self.assertLessEqual(region["y_percent"], 54.7)
-        self.assertGreaterEqual(region["y_percent"] + region["height_percent"], 65.3)
+        self.assertEqual(region["y_percent"], 55)
+        self.assertEqual(region["y_percent"] + region["height_percent"], 65)
         self.assertAlmostEqual(region["line_height_percent"], 5.0)
 
     def test_single_third_line_sample_does_not_oversize_the_region(self):

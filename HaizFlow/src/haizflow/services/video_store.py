@@ -208,6 +208,7 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         original_video_volume=config.original_video_volume,
         background_music_volume=config.background_music_volume,
         tts_volume=config.tts_volume,
+        watermark_text=config.watermark_text,
         project_name=config.project_name,
         project_directory=config.project_directory,
         project_type=config.project_type,
@@ -322,6 +323,11 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("tts_volume", 100)
             version = 6
             continue
+        if version == 6:
+            data["schema_version"] = 7
+            data.setdefault("watermark_text", "")
+            version = 7
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -391,6 +397,12 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
         except (TypeError, ValueError):
             volume = default
         data[key] = max(0, min(100, volume))
+    watermark_value = data.get("watermark_text", "")
+    if not isinstance(watermark_value, str):
+        watermark_value = ""
+    # Watermarks are always a single, bounded line. This also prevents control
+    # characters from entering the FFmpeg filter expression.
+    data["watermark_text"] = " ".join(watermark_value.split())[:80]
     return data, data != original
 
 

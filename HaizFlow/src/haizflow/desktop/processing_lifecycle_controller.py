@@ -6,7 +6,7 @@ import queue
 
 from haizflow.desktop.activity_log import ActivityLogBuffer
 from haizflow.core.hardware import runtime_profile
-from haizflow.pipeline.process_registry import is_cancelled, is_paused
+from haizflow.pipeline.process_registry import is_cancelled, is_paused, prepare_video_resume
 from haizflow.services import video_store
 from haizflow.services.translation import warm_hymt2_worker
 
@@ -24,6 +24,8 @@ class ProcessingLifecycleController:
         video = video_store.get_video(video_id)
         if not video or video.status == "processing" or host._processing_queue.contains(video_id):
             return False
+        if video.status == "paused":
+            prepare_video_resume(video_id)
         video_store.update_video(video_id, status="pending", step="queued", step_detail="Queued for processing")
         if not host._processing_queue.enqueue(video_id):
             return False

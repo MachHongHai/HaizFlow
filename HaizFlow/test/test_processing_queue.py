@@ -69,6 +69,33 @@ class SerialProcessingQueueTests(unittest.TestCase):
         self.assertTrue(done.wait(2))
         self.assertEqual(completed, ["first"])
 
+    def test_detach_pending_atomically_keeps_only_unrelated_work(self):
+        active_started = threading.Event()
+        release_active = threading.Event()
+        done = threading.Event()
+        started = []
+
+        def runner(video_id):
+            started.append(video_id)
+            if video_id == "batch-active":
+                active_started.set()
+                release_active.wait(2)
+
+        queue = SerialProcessingQueue(runner, on_idle=done.set)
+        self.assertTrue(queue.enqueue("batch-active"))
+        self.assertTrue(active_started.wait(1))
+        self.assertTrue(queue.enqueue("batch-waiting"))
+        self.assertTrue(queue.enqueue("other-project"))
+
+        active, removed = queue.detach_pending({"batch-active", "batch-waiting"})
+
+        self.assertEqual(active, "batch-active")
+        self.assertEqual(removed, ["batch-waiting"])
+        self.assertEqual(queue.pending_ids(), ["other-project"])
+        release_active.set()
+        self.assertTrue(done.wait(2))
+        self.assertEqual(started, ["batch-active", "other-project"])
+
     def test_accepts_another_project_while_the_active_project_keeps_running(self):
         first_started = threading.Event()
         release_first = threading.Event()

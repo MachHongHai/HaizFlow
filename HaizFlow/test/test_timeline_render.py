@@ -169,6 +169,7 @@ class TimelineRenderTests(unittest.TestCase):
                     str(root / "input.mp4"), str(root / "voice.wav"), str(subtitle_path),
                     str(root / "output.mp4"), "keep_ratio", SubtitleStyle(), CropSettings(), "video-id",
                     {"x_percent": 20, "y_percent": 78, "width_percent": 60, "height_percent": 7},
+                    "HaizFlow",
                 )
             ass_text = (root / "positioned_subtitles.ass").read_text(encoding="utf-8-sig")
 
@@ -179,8 +180,9 @@ class TimelineRenderTests(unittest.TestCase):
             command[command.index("-filter_complex") + 1],
         )
         self.assertIn("blend=all_expr=", command[command.index("-filter_complex") + 1])
+        self.assertIn("drawtext=text='HaizFlow'", command[command.index("-filter_complex") + 1])
         self.assertIn("\\an5\\pos(960,886)\\fs", ass_text)
-        self.assertIn("\\fscx", ass_text)
+        self.assertIn("\\fscx100", ass_text)
         self.assertIn(",1,5,0,0,40,1", ass_text)
         self.assertIn("\\pos(960,886)", ass_text)
 
@@ -192,6 +194,20 @@ class TimelineRenderTests(unittest.TestCase):
             "boxblur=luma_radius=18:luma_power=4:chroma_radius=9:chroma_power=4",
         )
 
+    def test_text_watermark_is_subtle_and_moves_across_the_frame(self):
+        watermark = render._watermark_filter("HaizFlow: creator's cut", 1080, 1920)
+
+        self.assertIn("drawtext=text='HaizFlow\\: creator\\'s cut'", watermark)
+        self.assertIn("fontsize=30", watermark)
+        self.assertIn("fontcolor=white@0.42", watermark)
+        self.assertNotIn("borderw=", watermark)
+        self.assertNotIn("shadow", watermark)
+        self.assertIn("sin(2*PI*t/31)", watermark)
+        self.assertIn("sin(2*PI*t/43+1.2)", watermark)
+
+    def test_empty_watermark_adds_no_filter(self):
+        self.assertEqual(render._watermark_filter("   ", 1080, 1920), "")
+
     def test_subtitle_blur_radius_fits_the_smallest_supported_region(self):
         blur_filter = render._subtitle_blur_filter(40, 2)
 
@@ -200,13 +216,13 @@ class TimelineRenderTests(unittest.TestCase):
             "boxblur=luma_radius=0:luma_power=4:chroma_radius=0:chroma_power=4",
         )
 
-    def test_subtitle_blur_expands_and_feathers_the_outer_edge(self):
+    def test_subtitle_blur_feathers_inside_the_exact_detected_region(self):
         geometry = render._feathered_blur_region((78, 562, 418, 110), 576, 1024)
         filter_prefix = render._subtitle_blur_prefix((78, 562, 418, 110), 576, 1024)
 
-        self.assertEqual(geometry, (64, 548, 446, 138, 14))
-        self.assertIn("crop=446:138:64:548", filter_prefix)
-        self.assertIn("min(1,min(min(X,W-1-X),min(Y,H-1-Y))/14)", filter_prefix)
+        self.assertEqual(geometry, (78, 562, 418, 110, 10))
+        self.assertIn("crop=418:110:78:562", filter_prefix)
+        self.assertIn("min(1,min(min(X,W-1-X),min(Y,H-1-Y))/10)", filter_prefix)
 
     def test_multiline_removal_region_uses_single_source_line_for_font_size(self):
         region = {
@@ -226,7 +242,7 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIsNotNone(layout)
         self.assertAlmostEqual(layout.height, 153.6)
         self.assertAlmostEqual(layout.line_height, 59.392)
-        self.assertEqual(style.font_size, 45)
+        self.assertEqual(style.font_size, 36)
 
     def test_long_region_cue_is_shown_as_sequential_single_line_phrases(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -254,6 +270,7 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertGreater(len(dialogue_lines), 1)
         self.assertTrue(all("\\N" not in line for line in dialogue_lines))
         self.assertTrue(all("\\fs" in line for line in dialogue_lines))
+        self.assertTrue(all("\\fscx100" in line for line in dialogue_lines))
         rendered_phrases = [
             line.split("}", 1)[1].split()
             for line in dialogue_lines
@@ -264,6 +281,7 @@ class TimelineRenderTests(unittest.TestCase):
             for line in dialogue_lines
         ]
         self.assertTrue(all(font_size >= 30 for font_size in font_sizes))
+        self.assertEqual(len(set(font_sizes)), 1)
 
     def test_contiguous_sentence_fragments_are_joined_before_phrase_splitting(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -293,6 +311,13 @@ class TimelineRenderTests(unittest.TestCase):
 
         self.assertNotIn("thế nào?", rendered_text)
         self.assertTrue(any("thế nào?" in phrase and len(phrase.split()) >= 4 for phrase in rendered_text))
+
+    def test_no_space_language_is_split_into_balanced_character_phrases(self):
+        parts = render._split_subtitle_words("这是一个没有空格的长字幕句子", 6)
+
+        self.assertGreater(len(parts), 1)
+        self.assertEqual("".join(parts), "这是一个没有空格的长字幕句子")
+        self.assertLessEqual(max(map(len, parts)) - min(map(len, parts)), 1)
 
 
 if __name__ == "__main__":

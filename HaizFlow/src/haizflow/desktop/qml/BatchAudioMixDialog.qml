@@ -7,6 +7,18 @@ import "."
 Dialog {
     id: root
 
+    property bool audioSeparationEnabled: false
+    property int originalVolume: 60
+    property int ttsVolume: 100
+    property int backgroundMusicVolume: 30
+    property string targetLanguage: "vi"
+    property string ttsVoice: ""
+    property string backgroundMusicPath: ""
+    readonly property bool sourceAudioAdjustable: !audioSeparationEnabled
+    readonly property bool backgroundMusicAdjustable: backgroundMusicPath.length > 0
+
+    signal audioLevelsEdited(int originalVolume, int ttsVolume, int backgroundMusicVolume)
+
     modal: true
     focus: true
     width: Math.min(520, parent ? parent.width - 48 : 520)
@@ -19,11 +31,6 @@ Dialog {
     y: Math.round((parent.height - height) / 2)
     header: null
     footer: null
-
-    readonly property bool sourceAudioAdjustable: AppController.canEditSelectedVideo
-        && !AppController.enableAudioSeparation
-    readonly property bool backgroundMusicAdjustable: AppController.canEditSelectedVideo
-        && AppController.backgroundMusicPath.length > 0
 
     function stopPreview() {
         previewStopTimer.stop()
@@ -41,9 +48,11 @@ Dialog {
         previewStopTimer.start()
     }
 
-    function scheduleBatchVideoSave() {
-        if (AppController.isSelectedBatchVideo)
-            batchVideoSaveTimer.restart()
+    function updateLevels(original, voice, music) {
+        originalVolume = original
+        ttsVolume = voice
+        backgroundMusicVolume = music
+        audioLevelsEdited(original, voice, music)
     }
 
     onClosed: stopPreview()
@@ -108,33 +117,29 @@ Dialog {
 
             AudioLevelControl {
                 label: I18n.t("Source audio volume")
-                volume: AppController.originalVolume
+                volume: root.originalVolume
                 adjustable: root.sourceAudioAdjustable
                 disabledHint: I18n.t("Source audio volume is unavailable while separating vocals")
                 onVolumeEdited: function(value) {
-                    AppController.originalVolume = value
-                    root.scheduleBatchVideoSave()
+                    root.updateLevels(value, root.ttsVolume, root.backgroundMusicVolume)
                 }
             }
 
             AudioLevelControl {
                 label: I18n.t("TTS volume")
-                volume: AppController.ttsVolume
-                adjustable: AppController.canEditSelectedVideo
+                volume: root.ttsVolume
                 onVolumeEdited: function(value) {
-                    AppController.ttsVolume = value
-                    root.scheduleBatchVideoSave()
+                    root.updateLevels(root.originalVolume, value, root.backgroundMusicVolume)
                 }
             }
 
             AudioLevelControl {
                 label: I18n.t("Background music volume")
-                volume: AppController.backgroundMusicVolume
+                volume: root.backgroundMusicVolume
                 adjustable: root.backgroundMusicAdjustable
                 disabledHint: I18n.t("Choose background music to adjust its volume")
                 onVolumeEdited: function(value) {
-                    AppController.backgroundMusicVolume = value
-                    root.scheduleBatchVideoSave()
+                    root.updateLevels(root.originalVolume, root.ttsVolume, value)
                 }
             }
 
@@ -145,9 +150,16 @@ Dialog {
                 text: AppController.audioPreviewState === "preparing"
                     ? I18n.t("Preparing audio preview") : I18n.t("Preview audio mix")
                 tone: "secondary"
-                enabled: AppController.canEditSelectedVideo && AppController.videoPath.length > 0
-                    && AppController.audioPreviewState !== "preparing"
-                onClicked: AppController.previewAudioMix()
+                enabled: AppController.batchCount > 0 && AppController.audioPreviewState !== "preparing"
+                onClicked: AppController.previewBatchAudioMix(
+                    root.targetLanguage,
+                    root.ttsVoice,
+                    root.audioSeparationEnabled,
+                    root.originalVolume,
+                    root.backgroundMusicVolume,
+                    root.ttsVolume,
+                    root.backgroundMusicPath
+                )
             }
         }
 
@@ -180,36 +192,22 @@ Dialog {
         onTriggered: root.stopPreview()
     }
 
-    Timer {
-        id: batchVideoSaveTimer
-
-        interval: 250
-        repeat: false
-        onTriggered: AppController.persistSelectedBatchVideoSettings()
-    }
-
     MediaPlayer {
         id: sourcePreviewPlayer
         source: AppController.audioPreviewOriginalSource
-        audioOutput: AudioOutput {
-            volume: AppController.originalVolume / 100.0
-        }
+        audioOutput: AudioOutput { volume: root.originalVolume / 100.0 }
     }
 
     MediaPlayer {
         id: musicPreviewPlayer
         source: AppController.audioPreviewBackgroundMusicSource
-        audioOutput: AudioOutput {
-            volume: AppController.backgroundMusicVolume / 100.0
-        }
+        audioOutput: AudioOutput { volume: root.backgroundMusicVolume / 100.0 }
     }
 
     MediaPlayer {
         id: voicePreviewPlayer
         source: AppController.audioPreviewSource
-        audioOutput: AudioOutput {
-            volume: AppController.ttsVolume / 100.0
-        }
+        audioOutput: AudioOutput { volume: root.ttsVolume / 100.0 }
     }
 
     Connections {

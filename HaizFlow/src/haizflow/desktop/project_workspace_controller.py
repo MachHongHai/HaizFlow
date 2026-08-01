@@ -38,6 +38,7 @@ class ProjectWorkspaceController:
         host._original_volume = video.original_video_volume
         host._background_music_volume = getattr(video, "background_music_volume", 30)
         host._tts_volume = getattr(video, "tts_volume", 100)
+        host._watermark_text = str(getattr(video, "watermark_text", "") or "")
         host._background_music_path = str((video.files or {}).get("background_music") or "")
         input_path = host._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
         host._video_path = input_path
@@ -52,6 +53,7 @@ class ProjectWorkspaceController:
         host.originalVolumeChanged.emit()
         host.backgroundMusicVolumeChanged.emit()
         host.ttsVolumeChanged.emit()
+        host.watermarkTextChanged.emit()
         host.backgroundMusicChanged.emit()
         host.workflowModeChanged.emit()
         host.projectSetupChanged.emit()

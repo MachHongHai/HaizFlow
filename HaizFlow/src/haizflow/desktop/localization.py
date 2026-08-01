@@ -183,6 +183,138 @@ def native_media_dialog_directory() -> str:
     return ""
 
 
+def _native_windows_folder_dialog(caption: str, directory: str) -> tuple[bool, str]:
+    """Open Windows' modern Explorer folder picker.
+
+    Qt's static directory helper can fall back to the legacy tree-only folder
+    browser on some Windows/Qt combinations.  IFileOpenDialog with
+    FOS_PICKFOLDERS keeps the normal Explorer navigation pane and known user
+    locations.  The boolean indicates whether the native implementation was
+    available; cancellation is represented by an empty path.
+    """
+    if os.name != "nt":
+        return False, ""
+
+    import ctypes
+    import uuid
+    from ctypes import wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [
+            ("Data1", ctypes.c_uint32),
+            ("Data2", ctypes.c_uint16),
+            ("Data3", ctypes.c_uint16),
+            ("Data4", ctypes.c_ubyte * 8),
+        ]
+
+    def guid(value: str) -> GUID:
+        parsed = uuid.UUID(value)
+        return GUID(
+            parsed.time_low,
+            parsed.time_mid,
+            parsed.time_hi_version,
+            (ctypes.c_ubyte * 8)(*parsed.bytes[8:]),
+        )
+
+    def com_method(instance, index: int, result_type, *argument_types):
+        vtable = ctypes.cast(instance, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+        return ctypes.WINFUNCTYPE(result_type, ctypes.c_void_p, *argument_types)(vtable[index])
+
+    ole32 = ctypes.OleDLL("ole32")
+    shell32 = ctypes.OleDLL("shell32")
+    clsid_file_open_dialog = guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")
+    iid_file_open_dialog = guid("D57C7288-D4AD-4768-BE02-9D969532D960")
+    iid_shell_item = guid("43826D1E-E718-42EE-BC55-A1E261C37BFE")
+    dialog = ctypes.c_void_p()
+    initialized = False
+
+    ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    ole32.CoInitializeEx.restype = ctypes.c_long
+    initialize_result = ole32.CoInitializeEx(None, 0x2)  # COINIT_APARTMENTTHREADED
+    if initialize_result in (0, 1):
+        initialized = True
+    elif initialize_result != ctypes.c_long(0x80010106).value:  # RPC_E_CHANGED_MODE
+        return False, ""
+
+    try:
+        ole32.CoCreateInstance.argtypes = [
+            ctypes.POINTER(GUID), ctypes.c_void_p, ctypes.c_uint32,
+            ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p),
+        ]
+        ole32.CoCreateInstance.restype = ctypes.c_long
+        result = ole32.CoCreateInstance(
+            ctypes.byref(clsid_file_open_dialog), None, 0x1,
+            ctypes.byref(iid_file_open_dialog), ctypes.byref(dialog),
+        )
+        if result < 0 or not dialog.value:
+            return False, ""
+
+        release_dialog = com_method(dialog, 2, ctypes.c_ulong)
+        get_options = com_method(dialog, 10, ctypes.c_long, ctypes.POINTER(ctypes.c_uint32))
+        set_options = com_method(dialog, 9, ctypes.c_long, ctypes.c_uint32)
+        set_folder = com_method(dialog, 12, ctypes.c_long, ctypes.c_void_p)
+        set_title = com_method(dialog, 17, ctypes.c_long, ctypes.c_wchar_p)
+        show = com_method(dialog, 3, ctypes.c_long, wintypes.HWND)
+        get_result = com_method(dialog, 20, ctypes.c_long, ctypes.POINTER(ctypes.c_void_p))
+
+        try:
+            options = ctypes.c_uint32()
+            if get_options(dialog, ctypes.byref(options)) >= 0:
+                # PICKFOLDERS | FORCEFILESYSTEM | PATHMUSTEXIST | NOCHANGEDIR
+                set_options(dialog, options.value | 0x20 | 0x40 | 0x800 | 0x8)
+            set_title(dialog, str(caption or ""))
+
+            initial_shell_item = ctypes.c_void_p()
+            initial_path = Path(directory).expanduser() if directory else None
+            if initial_path and initial_path.is_dir():
+                shell32.SHCreateItemFromParsingName.argtypes = [
+                    ctypes.c_wchar_p, ctypes.c_void_p,
+                    ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p),
+                ]
+                shell32.SHCreateItemFromParsingName.restype = ctypes.c_long
+                if shell32.SHCreateItemFromParsingName(
+                    str(initial_path.resolve()), None, ctypes.byref(iid_shell_item),
+                    ctypes.byref(initial_shell_item),
+                ) >= 0:
+                    try:
+                        set_folder(dialog, initial_shell_item)
+                    finally:
+                        com_method(initial_shell_item, 2, ctypes.c_ulong)(initial_shell_item)
+
+            show_result = show(dialog, None)
+            if show_result == ctypes.c_long(0x800704C7).value:  # ERROR_CANCELLED
+                return True, ""
+            if show_result < 0:
+                return False, ""
+
+            selected_item = ctypes.c_void_p()
+            if get_result(dialog, ctypes.byref(selected_item)) < 0 or not selected_item.value:
+                return True, ""
+            try:
+                display_name = ctypes.c_void_p()
+                get_display_name = com_method(
+                    selected_item, 5, ctypes.c_long,
+                    ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p),
+                )
+                if get_display_name(selected_item, 0x80058000, ctypes.byref(display_name)) < 0:
+                    return False, ""
+                try:
+                    return True, ctypes.wstring_at(display_name)
+                finally:
+                    ole32.CoTaskMemFree(display_name)
+            finally:
+                com_method(selected_item, 2, ctypes.c_ulong)(selected_item)
+        finally:
+            release_dialog(dialog)
+    except Exception:
+        # Folder selection must remain available even if a Windows shell
+        # extension or COM initialization fails on a particular machine.
+        return False, ""
+    finally:
+        if initialized:
+            ole32.CoUninitialize()
+
+
 class QMessageBox(QtMessageBox):
     """Keep native dialogs aligned with the application language setting."""
 
@@ -225,4 +357,9 @@ class QFileDialog(QtFileDialog):
     @staticmethod
     def getExistingDirectory(parent=None, caption="", directory="", options=QtFileDialog.Option.ShowDirsOnly):
         with _native_explorer_profile():
-            return QtFileDialog.getExistingDirectory(parent, _ui_text(caption), _existing_dialog_directory(directory), options)
+            localized_caption = _ui_text(caption)
+            initial_directory = _existing_dialog_directory(directory)
+            handled, selected = _native_windows_folder_dialog(localized_caption, initial_directory)
+            if handled:
+                return selected
+            return QtFileDialog.getExistingDirectory(parent, localized_caption, initial_directory, options)

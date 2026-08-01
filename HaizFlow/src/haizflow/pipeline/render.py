@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import subprocess
@@ -43,24 +44,20 @@ class SubtitleRegionLayout:
 def _wrap_subtitle_for_region(
     text: str, layout: SubtitleRegionLayout, preferred_font_size: int, outline: int,
 ) -> tuple[str, int, int]:
-    """Fit a cue on one centred line inside an OCR blur region."""
+    """Fit one undistorted text line inside the exact OCR region."""
     content = " ".join(text.split())
     if not content:
         return "", preferred_font_size, 100
-    inner_width = max(24, layout.width - 8)
-    inner_height = max(20, layout.height - 4)
-    # Arial Bold averages roughly 0.50 em per character for normal subtitle
-    # text.  This intentional approximation produces stable sizing without a
-    # platform-specific font measurement dependency in the render worker.
-    width_limited = int(inner_width / max(1.0, len(content) * 0.50))
-    height_limited = int((inner_height - outline * 2) / 1.12)
-    # Keep glyphs close to the height of the removed source caption.  Long
-    # sentences are split into timed phrases before reaching this function, so
-    # only a mild horizontal condensation should ever be needed.
-    font_ceiling = min(preferred_font_size, height_limited)
-    font_size = max(10, min(font_ceiling, max(width_limited, int(width_limited / 0.80))))
-    scale_x = max(78, min(100, round(width_limited * 100 / max(1, font_size))))
-    return content, font_size, scale_x
+    inner_width = max(24, layout.width - outline * 4)
+    text_row_height = min(layout.height, layout.line_height or layout.height)
+    inner_height = max(20, text_row_height - outline * 2)
+    # Arial Bold averages about 0.48 em per character for subtitle prose. Keep
+    # ScaleX at 100% so long text is fitted by a proportional font reduction,
+    # never by stretching or squeezing glyph shapes.
+    width_limited = int(inner_width / max(1.0, len(content) * 0.48))
+    height_limited = int(inner_height / 1.05)
+    font_size = max(10, min(preferred_font_size, height_limited, width_limited))
+    return content, font_size, 100
 
 
 def _split_subtitle_words(text: str, max_chars: int) -> list[str]:
@@ -68,25 +65,58 @@ def _split_subtitle_words(text: str, max_chars: int) -> list[str]:
     words = " ".join(text.split()).split(" ")
     if not words or words == [""]:
         return [""]
-    pieces: list[str] = []
-    current = ""
-    for word in words:
-        candidate = word if not current else f"{current} {word}"
-        if current and len(candidate) > max_chars:
-            pieces.append(current)
-            current = word
-        else:
-            current = candidate
-    if current:
-        pieces.append(current)
+    if len(words) == 1 and len(words[0]) > max_chars:
+        # Chinese and other scripts may not separate words with spaces. Keep
+        # their glyph order and split into balanced timed character groups.
+        characters = words[0]
+        part_count = max(1, math.ceil(len(characters) / max_chars))
+        base_size, remainder = divmod(len(characters), part_count)
+        pieces = []
+        cursor = 0
+        for index in range(part_count):
+            size = base_size + (1 if index < remainder else 0)
+            pieces.append(characters[cursor:cursor + size])
+            cursor += size
+        return pieces
+    content_length = len(" ".join(words))
+    soft_limit = max(max(len(word) for word in words), round(max_chars * 1.30))
+    minimum_parts = max(1, math.ceil(content_length / soft_limit))
 
-    # Avoid flashing a trailing one-word fragment when it can be joined to the
-    # previous phrase with only a small amount of horizontal condensation.
-    if len(pieces) >= 2 and len(pieces[-1]) < max(4, round(max_chars * 0.40)):
-        combined = f"{pieces[-2]} {pieces[-1]}"
-        if len(combined) <= round(max_chars * 1.30):
-            pieces[-2:] = [combined]
-    return pieces or [""]
+    # Find the smallest feasible phrase count, then choose the most even word
+    # partition. Even phrases fill the detected row naturally and avoid a lone
+    # word flashing at an oversized font between otherwise readable phrases.
+    for part_count in range(minimum_parts, len(words) + 1):
+        target_length = content_length / part_count
+        cache: dict[tuple[int, int], tuple[float, list[str]] | None] = {}
+
+        def solve(start: int, remaining: int) -> tuple[float, list[str]] | None:
+            key = (start, remaining)
+            if key in cache:
+                return cache[key]
+            if remaining == 0:
+                return (0.0, []) if start == len(words) else None
+            if len(words) - start < remaining:
+                return None
+            best: tuple[float, list[str]] | None = None
+            last_end = len(words) - remaining + 1
+            for end in range(start + 1, last_end + 1):
+                phrase = " ".join(words[start:end])
+                if len(phrase) > soft_limit and end > start + 1:
+                    break
+                tail = solve(end, remaining - 1)
+                if tail is None:
+                    continue
+                singleton_penalty = target_length ** 2 if end == start + 1 and len(words) >= part_count * 2 else 0
+                cost = (len(phrase) - target_length) ** 2 + singleton_penalty + tail[0]
+                if best is None or cost < best[0]:
+                    best = (cost, [phrase, *tail[1]])
+            cache[key] = best
+            return best
+
+        result = solve(0, part_count)
+        if result is not None:
+            return result[1]
+    return words
 
 
 def _merge_contiguous_subtitles(subtitles: list[srt.Subtitle]) -> list[srt.Subtitle]:
@@ -124,18 +154,19 @@ def _merge_contiguous_subtitles(subtitles: list[srt.Subtitle]) -> list[srt.Subti
 def _subtitle_parts_for_region(subtitle, layout: SubtitleRegionLayout, subtitle_style: SubtitleStyle):
     """Split a long cue over time, never into two simultaneous text rows."""
     content = " ".join(subtitle.content.split())
-    inner_width = max(24, layout.width - 8)
-    inner_height = max(20, layout.height - 4)
+    inner_width = max(24, layout.width - subtitle_style.outline * 4)
+    text_row_height = min(layout.height, layout.line_height or layout.height)
+    inner_height = max(20, text_row_height - subtitle_style.outline * 2)
     display_font = min(
         subtitle_style.font_size,
-        int((inner_height - subtitle_style.outline * 2) / 1.12),
+        int(inner_height / 1.05),
     )
     display_font = max(10, display_font)
     # Split early enough that each phrase keeps large, normally proportioned
     # glyphs.  The phrases replace one another; they never form two rows.
     # Prefer readable multi-word phrases. If the region is narrow, the fitting
     # step reduces the font mildly instead of flashing isolated words.
-    max_chars = max(12, int(inner_width / (display_font * 0.50 * 0.80)))
+    max_chars = max(10, int(inner_width / (display_font * 0.48)))
     parts = _split_subtitle_words(content, max_chars)
     duration_seconds = max(0.0, (subtitle.end - subtitle.start).total_seconds())
     if len(parts) == 1:
@@ -144,19 +175,27 @@ def _subtitle_parts_for_region(subtitle, layout: SubtitleRegionLayout, subtitle_
         )
         return [(subtitle.start, subtitle.end, text, font_size, scale_x)]
 
+    fitted_parts = [
+        _wrap_subtitle_for_region(
+            part, layout, subtitle_style.font_size, subtitle_style.outline,
+        )
+        for part in parts
+    ]
+    # Keep one font size throughout a source cue. Changing size every few
+    # words creates a distracting zoom/pulse effect even when every phrase
+    # individually fits. The longest phrase establishes the stable size.
+    stable_font_size = min(item[1] for item in fitted_parts)
     total_weight = sum(max(1, len(part)) for part in parts)
     cursor = subtitle.start
     result = []
-    for index, part in enumerate(parts):
+    for index, (part, fitted) in enumerate(zip(parts, fitted_parts)):
         if index == len(parts) - 1:
             end = subtitle.end
         else:
             fraction = max(1, len(part)) / total_weight
             end = cursor + timedelta(seconds=duration_seconds * fraction)
-        text, font_size, scale_x = _wrap_subtitle_for_region(
-            part, layout, subtitle_style.font_size, subtitle_style.outline,
-        )
-        result.append((cursor, end, text, font_size, scale_x))
+        text, _font_size, _scale_x = fitted
+        result.append((cursor, end, text, stable_font_size, 100))
         cursor = end
     return result
 
@@ -319,7 +358,9 @@ def _style_for_original_subtitle_region(
     # The removal region can contain two or three source rows. Replacement
     # glyphs should match one source row rather than scale with the whole block.
     detected_line_height = region_layout.line_height or region_layout.height
-    font_size = max(12, min(120, round(detected_line_height * 0.75)))
+    # ASS font size is larger than the visible glyph box. Around 60% of the
+    # OCR row height matches the original visual weight without oversized text.
+    font_size = max(12, min(112, round(detected_line_height * 0.60)))
     outline = min(subtitle_style.outline, max(1, font_size // 14))
     return subtitle_style.model_copy(update={
         "position_x_percent": x_percent,
@@ -351,7 +392,7 @@ def _source_blur_region(region: dict | None, source_width: int, source_height: i
 
 
 def _subtitle_blur_filter(width: int, height: int) -> str:
-    """Build a box blur whose luma and chroma radii fit the cropped region."""
+    """Build a strong blur that fully suppresses burned-in subtitle detail."""
     shortest_side = max(2, min(width, height))
     # FFmpeg requires the radius to be strictly smaller than half the
     # corresponding plane dimension. Chroma is typically 4:2:0, so its plane
@@ -367,24 +408,22 @@ def _subtitle_blur_filter(width: int, height: int) -> str:
 def _feathered_blur_region(
     region: tuple[int, int, int, int], source_width: int, source_height: int,
 ) -> tuple[int, int, int, int, int]:
-    """Expand a subtitle region so the blur can fade into the source frame."""
+    """Keep blur geometry exact and feather only inside the OCR rectangle."""
     x, y, width, height = region
-    # The expanded border is only a transition zone. The detected region stays
-    # fully blurred, while this outer rim prevents a visible rectangular seam.
-    feather = max(4, min(24, round(min(width, height) * 0.12)))
+    feather = max(2, min(16, round(min(width, height) * 0.08)))
     if feather % 2:
         feather += 1
-    left = max(0, x - feather) // 2 * 2
-    top = max(0, y - feather) // 2 * 2
-    right = min(source_width, x + width + feather) // 2 * 2
-    bottom = min(source_height, y + height + feather) // 2 * 2
-    return left, top, max(2, right - left), max(2, bottom - top), feather
+    exact_x = max(0, min(source_width - 2, x)) // 2 * 2
+    exact_y = max(0, min(source_height - 2, y)) // 2 * 2
+    exact_width = max(2, min(width, source_width - exact_x)) // 2 * 2
+    exact_height = max(2, min(height, source_height - exact_y)) // 2 * 2
+    return exact_x, exact_y, exact_width, exact_height, feather
 
 
 def _subtitle_blur_prefix(
     region: tuple[int, int, int, int], source_width: int, source_height: int,
 ) -> str:
-    """Return a feathered, fully blurred replacement for a subtitle region."""
+    """Return an exact, internally feathered subtitle blur."""
     x, y, width, height, feather = _feathered_blur_region(region, source_width, source_height)
     blur_filter = _subtitle_blur_filter(width, height)
     edge_distance = f"min(min(X,W-1-X),min(Y,H-1-Y))"
@@ -399,7 +438,33 @@ def _subtitle_blur_prefix(
     )
 
 
-def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None):
+def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
+    """Return a subtle continuously moving text watermark filter."""
+    normalized = " ".join(str(text or "").split())[:80]
+    if not normalized:
+        return ""
+    # Quote every character with filter-graph meaning. The text is persisted
+    # as one line, so the watermark cannot inject another FFmpeg filter.
+    escaped = (
+        normalized.replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace(":", "\\:")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace(";", "\\;")
+    )
+    font_size = max(14, min(36, round(min(output_width, output_height) * 0.028)))
+    # Two unequal periods keep the mark drifting through the whole frame
+    # instead of settling on a predictable diagonal or covering one subject.
+    x = "(W-text_w)*(0.08+0.84*(0.5+0.5*sin(2*PI*t/31)))"
+    y = "(H-text_h)*(0.10+0.80*(0.5+0.5*sin(2*PI*t/43+1.2)))"
+    return (
+        f"drawtext=text='{escaped}':fontsize={font_size}:fontcolor=white@0.42:"
+        f"x='{x}':y='{y}'"
+    )
+
+
+def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None, watermark_text: str = ""):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
     supported_formats = {"keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"}
@@ -443,6 +508,7 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     rel_output = _ffmpeg_path(temporary_output, video_temp_dir)
     ass_filter_path = rel_ass.replace(":", "\\:").replace("'", "'\\\\''")
     ass_filter = f"ass='{ass_filter_path}'"
+    watermark_filter = _watermark_filter(watermark_text, subtitle_width, subtitle_height)
     filters = []
     crop_filter = _crop_filter(crop)
     if crop_filter:
@@ -458,12 +524,15 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         source = f"{input_label}{prefix + ',' if prefix else ''}split[base][fg]"
         vf_filter = (
             f"{blur_prefix}{source};[base]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=15:3[bg];"
-            f"[fg]scale=1080:1920:force_original_aspect_ratio=decrease[front];[bg][front]overlay=(W-w)/2:(H-h)/2,{ass_filter}[outv]"
+            f"[fg]scale=1080:1920:force_original_aspect_ratio=decrease[front];[bg][front]overlay=(W-w)/2:(H-h)/2,{ass_filter}"
+            f"{',' + watermark_filter if watermark_filter else ''}[outv]"
         )
     else:
         if output_format == "tiktok_9_16_crop":
             filters.extend(["scale=1080:1920:force_original_aspect_ratio=increase", "crop=1080:1920"])
         filters.append(ass_filter)
+        if watermark_filter:
+            filters.append(watermark_filter)
         if blur_region:
             blur_prefix = _subtitle_blur_prefix(blur_region, source_width, source_height)
             vf_filter = (

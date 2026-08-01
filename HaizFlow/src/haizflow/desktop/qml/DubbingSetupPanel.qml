@@ -6,10 +6,16 @@ import "."
 Panel {
     id: root
 
-    title: I18n.t("Dubbing setup")
-    subtitle: I18n.t("Language, voice and output behavior")
-    contentPadding: Theme.space16
-    contentSpacing: Theme.space8
+    title: I18n.t("Settings")
+    subtitle: I18n.t("Language, voice and audio")
+    tone: "violet"
+    contentPadding: Theme.space12
+    contentSpacing: Theme.space4
+
+    function scheduleBatchVideoSave() {
+        if (AppController.isSelectedBatchVideo)
+            batchVideoSaveTimer.restart()
+    }
 
     Flickable {
         id: setupScroll
@@ -26,7 +32,7 @@ Panel {
             id: settingsColumn
 
             width: setupScroll.width
-            spacing: Theme.space8
+            spacing: Theme.space4
 
     ColumnLayout {
         Layout.fillWidth: true
@@ -50,6 +56,7 @@ Panel {
             ]
             onActivated: function(value) {
                 AppController.workflowMode = value
+                root.scheduleBatchVideoSave()
             }
         }
     }
@@ -74,6 +81,7 @@ Panel {
             selectedCode: AppController.targetLanguage
             onSelected: function(code) {
                 AppController.targetLanguage = code
+                root.scheduleBatchVideoSave()
             }
         }
     }
@@ -97,7 +105,10 @@ Panel {
             valueRole: "voice"
             model: AppController.ttsVoiceOptions
             currentIndex: AppController.ttsVoiceIndex
-            onActivated: AppController.ttsVoice = currentValue
+            onActivated: {
+                AppController.ttsVoice = currentValue
+                root.scheduleBatchVideoSave()
+            }
         }
     }
 
@@ -131,6 +142,7 @@ Panel {
             ]
             onActivated: function(value) {
                 AppController.enableAudioSeparation = value === "separated"
+                root.scheduleBatchVideoSave()
             }
         }
     }
@@ -149,100 +161,121 @@ Panel {
         Layout.fillWidth: true
         text: I18n.t("Adjust audio levels")
         tone: "secondary"
+        compact: true
         enabled: AppController.canEditSelectedVideo
         onClicked: audioMixDialog.open()
     }
 
-    ColumnLayout {
+    RowLayout {
         Layout.fillWidth: true
         spacing: Theme.space8
 
         Text {
+            Layout.preferredWidth: 98
             text: I18n.t("Background music")
             color: Theme.textMuted
             font.pixelSize: Theme.caption
             font.weight: Font.Medium
+            elide: Text.ElideRight
             textFormat: Text.PlainText
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.space8
-
-            Text {
-                Layout.fillWidth: true
-                text: AppController.backgroundMusicPath.length > 0
-                    ? AppController.backgroundMusicPath : I18n.t("No background music")
-                color: AppController.backgroundMusicPath.length > 0 ? Theme.text : Theme.textMuted
-                font.pixelSize: Theme.caption
-                elide: Text.ElideMiddle
-                textFormat: Text.PlainText
-            }
-
-            AppButton {
-                id: backgroundMusicButton
-
-                property bool menuWasOpenOnPress: false
-
-                text: AppController.backgroundMusicPath.length > 0
-                    ? I18n.t("Replace background music") : I18n.t("Choose background music")
-                compact: true
-                enabled: AppController.canEditSelectedVideo
-                onPressed: menuWasOpenOnPress = backgroundMusicMenu.visible
-                onClicked: {
-                    if (menuWasOpenOnPress || backgroundMusicMenu.visible)
-                        backgroundMusicMenu.close()
-                    else
-                        backgroundMusicMenu.open()
-                }
-
-                Menu {
-                    id: backgroundMusicMenu
-
-                    width: 220
-                    y: backgroundMusicButton.height + Theme.space4
-                    padding: 6
-                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
-
-                    background: Rectangle {
-                        color: Theme.surfaceElevated
-                        radius: Theme.radius
-                        border.width: 1
-                        border.color: Theme.outlineStrong
-                    }
-
-                    AppMenuItem {
-                        text: I18n.t("From file")
-                        iconGlyph: "\uE8B7"
-                        onTriggered: AppController.browseBackgroundMusic()
-                    }
-
-                    AppMenuItem {
-                        text: I18n.t("From link")
-                        iconGlyph: "\uE71B"
-                        onTriggered: backgroundMusicLinkDialog.open()
-                    }
-                }
-            }
-
-            IconButton {
-                visible: AppController.backgroundMusicPath.length > 0
-                glyph: "\uE74D"
-                toolTipText: I18n.t("Remove background music")
-                enabled: AppController.canEditSelectedVideo
-                onClicked: AppController.clearBackgroundMusic()
-            }
         }
 
         Text {
             Layout.fillWidth: true
-            text: I18n.t("Audio or video files are supported") + "."
-            color: Theme.textSubtle
+            text: AppController.backgroundMusicPath.length > 0
+                ? AppController.backgroundMusicPath : I18n.t("No background music")
+            color: AppController.backgroundMusicPath.length > 0 ? Theme.text : Theme.textMuted
             font.pixelSize: Theme.caption
-            wrapMode: Text.Wrap
+            elide: Text.ElideMiddle
             textFormat: Text.PlainText
         }
 
+        AppButton {
+            id: backgroundMusicButton
+
+            property bool menuWasOpenOnPress: false
+
+            text: AppController.backgroundMusicPath.length > 0
+                ? I18n.t("Replace background music") : I18n.t("Choose background music")
+            compact: true
+            enabled: AppController.canEditSelectedVideo
+            onPressed: menuWasOpenOnPress = backgroundMusicMenu.visible
+            onClicked: {
+                if (menuWasOpenOnPress || backgroundMusicMenu.visible)
+                    backgroundMusicMenu.close()
+                else
+                    backgroundMusicMenu.open()
+            }
+
+            Menu {
+                id: backgroundMusicMenu
+
+                width: 220
+                y: backgroundMusicButton.height + Theme.space4
+                padding: 6
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+
+                background: Rectangle {
+                    color: Theme.surfaceElevated
+                    radius: Theme.radius
+                    border.width: 1
+                    border.color: Theme.outlineStrong
+                }
+
+                AppMenuItem {
+                    text: I18n.t("From file")
+                    iconGlyph: "\uE8B7"
+                    onTriggered: AppController.browseBackgroundMusic()
+                }
+
+                AppMenuItem {
+                    text: I18n.t("From link")
+                    iconGlyph: "\uE71B"
+                    onTriggered: backgroundMusicLinkDialog.open()
+                }
+            }
+        }
+
+        IconButton {
+            visible: AppController.backgroundMusicPath.length > 0
+            glyph: "\uE74D"
+            toolTipText: I18n.t("Remove background music")
+            enabled: AppController.canEditSelectedVideo
+            onClicked: AppController.clearBackgroundMusic()
+        }
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Theme.space8
+
+        Text {
+            Layout.preferredWidth: 98
+            text: I18n.t("Watermark")
+            color: Theme.textMuted
+            font.pixelSize: Theme.caption
+            font.weight: Font.Medium
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: AppController.watermarkText.length > 0
+                ? AppController.watermarkText : I18n.t("No watermark")
+            color: AppController.watermarkText.length > 0 ? Theme.text : Theme.textMuted
+            font.pixelSize: Theme.caption
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+        }
+
+        AppButton {
+            text: AppController.watermarkText.length > 0
+                ? I18n.t("Edit watermark") : I18n.t("Add watermark")
+            compact: true
+            enabled: AppController.canEditSelectedVideo
+            onClicked: watermarkDialog.openWithText(AppController.watermarkText)
+        }
     }
 
         }
@@ -261,14 +294,12 @@ Panel {
         id: backgroundMusicLinkDialog
     }
 
-    AppButton {
-        Layout.fillWidth: true
-        visible: AppController.isSelectedBatchVideo
-        text: I18n.t("Save video settings")
-        iconGlyph: "\uE74E"
-        tone: "primary"
-        enabled: AppController.canEditSelectedVideo
-        onClicked: AppController.saveSelectedVideoSettings()
+    WatermarkDialog {
+        id: watermarkDialog
+        onWatermarkAccepted: function(text) {
+            AppController.watermarkText = text
+            root.scheduleBatchVideoSave()
+        }
     }
 
     AppButton {
@@ -279,5 +310,13 @@ Panel {
         tone: "primary"
         enabled: AppController.canEditSelectedVideo && AppController.videoPath.length > 0
         onClicked: AppController.startProjectVideo()
+    }
+
+    Timer {
+        id: batchVideoSaveTimer
+
+        interval: 250
+        repeat: false
+        onTriggered: AppController.persistSelectedBatchVideoSettings()
     }
 }

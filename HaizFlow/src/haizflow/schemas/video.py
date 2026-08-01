@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 6
+VIDEO_METADATA_SCHEMA_VERSION = 7
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
@@ -55,6 +55,7 @@ class VideoConfig(BaseModel):
     original_video_volume: int = Field(default=60, ge=0, le=100)
     background_music_volume: int = Field(default=30, ge=0, le=100)
     tts_volume: int = Field(default=100, ge=0, le=100)
+    watermark_text: str = Field(default="", max_length=80)
     # An import request only; the selected file is copied into the workspace.
     background_music_path: str = Field(default="", exclude=True)
     project_name: str = ""
@@ -82,6 +83,7 @@ class VideoInfo(BaseModel):
     original_video_volume: int = Field(default=60, ge=0, le=100)
     background_music_volume: int = Field(default=30, ge=0, le=100)
     tts_volume: int = Field(default=100, ge=0, le=100)
+    watermark_text: str = Field(default="", max_length=80)
     project_name: str = ""
     project_directory: str = ""
     project_type: ProjectType = "single"

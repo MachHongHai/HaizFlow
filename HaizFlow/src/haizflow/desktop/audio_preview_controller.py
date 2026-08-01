@@ -52,16 +52,33 @@ class AudioPreviewController:
         self._thread: threading.Thread | None = None
         self._token = ""
 
-    def start(self) -> bool:
+    def start(
+        self,
+        *,
+        video_id: str | None = None,
+        enable_audio_separation: bool | None = None,
+        background_music_path: str | None = None,
+        original_volume: int | None = None,
+        background_music_volume: int | None = None,
+        tts_volume: int | None = None,
+        voice: str | None = None,
+        target_language: str | None = None,
+    ) -> bool:
+        """Build a preview from persisted settings or an unsaved editor draft."""
         if self._thread and self._thread.is_alive():
             return False
         host = self._host
-        video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        selected_video_id = video_id if video_id is not None else getattr(host, "_selected_video_id", None)
+        video = video_store.get_video(selected_video_id) if selected_video_id else None
         files = dict((video.files if video else {}) or {})
+        use_audio_separation = (
+            bool(getattr(host, "_enable_audio_separation", False))
+            if enable_audio_separation is None else bool(enable_audio_separation)
+        )
         source_path = (
             str(files.get("background_audio") or "")
-            if video and host._enable_audio_separation and os.path.isfile(str(files.get("background_audio") or ""))
-            else str(files.get("video_input") or host._video_path or "")
+            if video and use_audio_separation and os.path.isfile(str(files.get("background_audio") or ""))
+            else str(files.get("video_input") or getattr(host, "_video_path", "") or "")
         )
         if not os.path.isfile(source_path):
             host._status_message = "Choose an input video before previewing the audio mix."
@@ -72,15 +89,27 @@ class AudioPreviewController:
         self._token = token
         host._audio_preview_state = "preparing"
         host.audioPreviewChanged.emit()
+        effective_target_language = (
+            str(target_language or "en")
+            if target_language is not None
+            else str(getattr(host, "_target_language", "en") or "en")
+        )
         snapshot = {
             "token": token,
             "source_path": source_path,
-            "background_music_path": str(host._background_music_path or ""),
-            "original_volume": int(host._original_volume),
-            "background_music_volume": int(host._background_music_volume),
-            "tts_volume": int(host._tts_volume),
-            "voice": str(host._tts_voice),
-            "target_language": str(host._target_language or "en"),
+            "background_music_path": str(
+                getattr(host, "_background_music_path", "") if background_music_path is None else background_music_path
+            ),
+            "original_volume": int(
+                getattr(host, "_original_volume", 60) if original_volume is None else original_volume
+            ),
+            "background_music_volume": int(
+                getattr(host, "_background_music_volume", 30)
+                if background_music_volume is None else background_music_volume
+            ),
+            "tts_volume": int(getattr(host, "_tts_volume", 100) if tts_volume is None else tts_volume),
+            "voice": str(getattr(host, "_tts_voice", "") if voice is None else voice),
+            "target_language": effective_target_language,
             "directory": video_store.get_video_dir(video.video_id) if video else str(RUNTIME_DATA_DIR),
         }
         self._thread = threading.Thread(

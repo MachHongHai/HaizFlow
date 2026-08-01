@@ -253,6 +253,14 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "batchPausedCount"
+            type: "int"
+            read: "batchPausedCount"
+            notify: "batchChanged"
+            index: 111
+            isReadonly: true
+        }
+        Property {
             name: "batchProgress"
             type: "int"
             read: "batchProgress"
@@ -372,6 +380,14 @@ Module {
             write: "ttsVolume"
             notify: "ttsVolumeChanged"
             index: 101
+        }
+        Property {
+            name: "watermarkText"
+            type: "QString"
+            read: "watermarkText"
+            write: "watermarkText"
+            notify: "watermarkTextChanged"
+            index: 111
         }
         Property {
             name: "backgroundMusicPath"
@@ -782,6 +798,7 @@ Module {
         Signal { name: "originalVolumeChanged" }
         Signal { name: "backgroundMusicVolumeChanged" }
         Signal { name: "ttsVolumeChanged" }
+        Signal { name: "watermarkTextChanged" }
         Signal { name: "backgroundMusicChanged" }
         Signal { name: "audioPreviewChanged" }
         Signal { name: "workflowModeChanged" }
@@ -828,6 +845,7 @@ Module {
         }
         Method { name: "browseVideo" }
         Method { name: "browseBackgroundMusic" }
+        Method { name: "chooseBatchBackgroundMusic"; type: "QString" }
         Method {
             name: "importBackgroundMusicFromLink"
             type: "bool"
@@ -836,6 +854,17 @@ Module {
         Method { name: "cancelBackgroundMusicLinkImport" }
         Method { name: "clearBackgroundMusic"; type: "bool" }
         Method { name: "previewAudioMix"; type: "bool" }
+        Method {
+            name: "previewBatchAudioMix"
+            type: "bool"
+            Parameter { name: "target_language"; type: "QString" }
+            Parameter { name: "tts_voice"; type: "QString" }
+            Parameter { name: "enable_audio_separation"; type: "bool" }
+            Parameter { name: "original_volume"; type: "int" }
+            Parameter { name: "background_music_volume"; type: "int" }
+            Parameter { name: "tts_volume"; type: "int" }
+            Parameter { name: "background_music_path"; type: "QString" }
+        }
         Method {
             name: "replaceSelectedVideoVideo"
             type: "bool"
@@ -874,10 +903,12 @@ Module {
             Parameter { name: "a1"; type: "QVariantList" }
         }
         Method { name: "startBatch" }
+        Method { name: "resumeBatch" }
         Method {
             name: "batchSettings"
             type: "QVariantMap"
         }
+        Method { name: "batchSettingOverrides"; type: "QVariantList" }
         Method { name: "applyBatchSettings"; type: "bool" }
         Method {
             name: "applyBatchSettingsDraft"
@@ -889,8 +920,11 @@ Module {
             Parameter { name: "original_volume"; type: "int" }
             Parameter { name: "background_music_volume"; type: "int" }
             Parameter { name: "tts_volume"; type: "int" }
+            Parameter { name: "watermark_text"; type: "QString" }
+            Parameter { name: "background_music_path"; type: "QString" }
         }
         Method { name: "loadBatchSettings" }
+        Method { name: "persistSelectedBatchVideoSettings"; type: "bool" }
         Method {
             name: "voiceOptionsForLanguage"
             type: "QVariantList"

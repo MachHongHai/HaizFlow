@@ -12,6 +12,7 @@ Panel {
 
     title: I18n.t("Source media")
     subtitle: I18n.t("Input video")
+    tone: "blue"
 
     Rectangle {
         id: videoFrame

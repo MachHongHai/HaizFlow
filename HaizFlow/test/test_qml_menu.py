@@ -301,6 +301,29 @@ ApplicationWindow {{
         self.assertIn("policy: root.wideLayout ? ScrollBar.AlwaysOff", create_page)
         self.assertIn("Flickable {", setup)
 
+    def test_workspace_prioritizes_settings_and_expands_logs_on_demand(self):
+        create_page = (QML_DIR / "CreateVideoPage.qml").read_text(encoding="utf-8")
+        log_panel = (QML_DIR / "ActivityLogPanel.qml").read_text(encoding="utf-8")
+        log_dialog = (QML_DIR / "ActivityLogDialog.qml").read_text(encoding="utf-8")
+
+        self.assertIn("Layout.preferredWidth: root.wideLayout ? 620 : 440", create_page)
+        self.assertIn("Layout.maximumWidth: root.wideLayout ? 340", create_page)
+        self.assertIn("active: false", log_panel)
+        self.assertIn("ActivityLogDialog", log_panel)
+        self.assertIn('I18n.t("Expand log")', log_panel)
+        self.assertIn("LogViewer", log_dialog)
+
+    def test_batch_workspace_and_theme_use_distinct_semantic_tones(self):
+        batch_page = (QML_DIR / "BatchPage.qml").read_text(encoding="utf-8")
+        theme = (QML_DIR / "Theme.qml").read_text(encoding="utf-8")
+
+        self.assertIn("Theme.blueSurface", batch_page)
+        self.assertIn("Theme.violetSurface", batch_page)
+        self.assertIn('I18n.t("Processing queue")', batch_page)
+        self.assertIn('readonly property color violet:', theme)
+        self.assertIn('readonly property color blueSurface:', theme)
+        self.assertIn('readonly property color warmSurface:', theme)
+
     def test_background_music_link_import_stays_in_the_project_audio_flow(self):
         dialog = (QML_DIR / "BackgroundMusicLinkDialog.qml").read_text(encoding="utf-8")
         self.assertIn("AppController.importBackgroundMusicFromLink", dialog)
@@ -350,6 +373,15 @@ ApplicationWindow {{
         self.assertIn('"youtube": { "glyph": "▶"', (QML_DIR / "PlatformLogo.qml").read_text(encoding="utf-8"))
         self.assertNotIn("LanguageFlag", language_picker)
         self.assertNotIn('"flag": "vi"', settings)
+
+    def test_app_settings_apply_automatically_without_an_apply_button(self):
+        settings = (QML_DIR / "SettingsDialog.qml").read_text(encoding="utf-8")
+
+        self.assertIn("function scheduleApply()", settings)
+        self.assertIn("autoApplyTimer.restart()", settings)
+        self.assertIn("onClosed: {", settings)
+        self.assertIn("applyDraft()", settings)
+        self.assertNotIn('I18n.t("Apply settings")', settings)
 
     def test_language_labels_are_names_without_codes(self):
         from haizflow.desktop.presenters import language_label

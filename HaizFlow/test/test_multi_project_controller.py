@@ -19,10 +19,318 @@ from haizflow.desktop import qml_controller
 from haizflow.desktop import project_import_controller
 from haizflow.desktop.qml_controller import HaizFlowController
 from haizflow.desktop.project_import_controller import ProjectImportController
+from haizflow.desktop.project_commands_controller import ProjectCommandsController
+from haizflow.desktop.localization import QMessageBox
+from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
 from haizflow.schemas.video import VideoConfig
 
 
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_batch_card_opens_the_selected_video_settings(self):
+        batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(
+            encoding="utf-8"
+        )
+        card = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchVideoCard.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("AppController.selectBatchVideo(index)", batch_page)
+        self.assertIn("root.openVideoDetail()", batch_page)
+        self.assertIn('I18n.t("Edit video settings")', card)
+
+    def test_saving_batch_video_settings_updates_only_the_selected_video(self):
+        selected = SimpleNamespace(video_id="video-custom", project_type="batch")
+        host = SimpleNamespace(
+            _selected_video_id=selected.video_id,
+            _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+            _apply_setup_to_video=Mock(),
+            refreshVideos=Mock(),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+        commands = ProjectCommandsController(host)
+
+        with (
+            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
+            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
+        ):
+            self.assertTrue(commands.save_selected_video_settings())
+
+        host._apply_setup_to_video.assert_called_once_with(selected)
+        log_to_video.assert_called_once_with(selected.video_id, "Per-video dubbing settings saved.")
+        host.refreshVideos.assert_called_once()
+        host.batchChanged.emit.assert_called_once()
+
+    def test_auto_saving_batch_video_settings_does_not_add_a_log_entry(self):
+        selected = SimpleNamespace(video_id="video-custom", project_type="batch")
+        host = SimpleNamespace(
+            _selected_video_id=selected.video_id,
+            _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+            _apply_setup_to_video=Mock(),
+            refreshVideos=Mock(),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+
+        with (
+            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
+            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
+        ):
+            self.assertTrue(ProjectCommandsController(host).persist_selected_video_settings())
+
+        host._apply_setup_to_video.assert_called_once_with(selected)
+        log_to_video.assert_not_called()
+
+    def test_start_batch_preserves_each_video_saved_settings(self):
+        first = SimpleNamespace(video_id="video-vi", status="pending", target_language="vi")
+        second = SimpleNamespace(video_id="video-en", status="pending", target_language="en")
+        videos = {first.video_id: first, second.video_id: second}
+        host = SimpleNamespace(
+            _batch_video_ids=[first.video_id, second.video_id],
+            _batch_running=False,
+            _batch_stop_requested=False,
+            _enqueue_videos=Mock(return_value=2),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+        commands = ProjectCommandsController(host)
+
+        with (
+            patch(
+                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                side_effect=lambda video_id: videos.get(video_id),
+            ),
+            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+        ):
+            commands.start_batch()
+
+        host._enqueue_videos.assert_called_once_with([first.video_id, second.video_id])
+        update_video.assert_not_called()
+        self.assertEqual(first.target_language, "vi")
+        self.assertEqual(second.target_language, "en")
+        self.assertTrue(host._batch_running)
+
+    def test_resume_batch_requeues_paused_and_new_pending_videos(self):
+        paused = SimpleNamespace(video_id="video-paused", status="paused")
+        pending = SimpleNamespace(video_id="video-pending", status="pending")
+        done = SimpleNamespace(video_id="video-done", status="done")
+        videos = {video.video_id: video for video in (paused, pending, done)}
+        host = SimpleNamespace(
+            _batch_video_ids=list(videos),
+            _batch_running=False,
+            _batch_stop_requested=True,
+            _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+            _enqueue_videos=Mock(return_value=2),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+
+        with (
+            patch(
+                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                side_effect=lambda video_id: videos.get(video_id),
+            ),
+            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+        ):
+            ProjectCommandsController(host).resume_batch()
+
+        host._enqueue_videos.assert_called_once_with([paused.video_id, pending.video_id])
+        self.assertTrue(host._batch_running)
+        self.assertFalse(host._batch_stop_requested)
+
+    def test_paused_video_clears_process_control_flags_only_when_requeued(self):
+        video = SimpleNamespace(video_id="paused-video", status="paused")
+        host = SimpleNamespace(
+            _model_setup_state="ready",
+            _processing_queue=SimpleNamespace(
+                contains=Mock(return_value=False),
+                enqueue=Mock(return_value=True),
+                pending_ids=Mock(return_value=[video.video_id]),
+            ),
+            processingChanged=SimpleNamespace(emit=Mock()),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()),
+            _log_queue=queue.Queue(),
+        )
+        with (
+            patch(
+                "haizflow.desktop.processing_lifecycle_controller.video_store.get_video",
+                return_value=video,
+            ),
+            patch("haizflow.desktop.processing_lifecycle_controller.video_store.update_video"),
+            patch("haizflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
+            patch(
+                "haizflow.desktop.processing_lifecycle_controller.prepare_video_resume"
+            ) as prepare_resume,
+        ):
+            self.assertTrue(ProcessingLifecycleController(host).enqueue_video(video.video_id))
+
+        prepare_resume.assert_called_once_with(video.video_id)
+
+    def test_stop_batch_pauses_active_and_waiting_videos_for_resume(self):
+        active = SimpleNamespace(video_id="active", status="processing", step="translating", resume_step="")
+        waiting = SimpleNamespace(video_id="waiting", status="pending", step="queued", resume_step="")
+        videos = {active.video_id: active, waiting.video_id: waiting}
+        host = SimpleNamespace(
+            isBatchRunning=True,
+            _batch_video_ids=list(videos),
+            _batch_stop_requested=False,
+            _processing_queue=SimpleNamespace(
+                detach_pending=Mock(return_value=(active.video_id, [waiting.video_id])),
+            ),
+            _refresh_batch_model=Mock(),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+
+        with (
+            patch(
+                "haizflow.desktop.project_commands_controller.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                side_effect=lambda video_id: videos.get(video_id),
+            ),
+            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+            patch("haizflow.desktop.project_commands_controller.pause_video") as pause_process,
+        ):
+            ProjectCommandsController(host).stop_batch()
+
+        pause_process.assert_called_once_with(active.video_id)
+        self.assertEqual(update_video.call_args_list[0].kwargs["status"], "paused")
+        self.assertEqual(update_video.call_args_list[1].kwargs["status"], "paused")
+        self.assertEqual(update_video.call_args_list[1].kwargs["resume_step"], "translating")
+        self.assertTrue(host._batch_stop_requested)
+
+    def test_batch_setting_overrides_identify_each_changed_video_and_field(self):
+        common = dict(
+            mode="A", target_language="vi", tts_voice="vi-VN-HoaiMyNeural",
+            enable_audio_separation=False, original_video_volume=60,
+            background_music_volume=30, tts_volume=100, watermark_text="",
+        )
+        first = SimpleNamespace(video_id="video-1", original_filename="first.mp4", **common)
+        second = SimpleNamespace(video_id="video-2", original_filename="second.mp4", **common)
+        custom = SimpleNamespace(
+            video_id="video-3", original_filename="custom.mp4",
+            **{**common, "target_language": "en", "tts_voice": "en-US-GuyNeural", "watermark_text": "HaizFlow"},
+        )
+        videos = {video.video_id: video for video in (first, second, custom)}
+        host = SimpleNamespace(_batch_video_ids=list(videos))
+
+        with patch(
+            "haizflow.desktop.project_commands_controller.video_store.get_video",
+            side_effect=lambda video_id: videos.get(video_id),
+        ):
+            overrides = ProjectCommandsController(host).batch_setting_overrides()
+
+        self.assertEqual(overrides, [{
+            "videoId": "video-3",
+            "fileName": "custom.mp4",
+            "differences": ["targetLanguage", "voice", "watermark"],
+        }])
+
+    def test_batch_settings_apply_one_background_music_source_to_every_video(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            music = Path(temp_dir) / "music.mp3"
+            music.write_bytes(b"music")
+            videos = {
+                "video-1": SimpleNamespace(video_id="video-1", files={}),
+                "video-2": SimpleNamespace(video_id="video-2", files={}),
+            }
+            host = SimpleNamespace(
+                _batch_video_ids=list(videos),
+                _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+                _normalized_voice_for_language=Mock(return_value="vi-VN-HoaiMyNeural"),
+                refreshVideos=Mock(),
+                batchChanged=SimpleNamespace(emit=Mock()),
+            )
+            with (
+                patch(
+                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    side_effect=lambda video_id: videos.get(video_id),
+                ),
+                patch("haizflow.desktop.project_commands_controller.video_store.update_video"),
+                patch(
+                    "haizflow.desktop.project_commands_controller.set_desktop_background_music"
+                ) as set_music,
+            ):
+                applied = ProjectCommandsController(host).apply_batch_settings(
+                    "A", "vi", "", False, 60, 25, 100, "", str(music)
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual(set_music.call_count, 2)
+        self.assertEqual([call.args[1] for call in set_music.call_args_list], [str(music), str(music)])
+
+    def test_batch_page_exposes_settings_resume_and_bottom_progress(self):
+        batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(
+            encoding="utf-8"
+        )
+        settings = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('text: I18n.t("Batch settings")', batch_page)
+        self.assertNotIn("setupVisible: true", batch_page)
+        self.assertIn("AppController.batchPausedCount > 0", batch_page)
+        self.assertIn("AppController.resumeBatch()", batch_page)
+        self.assertIn("id: importCard", batch_page)
+        self.assertIn("id: batchProgressPanel", batch_page)
+        self.assertIn("Layout.maximumWidth: 640", batch_page)
+        self.assertLess(batch_page.index("id: importCard"), batch_page.index('text: I18n.t("Batch settings")'))
+        self.assertLess(batch_page.index("id: importCard"), batch_page.index('I18n.t("Processing queue")'))
+        self.assertGreater(batch_page.index("id: batchProgressPanel"), batch_page.index("id: queueList"))
+        self.assertIn('qsTr("Adding %1 / %2…")', batch_page)
+        self.assertIn("readonly property real cardWidth: Math.min(220", batch_page)
+        self.assertIn("readonly property real cardHeight: Math.round(cardWidth * 0.56 + 64)", batch_page)
+        self.assertIn("AppController.chooseBatchBackgroundMusic()", settings)
+        self.assertIn("BatchAudioMixDialog", settings)
+        self.assertIn("batchAudioMixDialog.open()", settings)
+        self.assertNotIn("AppSlider {", settings)
+        self.assertIn("onClosed: saveDraft()", settings)
+        self.assertNotIn('I18n.t("Apply to all videos")', settings)
+
+        batch_audio_dialog = (
+            ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchAudioMixDialog.qml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("AudioLevelControl", batch_audio_dialog)
+        self.assertIn("root.audioSeparationEnabled", batch_audio_dialog)
+        self.assertIn("backgroundMusicPath.length > 0", batch_audio_dialog)
+        self.assertIn("AppController.previewBatchAudioMix(", batch_audio_dialog)
+
+        dubbing_setup = (
+            ROOT / "src" / "haizflow" / "desktop" / "qml" / "DubbingSetupPanel.qml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("batchVideoSaveTimer.restart()", dubbing_setup)
+        self.assertIn("AppController.persistSelectedBatchVideoSettings()", dubbing_setup)
+        self.assertNotIn("AppController.saveSelectedVideoSettings()", dubbing_setup)
+
+    def test_batch_audio_preview_uses_draft_without_applying_settings(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "source.mp4"
+            source.write_bytes(b"video")
+            video = SimpleNamespace(video_id="batch-video", files={"video_input": str(source)})
+            controller = SimpleNamespace(
+                _batch_video_ids=[video.video_id],
+                _audio_preview=Mock(start=Mock(return_value=True)),
+                _status_message="",
+                statusMessageChanged=SimpleNamespace(emit=Mock()),
+            )
+            with patch.object(qml_controller.video_store, "get_video", return_value=video):
+                result = HaizFlowController.previewBatchAudioMix(
+                    controller, "vi", "vi-VN-HoaiMyNeural", True, 40, 25, 90, "music.mp3"
+                )
+
+        self.assertTrue(result)
+        controller._audio_preview.start.assert_called_once_with(
+            video_id="batch-video",
+            enable_audio_separation=True,
+            background_music_path="music.mp3",
+            original_volume=40,
+            background_music_volume=25,
+            tts_volume=90,
+            voice="vi-VN-HoaiMyNeural",
+            target_language="vi",
+        )
+
     def test_project_import_shutdown_wait_is_bounded_and_reports_live_workers(self):
         importer = ProjectImportController(SimpleNamespace())
         release = threading.Event()
@@ -82,6 +390,9 @@ class MultiProjectControllerTests(unittest.TestCase):
                 "vi-VN-HoaiMyNeural",
                 True,
                 35,
+                30,
+                100,
+                "HaizFlow",
             )
 
         self.assertTrue(applied)
@@ -93,6 +404,9 @@ class MultiProjectControllerTests(unittest.TestCase):
             tts_voice="en-US-JennyNeural",
             enable_audio_separation=True,
             original_video_volume=35,
+            background_music_volume=30,
+            tts_volume=100,
+            watermark_text="HaizFlow",
         )
         self.assertFalse(hasattr(controller, "_target_language"))
         controller.refreshVideos.assert_called_once()
@@ -105,6 +419,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("function loadDraft()", dialog_qml)
         self.assertIn("AppController.batchSettings()", dialog_qml)
         self.assertIn("AppController.applyBatchSettingsDraft(", dialog_qml)
+        self.assertIn("AppController.batchSettingOverrides()", dialog_qml)
+        self.assertIn("onBatchChanged()", dialog_qml)
         self.assertNotIn("AppController.workflowMode =", dialog_qml)
         self.assertNotIn("AppController.targetLanguage =", dialog_qml)
         self.assertNotIn("AppController.ttsVoice =", dialog_qml)

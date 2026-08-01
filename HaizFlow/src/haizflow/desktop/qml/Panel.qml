@@ -11,11 +11,18 @@ Rectangle {
     property int contentPadding: 20
     property int contentSpacing: 14
     property bool muted: false
+    property string tone: "default"
     default property alias content: body.data
 
-    color: muted ? Theme.surfaceElevated : Theme.surface
+    color: root.tone === "blue" ? Theme.blueSurface
+        : root.tone === "violet" ? Theme.violetSurface
+        : root.tone === "warm" ? Theme.warmSurface
+        : muted ? Theme.surfaceElevated : Theme.surface
     radius: Theme.radius
-    border.color: Theme.outline
+    border.color: root.tone === "blue" ? Theme.blueOutline
+        : root.tone === "violet" ? Theme.violetOutline
+        : root.tone === "warm" ? Theme.amberMuted
+        : Theme.outline
     border.width: 1
     implicitHeight: column.implicitHeight + contentPadding * 2
 

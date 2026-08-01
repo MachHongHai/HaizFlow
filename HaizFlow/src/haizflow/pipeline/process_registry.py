@@ -113,6 +113,18 @@ def start_video(video_id: str):
         _active_processes[video_id] = []
 
 
+def prepare_video_resume(video_id: str) -> None:
+    """Clear a completed pause request before a paused video is re-queued.
+
+    The queue owner calls this only after confirming that the video is no
+    longer active.  This also covers a pause during startup warm-up, where the
+    pipeline exits before ``process_video_sync`` can run its normal cleanup.
+    """
+    with _REGISTRY_LOCK:
+        _cancelled_videos.discard(video_id)
+        _paused_videos.discard(video_id)
+
+
 def _kill_process_tree(process: subprocess.Popen, timeout: float = 1.5):
     if process.poll() is not None:
         return

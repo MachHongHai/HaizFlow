@@ -56,6 +56,13 @@ def save_settings(settings: dict) -> dict:
         ),
     }
     with _SETTINGS_LOCK:
+        try:
+            with open(SETTINGS_PATH, "r", encoding="utf-8") as file:
+                existing = json.load(file)
+            if isinstance(existing, dict) and all(existing.get(key) == value for key, value in normalized.items()):
+                return normalized
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            pass
         SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         handle, temporary_path = tempfile.mkstemp(
             prefix=".desktop-settings-",

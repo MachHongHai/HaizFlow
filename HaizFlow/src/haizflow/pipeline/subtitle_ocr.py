@@ -26,7 +26,7 @@ from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
 
 SAMPLE_COUNT = 24
 MIN_CONFIDENCE = 0.68
-DETECTOR_CACHE_VERSION = 11
+DETECTOR_CACHE_VERSION = 12
 
 
 @dataclass(frozen=True)
@@ -204,17 +204,19 @@ def select_subtitle_region(candidates: list[TextCandidate], sample_count: int = 
         return None
 
     _rank, selected = max(viable, key=lambda item: item[0])
-    # Caption width and line count vary between cues. The 90th-percentile block
-    # height covers the normal multi-line layout without making the blur band
-    # permanently huge because of one anomalous OCR frame. Repeated three-line
-    # captions still influence this percentile and are therefore covered.
-    horizontal_padding, vertical_padding = 1.5, 0.35
-    centre_y = _percentile([item.y + item.height / 2 for item in selected], 0.50)
+    # Caption width and line count vary between cues. Use the exact widest OCR
+    # envelope and the robust 90th-percentile block height. Do not add cosmetic
+    # padding: the renderer must not blur pixels outside the detected text box.
+    widest_block = max(selected, key=lambda item: item.width)
     block_height = _percentile([item.height for item in selected], 0.90)
-    left = max(0.0, min(item.x for item in selected) - horizontal_padding)
-    top = max(0.0, centre_y - block_height / 2 - vertical_padding)
-    right = min(100.0, max(item.x + item.width for item in selected) + horizontal_padding)
-    bottom = min(100.0, centre_y + block_height / 2 + vertical_padding)
+    height_reference = min(
+        selected,
+        key=lambda item: (abs(item.height - block_height), -item.width),
+    )
+    left = max(0.0, widest_block.x)
+    top = max(0.0, height_reference.y)
+    right = min(100.0, widest_block.x + widest_block.width)
+    bottom = min(100.0, height_reference.y + height_reference.height)
     selected_lines = [
         line
         for line in merged_lines

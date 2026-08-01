@@ -28,6 +28,46 @@ class NativeMediaDialogTests(unittest.TestCase):
             controller = ProjectImportController(host)
             self.assertEqual(controller._media_dialog_directory(), "C:/Users/Example/Downloads")
 
+    def test_folder_import_prefers_the_modern_windows_explorer_picker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            selected = str(Path(temporary) / "Batch videos")
+            with (
+                patch.object(
+                    localization, "_native_windows_folder_dialog",
+                    return_value=(True, selected),
+                ) as native_picker,
+                patch.object(localization.QtFileDialog, "getExistingDirectory") as qt_picker,
+            ):
+                result = localization.QFileDialog.getExistingDirectory(
+                    None, "Choose a folder of videos for batch processing", temporary,
+                )
+
+        self.assertEqual(result, selected)
+        native_picker.assert_called_once_with(
+            "Choose a folder of videos for batch processing", str(Path(temporary).resolve()),
+        )
+        qt_picker.assert_not_called()
+
+    def test_folder_import_falls_back_to_qt_when_windows_picker_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fallback = str(Path(temporary) / "Fallback")
+            with (
+                patch.object(
+                    localization, "_native_windows_folder_dialog",
+                    return_value=(False, ""),
+                ),
+                patch.object(
+                    localization.QtFileDialog, "getExistingDirectory",
+                    return_value=fallback,
+                ) as qt_picker,
+            ):
+                result = localization.QFileDialog.getExistingDirectory(
+                    None, "Choose folder", temporary,
+                )
+
+        self.assertEqual(result, fallback)
+        qt_picker.assert_called_once()
+
     def test_background_music_link_download_runs_off_the_gui_thread(self):
         signal = mock.Mock()
         host = SimpleNamespace(

@@ -249,6 +249,30 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.background_music_volume, 30)
         self.assertEqual(migrated.tts_volume, 100)
 
+    def test_v6_metadata_gets_a_safe_empty_watermark(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        legacy = json.loads(path.read_text(encoding="utf-8"))
+        legacy["schema_version"] = 6
+        legacy.pop("watermark_text", None)
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
+        self.assertEqual(migrated.watermark_text, "")
+
+    def test_current_metadata_normalizes_unsafe_watermark_text(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        current = json.loads(path.read_text(encoding="utf-8"))
+        current["watermark_text"] = "  HaizFlow\n" + ("x" * 100)
+        path.write_text(json.dumps(current), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.watermark_text, "HaizFlow " + ("x" * 71))
+
     def test_future_video_schema_is_rejected_without_falling_back(self):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))

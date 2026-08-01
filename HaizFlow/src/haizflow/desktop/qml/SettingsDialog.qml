@@ -34,12 +34,30 @@ Dialog {
         draftDevice = AppController.processingDevice
     }
 
+    function applyDraft() {
+        if (!draftDirty)
+            return true
+        const applied = AppController.applySettings(draftTheme, draftLanguage, draftDevice)
+        if (!applied)
+            syncDrafts()
+        return applied
+    }
+
+    function scheduleApply() {
+        if (draftDirty)
+            autoApplyTimer.restart()
+    }
+
     onOpened: {
         syncDrafts()
         AppController.setHardwareTelemetryActive(true)
     }
 
-    onClosed: AppController.setHardwareTelemetryActive(false)
+    onClosed: {
+        autoApplyTimer.stop()
+        applyDraft()
+        AppController.setHardwareTelemetryActive(false)
+    }
 
     Connections {
         target: AppController
@@ -195,6 +213,7 @@ Dialog {
                         ]
                         onActivated: function (value) {
                             root.draftTheme = value
+                            root.scheduleApply()
                         }
                     }
                 }
@@ -240,6 +259,7 @@ Dialog {
                         ]
                         onActivated: function (value) {
                             root.draftLanguage = value
+                            root.scheduleApply()
                         }
                     }
                 }
@@ -293,9 +313,10 @@ Dialog {
                                     "label": I18n.t("CPU"),
                                     "value": "cpu"
                                 }
-                            ]
-                            onActivated: function (value) {
-                                root.draftDevice = value
+                        ]
+                        onActivated: function (value) {
+                            root.draftDevice = value
+                            root.scheduleApply()
                             }
                         }
                     }
@@ -519,6 +540,7 @@ Dialog {
                 iconGlyph: "\uE777"
                 tone: "ghost"
                 onClicked: {
+                    autoApplyTimer.stop()
                     AppController.resetSettings()
                     root.syncDrafts()
                 }
@@ -528,21 +550,14 @@ Dialog {
                 Layout.fillWidth: true
             }
 
-            AppButton {
-                text: I18n.t("Cancel")
-                tone: "ghost"
-                onClicked: root.close()
-            }
-
-            AppButton {
-                text: I18n.t("Apply settings")
-                iconGlyph: "\uE73E"
-                tone: "primary"
-                enabled: (root.draftTheme !== AppController.settingsTheme || root.draftLanguage !== AppController.settingsLanguage || root.draftDevice !== AppController.processingDevice)
-                onClicked: {
-                    AppController.applySettings(root.draftTheme, root.draftLanguage, root.draftDevice)
-                }
-            }
         }
+    }
+
+    Timer {
+        id: autoApplyTimer
+
+        interval: 160
+        repeat: false
+        onTriggered: root.applyDraft()
     }
 }

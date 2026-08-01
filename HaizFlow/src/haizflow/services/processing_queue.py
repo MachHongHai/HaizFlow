@@ -71,6 +71,20 @@ class SerialProcessingQueue:
                 return False
             return True
 
+    def detach_pending(self, video_ids) -> tuple[str | None, list[str]]:
+        """Atomically remove matching waiters and snapshot the active item.
+
+        Batch pause uses this to prevent the worker from promoting another
+        video in the gap between several individual ``discard`` calls.
+        """
+        targets = set(video_ids)
+        with self._lock:
+            active = self._active_video_id if self._active_video_id in targets else None
+            removed = [video_id for video_id in self._pending if video_id in targets]
+            if removed:
+                self._pending = deque(video_id for video_id in self._pending if video_id not in targets)
+            return active, removed
+
     def shutdown(self, *, timeout_seconds: float = 10.0) -> bool:
         """Stop accepting work, discard waiting items, and wait for the active runner.
 

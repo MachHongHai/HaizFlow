@@ -9,7 +9,7 @@ Dialog {
     id: root
     objectName: "batchSettingsDialog"
 
-    property bool changesApplied: false
+    property var baselineSettings: ({})
     property string draftWorkflowMode: "A"
     property string draftTargetLanguage: "vi"
     property string draftTtsVoice: ""
@@ -17,6 +17,9 @@ Dialog {
     property int draftOriginalVolume: 60
     property int draftBackgroundMusicVolume: 30
     property int draftTtsVolume: 100
+    property string draftWatermarkText: ""
+    property string draftBackgroundMusicPath: ""
+    property var settingOverrides: []
     readonly property var draftVoiceOptions: AppController.voiceOptionsForLanguage(draftTargetLanguage)
     readonly property int draftTtsVoiceIndex: {
         for (let index = 0; index < draftVoiceOptions.length; ++index) {
@@ -37,6 +40,7 @@ Dialog {
 
     function loadDraft() {
         const settings = AppController.batchSettings()
+        baselineSettings = settings
         draftWorkflowMode = settings.workflowMode || "A"
         draftTargetLanguage = settings.targetLanguage || "vi"
         draftTtsVoice = normalizedDraftVoice(draftTargetLanguage, settings.ttsVoice || "")
@@ -44,6 +48,82 @@ Dialog {
         draftOriginalVolume = Number(settings.originalVolume !== undefined ? settings.originalVolume : 60)
         draftBackgroundMusicVolume = Number(settings.backgroundMusicVolume !== undefined ? settings.backgroundMusicVolume : 30)
         draftTtsVolume = Number(settings.ttsVolume !== undefined ? settings.ttsVolume : 100)
+        draftWatermarkText = settings.watermarkText || ""
+        draftBackgroundMusicPath = settings.backgroundMusicPath || ""
+        refreshSettingOverrides()
+    }
+
+    function hasDraftChanges() {
+        return draftWorkflowMode !== (baselineSettings.workflowMode || "A")
+            || draftTargetLanguage !== (baselineSettings.targetLanguage || "vi")
+            || draftTtsVoice !== (baselineSettings.ttsVoice || "")
+            || draftEnableAudioSeparation !== Boolean(baselineSettings.enableAudioSeparation)
+            || draftOriginalVolume !== Number(baselineSettings.originalVolume !== undefined ? baselineSettings.originalVolume : 60)
+            || draftBackgroundMusicVolume !== Number(baselineSettings.backgroundMusicVolume !== undefined ? baselineSettings.backgroundMusicVolume : 30)
+            || draftTtsVolume !== Number(baselineSettings.ttsVolume !== undefined ? baselineSettings.ttsVolume : 100)
+            || draftWatermarkText !== (baselineSettings.watermarkText || "")
+            || draftBackgroundMusicPath !== (baselineSettings.backgroundMusicPath || "")
+    }
+
+    function saveDraft() {
+        if (!hasDraftChanges() || AppController.batchCount <= 0)
+            return
+        if (AppController.applyBatchSettingsDraft(
+                draftWorkflowMode,
+                draftTargetLanguage,
+                draftTtsVoice,
+                draftEnableAudioSeparation,
+                draftOriginalVolume,
+                draftBackgroundMusicVolume,
+                draftTtsVolume,
+                draftWatermarkText,
+                draftBackgroundMusicPath
+            )) {
+            baselineSettings = {
+                "workflowMode": draftWorkflowMode,
+                "targetLanguage": draftTargetLanguage,
+                "ttsVoice": draftTtsVoice,
+                "enableAudioSeparation": draftEnableAudioSeparation,
+                "originalVolume": draftOriginalVolume,
+                "backgroundMusicVolume": draftBackgroundMusicVolume,
+                "ttsVolume": draftTtsVolume,
+                "watermarkText": draftWatermarkText,
+                "backgroundMusicPath": draftBackgroundMusicPath
+            }
+            refreshSettingOverrides()
+        }
+    }
+
+    function fileName(path) {
+        const normalized = String(path || "").replace(/\\/g, "/")
+        const parts = normalized.split("/")
+        return parts.length > 0 ? parts[parts.length - 1] : normalized
+    }
+
+    function refreshSettingOverrides() {
+        settingOverrides = AppController.batchSettingOverrides()
+    }
+
+    function overrideDifferenceLabel(key) {
+        switch (key) {
+        case "workflow": return I18n.t("Workflow")
+        case "targetLanguage": return I18n.t("Target language")
+        case "voice": return I18n.t("Voice")
+        case "audioSource": return I18n.t("Audio source")
+        case "sourceVolume": return I18n.t("Source audio volume")
+        case "backgroundMusicVolume": return I18n.t("Background music volume")
+        case "ttsVolume": return I18n.t("TTS volume")
+        case "watermark": return I18n.t("Watermark")
+        case "backgroundMusic": return I18n.t("Background music")
+        default: return ""
+        }
+    }
+
+    function overrideSummary(differences) {
+        const labels = []
+        for (let index = 0; index < differences.length; ++index)
+            labels.push(overrideDifferenceLabel(differences[index]))
+        return labels.join(", ")
     }
 
     modal: true
@@ -60,8 +140,18 @@ Dialog {
     footer: null
 
     onOpened: {
-        changesApplied = false
         loadDraft()
+    }
+
+    onClosed: saveDraft()
+
+    Connections {
+        target: AppController
+
+        function onBatchChanged() {
+            if (root.visible)
+                root.refreshSettingOverrides()
+        }
     }
 
     enter: Transition {
@@ -142,6 +232,99 @@ Dialog {
                 width: detailsScroll.availableWidth
                 spacing: Theme.space20
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Theme.space24
+                    Layout.rightMargin: Theme.space24
+                    Layout.topMargin: Theme.space20
+                    Layout.preferredHeight: overrideContent.implicitHeight + Theme.space20
+                    visible: root.settingOverrides.length > 0
+                    radius: Theme.radiusSmall
+                    color: Theme.violetMuted
+                    border.width: 1
+                    border.color: Theme.violetOutline
+
+                    ColumnLayout {
+                        id: overrideContent
+
+                        anchors.fill: parent
+                        anchors.margins: Theme.space12
+                        spacing: Theme.space8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.space8
+
+                            AppIcon {
+                                Layout.preferredWidth: 18
+                                Layout.preferredHeight: 18
+                                glyph: "\uE7F8"
+                                iconColor: Theme.violet
+                                iconSize: Theme.iconSmall
+                                Accessible.ignored: true
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("%1 %2").arg(root.settingOverrides.length).arg(I18n.t("videos with custom settings"))
+                                color: Theme.text
+                                font.pixelSize: Theme.caption
+                                font.weight: Font.DemiBold
+                                textFormat: Text.PlainText
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: I18n.t("These differ from the batch settings")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.label
+                            textFormat: Text.PlainText
+                        }
+
+                        ListView {
+                            id: overrideList
+
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.min(contentHeight, 132)
+                            Layout.maximumHeight: 132
+                            clip: true
+                            model: root.settingOverrides
+                            spacing: Theme.space4
+
+                            delegate: RowLayout {
+                                id: overrideRow
+
+                                required property var modelData
+
+                                width: overrideList.width
+                                spacing: Theme.space8
+
+                                Text {
+                                    Layout.preferredWidth: Math.min(220, implicitWidth)
+                                    text: overrideRow.modelData.fileName
+                                    color: Theme.text
+                                    font.pixelSize: Theme.label
+                                    font.weight: Font.Medium
+                                    elide: Text.ElideRight
+                                    textFormat: Text.PlainText
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.overrideSummary(overrideRow.modelData.differences)
+                                    color: Theme.violet
+                                    font.pixelSize: Theme.label
+                                    elide: Text.ElideRight
+                                    textFormat: Text.PlainText
+                                }
+                            }
+
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        }
+                    }
+                }
+
                 GridLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.space24
@@ -174,7 +357,6 @@ Dialog {
                             { "label": I18n.t("Review then dub"), "value": "review" }
                         ]
                         onActivated: function(value) {
-                            root.changesApplied = false
                             root.draftWorkflowMode = value
                         }
                     }
@@ -191,7 +373,6 @@ Dialog {
                         options: AppController.targetLanguageOptions
                         selectedCode: root.draftTargetLanguage
                         onSelected: function(code) {
-                            root.changesApplied = false
                             root.draftTargetLanguage = code
                             root.draftTtsVoice = root.normalizedDraftVoice(code, root.draftTtsVoice)
                         }
@@ -210,7 +391,6 @@ Dialog {
                         model: root.draftVoiceOptions
                         currentIndex: root.draftTtsVoiceIndex
                         onActivated: {
-                            root.changesApplied = false
                             root.draftTtsVoice = currentValue
                         }
                     }
@@ -236,105 +416,106 @@ Dialog {
                             { "label": I18n.t("Separate vocals"), "value": "separated" }
                         ]
                         onActivated: function(value) {
-                            root.changesApplied = false
                             root.draftEnableAudioSeparation = value === "separated"
                         }
                     }
 
                     Text {
-                        text: I18n.t("Source audio volume")
-                        color: root.draftEnableAudioSeparation ? Theme.textSubtle : Theme.textMuted
+                        Layout.columnSpan: 2
+                        Layout.fillWidth: true
+                        visible: AppController.cpuOnly && root.draftEnableAudioSeparation
+                        text: I18n.t("Audio separation is slower in CPU mode")
+                        color: Theme.warning
                         font.pixelSize: Theme.caption
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
                     }
 
-                    RowLayout {
+                    AppButton {
+                        Layout.columnSpan: 2
                         Layout.fillWidth: true
-                        spacing: Theme.space12
-
-                        AppSlider {
-                            Layout.fillWidth: true
-                            enabled: !root.draftEnableAudioSeparation
-                            from: 0
-                            to: 100
-                            stepSize: 1
-                            value: root.draftOriginalVolume
-                            onMoved: {
-                                root.changesApplied = false
-                                root.draftOriginalVolume = Math.round(value)
-                            }
-                        }
-
-                        Text {
-                            Layout.preferredWidth: 44
-                            text: qsTr("%1%").arg(root.draftOriginalVolume)
-                            color: root.draftEnableAudioSeparation ? Theme.textSubtle : Theme.text
-                            horizontalAlignment: Text.AlignRight
-                            font.pixelSize: Theme.caption
-                            font.weight: Font.DemiBold
+                        text: I18n.t("Adjust audio levels")
+                        tone: "secondary"
+                        compact: true
+                        onClicked: {
+                            batchAudioMixDialog.audioSeparationEnabled = root.draftEnableAudioSeparation
+                            batchAudioMixDialog.originalVolume = root.draftOriginalVolume
+                            batchAudioMixDialog.ttsVolume = root.draftTtsVolume
+                            batchAudioMixDialog.backgroundMusicVolume = root.draftBackgroundMusicVolume
+                            batchAudioMixDialog.targetLanguage = root.draftTargetLanguage
+                            batchAudioMixDialog.ttsVoice = root.draftTtsVoice
+                            batchAudioMixDialog.backgroundMusicPath = root.draftBackgroundMusicPath
+                            batchAudioMixDialog.open()
                         }
                     }
 
                     Text {
-                        text: I18n.t("TTS volume")
+                        text: I18n.t("Background music")
                         color: Theme.textMuted
                         font.pixelSize: Theme.caption
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: Theme.space12
+                        spacing: Theme.space8
 
-                        AppSlider {
+                        Text {
                             Layout.fillWidth: true
-                            from: 0
-                            to: 100
-                            stepSize: 1
-                            value: root.draftTtsVolume
-                            onMoved: {
-                                root.changesApplied = false
-                                root.draftTtsVolume = Math.round(value)
+                            text: root.draftBackgroundMusicPath.length > 0
+                                ? root.fileName(root.draftBackgroundMusicPath) : I18n.t("No background music")
+                            color: root.draftBackgroundMusicPath.length > 0 ? Theme.text : Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            elide: Text.ElideMiddle
+                            textFormat: Text.PlainText
+                        }
+
+                        AppButton {
+                            text: root.draftBackgroundMusicPath.length > 0
+                                ? I18n.t("Change music") : I18n.t("Add music")
+                            compact: true
+                            onClicked: {
+                                const path = AppController.chooseBatchBackgroundMusic()
+                                if (path.length > 0) {
+                                    root.draftBackgroundMusicPath = path
+                                }
                             }
                         }
 
-                        Text {
-                            Layout.preferredWidth: 44
-                            text: qsTr("%1%").arg(root.draftTtsVolume)
-                            color: Theme.text
-                            horizontalAlignment: Text.AlignRight
-                            font.pixelSize: Theme.caption
-                            font.weight: Font.DemiBold
+                        IconButton {
+                            visible: root.draftBackgroundMusicPath.length > 0
+                            glyph: "\uE74D"
+                            toolTipText: I18n.t("Remove background music")
+                            onClicked: {
+                                root.draftBackgroundMusicPath = ""
+                            }
                         }
                     }
 
                     Text {
-                        text: I18n.t("Background music volume")
+                        text: I18n.t("Watermark")
                         color: Theme.textMuted
                         font.pixelSize: Theme.caption
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: Theme.space12
-
-                        AppSlider {
-                            Layout.fillWidth: true
-                            from: 0
-                            to: 100
-                            stepSize: 1
-                            value: root.draftBackgroundMusicVolume
-                            onMoved: {
-                                root.changesApplied = false
-                                root.draftBackgroundMusicVolume = Math.round(value)
-                            }
-                        }
+                        spacing: Theme.space8
 
                         Text {
-                            Layout.preferredWidth: 44
-                            text: qsTr("%1%").arg(root.draftBackgroundMusicVolume)
-                            color: Theme.text
-                            horizontalAlignment: Text.AlignRight
+                            Layout.fillWidth: true
+                            text: root.draftWatermarkText.length > 0
+                                ? root.draftWatermarkText : I18n.t("No watermark")
+                            color: root.draftWatermarkText.length > 0 ? Theme.text : Theme.textMuted
                             font.pixelSize: Theme.caption
-                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                            textFormat: Text.PlainText
+                        }
+
+                        AppButton {
+                            text: root.draftWatermarkText.length > 0
+                                ? I18n.t("Edit watermark") : I18n.t("Add watermark")
+                            compact: true
+                            onClicked: batchWatermarkDialog.openWithText(root.draftWatermarkText)
                         }
                     }
                 }
@@ -348,50 +529,22 @@ Dialog {
             }
         }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
+    }
+
+    WatermarkDialog {
+        id: batchWatermarkDialog
+        onWatermarkAccepted: function(text) {
+            root.draftWatermarkText = text
         }
+    }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 72
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space24
-            spacing: Theme.space12
+    BatchAudioMixDialog {
+        id: batchAudioMixDialog
 
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("%1 %2").arg(AppController.batchCount).arg(I18n.t("videos"))
-                color: Theme.textMuted
-                font.pixelSize: Theme.caption
-            }
-
-            AppButton {
-                text: I18n.t("Cancel")
-                tone: "ghost"
-                onClicked: root.close()
-            }
-
-            AppButton {
-                text: I18n.t("Apply to all videos")
-                iconGlyph: "\uE73E"
-                tone: "primary"
-                enabled: AppController.batchCount > 0 && !root.changesApplied
-                onClicked: {
-                    if (AppController.applyBatchSettingsDraft(
-                            root.draftWorkflowMode,
-                            root.draftTargetLanguage,
-                            root.draftTtsVoice,
-                            root.draftEnableAudioSeparation,
-                            root.draftOriginalVolume,
-                            root.draftBackgroundMusicVolume,
-                            root.draftTtsVolume
-                        ))
-                        root.changesApplied = true
-                }
-            }
+        onAudioLevelsEdited: function(originalVolume, ttsVolume, backgroundMusicVolume) {
+            root.draftOriginalVolume = originalVolume
+            root.draftTtsVolume = ttsVolume
+            root.draftBackgroundMusicVolume = backgroundMusicVolume
         }
     }
 }

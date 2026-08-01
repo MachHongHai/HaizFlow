@@ -198,6 +198,21 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(saved["processing_device"], "cpu")
         self.assertEqual(loaded["processing_device"], "cpu")
 
+    def test_saving_identical_desktop_settings_does_not_create_a_new_temp_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_path = desktop_settings.SETTINGS_PATH
+            desktop_settings.SETTINGS_PATH = Path(temp_dir) / "desktop-settings.json"
+            try:
+                settings = {"theme": "dark", "language": "en", "processing_device": "cpu"}
+                desktop_settings.save_settings(settings)
+                with mock.patch.object(desktop_settings.tempfile, "mkstemp") as make_temp:
+                    saved = desktop_settings.save_settings(settings)
+            finally:
+                desktop_settings.SETTINGS_PATH = original_path
+
+        self.assertEqual(saved["processing_device"], "cpu")
+        make_temp.assert_not_called()
+
     def test_legacy_auto_device_setting_migrates_to_detected_cpu_or_gpu(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             settings_path = Path(temp_dir) / "desktop-settings.json"

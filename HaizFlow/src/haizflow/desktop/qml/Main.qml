@@ -116,7 +116,7 @@ ApplicationWindow {
         if (currentRoute === routeBatchVideo
                 && AppController.isSelectedBatchVideo
                 && !AppController.isSelectedVideoProcessing)
-            AppController.saveSelectedVideoSettings()
+            AppController.persistSelectedBatchVideoSettings()
     }
 
     Component.onCompleted: {

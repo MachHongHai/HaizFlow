@@ -587,7 +587,11 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         original_subtitle_region = detect_original_subtitle_region(video_input, os.path.join(video_dir, "temp"), video_id)
         render_signature = _signature(
             timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
-            "automatic-original-subtitle-ocr-v6", original_subtitle_region,
+            # Bump when changing the visual treatment so a previously rendered
+            # luma-only result is never reused as a valid final export.
+            "automatic-original-subtitle-ocr-v10", original_subtitle_region,
+            "watermark-white-no-outline-v2",
+            getattr(video, "watermark_text", ""),
         )
         if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(video, "render", render_signature, [final_video]):
             reporter.update(99, "rendering", "Reusing rendered video checkpoint")
@@ -597,6 +601,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             render_video(
                 video_input, voice_output, srt_output, final_video, video.output_format,
                 default_subtitle_style, video.crop, video_id, original_subtitle_region,
+                getattr(video, "watermark_text", ""),
             )
             _mark_checkpoint(video, "render", render_signature)
 

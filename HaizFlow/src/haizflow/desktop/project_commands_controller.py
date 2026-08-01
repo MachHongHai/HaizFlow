@@ -12,7 +12,7 @@ from haizflow.desktop.localization import QMessageBox
 from haizflow.core.hardware import runtime_profile
 from haizflow.pipeline.process_registry import cancel_video, pause_video
 from haizflow.services import project_store, video_store
-from haizflow.services.desktop_videos import create_desktop_video
+from haizflow.services.desktop_videos import create_desktop_video, set_desktop_background_music
 
 
 class ProjectCommandsController:
@@ -37,6 +37,29 @@ class ProjectCommandsController:
             return
         host.batchChanged.emit()
 
+    def resume_batch(self) -> None:
+        """Resume paused work and include any newly added pending videos."""
+        host = self._host
+        resumable_ids = []
+        for video_id in host._batch_video_ids:
+            video = video_store.get_video(video_id)
+            if video and video.status in {"paused", "pending"} and not host._processing_queue.contains(video_id):
+                resumable_ids.append(video_id)
+        if not resumable_ids:
+            QMessageBox.information(None, "Batch queue", "There are no paused videos to resume.")
+            return
+        host._batch_running = True
+        host._batch_stop_requested = False
+        queued = host._enqueue_videos(resumable_ids)
+        if not queued:
+            host._batch_running = False
+            QMessageBox.information(None, "Batch queue", "These videos are already waiting or processing.")
+            return
+        for video_id in resumable_ids:
+            if host._processing_queue.contains(video_id):
+                video_store.log_to_video(video_id, "Batch resumed from its saved processing state.")
+        host.batchChanged.emit()
+
     def batch_settings_values(self) -> dict[str, object]:
         host = self._host
         videos = [video for video_id in host._batch_video_ids if (video := video_store.get_video(video_id))]
@@ -49,15 +72,28 @@ class ProjectCommandsController:
                 "originalVolume": host._original_volume,
                 "backgroundMusicVolume": host._background_music_volume,
                 "ttsVolume": host._tts_volume,
+                "watermarkText": host._watermark_text,
+                "backgroundMusicPath": getattr(host, "_background_music_path", ""),
             }
         common, _count = Counter(
             (
                 video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
-                video.original_video_volume, getattr(video, "background_music_volume", 30), getattr(video, "tts_volume", 100),
+                video.original_video_volume, getattr(video, "background_music_volume", 30), getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
             )
             for video in videos
         ).most_common(1)[0]
-        workflow_mode, target_language, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume = common
+        workflow_mode, target_language, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume, watermark_text = common
+        baseline_video = next(
+            (video for video in videos if (
+                video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
+                video.original_video_volume, getattr(video, "background_music_volume", 30),
+                getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
+            ) == common),
+            videos[0],
+        )
+        background_music_path = str((baseline_video.files or {}).get("background_music") or "")
+        if background_music_path and not os.path.isfile(background_music_path):
+            background_music_path = ""
         target_language = str(target_language or "vi")
         return {
             "workflowMode": "review" if workflow_mode == "review" else "A",
@@ -67,11 +103,57 @@ class ProjectCommandsController:
             "originalVolume": int(original_volume),
             "backgroundMusicVolume": int(background_music_volume),
             "ttsVolume": int(tts_volume),
+            "watermarkText": str(watermark_text or ""),
+            "backgroundMusicPath": background_music_path,
         }
+
+    def batch_setting_overrides(self) -> list[dict[str, object]]:
+        """List videos whose saved configuration differs from the batch default.
+
+        The common (most frequent) configuration is the batch default.  This
+        makes individual overrides visible without overwriting them or adding
+        another mutable project-level copy of the settings.
+        """
+        host = self._host
+        videos = [video for video_id in host._batch_video_ids if (video := video_store.get_video(video_id))]
+        if len(videos) < 2:
+            return []
+
+        def values(video) -> tuple[object, ...]:
+            music_path = str((getattr(video, "files", None) or {}).get("background_music") or "")
+            music_signature = (os.path.splitext(music_path)[1].lower(), os.path.getsize(music_path)) if os.path.isfile(music_path) else ()
+            return (
+                "review" if video.mode == "review" else "A",
+                str(video.target_language or "vi"),
+                str(video.tts_voice or ""),
+                bool(video.enable_audio_separation),
+                int(video.original_video_volume),
+                int(getattr(video, "background_music_volume", 30)),
+                int(getattr(video, "tts_volume", 100)),
+                " ".join(str(getattr(video, "watermark_text", "") or "").split())[:80],
+                music_signature,
+            )
+
+        keys = (
+            "workflow", "targetLanguage", "voice", "audioSource",
+            "sourceVolume", "backgroundMusicVolume", "ttsVolume", "watermark",
+            "backgroundMusic",
+        )
+        baseline, _count = Counter(values(video) for video in videos).most_common(1)[0]
+        overrides = []
+        for video in videos:
+            differences = [key for key, value, expected in zip(keys, values(video), baseline) if value != expected]
+            if differences:
+                overrides.append({
+                    "videoId": video.video_id,
+                    "fileName": video.original_filename,
+                    "differences": differences,
+                })
+        return overrides
 
     def apply_batch_settings(
         self, workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
-        background_music_volume=None, tts_volume=None,
+        background_music_volume=None, tts_volume=None, watermark_text=None, background_music_path=None,
     ) -> bool:
         host = self._host
         mode = "review" if workflow_mode == "review" else "A"
@@ -80,6 +162,15 @@ class ProjectCommandsController:
         apply_mix_volumes = background_music_volume is not None or tts_volume is not None
         background_music_volume = getattr(host, "_background_music_volume", 30) if background_music_volume is None else int(background_music_volume)
         tts_volume = getattr(host, "_tts_volume", 100) if tts_volume is None else int(tts_volume)
+        apply_watermark = watermark_text is not None
+        watermark_text = " ".join(str(watermark_text or "").split())[:80]
+        apply_background_music = background_music_path is not None
+        background_music_path = os.path.abspath(str(background_music_path or "").strip()) if background_music_path else ""
+        if apply_background_music and background_music_path and (
+            not os.path.isfile(background_music_path) or os.path.getsize(background_music_path) <= 0
+        ):
+            QMessageBox.warning(None, "Background music", "The selected background music is no longer available.")
+            return False
         updated = 0
         for video_id in host._batch_video_ids:
             if not video_store.get_video(video_id) or host._processing_queue.contains(video_id):
@@ -97,6 +188,14 @@ class ProjectCommandsController:
                     background_music_volume=max(0, min(100, background_music_volume)),
                     tts_volume=max(0, min(100, tts_volume)),
                 )
+            if apply_watermark:
+                changes["watermark_text"] = watermark_text
+            if apply_background_music:
+                try:
+                    set_desktop_background_music(video_store.get_video(video_id), background_music_path)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    QMessageBox.warning(None, "Background music", f"Could not apply background music to every video: {exc}")
+                    return False
             video_store.update_video(video_id, **changes)
             updated += 1
         if not updated:
@@ -116,6 +215,7 @@ class ProjectCommandsController:
         host._original_volume = values["originalVolume"]
         host._background_music_volume = values["backgroundMusicVolume"]
         host._tts_volume = values["ttsVolume"]
+        host._watermark_text = values["watermarkText"]
         host.workflowModeChanged.emit()
         host.targetLanguageChanged.emit()
         host.ttsVoiceChanged.emit()
@@ -124,14 +224,23 @@ class ProjectCommandsController:
         host.originalVolumeChanged.emit()
         host.backgroundMusicVolumeChanged.emit()
         host.ttsVolumeChanged.emit()
+        host.watermarkTextChanged.emit()
 
     def save_selected_video_settings(self) -> bool:
+        return self._persist_selected_video_settings(log_change=True)
+
+    def persist_selected_video_settings(self) -> bool:
+        """Persist an edited batch video without adding a noisy log entry."""
+        return self._persist_selected_video_settings(log_change=False)
+
+    def _persist_selected_video_settings(self, *, log_change: bool) -> bool:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if not video or video.project_type != "batch" or host._processing_queue.contains(video.video_id):
             return False
         host._apply_setup_to_video(video)
-        video_store.log_to_video(video.video_id, "Per-video dubbing settings saved.")
+        if log_change:
+            video_store.log_to_video(video.video_id, "Per-video dubbing settings saved.")
         host.refreshVideos()
         host.selectedVideoChanged.emit()
         host.batchChanged.emit()
@@ -141,19 +250,37 @@ class ProjectCommandsController:
         host = self._host
         if not host.isBatchRunning:
             return
-        if QMessageBox.question(None, "Stop batch", "Stop the active video and cancel the remaining queue?") != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(None, "Pause batch", "Pause the active video and the remaining queue? You can resume this batch later.") != QMessageBox.StandardButton.Yes:
             return
         host._batch_stop_requested = True
-        active_video_id = host._processing_queue.active_video_id
-        if active_video_id in host._batch_video_ids:
-            cancel_video(active_video_id)
-            video_store.update_video(active_video_id, status="cancelled", error=None, step="cancelled")
-            video_store.log_to_video(active_video_id, "Batch stop requested. Active subprocesses were force-stopped.")
-        for video_id in host._batch_video_ids:
+        active_video_id, waiting_video_ids = host._processing_queue.detach_pending(host._batch_video_ids)
+        # Remove waiting items first so the worker cannot promote the next one
+        # while the active subprocess tree is winding down.
+        for video_id in waiting_video_ids:
             video = video_store.get_video(video_id)
-            if video and host._processing_queue.discard(video_id):
-                video_store.update_video(video_id, status="cancelled", error=None, step="cancelled")
-                video_store.log_to_video(video_id, "Cancelled while waiting in the processing queue.")
+            if video:
+                video_store.update_video(
+                    video_id,
+                    status="paused",
+                    error=None,
+                    step="paused",
+                    resume_step=video.resume_step or "",
+                    step_detail="Paused while waiting in the processing queue",
+                )
+                video_store.log_to_video(video_id, "Paused while waiting in the batch queue.")
+        if active_video_id in host._batch_video_ids:
+            active_video = video_store.get_video(active_video_id)
+            resume_step = active_video.step if active_video else ""
+            pause_video(active_video_id)
+            video_store.update_video(
+                active_video_id,
+                status="paused",
+                error=None,
+                step="paused",
+                resume_step=resume_step,
+                step_detail=f"Paused during {resume_step or 'startup'}",
+            )
+            video_store.log_to_video(active_video_id, "Batch pause requested. Active subprocesses were stopped safely.")
         host._refresh_batch_model()
         host.batchChanged.emit()
 

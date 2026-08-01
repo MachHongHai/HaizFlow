@@ -82,6 +82,7 @@ class HaizFlowController(QObject):
     originalVolumeChanged = Signal()
     backgroundMusicVolumeChanged = Signal()
     ttsVolumeChanged = Signal()
+    watermarkTextChanged = Signal()
     backgroundMusicChanged = Signal()
     backgroundMusicImportChanged = Signal()
     audioPreviewChanged = Signal()
@@ -122,6 +123,7 @@ class HaizFlowController(QObject):
         self._original_volume = 60
         self._background_music_volume = 30
         self._tts_volume = 100
+        self._watermark_text = ""
         self._background_music_path = ""
         self._background_music_import_busy = False
         self._background_music_import_status = ""
@@ -539,6 +541,11 @@ class HaizFlowController(QObject):
         )
 
     @Property(int, notify=batchChanged)
+    def batchPausedCount(self):
+        videos = self._batch_catalog_videos()
+        return sum(1 for video in videos if video and video.status == "paused")
+
+    @Property(int, notify=batchChanged)
     def batchProgress(self):
         videos = self._batch_catalog_videos()
         return round(sum(video.progress for video in videos) / len(videos)) if videos else 0
@@ -689,6 +696,17 @@ class HaizFlowController(QObject):
         if self._tts_volume != value:
             self._tts_volume = value
             self.ttsVolumeChanged.emit()
+
+    @Property(str, notify=watermarkTextChanged)
+    def watermarkText(self):
+        return self._watermark_text
+
+    @watermarkText.setter
+    def watermarkText(self, value):
+        normalized = " ".join(str(value or "").split())[:80]
+        if self._watermark_text != normalized:
+            self._watermark_text = normalized
+            self.watermarkTextChanged.emit()
 
     @Property(str, notify=backgroundMusicChanged)
     def backgroundMusicPath(self):
@@ -1164,6 +1182,10 @@ class HaizFlowController(QObject):
     def browseBackgroundMusic(self):
         HaizFlowController._project_import_for(self).browse_background_music()
 
+    @Slot(result=str)
+    def chooseBatchBackgroundMusic(self):
+        return HaizFlowController._project_import_for(self).choose_batch_background_music()
+
     @Slot(str, result=bool)
     def importBackgroundMusicFromLink(self, url):
         return HaizFlowController._project_import_for(self).import_background_music_link(url)
@@ -1179,6 +1201,41 @@ class HaizFlowController(QObject):
     @Slot(result=bool)
     def previewAudioMix(self):
         return self._audio_preview.start()
+
+    @Slot(str, str, bool, int, int, int, str, result=bool)
+    def previewBatchAudioMix(
+        self,
+        target_language: str,
+        tts_voice: str,
+        enable_audio_separation: bool,
+        original_volume: int,
+        background_music_volume: int,
+        tts_volume: int,
+        background_music_path: str,
+    ):
+        """Preview a batch draft without applying it to each video."""
+        preview_video_id = next(
+            (
+                video_id for video_id in self._batch_video_ids
+                if (video := video_store.get_video(video_id))
+                and os.path.isfile(str((video.files or {}).get("video_input") or ""))
+            ),
+            "",
+        )
+        if not preview_video_id:
+            self._status_message = "Add a video to the batch before previewing the audio mix."
+            self.statusMessageChanged.emit()
+            return False
+        return self._audio_preview.start(
+            video_id=preview_video_id,
+            enable_audio_separation=enable_audio_separation,
+            background_music_path=background_music_path,
+            original_volume=original_volume,
+            background_music_volume=background_music_volume,
+            tts_volume=tts_volume,
+            voice=tts_voice,
+            target_language=target_language,
+        )
 
     @Slot(str, result=bool)
     def replaceSelectedVideoVideo(self, path):
@@ -1268,6 +1325,10 @@ class HaizFlowController(QObject):
     def startBatch(self):
         HaizFlowController._project_commands_for(self).start_batch()
 
+    @Slot()
+    def resumeBatch(self):
+        HaizFlowController._project_commands_for(self).resume_batch()
+
     def _batch_settings_values(self) -> dict[str, object]:
         return HaizFlowController._project_commands_for(self).batch_settings_values()
 
@@ -1275,6 +1336,10 @@ class HaizFlowController(QObject):
     def batchSettings(self):
         """Return a batch draft without mutating shared editor state."""
         return self._batch_settings_values()
+
+    @Slot(result="QVariantList")
+    def batchSettingOverrides(self):
+        return HaizFlowController._project_commands_for(self).batch_setting_overrides()
 
     def _apply_batch_settings(
         self,
@@ -1285,10 +1350,12 @@ class HaizFlowController(QObject):
         original_volume: int,
         background_music_volume=None,
         tts_volume=None,
+        watermark_text=None,
+        background_music_path=None,
     ) -> bool:
         return HaizFlowController._project_commands_for(self).apply_batch_settings(
             workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
-            background_music_volume, tts_volume,
+            background_music_volume, tts_volume, watermark_text, background_music_path,
         )
 
     @Slot(result=bool)
@@ -1301,9 +1368,10 @@ class HaizFlowController(QObject):
             self._original_volume,
             self._background_music_volume,
             self._tts_volume,
+            self._watermark_text,
         )
 
-    @Slot(str, str, str, bool, int, int, int, result=bool)
+    @Slot(str, str, str, bool, int, int, int, str, str, result=bool)
     def applyBatchSettingsDraft(
         self,
         workflow_mode: str,
@@ -1313,6 +1381,8 @@ class HaizFlowController(QObject):
         original_volume: int,
         background_music_volume: int | None = None,
         tts_volume: int | None = None,
+        watermark_text: str | None = None,
+        background_music_path: str | None = None,
     ):
         return self._apply_batch_settings(
             workflow_mode,
@@ -1322,6 +1392,8 @@ class HaizFlowController(QObject):
             original_volume,
             background_music_volume,
             tts_volume,
+            watermark_text,
+            background_music_path,
         )
 
     @Slot()
@@ -1331,6 +1403,10 @@ class HaizFlowController(QObject):
     @Slot(result=bool)
     def saveSelectedVideoSettings(self):
         return HaizFlowController._project_commands_for(self).save_selected_video_settings()
+
+    @Slot(result=bool)
+    def persistSelectedBatchVideoSettings(self):
+        return HaizFlowController._project_commands_for(self).persist_selected_video_settings()
 
     @Slot()
     def stopBatch(self):
@@ -1600,6 +1676,7 @@ class HaizFlowController(QObject):
             original_video_volume=self._original_volume,
             background_music_volume=self._background_music_volume,
             tts_volume=self._tts_volume,
+            watermark_text=self._watermark_text,
             background_music_path=self._background_music_path,
             project_name=self._project_name,
             project_directory=self._project_directory,
@@ -1622,6 +1699,7 @@ class HaizFlowController(QObject):
             "original_video_volume": config.original_video_volume,
             "background_music_volume": config.background_music_volume,
             "tts_volume": config.tts_volume,
+            "watermark_text": config.watermark_text,
             "project_type": config.project_type,
         }
         if review_approved is not None:

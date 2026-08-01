@@ -7,6 +7,7 @@ Rectangle {
 
     property string text: ""
     property string emptyText: I18n.t("No logs loaded.")
+    property bool compact: false
 
     radius: Theme.radiusSmall
     color: Theme.codeSurface
@@ -20,7 +21,7 @@ Rectangle {
         property bool programmaticScroll: false
 
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.margins: root.compact ? 10 : 14
         clip: true
         contentWidth: width
         contentHeight: Math.max(height, logText.paintedHeight)
@@ -54,7 +55,7 @@ Rectangle {
             selectedTextColor: Theme.textOnAccent
             selectionColor: Theme.interactive
             font.family: "Cascadia Mono"
-            font.pixelSize: 12
+            font.pixelSize: root.compact ? 11 : 12
             textFormat: TextEdit.PlainText
         }
 

@@ -23,6 +23,7 @@ Button {
 
     readonly property color foregroundColor: !enabled ? Theme.textDisabled
         : tone === "primary" ? Theme.textOnAccent
+        : tone === "violet" ? Theme.textOnAccent
         : tone === "danger" ? Theme.danger
         : Theme.text
 
@@ -61,12 +62,13 @@ Button {
         radius: Theme.radiusSmall
         color: !root.enabled ? Theme.surfaceMuted
             : root.tone === "primary" ? (root.down ? Theme.interactivePressed : root.hovered ? Theme.interactiveHover : Theme.interactive)
+            : root.tone === "violet" ? (root.down ? Theme.violetOutline : root.hovered ? Theme.violet : Theme.violet)
             : root.tone === "ghost" ? (root.down ? Theme.surfaceStrong : root.hovered ? Theme.surfaceMuted : "transparent")
             : root.tone === "danger" ? (root.down || root.hovered ? Theme.dangerMuted : "transparent")
             : root.down ? Theme.surfaceStrong
             : root.hovered ? Theme.surfaceMuted
             : Theme.surfaceElevated
-        border.width: root.activeFocus ? 2 : root.tone === "primary" ? 0 : 1
+        border.width: root.activeFocus ? 2 : root.tone === "primary" || root.tone === "violet" ? 0 : 1
         border.color: root.activeFocus ? Theme.focus
             : root.tone === "danger" ? Theme.danger
             : Theme.outline

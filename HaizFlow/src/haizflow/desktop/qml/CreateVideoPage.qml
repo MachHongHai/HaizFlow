@@ -9,7 +9,7 @@ Item {
     signal requestReviewTranslation()
     signal requestUrlImport()
 
-    readonly property bool wideLayout: width >= 1380
+    readonly property bool wideLayout: width >= 1120
 
     onWideLayoutChanged: {
         if (wideLayout)
@@ -79,8 +79,9 @@ Item {
                     Layout.column: 0
                     Layout.fillWidth: true
                     Layout.fillHeight: root.wideLayout
-                    Layout.minimumWidth: 390
-                    Layout.preferredWidth: root.wideLayout ? 440 : 480
+                    Layout.minimumWidth: root.wideLayout ? 360 : 390
+                    Layout.preferredWidth: root.wideLayout ? 420 : 480
+                    Layout.maximumWidth: root.wideLayout ? 500 : 16777215
                     Layout.minimumHeight: 460
                     Layout.preferredHeight: 660
                     onRequestUrlImport: root.requestUrlImport()
@@ -91,8 +92,8 @@ Item {
                     Layout.column: 1
                     Layout.fillWidth: true
                     Layout.fillHeight: root.wideLayout
-                    Layout.minimumWidth: 330
-                    Layout.preferredWidth: root.wideLayout ? 370 : 440
+                    Layout.minimumWidth: root.wideLayout ? 460 : 330
+                    Layout.preferredWidth: root.wideLayout ? 620 : 440
                     Layout.minimumHeight: 460
                     Layout.preferredHeight: 660
                 }
@@ -103,10 +104,11 @@ Item {
                     Layout.columnSpan: root.wideLayout ? 1 : 2
                     Layout.fillWidth: true
                     Layout.fillHeight: root.wideLayout
-                    Layout.minimumWidth: root.wideLayout ? 390 : 0
-                    Layout.minimumHeight: root.wideLayout ? 460 : 260
-                    Layout.preferredWidth: 540
-                    Layout.preferredHeight: root.wideLayout ? 660 : 300
+                    Layout.minimumWidth: root.wideLayout ? 260 : 0
+                    Layout.minimumHeight: root.wideLayout ? 460 : 220
+                    Layout.preferredWidth: root.wideLayout ? 300 : 540
+                    Layout.maximumWidth: root.wideLayout ? 340 : 16777215
+                    Layout.preferredHeight: root.wideLayout ? 660 : 250
                 }
             }
 

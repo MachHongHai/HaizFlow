@@ -26,14 +26,23 @@ Rectangle {
         : status === "failed" || status === "cancelled" ? Theme.danger
         : status === "processing" ? Theme.warning
         : Theme.textMuted
+    readonly property color baseColor: status === "processing" ? Theme.warmSurface
+        : status === "awaiting_review" ? Theme.violetSurface
+        : status === "failed" || status === "cancelled" ? Theme.dangerMuted
+        : Theme.surface
+    readonly property color stateOutline: status === "processing" ? Theme.amberMuted
+        : status === "awaiting_review" ? Theme.violetOutline
+        : status === "failed" || status === "cancelled" ? Theme.danger
+        : Theme.outline
 
     radius: Theme.radius
-    color: hoverHandler.hovered ? Theme.surfaceMuted : Theme.surface
+    color: hoverHandler.hovered ? Theme.surfaceMuted : root.baseColor
     border.width: activeFocus ? 2 : 1
-    border.color: activeFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : Theme.outline
+    border.color: activeFocus ? Theme.focus
+        : hoverHandler.hovered ? Theme.outlineStrong : root.stateOutline
     focusPolicy: Qt.TabFocus
     Accessible.role: Accessible.Button
-    Accessible.name: fileName
+    Accessible.name: qsTr("%1, %2").arg(fileName).arg(I18n.t("Edit video settings"))
     scale: tapHandler.pressed ? 0.99 : 1
 
     function resetFocusState() {
@@ -70,7 +79,7 @@ Rectangle {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.round(root.width * 0.58)
+            Layout.preferredHeight: Math.round(root.width * 0.56)
             radius: Theme.radius
             color: Theme.video
             clip: true
@@ -80,7 +89,7 @@ Rectangle {
                 anchors.fill: parent
                 source: root.thumbnailSource
                 sourceSize.width: Math.round(root.width * 2)
-                sourceSize.height: Math.round(root.width * 1.16)
+                sourceSize.height: Math.round(root.width * 1.12)
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 visible: status === Image.Ready
@@ -125,11 +134,11 @@ Rectangle {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: Theme.space12
-            Layout.rightMargin: Theme.space12
-            Layout.topMargin: Theme.space8
-            Layout.bottomMargin: Theme.space8
-            spacing: Theme.space4
+            Layout.leftMargin: 14
+            Layout.rightMargin: 14
+            Layout.topMargin: 11
+            Layout.bottomMargin: 11
+            spacing: 7
 
             Text {
                 Layout.fillWidth: true
@@ -167,6 +176,15 @@ Rectangle {
                     font.pixelSize: Theme.caption
                     font.weight: Font.DemiBold
                     textFormat: Text.PlainText
+                }
+
+                AppIcon {
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    glyph: "\uE70F"
+                    iconColor: hoverHandler.hovered ? Theme.violet : Theme.textSubtle
+                    iconSize: Theme.iconSmall
+                    Accessible.ignored: true
                 }
             }
         }

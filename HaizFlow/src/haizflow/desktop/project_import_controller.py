@@ -615,6 +615,22 @@ class ProjectImportController:
         if path:
             self.set_background_music(path)
 
+    def choose_batch_background_music(self) -> str:
+        """Choose a batch music source without mutating any video draft."""
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Choose background music for the batch",
+            self._media_dialog_directory(),
+            "Audio or video files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.mp4 *.mov *.mkv *.webm *.avi);;All files (*.*)",
+        )
+        if not path:
+            return ""
+        path = os.path.abspath(path)
+        if not os.path.isfile(path) or os.path.getsize(path) <= 0:
+            QMessageBox.warning(None, "Background music", "Choose an available audio or video file.")
+            return ""
+        return path
+
     def set_background_music(self, path: str) -> bool:
         host = self._host
         source_path = os.path.abspath(str(path or "").strip()) if path else ""
