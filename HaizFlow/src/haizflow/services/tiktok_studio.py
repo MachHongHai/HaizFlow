@@ -30,6 +30,10 @@ class StudioPreparationResult:
         return self.video_attached and self.caption_filled
 
 
+class _HashtagSelectionError(RuntimeError):
+    """Stop retries after TikTok rejects a real hashtag selection."""
+
+
 class _CdpClient:
     def __init__(self, websocket):
         self._websocket = websocket
@@ -199,6 +203,8 @@ def _wait_and_fill_caption(
                 # value. Re-query the current node and replace its whole value;
                 # never append to the stale Draft.js node.
                 cancel.wait(0.6)
+        except _HashtagSelectionError:
+            return False
         except (RuntimeError, TimeoutError):
             if attempts >= 3:
                 return False
@@ -236,7 +242,34 @@ def _type_caption_with_cdp(client: _CdpClient, object_id: str, post_text: str) -
         _dispatch_editor_key(client, "keyUp", "a", "KeyA", 65, modifiers=2)
         _dispatch_editor_key(client, "rawKeyDown", "Backspace", "Backspace", 8)
         _dispatch_editor_key(client, "keyUp", "Backspace", "Backspace", 8)
-        client.call("Input.insertText", {"text": post_text}, timeout=10)
+        caption, hashtags = _split_caption_and_hashtags(post_text)
+        initial_text = caption if hashtags else post_text
+        if initial_text:
+            client.call("Input.insertText", {"text": initial_text}, timeout=10)
+
+        if hashtags:
+            if caption and not _wait_for_fresh_caption_value(
+                client,
+                caption,
+                timeout_seconds=2.5,
+                stable_samples=2,
+            ):
+                return False
+            for index, hashtag in enumerate(hashtags):
+                separator = "\n" if index == 0 and caption else " "
+                if not _append_hashtag_with_cdp(client, hashtag, separator=separator):
+                    _restore_plain_post_text(client, post_text)
+                    raise _HashtagSelectionError(f"Could not type {hashtag} into TikTok Studio.")
+                if not _select_matching_hashtag_suggestion(client, hashtag, timeout_seconds=3.0):
+                    _restore_plain_post_text(client, post_text)
+                    raise _HashtagSelectionError(f"TikTok did not accept {hashtag} as a hashtag.")
+
+            return _wait_for_fresh_caption_value(
+                client,
+                post_text,
+                timeout_seconds=2.5,
+                stable_samples=3,
+            )
     else:
         client.call("Input.insertText", {"text": post_text}, timeout=10)
         client.call(
@@ -250,29 +283,106 @@ def _type_caption_with_cdp(client: _CdpClient, object_id: str, post_text: str) -
             timeout=3,
         )
 
-    if not _wait_for_fresh_caption_value(
+    return _wait_for_fresh_caption_value(
         client,
         post_text,
         timeout_seconds=2.5,
         stable_samples=4,
-    ):
+    )
+
+
+def _append_hashtag_with_cdp(
+    client: _CdpClient,
+    hashtag: str,
+    *,
+    separator: str,
+) -> bool:
+    """Use Draft.js' native keyboard selection, then type one hashtag at the end."""
+    try:
+        editor_result = client.call(
+            "Runtime.evaluate",
+            {"expression": _caption_editor_expression(), "returnByValue": False},
+            timeout=3,
+        )
+        object_id = str((editor_result.get("result") or {}).get("objectId") or "")
+        if not object_id:
+            return False
+        focused = client.call(
+            "Runtime.callFunctionOn",
+            {
+                "objectId": object_id,
+                "functionDeclaration": """function() {
+                    this.focus();
+                    return { focused: document.activeElement === this };
+                }""",
+                "returnByValue": True,
+            },
+            timeout=3,
+        )
+        focus_state = (focused.get("result") or {}).get("value")
+        if not isinstance(focus_state, dict) or not focus_state.get("focused"):
+            return False
+
+        # A DOM Range does not update Draft.js' internal selection reliably.
+        # Ctrl+End follows the same event path as a user and keeps later text
+        # behind the caption instead of inserting it at the start.
+        _dispatch_editor_key(client, "rawKeyDown", "End", "End", 35, modifiers=2)
+        _dispatch_editor_key(client, "keyUp", "End", "End", 35, modifiers=2)
+
+        tail_expression = rf"""
+(() => {{
+    const editor = {_caption_editor_expression()};
+    if (!editor) return null;
+    const text = (editor.innerText || editor.textContent || '').replace(/\u200b/g, '');
+    return {{ hasText: text.length > 0, endsWithWhitespace: /\s$/.test(text) }};
+}})()
+""".strip()
+        tail_result = client.call(
+            "Runtime.evaluate",
+            {"expression": tail_expression, "returnByValue": True},
+            timeout=3,
+        )
+        state = (tail_result.get("result") or {}).get("value")
+        if not isinstance(state, dict):
+            return False
+        if state.get("hasText") and not state.get("endsWithWhitespace"):
+            client.call("Input.insertText", {"text": separator}, timeout=3)
+        client.call("Input.insertText", {"text": hashtag}, timeout=5)
+        return True
+    except (RuntimeError, TimeoutError, TypeError, ValueError):
         return False
 
-    if content_editable:
-        _caption, hashtags = _split_caption_and_hashtags(post_text)
-        if hashtags:
-            # TikTok leaves the final typed hashtag as plain text until its
-            # matching suggestion is chosen. Select the first exact match so
-            # Draft.js converts it into a real mention entity.
-            if not _select_matching_hashtag_suggestion(client, hashtags[-1], timeout_seconds=3.0):
-                return False
-            return _wait_for_fresh_caption_value(
-                client,
-                post_text,
-                timeout_seconds=1.5,
-                stable_samples=2,
-            )
-    return True
+
+def _restore_plain_post_text(client: _CdpClient, post_text: str) -> None:
+    """Leave correct readable text behind if TikTok refuses hashtag entities."""
+    try:
+        result = client.call(
+            "Runtime.evaluate",
+            {"expression": _caption_editor_expression(), "returnByValue": False},
+            timeout=3,
+        )
+        object_id = str((result.get("result") or {}).get("objectId") or "")
+        if not object_id:
+            return
+        client.call(
+            "Runtime.callFunctionOn",
+            {
+                "objectId": object_id,
+                "functionDeclaration": """function() {
+                    this.focus();
+                    return { focused: document.activeElement === this };
+                }""",
+                "returnByValue": True,
+            },
+            timeout=3,
+        )
+        _dispatch_editor_key(client, "keyDown", "a", "KeyA", 65, modifiers=2)
+        _dispatch_editor_key(client, "keyUp", "a", "KeyA", 65, modifiers=2)
+        _dispatch_editor_key(client, "rawKeyDown", "Backspace", "Backspace", 8)
+        _dispatch_editor_key(client, "keyUp", "Backspace", "Backspace", 8)
+        client.call("Input.insertText", {"text": post_text}, timeout=10)
+    except (RuntimeError, TimeoutError, TypeError, ValueError):
+        return
 
 
 def _split_caption_and_hashtags(post_text: str) -> tuple[str, list[str]]:
@@ -294,7 +404,7 @@ def _select_matching_hashtag_suggestion(
     *,
     timeout_seconds: float,
 ) -> bool:
-    """Click TikTok's first visible exact-match hashtag suggestion."""
+    """Choose TikTok's exact-match suggestion through its native keyboard flow."""
     wanted = str(hashtag or "").strip().casefold()
     if not wanted:
         return False
@@ -308,15 +418,18 @@ def _select_matching_hashtag_suggestion(
         return box.width > 0 && box.height > 0
             && style.visibility !== 'hidden' && style.display !== 'none';
     }};
-    const option = Array.from(document.querySelectorAll('[role="option"]'))
-        .filter(visible)
-        .find(candidate => {{
+    const options = Array.from(document.querySelectorAll('[role="option"]')).filter(visible);
+    const exactIndex = options.findIndex(candidate => {{
             const topic = candidate.querySelector('.hash-tag-topic') || candidate;
             return (topic.textContent || '').trim().toLocaleLowerCase() === wanted;
         }});
-    if (!option) return null;
-    const box = option.getBoundingClientRect();
-    return {{ x: box.x + box.width / 2, y: box.y + box.height / 2 }};
+    if (exactIndex < 0) return null;
+    const selectedIndex = options.findIndex(candidate =>
+        candidate.getAttribute('aria-selected') === 'true'
+        || candidate.getAttribute('data-highlighted') === 'true'
+        || candidate.getAttribute('data-active') === 'true'
+    );
+    return {{ exactIndex, selectedIndex }};
 }})()
 """.strip()
     deadline = time.monotonic() + max(0.5, timeout_seconds)
@@ -327,22 +440,21 @@ def _select_matching_hashtag_suggestion(
                 {"expression": expression, "returnByValue": True},
                 timeout=3,
             )
-            point = (result.get("result") or {}).get("value")
-            if isinstance(point, dict) and point.get("x") is not None and point.get("y") is not None:
-                x = float(point["x"])
-                y = float(point["y"])
-                client.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y}, timeout=3)
-                client.call(
-                    "Input.dispatchMouseEvent",
-                    {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1},
-                    timeout=3,
-                )
-                client.call(
-                    "Input.dispatchMouseEvent",
-                    {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1},
-                    timeout=3,
-                )
-                return _wait_for_confirmed_hashtag(client, hashtag, timeout_seconds=1.5)
+            option_state = (result.get("result") or {}).get("value")
+            if isinstance(option_state, dict) and option_state.get("exactIndex") is not None:
+                exact_index = int(option_state["exactIndex"])
+                selected_index = int(option_state.get("selectedIndex", -1))
+                if selected_index != exact_index:
+                    delta = exact_index - selected_index
+                    key = "ArrowDown" if delta > 0 else "ArrowUp"
+                    code = key
+                    virtual_key = 40 if delta > 0 else 38
+                    for _ in range(abs(delta)):
+                        _dispatch_editor_key(client, "rawKeyDown", key, code, virtual_key)
+                        _dispatch_editor_key(client, "keyUp", key, code, virtual_key)
+                _dispatch_editor_key(client, "rawKeyDown", "Enter", "Enter", 13)
+                _dispatch_editor_key(client, "keyUp", "Enter", "Enter", 13)
+                return _wait_for_confirmed_hashtag(client, hashtag, timeout_seconds=2.0)
         except (RuntimeError, TimeoutError, TypeError, ValueError):
             pass
         time.sleep(0.15)
