@@ -489,6 +489,21 @@ def _default_subtitle_layout(
     return SubtitleRegionLayout(x, y, min(width, output_width), height)
 
 
+def _manual_subtitle_layout(
+    subtitle_style: SubtitleStyle, output_width: int, output_height: int,
+) -> SubtitleRegionLayout:
+    """Map the user-edited preview frame into output-video coordinates."""
+    width = max(24, output_width * subtitle_style.box_width_percent / 100)
+    height = max(20, output_height * subtitle_style.box_height_percent / 100)
+    width = min(width, output_width)
+    height = min(height, output_height)
+    center_x = output_width * subtitle_style.position_x_percent / 100
+    center_y = output_height * subtitle_style.position_y_percent / 100
+    x = max(0, min(output_width - width, center_x - width / 2))
+    y = max(0, min(output_height - height, center_y - height / 2))
+    return SubtitleRegionLayout(x, y, width, height)
+
+
 def _source_blur_region(region: dict | None, source_width: int, source_height: int) -> tuple[int, int, int, int] | None:
     if not region:
         return None
@@ -602,7 +617,7 @@ def _ffmpeg_progress_fraction(progress_text: str, duration: float) -> float | No
     return max(0.0, min(1.0, seconds / duration))
 
 
-def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None, watermark_text: str = "", progress_callback: Callable[[float], None] | None = None):
+def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None, watermark_text: str = "", subtitle_layout_override: bool = False, progress_callback: Callable[[float], None] | None = None):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
     supported_formats = {"keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"}
@@ -627,14 +642,16 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     region_layout = _output_subtitle_region_layout(
         original_subtitle_region, source_width, source_height, output_format, crop, subtitle_width, subtitle_height,
     )
-    effective_style = _style_for_original_subtitle_region(
+    effective_style = subtitle_style if subtitle_layout_override else _style_for_original_subtitle_region(
         subtitle_style, region_layout, subtitle_width, subtitle_height,
     )
     # A virtual layout keeps captions in one large row even when OCR finds no
     # original subtitle box. Long text is shown as sequential phrases instead
     # of wrapping into two simultaneous lines.
-    ass_layout = region_layout or _default_subtitle_layout(
-        effective_style, subtitle_width, subtitle_height,
+    ass_layout = (
+        _manual_subtitle_layout(effective_style, subtitle_width, subtitle_height)
+        if subtitle_layout_override
+        else region_layout or _default_subtitle_layout(effective_style, subtitle_width, subtitle_height)
     )
     _write_positioned_ass(
         srt_path,
@@ -677,6 +694,21 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     blur_region = _source_blur_region(
         original_subtitle_region, source_width, source_height,
     )
+    if blur_region:
+        x, y, width, height = blur_region
+        log_to_video(
+            video_id,
+            "Applying original subtitle blur to source pixels "
+            f"({x},{y}) {width}x{height}; replacement-subtitle layout is independent.",
+            component="RENDER",
+        )
+    elif original_subtitle_region:
+        log_to_video(
+            video_id,
+            "Original subtitle blur was skipped because the detected region was outside the source frame.",
+            level="WARNING",
+            component="RENDER",
+        )
     if output_format == "blur_background_9_16":
         prefix = ",".join(filters)
         input_label = "[0:v]"

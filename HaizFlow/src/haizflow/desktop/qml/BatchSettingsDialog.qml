@@ -19,6 +19,16 @@ Dialog {
     property int draftTtsVolume: 100
     property string draftWatermarkText: ""
     property string draftBackgroundMusicPath: ""
+    property bool draftRemoveOriginalSubtitles: true
+    property int draftSubtitleFontSize: 60
+    property int draftSubtitlePositionX: 51
+    property int draftSubtitlePositionY: 96
+    property int draftSubtitleBoxWidth: 72
+    property int draftSubtitleBoxHeight: 6
+    property bool draftSubtitleManual: false
+    property int draftSubtitleMarginBottom: 40
+    property int draftSubtitleOutline: 2
+    property int draftSubtitleMaxChars: 32
     property var settingOverrides: []
     readonly property var draftVoiceOptions: AppController.voiceOptionsForLanguage(draftTargetLanguage)
     readonly property int draftTtsVoiceIndex: {
@@ -50,6 +60,17 @@ Dialog {
         draftTtsVolume = Number(settings.ttsVolume !== undefined ? settings.ttsVolume : 100)
         draftWatermarkText = settings.watermarkText || ""
         draftBackgroundMusicPath = settings.backgroundMusicPath || ""
+        draftRemoveOriginalSubtitles = settings.removeOriginalSubtitles !== false
+        const style = settings.subtitleStyle || ({})
+        draftSubtitleFontSize = Number(style.font_size !== undefined ? style.font_size : 60)
+        draftSubtitlePositionX = Number(style.position_x_percent !== undefined ? style.position_x_percent : 51)
+        draftSubtitlePositionY = Number(style.position_y_percent !== undefined ? style.position_y_percent : 96)
+        draftSubtitleBoxWidth = Number(style.box_width_percent !== undefined ? style.box_width_percent : 72)
+        draftSubtitleBoxHeight = Number(style.box_height_percent !== undefined ? style.box_height_percent : 6)
+        draftSubtitleManual = Boolean(style.manual)
+        draftSubtitleMarginBottom = Number(style.margin_bottom !== undefined ? style.margin_bottom : 40)
+        draftSubtitleOutline = Number(style.outline !== undefined ? style.outline : 2)
+        draftSubtitleMaxChars = Number(style.max_chars_per_line !== undefined ? style.max_chars_per_line : 32)
         refreshSettingOverrides()
     }
 
@@ -63,6 +84,13 @@ Dialog {
             || draftTtsVolume !== Number(baselineSettings.ttsVolume !== undefined ? baselineSettings.ttsVolume : 100)
             || draftWatermarkText !== (baselineSettings.watermarkText || "")
             || draftBackgroundMusicPath !== (baselineSettings.backgroundMusicPath || "")
+            || draftRemoveOriginalSubtitles !== (baselineSettings.removeOriginalSubtitles !== false)
+            || draftSubtitleFontSize !== Number((baselineSettings.subtitleStyle || {}).font_size !== undefined ? baselineSettings.subtitleStyle.font_size : 60)
+            || draftSubtitlePositionX !== Number((baselineSettings.subtitleStyle || {}).position_x_percent !== undefined ? baselineSettings.subtitleStyle.position_x_percent : 51)
+            || draftSubtitlePositionY !== Number((baselineSettings.subtitleStyle || {}).position_y_percent !== undefined ? baselineSettings.subtitleStyle.position_y_percent : 96)
+            || draftSubtitleBoxWidth !== Number((baselineSettings.subtitleStyle || {}).box_width_percent !== undefined ? baselineSettings.subtitleStyle.box_width_percent : 72)
+            || draftSubtitleBoxHeight !== Number((baselineSettings.subtitleStyle || {}).box_height_percent !== undefined ? baselineSettings.subtitleStyle.box_height_percent : 6)
+            || draftSubtitleManual !== Boolean((baselineSettings.subtitleStyle || {}).manual)
     }
 
     function saveDraft() {
@@ -77,7 +105,19 @@ Dialog {
                 draftBackgroundMusicVolume,
                 draftTtsVolume,
                 draftWatermarkText,
-                draftBackgroundMusicPath
+                draftBackgroundMusicPath,
+                draftRemoveOriginalSubtitles,
+                {
+                    "font_size": draftSubtitleFontSize,
+                    "margin_bottom": draftSubtitleMarginBottom,
+                    "outline": draftSubtitleOutline,
+                    "max_chars_per_line": draftSubtitleMaxChars,
+                    "position_x_percent": draftSubtitlePositionX,
+                    "position_y_percent": draftSubtitlePositionY,
+                    "box_width_percent": draftSubtitleBoxWidth,
+                    "box_height_percent": draftSubtitleBoxHeight,
+                    "manual": draftSubtitleManual
+                }
             )) {
             baselineSettings = {
                 "workflowMode": draftWorkflowMode,
@@ -88,7 +128,19 @@ Dialog {
                 "backgroundMusicVolume": draftBackgroundMusicVolume,
                 "ttsVolume": draftTtsVolume,
                 "watermarkText": draftWatermarkText,
-                "backgroundMusicPath": draftBackgroundMusicPath
+                "backgroundMusicPath": draftBackgroundMusicPath,
+                "removeOriginalSubtitles": draftRemoveOriginalSubtitles,
+                "subtitleStyle": {
+                    "font_size": draftSubtitleFontSize,
+                    "margin_bottom": draftSubtitleMarginBottom,
+                    "outline": draftSubtitleOutline,
+                    "max_chars_per_line": draftSubtitleMaxChars,
+                    "position_x_percent": draftSubtitlePositionX,
+                    "position_y_percent": draftSubtitlePositionY,
+                    "box_width_percent": draftSubtitleBoxWidth,
+                    "box_height_percent": draftSubtitleBoxHeight,
+                    "manual": draftSubtitleManual
+                }
             }
             refreshSettingOverrides()
         }
@@ -114,6 +166,8 @@ Dialog {
         case "backgroundMusicVolume": return I18n.t("Background music volume")
         case "ttsVolume": return I18n.t("TTS volume")
         case "watermark": return I18n.t("Watermark")
+        case "originalSubtitles": return I18n.t("Original subtitles")
+        case "subtitleLayout": return I18n.t("Subtitle layout")
         case "backgroundMusic": return I18n.t("Background music")
         default: return ""
         }
@@ -395,6 +449,44 @@ Dialog {
                         }
                     }
 
+                    Text {
+                        text: I18n.t("Original subtitles")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.caption
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.space8
+
+                        SegmentedControl {
+                            Layout.fillWidth: true
+                            currentValue: root.draftRemoveOriginalSubtitles ? "remove" : "keep"
+                            options: [
+                                { "label": I18n.t("Cover original subtitles"), "value": "remove" },
+                                { "label": I18n.t("Keep original video"), "value": "keep" }
+                            ]
+                            onActivated: function(value) {
+                                root.draftRemoveOriginalSubtitles = value === "remove"
+                            }
+                        }
+
+                        AppButton {
+                            Layout.fillWidth: true
+                            text: I18n.t("Preview and position new subtitles")
+                            compact: true
+                            tone: "secondary"
+                            enabled: AppController.videoPath.length > 0
+                            onClicked: batchSubtitlePreviewDialog.openWithLayout(
+                                root.draftSubtitleFontSize,
+                                root.draftSubtitlePositionX,
+                                root.draftSubtitlePositionY,
+                                root.draftSubtitleBoxWidth,
+                                root.draftSubtitleBoxHeight
+                            )
+                        }
+                    }
+
                     Rectangle {
                         Layout.columnSpan: 2
                         Layout.fillWidth: true
@@ -545,6 +637,19 @@ Dialog {
             root.draftOriginalVolume = originalVolume
             root.draftTtsVolume = ttsVolume
             root.draftBackgroundMusicVolume = backgroundMusicVolume
+        }
+    }
+
+    SubtitlePreviewDialog {
+        id: batchSubtitlePreviewDialog
+
+        onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+            root.draftSubtitleFontSize = fontSize
+            root.draftSubtitlePositionX = positionX
+            root.draftSubtitlePositionY = positionY
+            root.draftSubtitleBoxWidth = boxWidth
+            root.draftSubtitleBoxHeight = boxHeight
+            root.draftSubtitleManual = true
         }
     }
 }

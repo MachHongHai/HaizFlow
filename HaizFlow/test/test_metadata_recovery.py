@@ -275,6 +275,21 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
         self.assertEqual(migrated.batch_import_order, 0)
 
+    def test_v8_metadata_enables_original_subtitle_removal_without_manual_layout(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        legacy = json.loads(path.read_text(encoding="utf-8"))
+        legacy["schema_version"] = 8
+        legacy.pop("remove_original_subtitles", None)
+        legacy.pop("subtitle_layout_override", None)
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
+        self.assertTrue(migrated.remove_original_subtitles)
+        self.assertFalse(migrated.subtitle_layout_override)
+
     def test_current_metadata_normalizes_unsafe_watermark_text(self):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))

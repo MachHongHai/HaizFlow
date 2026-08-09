@@ -90,6 +90,7 @@ class HaizFlowController(QObject):
     backgroundMusicVolumeChanged = Signal()
     ttsVolumeChanged = Signal()
     watermarkTextChanged = Signal()
+    subtitleSettingsChanged = Signal()
     backgroundMusicChanged = Signal()
     backgroundMusicImportChanged = Signal()
     audioPreviewChanged = Signal()
@@ -135,6 +136,9 @@ class HaizFlowController(QObject):
         self._background_music_volume = 30
         self._tts_volume = 100
         self._watermark_text = ""
+        self._remove_original_subtitles = True
+        self._subtitle_style = SubtitleStyle()
+        self._subtitle_layout_override = False
         self._background_music_path = ""
         self._background_music_import_busy = False
         self._background_music_import_status = ""
@@ -773,6 +777,67 @@ class HaizFlowController(QObject):
         if self._watermark_text != normalized:
             self._watermark_text = normalized
             self.watermarkTextChanged.emit()
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def removeOriginalSubtitles(self):
+        return self._remove_original_subtitles
+
+    @removeOriginalSubtitles.setter
+    def removeOriginalSubtitles(self, value):
+        normalized = bool(value)
+        if self._remove_original_subtitles != normalized:
+            self._remove_original_subtitles = normalized
+            self.subtitleSettingsChanged.emit()
+
+    def _set_subtitle_style_value(self, key: str, value: int, minimum: int, maximum: int) -> None:
+        normalized = max(minimum, min(maximum, int(value)))
+        if int(getattr(self._subtitle_style, key)) == normalized:
+            return
+        style = self._subtitle_style.model_dump()
+        style[key] = normalized
+        self._subtitle_style = SubtitleStyle(**style)
+        self._subtitle_layout_override = True
+        self.subtitleSettingsChanged.emit()
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitleFontSize(self):
+        return self._subtitle_style.font_size
+
+    @subtitleFontSize.setter
+    def subtitleFontSize(self, value):
+        self._set_subtitle_style_value("font_size", value, 10, 160)
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitlePositionXPercent(self):
+        return self._subtitle_style.position_x_percent
+
+    @subtitlePositionXPercent.setter
+    def subtitlePositionXPercent(self, value):
+        self._set_subtitle_style_value("position_x_percent", value, 0, 100)
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitlePositionYPercent(self):
+        return self._subtitle_style.position_y_percent
+
+    @subtitlePositionYPercent.setter
+    def subtitlePositionYPercent(self, value):
+        self._set_subtitle_style_value("position_y_percent", value, 0, 100)
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitleBoxWidthPercent(self):
+        return self._subtitle_style.box_width_percent
+
+    @subtitleBoxWidthPercent.setter
+    def subtitleBoxWidthPercent(self, value):
+        self._set_subtitle_style_value("box_width_percent", value, 20, 100)
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitleBoxHeightPercent(self):
+        return self._subtitle_style.box_height_percent
+
+    @subtitleBoxHeightPercent.setter
+    def subtitleBoxHeightPercent(self, value):
+        self._set_subtitle_style_value("box_height_percent", value, 1, 100)
 
     @Property(str, notify=backgroundMusicChanged)
     def backgroundMusicPath(self):
@@ -1418,10 +1483,13 @@ class HaizFlowController(QObject):
         tts_volume=None,
         watermark_text=None,
         background_music_path=None,
+        remove_original_subtitles=None,
+        subtitle_style=None,
     ) -> bool:
         return HaizFlowController._project_commands_for(self).apply_batch_settings(
             workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
             background_music_volume, tts_volume, watermark_text, background_music_path,
+            remove_original_subtitles, subtitle_style,
         )
 
     @Slot(result=bool)
@@ -1435,9 +1503,12 @@ class HaizFlowController(QObject):
             self._background_music_volume,
             self._tts_volume,
             self._watermark_text,
+            None,
+            self._remove_original_subtitles,
+            self._subtitle_style.model_dump(),
         )
 
-    @Slot(str, str, str, bool, int, int, int, str, str, result=bool)
+    @Slot(str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", result=bool)
     def applyBatchSettingsDraft(
         self,
         workflow_mode: str,
@@ -1449,6 +1520,8 @@ class HaizFlowController(QObject):
         tts_volume: int | None = None,
         watermark_text: str | None = None,
         background_music_path: str | None = None,
+        remove_original_subtitles: bool | None = None,
+        subtitle_style=None,
     ):
         return self._apply_batch_settings(
             workflow_mode,
@@ -1460,6 +1533,8 @@ class HaizFlowController(QObject):
             tts_volume,
             watermark_text,
             background_music_path,
+            remove_original_subtitles,
+            subtitle_style,
         )
 
     @Slot()
@@ -1472,6 +1547,12 @@ class HaizFlowController(QObject):
 
     @Slot(result=bool)
     def persistSelectedBatchVideoSettings(self):
+        """Backward-compatible alias for QML built before single-video autosave."""
+        return HaizFlowController._project_commands_for(self).persist_selected_video_settings()
+
+    @Slot(result=bool)
+    def persistSelectedVideoSettings(self):
+        """Persist setup edits for the selected single or batch video."""
         return HaizFlowController._project_commands_for(self).persist_selected_video_settings()
 
     @Slot()
@@ -1814,7 +1895,9 @@ class HaizFlowController(QObject):
             target_language=self._target_language,
             translator_provider="hymt2",
             tts_voice=self._tts_voice,
-            subtitle_style=SubtitleStyle(),
+            subtitle_style=self._subtitle_style,
+            subtitle_layout_override=self._subtitle_layout_override,
+            remove_original_subtitles=self._remove_original_subtitles,
             output_format="keep_ratio",
             crop=CropSettings(),
             enable_audio_separation=self._enable_audio_separation,
@@ -1838,6 +1921,8 @@ class HaizFlowController(QObject):
             "target_language": config.target_language,
             "tts_voice": config.tts_voice,
             "subtitle_style": config.subtitle_style,
+            "subtitle_layout_override": config.subtitle_layout_override,
+            "remove_original_subtitles": config.remove_original_subtitles,
             "output_format": config.output_format,
             "crop": config.crop,
             "enable_audio_separation": config.enable_audio_separation,

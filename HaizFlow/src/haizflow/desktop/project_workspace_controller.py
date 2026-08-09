@@ -39,6 +39,9 @@ class ProjectWorkspaceController:
         host._background_music_volume = getattr(video, "background_music_volume", 30)
         host._tts_volume = getattr(video, "tts_volume", 100)
         host._watermark_text = str(getattr(video, "watermark_text", "") or "")
+        host._remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
+        host._subtitle_style = video.subtitle_style
+        host._subtitle_layout_override = bool(getattr(video, "subtitle_layout_override", False))
         host._background_music_path = str((video.files or {}).get("background_music") or "")
         input_path = host._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
         host._video_path = input_path
@@ -54,6 +57,7 @@ class ProjectWorkspaceController:
         host.backgroundMusicVolumeChanged.emit()
         host.ttsVolumeChanged.emit()
         host.watermarkTextChanged.emit()
+        host.subtitleSettingsChanged.emit()
         host.backgroundMusicChanged.emit()
         host.workflowModeChanged.emit()
         host.projectSetupChanged.emit()

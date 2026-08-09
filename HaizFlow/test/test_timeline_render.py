@@ -233,6 +233,45 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("{\\kf", ass_text)
         self.assertIn("\\pos(960,886)", ass_text)
 
+    def test_manual_subtitle_layout_does_not_disable_original_subtitle_blur(self):
+        captured = {}
+
+        class FakeProcess:
+            returncode = 0
+
+            def __init__(self, command, **kwargs):
+                captured["command"] = command
+                (Path(kwargs["cwd"]) / command[-1]).resolve().write_bytes(b"rendered-video")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "input.mp4").write_bytes(b"source")
+            (root / "voice.wav").write_bytes(b"R" * 100)
+            subtitle_path = root / "subtitles.srt"
+            subtitle_path.write_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n", encoding="utf-8")
+            style = SubtitleStyle(font_size=74, position_x_percent=50, position_y_percent=94)
+            with (
+                mock.patch.object(render, "get_video_dimensions", return_value=(1920, 1080)),
+                mock.patch.object(render, "get_video_duration", return_value=5.0),
+                mock.patch.object(render, "get_media_stream_types", return_value={"video", "audio"}),
+                mock.patch.object(render, "preferred_video_encoder", return_value=("libx264", [])),
+                mock.patch.object(render.subprocess, "Popen", FakeProcess),
+                mock.patch.object(render, "communicate_process", return_value=("", "")),
+                mock.patch.object(render, "check_cancellation"),
+                mock.patch.object(render, "log_to_video"),
+            ):
+                render.render_video(
+                    str(root / "input.mp4"), str(root / "voice.wav"), str(subtitle_path),
+                    str(root / "output.mp4"), "keep_ratio", style, CropSettings(), "video-id",
+                    {"x_percent": 20, "y_percent": 78, "width_percent": 60, "height_percent": 7},
+                    subtitle_layout_override=True,
+                )
+
+        command = captured["command"]
+        filter_graph = command[command.index("-filter_complex") + 1]
+        self.assertIn("crop=1152:74:384:842", filter_graph)
+        self.assertIn("overlay=384:842", filter_graph)
+
     def test_bundled_karaoke_font_is_available_to_ffmpeg(self):
         font_directory = render._karaoke_font_directory()
 
@@ -302,6 +341,22 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertAlmostEqual(layout.height, 153.6)
         self.assertAlmostEqual(layout.line_height, 59.392)
         self.assertEqual(style.font_size, 36)
+
+    def test_manual_subtitle_frame_maps_position_and_size_to_output(self):
+        style = SubtitleStyle(
+            font_size=72,
+            position_x_percent=30,
+            position_y_percent=40,
+            box_width_percent=50,
+            box_height_percent=12,
+        )
+
+        layout = render._manual_subtitle_layout(style, 1080, 1920)
+
+        self.assertEqual(layout.width, 540)
+        self.assertEqual(layout.height, 230.4)
+        self.assertEqual(layout.x, 54)
+        self.assertAlmostEqual(layout.y, 652.8)
 
     def test_long_region_cue_is_shown_as_sequential_single_line_phrases(self):
         with tempfile.TemporaryDirectory() as temp_dir:

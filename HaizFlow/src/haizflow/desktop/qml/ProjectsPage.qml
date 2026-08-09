@@ -216,6 +216,18 @@ Item {
                         if (AppController.selectProjectInMode(index, root.projectType))
                             root.openProject(root.projectType)
                     }
+                    onOpenRequested: {
+                        if (AppController.selectProjectInMode(index, root.projectType))
+                            root.openProject(root.projectType)
+                    }
+                    onProjectFolderRequested: {
+                        if (AppController.selectProjectInMode(index, root.projectType))
+                            AppController.openProjectFolder()
+                    }
+                    onDeleteRequested: {
+                        if (AppController.selectProjectInMode(index, root.projectType))
+                            AppController.deleteCurrentProject()
+                    }
                 }
             }
 

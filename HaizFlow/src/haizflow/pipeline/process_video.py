@@ -493,6 +493,47 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         clean_video(video_id)
 
 
+def _original_subtitle_region_for_render(video, reporter, video_dir):
+    """Return the OCR region, or bypass OCR when the user keeps source pixels."""
+    video_id = video.video_id
+    if not bool(getattr(video, "remove_original_subtitles", True)):
+        reporter.update(87, "detecting_original_subtitles", "Keeping original video subtitles unchanged")
+        log_to_video(video_id, "Original subtitle OCR and blur disabled; preserving the source picture.")
+        return None
+
+    reporter.update(87, "detecting_original_subtitles", "Preparing original subtitle scan")
+
+    def report_ocr_progress(current: int, total: int) -> None:
+        detail = "Scanning the full frame for original subtitles"
+        if total:
+            detail = f"Scanning original subtitles ({current}/{total})"
+        reporter.update(87, "detecting_original_subtitles", detail, current, total)
+
+    region = detect_original_subtitle_region(
+        _required_video_path(video, "video_input", must_exist=True),
+        os.path.join(video_dir, "temp"),
+        video_id,
+        progress_callback=report_ocr_progress,
+    )
+    if region:
+        log_to_video(
+            video_id,
+            "Original subtitle coverage is enabled: blurring source region "
+            f"x={region['x_percent']}%, y={region['y_percent']}%, "
+            f"w={region['width_percent']}%, h={region['height_percent']}%. "
+            "Manual replacement-subtitle positioning does not change this region.",
+            component="OCR",
+        )
+    else:
+        log_to_video(
+            video_id,
+            "Original subtitle coverage is enabled, but OCR did not find a stable burned-in subtitle region.",
+            level="WARNING",
+            component="OCR",
+        )
+    return region
+
+
 def _finish_after_translation(video, reporter, video_dir, original_audio_target):
         video_id = video.video_id
         video_input = _required_video_path(video, "video_input", must_exist=True)
@@ -502,14 +543,14 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         transcript_json = _required_video_path(video, "transcript_json", must_exist=True)
         voice_parts_dir = os.path.join(video_dir, "temp", "voice_parts")
         transcript_state = _file_state(transcript_json)
-        default_subtitle_style = SubtitleStyle()
-        subtitle_signature = _signature(transcript_state, default_subtitle_style.max_chars_per_line)
+        subtitle_style = getattr(video, "subtitle_style", None) or SubtitleStyle()
+        subtitle_signature = _signature(transcript_state, subtitle_style.max_chars_per_line)
         check_cancellation(video_id)
         if _checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]) or _recovery_checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]):
             reporter.update(64, "creating_subtitle", "Reusing subtitles checkpoint")
         else:
             reporter.update(63, "creating_subtitle", "Formatting timed subtitles")
-            generate_srt(transcript_json, srt_output, default_subtitle_style.max_chars_per_line, video_id)
+            generate_srt(transcript_json, srt_output, subtitle_style.max_chars_per_line, video_id)
             _mark_checkpoint(video, "subtitles", subtitle_signature)
 
         check_cancellation(video_id)
@@ -578,32 +619,22 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
 
         check_cancellation(video_id)
         style_data = (
-            default_subtitle_style.model_dump()
-            if hasattr(default_subtitle_style, "model_dump")
-            else default_subtitle_style.dict()
+            subtitle_style.model_dump()
+            if hasattr(subtitle_style, "model_dump")
+            else subtitle_style.dict()
         )
         crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
-        reporter.update(87, "detecting_original_subtitles", "Preparing original subtitle scan")
-
-        def report_ocr_progress(current: int, total: int) -> None:
-            detail = "Scanning the full frame for original subtitles"
-            if total:
-                detail = f"Scanning original subtitles ({current}/{total})"
-            reporter.update(87, "detecting_original_subtitles", detail, current, total)
-
-        original_subtitle_region = detect_original_subtitle_region(
-            video_input,
-            os.path.join(video_dir, "temp"),
-            video_id,
-            progress_callback=report_ocr_progress,
-        )
+        remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
+        original_subtitle_region = _original_subtitle_region_for_render(video, reporter, video_dir)
         render_signature = _signature(
             timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
             # Bump when changing the visual treatment so a previously rendered
             # luma-only result is never reused as a valid final export.
-            "static-largest-original-subtitle-ocr-v12-bangers", original_subtitle_region,
+            "static-largest-original-subtitle-ocr-v12-bangers", remove_original_subtitles,
+            original_subtitle_region,
             "watermark-white-no-outline-v2",
             getattr(video, "watermark_text", ""),
+            bool(getattr(video, "subtitle_layout_override", False)),
         )
         if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(video, "render", render_signature, [final_video]):
             reporter.update(99, "rendering", "Reusing rendered video checkpoint")
@@ -624,8 +655,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
 
             render_video(
                 video_input, voice_output, srt_output, final_video, video.output_format,
-                default_subtitle_style, video.crop, video_id, original_subtitle_region,
+                subtitle_style, video.crop, video_id, original_subtitle_region,
                 getattr(video, "watermark_text", ""),
+                subtitle_layout_override=bool(getattr(video, "subtitle_layout_override", False)),
                 progress_callback=report_render_progress,
             )
             _mark_checkpoint(video, "render", render_signature)

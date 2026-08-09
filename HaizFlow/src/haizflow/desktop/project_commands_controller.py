@@ -13,6 +13,13 @@ from haizflow.core.hardware import runtime_profile
 from haizflow.pipeline.process_registry import cancel_video, pause_video
 from haizflow.services import project_store, video_store
 from haizflow.services.desktop_videos import create_desktop_video, set_desktop_background_music
+from haizflow.schemas.video import SubtitleStyle
+
+
+def _subtitle_style_items(video) -> tuple[tuple[str, object], ...]:
+    style = getattr(video, "subtitle_style", None) or SubtitleStyle()
+    values = style.model_dump() if hasattr(style, "model_dump") else style.dict()
+    return tuple(values.items()) + (("manual", bool(getattr(video, "subtitle_layout_override", False))),)
 
 
 class ProjectCommandsController:
@@ -73,21 +80,30 @@ class ProjectCommandsController:
                 "backgroundMusicVolume": host._background_music_volume,
                 "ttsVolume": host._tts_volume,
                 "watermarkText": host._watermark_text,
+                "removeOriginalSubtitles": bool(getattr(host, "_remove_original_subtitles", True)),
+                "subtitleStyle": {
+                    **(getattr(host, "_subtitle_style", None) or SubtitleStyle()).model_dump(),
+                    "manual": bool(getattr(host, "_subtitle_layout_override", False)),
+                },
                 "backgroundMusicPath": getattr(host, "_background_music_path", ""),
             }
         common, _count = Counter(
             (
                 video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
                 video.original_video_volume, getattr(video, "background_music_volume", 30), getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
+                bool(getattr(video, "remove_original_subtitles", True)),
+                _subtitle_style_items(video),
             )
             for video in videos
         ).most_common(1)[0]
-        workflow_mode, target_language, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume, watermark_text = common
+        workflow_mode, target_language, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume, watermark_text, remove_original_subtitles, subtitle_style_items = common
         baseline_video = next(
             (video for video in videos if (
                 video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
                 video.original_video_volume, getattr(video, "background_music_volume", 30),
                 getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
+                bool(getattr(video, "remove_original_subtitles", True)),
+                _subtitle_style_items(video),
             ) == common),
             videos[0],
         )
@@ -104,6 +120,8 @@ class ProjectCommandsController:
             "backgroundMusicVolume": int(background_music_volume),
             "ttsVolume": int(tts_volume),
             "watermarkText": str(watermark_text or ""),
+            "removeOriginalSubtitles": bool(remove_original_subtitles),
+            "subtitleStyle": dict(subtitle_style_items),
             "backgroundMusicPath": background_music_path,
         }
 
@@ -131,12 +149,15 @@ class ProjectCommandsController:
                 int(getattr(video, "background_music_volume", 30)),
                 int(getattr(video, "tts_volume", 100)),
                 " ".join(str(getattr(video, "watermark_text", "") or "").split())[:80],
+                bool(getattr(video, "remove_original_subtitles", True)),
+                _subtitle_style_items(video),
                 music_signature,
             )
 
         keys = (
             "workflow", "targetLanguage", "voice", "audioSource",
             "sourceVolume", "backgroundMusicVolume", "ttsVolume", "watermark",
+            "originalSubtitles", "subtitleLayout",
             "backgroundMusic",
         )
         baseline, _count = Counter(values(video) for video in videos).most_common(1)[0]
@@ -154,6 +175,7 @@ class ProjectCommandsController:
     def apply_batch_settings(
         self, workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
         background_music_volume=None, tts_volume=None, watermark_text=None, background_music_path=None,
+        remove_original_subtitles=None, subtitle_style=None,
     ) -> bool:
         host = self._host
         mode = "review" if workflow_mode == "review" else "A"
@@ -165,6 +187,11 @@ class ProjectCommandsController:
         apply_watermark = watermark_text is not None
         watermark_text = " ".join(str(watermark_text or "").split())[:80]
         apply_background_music = background_music_path is not None
+        apply_original_subtitles = remove_original_subtitles is not None
+        apply_subtitle_style = subtitle_style is not None
+        subtitle_style_payload = dict(subtitle_style or {})
+        subtitle_layout_override = bool(subtitle_style_payload.pop("manual", False))
+        normalized_subtitle_style = SubtitleStyle(**subtitle_style_payload) if apply_subtitle_style else None
         background_music_path = os.path.abspath(str(background_music_path or "").strip()) if background_music_path else ""
         if apply_background_music and background_music_path and (
             not os.path.isfile(background_music_path) or os.path.getsize(background_music_path) <= 0
@@ -190,6 +217,11 @@ class ProjectCommandsController:
                 )
             if apply_watermark:
                 changes["watermark_text"] = watermark_text
+            if apply_original_subtitles:
+                changes["remove_original_subtitles"] = bool(remove_original_subtitles)
+            if normalized_subtitle_style is not None:
+                changes["subtitle_style"] = normalized_subtitle_style
+                changes["subtitle_layout_override"] = subtitle_layout_override
             if apply_background_music:
                 try:
                     set_desktop_background_music(video_store.get_video(video_id), background_music_path)
@@ -216,6 +248,10 @@ class ProjectCommandsController:
         host._background_music_volume = values["backgroundMusicVolume"]
         host._tts_volume = values["ttsVolume"]
         host._watermark_text = values["watermarkText"]
+        host._remove_original_subtitles = values["removeOriginalSubtitles"]
+        subtitle_style = dict(values["subtitleStyle"])
+        host._subtitle_layout_override = bool(subtitle_style.pop("manual", False))
+        host._subtitle_style = SubtitleStyle(**subtitle_style)
         host.workflowModeChanged.emit()
         host.targetLanguageChanged.emit()
         host.ttsVoiceChanged.emit()
@@ -225,25 +261,35 @@ class ProjectCommandsController:
         host.backgroundMusicVolumeChanged.emit()
         host.ttsVolumeChanged.emit()
         host.watermarkTextChanged.emit()
+        host.subtitleSettingsChanged.emit()
 
     def save_selected_video_settings(self) -> bool:
         return self._persist_selected_video_settings(log_change=True)
 
     def persist_selected_video_settings(self) -> bool:
-        """Persist an edited batch video without adding a noisy log entry."""
+        """Persist an edited selected video without adding a noisy log entry.
+
+        The setup panel is shared by single projects and per-video batch
+        editing.  Keeping this method batch-only meant a user could change the
+        subtitle-removal setting or manual layout on a completed single video,
+        leave the page, and still open an export made with the earlier setup.
+        Store the draft for both project types as soon as the editor settles;
+        rendering remains an explicit action.
+        """
         return self._persist_selected_video_settings(log_change=False)
 
     def _persist_selected_video_settings(self, *, log_change: bool) -> bool:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        if not video or video.project_type != "batch" or host._processing_queue.contains(video.video_id):
+        if not video or host._processing_queue.contains(video.video_id):
             return False
         host._apply_setup_to_video(video)
         if log_change:
             video_store.log_to_video(video.video_id, "Per-video dubbing settings saved.")
         host.refreshVideos()
         host.selectedVideoChanged.emit()
-        host.batchChanged.emit()
+        if video.project_type == "batch":
+            host.batchChanged.emit()
         return True
 
     def stop_batch(self) -> None:

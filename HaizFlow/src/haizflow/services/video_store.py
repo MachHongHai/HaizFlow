@@ -215,6 +215,8 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         translator_provider=config.translator_provider,
         tts_voice=config.tts_voice,
         subtitle_style=config.subtitle_style,
+        subtitle_layout_override=config.subtitle_layout_override,
+        remove_original_subtitles=config.remove_original_subtitles,
         output_format=config.output_format,
         crop=config.crop,
         enable_audio_separation=config.enable_audio_separation,
@@ -349,6 +351,12 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("batch_import_order", 0)
             version = 8
             continue
+        if version == 8:
+            data["schema_version"] = 9
+            data.setdefault("remove_original_subtitles", True)
+            data.setdefault("subtitle_layout_override", False)
+            version = 9
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -392,6 +400,8 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             value = style_defaults[key]
         style_defaults[key] = max(minimum, min(maximum, value))
     data["subtitle_style"] = style_defaults
+    data["subtitle_layout_override"] = bool(data.get("subtitle_layout_override", False))
+    data["remove_original_subtitles"] = bool(data.get("remove_original_subtitles", True))
 
     crop_defaults = CropSettings().model_dump()
     crop_value = data.get("crop")

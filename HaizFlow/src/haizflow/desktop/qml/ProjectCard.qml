@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -15,6 +16,9 @@ Rectangle {
     required property string videoSize
 
     signal activated()
+    signal openRequested()
+    signal projectFolderRequested()
+    signal deleteRequested()
 
     readonly property string statusLabel: status === "pending" ? I18n.t("Queued")
         : status === "empty" ? I18n.t("No source selected")
@@ -44,6 +48,7 @@ Rectangle {
 
     function resetFocusState() {
         root.focus = false
+        projectContextMenu.close()
     }
 
     Keys.onReturnPressed: root.activated()
@@ -56,8 +61,58 @@ Rectangle {
 
     TapHandler {
         id: tapHandler
+
+        acceptedButtons: Qt.LeftButton
         onTapped: {
             root.activated()
+        }
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: function(eventPoint) {
+            root.forceActiveFocus()
+            const position = root.mapToItem(Overlay.overlay, eventPoint.position.x, eventPoint.position.y)
+            projectContextMenu.x = Math.round(position.x)
+            projectContextMenu.y = Math.round(position.y)
+            projectContextMenu.open()
+        }
+    }
+
+    Menu {
+        id: projectContextMenu
+
+        parent: Overlay.overlay
+        width: 224
+        padding: Theme.space4
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            radius: Theme.radiusSmall
+            color: Theme.surfaceElevated
+            border.width: 1
+            border.color: Theme.outlineStrong
+        }
+
+        AppMenuItem {
+            text: I18n.t("Open project")
+            iconGlyph: "\uE8A7"
+            onTriggered: root.openRequested()
+        }
+
+        AppMenuItem {
+            text: I18n.t("Open project folder")
+            iconGlyph: "\uE8B7"
+            onTriggered: root.projectFolderRequested()
+        }
+
+        MenuSeparator {}
+
+        AppMenuItem {
+            text: I18n.t("Delete project")
+            iconGlyph: "\uE74D"
+            tone: "danger"
+            onTriggered: root.deleteRequested()
         }
     }
 

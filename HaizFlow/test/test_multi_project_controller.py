@@ -113,6 +113,16 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("required property string videoSize", project_card)
         self.assertIn("id: sizeLabel", project_card)
         self.assertIn("root.videoSize.length > 0", project_card)
+        self.assertIn("acceptedButtons: Qt.RightButton", project_card)
+        self.assertIn("id: projectContextMenu", project_card)
+        self.assertIn('I18n.t("Open project folder")', project_card)
+        self.assertIn('I18n.t("Delete project")', project_card)
+
+        projects_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectsPage.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("onProjectFolderRequested", projects_page)
+        self.assertIn("onDeleteRequested", projects_page)
 
     def test_saving_batch_video_settings_updates_only_the_selected_video(self):
         selected = SimpleNamespace(video_id="video-custom", project_type="batch")
@@ -155,6 +165,28 @@ class MultiProjectControllerTests(unittest.TestCase):
             self.assertTrue(ProjectCommandsController(host).persist_selected_video_settings())
 
         host._apply_setup_to_video.assert_called_once_with(selected)
+        log_to_video.assert_not_called()
+
+    def test_auto_saving_single_video_settings_persists_without_treating_it_as_a_batch(self):
+        selected = SimpleNamespace(video_id="video-single", project_type="single")
+        host = SimpleNamespace(
+            _selected_video_id=selected.video_id,
+            _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+            _apply_setup_to_video=Mock(),
+            refreshVideos=Mock(),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+
+        with (
+            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=selected),
+            patch("haizflow.desktop.project_commands_controller.video_store.log_to_video") as log_to_video,
+        ):
+            self.assertTrue(ProjectCommandsController(host).persist_selected_video_settings())
+
+        host._apply_setup_to_video.assert_called_once_with(selected)
+        host.refreshVideos.assert_called_once()
+        host.batchChanged.emit.assert_not_called()
         log_to_video.assert_not_called()
 
     def test_start_batch_preserves_each_video_saved_settings(self):
@@ -380,8 +412,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         dubbing_setup = (
             ROOT / "src" / "haizflow" / "desktop" / "qml" / "DubbingSetupPanel.qml"
         ).read_text(encoding="utf-8")
-        self.assertIn("batchVideoSaveTimer.restart()", dubbing_setup)
-        self.assertIn("AppController.persistSelectedBatchVideoSettings()", dubbing_setup)
+        self.assertIn("videoSettingsSaveTimer.restart()", dubbing_setup)
+        self.assertIn("AppController.persistSelectedVideoSettings()", dubbing_setup)
         self.assertNotIn("AppController.saveSelectedVideoSettings()", dubbing_setup)
 
     def test_batch_audio_preview_uses_draft_without_applying_settings(self):

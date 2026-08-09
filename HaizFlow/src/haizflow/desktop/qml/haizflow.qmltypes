@@ -389,6 +389,12 @@ Module {
             notify: "watermarkTextChanged"
             index: 111
         }
+        Property { name: "removeOriginalSubtitles"; type: "bool"; read: "removeOriginalSubtitles"; write: "removeOriginalSubtitles"; notify: "subtitleSettingsChanged"; index: 122 }
+        Property { name: "subtitleFontSize"; type: "int"; read: "subtitleFontSize"; write: "subtitleFontSize"; notify: "subtitleSettingsChanged"; index: 123 }
+        Property { name: "subtitlePositionXPercent"; type: "int"; read: "subtitlePositionXPercent"; write: "subtitlePositionXPercent"; notify: "subtitleSettingsChanged"; index: 124 }
+        Property { name: "subtitlePositionYPercent"; type: "int"; read: "subtitlePositionYPercent"; write: "subtitlePositionYPercent"; notify: "subtitleSettingsChanged"; index: 125 }
+        Property { name: "subtitleBoxWidthPercent"; type: "int"; read: "subtitleBoxWidthPercent"; write: "subtitleBoxWidthPercent"; notify: "subtitleSettingsChanged"; index: 126 }
+        Property { name: "subtitleBoxHeightPercent"; type: "int"; read: "subtitleBoxHeightPercent"; write: "subtitleBoxHeightPercent"; notify: "subtitleSettingsChanged"; index: 127 }
         Property {
             name: "backgroundMusicPath"
             type: "QString"
@@ -810,6 +816,7 @@ Module {
         Signal { name: "backgroundMusicVolumeChanged" }
         Signal { name: "ttsVolumeChanged" }
         Signal { name: "watermarkTextChanged" }
+        Signal { name: "subtitleSettingsChanged" }
         Signal { name: "backgroundMusicChanged" }
         Signal { name: "audioPreviewChanged" }
         Signal { name: "workflowModeChanged" }
@@ -876,6 +883,8 @@ Module {
             Parameter { name: "background_music_volume"; type: "int" }
             Parameter { name: "tts_volume"; type: "int" }
             Parameter { name: "background_music_path"; type: "QString" }
+            Parameter { name: "remove_original_subtitles"; type: "bool" }
+            Parameter { name: "subtitle_style"; type: "QVariantMap" }
         }
         Method {
             name: "replaceSelectedVideoVideo"
@@ -937,6 +946,7 @@ Module {
         }
         Method { name: "loadBatchSettings" }
         Method { name: "persistSelectedBatchVideoSettings"; type: "bool" }
+        Method { name: "persistSelectedVideoSettings"; type: "bool" }
         Method {
             name: "voiceOptionsForLanguage"
             type: "QVariantList"

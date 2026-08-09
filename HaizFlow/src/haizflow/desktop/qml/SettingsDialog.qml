@@ -23,6 +23,7 @@ Dialog {
     property string draftTheme: AppController.settingsTheme
     property string draftLanguage: AppController.settingsLanguage
     property string draftDevice: AppController.processingDevice
+    property bool hardwareDetailsVisible: false
     readonly property var hardwareInfo: AppController.hardwareInfo
     readonly property bool draftDirty: draftTheme !== AppController.settingsTheme
         || draftLanguage !== AppController.settingsLanguage
@@ -170,7 +171,7 @@ Dialog {
 
             ColumnLayout {
                 width: settingsScroll.availableWidth
-                spacing: Theme.space20
+                spacing: Theme.space16
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -352,24 +353,38 @@ Dialog {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 206
+                    Layout.preferredHeight: hardwareContent.implicitHeight + Theme.space24
                     radius: Theme.radiusSmall
                     color: Theme.surfaceElevated
                     border.width: 1
                     border.color: Theme.outline
 
                     ColumnLayout {
+                        id: hardwareContent
                         anchors.fill: parent
-                        anchors.margins: Theme.space16
-                        spacing: Theme.space12
+                        anchors.margins: Theme.space12
+                        spacing: Theme.space8
 
-                        Text {
+                        RowLayout {
                             Layout.fillWidth: true
-                            text: I18n.t("Current hardware")
-                            color: Theme.text
-                            font.pixelSize: Theme.body
-                            font.weight: Font.DemiBold
-                            textFormat: Text.PlainText
+                            spacing: Theme.space8
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: I18n.t("Current hardware")
+                                color: Theme.text
+                                font.pixelSize: Theme.body
+                                font.weight: Font.DemiBold
+                                textFormat: Text.PlainText
+                            }
+
+                            AppButton {
+                                text: root.hardwareDetailsVisible
+                                    ? I18n.t("Hide details") : I18n.t("Show details")
+                                compact: true
+                                tone: "ghost"
+                                onClicked: root.hardwareDetailsVisible = !root.hardwareDetailsVisible
+                            }
                         }
 
                         Text {
@@ -392,6 +407,8 @@ Dialog {
 
                         GridLayout {
                             Layout.fillWidth: true
+                            visible: root.hardwareDetailsVisible
+                            Layout.preferredHeight: visible ? implicitHeight : 0
                             columns: 2
                             columnSpacing: Theme.space24
                             rowSpacing: Theme.space8
@@ -443,7 +460,7 @@ Dialog {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: privacyContent.implicitHeight + Theme.space32
+                    Layout.preferredHeight: privacyContent.implicitHeight + Theme.space24
                     radius: Theme.radiusSmall
                     color: Theme.surfaceElevated
                     border.width: 1
@@ -455,7 +472,7 @@ Dialog {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        anchors.margins: Theme.space16
+                        anchors.margins: Theme.space12
                         spacing: Theme.space8
 
                         Text {
@@ -530,24 +547,24 @@ Dialog {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 74
+            Layout.preferredHeight: 56
             Layout.leftMargin: Theme.space24
             Layout.rightMargin: Theme.space24
             spacing: Theme.space8
 
+            Item {
+                Layout.fillWidth: true
+            }
+
             AppButton {
                 text: I18n.t("Reset defaults")
-                iconGlyph: "\uE777"
                 tone: "ghost"
+                compact: true
                 onClicked: {
                     autoApplyTimer.stop()
                     AppController.resetSettings()
                     root.syncDrafts()
                 }
-            }
-
-            Item {
-                Layout.fillWidth: true
             }
 
         }

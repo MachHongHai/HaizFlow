@@ -10,11 +10,12 @@ Panel {
     subtitle: I18n.t("Language, voice and audio")
     tone: "violet"
     contentPadding: Theme.space12
-    contentSpacing: Theme.space4
+    contentSpacing: Theme.space8
+    headerSpacing: Theme.space12
 
-    function scheduleBatchVideoSave() {
-        if (AppController.isSelectedBatchVideo)
-            batchVideoSaveTimer.restart()
+    function scheduleVideoSettingsSave() {
+        if (AppController.hasSelectedVideo && !AppController.isSelectedVideoProcessing)
+            videoSettingsSaveTimer.restart()
     }
 
     Flickable {
@@ -32,13 +33,14 @@ Panel {
             id: settingsColumn
 
             width: setupScroll.width
-            spacing: Theme.space4
+            spacing: Theme.space8
 
-    ColumnLayout {
+    RowLayout {
         Layout.fillWidth: true
-        spacing: Theme.space4
+        spacing: Theme.space12
 
         Text {
+            Layout.preferredWidth: 92
             text: I18n.t("Workflow")
             color: Theme.textMuted
             font.pixelSize: Theme.caption
@@ -48,6 +50,7 @@ Panel {
 
         SegmentedControl {
             Layout.fillWidth: true
+            Layout.preferredHeight: 38
             enabled: AppController.canEditSelectedVideo
             currentValue: AppController.workflowMode
             options: [
@@ -56,7 +59,7 @@ Panel {
             ]
             onActivated: function(value) {
                 AppController.workflowMode = value
-                root.scheduleBatchVideoSave()
+                root.scheduleVideoSettingsSave()
             }
         }
     }
@@ -81,7 +84,7 @@ Panel {
             selectedCode: AppController.targetLanguage
             onSelected: function(code) {
                 AppController.targetLanguage = code
-                root.scheduleBatchVideoSave()
+                root.scheduleVideoSettingsSave()
             }
         }
     }
@@ -107,24 +110,86 @@ Panel {
             currentIndex: AppController.ttsVoiceIndex
             onActivated: {
                 AppController.ttsVoice = currentValue
-                root.scheduleBatchVideoSave()
+                root.scheduleVideoSettingsSave()
             }
         }
-    }
-
-    Rectangle {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 1
-        Layout.topMargin: Theme.space4
-        Layout.bottomMargin: Theme.space4
-        color: Theme.divider
     }
 
     ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.space4
 
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.space12
+
+            Text {
+                Layout.preferredWidth: 92
+                text: I18n.t("Original subtitles")
+                color: Theme.textMuted
+                font.pixelSize: Theme.caption
+                font.weight: Font.Medium
+                textFormat: Text.PlainText
+            }
+
+            SegmentedControl {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 38
+                enabled: AppController.canEditSelectedVideo
+                currentValue: AppController.removeOriginalSubtitles ? "remove" : "keep"
+                options: [
+                    { "label": I18n.t("Cover original subtitles"), "value": "remove" },
+                    { "label": I18n.t("Keep original video"), "value": "keep" }
+                ]
+                onActivated: function(value) {
+                    AppController.removeOriginalSubtitles = value === "remove"
+                    root.scheduleVideoSettingsSave()
+                }
+            }
+        }
+
         Text {
+            Layout.fillWidth: true
+            text: AppController.removeOriginalSubtitles
+                ? I18n.t("OCR locates burned-in subtitles and blurs that region")
+                : I18n.t("OCR and blur are skipped; the source picture remains unchanged")
+            color: Theme.textMuted
+            font.pixelSize: Theme.label
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+        }
+
+        AppButton {
+            Layout.fillWidth: true
+            visible: !AppController.removeOriginalSubtitles
+            text: I18n.t("Edit new subtitles")
+            tone: "secondary"
+            compact: true
+            enabled: AppController.canEditSelectedVideo && AppController.videoPath.length > 0
+            onClicked: subtitlePreviewDialog.openWithLayout(
+                AppController.subtitleFontSize,
+                AppController.subtitlePositionXPercent,
+                AppController.subtitlePositionYPercent,
+                AppController.subtitleBoxWidthPercent,
+                AppController.subtitleBoxHeightPercent
+            )
+        }
+    }
+
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 1
+        Layout.topMargin: Theme.space8
+        Layout.bottomMargin: Theme.space4
+        color: Theme.divider
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Theme.space12
+
+        Text {
+            Layout.preferredWidth: 92
             text: I18n.t("Audio source")
             color: Theme.textMuted
             font.pixelSize: Theme.caption
@@ -134,6 +199,7 @@ Panel {
 
         SegmentedControl {
             Layout.fillWidth: true
+            Layout.preferredHeight: 38
             enabled: AppController.canEditSelectedVideo
             currentValue: AppController.enableAudioSeparation ? "separated" : "original"
             options: [
@@ -142,8 +208,16 @@ Panel {
             ]
             onActivated: function(value) {
                 AppController.enableAudioSeparation = value === "separated"
-                root.scheduleBatchVideoSave()
+                root.scheduleVideoSettingsSave()
             }
+        }
+
+        AppButton {
+            text: I18n.t("Adjust audio levels")
+            tone: "secondary"
+            compact: true
+            enabled: AppController.canEditSelectedVideo
+            onClicked: audioMixDialog.open()
         }
     }
 
@@ -157,21 +231,12 @@ Panel {
         textFormat: Text.PlainText
     }
 
-    AppButton {
-        Layout.fillWidth: true
-        text: I18n.t("Adjust audio levels")
-        tone: "secondary"
-        compact: true
-        enabled: AppController.canEditSelectedVideo
-        onClicked: audioMixDialog.open()
-    }
-
     RowLayout {
         Layout.fillWidth: true
         spacing: Theme.space8
 
         Text {
-            Layout.preferredWidth: 98
+            Layout.preferredWidth: 92
             text: I18n.t("Background music")
             color: Theme.textMuted
             font.pixelSize: Theme.caption
@@ -250,7 +315,7 @@ Panel {
         spacing: Theme.space8
 
         Text {
-            Layout.preferredWidth: 98
+            Layout.preferredWidth: 92
             text: I18n.t("Watermark")
             color: Theme.textMuted
             font.pixelSize: Theme.caption
@@ -298,7 +363,20 @@ Panel {
         id: watermarkDialog
         onWatermarkAccepted: function(text) {
             AppController.watermarkText = text
-            root.scheduleBatchVideoSave()
+            root.scheduleVideoSettingsSave()
+        }
+    }
+
+    SubtitlePreviewDialog {
+        id: subtitlePreviewDialog
+
+        onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+            AppController.subtitleFontSize = fontSize
+            AppController.subtitlePositionXPercent = positionX
+            AppController.subtitlePositionYPercent = positionY
+            AppController.subtitleBoxWidthPercent = boxWidth
+            AppController.subtitleBoxHeightPercent = boxHeight
+            root.scheduleVideoSettingsSave()
         }
     }
 
@@ -313,10 +391,10 @@ Panel {
     }
 
     Timer {
-        id: batchVideoSaveTimer
+        id: videoSettingsSaveTimer
 
         interval: 250
         repeat: false
-        onTriggered: AppController.persistSelectedBatchVideoSettings()
+        onTriggered: AppController.persistSelectedVideoSettings()
     }
 }

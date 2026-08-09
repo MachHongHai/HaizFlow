@@ -21,6 +21,25 @@ from haizflow.services import video_store, project_store
 
 
 class RestartCheckpointTests(unittest.TestCase):
+    def test_original_subtitle_scan_is_skipped_when_source_picture_is_kept(self):
+        video = SimpleNamespace(video_id="video-1", remove_original_subtitles=False)
+        reporter = SimpleNamespace(update=mock.Mock())
+
+        with (
+            mock.patch.object(process_video, "detect_original_subtitle_region") as detect_region,
+            mock.patch.object(process_video, "log_to_video") as log_to_video,
+        ):
+            region = process_video._original_subtitle_region_for_render(video, reporter, "workspace")
+
+        self.assertIsNone(region)
+        detect_region.assert_not_called()
+        reporter.update.assert_called_once_with(
+            87,
+            "detecting_original_subtitles",
+            "Keeping original video subtitles unchanged",
+        )
+        self.assertIn("preserving the source picture", log_to_video.call_args.args[1])
+
     def test_review_approval_resumes_from_edited_translation_without_retranslating(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             transcript = Path(temp_dir) / "translated.json"

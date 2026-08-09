@@ -85,12 +85,12 @@ Item {
                     Layout.row: 0
                     Layout.column: 0
                     Layout.fillWidth: true
-                    Layout.fillHeight: root.wideLayout
+                    Layout.fillHeight: false
                     Layout.minimumWidth: root.wideLayout ? 360 : 390
                     Layout.preferredWidth: root.wideLayout ? 420 : 480
                     Layout.maximumWidth: root.wideLayout ? 500 : 16777215
-                    Layout.minimumHeight: 460
-                    Layout.preferredHeight: 660
+                    Layout.minimumHeight: implicitHeight
+                    Layout.preferredHeight: implicitHeight
                     onRequestUrlImport: root.requestUrlImport()
                 }
 

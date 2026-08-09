@@ -58,9 +58,9 @@ Dialog {
             AppController.previewAudioMix()
     }
 
-    function scheduleBatchVideoSave() {
-        if (AppController.isSelectedBatchVideo)
-            batchVideoSaveTimer.restart()
+    function scheduleVideoSettingsSave() {
+        if (AppController.hasSelectedVideo && !AppController.isSelectedVideoProcessing)
+            videoSettingsSaveTimer.restart()
     }
 
     onClosed: pausePreview()
@@ -134,7 +134,7 @@ Dialog {
                 disabledHint: I18n.t("Source audio volume is unavailable while separating vocals")
                 onVolumeEdited: function(value) {
                     AppController.originalVolume = value
-                    root.scheduleBatchVideoSave()
+                    root.scheduleVideoSettingsSave()
                 }
             }
 
@@ -144,7 +144,7 @@ Dialog {
                 adjustable: AppController.canEditSelectedVideo
                 onVolumeEdited: function(value) {
                     AppController.ttsVolume = value
-                    root.scheduleBatchVideoSave()
+                    root.scheduleVideoSettingsSave()
                 }
             }
 
@@ -155,7 +155,7 @@ Dialog {
                 disabledHint: I18n.t("Choose background music to adjust its volume")
                 onVolumeEdited: function(value) {
                     AppController.backgroundMusicVolume = value
-                    root.scheduleBatchVideoSave()
+                    root.scheduleVideoSettingsSave()
                 }
             }
 
@@ -219,11 +219,11 @@ Dialog {
     }
 
     Timer {
-        id: batchVideoSaveTimer
+        id: videoSettingsSaveTimer
 
         interval: 250
         repeat: false
-        onTriggered: AppController.persistSelectedBatchVideoSettings()
+        onTriggered: AppController.persistSelectedVideoSettings()
     }
 
     MediaPlayer {

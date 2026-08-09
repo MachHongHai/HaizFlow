@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 8
+VIDEO_METADATA_SCHEMA_VERSION = 9
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
@@ -51,6 +51,8 @@ class VideoConfig(BaseModel):
     translator_provider: TranslatorProvider = "hymt2"
     tts_voice: str = "vi-VN-HoaiMyNeural"
     subtitle_style: SubtitleStyle = Field(default_factory=SubtitleStyle)
+    subtitle_layout_override: bool = False
+    remove_original_subtitles: bool = True
     output_format: OutputFormat = "keep_ratio"  # The desktop workflow preserves the original aspect ratio.
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = False
@@ -79,6 +81,8 @@ class VideoInfo(BaseModel):
     translator_provider: TranslatorProvider = "hymt2"
     tts_voice: str
     subtitle_style: SubtitleStyle
+    subtitle_layout_override: bool = False
+    remove_original_subtitles: bool = True
     output_format: OutputFormat
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = False

@@ -216,8 +216,4 @@ Panel {
         }
     }
 
-    Item {
-        Layout.fillHeight: true
-        Layout.minimumHeight: 0
-    }
 }

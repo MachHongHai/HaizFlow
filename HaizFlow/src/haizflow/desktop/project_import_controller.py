@@ -15,7 +15,7 @@ from haizflow.config import TMP_DIR
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import collect_batch_video_paths, create_video_thumbnail_path, normalize_video_path
 from haizflow.core.paths import app_data_dir
-from haizflow.schemas.video import VideoConfig
+from haizflow.schemas.video import SubtitleStyle, VideoConfig
 from haizflow.services import project_store, video_store
 from haizflow.services.channel_import import normalize_remote_url
 from haizflow.services.desktop_videos import create_desktop_video, set_desktop_background_music
@@ -676,6 +676,9 @@ class ProjectImportController:
             "_background_music_volume": 30,
             "_tts_volume": 100,
             "_watermark_text": "",
+            "_remove_original_subtitles": True,
+            "_subtitle_style": SubtitleStyle(),
+            "_subtitle_layout_override": False,
             "_background_music_path": "",
         }
         changed_signals = {
@@ -687,6 +690,9 @@ class ProjectImportController:
             "_background_music_volume": "backgroundMusicVolumeChanged",
             "_tts_volume": "ttsVolumeChanged",
             "_watermark_text": "watermarkTextChanged",
+            "_remove_original_subtitles": "subtitleSettingsChanged",
+            "_subtitle_style": "subtitleSettingsChanged",
+            "_subtitle_layout_override": "subtitleSettingsChanged",
             "_background_music_path": "backgroundMusicChanged",
         }
         voice_changed = getattr(host, "_tts_voice", None) != defaults["_tts_voice"]

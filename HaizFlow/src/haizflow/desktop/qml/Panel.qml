@@ -10,6 +10,7 @@ Rectangle {
     property bool headerVisible: title.length > 0 || subtitle.length > 0
     property int contentPadding: 20
     property int contentSpacing: 14
+    property int headerSpacing: Theme.space20
     property bool muted: false
     property string tone: "default"
     default property alias content: body.data
@@ -30,7 +31,7 @@ Rectangle {
         id: column
         anchors.fill: parent
         anchors.margins: root.contentPadding
-        spacing: root.headerVisible ? Theme.space20 : 0
+        spacing: root.headerVisible ? root.headerSpacing : 0
 
         ColumnLayout {
             Layout.fillWidth: true
