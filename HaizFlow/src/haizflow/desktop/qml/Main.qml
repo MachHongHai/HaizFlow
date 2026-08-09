@@ -28,8 +28,6 @@ ApplicationWindow {
     readonly property string routeBatchVideo: "batch-video"
     readonly property string routeDownloadProjects: "download-projects"
     readonly property string routeDownloadWorkspace: "download-workspace"
-    readonly property string routePublishProjects: "publish-projects"
-    readonly property string routePublishWorkspace: "publish-workspace"
     property string currentRoute: routeSingleProjects
     property string workspaceReturnRoute: routeSingleProjects
     property var routeHistory: [routeSingleProjects]
@@ -67,10 +65,6 @@ ApplicationWindow {
             return 5
         case routeDownloadWorkspace:
             return 6
-        case routePublishProjects:
-            return 7
-        case routePublishWorkspace:
-            return 8
         default:
             return 0
         }
@@ -78,7 +72,7 @@ ApplicationWindow {
 
     function routeIsAvailable(route) {
         if (route === routeSingleProjects || route === routeBatchProjects
-                || route === routeDownloadProjects || route === routePublishProjects)
+                || route === routeDownloadProjects)
             return true
         if (!AppController.hasOpenProject)
             return false
@@ -90,8 +84,6 @@ ApplicationWindow {
             return AppController.projectType === "batch" && AppController.isSelectedBatchVideo
         if (route === routeDownloadWorkspace)
             return AppController.projectType === "download"
-        if (route === routePublishWorkspace)
-            return AppController.projectType === "publish"
         return false
     }
 
@@ -198,7 +190,6 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        Theme.darkMode = AppController.settingsTheme === "dark"
         I18n.language = AppController.settingsLanguage
     }
 
@@ -269,7 +260,6 @@ ApplicationWindow {
         }
 
         function onSettingsChanged() {
-            Theme.darkMode = AppController.settingsTheme === "dark"
             I18n.language = AppController.settingsLanguage
         }
 
@@ -279,8 +269,6 @@ ApplicationWindow {
             } else {
                 if (AppController.projectType === "download") {
                     root.openProjectWorkspace(root.routeDownloadProjects, root.routeDownloadWorkspace)
-                } else if (AppController.projectType === "publish") {
-                    root.openProjectWorkspace(root.routePublishProjects, root.routePublishWorkspace)
                 } else {
                     root.openProjectWorkspace(root.routeSingleProjects, root.routeSingleWorkspace)
                 }
@@ -319,10 +307,6 @@ ApplicationWindow {
             onNewDownloadProjectRequested: {
                 root.workspaceReturnRoute = root.routeDownloadProjects
                 projectSetupDialog.openForType("download")
-            }
-            onNewPublishProjectRequested: {
-                root.workspaceReturnRoute = root.routePublishProjects
-                projectSetupDialog.openForType("publish")
             }
             onSettingsRequested: settingsDialog.open()
             onAboutRequested: aboutDialog.open()
@@ -429,19 +413,6 @@ ApplicationWindow {
                     onClicked: {
                         AppController.refreshVideos()
                         root.navigate(root.routeBatchProjects)
-                    }
-                }
-
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    iconGlyph: "\uE789"
-                    text: I18n.t("Publish")
-                    selected: root.currentRoute === root.routePublishProjects
-                        || root.currentRoute === root.routePublishWorkspace
-                    onClicked: {
-                        AppController.refreshVideos()
-                        root.navigate(root.routePublishProjects)
                     }
                 }
 
@@ -658,40 +629,6 @@ ApplicationWindow {
                     }
                 }
 
-                ProjectsPage {
-                    projectType: "publish"
-                    // Python's generated qmltypes omit the constant flag; this model is stable.
-                    // qmllint disable stale-property-read
-                    projectModel: AppController.publishProjectModel
-                    // qmllint enable stale-property-read
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    onRequestNewProject: {
-                        root.workspaceReturnRoute = root.routePublishProjects
-                        projectSetupDialog.openForType("publish")
-                    }
-                    onOpenProject: {
-                        root.openProjectWorkspace(root.routePublishProjects, root.routePublishWorkspace)
-                    }
-                }
-
-                Loader {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    active: root.currentRoute === root.routePublishWorkspace
-                    asynchronous: true
-                    sourceComponent: Component {
-                        TikTokPublishPage {}
-                    }
-                }
             }
         }
         }

@@ -192,6 +192,14 @@ def _resolve_audio_mix(video, fallback_audio_path: str) -> tuple[str, int]:
     return "", video.original_video_volume
 
 
+def _manual_subtitle_layout_for_render(video) -> bool:
+    """Use a saved manual layout only when OCR covering is disabled."""
+    return bool(
+        getattr(video, "subtitle_layout_override", False)
+        and not bool(getattr(video, "remove_original_subtitles", True))
+    )
+
+
 def _prepare_audio_mix(video, reporter, video_dir: str, fallback_audio_path: str) -> tuple[str, int]:
     background_audio_path, background_volume = _resolve_audio_mix(video, fallback_audio_path)
     if background_audio_path:
@@ -625,16 +633,21 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         )
         crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
         remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
+        # Old project metadata may contain both flags after a user positioned
+        # subtitles in keep-original mode and later enabled OCR covering.  OCR
+        # placement must always win in cover mode, even before that metadata is
+        # opened and normalized by the desktop UI.
+        manual_subtitle_layout = _manual_subtitle_layout_for_render(video)
         original_subtitle_region = _original_subtitle_region_for_render(video, reporter, video_dir)
         render_signature = _signature(
             timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
             # Bump when changing the visual treatment so a previously rendered
             # luma-only result is never reused as a valid final export.
-            "static-largest-original-subtitle-ocr-v12-bangers", remove_original_subtitles,
+            "static-largest-original-subtitle-ocr-v14-context-blur-font-boost", remove_original_subtitles,
             original_subtitle_region,
-            "watermark-white-no-outline-v2",
+            "watermark-bold-italic-keyline-v3",
             getattr(video, "watermark_text", ""),
-            bool(getattr(video, "subtitle_layout_override", False)),
+            manual_subtitle_layout,
         )
         if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(video, "render", render_signature, [final_video]):
             reporter.update(99, "rendering", "Reusing rendered video checkpoint")
@@ -657,7 +670,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
                 video_input, voice_output, srt_output, final_video, video.output_format,
                 subtitle_style, video.crop, video_id, original_subtitle_region,
                 getattr(video, "watermark_text", ""),
-                subtitle_layout_override=bool(getattr(video, "subtitle_layout_override", False)),
+                subtitle_layout_override=manual_subtitle_layout,
                 progress_callback=report_render_progress,
             )
             _mark_checkpoint(video, "render", render_signature)

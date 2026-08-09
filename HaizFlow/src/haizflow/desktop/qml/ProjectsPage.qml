@@ -14,7 +14,6 @@ Item {
     signal openProject(string projectType)
 
     readonly property bool downloadMode: projectType === "download"
-    readonly property bool publishMode: projectType === "publish"
 
     opacity: visible ? 1 : 0
     transform: Translate {
@@ -69,8 +68,6 @@ Item {
                     Accessible.role: Accessible.Button
                     Accessible.name: root.projectType === "batch"
                         ? I18n.t("New batch project")
-                        : root.publishMode
-                            ? I18n.t("New TikTok publishing project")
                         : root.downloadMode
                             ? I18n.t("New download project")
                             : I18n.t("New single project")
@@ -117,8 +114,6 @@ Item {
                             width: parent.width
                             text: root.projectType === "batch"
                                 ? I18n.t("New batch project")
-                                : root.publishMode
-                                    ? I18n.t("New TikTok publishing project")
                                 : root.downloadMode
                                     ? I18n.t("New download project")
                                     : I18n.t("New single project")
@@ -136,8 +131,6 @@ Item {
                             width: parent.width
                             text: root.projectType === "batch"
                                 ? I18n.t("Process videos in batch")
-                                : root.publishMode
-                                    ? I18n.t("Prepare and publish videos")
                                 : root.downloadMode
                                     ? I18n.t("Channels, videos, and audio")
                                     : I18n.t("Process one video")

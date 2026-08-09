@@ -63,6 +63,40 @@ class ProjectImportController:
         """Keep the small controller doubles used by unit tests synchronous."""
         return hasattr(self._host, "_media_import_events")
 
+    def _config_for_project_import(self, *, force_batch: bool = False) -> VideoConfig:
+        """Build an import snapshot without leaking a per-video batch override.
+
+        The shared editor intentionally shows an individual video's settings
+        while that batch card is open.  New imports must nevertheless inherit
+        the batch baseline (the most common saved configuration), not whichever
+        custom card happened to be visited last.
+        """
+        host = self._host
+        config = host._build_config().model_copy(deep=True)
+        is_batch = force_batch or str(getattr(host, "_project_type", "")) == "batch"
+        if not is_batch or not getattr(host, "_batch_video_ids", None):
+            return config
+
+        values = host._batch_settings_values()
+        style_payload = dict(values.get("subtitleStyle") or {})
+        manual_layout = bool(style_payload.pop("manual", False))
+        remove_original_subtitles = bool(values.get("removeOriginalSubtitles", True))
+        return config.model_copy(update={
+            "mode": "review" if values.get("workflowMode") == "review" else "A",
+            "target_language": str(values.get("targetLanguage") or "vi"),
+            "tts_voice": str(values.get("ttsVoice") or ""),
+            "enable_audio_separation": bool(values.get("enableAudioSeparation", False)),
+            "original_video_volume": int(values.get("originalVolume", 60)),
+            "background_music_volume": int(values.get("backgroundMusicVolume", 30)),
+            "tts_volume": int(values.get("ttsVolume", 100)),
+            "watermark_text": str(values.get("watermarkText") or ""),
+            "remove_original_subtitles": remove_original_subtitles,
+            "subtitle_style": SubtitleStyle(**style_payload),
+            "subtitle_layout_override": manual_layout and not remove_original_subtitles,
+            "background_music_path": str(values.get("backgroundMusicPath") or ""),
+            "project_type": "batch",
+        })
+
     def _queue_import(self, jobs: list[dict], context: dict) -> bool:
         """Run disk/FFmpeg work outside the QML thread and marshal results back."""
         host = self._host
@@ -180,6 +214,35 @@ class ProjectImportController:
             if error:
                 host._background_music_import_status = error
                 return
+            if task.get("target") == "batch":
+                project_key_value = str(task.get("project_key") or "")
+                project = project_store.get_project(project_key_value)
+                if not project or project_store.normalize_project_type(project.get("project_type")) != "batch":
+                    host._background_music_import_status = "The batch project is no longer available."
+                    return
+                source_path = str(event.get("path") or "")
+                suffix = os.path.splitext(source_path)[1].lower() or ".m4a"
+                assets_directory = os.path.join(project_store.project_root_for_key(project_key_value), ".batch-assets")
+                os.makedirs(assets_directory, exist_ok=True)
+                destination = os.path.join(assets_directory, f"background_music{suffix}")
+                temporary_destination = f"{destination}.tmp"
+                try:
+                    shutil.copy2(source_path, temporary_destination)
+                    os.replace(temporary_destination, destination)
+                finally:
+                    try:
+                        os.remove(temporary_destination)
+                    except FileNotFoundError:
+                        pass
+                for candidate in Path(assets_directory).glob("background_music.*"):
+                    if os.path.normcase(os.path.abspath(candidate)) != os.path.normcase(os.path.abspath(destination)):
+                        try:
+                            candidate.unlink()
+                        except OSError:
+                            pass
+                host._background_music_import_status = "Background music imported"
+                host.batchBackgroundMusicDraftReady.emit(destination)
+                return
             selected = video_store.get_video(str(task.get("video_id") or ""))
             if not selected:
                 host._background_music_import_status = "The selected video is no longer available."
@@ -192,6 +255,10 @@ class ProjectImportController:
             if host._selected_video_id == selected.video_id:
                 host._background_music_path = stored_path
                 host.selectedVideoChanged.emit()
+                host.backgroundMusicChanged.emit()
+                preview = getattr(host, "_audio_preview", None)
+                if preview is not None:
+                    preview.invalidate()
             host.refreshVideos()
             host._background_music_import_status = "Background music imported"
         except (OSError, RuntimeError, ValueError) as exc:
@@ -229,6 +296,7 @@ class ProjectImportController:
         self._background_music_cancel = threading.Event()
         self._background_music_task = {
             "task_id": task_id,
+            "target": "video",
             "video_id": host._selected_video_id,
             "url": normalized_url,
         }
@@ -239,6 +307,47 @@ class ProjectImportController:
             target=self._run_background_music_download,
             args=(dict(self._background_music_task), self._background_music_cancel),
             name="haizflow-background-music-download",
+            daemon=True,
+        )
+        self._background_music_thread.start()
+        return True
+
+    def import_batch_background_music_link(self, url: str) -> bool:
+        host = self._host
+        value = str(url or "").strip()
+        if not value:
+            host._background_music_import_status = "Paste a background music link first."
+            host.backgroundMusicImportChanged.emit()
+            return False
+        if host._background_music_import_busy:
+            return False
+        project = project_store.get_project(host._selected_project_key)
+        if not project or project_store.normalize_project_type(project.get("project_type")) != "batch":
+            host._background_music_import_status = "Open a batch project before importing background music."
+            host.backgroundMusicImportChanged.emit()
+            return False
+        try:
+            normalized_url, _platform = validate_video_url(value)
+        except ValueError as exc:
+            host._background_music_import_status = str(exc)
+            host.backgroundMusicImportChanged.emit()
+            return False
+
+        task_id = uuid.uuid4().hex
+        self._background_music_cancel = threading.Event()
+        self._background_music_task = {
+            "task_id": task_id,
+            "target": "batch",
+            "project_key": host._selected_project_key,
+            "url": normalized_url,
+        }
+        host._background_music_import_busy = True
+        host._background_music_import_status = "Downloading background music"
+        host.backgroundMusicImportChanged.emit()
+        self._background_music_thread = threading.Thread(
+            target=self._run_background_music_download,
+            args=(dict(self._background_music_task), self._background_music_cancel),
+            name="haizflow-batch-background-music-download",
             daemon=True,
         )
         self._background_music_thread.start()
@@ -380,7 +489,7 @@ class ProjectImportController:
             "project_directory": host._project_directory,
             "project_type": host._project_type,
             "selected_video_id": host._selected_video_id,
-            "config": host._build_config(),
+            "config": self._config_for_project_import(force_batch=host._project_type == "batch"),
             "media_source": {
                 "type": "video_url",
                 "platform": host._url_importer.platform,
@@ -520,7 +629,7 @@ class ProjectImportController:
             "project_name": host._project_name,
             "project_directory": host._project_directory,
             "project_type": "batch",
-            "config": host._build_config().model_copy(deep=True),
+            "config": self._config_for_project_import(force_batch=True),
             "channel_url": host._channel_importer.channelUrl,
             "channel_name": host._channel_importer.channelName,
         }
@@ -649,6 +758,9 @@ class ProjectImportController:
         else:
             host._background_music_path = source_path
         host.backgroundMusicChanged.emit()
+        preview = getattr(host, "_audio_preview", None)
+        if preview is not None:
+            preview.invalidate()
         return True
 
     def browse_project_directory(self, project_type: str = "single") -> None:
@@ -735,16 +847,6 @@ class ProjectImportController:
                 "Wait for the current channel task to finish or cancel it before creating another download project.",
             )
             return False
-        if (
-            normalized_type == "publish"
-            and not host._tiktok_publisher.can_switch_project("__new_publish_project__")
-        ):
-            QMessageBox.information(
-                None,
-                "TikTok publishing",
-                "Wait for the current video import to finish before creating another publishing project.",
-            )
-            return False
         host._project_name, host._project_directory = project_name, os.path.abspath(project_directory)
         host._project_type = normalized_type
         try:
@@ -756,8 +858,6 @@ class ProjectImportController:
         self._reset_new_project_setup()
         if host._project_type == "download":
             host._media_downloader.attach_project(project["key"], project["project_root"])
-        elif host._project_type == "publish":
-            host._tiktok_publisher.attach_project(project["key"], project["project_root"])
         host.videoPath = ""
         host._selected_video_id, host._batch_video_ids = None, []
         host._refresh_batch_model()
@@ -789,7 +889,7 @@ class ProjectImportController:
             return self._queue_project_video(normalized)
         try:
             video = self._create_video(
-                normalized, host._build_config(), project_name=host._project_name,
+                normalized, self._config_for_project_import(), project_name=host._project_name,
                 project_directory=host._project_directory, project_key_value=host._selected_project_key,
             )
             host._assign_project_thumbnail(video)
@@ -878,7 +978,7 @@ class ProjectImportController:
         for path in valid_paths:
             try:
                 video = self._create_video(
-                    path, host._build_config(), project_name=host._project_name,
+                    path, self._config_for_project_import(force_batch=True), project_name=host._project_name,
                     project_directory=host._project_directory, project_key_value=host._selected_project_key,
                 )
                 self._assign_thumbnail(video)
@@ -985,7 +1085,7 @@ class ProjectImportController:
     def _queue_project_video(self, path: str, *, url_import: bool = False) -> bool:
         host = self._host
         return self._queue_import([{
-            "operation": "create", "path": path, "config": host._build_config().model_copy(deep=True),
+            "operation": "create", "path": path, "config": self._config_for_project_import(),
             "create_kwargs": {
                 "project_name": host._project_name, "project_directory": host._project_directory,
                 "project_key_value": host._selected_project_key,
@@ -998,7 +1098,7 @@ class ProjectImportController:
         if not valid_paths:
             return False
         jobs = [{
-            "operation": "create", "path": path, "config": host._build_config().model_copy(deep=True),
+            "operation": "create", "path": path, "config": self._config_for_project_import(force_batch=True),
             "create_kwargs": {
                 "project_name": host._project_name, "project_directory": host._project_directory,
                 "project_key_value": host._selected_project_key,

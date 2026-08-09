@@ -12,7 +12,7 @@ HaizFlow creates localized, reupload-ready versions of public videos. Download a
 
 ### Why HaizFlow?
 
-- **Easy to use** — dedicated spaces for downloads, one video, batches, and TikTok publishing, with consistent navigation and actions.
+- **Easy to use** — dedicated spaces for downloads, one video, and batches, with consistent navigation and actions.
 - **Built for batches** — manage multiple videos in a queue while keeping every project's progress and settings organized.
 - **Everything in one app** — import media, translate, dub, add subtitles, mix audio, and export without switching tools.
 - **Local-first** — core media processing happens on your computer. No API key is required for the standard workflow.
@@ -27,20 +27,19 @@ HaizFlow creates localized, reupload-ready versions of public videos. Download a
 | Download media | Download public videos, browse supported public channels, or download and extract audio to an output folder you choose. |
 | Improve audio and subtitles | Keep original audio or separate vocals, add background music from a file or link, preview the mix, and adjust levels before processing. |
 | Replace source subtitles | Detect likely burned-in subtitle areas and place new subtitles cleanly over them. |
-| Prepare TikTok posts | Import files, folders, rendered Single videos, or complete Batch projects; reuse caption and hashtag templates; then let HaizFlow attach each video and type its text in TikTok Studio for your review and final confirmation. A dedicated Chrome session keeps the TikTok sign-in available between HaizFlow runs and can be cleared when you want to switch accounts. |
 
 ### Get started
 
 1. Download the Windows installer from [Releases](https://github.com/MachHongHai/HaizFlow/releases).
 2. Choose where you want HaizFlow installed.
-3. Open the app and create a Download, Single, Batch, or TikTok publishing project.
+3. Open the app and create a Download, Single, or Batch project.
 4. Add media, choose your output options, and start processing.
 
 Large local models are downloaded only when first needed. HaizFlow shows download progress and verifies them before use; later launches reuse the installed models.
 
 ### Privacy and connectivity
 
-Core media processing is designed to run on your computer. Downloading from a public link connects to the selected source platform. The default Edge TTS voice service is online, so text selected for speech synthesis is sent to that service. Assisted publishing opens TikTok Studio in a dedicated Chrome data directory under HaizFlow's selected data location. Chrome owns and protects the session cookies there; HaizFlow does not export them as readable cookie or token files. The queue and post text remain local, and the final publishing confirmation is always yours.
+Core media processing is designed to run on your computer. Downloading from a public link connects to the selected source platform. The default Edge TTS voice service is online, so text selected for speech synthesis is sent to that service.
 
 ### Responsible use
 
@@ -71,7 +70,7 @@ HaizFlow tạo phiên bản video sẵn sàng để reup từ các nguồn công
 
 ### Vì sao dùng HaizFlow?
 
-- **Dễ sử dụng** — có không gian riêng cho tải xuống, một video, hàng loạt và đăng TikTok; điều hướng cùng thao tác được bố trí nhất quán.
+- **Dễ sử dụng** — có không gian riêng cho tải xuống, một video và hàng loạt; điều hướng cùng thao tác được bố trí nhất quán.
 - **Tối ưu cho hàng loạt** — quản lí nhiều video trong hàng đợi, lưu lại tiến độ và thiết lập của từng dự án.
 - **Mọi thứ trong một ứng dụng** — nhập tệp, dịch, lồng tiếng, chèn phụ đề, phối âm và xuất video mà không phải chuyển qua nhiều công cụ.
 - **Ưu tiên xử lí trên máy** — các bước xử lí chính chạy trên máy của bạn. Quy trình mặc định không cần khóa API.
@@ -86,20 +85,19 @@ HaizFlow tạo phiên bản video sẵn sàng để reup từ các nguồn công
 | Tải nội dung | Tải video công khai, duyệt video từ kênh công khai được hỗ trợ, hoặc tải/trích âm thanh vào thư mục đầu ra bạn chọn. |
 | Âm thanh và phụ đề | Giữ âm thanh gốc hoặc tách giọng, thêm nhạc nền từ tệp/liên kết, nghe thử phối âm và chỉnh âm lượng trước khi xử lí. |
 | Phụ đề gốc | Tự nhận diện vùng phụ đề cứng có độ tin cậy cao để đặt phụ đề mới gọn gàng lên trên. |
-| Chuẩn bị bài đăng TikTok | Nhập tệp, thư mục, video từ dự án Đơn lẻ hoặc toàn bộ dự án Hàng loạt; dùng lại mẫu caption và hashtag; sau đó để HaizFlow gắn video và nhập nội dung vào TikTok Studio cho bạn kiểm tra và xác nhận đăng. Phiên Chrome riêng giữ đăng nhập giữa các lần chạy và có thể được xóa khi bạn muốn đổi tài khoản. |
 
 ### Bắt đầu sử dụng
 
 1. Tải bộ cài đặt Windows tại [trang phát hành](https://github.com/MachHongHai/HaizFlow/releases).
 2. Chọn thư mục muốn cài HaizFlow.
-3. Mở ứng dụng và tạo dự án Tải xuống, Đơn lẻ, Hàng loạt hoặc Đăng TikTok.
+3. Mở ứng dụng và tạo dự án Tải xuống, Đơn lẻ hoặc Hàng loạt.
 4. Thêm tệp nguồn, chọn đầu ra mong muốn và bắt đầu xử lí.
 
 Các mô hình lớn chỉ được tải khi lần đầu cần dùng. HaizFlow hiển thị tiến độ tải, kiểm tra tệp trước khi dùng và sẽ tái sử dụng ở những lần mở sau.
 
 ### Quyền riêng tư và kết nối mạng
 
-Các bước xử lí chính được thiết kế để chạy trên máy của bạn. Khi tải từ liên kết công khai, ứng dụng sẽ kết nối tới nền tảng nguồn tương ứng. Giọng đọc Edge TTS mặc định là dịch vụ trực tuyến, vì vậy văn bản cần tổng hợp giọng nói sẽ được gửi tới dịch vụ này. Quy trình đăng có hỗ trợ mở TikTok Studio trong thư mục dữ liệu Chrome riêng nằm dưới vị trí dữ liệu HaizFlow mà bạn đã chọn. Chrome tự quản lý và bảo vệ cookie phiên tại đó; HaizFlow không xuất cookie hoặc token thành tệp có thể đọc. Hàng đợi và nội dung bài đăng vẫn nằm trên máy, còn bước xác nhận đăng cuối cùng do bạn thực hiện.
+Các bước xử lí chính được thiết kế để chạy trên máy của bạn. Khi tải từ liên kết công khai, ứng dụng sẽ kết nối tới nền tảng nguồn tương ứng. Giọng đọc Edge TTS mặc định là dịch vụ trực tuyến, vì vậy văn bản cần tổng hợp giọng nói sẽ được gửi tới dịch vụ này.
 
 ### Sử dụng có trách nhiệm
 

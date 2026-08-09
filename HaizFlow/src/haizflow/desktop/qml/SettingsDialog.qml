@@ -20,17 +20,14 @@ Dialog {
     header: null
     footer: null
 
-    property string draftTheme: AppController.settingsTheme
     property string draftLanguage: AppController.settingsLanguage
     property string draftDevice: AppController.processingDevice
     property bool hardwareDetailsVisible: false
     readonly property var hardwareInfo: AppController.hardwareInfo
-    readonly property bool draftDirty: draftTheme !== AppController.settingsTheme
-        || draftLanguage !== AppController.settingsLanguage
+    readonly property bool draftDirty: draftLanguage !== AppController.settingsLanguage
         || draftDevice !== AppController.processingDevice
 
     function syncDrafts() {
-        draftTheme = AppController.settingsTheme
         draftLanguage = AppController.settingsLanguage
         draftDevice = AppController.processingDevice
     }
@@ -38,7 +35,7 @@ Dialog {
     function applyDraft() {
         if (!draftDirty)
             return true
-        const applied = AppController.applySettings(draftTheme, draftLanguage, draftDevice)
+        const applied = AppController.applySettings("graphite", draftLanguage, draftDevice)
         if (!applied)
             syncDrafts()
         return applied
@@ -172,58 +169,6 @@ Dialog {
             ColumnLayout {
                 width: settingsScroll.availableWidth
                 spacing: Theme.space16
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.space24
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 3
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: I18n.t("Theme")
-                            color: Theme.text
-                            font.pixelSize: Theme.body
-                            font.weight: Font.DemiBold
-                            textFormat: Text.PlainText
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: I18n.t("Choose the application appearance")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.caption
-                            textFormat: Text.PlainText
-                        }
-                    }
-
-                    SegmentedControl {
-                        Layout.preferredWidth: 260
-                        currentValue: root.draftTheme
-                        options: [
-                            {
-                                "label": I18n.t("Dark"),
-                                "value": "dark"
-                            },
-                            {
-                                "label": I18n.t("Light"),
-                                "value": "light"
-                            }
-                        ]
-                        onActivated: function (value) {
-                            root.draftTheme = value
-                            root.scheduleApply()
-                        }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.divider
-                }
 
                 RowLayout {
                     Layout.fillWidth: true

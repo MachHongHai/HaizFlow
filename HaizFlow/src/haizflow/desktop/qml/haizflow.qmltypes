@@ -31,81 +31,24 @@ Module {
             isReadonly: true
         }
         Property {
-            name: "channelImporter"
+            name: "downloadProjectModel"
             type: "QObject"
-            read: "channelImporter"
+            read: "downloadProjectModel"
             index: 4
             isReadonly: true
         }
         Property {
-            name: "hasChannelImportSession"
-            type: "bool"
-            read: "hasChannelImportSession"
-            notify: "channelImportChanged"
+            name: "channelImporter"
+            type: "QObject"
+            read: "channelImporter"
             index: 5
             isReadonly: true
         }
         Property {
-            name: "channelImportBusy"
-            type: "bool"
-            read: "channelImportBusy"
-            notify: "channelImportChanged"
-            index: 6
-            isReadonly: true
-        }
-        Property {
-            name: "channelImportProgress"
-            type: "int"
-            read: "channelImportProgress"
-            notify: "channelImportChanged"
-            index: 7
-            isReadonly: true
-        }
-        Property {
-            name: "channelImportStatus"
-            type: "QString"
-            read: "channelImportStatus"
-            notify: "channelImportChanged"
-            index: 8
-            isReadonly: true
-        }
-        Property {
-            name: "channelImportName"
-            type: "QString"
-            read: "channelImportName"
-            notify: "channelImportChanged"
-            index: 9
-            isReadonly: true
-        }
-        Property {
-            name: "channelImportCandidateCount"
-            type: "int"
-            read: "channelImportCandidateCount"
-            notify: "channelImportChanged"
-            index: 10
-            isReadonly: true
-        }
-        Property {
-            name: "channelImportImportedCount"
-            type: "int"
-            read: "channelImportImportedCount"
-            notify: "channelImportChanged"
-            index: 11
-            isReadonly: true
-        }
-        Property {
-            name: "channelImportFailedCount"
-            type: "int"
-            read: "channelImportFailedCount"
-            notify: "channelImportChanged"
-            index: 12
-            isReadonly: true
-        }
-        Property {
-            name: "batchVideoModel"
+            name: "mediaDownloader"
             type: "QObject"
-            read: "batchVideoModel"
-            index: 13
+            read: "mediaDownloader"
+            index: 6
             isReadonly: true
         }
         Property {
@@ -113,7 +56,7 @@ Module {
             type: "bool"
             read: "mediaImportBusy"
             notify: "mediaImportChanged"
-            index: 83
+            index: 7
             isReadonly: true
         }
         Property {
@@ -121,7 +64,7 @@ Module {
             type: "int"
             read: "mediaImportTotal"
             notify: "mediaImportChanged"
-            index: 84
+            index: 8
             isReadonly: true
         }
         Property {
@@ -129,7 +72,7 @@ Module {
             type: "int"
             read: "mediaImportCompleted"
             notify: "mediaImportChanged"
-            index: 85
+            index: 9
             isReadonly: true
         }
         Property {
@@ -137,87 +80,78 @@ Module {
             type: "QString"
             read: "mediaImportStatus"
             notify: "mediaImportChanged"
-            index: 86
+            index: 10
             isReadonly: true
         }
         Property {
-            name: "runtimeState"
-            type: "QString"
-            read: "runtimeState"
-            notify: "runtimeStateChanged"
-            index: 87
-            isReadonly: true
-        }
-        Property {
-            name: "modelSetupVisible"
+            name: "hasChannelImportSession"
             type: "bool"
-            read: "modelSetupVisible"
-            notify: "modelSetupChanged"
-            index: 88
+            read: "hasChannelImportSession"
+            notify: "channelImportChanged"
+            index: 11
             isReadonly: true
         }
         Property {
-            name: "modelSetupBusy"
+            name: "channelImportBusy"
             type: "bool"
-            read: "modelSetupBusy"
-            notify: "modelSetupChanged"
-            index: 89
+            read: "channelImportBusy"
+            notify: "channelImportChanged"
+            index: 12
             isReadonly: true
         }
         Property {
-            name: "modelSetupCanCancel"
-            type: "bool"
-            read: "modelSetupCanCancel"
-            notify: "modelSetupChanged"
-            index: 90
-            isReadonly: true
-        }
-        Property {
-            name: "modelSetupProgress"
+            name: "channelImportProgress"
             type: "int"
-            read: "modelSetupProgress"
-            notify: "modelSetupChanged"
-            index: 91
+            read: "channelImportProgress"
+            notify: "channelImportChanged"
+            index: 13
             isReadonly: true
         }
         Property {
-            name: "modelSetupState"
+            name: "channelImportStatus"
             type: "QString"
-            read: "modelSetupState"
-            notify: "modelSetupChanged"
-            index: 92
+            read: "channelImportStatus"
+            notify: "channelImportChanged"
+            index: 14
             isReadonly: true
         }
         Property {
-            name: "modelSetupComponent"
+            name: "channelImportName"
             type: "QString"
-            read: "modelSetupComponent"
-            notify: "modelSetupChanged"
-            index: 93
+            read: "channelImportName"
+            notify: "channelImportChanged"
+            index: 15
             isReadonly: true
         }
         Property {
-            name: "modelSetupDetail"
-            type: "QString"
-            read: "modelSetupDetail"
-            notify: "modelSetupChanged"
-            index: 94
+            name: "channelImportCandidateCount"
+            type: "int"
+            read: "channelImportCandidateCount"
+            notify: "channelImportChanged"
+            index: 16
             isReadonly: true
         }
         Property {
-            name: "modelSetupSizeText"
-            type: "QString"
-            read: "modelSetupSizeText"
-            notify: "modelSetupChanged"
-            index: 95
+            name: "channelImportImportedCount"
+            type: "int"
+            read: "channelImportImportedCount"
+            notify: "channelImportChanged"
+            index: 17
             isReadonly: true
         }
         Property {
-            name: "modelSetupDirectory"
-            type: "QString"
-            read: "modelSetupDirectory"
-            notify: "modelSetupChanged"
-            index: 96
+            name: "channelImportFailedCount"
+            type: "int"
+            read: "channelImportFailedCount"
+            notify: "channelImportChanged"
+            index: 18
+            isReadonly: true
+        }
+        Property {
+            name: "batchVideoModel"
+            type: "QObject"
+            read: "batchVideoModel"
+            index: 19
             isReadonly: true
         }
         Property {
@@ -225,7 +159,7 @@ Module {
             type: "bool"
             read: "isBatchRunning"
             notify: "batchChanged"
-            index: 14
+            index: 20
             isReadonly: true
         }
         Property {
@@ -233,7 +167,7 @@ Module {
             type: "int"
             read: "batchCount"
             notify: "batchChanged"
-            index: 15
+            index: 21
             isReadonly: true
         }
         Property {
@@ -241,7 +175,7 @@ Module {
             type: "int"
             read: "batchCompletedCount"
             notify: "batchChanged"
-            index: 16
+            index: 22
             isReadonly: true
         }
         Property {
@@ -249,7 +183,7 @@ Module {
             type: "int"
             read: "batchPendingCount"
             notify: "batchChanged"
-            index: 17
+            index: 23
             isReadonly: true
         }
         Property {
@@ -257,7 +191,7 @@ Module {
             type: "int"
             read: "batchPausedCount"
             notify: "batchChanged"
-            index: 111
+            index: 24
             isReadonly: true
         }
         Property {
@@ -265,7 +199,7 @@ Module {
             type: "int"
             read: "batchProgress"
             notify: "batchChanged"
-            index: 18
+            index: 25
             isReadonly: true
         }
         Property {
@@ -273,15 +207,7 @@ Module {
             type: "QString"
             read: "batchTargetLanguageLabel"
             notify: "batchChanged"
-            index: 19
-            isReadonly: true
-        }
-        Property {
-            name: "batchVideoSizeGroups"
-            type: "QVariantList"
-            read: "batchVideoSizeGroups"
-            notify: "batchChanged"
-            index: 20
+            index: 26
             isReadonly: true
         }
         Property {
@@ -290,14 +216,14 @@ Module {
             read: "videoPath"
             write: "videoPath"
             notify: "videoPathChanged"
-            index: 21
+            index: 27
         }
         Property {
             name: "videoThumbnailSource"
             type: "QString"
             read: "videoThumbnailSource"
             notify: "videoThumbnailChanged"
-            index: 22
+            index: 28
             isReadonly: true
         }
         Property {
@@ -305,7 +231,7 @@ Module {
             type: "QVariantList"
             read: "targetLanguageOptions"
             notify: "languageOptionsChanged"
-            index: 23
+            index: 29
             isReadonly: true
         }
         Property {
@@ -314,14 +240,14 @@ Module {
             read: "targetLanguage"
             write: "targetLanguage"
             notify: "targetLanguageChanged"
-            index: 24
+            index: 30
         }
         Property {
             name: "targetLanguageLabel"
             type: "QString"
             read: "targetLanguageLabel"
             notify: "languageOptionsChanged"
-            index: 25
+            index: 31
             isReadonly: true
         }
         Property {
@@ -330,14 +256,14 @@ Module {
             read: "ttsVoice"
             write: "ttsVoice"
             notify: "ttsVoiceChanged"
-            index: 26
+            index: 32
         }
         Property {
             name: "ttsVoiceOptions"
             type: "QVariantList"
             read: "ttsVoiceOptions"
             notify: "ttsVoiceOptionsChanged"
-            index: 27
+            index: 33
             isReadonly: true
         }
         Property {
@@ -345,7 +271,7 @@ Module {
             type: "int"
             read: "ttsVoiceIndex"
             notify: "ttsVoiceOptionsChanged"
-            index: 28
+            index: 34
             isReadonly: true
         }
         Property {
@@ -354,7 +280,7 @@ Module {
             read: "enableAudioSeparation"
             write: "enableAudioSeparation"
             notify: "enableAudioSeparationChanged"
-            index: 29
+            index: 35
         }
         Property {
             name: "originalVolume"
@@ -362,16 +288,15 @@ Module {
             read: "originalVolume"
             write: "originalVolume"
             notify: "originalVolumeChanged"
-            index: 30
+            index: 36
         }
-        Property { name: "mediaDownloader"; type: "QObject"; read: "mediaDownloader"; index: 107; isReadonly: true }
         Property {
             name: "backgroundMusicVolume"
             type: "int"
             read: "backgroundMusicVolume"
             write: "backgroundMusicVolume"
             notify: "backgroundMusicVolumeChanged"
-            index: 100
+            index: 37
         }
         Property {
             name: "ttsVolume"
@@ -379,7 +304,7 @@ Module {
             read: "ttsVolume"
             write: "ttsVolume"
             notify: "ttsVolumeChanged"
-            index: 101
+            index: 38
         }
         Property {
             name: "watermarkText"
@@ -387,27 +312,62 @@ Module {
             read: "watermarkText"
             write: "watermarkText"
             notify: "watermarkTextChanged"
-            index: 111
+            index: 39
         }
-        Property { name: "removeOriginalSubtitles"; type: "bool"; read: "removeOriginalSubtitles"; write: "removeOriginalSubtitles"; notify: "subtitleSettingsChanged"; index: 122 }
-        Property { name: "subtitleFontSize"; type: "int"; read: "subtitleFontSize"; write: "subtitleFontSize"; notify: "subtitleSettingsChanged"; index: 123 }
-        Property { name: "subtitlePositionXPercent"; type: "int"; read: "subtitlePositionXPercent"; write: "subtitlePositionXPercent"; notify: "subtitleSettingsChanged"; index: 124 }
-        Property { name: "subtitlePositionYPercent"; type: "int"; read: "subtitlePositionYPercent"; write: "subtitlePositionYPercent"; notify: "subtitleSettingsChanged"; index: 125 }
-        Property { name: "subtitleBoxWidthPercent"; type: "int"; read: "subtitleBoxWidthPercent"; write: "subtitleBoxWidthPercent"; notify: "subtitleSettingsChanged"; index: 126 }
-        Property { name: "subtitleBoxHeightPercent"; type: "int"; read: "subtitleBoxHeightPercent"; write: "subtitleBoxHeightPercent"; notify: "subtitleSettingsChanged"; index: 127 }
+        Property {
+            name: "removeOriginalSubtitles"
+            type: "bool"
+            read: "removeOriginalSubtitles"
+            write: "removeOriginalSubtitles"
+            notify: "subtitleSettingsChanged"
+            index: 40
+        }
+        Property {
+            name: "subtitleFontSize"
+            type: "int"
+            read: "subtitleFontSize"
+            write: "subtitleFontSize"
+            notify: "subtitleSettingsChanged"
+            index: 41
+        }
+        Property {
+            name: "subtitlePositionXPercent"
+            type: "int"
+            read: "subtitlePositionXPercent"
+            write: "subtitlePositionXPercent"
+            notify: "subtitleSettingsChanged"
+            index: 42
+        }
+        Property {
+            name: "subtitlePositionYPercent"
+            type: "int"
+            read: "subtitlePositionYPercent"
+            write: "subtitlePositionYPercent"
+            notify: "subtitleSettingsChanged"
+            index: 43
+        }
+        Property {
+            name: "subtitleBoxWidthPercent"
+            type: "int"
+            read: "subtitleBoxWidthPercent"
+            write: "subtitleBoxWidthPercent"
+            notify: "subtitleSettingsChanged"
+            index: 44
+        }
+        Property {
+            name: "subtitleBoxHeightPercent"
+            type: "int"
+            read: "subtitleBoxHeightPercent"
+            write: "subtitleBoxHeightPercent"
+            notify: "subtitleSettingsChanged"
+            index: 45
+        }
         Property {
             name: "backgroundMusicPath"
             type: "QString"
             read: "backgroundMusicPath"
             notify: "backgroundMusicChanged"
-            index: 102
-            isReadonly: true
-        }
-        Property {
-            name: "downloadProjectModel"
-            type: "QObject"
-            read: "downloadProjectModel"
-            index: 108
+            index: 46
             isReadonly: true
         }
         Property {
@@ -415,7 +375,7 @@ Module {
             type: "bool"
             read: "backgroundMusicImportBusy"
             notify: "backgroundMusicImportChanged"
-            index: 108
+            index: 47
             isReadonly: true
         }
         Property {
@@ -423,7 +383,7 @@ Module {
             type: "QString"
             read: "backgroundMusicImportStatus"
             notify: "backgroundMusicImportChanged"
-            index: 109
+            index: 48
             isReadonly: true
         }
         Property {
@@ -431,7 +391,7 @@ Module {
             type: "QString"
             read: "audioPreviewSource"
             notify: "audioPreviewChanged"
-            index: 103
+            index: 49
             isReadonly: true
         }
         Property {
@@ -439,7 +399,7 @@ Module {
             type: "QString"
             read: "audioPreviewOriginalSource"
             notify: "audioPreviewChanged"
-            index: 105
+            index: 50
             isReadonly: true
         }
         Property {
@@ -447,7 +407,7 @@ Module {
             type: "QString"
             read: "audioPreviewBackgroundMusicSource"
             notify: "audioPreviewChanged"
-            index: 106
+            index: 51
             isReadonly: true
         }
         Property {
@@ -455,7 +415,7 @@ Module {
             type: "QString"
             read: "audioPreviewState"
             notify: "audioPreviewChanged"
-            index: 104
+            index: 52
             isReadonly: true
         }
         Property {
@@ -464,14 +424,14 @@ Module {
             read: "workflowMode"
             write: "workflowMode"
             notify: "workflowModeChanged"
-            index: 31
+            index: 53
         }
         Property {
             name: "isProcessing"
             type: "bool"
             read: "isProcessing"
             notify: "processingChanged"
-            index: 32
+            index: 54
             isReadonly: true
         }
         Property {
@@ -479,7 +439,7 @@ Module {
             type: "bool"
             read: "isSelectedVideoProcessing"
             notify: "processingChanged"
-            index: 33
+            index: 55
             isReadonly: true
         }
         Property {
@@ -487,7 +447,7 @@ Module {
             type: "bool"
             read: "isSelectedVideoQueued"
             notify: "selectedVideoChanged"
-            index: 34
+            index: 56
             isReadonly: true
         }
         Property {
@@ -495,7 +455,7 @@ Module {
             type: "bool"
             read: "canEditSelectedVideo"
             notify: "selectedVideoChanged"
-            index: 35
+            index: 57
             isReadonly: true
         }
         Property {
@@ -503,7 +463,7 @@ Module {
             type: "QString"
             read: "processingText"
             notify: "processingChanged"
-            index: 36
+            index: 58
             isReadonly: true
         }
         Property {
@@ -511,7 +471,7 @@ Module {
             type: "QString"
             read: "selectedTitle"
             notify: "selectedVideoChanged"
-            index: 37
+            index: 59
             isReadonly: true
         }
         Property {
@@ -519,7 +479,7 @@ Module {
             type: "bool"
             read: "hasSelectedVideo"
             notify: "selectedVideoChanged"
-            index: 38
+            index: 60
             isReadonly: true
         }
         Property {
@@ -527,7 +487,7 @@ Module {
             type: "bool"
             read: "hasOpenProject"
             notify: "projectSetupChanged"
-            index: 39
+            index: 61
             isReadonly: true
         }
         Property {
@@ -535,7 +495,7 @@ Module {
             type: "bool"
             read: "isSelectedBatchVideo"
             notify: "selectedVideoChanged"
-            index: 40
+            index: 62
             isReadonly: true
         }
         Property {
@@ -543,7 +503,7 @@ Module {
             type: "QVariantList"
             read: "reviewSegments"
             notify: "selectedVideoChanged"
-            index: 41
+            index: 63
             isReadonly: true
         }
         Property {
@@ -551,7 +511,7 @@ Module {
             type: "QString"
             read: "selectedFileName"
             notify: "selectedVideoChanged"
-            index: 42
+            index: 64
             isReadonly: true
         }
         Property {
@@ -559,7 +519,7 @@ Module {
             type: "QString"
             read: "selectedStatus"
             notify: "selectedVideoChanged"
-            index: 43
+            index: 65
             isReadonly: true
         }
         Property {
@@ -567,7 +527,7 @@ Module {
             type: "QString"
             read: "selectedStep"
             notify: "selectedVideoChanged"
-            index: 44
+            index: 66
             isReadonly: true
         }
         Property {
@@ -575,7 +535,7 @@ Module {
             type: "int"
             read: "selectedProgress"
             notify: "selectedVideoChanged"
-            index: 45
+            index: 67
             isReadonly: true
         }
         Property {
@@ -583,7 +543,7 @@ Module {
             type: "QString"
             read: "selectedStageLabel"
             notify: "selectedVideoChanged"
-            index: 46
+            index: 68
             isReadonly: true
         }
         Property {
@@ -591,7 +551,7 @@ Module {
             type: "QString"
             read: "selectedProgressDetail"
             notify: "selectedVideoChanged"
-            index: 47
+            index: 69
             isReadonly: true
         }
         Property {
@@ -599,7 +559,7 @@ Module {
             type: "QString"
             read: "selectedElapsed"
             notify: "selectedElapsedChanged"
-            index: 48
+            index: 70
             isReadonly: true
         }
         Property {
@@ -607,7 +567,7 @@ Module {
             type: "QString"
             read: "selectedUpdatedAt"
             notify: "selectedVideoChanged"
-            index: 49
+            index: 71
             isReadonly: true
         }
         Property {
@@ -615,7 +575,7 @@ Module {
             type: "QString"
             read: "selectedOutputFormat"
             notify: "selectedVideoChanged"
-            index: 50
+            index: 72
             isReadonly: true
         }
         Property {
@@ -623,7 +583,7 @@ Module {
             type: "QString"
             read: "selectedTargetLanguageLabel"
             notify: "selectedVideoChanged"
-            index: 51
+            index: 73
             isReadonly: true
         }
         Property {
@@ -631,7 +591,7 @@ Module {
             type: "QString"
             read: "selectedTranslatorProvider"
             notify: "selectedVideoChanged"
-            index: 52
+            index: 74
             isReadonly: true
         }
         Property {
@@ -639,7 +599,7 @@ Module {
             type: "QString"
             read: "selectedInputPath"
             notify: "selectedVideoChanged"
-            index: 53
+            index: 75
             isReadonly: true
         }
         Property {
@@ -647,7 +607,7 @@ Module {
             type: "QString"
             read: "selectedOutputPath"
             notify: "selectedVideoChanged"
-            index: 54
+            index: 76
             isReadonly: true
         }
         Property {
@@ -655,7 +615,7 @@ Module {
             type: "bool"
             read: "hasSelectedOutput"
             notify: "selectedVideoChanged"
-            index: 55
+            index: 77
             isReadonly: true
         }
         Property {
@@ -663,7 +623,7 @@ Module {
             type: "QString"
             read: "selectedSrtPath"
             notify: "selectedVideoChanged"
-            index: 56
+            index: 78
             isReadonly: true
         }
         Property {
@@ -671,7 +631,7 @@ Module {
             type: "QString"
             read: "selectedVoicePath"
             notify: "selectedVideoChanged"
-            index: 57
+            index: 79
             isReadonly: true
         }
         Property {
@@ -679,7 +639,7 @@ Module {
             type: "QString"
             read: "selectedLogsPath"
             notify: "selectedVideoChanged"
-            index: 58
+            index: 80
             isReadonly: true
         }
         Property {
@@ -687,7 +647,7 @@ Module {
             type: "QString"
             read: "logs"
             notify: "logsChanged"
-            index: 59
+            index: 81
             isReadonly: true
         }
         Property {
@@ -695,16 +655,96 @@ Module {
             type: "QString"
             read: "statusMessage"
             notify: "statusMessageChanged"
-            index: 60
+            index: 82
             isReadonly: true
         }
-        Property { name: "urlImporter"; type: "QObject"; read: "urlImporter"; index: 61; isReadonly: true }
+        Property {
+            name: "runtimeState"
+            type: "QString"
+            read: "runtimeState"
+            notify: "runtimeStateChanged"
+            index: 83
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupVisible"
+            type: "bool"
+            read: "modelSetupVisible"
+            notify: "modelSetupChanged"
+            index: 84
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupBusy"
+            type: "bool"
+            read: "modelSetupBusy"
+            notify: "modelSetupChanged"
+            index: 85
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupCanCancel"
+            type: "bool"
+            read: "modelSetupCanCancel"
+            notify: "modelSetupChanged"
+            index: 86
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupProgress"
+            type: "int"
+            read: "modelSetupProgress"
+            notify: "modelSetupChanged"
+            index: 87
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupState"
+            type: "QString"
+            read: "modelSetupState"
+            notify: "modelSetupChanged"
+            index: 88
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupComponent"
+            type: "QString"
+            read: "modelSetupComponent"
+            notify: "modelSetupChanged"
+            index: 89
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupDetail"
+            type: "QString"
+            read: "modelSetupDetail"
+            notify: "modelSetupChanged"
+            index: 90
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupSizeText"
+            type: "QString"
+            read: "modelSetupSizeText"
+            notify: "modelSetupChanged"
+            index: 91
+            isReadonly: true
+        }
+        Property {
+            name: "modelSetupDirectory"
+            type: "QString"
+            read: "modelSetupDirectory"
+            notify: "modelSetupChanged"
+            index: 92
+            isReadonly: true
+        }
+        Property { name: "urlImporter"; type: "QObject"; read: "urlImporter"; index: 93; isReadonly: true }
         Property {
             name: "settingsTheme"
             type: "QString"
             read: "settingsTheme"
             notify: "settingsChanged"
-            index: 64
+            index: 94
             isReadonly: true
         }
         Property {
@@ -712,7 +752,7 @@ Module {
             type: "QString"
             read: "settingsLanguage"
             notify: "settingsChanged"
-            index: 65
+            index: 95
             isReadonly: true
         }
         Property {
@@ -720,7 +760,7 @@ Module {
             type: "QString"
             read: "processingDevice"
             notify: "settingsChanged"
-            index: 66
+            index: 96
             isReadonly: true
         }
         Property {
@@ -728,7 +768,7 @@ Module {
             type: "bool"
             read: "cpuOnly"
             notify: "settingsChanged"
-            index: 67
+            index: 97
             isReadonly: true
         }
         Property {
@@ -736,7 +776,7 @@ Module {
             type: "QString"
             read: "performanceProfileLabel"
             notify: "settingsChanged"
-            index: 68
+            index: 98
             isReadonly: true
         }
         Property {
@@ -744,7 +784,7 @@ Module {
             type: "QString"
             read: "performanceProfileDetail"
             notify: "settingsChanged"
-            index: 69
+            index: 99
             isReadonly: true
         }
         Property {
@@ -752,7 +792,7 @@ Module {
             type: "QVariantMap"
             read: "hardwareInfo"
             notify: "hardwareChanged"
-            index: 70
+            index: 100
             isReadonly: true
         }
         Property {
@@ -760,7 +800,7 @@ Module {
             type: "QString"
             read: "projectDirectory"
             notify: "projectSetupChanged"
-            index: 71
+            index: 101
             isReadonly: true
         }
         Property {
@@ -768,7 +808,7 @@ Module {
             type: "QString"
             read: "projectName"
             notify: "projectSetupChanged"
-            index: 72
+            index: 102
             isReadonly: true
         }
         Property {
@@ -776,7 +816,7 @@ Module {
             type: "QString"
             read: "projectType"
             notify: "projectSetupChanged"
-            index: 73
+            index: 103
             isReadonly: true
         }
         Property {
@@ -784,7 +824,7 @@ Module {
             type: "QString"
             read: "projectRoot"
             notify: "projectSetupChanged"
-            index: 109
+            index: 104
             isReadonly: true
         }
         Property {
@@ -792,20 +832,9 @@ Module {
             type: "QString"
             read: "downloadOutputRoot"
             notify: "projectSetupChanged"
-            index: 110
+            index: 105
             isReadonly: true
         }
-        Property { name: "publishProjectModel"; type: "QObject"; read: "publishProjectModel"; index: 111; isReadonly: true }
-        Property { name: "tiktokPublishModel"; type: "QObject"; read: "tiktokPublishModel"; index: 112; isReadonly: true }
-        Property { name: "tiktokProjectSourceModel"; type: "QObject"; read: "tiktokProjectSourceModel"; index: 113; isReadonly: true }
-        Property { name: "tiktokPublishBusy"; type: "bool"; read: "tiktokPublishBusy"; notify: "tiktokPublishChanged"; index: 114; isReadonly: true }
-        Property { name: "tiktokPublishStatus"; type: "QString"; read: "tiktokPublishStatus"; notify: "tiktokPublishChanged"; index: 115; isReadonly: true }
-        Property { name: "tiktokDefaultCaption"; type: "QString"; read: "tiktokDefaultCaption"; notify: "tiktokPublishChanged"; index: 116; isReadonly: true }
-        Property { name: "tiktokDefaultHashtags"; type: "QString"; read: "tiktokDefaultHashtags"; notify: "tiktokPublishChanged"; index: 117; isReadonly: true }
-        Property { name: "tiktokPublishCount"; type: "int"; read: "tiktokPublishCount"; notify: "tiktokPublishChanged"; index: 118; isReadonly: true }
-        Property { name: "tiktokPostedCount"; type: "int"; read: "tiktokPostedCount"; notify: "tiktokPublishChanged"; index: 119; isReadonly: true }
-        Property { name: "tiktokAwaitingCount"; type: "int"; read: "tiktokAwaitingCount"; notify: "tiktokPublishChanged"; index: 120; isReadonly: true }
-        Property { name: "tiktokProjectSourceSelectedCount"; type: "int"; read: "tiktokProjectSourceSelectedCount"; notify: "tiktokPublishChanged"; index: 121; isReadonly: true }
         Signal { name: "videoPathChanged" }
         Signal { name: "videoThumbnailChanged" }
         Signal { name: "targetLanguageChanged" }
@@ -818,6 +847,11 @@ Module {
         Signal { name: "watermarkTextChanged" }
         Signal { name: "subtitleSettingsChanged" }
         Signal { name: "backgroundMusicChanged" }
+        Signal { name: "backgroundMusicImportChanged" }
+        Signal {
+            name: "batchBackgroundMusicDraftReady"
+            Parameter { name: "a1"; type: "QString" }
+        }
         Signal { name: "audioPreviewChanged" }
         Signal { name: "workflowModeChanged" }
         Signal { name: "selectedVideoChanged" }
@@ -838,8 +872,17 @@ Module {
         Signal { name: "urlImportFinished" }
         Signal { name: "channelImportChanged" }
         Signal { name: "mediaImportChanged" }
-        Signal { name: "tiktokPublishChanged" }
-        Signal { name: "backgroundMusicImportChanged" }
+        Method {
+            name: "setHardwareTelemetryActive"
+            Parameter { name: "a1"; type: "bool" }
+        }
+        Method { name: "retryModelSetup" }
+        Method { name: "cancelModelSetup" }
+        Method {
+            name: "voiceOptionsForLanguage"
+            type: "QVariantList"
+            Parameter { name: "a1"; type: "QString" }
+        }
         Method {
             name: "processingDeviceCompatible"
             type: "bool"
@@ -870,21 +913,24 @@ Module {
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
         }
+        Method {
+            name: "importBatchBackgroundMusicFromLink"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
         Method { name: "cancelBackgroundMusicLinkImport" }
         Method { name: "clearBackgroundMusic"; type: "bool" }
         Method { name: "previewAudioMix"; type: "bool" }
         Method {
             name: "previewBatchAudioMix"
             type: "bool"
-            Parameter { name: "target_language"; type: "QString" }
-            Parameter { name: "tts_voice"; type: "QString" }
-            Parameter { name: "enable_audio_separation"; type: "bool" }
-            Parameter { name: "original_volume"; type: "int" }
-            Parameter { name: "background_music_volume"; type: "int" }
-            Parameter { name: "tts_volume"; type: "int" }
-            Parameter { name: "background_music_path"; type: "QString" }
-            Parameter { name: "remove_original_subtitles"; type: "bool" }
-            Parameter { name: "subtitle_style"; type: "QVariantMap" }
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+            Parameter { name: "a3"; type: "bool" }
+            Parameter { name: "a4"; type: "int" }
+            Parameter { name: "a5"; type: "int" }
+            Parameter { name: "a6"; type: "int" }
+            Parameter { name: "a7"; type: "QString" }
         }
         Method {
             name: "replaceSelectedVideoVideo"
@@ -925,40 +971,28 @@ Module {
         }
         Method { name: "startBatch" }
         Method { name: "resumeBatch" }
-        Method {
-            name: "batchSettings"
-            type: "QVariantMap"
-        }
+        Method { name: "batchSettings"; type: "QVariantMap" }
         Method { name: "batchSettingOverrides"; type: "QVariantList" }
         Method { name: "applyBatchSettings"; type: "bool" }
         Method {
             name: "applyBatchSettingsDraft"
             type: "bool"
-            Parameter { name: "workflow_mode"; type: "QString" }
-            Parameter { name: "target_language"; type: "QString" }
-            Parameter { name: "tts_voice"; type: "QString" }
-            Parameter { name: "enable_audio_separation"; type: "bool" }
-            Parameter { name: "original_volume"; type: "int" }
-            Parameter { name: "background_music_volume"; type: "int" }
-            Parameter { name: "tts_volume"; type: "int" }
-            Parameter { name: "watermark_text"; type: "QString" }
-            Parameter { name: "background_music_path"; type: "QString" }
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+            Parameter { name: "a3"; type: "QString" }
+            Parameter { name: "a4"; type: "bool" }
+            Parameter { name: "a5"; type: "int" }
+            Parameter { name: "a6"; type: "int" }
+            Parameter { name: "a7"; type: "int" }
+            Parameter { name: "a8"; type: "QString" }
+            Parameter { name: "a9"; type: "QString" }
+            Parameter { name: "a10"; type: "bool" }
+            Parameter { name: "a11"; type: "QVariantMap" }
         }
         Method { name: "loadBatchSettings" }
+        Method { name: "saveSelectedVideoSettings"; type: "bool" }
         Method { name: "persistSelectedBatchVideoSettings"; type: "bool" }
         Method { name: "persistSelectedVideoSettings"; type: "bool" }
-        Method {
-            name: "voiceOptionsForLanguage"
-            type: "QVariantList"
-            Parameter { name: "language_code"; type: "QString" }
-        }
-        Method {
-            name: "setHardwareTelemetryActive"
-            Parameter { name: "active"; type: "bool" }
-        }
-        Method { name: "retryModelSetup" }
-        Method { name: "cancelModelSetup" }
-        Method { name: "saveSelectedVideoSettings"; type: "bool" }
         Method { name: "stopBatch" }
         Method { name: "clearBatch" }
         Method { name: "deleteCurrentBatch" }
@@ -992,44 +1026,6 @@ Module {
         Method { name: "deleteSelectedVideo" }
         Method { name: "openProjectFolder" }
         Method { name: "openDownloadOutputFolder" }
-        Method { name: "browseTikTokPublishVideos" }
-        Method { name: "browseTikTokPublishFolder" }
-        Method { name: "prepareTikTokLogin"; type: "bool" }
-        Method { name: "clearTikTokLoginSession"; type: "bool" }
-        Method { name: "refreshTikTokProjectSources" }
-        Method {
-            name: "setTikTokProjectSourceSelected"
-            type: "bool"
-            Parameter { name: "row"; type: "int" }
-            Parameter { name: "selected"; type: "bool" }
-        }
-        Method { name: "addSelectedTikTokProjectVideos"; type: "bool" }
-        Method {
-            name: "addTikTokPublishVideos"
-            type: "bool"
-            Parameter { name: "a1"; type: "QVariantList" }
-        }
-        Method {
-            name: "saveTikTokPublishDefaults"
-            type: "bool"
-            Parameter { name: "caption"; type: "QString" }
-            Parameter { name: "hashtags"; type: "QString" }
-            Parameter { name: "apply_to_existing"; type: "bool" }
-        }
-        Method {
-            name: "updateTikTokPublishItem"
-            type: "bool"
-            Parameter { name: "row"; type: "int" }
-            Parameter { name: "caption"; type: "QString" }
-            Parameter { name: "hashtags"; type: "QString" }
-        }
-        Method { name: "prepareTikTokPublishItem"; type: "bool"; Parameter { name: "row"; type: "int" } }
-        Method { name: "prepareNextTikTokPublishItem"; type: "bool" }
-        Method { name: "markTikTokPublishPosted"; type: "bool"; Parameter { name: "row"; type: "int" } }
-        Method { name: "confirmTikTokPublishAndNext"; type: "bool"; Parameter { name: "row"; type: "int" } }
-        Method { name: "resetTikTokPublishItem"; type: "bool"; Parameter { name: "row"; type: "int" } }
-        Method { name: "copyTikTokPublishCaption"; type: "bool"; Parameter { name: "row"; type: "int" } }
-        Method { name: "removeTikTokPublishItem"; type: "bool"; Parameter { name: "row"; type: "int" } }
         Method {
             name: "openExternalUrl"
             type: "bool"

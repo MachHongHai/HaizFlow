@@ -7,6 +7,7 @@ import "."
 Rectangle {
     id: root
 
+    readonly property bool compactActions: width < 560
     readonly property string detailText: AppController.hasSelectedVideo
         ? AppController.selectedFileName + "  ·  " + I18n.t(AppController.selectedStatus)
         : I18n.t("Live processing output")
@@ -58,15 +59,19 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: I18n.t("Activity log")
                     color: Theme.text
                     font.pixelSize: Theme.body
                     font.weight: Font.DemiBold
                     textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    wrapMode: Text.NoWrap
                 }
 
                 Text {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: root.detailText
                     color: Theme.textSubtle
                     font.pixelSize: Theme.label
@@ -76,6 +81,7 @@ Rectangle {
             }
 
             AppButton {
+                visible: !root.compactActions
                 text: I18n.t("Copy")
                 tone: "ghost"
                 compact: true
@@ -83,8 +89,16 @@ Rectangle {
                 onClicked: activityLog.copyAll()
             }
 
+            IconButton {
+                visible: root.compactActions
+                glyph: "\uE8C8"
+                controlSize: 34
+                toolTipText: I18n.t("Copy")
+                onClicked: activityLog.copyAll()
+            }
+
             AppButton {
-                text: I18n.t("Expand log")
+                text: root.compactActions ? I18n.t("Expand") : I18n.t("Expand log")
                 tone: "ghost"
                 compact: true
                 activeFocusOnTab: true

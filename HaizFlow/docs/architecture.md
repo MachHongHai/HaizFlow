@@ -53,7 +53,7 @@ src/haizflow/
     douyin_channel_worker.py Isolated Douyin Beta profile inspector
     translation.py          HY-MT2 worker protocol
     hymt2_worker.py         Isolated local translation worker entry point
-    desktop_settings.py     Theme and language persistence
+    desktop_settings.py     Graphite appearance, language and device persistence
   schemas/
     video.py                  VideoConfig and VideoInfo contracts
     channel_import.py       Channel request, candidate, and session contracts
@@ -124,12 +124,6 @@ Single projects accept one local file or one supported video URL. Batch projects
 Channel candidates are sorted after metadata collection and deduplicated using `platform + remote_video_id` with a normalized-URL fallback. YouTube content selection maps directly to the Shorts and Videos tabs; the all-video option merges both collections before deduplication. TikTok candidates are hydrated before display and are accepted only when metadata confirms a video stream. Douyin photo notes and slideshows are rejected by its isolated inspector. Cookie data from Edge, Chrome, or a selected Netscape `cookies.txt` file exists only in coordinator memory and subprocess input. It is excluded from manifests, session JSON, settings, and user-facing persisted errors.
 
 Each scan is stored under `<project>/imports/channel/<session-id>/session.json`. Completed downloads pass through `create_desktop_video`, so managed input, log, thumbnail, workspace, and export ownership remain identical to file imports. Because the download workspace already belongs to the project, the final media file is moved atomically into its video workspace instead of being copied a second time. Download workspaces are retained only for failed retries and removed after a successful project import. Reopening a project restores interrupted candidates as retryable entries; deleting the project cancels its coordinator session and removes the complete project-owned import tree. The download manager permits two workers while model processing is idle, throttles new work to one while the pipeline is active, and never starts the dubbing pipeline automatically.
-
-## Assisted TikTok Publishing
-
-Publishing projects own their imported media, thumbnails, caption templates, hashtags, queue order, and confirmation state. They can import rendered outputs from completed Single projects or an entire completed Batch project without coupling publishing state to the source project. Folder import reads supported files from the selected top-level directory. HaizFlow copies the prepared post text to the clipboard, opens TikTok Studio, attaches the selected video through the local Chrome DevTools Protocol, and fills the caption and hashtags when TikTok exposes its editor. The clipboard remains a manual fallback if TikTok changes that editor. The user retains the final review and publish action.
-
-TikTok Studio always opens with `--user-data-dir` pointing to `<runtime>/browser-sessions/tiktok`. This is a dedicated Chrome data directory, so one login remains available across HaizFlow runs without depending on whichever Chrome profile happens to be active. Chrome owns and protects the cookies and account tokens in that directory. HaizFlow neither reads those secrets nor exports them to JSON or `cookies.txt`. A random local-only DevTools port is enabled for the active HaizFlow browser session and is used only to attach the user-selected file and type the prepared caption and hashtags into TikTok's controlled editor; it never clicks the final publish action. The user can explicitly close and delete this dedicated profile from the publishing workspace to switch accounts without deleting publishing projects or videos. The browser-session directory is mutable user data and must be preserved when an installer upgrade or uninstall keeps application data.
 
 ## Pipeline
 

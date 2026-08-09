@@ -9,7 +9,7 @@ from haizflow.config import RUNTIME_DATA_DIR
 
 SETTINGS_PATH = Path(RUNTIME_DATA_DIR) / "desktop-settings.json"
 DEFAULT_SETTINGS = {
-    "theme": "dark",
+    "theme": "graphite",
     "language": "en",
     "processing_device": "cpu",
     "processing_device_origin": "detected",
@@ -19,7 +19,7 @@ _SETTINGS_LOCK = threading.RLock()
 
 def load_settings() -> dict:
     settings = dict(DEFAULT_SETTINGS)
-    migrate_legacy_device = False
+    migrate_legacy_settings = False
     try:
         with _SETTINGS_LOCK:
             with open(SETTINGS_PATH, "r", encoding="utf-8") as file:
@@ -29,10 +29,13 @@ def load_settings() -> dict:
             if saved.get("processing_device") == "auto":
                 settings["processing_device"] = "cpu"
                 settings["processing_device_origin"] = "detected"
-                migrate_legacy_device = True
+                migrate_legacy_settings = True
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
-    if migrate_legacy_device:
+    if settings.get("theme") != "graphite":
+        settings["theme"] = "graphite"
+        migrate_legacy_settings = True
+    if migrate_legacy_settings:
         try:
             save_settings(settings)
         except OSError:
@@ -42,7 +45,10 @@ def load_settings() -> dict:
 
 def save_settings(settings: dict) -> dict:
     normalized = {
-        "theme": settings.get("theme") if settings.get("theme") in {"dark", "light"} else "dark",
+        # Theme switching was removed in favour of one production palette.
+        # Always normalize legacy dark/light preferences so old installations
+        # cannot silently reintroduce a second appearance.
+        "theme": "graphite",
         "language": settings.get("language") if settings.get("language") in {"en", "vi"} else "en",
         "processing_device": (
             settings.get("processing_device")

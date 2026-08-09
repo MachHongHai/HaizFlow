@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from haizflow.pipeline.audio_timeline import _segment_slot_end_ms
@@ -217,13 +218,14 @@ class TimelineRenderTests(unittest.TestCase):
 
         command = captured["command"]
         self.assertIn("-filter_complex", command)
-        self.assertIn(
-            "crop=1152:74:384:842,gblur=sigma=4:steps=4",
-            command[command.index("-filter_complex") + 1],
-        )
+        filter_graph = command[command.index("-filter_complex") + 1]
+        self.assertIn("crop=1152:74:384:842[original_region]", filter_graph)
+        self.assertIn("gblur=sigma=13:steps=4,crop=1152:74:42:42", filter_graph)
+        self.assertIn("0.94+0.06*min(1", filter_graph)
         self.assertIn("overlay=384:842", command[command.index("-filter_complex") + 1])
         self.assertNotIn("between(t", command[command.index("-filter_complex") + 1])
-        self.assertIn("drawtext=text='HaizFlow'", command[command.index("-filter_complex") + 1])
+        self.assertIn("drawtext=fontfile=", command[command.index("-filter_complex") + 1])
+        self.assertIn("text='HaizFlow'", command[command.index("-filter_complex") + 1])
         self.assertIn("fontsdir=", command[command.index("-filter_complex") + 1])
         self.assertIn("\\an5\\pos(960,886)\\fs", ass_text)
         self.assertIn("\\fscx100", ass_text)
@@ -272,6 +274,21 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("crop=1152:74:384:842", filter_graph)
         self.assertIn("overlay=384:842", filter_graph)
 
+    def test_ocr_cover_mode_ignores_a_stale_manual_subtitle_layout(self):
+        from haizflow.pipeline.process_video import _manual_subtitle_layout_for_render
+
+        stale_video = SimpleNamespace(
+            remove_original_subtitles=True,
+            subtitle_layout_override=True,
+        )
+        manual_video = SimpleNamespace(
+            remove_original_subtitles=False,
+            subtitle_layout_override=True,
+        )
+
+        self.assertFalse(_manual_subtitle_layout_for_render(stale_video))
+        self.assertTrue(_manual_subtitle_layout_for_render(manual_video))
+
     def test_bundled_karaoke_font_is_available_to_ffmpeg(self):
         font_directory = render._karaoke_font_directory()
 
@@ -286,19 +303,27 @@ class TimelineRenderTests(unittest.TestCase):
 
         self.assertEqual(
             blur_filter,
-            "gblur=sigma=4:steps=4",
+            "gblur=sigma=12:steps=4",
         )
 
-    def test_text_watermark_is_subtle_and_moves_across_the_frame(self):
+    def test_text_watermark_uses_a_bold_italic_social_video_treatment(self):
         watermark = render._watermark_filter("HaizFlow: creator's cut", 1080, 1920)
 
-        self.assertIn("drawtext=text='HaizFlow\\: creator\\'s cut'", watermark)
-        self.assertIn("fontsize=30", watermark)
-        self.assertIn("fontcolor=white@0.42", watermark)
-        self.assertNotIn("borderw=", watermark)
-        self.assertNotIn("shadow", watermark)
+        self.assertIn("drawtext=fontfile='", watermark)
+        self.assertIn("text='HaizFlow\\: creator\\'s cut'", watermark)
+        self.assertIn("fontsize=43", watermark)
+        self.assertIn("fontcolor=white@0.62", watermark)
+        self.assertIn("borderw=3", watermark)
+        self.assertIn("bordercolor=black@0.62", watermark)
+        self.assertIn("shadowx=1:shadowy=2:shadowcolor=black@0.35", watermark)
         self.assertIn("sin(2*PI*t/31)", watermark)
         self.assertIn("sin(2*PI*t/43+1.2)", watermark)
+
+    def test_watermark_font_has_a_safe_bundled_fallback(self):
+        fallback = render._karaoke_font_directory() / render.KARAOKE_FONT_FILENAME
+
+        with mock.patch.dict(render.os.environ, {"WINDIR": r"Z:\\missing-windows"}):
+            self.assertEqual(render._watermark_font_path(), fallback)
 
     def test_empty_watermark_adds_no_filter(self):
         self.assertEqual(render._watermark_filter("   ", 1080, 1920), "")
@@ -308,7 +333,7 @@ class TimelineRenderTests(unittest.TestCase):
 
         self.assertEqual(
             blur_filter,
-            "gblur=sigma=2:steps=4",
+            "gblur=sigma=3:steps=4",
         )
 
     def test_subtitle_blur_uses_one_exact_static_box(self):
@@ -318,7 +343,8 @@ class TimelineRenderTests(unittest.TestCase):
 
         self.assertIn("crop=418:54:78:562", filter_prefix)
         self.assertIn("overlay=78:562", filter_prefix)
-        self.assertIn("gblur=", filter_prefix)
+        self.assertIn("crop=478:114:48:532,gblur=sigma=10:steps=4,crop=418:54:30:30", filter_prefix)
+        self.assertIn("0.94+0.06*min(1", filter_prefix)
         self.assertNotIn("between(t", filter_prefix)
         self.assertNotIn("drawbox", filter_prefix)
 
@@ -340,7 +366,7 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIsNotNone(layout)
         self.assertAlmostEqual(layout.height, 153.6)
         self.assertAlmostEqual(layout.line_height, 59.392)
-        self.assertEqual(style.font_size, 36)
+        self.assertEqual(style.font_size, 39)
 
     def test_manual_subtitle_frame_maps_position_and_size_to_output(self):
         style = SubtitleStyle(

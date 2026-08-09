@@ -25,6 +25,7 @@ from haizflow.utils.ffmpeg import (
 
 KARAOKE_FONT_NAME = "Bangers"
 KARAOKE_FONT_FILENAME = "Bangers-Regular.ttf"
+WATERMARK_FONT_FILENAME = "arialbi.ttf"
 
 
 def _karaoke_font_directory() -> Path:
@@ -33,6 +34,17 @@ def _karaoke_font_directory() -> Path:
     if not font_path.is_file():
         raise RuntimeError(f"Bundled karaoke subtitle font is missing: {font_path}")
     return directory
+
+
+def _watermark_font_path() -> Path:
+    """Prefer Windows' clean bold-italic face, with a bundled fallback."""
+    windows_directory = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Fonts"
+    bold_italic = windows_directory / WATERMARK_FONT_FILENAME
+    if bold_italic.is_file():
+        return bold_italic
+    # The frozen application is Windows-first, but retaining a bundled font
+    # keeps command-line renders usable on a machine without Arial installed.
+    return _karaoke_font_directory() / KARAOKE_FONT_FILENAME
 
 
 def _karaoke_outline(font_size: int, configured_outline: int) -> int:
@@ -459,9 +471,10 @@ def _style_for_original_subtitle_region(
     # The removal region can contain two or three source rows. Replacement
     # glyphs should match one source row rather than scale with the whole block.
     detected_line_height = region_layout.line_height or region_layout.height
-    # ASS font size is larger than the visible glyph box. Around 60% of the
-    # OCR row height matches the original visual weight without oversized text.
-    font_size = max(12, min(112, round(detected_line_height * 0.60)))
+    # ASS font size is larger than the visible glyph box. A modest 66% of the
+    # OCR row height gives the replacement line more presence inside the
+    # covered region while leaving room for its outline and karaoke sweep.
+    font_size = max(12, min(112, round(detected_line_height * 0.66)))
     outline = _karaoke_outline(font_size, subtitle_style.outline)
     return subtitle_style.model_copy(update={
         "position_x_percent": x_percent,
@@ -522,11 +535,10 @@ def _source_blur_region(region: dict | None, source_width: int, source_height: i
 def _subtitle_blur_filter(width: int, height: int) -> str:
     """Build a strong blur that fully suppresses burned-in subtitle detail."""
     shortest_side = max(2, min(width, height))
-    # Gaussian blur suppresses the recognizable silhouettes of large outlined
-    # meme captions more reliably than repeatedly averaging a small box. Scale
-    # it with the source resolution, with conservative bounds for predictable
-    # render time on both 540p and 4K inputs.
-    sigma = max(2, min(48, round(shortest_side * 0.06)))
+    # Outlined meme captions retain a recognizable silhouette with a small
+    # radius. Scale aggressively with the detected text row while keeping the
+    # operation bounded because it runs only on the cropped subtitle region.
+    sigma = max(3, min(64, round(shortest_side * 0.18)))
     return f"gblur=sigma={sigma}:steps=4"
 
 
@@ -548,25 +560,42 @@ def _feathered_blur_region(
 def _subtitle_blur_prefix(
     region: tuple[int, int, int, int], source_width: int, source_height: int,
 ) -> str:
-    """Build one stable, tightly cropped blur for the complete video."""
+    """Build one stable blur that completely suppresses text inside the OCR box."""
     x, y, width, height, feather = _feathered_blur_region(
         region, source_width, source_height,
     )
     blur_filter = _subtitle_blur_filter(width, height)
+    # Blur an expanded sample so glyphs touching an OCR-box edge can mix with
+    # real neighbouring picture pixels. Crop back to the exact OCR box before
+    # overlaying, so stronger removal never enlarges the visible replacement.
+    sample_padding = max(4, min(96, round(min(width, height) * 0.55)))
+    if sample_padding % 2:
+        sample_padding += 1
+    sample_x = max(0, x - sample_padding) // 2 * 2
+    sample_y = max(0, y - sample_padding) // 2 * 2
+    sample_right = min(source_width, x + width + sample_padding)
+    sample_bottom = min(source_height, y + height + sample_padding)
+    sample_width = max(2, (sample_right - sample_x) // 2 * 2)
+    sample_height = max(2, (sample_bottom - sample_y) // 2 * 2)
+    inner_x = x - sample_x
+    inner_y = y - sample_y
     edge_distance = "min(min(X,W-1-X),min(Y,H-1-Y))"
-    blur_weight = f"min(1,{edge_distance}/{feather})"
-    blend_filter = f"blend=all_expr='A*(1-{blur_weight})+B*{blur_weight}'"
+    # Keep a subtle edge transition without restoring high-contrast source
+    # glyphs. The previous zero weight at the boundary left letters visible.
+    blur_weight = f"0.94+0.06*min(1,{edge_distance}/{feather})"
+    blend_filter = f"blend=all_expr='A*(1-({blur_weight}))+B*({blur_weight})'"
     return (
         f"[0:v]split=3[source_clean][source_region][source_blur];"
         f"[source_region]crop={width}:{height}:{x}:{y}[original_region];"
-        f"[source_blur]crop={width}:{height}:{x}:{y},{blur_filter}[subtitle_blur];"
+        f"[source_blur]crop={sample_width}:{sample_height}:{sample_x}:{sample_y},"
+        f"{blur_filter},crop={width}:{height}:{inner_x}:{inner_y}[subtitle_blur];"
         f"[original_region][subtitle_blur]{blend_filter}[subtitle_blended];"
         f"[source_clean][subtitle_blended]overlay={x}:{y}[source_without_original];"
     )
 
 
 def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
-    """Return a subtle continuously moving text watermark filter."""
+    """Return a polished, continuously moving creator watermark filter."""
     normalized = " ".join(str(text or "").split())[:80]
     if not normalized:
         return ""
@@ -580,13 +609,28 @@ def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
         .replace("]", "\\]")
         .replace(";", "\\;")
     )
-    font_size = max(14, min(36, round(min(output_width, output_height) * 0.028)))
+    # The reference treatment used by short-video creators is a clean, bold,
+    # italic white mark with a soft dark keyline.  It stays readable against
+    # bright footage without becoming a prominent title card.
+    font_size = max(18, min(52, round(min(output_width, output_height) * 0.040)))
+    border_width = max(2, min(5, round(font_size * 0.075)))
+    font_path = str(_watermark_font_path()).replace("\\", "/")
+    escaped_font_path = (
+        font_path.replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace(":", "\\:")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace(";", "\\;")
+    )
     # Two unequal periods keep the mark drifting through the whole frame
     # instead of settling on a predictable diagonal or covering one subject.
     x = "(W-text_w)*(0.08+0.84*(0.5+0.5*sin(2*PI*t/31)))"
     y = "(H-text_h)*(0.10+0.80*(0.5+0.5*sin(2*PI*t/43+1.2)))"
     return (
-        f"drawtext=text='{escaped}':fontsize={font_size}:fontcolor=white@0.42:"
+        f"drawtext=fontfile='{escaped_font_path}':text='{escaped}':"
+        f"fontsize={font_size}:fontcolor=white@0.62:borderw={border_width}:"
+        f"bordercolor=black@0.62:shadowx=1:shadowy=2:shadowcolor=black@0.35:"
         f"x='{x}':y='{y}'"
     )
 

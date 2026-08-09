@@ -26,6 +26,19 @@ from haizflow.schemas.video import VideoConfig
 
 
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_covering_original_subtitles_clears_stale_manual_layout(self):
+        host = SimpleNamespace(
+            _remove_original_subtitles=False,
+            _subtitle_layout_override=True,
+            subtitleSettingsChanged=SimpleNamespace(emit=Mock()),
+        )
+
+        HaizFlowController.removeOriginalSubtitles.fset(host, True)
+
+        self.assertTrue(host._remove_original_subtitles)
+        self.assertFalse(host._subtitle_layout_override)
+        host.subtitleSettingsChanged.emit.assert_called_once_with()
+
     def test_new_project_setup_resets_all_project_local_settings(self):
         changed = {
             name: SimpleNamespace(emit=Mock())
@@ -89,6 +102,43 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertEqual(host._batch_video_ids, ["new", "existing"])
         self.assertLess(newly_imported.batch_import_order, existing.batch_import_order)
+
+    def test_new_batch_import_uses_batch_baseline_not_open_video_override(self):
+        custom_editor_config = VideoConfig(
+            project_type="batch",
+            target_language="en",
+            tts_voice="en-US-JennyNeural",
+            watermark_text="custom card",
+            remove_original_subtitles=False,
+        )
+        host = SimpleNamespace(
+            _project_type="batch",
+            _batch_video_ids=["baseline", "custom"],
+            _build_config=Mock(return_value=custom_editor_config),
+            _batch_settings_values=Mock(return_value={
+                "workflowMode": "A",
+                "targetLanguage": "vi",
+                "ttsVoice": "vi-VN-HoaiMyNeural",
+                "enableAudioSeparation": True,
+                "originalVolume": 45,
+                "backgroundMusicVolume": 20,
+                "ttsVolume": 90,
+                "watermarkText": "batch",
+                "removeOriginalSubtitles": True,
+                "subtitleStyle": {"font_size": 64, "manual": True},
+                "backgroundMusicPath": "music.mp3",
+            }),
+        )
+
+        config = ProjectImportController(host)._config_for_project_import()
+
+        self.assertEqual(config.target_language, "vi")
+        self.assertEqual(config.tts_voice, "vi-VN-HoaiMyNeural")
+        self.assertEqual(config.watermark_text, "batch")
+        self.assertTrue(config.remove_original_subtitles)
+        self.assertFalse(config.subtitle_layout_override)
+        self.assertEqual(config.subtitle_style.font_size, 64)
+        self.assertEqual(config.background_music_path, "music.mp3")
 
     def test_batch_card_opens_the_selected_video_settings(self):
         batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(
@@ -390,6 +440,9 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("readonly property real cardWidth: Math.min(220", batch_page)
         self.assertIn("readonly property real cardHeight: Math.round(cardWidth * 0.56 + 64)", batch_page)
         self.assertIn("AppController.chooseBatchBackgroundMusic()", settings)
+        self.assertIn("batchBackgroundMusicLinkDialog.open()", settings)
+        self.assertIn('text: I18n.t("Edit new subtitles")', settings)
+        self.assertIn("visible: !root.draftRemoveOriginalSubtitles", settings)
         self.assertIn("BatchAudioMixDialog", settings)
         self.assertIn("batchAudioMixDialog.open()", settings)
         self.assertNotIn("AppSlider {", settings)

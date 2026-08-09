@@ -70,7 +70,7 @@ Mốc frozen dev hiện tại:
 - Artifact: `dist\HaizFlow`, PyInstaller onedir, không nhúng model.
 - Quy mô: 11.497 file, 5,373 GiB.
 - Đã đối chiếu thành công toàn bộ 11.497 SHA-256 trong `SHA256SUMS.txt`.
-- 239 unit/integration test và `qmllint` thành công; frozen self-test, FFmpeg/FFprobe, CPU/GPU runtime gate và Qt/QML startup đều thành công.
+- 367 unit/integration test và `qmllint` thành công; frozen self-test, FFmpeg/FFprobe, CPU/GPU runtime gate và Qt/QML startup đều thành công.
 - Installer Inno Setup dev r2 có kích thước 2.240.951.379 byte. Smoke cài trên ổ D xác minh đủ 11.497 checksum, đủ 13 file `torch\_inductor\runtime`, không có checkpoint model; frozen QML startup từ thư mục đã cài exit 0.
 - Silent uninstall xóa EXE/payload nhưng giữ duy nhất `runtime\` và marker dữ liệu thử nghiệm.
 - `BUILD-INFO.json` ghi rõ commit, branch, dirty state, Python, `model_delivery=first-run-download` và xác nhận mọi cờ `bundled_*_model` là `false`.

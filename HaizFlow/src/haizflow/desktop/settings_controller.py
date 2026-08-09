@@ -18,6 +18,7 @@ class SettingsController:
 
     def apply(self, theme, language, processing_device) -> bool:
         host = self._host
+        theme = "graphite"
         processing_device = str(processing_device).lower()
         pipeline_active = host._pipeline_is_active()
         if processing_device != host._settings_processing_device and not (pipeline_active or host._device_switching):

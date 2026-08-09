@@ -25,8 +25,6 @@ from haizflow.desktop.media_probe import VideoDimensionProbe
 from haizflow.desktop.models import (
     ProjectGridModel,
     ProjectListModel,
-    TikTokProjectSourceListModel,
-    TikTokPublishListModel,
     VideoListModel,
 )
 from haizflow.desktop.preview_media_controller import PreviewMediaController
@@ -41,7 +39,6 @@ from haizflow.desktop.diagnostics_controller import DiagnosticsController
 from haizflow.desktop.external_links import open_external_url
 from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
 from haizflow.desktop.settings_controller import SettingsController
-from haizflow.desktop.tiktok_publish_controller import TikTokPublishController
 from haizflow.desktop.presenters import (
     build_project_summaries,
     format_duration,
@@ -93,6 +90,7 @@ class HaizFlowController(QObject):
     subtitleSettingsChanged = Signal()
     backgroundMusicChanged = Signal()
     backgroundMusicImportChanged = Signal()
+    batchBackgroundMusicDraftReady = Signal(str)
     audioPreviewChanged = Signal()
     workflowModeChanged = Signal()
     selectedVideoChanged = Signal()
@@ -113,7 +111,6 @@ class HaizFlowController(QObject):
     urlImportFinished = Signal()
     channelImportChanged = Signal()
     mediaImportChanged = Signal()
-    tiktokPublishChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -123,10 +120,7 @@ class HaizFlowController(QObject):
         self.single_projects = ProjectGridModel()
         self.batch_projects = ProjectGridModel()
         self.download_projects = ProjectGridModel()
-        self.publish_projects = ProjectGridModel()
         self.batch_videos = VideoListModel()
-        self.tiktok_publish_items = TikTokPublishListModel()
-        self.tiktok_project_sources = TikTokProjectSourceListModel()
         self._video_path = ""
         self._video_thumbnail_source = ""
         self._target_language = "vi"
@@ -193,7 +187,6 @@ class HaizFlowController(QObject):
         self._preview_media = PreviewMediaController(self)
         self._audio_preview = AudioPreviewController(self)
         self._media_downloader = MediaDownloadController(self)
-        self._tiktok_publisher = TikTokPublishController(self)
         self._settings_controller = SettingsController(self)
         self._project_workspace = ProjectWorkspaceController(self)
         self._project_commands = ProjectCommandsController(self)
@@ -285,10 +278,6 @@ class HaizFlowController(QObject):
         self._media_import_timer.timeout.connect(self._drain_media_import_events)
         self._media_import_timer.start(100)
 
-        self._tiktok_publish_timer = QTimer(self)
-        self._tiktok_publish_timer.timeout.connect(self._drain_tiktok_publish_events)
-        self._tiktok_publish_timer.start(100)
-
         self._audio_preview_timer = QTimer(self)
         self._audio_preview_timer.timeout.connect(self._drain_audio_preview_events)
         self._audio_preview_timer.start(100)
@@ -320,9 +309,6 @@ class HaizFlowController(QObject):
 
     def _drain_media_import_events(self) -> None:
         self._project_import.drain_background_events()
-
-    def _drain_tiktok_publish_events(self) -> None:
-        self._tiktok_publisher.drain_events()
 
     def _drain_audio_preview_events(self) -> None:
         self._audio_preview.drain_events()
@@ -408,9 +394,6 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
-        publisher = getattr(self, "_tiktok_publisher", None)
-        if publisher is not None:
-            publisher.shutdown()
         return HaizFlowController._runtime_device_for(self).shutdown()
 
     def _warm_models(self):
@@ -471,50 +454,6 @@ class HaizFlowController(QObject):
     @Property(QObject, constant=True)
     def downloadProjectModel(self):
         return self.download_projects
-
-    @Property(QObject, constant=True)
-    def publishProjectModel(self):
-        return self.publish_projects
-
-    @Property(QObject, constant=True)
-    def tiktokPublishModel(self):
-        return self.tiktok_publish_items
-
-    @Property(QObject, constant=True)
-    def tiktokProjectSourceModel(self):
-        return self.tiktok_project_sources
-
-    @Property(bool, notify=tiktokPublishChanged)
-    def tiktokPublishBusy(self):
-        return self._tiktok_publisher.busy
-
-    @Property(str, notify=tiktokPublishChanged)
-    def tiktokPublishStatus(self):
-        return self._tiktok_publisher.status
-
-    @Property(str, notify=tiktokPublishChanged)
-    def tiktokDefaultCaption(self):
-        return self._tiktok_publisher.default_caption
-
-    @Property(str, notify=tiktokPublishChanged)
-    def tiktokDefaultHashtags(self):
-        return self._tiktok_publisher.default_hashtags
-
-    @Property(int, notify=tiktokPublishChanged)
-    def tiktokPublishCount(self):
-        return self._tiktok_publisher.count
-
-    @Property(int, notify=tiktokPublishChanged)
-    def tiktokPostedCount(self):
-        return self._tiktok_publisher.posted_count
-
-    @Property(int, notify=tiktokPublishChanged)
-    def tiktokAwaitingCount(self):
-        return self._tiktok_publisher.awaiting_count
-
-    @Property(int, notify=tiktokPublishChanged)
-    def tiktokProjectSourceSelectedCount(self):
-        return self._tiktok_publisher.project_source_selected_count
 
     @Property(QObject, constant=True)
     def channelImporter(self):
@@ -740,7 +679,7 @@ class HaizFlowController(QObject):
 
     @originalVolume.setter
     def originalVolume(self, value):
-        value = int(value)
+        value = max(0, min(100, int(value)))
         if self._original_volume != value:
             self._original_volume = value
             self.originalVolumeChanged.emit()
@@ -785,8 +724,16 @@ class HaizFlowController(QObject):
     @removeOriginalSubtitles.setter
     def removeOriginalSubtitles(self, value):
         normalized = bool(value)
-        if self._remove_original_subtitles != normalized:
+        changed = self._remove_original_subtitles != normalized
+        # A manually positioned subtitle is only meaningful when the original
+        # frame is kept.  Leaving this flag enabled lets a stale preview layout
+        # override the OCR region after the user switches back to covering the
+        # original subtitles.
+        layout_changed = normalized and self._subtitle_layout_override
+        if changed or layout_changed:
             self._remove_original_subtitles = normalized
+            if layout_changed:
+                self._subtitle_layout_override = False
             self.subtitleSettingsChanged.emit()
 
     def _set_subtitle_style_value(self, key: str, value: int, minimum: int, maximum: int) -> None:
@@ -1321,6 +1268,10 @@ class HaizFlowController(QObject):
     def importBackgroundMusicFromLink(self, url):
         return HaizFlowController._project_import_for(self).import_background_music_link(url)
 
+    @Slot(str, result=bool)
+    def importBatchBackgroundMusicFromLink(self, url):
+        return HaizFlowController._project_import_for(self).import_batch_background_music_link(url)
+
     @Slot()
     def cancelBackgroundMusicLinkImport(self):
         HaizFlowController._project_import_for(self).cancel_background_music_link_import()
@@ -1662,7 +1613,6 @@ class HaizFlowController(QObject):
         model = (
             self.batch_projects if project_type == "batch"
             else self.download_projects if project_type == "download"
-            else self.publish_projects if project_type == "publish"
             else self.single_projects
         )
         project = model.project_at(row)
@@ -1676,16 +1626,6 @@ class HaizFlowController(QObject):
                 None,
                 "Download project",
                 "Wait for the current channel task to finish or cancel it before opening another download project.",
-            )
-            return False
-        if (
-            project_type == "publish"
-            and not self._tiktok_publisher.can_switch_project(project["key"])
-        ):
-            QMessageBox.information(
-                None,
-                "TikTok publishing",
-                "Wait for the current video import to finish before opening another publishing project.",
             )
             return False
         self._open_project_summary(project)
@@ -1717,74 +1657,6 @@ class HaizFlowController(QObject):
             QMessageBox.information(None, "Download folder", "Open a download project first.")
             return
         self._open_path(project_store.project_downloads_dir_for_key(self._selected_project_key))
-
-    @Slot()
-    def browseTikTokPublishVideos(self):
-        self._tiktok_publisher.browse_videos()
-
-    @Slot()
-    def browseTikTokPublishFolder(self):
-        self._tiktok_publisher.browse_folder()
-
-    @Slot(result=bool)
-    def prepareTikTokLogin(self):
-        return self._tiktok_publisher.prepare_login()
-
-    @Slot(result=bool)
-    def clearTikTokLoginSession(self):
-        return self._tiktok_publisher.clear_login_session()
-
-    @Slot()
-    def refreshTikTokProjectSources(self):
-        self._tiktok_publisher.refresh_project_sources()
-
-    @Slot(int, bool, result=bool)
-    def setTikTokProjectSourceSelected(self, row: int, selected: bool):
-        return self._tiktok_publisher.set_project_source_selected(row, selected)
-
-    @Slot(result=bool)
-    def addSelectedTikTokProjectVideos(self):
-        return self._tiktok_publisher.add_selected_project_videos()
-
-    @Slot("QVariantList", result=bool)
-    def addTikTokPublishVideos(self, paths):
-        return self._tiktok_publisher.add_videos(paths)
-
-    @Slot(str, str, bool, result=bool)
-    def saveTikTokPublishDefaults(self, caption: str, hashtags: str, apply_to_existing: bool):
-        return self._tiktok_publisher.save_defaults(caption, hashtags, apply_to_existing)
-
-    @Slot(int, str, str, result=bool)
-    def updateTikTokPublishItem(self, row: int, caption: str, hashtags: str):
-        return self._tiktok_publisher.update_item(row, caption, hashtags)
-
-    @Slot(int, result=bool)
-    def prepareTikTokPublishItem(self, row: int):
-        return self._tiktok_publisher.prepare_item(row)
-
-    @Slot(result=bool)
-    def prepareNextTikTokPublishItem(self):
-        return self._tiktok_publisher.prepare_next()
-
-    @Slot(int, result=bool)
-    def markTikTokPublishPosted(self, row: int):
-        return self._tiktok_publisher.mark_posted(row)
-
-    @Slot(int, result=bool)
-    def confirmTikTokPublishAndNext(self, row: int):
-        return self._tiktok_publisher.confirm_and_prepare_next(row)
-
-    @Slot(int, result=bool)
-    def resetTikTokPublishItem(self, row: int):
-        return self._tiktok_publisher.mark_ready(row)
-
-    @Slot(int, result=bool)
-    def copyTikTokPublishCaption(self, row: int):
-        return self._tiktok_publisher.copy_caption(row)
-
-    @Slot(int, result=bool)
-    def removeTikTokPublishItem(self, row: int):
-        return self._tiktok_publisher.remove_item(row)
 
     @Slot(str, result=bool)
     def openExternalUrl(self, url: str) -> bool:
@@ -1889,6 +1761,9 @@ class HaizFlowController(QObject):
         self.batchChanged.emit()
 
     def _build_config(self):
+        manual_subtitle_layout = bool(
+            self._subtitle_layout_override and not self._remove_original_subtitles
+        )
         return VideoConfig(
             mode=self._workflow_mode,
             source_language="auto",
@@ -1896,7 +1771,7 @@ class HaizFlowController(QObject):
             translator_provider="hymt2",
             tts_voice=self._tts_voice,
             subtitle_style=self._subtitle_style,
-            subtitle_layout_override=self._subtitle_layout_override,
+            subtitle_layout_override=manual_subtitle_layout,
             remove_original_subtitles=self._remove_original_subtitles,
             output_format="keep_ratio",
             crop=CropSettings(),

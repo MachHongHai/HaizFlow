@@ -9,7 +9,6 @@ import os
 import re
 import shutil
 import subprocess
-import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -88,107 +87,6 @@ def active_chrome_profile() -> dict[str, str]:
         "user_data_dir": launch.user_data_dir,
         "profile_directory": launch.profile_directory,
     }
-
-
-def find_chrome_executable() -> str:
-    """Find the installed Google Chrome executable without assuming one install scope."""
-    if os.name != "nt":
-        return ""
-
-    active = _active_chrome_launch()
-    candidates = [active.executable] if active is not None else []
-    candidates.extend(
-        (
-            shutil.which("chrome.exe") or "",
-            os.path.join(os.environ.get("LOCALAPPDATA", ""), "Google", "Chrome", "Application", "chrome.exe"),
-            os.path.join(os.environ.get("PROGRAMFILES", ""), "Google", "Chrome", "Application", "chrome.exe"),
-            os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Google", "Chrome", "Application", "chrome.exe"),
-        )
-    )
-    for candidate in candidates:
-        path = os.path.abspath(str(candidate or ""))
-        if path and os.path.basename(path).casefold() == "chrome.exe" and os.path.isfile(path):
-            return path
-    return ""
-
-
-def open_managed_chrome_url(value: str, user_data_dir: str, *, new_window: bool = False) -> bool:
-    """Open a URL in an isolated Chrome data directory whose session Chrome owns."""
-    url = str(value or "").strip()
-    parsed = urlsplit(url)
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
-        return False
-
-    executable = find_chrome_executable()
-    data_directory = os.path.abspath(str(user_data_dir or ""))
-    if not executable or not data_directory:
-        return False
-    try:
-        os.makedirs(data_directory, exist_ok=True)
-        subprocess.Popen(
-            [
-                executable,
-                f"--user-data-dir={data_directory}",
-                "--profile-directory=Default",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--remote-debugging-address=127.0.0.1",
-                "--remote-debugging-port=0",
-                "--new-window" if new_window else "--new-tab",
-                url,
-            ],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        return True
-    except OSError:
-        LOGGER.warning("Could not open link in the HaizFlow Chrome session", exc_info=True)
-        return False
-
-
-def close_managed_chrome(user_data_dir: str, *, timeout_seconds: float = 8.0) -> bool:
-    """Close only the Chrome instance that owns the exact managed data directory."""
-    data_directory = os.path.normcase(os.path.abspath(str(user_data_dir or "")))
-    if os.name != "nt" or not data_directory:
-        return False
-
-    def matching_process_ids() -> list[int]:
-        process_ids: list[int] = []
-        for record in _chrome_process_records():
-            command_line = str(record.get("CommandLine") or "")
-            launch = _launch_from_command_line(str(record.get("ExecutablePath") or ""), command_line)
-            candidate = os.path.normcase(os.path.abspath(launch.user_data_dir)) if launch.user_data_dir else ""
-            if candidate != data_directory or "--type=" in command_line.casefold():
-                continue
-            try:
-                process_id = int(record.get("ProcessId") or 0)
-            except (TypeError, ValueError):
-                continue
-            if process_id > 0:
-                process_ids.append(process_id)
-        return process_ids
-
-    process_ids = matching_process_ids()
-    if not process_ids:
-        return True
-    for process_id in process_ids:
-        try:
-            subprocess.run(
-                ["taskkill.exe", "/PID", str(process_id), "/T", "/F"],
-                capture_output=True,
-                check=False,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                timeout=max(1.0, timeout_seconds),
-            )
-        except (OSError, subprocess.SubprocessError):
-            LOGGER.warning("Could not close the HaizFlow Chrome session", exc_info=True)
-            return False
-
-    deadline = time.monotonic() + max(0.5, timeout_seconds)
-    while time.monotonic() < deadline:
-        if not matching_process_ids():
-            return True
-        time.sleep(0.1)
-    return False
 
 
 def open_external_url(value: str, preferred_chrome_profile: dict[str, str] | None = None) -> bool:

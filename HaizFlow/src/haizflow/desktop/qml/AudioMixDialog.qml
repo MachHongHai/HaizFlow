@@ -63,7 +63,17 @@ Dialog {
             videoSettingsSaveTimer.restart()
     }
 
-    onClosed: pausePreview()
+    function flushVideoSettingsSave() {
+        if (!videoSettingsSaveTimer.running)
+            return
+        videoSettingsSaveTimer.stop()
+        AppController.persistSelectedVideoSettings()
+    }
+
+    onClosed: {
+        pausePreview()
+        flushVideoSettingsSave()
+    }
     onVisibleChanged: {
         if (!visible)
             pausePreview()

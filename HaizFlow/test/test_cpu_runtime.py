@@ -197,6 +197,8 @@ class CpuRuntimeTests(unittest.TestCase):
                 desktop_settings.SETTINGS_PATH = original_path
         self.assertEqual(saved["processing_device"], "cpu")
         self.assertEqual(loaded["processing_device"], "cpu")
+        self.assertEqual(saved["theme"], "graphite")
+        self.assertEqual(loaded["theme"], "graphite")
 
     def test_saving_identical_desktop_settings_does_not_create_a_new_temp_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -231,6 +233,8 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(loaded["processing_device"], "cpu")
         self.assertEqual(loaded["processing_device_origin"], "detected")
         self.assertNotIn('"auto"', persisted)
+        self.assertEqual(loaded["theme"], "graphite")
+        self.assertIn('"graphite"', persisted)
 
     def test_battery_power_rejects_gpu_and_recommends_cpu(self):
         hardware.clear_runtime_profile_cache()

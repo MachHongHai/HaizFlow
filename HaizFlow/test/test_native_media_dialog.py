@@ -94,6 +94,90 @@ class NativeMediaDialogTests(unittest.TestCase):
         finally:
             controller.shutdown()
 
+    def test_finished_background_music_link_updates_the_visible_project_immediately(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            downloaded = Path(temporary) / "downloaded.m4a"
+            downloaded.write_bytes(b"music")
+            selected = SimpleNamespace(video_id="video-1")
+            changed = mock.Mock()
+            preview = SimpleNamespace(invalidate=mock.Mock())
+            host = SimpleNamespace(
+                _selected_video_id="video-1",
+                _background_music_path="",
+                _background_music_import_busy=True,
+                _background_music_import_status="Downloading background music",
+                _processing_queue=SimpleNamespace(contains=lambda _video_id: False),
+                _audio_preview=preview,
+                selectedVideoChanged=SimpleNamespace(emit=mock.Mock()),
+                backgroundMusicChanged=SimpleNamespace(emit=changed),
+                backgroundMusicImportChanged=SimpleNamespace(emit=mock.Mock()),
+                refreshVideos=mock.Mock(),
+            )
+            controller = ProjectImportController(host)
+            controller._background_music_task = {"task_id": "task-1", "video_id": "video-1"}
+
+            with (
+                patch("haizflow.desktop.project_import_controller.video_store.get_video", return_value=selected),
+                patch(
+                    "haizflow.desktop.project_import_controller.set_desktop_background_music",
+                    return_value="D:/project/input/background_music.m4a",
+                ),
+            ):
+                controller._finish_background_music_download({
+                    "task_id": "task-1",
+                    "path": str(downloaded),
+                    "temporary_directory": "",
+                    "error": "",
+                })
+
+        self.assertEqual(host._background_music_path, "D:/project/input/background_music.m4a")
+        changed.assert_called_once_with()
+        preview.invalidate.assert_called_once_with()
+
+    def test_finished_batch_music_link_creates_one_project_owned_draft(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            download_directory = root / "download"
+            download_directory.mkdir()
+            downloaded = download_directory / "track.m4a"
+            downloaded.write_bytes(b"music")
+            project_root = root / "batch-project"
+            ready = mock.Mock()
+            host = SimpleNamespace(
+                _background_music_import_busy=True,
+                _background_music_import_status="Downloading background music",
+                backgroundMusicImportChanged=SimpleNamespace(emit=mock.Mock()),
+                batchBackgroundMusicDraftReady=SimpleNamespace(emit=ready),
+            )
+            controller = ProjectImportController(host)
+            controller._background_music_task = {
+                "task_id": "task-batch",
+                "target": "batch",
+                "project_key": "project:batch",
+            }
+
+            with (
+                patch(
+                    "haizflow.desktop.project_import_controller.project_store.get_project",
+                    return_value={"project_type": "batch"},
+                ),
+                patch(
+                    "haizflow.desktop.project_import_controller.project_store.project_root_for_key",
+                    return_value=str(project_root),
+                ),
+            ):
+                controller._finish_background_music_download({
+                    "task_id": "task-batch",
+                    "path": str(downloaded),
+                    "temporary_directory": str(download_directory),
+                    "error": "",
+                })
+
+            destination = project_root / ".batch-assets" / "background_music.m4a"
+            self.assertEqual(destination.read_bytes(), b"music")
+            ready.assert_called_once_with(str(destination))
+            self.assertFalse(download_directory.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

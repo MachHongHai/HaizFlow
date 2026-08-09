@@ -6,6 +6,9 @@ import "."
 Dialog {
     id: root
 
+    property bool batchMode: false
+    signal batchMusicReady(string path)
+
     modal: true
     focus: true
     title: I18n.t("Import background music from link")
@@ -28,8 +31,16 @@ Dialog {
 
         function onBackgroundMusicImportChanged() {
             if (root.opened && !AppController.backgroundMusicImportBusy
+                    && !root.batchMode
                     && AppController.backgroundMusicImportStatus === "Background music imported")
                 root.close()
+        }
+
+        function onBatchBackgroundMusicDraftReady(path) {
+            if (!root.opened || !root.batchMode)
+                return
+            root.batchMusicReady(path)
+            root.close()
         }
     }
 
@@ -62,7 +73,9 @@ Dialog {
             }
             Keys.onReturnPressed: {
                 if (text.trim().length > 0 && !AppController.backgroundMusicImportBusy)
-                    AppController.importBackgroundMusicFromLink(text.trim())
+                    root.batchMode
+                        ? AppController.importBatchBackgroundMusicFromLink(text.trim())
+                        : AppController.importBackgroundMusicFromLink(text.trim())
             }
         }
 
@@ -109,7 +122,12 @@ Dialog {
                 text: I18n.t("Download background music")
                 tone: "primary"
                 enabled: musicUrl.text.trim().length > 0 && !AppController.backgroundMusicImportBusy
-                onClicked: AppController.importBackgroundMusicFromLink(musicUrl.text.trim())
+                onClicked: {
+                    if (root.batchMode)
+                        AppController.importBatchBackgroundMusicFromLink(musicUrl.text.trim())
+                    else
+                        AppController.importBackgroundMusicFromLink(musicUrl.text.trim())
+                }
             }
         }
     }

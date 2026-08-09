@@ -32,7 +32,7 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{number}" for number in range(1, 10)),
     *(f"LPT{number}" for number in range(1, 10)),
 }
-PROJECT_TYPES = frozenset({"single", "batch", "download", "publish"})
+PROJECT_TYPES = frozenset({"single", "batch", "download"})
 
 
 def normalize_project_type(project_type: Any) -> str:
@@ -217,13 +217,6 @@ def project_downloads_dir_for_key(project_key_value: str) -> str:
     return os.path.join(_record_root(record), "downloads")
 
 
-def project_publishing_dir_for_key(project_key_value: str) -> str:
-    record = get_project(project_key_value)
-    if not record or normalize_project_type(record.get("project_type")) != "publish":
-        raise ValueError("The selected project is not a publishing project.")
-    return os.path.join(_record_root(record), "publishing")
-
-
 def resolve_project_key(project_name: str, project_directory: str, project_type: str | None = None) -> str:
     """Resolve legacy name metadata only when it identifies exactly one project."""
     directory_input = str(project_directory or "").strip()
@@ -401,6 +394,9 @@ def _read_index_file(path: str) -> tuple[list[dict[str, Any]], bool, list[Any]]:
     records: list[dict[str, Any]] = []
     changed = False
     for raw_record in raw_records:
+        raw_kind = str(raw_record.get("project_type") or "").strip().lower() if isinstance(raw_record, dict) else ""
+        if raw_kind and raw_kind not in PROJECT_TYPES:
+            continue
         record, migrated = _migrate_project_record(raw_record)
         records.append(record)
         changed = changed or migrated
@@ -471,6 +467,9 @@ def _known_project_directories() -> list[str]:
 
 def _load_manifest(manifest_path: Path) -> dict[str, Any]:
     raw = _read_json(str(manifest_path))
+    raw_kind = str(raw.get("project_type") or "").strip().lower() if isinstance(raw, dict) else ""
+    if raw_kind and raw_kind not in PROJECT_TYPES:
+        raise ProjectMetadataError(f"Project manifest uses an unsupported project type: {raw_kind}")
     record, migrated = _migrate_project_record(raw)
     expected_root = os.path.realpath(manifest_path.parent)
     if os.path.normcase(os.path.realpath(_record_root(record))) != os.path.normcase(expected_root):
@@ -585,9 +584,6 @@ def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any])
     if normalize_project_type(record.get("project_type")) == "download":
         for category in ("channel", "video", "audio"):
             os.makedirs(os.path.join(root, "downloads", category), exist_ok=True)
-    elif normalize_project_type(record.get("project_type")) == "publish":
-        os.makedirs(os.path.join(root, "publishing", "media"), exist_ok=True)
-        os.makedirs(os.path.join(root, "publishing", "thumbnails"), exist_ok=True)
     _write_json_atomic(os.path.join(root, PROJECT_MANIFEST_NAME), record)
     records = [item for item in records if item.get("key") != record["key"]]
     records.append(record)

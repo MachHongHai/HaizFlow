@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from haizflow.desktop.media import thumbnail_source
-from haizflow.services import project_store, tiktok_publish, video_store
+from haizflow.services import project_store, video_store
 from haizflow.services.desktop_videos import migrate_legacy_single_export
 
 
@@ -67,6 +67,17 @@ class ProjectWorkspaceController:
 
     def open_project_summary(self, project) -> None:
         host = self._host
+        if project["project_type"] == "batch":
+            try:
+                removed = video_store.cleanup_batch_project_orphans(project["key"])
+                if removed:
+                    host._status_message = f"Cleaned {len(removed)} stale batch folder(s)."
+                    host.statusMessageChanged.emit()
+            except (OSError, RuntimeError, ValueError):
+                # Opening the project must remain possible when a media player
+                # temporarily locks an old export; deletion can be retried on
+                # the next open or explicit video removal.
+                pass
         videos = project["videos"]
         host._project_name = project["project_name"]
         host._project_directory = project["project_directory"] or host._project_directory
@@ -79,11 +90,6 @@ class ProjectWorkspaceController:
         host._refresh_batch_model()
         if host._project_type == "download":
             host._media_downloader.attach_project(
-                host._selected_project_key,
-                project_store.project_root_for_key(host._selected_project_key),
-            )
-        elif host._project_type == "publish":
-            host._tiktok_publisher.attach_project(
                 host._selected_project_key,
                 project_store.project_root_for_key(host._selected_project_key),
             )
@@ -113,25 +119,11 @@ class ProjectWorkspaceController:
         host._catalog_videos = {video.video_id: video for video in all_videos}
         host.videos.set_videos(all_videos[:40])
         summaries = host._build_project_summaries(all_videos, project_store.list_projects())
-        for summary in summaries:
-            if summary["project_type"] != "publish":
-                continue
-            try:
-                publish_summary = tiktok_publish.summarize(project_store.project_root_for_key(summary["key"]))
-            except (OSError, RuntimeError, ValueError):
-                continue
-            summary.update(
-                video_count=publish_summary["item_count"],
-                status=publish_summary["status"],
-                progress=publish_summary["progress"],
-                thumbnail_source=thumbnail_source(publish_summary["thumbnail_path"]),
-            )
         host._project_summaries_by_key = {project["key"]: project for project in summaries}
         host.projects.set_projects(summaries)
         host.single_projects.set_projects([project for project in summaries if project["project_type"] == "single"])
         host.batch_projects.set_projects([project for project in summaries if project["project_type"] == "batch"])
         host.download_projects.set_projects([project for project in summaries if project["project_type"] == "download"])
-        host.publish_projects.set_projects([project for project in summaries if project["project_type"] == "publish"])
         host._refresh_batch_model()
         host._selected_video_snapshot = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         host.selectedVideoChanged.emit()

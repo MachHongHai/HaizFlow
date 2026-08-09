@@ -198,10 +198,24 @@ class ProjectCommandsController:
         ):
             QMessageBox.warning(None, "Background music", "The selected background music is no longer available.")
             return False
+        videos = [
+            video for video_id in host._batch_video_ids
+            if (video := video_store.get_video(video_id))
+        ]
+        if not videos:
+            QMessageBox.information(None, "Batch settings", "Add at least one video before applying settings.")
+            return False
+        if any(host._processing_queue.contains(video.video_id) for video in videos):
+            QMessageBox.information(
+                None,
+                "Batch settings",
+                "Pause the batch before changing settings for every video.",
+            )
+            return False
+
         updated = 0
-        for video_id in host._batch_video_ids:
-            if not video_store.get_video(video_id) or host._processing_queue.contains(video_id):
-                continue
+        for video in videos:
+            video_id = video.video_id
             changes = {
                 "mode": mode,
                 "source_language": "auto",
@@ -224,7 +238,7 @@ class ProjectCommandsController:
                 changes["subtitle_layout_override"] = subtitle_layout_override
             if apply_background_music:
                 try:
-                    set_desktop_background_music(video_store.get_video(video_id), background_music_path)
+                    set_desktop_background_music(video, background_music_path)
                 except (OSError, RuntimeError, ValueError) as exc:
                     QMessageBox.warning(None, "Background music", f"Could not apply background music to every video: {exc}")
                     return False
@@ -233,11 +247,22 @@ class ProjectCommandsController:
         if not updated:
             QMessageBox.information(None, "Batch settings", "Add at least one video before applying settings.")
             return False
+        if apply_background_music:
+            try:
+                project_key_value = str(getattr(host, "_selected_project_key", "") or "")
+                project_root = project_store.project_root_for_key(project_key_value)
+                draft_assets = os.path.abspath(os.path.join(project_root, ".batch-assets"))
+                shutil.rmtree(draft_assets, ignore_errors=True)
+            except (OSError, ValueError):
+                pass
         host.refreshVideos()
         host.batchChanged.emit()
         return True
 
     def load_batch_settings(self) -> None:
+        self._sync_host_with_batch_settings()
+
+    def _sync_host_with_batch_settings(self) -> None:
         host = self._host
         values = self.batch_settings_values()
         host._workflow_mode = values["workflowMode"]
@@ -252,6 +277,7 @@ class ProjectCommandsController:
         subtitle_style = dict(values["subtitleStyle"])
         host._subtitle_layout_override = bool(subtitle_style.pop("manual", False))
         host._subtitle_style = SubtitleStyle(**subtitle_style)
+        host._background_music_path = str(values.get("backgroundMusicPath") or "")
         host.workflowModeChanged.emit()
         host.targetLanguageChanged.emit()
         host.ttsVoiceChanged.emit()
@@ -262,6 +288,7 @@ class ProjectCommandsController:
         host.ttsVolumeChanged.emit()
         host.watermarkTextChanged.emit()
         host.subtitleSettingsChanged.emit()
+        host.backgroundMusicChanged.emit()
 
     def save_selected_video_settings(self) -> bool:
         return self._persist_selected_video_settings(log_change=True)
@@ -380,9 +407,6 @@ class ProjectCommandsController:
             if video.status == "processing":
                 cancel_video(video_id)
             try:
-                output_directory = host._batch_output_directory(video)
-                if output_directory and os.path.isdir(output_directory):
-                    shutil.rmtree(output_directory)
                 video_store.delete_video(video_id)
                 host._remove_empty_batch_output_parents(video)
             except Exception as exc:
@@ -605,6 +629,9 @@ class ProjectCommandsController:
         host._processing_queue.discard(video_id)
         try:
             deleted = video_store.delete_video(video_id)
+            if video:
+                host._remove_empty_batch_output_parents(video)
+                video_store.cleanup_batch_project_orphans(host._selected_project_key)
         except Exception as exc:
             QMessageBox.critical(None, "Delete failed", str(exc))
             return
@@ -635,16 +662,6 @@ class ProjectCommandsController:
                 None,
                 "Delete project",
                 "Finish or cancel this project's downloads before deleting it.",
-            )
-            return
-        if (
-            host._project_type == "publish"
-            and host._tiktok_publisher.has_project_work(current_key)
-        ):
-            QMessageBox.information(
-                None,
-                "Delete project",
-                "Wait for this project's video import to finish before deleting it.",
             )
             return
         project_videos = [
@@ -684,8 +701,6 @@ class ProjectCommandsController:
         host._selected_project_key = ""
         if host._project_type == "download":
             host._media_downloader.attach_project("", "")
-        elif host._project_type == "publish":
-            host._tiktok_publisher.detach_project()
         host._batch_video_ids = []
         host._clear_logs()
         host.videoPath = ""

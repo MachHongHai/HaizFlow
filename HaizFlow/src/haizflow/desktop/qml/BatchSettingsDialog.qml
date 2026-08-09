@@ -379,17 +379,14 @@ Dialog {
                     }
                 }
 
-                GridLayout {
+                ColumnLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.space24
                     Layout.rightMargin: Theme.space24
                     Layout.topMargin: Theme.space20
-                    columns: 2
-                    columnSpacing: Theme.space24
-                    rowSpacing: Theme.space16
+                    spacing: Theme.space12
 
                     Text {
-                        Layout.columnSpan: 2
                         text: I18n.t("Dubbing and audio")
                         color: Theme.text
                         font.pixelSize: Theme.body
@@ -397,86 +394,124 @@ Dialog {
                         textFormat: Text.PlainText
                     }
 
-                    Text {
-                        text: I18n.t("Workflow")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.caption
-                    }
-
-                    SegmentedControl {
+                    RowLayout {
                         Layout.fillWidth: true
-                        currentValue: root.draftWorkflowMode
-                        options: [
-                            { "label": I18n.t("Full auto"), "value": "A" },
-                            { "label": I18n.t("Review then dub"), "value": "review" }
-                        ]
-                        onActivated: function(value) {
-                            root.draftWorkflowMode = value
+                        spacing: Theme.space12
+
+                        Text {
+                            Layout.preferredWidth: 112
+                            text: I18n.t("Workflow")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.Medium
+                        }
+
+                        SegmentedControl {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 38
+                            currentValue: root.draftWorkflowMode
+                            options: [
+                                { "label": I18n.t("Full auto"), "value": "A" },
+                                { "label": I18n.t("Review then dub"), "value": "review" }
+                            ]
+                            onActivated: function(value) {
+                                root.draftWorkflowMode = value
+                            }
                         }
                     }
 
-                    Text {
-                        text: I18n.t("Translate to")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.caption
-                    }
-
-                    SearchableLanguageCombo {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 42
-                        options: AppController.targetLanguageOptions
-                        selectedCode: root.draftTargetLanguage
-                        onSelected: function(code) {
-                            root.draftTargetLanguage = code
-                            root.draftTtsVoice = root.normalizedDraftVoice(code, root.draftTtsVoice)
+                        spacing: Theme.space4
+
+                        Text {
+                            text: I18n.t("Translate to")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.Medium
+                        }
+
+                        SearchableLanguageCombo {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 42
+                            options: AppController.targetLanguageOptions
+                            selectedCode: root.draftTargetLanguage
+                            onSelected: function(code) {
+                                root.draftTargetLanguage = code
+                                root.draftTtsVoice = root.normalizedDraftVoice(code, root.draftTtsVoice)
+                            }
                         }
                     }
 
-                    Text {
-                        text: I18n.t("Voice")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.caption
-                    }
-
-                    AppComboBox {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        textRole: "label"
-                        valueRole: "voice"
-                        model: root.draftVoiceOptions
-                        currentIndex: root.draftTtsVoiceIndex
-                        onActivated: {
-                            root.draftTtsVoice = currentValue
-                        }
-                    }
+                        spacing: Theme.space4
 
-                    Text {
-                        text: I18n.t("Original subtitles")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.caption
+                        Text {
+                            text: I18n.t("Voice")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.Medium
+                        }
+
+                        AppComboBox {
+                            Layout.fillWidth: true
+                            textRole: "label"
+                            valueRole: "voice"
+                            model: root.draftVoiceOptions
+                            currentIndex: root.draftTtsVoiceIndex
+                            onActivated: root.draftTtsVoice = currentValue
+                        }
                     }
 
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: Theme.space8
 
-                        SegmentedControl {
+                        RowLayout {
                             Layout.fillWidth: true
-                            currentValue: root.draftRemoveOriginalSubtitles ? "remove" : "keep"
-                            options: [
-                                { "label": I18n.t("Cover original subtitles"), "value": "remove" },
-                                { "label": I18n.t("Keep original video"), "value": "keep" }
-                            ]
-                            onActivated: function(value) {
-                                root.draftRemoveOriginalSubtitles = value === "remove"
+                            spacing: Theme.space12
+
+                            Text {
+                                Layout.preferredWidth: 112
+                                text: I18n.t("Original subtitles")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.caption
+                                font.weight: Font.Medium
                             }
+
+                            SegmentedControl {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 38
+                                currentValue: root.draftRemoveOriginalSubtitles ? "remove" : "keep"
+                                options: [
+                                    { "label": I18n.t("Cover original subtitles"), "value": "remove" },
+                                    { "label": I18n.t("Keep original video"), "value": "keep" }
+                                ]
+                                onActivated: function(value) {
+                                    root.draftRemoveOriginalSubtitles = value === "remove"
+                                }
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.draftRemoveOriginalSubtitles
+                                ? I18n.t("OCR locates burned-in subtitles and blurs that region")
+                                : I18n.t("OCR and blur are skipped; the source picture remains unchanged")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.label
+                            textFormat: Text.PlainText
+                            wrapMode: Text.WordWrap
                         }
 
                         AppButton {
                             Layout.fillWidth: true
-                            text: I18n.t("Preview and position new subtitles")
+                            visible: !root.draftRemoveOriginalSubtitles
+                            text: I18n.t("Edit new subtitles")
                             compact: true
                             tone: "secondary"
-                            enabled: AppController.videoPath.length > 0
+                            enabled: AppController.batchCount > 0 && AppController.videoPath.length > 0
                             onClicked: batchSubtitlePreviewDialog.openWithLayout(
                                 root.draftSubtitleFontSize,
                                 root.draftSubtitlePositionX,
@@ -488,32 +523,56 @@ Dialog {
                     }
 
                     Rectangle {
-                        Layout.columnSpan: 2
                         Layout.fillWidth: true
                         Layout.preferredHeight: 1
+                        Layout.topMargin: Theme.space4
+                        Layout.bottomMargin: Theme.space4
                         color: Theme.divider
                     }
 
-                    Text {
-                        text: I18n.t("Audio source")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.caption
-                    }
-
-                    SegmentedControl {
+                    RowLayout {
                         Layout.fillWidth: true
-                        currentValue: root.draftEnableAudioSeparation ? "separated" : "original"
-                        options: [
-                            { "label": I18n.t("Keep original audio"), "value": "original" },
-                            { "label": I18n.t("Separate vocals"), "value": "separated" }
-                        ]
-                        onActivated: function(value) {
-                            root.draftEnableAudioSeparation = value === "separated"
+                        spacing: Theme.space12
+
+                        Text {
+                            Layout.preferredWidth: 112
+                            text: I18n.t("Audio source")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.Medium
+                        }
+
+                        SegmentedControl {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 38
+                            currentValue: root.draftEnableAudioSeparation ? "separated" : "original"
+                            options: [
+                                { "label": I18n.t("Keep original audio"), "value": "original" },
+                                { "label": I18n.t("Separate vocals"), "value": "separated" }
+                            ]
+                            onActivated: function(value) {
+                                root.draftEnableAudioSeparation = value === "separated"
+                            }
+                        }
+
+                        AppButton {
+                            text: I18n.t("Adjust audio levels")
+                            tone: "secondary"
+                            compact: true
+                            onClicked: {
+                                batchAudioMixDialog.audioSeparationEnabled = root.draftEnableAudioSeparation
+                                batchAudioMixDialog.originalVolume = root.draftOriginalVolume
+                                batchAudioMixDialog.ttsVolume = root.draftTtsVolume
+                                batchAudioMixDialog.backgroundMusicVolume = root.draftBackgroundMusicVolume
+                                batchAudioMixDialog.targetLanguage = root.draftTargetLanguage
+                                batchAudioMixDialog.ttsVoice = root.draftTtsVoice
+                                batchAudioMixDialog.backgroundMusicPath = root.draftBackgroundMusicPath
+                                batchAudioMixDialog.open()
+                            }
                         }
                     }
 
                     Text {
-                        Layout.columnSpan: 2
                         Layout.fillWidth: true
                         visible: AppController.cpuOnly && root.draftEnableAudioSeparation
                         text: I18n.t("Audio separation is slower in CPU mode")
@@ -523,33 +582,18 @@ Dialog {
                         textFormat: Text.PlainText
                     }
 
-                    AppButton {
-                        Layout.columnSpan: 2
-                        Layout.fillWidth: true
-                        text: I18n.t("Adjust audio levels")
-                        tone: "secondary"
-                        compact: true
-                        onClicked: {
-                            batchAudioMixDialog.audioSeparationEnabled = root.draftEnableAudioSeparation
-                            batchAudioMixDialog.originalVolume = root.draftOriginalVolume
-                            batchAudioMixDialog.ttsVolume = root.draftTtsVolume
-                            batchAudioMixDialog.backgroundMusicVolume = root.draftBackgroundMusicVolume
-                            batchAudioMixDialog.targetLanguage = root.draftTargetLanguage
-                            batchAudioMixDialog.ttsVoice = root.draftTtsVoice
-                            batchAudioMixDialog.backgroundMusicPath = root.draftBackgroundMusicPath
-                            batchAudioMixDialog.open()
-                        }
-                    }
-
-                    Text {
-                        text: I18n.t("Background music")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.caption
-                    }
-
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.space8
+
+                        Text {
+                            Layout.preferredWidth: 112
+                            text: I18n.t("Background music")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.Medium
+                            elide: Text.ElideRight
+                        }
 
                         Text {
                             Layout.fillWidth: true
@@ -562,13 +606,50 @@ Dialog {
                         }
 
                         AppButton {
+                            id: batchBackgroundMusicButton
+
+                            property bool menuWasOpenOnPress: false
+
                             text: root.draftBackgroundMusicPath.length > 0
                                 ? I18n.t("Change music") : I18n.t("Add music")
                             compact: true
+                            onPressed: menuWasOpenOnPress = batchBackgroundMusicMenu.visible
                             onClicked: {
-                                const path = AppController.chooseBatchBackgroundMusic()
-                                if (path.length > 0) {
-                                    root.draftBackgroundMusicPath = path
+                                if (menuWasOpenOnPress || batchBackgroundMusicMenu.visible)
+                                    batchBackgroundMusicMenu.close()
+                                else
+                                    batchBackgroundMusicMenu.open()
+                            }
+
+                            Menu {
+                                id: batchBackgroundMusicMenu
+
+                                width: 220
+                                y: batchBackgroundMusicButton.height + Theme.space4
+                                padding: 6
+                                closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+
+                                background: Rectangle {
+                                    color: Theme.surfaceElevated
+                                    radius: Theme.radius
+                                    border.width: 1
+                                    border.color: Theme.outlineStrong
+                                }
+
+                                AppMenuItem {
+                                    text: I18n.t("From file")
+                                    iconGlyph: "\uE8B7"
+                                    onTriggered: {
+                                        const path = AppController.chooseBatchBackgroundMusic()
+                                        if (path.length > 0)
+                                            root.draftBackgroundMusicPath = path
+                                    }
+                                }
+
+                                AppMenuItem {
+                                    text: I18n.t("From link")
+                                    iconGlyph: "\uE71B"
+                                    onTriggered: batchBackgroundMusicLinkDialog.open()
                                 }
                             }
                         }
@@ -583,15 +664,17 @@ Dialog {
                         }
                     }
 
-                    Text {
-                        text: I18n.t("Watermark")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.caption
-                    }
-
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.space8
+
+                        Text {
+                            Layout.preferredWidth: 112
+                            text: I18n.t("Watermark")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.Medium
+                        }
 
                         Text {
                             Layout.fillWidth: true
@@ -637,6 +720,14 @@ Dialog {
             root.draftOriginalVolume = originalVolume
             root.draftTtsVolume = ttsVolume
             root.draftBackgroundMusicVolume = backgroundMusicVolume
+        }
+    }
+
+    BackgroundMusicLinkDialog {
+        id: batchBackgroundMusicLinkDialog
+        batchMode: true
+        onBatchMusicReady: function(path) {
+            root.draftBackgroundMusicPath = path
         }
     }
 

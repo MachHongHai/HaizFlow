@@ -159,7 +159,7 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.margins: Theme.space8
-                visible: root.projectType === "batch" || root.projectType === "publish"
+                visible: root.projectType === "batch"
                 implicitWidth: batchLabel.implicitWidth + 16
                 implicitHeight: 24
                 radius: Theme.radiusTiny
@@ -251,8 +251,6 @@ Rectangle {
                     Layout.fillWidth: true
                     text: root.projectType === "batch"
                         ? qsTr("%1 - %2").arg(root.videoCount).arg(I18n.t("videos"))
-                        : root.projectType === "publish"
-                            ? I18n.t("TikTok publishing workspace")
                         : root.projectType === "download"
                             ? I18n.t("Download workspace")
                         : root.statusLabel

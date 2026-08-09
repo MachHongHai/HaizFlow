@@ -11,7 +11,6 @@ Rectangle {
     signal newSingleProjectRequested
     signal newBatchProjectRequested
     signal newDownloadProjectRequested
-    signal newPublishProjectRequested
     signal settingsRequested
     signal aboutRequested
     signal backRequested
@@ -101,8 +100,7 @@ Rectangle {
         menuContentWidth: Math.max(
             newSingleProjectItem.implicitWidth,
             newBatchProjectItem.implicitWidth,
-            newDownloadProjectItem.implicitWidth,
-            newPublishProjectItem.implicitWidth
+            newDownloadProjectItem.implicitWidth
         )
 
         AppMenuItem {
@@ -126,12 +124,6 @@ Rectangle {
             onTriggered: root.newDownloadProjectRequested()
         }
 
-        AppMenuItem {
-            id: newPublishProjectItem
-
-            text: I18n.t("New TikTok publishing project")
-            onTriggered: root.newPublishProjectRequested()
-        }
     }
 
     AppPopupMenu {

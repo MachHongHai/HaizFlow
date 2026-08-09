@@ -202,6 +202,92 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertTrue(project_root.name.startswith("Launch--"))
         self.assertIn(video.video_id[:8], output_path.parent.name)
 
+    def test_batch_storage_cleanup_removes_only_unreferenced_app_folders(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "clip.mp4"
+            source.write_bytes(b"video")
+            original_videos_dir = video_store.LEGACY_VIDEO_WORKSPACES_DIR
+            original_project_index = project_store.PROJECT_INDEX_PATH
+            video_store.LEGACY_VIDEO_WORKSPACES_DIR = str(root / "legacy-videos")
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                project = project_store.create_project("Batch cleanup", str(root / "projects"), "batch")
+                video = create_desktop_video(
+                    str(source),
+                    VideoConfig(project_type="batch", project_key=project["key"]),
+                    project_name="Batch cleanup",
+                    project_directory=str(root / "projects"),
+                    project_key_value=project["key"],
+                )
+                referenced_export = Path(video.files["final_video"]).parent
+                referenced_export.mkdir(parents=True, exist_ok=True)
+                (referenced_export / "dubbed_video.mp4").write_bytes(b"render")
+                orphan_export = Path(project["project_root"]) / "exports" / "old-1234abcd"
+                orphan_export.mkdir(parents=True)
+                (orphan_export / "dubbed_video.mp4").write_bytes(b"stale")
+                user_folder = Path(project["project_root"]) / "exports" / "notes"
+                user_folder.mkdir(parents=True)
+                invalid_workspace = (
+                    Path(project["project_root"])
+                    / "videos"
+                    / "11111111-1111-4111-8111-111111111111"
+                )
+                invalid_workspace.mkdir(parents=True)
+
+                removed = video_store.cleanup_batch_project_orphans(project["key"])
+                referenced_export_exists = referenced_export.is_dir()
+                user_folder_exists = user_folder.is_dir()
+                orphan_export_exists = orphan_export.exists()
+                invalid_workspace_exists = invalid_workspace.exists()
+            finally:
+                video_store.LEGACY_VIDEO_WORKSPACES_DIR = original_videos_dir
+                project_store.PROJECT_INDEX_PATH = original_project_index
+                video_store._VIDEO_DIR_CACHE.clear()
+                video_store._VIDEO_METADATA_CACHE.clear()
+
+        self.assertEqual({Path(path).name for path in removed}, {orphan_export.name, invalid_workspace.name})
+        self.assertTrue(referenced_export_exists)
+        self.assertTrue(user_folder_exists)
+        self.assertFalse(orphan_export_exists)
+        self.assertFalse(invalid_workspace_exists)
+
+    def test_deleting_batch_video_also_deletes_its_separate_export_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "clip.mp4"
+            source.write_bytes(b"video")
+            original_videos_dir = video_store.LEGACY_VIDEO_WORKSPACES_DIR
+            original_project_index = project_store.PROJECT_INDEX_PATH
+            video_store.LEGACY_VIDEO_WORKSPACES_DIR = str(root / "legacy-videos")
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                project = project_store.create_project("Delete batch video", str(root / "projects"), "batch")
+                video = create_desktop_video(
+                    str(source),
+                    VideoConfig(project_type="batch", project_key=project["key"]),
+                    project_name="Delete batch video",
+                    project_directory=str(root / "projects"),
+                    project_key_value=project["key"],
+                )
+                export_directory = Path(video.files["final_video"]).parent
+                export_directory.mkdir(parents=True, exist_ok=True)
+                (export_directory / "dubbed_video.mp4").write_bytes(b"render")
+                workspace = Path(video_store.get_video_dir(video.video_id))
+
+                deleted = video_store.delete_video(video.video_id, attempts=1, delay_seconds=0)
+                export_exists = export_directory.exists()
+                workspace_exists = workspace.exists()
+            finally:
+                video_store.LEGACY_VIDEO_WORKSPACES_DIR = original_videos_dir
+                project_store.PROJECT_INDEX_PATH = original_project_index
+                video_store._VIDEO_DIR_CACHE.clear()
+                video_store._VIDEO_METADATA_CACHE.clear()
+
+        self.assertTrue(deleted)
+        self.assertFalse(export_exists)
+        self.assertFalse(workspace_exists)
+
     def test_single_project_export_is_separate_from_the_project_folder(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

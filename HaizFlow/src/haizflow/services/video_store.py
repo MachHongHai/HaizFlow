@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import stat
 import sys
@@ -862,6 +863,22 @@ def _force_remove_readonly(func, path, _exc_info):
         pass
 
 
+def _remove_tree_verified(path: str) -> None:
+    """Remove a tree and fail if Windows left any locked content behind."""
+    if not os.path.exists(path):
+        return
+    shutil.rmtree(path, onerror=_force_remove_readonly)
+    if os.path.exists(path):
+        raise OSError(f"Directory is still in use: {path}")
+
+
+_BATCH_EXPORT_DIRECTORY_PATTERN = re.compile(r".+-[0-9a-f]{8}$", re.IGNORECASE)
+_VIDEO_WORKSPACE_PATTERN = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    re.IGNORECASE,
+)
+
+
 def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) -> bool:
     with _video_lock(video_id):
         video_dir = get_video_dir(video_id)
@@ -869,10 +886,30 @@ def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) 
             _VIDEO_DIR_CACHE.pop(video_id, None)
             _VIDEO_METADATA_CACHE.pop(video_id, None)
             return False
+        video = _get_video_unlocked(video_id)
+        # Batch exports live beside, rather than inside, the video workspace.
+        # Delete that app-owned directory here so every deletion entry point
+        # (card menu, project deletion, failed import rollback) has identical
+        # cleanup semantics.
+        batch_export_directory = ""
+        if video and video.project_type == "batch" and video.project_key:
+            final_video = str((video.files or {}).get("final_video") or "")
+            if final_video:
+                export_directory = os.path.abspath(os.path.dirname(final_video))
+                exports_root = os.path.abspath(project_store.project_exports_dir_for_key(video.project_key))
+                if (
+                    export_directory != exports_root
+                    and _is_inside(export_directory, exports_root)
+                    and _BATCH_EXPORT_DIRECTORY_PATTERN.fullmatch(os.path.basename(export_directory))
+                    and os.path.isdir(export_directory)
+                ):
+                    batch_export_directory = export_directory
         last_error = None
         for attempt in range(attempts):
             try:
-                shutil.rmtree(video_dir, onerror=_force_remove_readonly)
+                if batch_export_directory:
+                    _remove_tree_verified(batch_export_directory)
+                _remove_tree_verified(video_dir)
                 _VIDEO_DIR_CACHE.pop(video_id, None)
                 _VIDEO_METADATA_CACHE.pop(video_id, None)
                 _mark_metadata_changed(video_id)
@@ -886,6 +923,71 @@ def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) 
         _VIDEO_METADATA_CACHE.pop(video_id, None)
         _mark_metadata_changed(video_id)
         return True
+
+def cleanup_batch_project_orphans(project_key_value: str) -> list[str]:
+    """Remove app-owned batch workspaces/exports that no video references.
+
+    Batch exports live outside each video workspace so deleting only
+    ``videos/<id>`` used to leave a second output folder behind.  Restrict the
+    sweep to UUID workspaces and HaizFlow's ``<label>-<short-id>`` export
+    folders; arbitrary user folders in the project root are never touched.
+    """
+    project = project_store.get_project(project_key_value)
+    if not project or project_store.normalize_project_type(project.get("project_type")) != "batch":
+        return []
+
+    videos_root = os.path.abspath(project_store.project_videos_dir_for_key(project_key_value))
+    exports_root = os.path.abspath(project_store.project_exports_dir_for_key(project_key_value))
+    referenced_export_directories: set[str] = set()
+    removed: list[str] = []
+
+    if os.path.isdir(videos_root):
+        for name in tuple(os.listdir(videos_root)):
+            workspace = os.path.abspath(os.path.join(videos_root, name))
+            if not os.path.isdir(workspace) or name.startswith("."):
+                continue
+            video = get_video(name)
+            belongs_to_project = bool(
+                video
+                and video.project_type == "batch"
+                and (
+                    video.project_key == project_key_value
+                    or (
+                        not video.project_key
+                        and video.project_name == project.get("project_name")
+                        and os.path.abspath(video.project_directory or "")
+                        == os.path.abspath(str(project.get("project_directory") or ""))
+                    )
+                )
+            )
+            if belongs_to_project:
+                final_video = str((video.files or {}).get("final_video") or "")
+                if final_video:
+                    output_directory = os.path.abspath(os.path.dirname(final_video))
+                    if output_directory != exports_root and _is_inside(output_directory, exports_root):
+                        referenced_export_directories.add(os.path.normcase(output_directory))
+                continue
+            if not _VIDEO_WORKSPACE_PATTERN.fullmatch(name):
+                continue
+            _remove_tree_verified(workspace)
+            _VIDEO_DIR_CACHE.pop(name, None)
+            _VIDEO_METADATA_CACHE.pop(name, None)
+            _mark_metadata_changed(name)
+            removed.append(workspace)
+
+    if os.path.isdir(exports_root):
+        for name in tuple(os.listdir(exports_root)):
+            export_directory = os.path.abspath(os.path.join(exports_root, name))
+            if not os.path.isdir(export_directory):
+                continue
+            if os.path.normcase(export_directory) in referenced_export_directories:
+                continue
+            if not _BATCH_EXPORT_DIRECTORY_PATTERN.fullmatch(name):
+                continue
+            _remove_tree_verified(export_directory)
+            removed.append(export_directory)
+
+    return removed
 
 
 def migrate_legacy_project_data() -> list[str]:
