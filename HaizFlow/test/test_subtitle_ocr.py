@@ -1,9 +1,15 @@
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from haizflow.pipeline.subtitle_ocr import TextCandidate, _ocr_candidates, select_subtitle_region
+from haizflow.pipeline import subtitle_ocr
+from haizflow.pipeline.subtitle_ocr import (
+    TextCandidate,
+    _ocr_candidates,
+    select_subtitle_region,
+)
 
 
 def candidate(frame, text, *, x=25, y=78, width=50, height=5, confidence=0.9):
@@ -11,6 +17,47 @@ def candidate(frame, text, *, x=25, y=78, width=50, height=5, confidence=0.9):
 
 
 class SubtitleOcrSelectionTests(unittest.TestCase):
+    def test_detector_downscales_frames_and_reports_scan_progress(self):
+        captured = {}
+
+        class FakeProcess:
+            returncode = 0
+
+            def __init__(self, command, **_kwargs):
+                captured["command"] = command
+                pattern = command[-1]
+                count = int(command[command.index("-frames:v") + 1])
+                for index in range(1, count + 1):
+                    Path(pattern.replace("%03d", f"{index:03d}")).write_bytes(b"frame")
+
+        updates = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            video_path = root / "input.mp4"
+            video_path.write_bytes(b"source")
+            with (
+                patch.object(subtitle_ocr, "get_video_duration", return_value=10.0),
+                patch.object(subtitle_ocr, "get_video_dimensions", return_value=(1080, 1920)),
+                patch.object(subtitle_ocr.subprocess, "Popen", FakeProcess),
+                patch.object(subtitle_ocr, "communicate_process", return_value=("", "")),
+                patch.object(subtitle_ocr, "check_cancellation"),
+                patch.object(subtitle_ocr, "_ocr_candidates", return_value=[]),
+                patch.object(subtitle_ocr, "log_to_video"),
+            ):
+                result = subtitle_ocr.detect_original_subtitle_region(
+                    str(video_path),
+                    str(root / "temp"),
+                    "video-id",
+                    lambda current, total: updates.append((current, total)),
+                )
+
+        command = captured["command"]
+        self.assertIsNone(result)
+        self.assertIn("fps=3.60000000,scale=720:1280", command)
+        self.assertEqual(command[command.index("-frames:v") + 1], "36")
+        self.assertEqual(updates[0], (0, 36))
+        self.assertEqual(updates[-1], (36, 36))
+
     def test_selects_repeated_lower_subtitles_with_changing_text(self):
         region = select_subtitle_region([
             candidate(1, "first caption"),
@@ -35,6 +82,19 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         self.assertIsNotNone(region)
         self.assertEqual(region["x_percent"], 18)
         self.assertEqual(region["x_percent"] + region["width_percent"], 76)
+
+    def test_near_widest_trustworthy_box_beats_padded_low_confidence_outlier(self):
+        region = select_subtitle_region([
+            candidate(1, "short caption", x=30, width=40, height=8, confidence=0.90),
+            candidate(2, "long caption", x=26.5, width=48.2, height=8, confidence=0.92),
+            candidate(3, "another caption", x=28, width=44, height=8, confidence=0.91),
+            candidate(4, "padded detector box", x=27.2, width=48.4, height=10.6, confidence=0.77),
+        ], sample_count=12)
+
+        self.assertIsNotNone(region)
+        self.assertEqual(region["x_percent"], 26.5)
+        self.assertEqual(region["width_percent"], 48.2)
+        self.assertEqual(region["height_percent"], 8)
 
     def test_merges_separate_word_boxes_before_measuring_caption_width(self):
         items = []
@@ -75,7 +135,41 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         self.assertEqual(region["y_percent"] + region["height_percent"], 65)
         self.assertAlmostEqual(region["line_height_percent"], 5.0)
 
-    def test_single_third_line_sample_does_not_oversize_the_region(self):
+    def test_does_not_merge_a_small_moving_watermark_below_the_caption(self):
+        items = []
+        for frame, caption_x, caption_width, watermark_x in [
+            (1, 27, 46, 59),
+            (2, 31, 40, 49),
+            (3, 30, 42, 40),
+            (4, 28, 45, 21),
+        ]:
+            items.extend([
+                candidate(
+                    frame,
+                    f"changing caption {frame}",
+                    x=caption_x,
+                    y=66,
+                    width=caption_width,
+                    height=8,
+                ),
+                candidate(
+                    frame,
+                    "@creator",
+                    x=watermark_x,
+                    y=74.7,
+                    width=24,
+                    height=3.1,
+                    confidence=0.8,
+                ),
+            ])
+
+        region = select_subtitle_region(items, sample_count=12)
+
+        self.assertIsNotNone(region)
+        self.assertEqual(region["height_percent"], 8)
+        self.assertEqual(region["width_percent"], 46)
+
+    def test_largest_real_three_line_caption_defines_the_static_region(self):
         items = []
         for frame in range(1, 13):
             items.extend([
@@ -87,7 +181,8 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         region = select_subtitle_region(items, sample_count=24)
 
         self.assertIsNotNone(region)
-        self.assertLess(region["height_percent"], 12)
+        self.assertEqual(region["y_percent"], 54)
+        self.assertEqual(region["height_percent"], 15)
 
     def test_repeated_third_subtitle_line_expands_the_region(self):
         items = []
@@ -175,6 +270,26 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertAlmostEqual(items[0].y, 30.0)
         self.assertAlmostEqual(items[0].height, 6.0)
+
+    def test_static_region_uses_one_complete_observation_without_mixing_axes(self):
+        region = select_subtitle_region([
+            candidate(1, "wide but short", x=10, y=62, width=80, height=4),
+            candidate(2, "largest complete caption", x=18, y=54, width=64, height=10),
+            candidate(3, "another caption", x=20, y=56, width=60, height=9),
+            candidate(4, "short caption", x=30, y=60, width=40, height=5),
+        ], sample_count=12)
+
+        self.assertIsNotNone(region)
+        self.assertEqual(
+            (
+                region["x_percent"],
+                region["y_percent"],
+                region["width_percent"],
+                region["height_percent"],
+            ),
+            (18, 54, 64, 10),
+        )
+        self.assertNotIn("timeline", region)
 
 
 if __name__ == "__main__":

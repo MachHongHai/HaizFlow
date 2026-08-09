@@ -487,7 +487,7 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
             log_to_video(video_id, "Restarting the interrupted pipeline stage on CPU.")
             return process_video_sync(video_id, _reporter=reporter)
         stack_trace = traceback.format_exc()
-        log_to_video(video_id, f"Execution failed: {error_msg}\n{stack_trace}")
+        log_to_video(video_id, f"Execution failed: {error_msg}\n{stack_trace}", level="ERROR", component="PIPELINE")
         update_video(video_id, status="failed", error=error_msg, step="failed")
     finally:
         clean_video(video_id)
@@ -583,13 +583,25 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             else default_subtitle_style.dict()
         )
         crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
-        reporter.update(87, "detecting_original_subtitles", "Scanning the full frame for original subtitles")
-        original_subtitle_region = detect_original_subtitle_region(video_input, os.path.join(video_dir, "temp"), video_id)
+        reporter.update(87, "detecting_original_subtitles", "Preparing original subtitle scan")
+
+        def report_ocr_progress(current: int, total: int) -> None:
+            detail = "Scanning the full frame for original subtitles"
+            if total:
+                detail = f"Scanning original subtitles ({current}/{total})"
+            reporter.update(87, "detecting_original_subtitles", detail, current, total)
+
+        original_subtitle_region = detect_original_subtitle_region(
+            video_input,
+            os.path.join(video_dir, "temp"),
+            video_id,
+            progress_callback=report_ocr_progress,
+        )
         render_signature = _signature(
             timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
             # Bump when changing the visual treatment so a previously rendered
             # luma-only result is never reused as a valid final export.
-            "automatic-original-subtitle-ocr-v10", original_subtitle_region,
+            "static-largest-original-subtitle-ocr-v12-bangers", original_subtitle_region,
             "watermark-white-no-outline-v2",
             getattr(video, "watermark_text", ""),
         )
@@ -598,10 +610,23 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         else:
             _ensure_gpu_available("final video render")
             reporter.update(88, "rendering", "Rendering final video")
+
+            def report_render_progress(fraction: float) -> None:
+                percent = max(0, min(100, round(fraction * 100)))
+                pipeline_progress = min(98, 88 + round(fraction * 10))
+                reporter.update(
+                    pipeline_progress,
+                    "rendering",
+                    f"Rendering final video ({percent}%)",
+                    percent,
+                    100,
+                )
+
             render_video(
                 video_input, voice_output, srt_output, final_video, video.output_format,
                 default_subtitle_style, video.crop, video_id, original_subtitle_region,
                 getattr(video, "watermark_text", ""),
+                progress_callback=report_render_progress,
             )
             _mark_checkpoint(video, "render", render_signature)
 

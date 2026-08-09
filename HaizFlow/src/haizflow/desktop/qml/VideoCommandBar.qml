@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -167,69 +166,6 @@ Rectangle {
                 onClicked: AppController.openOutputFile()
             }
 
-            IconButton {
-                id: moreButton
-                visible: AppController.isSelectedBatchVideo
-
-                property bool menuWasOpenOnPress: false
-
-                glyph: "\uE712"
-                // Keep the screen-reader label without showing a tooltip over
-                // the menu trigger after it has been clicked.
-                Accessible.name: I18n.t("More actions")
-                onPressed: menuWasOpenOnPress = videoMenu.visible
-                onClicked: {
-                    if (menuWasOpenOnPress || videoMenu.visible)
-                        videoMenu.close()
-                    else
-                        videoMenu.open()
-                }
-
-                Menu {
-                    id: videoMenu
-                    width: 242
-                    y: -height - 8
-                    padding: 6
-                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
-
-                    enter: Transition {
-                        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast }
-                    }
-                    exit: Transition {
-                        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motionFast }
-                    }
-
-                    background: Rectangle {
-                        color: Theme.surfaceElevated
-                        radius: Theme.radius
-                        border.width: 1
-                        border.color: Theme.outlineStrong
-                    }
-
-                    AppMenuItem {
-                        text: I18n.t("Open input video")
-                        iconGlyph: "\uE714"
-                        collapsed: !AppController.isSelectedBatchVideo
-                        onTriggered: AppController.openInputFile()
-                    }
-
-                    AppMenuItem {
-                        text: I18n.t("Open export folder")
-                        iconGlyph: "\uE8B7"
-                        collapsed: !AppController.isSelectedBatchVideo
-                        onTriggered: AppController.openOutputFolder()
-                    }
-
-                    AppMenuItem {
-                        text: I18n.t("Remove video")
-                        iconGlyph: "\uE74D"
-                        tone: "danger"
-                        collapsed: !AppController.isSelectedBatchVideo
-                        onTriggered: AppController.deleteSelectedVideo()
-                    }
-
-                }
-            }
         }
     }
 }

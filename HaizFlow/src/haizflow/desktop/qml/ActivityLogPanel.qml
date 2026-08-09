@@ -76,6 +76,14 @@ Rectangle {
             }
 
             AppButton {
+                text: I18n.t("Copy")
+                tone: "ghost"
+                compact: true
+                activeFocusOnTab: true
+                onClicked: activityLog.copyAll()
+            }
+
+            AppButton {
                 text: I18n.t("Expand log")
                 tone: "ghost"
                 compact: true
@@ -85,6 +93,7 @@ Rectangle {
         }
 
         LogViewer {
+            id: activityLog
             Layout.fillWidth: true
             Layout.fillHeight: true
             compact: true

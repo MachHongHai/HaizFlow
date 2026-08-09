@@ -9,6 +9,7 @@ Item {
     signal requestReviewTranslation()
     signal requestUrlImport()
 
+    readonly property bool editingBatchVideo: AppController.isSelectedBatchVideo
     readonly property bool wideLayout: width >= 1120
 
     onWideLayoutChanged: {
@@ -45,10 +46,16 @@ Item {
                 showOutputFolder: AppController.hasSelectedVideo
                 outputFolderEnabled: AppController.hasSelectedVideo
                 deleteEnabled: AppController.hasOpenProject
+                deleteText: root.editingBatchVideo ? I18n.t("Remove video") : I18n.t("Delete project")
                 onProjectFolderRequested: AppController.openProjectFolder()
                 onInputVideoRequested: AppController.openInputFile()
                 onOutputFolderRequested: AppController.openOutputFolder()
-                onDeleteRequested: AppController.deleteCurrentProject()
+                onDeleteRequested: {
+                    if (root.editingBatchVideo)
+                        AppController.deleteSelectedVideo()
+                    else
+                        AppController.deleteCurrentProject()
+                }
             }
         }
 

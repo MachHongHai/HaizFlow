@@ -81,6 +81,12 @@ Dialog {
             }
 
             IconButton {
+                glyph: "\uE8C8"
+                toolTipText: I18n.t("Copy")
+                onClicked: activityLog.copyAll()
+            }
+
+            IconButton {
                 glyph: "\uE711"
                 toolTipText: I18n.t("Close")
                 onClicked: root.close()
@@ -94,6 +100,7 @@ Dialog {
         }
 
         LogViewer {
+            id: activityLog
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: Theme.space16

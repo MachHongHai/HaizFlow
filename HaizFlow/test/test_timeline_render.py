@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import re
 from pathlib import Path
 from unittest import mock
 
@@ -9,6 +10,17 @@ from haizflow.schemas.video import CropSettings, SubtitleStyle
 
 
 class TimelineRenderTests(unittest.TestCase):
+    def test_ffmpeg_progress_uses_rendered_timestamp(self):
+        self.assertAlmostEqual(
+            render._ffmpeg_progress_fraction("out_time_us=2500000\nprogress=continue\n", 10.0),
+            0.25,
+        )
+        self.assertEqual(
+            render._ffmpeg_progress_fraction("out_time=00:00:15.000000\n", 10.0),
+            1.0,
+        )
+        self.assertIsNone(render._ffmpeg_progress_fraction("progress=continue\n", 10.0))
+
     def test_default_subtitle_size_is_legible_without_an_ocr_region(self):
         self.assertEqual(SubtitleStyle().font_size, 60)
 
@@ -206,22 +218,36 @@ class TimelineRenderTests(unittest.TestCase):
         command = captured["command"]
         self.assertIn("-filter_complex", command)
         self.assertIn(
-            "boxblur=luma_radius=18:luma_power=4:chroma_radius=9:chroma_power=4",
+            "crop=1152:74:384:842,gblur=sigma=4:steps=4",
             command[command.index("-filter_complex") + 1],
         )
-        self.assertIn("blend=all_expr=", command[command.index("-filter_complex") + 1])
+        self.assertIn("overlay=384:842", command[command.index("-filter_complex") + 1])
+        self.assertNotIn("between(t", command[command.index("-filter_complex") + 1])
         self.assertIn("drawtext=text='HaizFlow'", command[command.index("-filter_complex") + 1])
+        self.assertIn("fontsdir=", command[command.index("-filter_complex") + 1])
         self.assertIn("\\an5\\pos(960,886)\\fs", ass_text)
         self.assertIn("\\fscx100", ass_text)
-        self.assertIn(",1,5,0,0,40,1", ass_text)
+        self.assertIn("Style: Default,Bangers,", ass_text)
+        self.assertIn("&H0000EFFF,&H00FFFFFF", ass_text)
+        self.assertIn("\\shad2", ass_text)
+        self.assertIn("{\\kf", ass_text)
         self.assertIn("\\pos(960,886)", ass_text)
+
+    def test_bundled_karaoke_font_is_available_to_ffmpeg(self):
+        font_directory = render._karaoke_font_directory()
+
+        self.assertTrue((font_directory / render.KARAOKE_FONT_FILENAME).is_file())
+        self.assertGreater(
+            (font_directory / render.KARAOKE_FONT_FILENAME).stat().st_size,
+            50_000,
+        )
 
     def test_subtitle_blur_radius_fits_a_short_detected_region(self):
         blur_filter = render._subtitle_blur_filter(398, 64)
 
         self.assertEqual(
             blur_filter,
-            "boxblur=luma_radius=18:luma_power=4:chroma_radius=9:chroma_power=4",
+            "gblur=sigma=4:steps=4",
         )
 
     def test_text_watermark_is_subtle_and_moves_across_the_frame(self):
@@ -243,16 +269,19 @@ class TimelineRenderTests(unittest.TestCase):
 
         self.assertEqual(
             blur_filter,
-            "boxblur=luma_radius=0:luma_power=4:chroma_radius=0:chroma_power=4",
+            "gblur=sigma=2:steps=4",
         )
 
-    def test_subtitle_blur_feathers_inside_the_exact_detected_region(self):
-        geometry = render._feathered_blur_region((78, 562, 418, 110), 576, 1024)
-        filter_prefix = render._subtitle_blur_prefix((78, 562, 418, 110), 576, 1024)
+    def test_subtitle_blur_uses_one_exact_static_box(self):
+        filter_prefix = render._subtitle_blur_prefix(
+            (78, 562, 418, 54), 576, 1024,
+        )
 
-        self.assertEqual(geometry, (78, 562, 418, 110, 10))
-        self.assertIn("crop=418:110:78:562", filter_prefix)
-        self.assertIn("min(1,min(min(X,W-1-X),min(Y,H-1-Y))/10)", filter_prefix)
+        self.assertIn("crop=418:54:78:562", filter_prefix)
+        self.assertIn("overlay=78:562", filter_prefix)
+        self.assertIn("gblur=", filter_prefix)
+        self.assertNotIn("between(t", filter_prefix)
+        self.assertNotIn("drawbox", filter_prefix)
 
     def test_multiline_removal_region_uses_single_source_line_for_font_size(self):
         region = {
@@ -291,6 +320,7 @@ class TimelineRenderTests(unittest.TestCase):
                 608,
                 1080,
                 render.SubtitleRegionLayout(150, 780, 300, 72),
+                fixed_font_size=True,
             )
             dialogue_lines = [
                 line for line in ass_path.read_text(encoding="utf-8-sig").splitlines()
@@ -310,7 +340,7 @@ class TimelineRenderTests(unittest.TestCase):
             int(line.split("\\fs", 1)[1].split("\\", 1)[0].split("}", 1)[0])
             for line in dialogue_lines
         ]
-        self.assertTrue(all(font_size >= 30 for font_size in font_sizes))
+        self.assertTrue(all(font_size == 36 for font_size in font_sizes))
         self.assertEqual(len(set(font_sizes)), 1)
 
     def test_contiguous_sentence_fragments_are_joined_before_phrase_splitting(self):
@@ -337,10 +367,19 @@ class TimelineRenderTests(unittest.TestCase):
                 line for line in ass_path.read_text(encoding="utf-8-sig").splitlines()
                 if line.startswith("Dialogue:")
             ]
-            rendered_text = [line.split("}", 1)[1] for line in dialogue_lines]
+            rendered_text = [re.sub(r"\{[^}]*\}", "", line.split(",,", 1)[1]) for line in dialogue_lines]
 
         self.assertNotIn("thế nào?", rendered_text)
         self.assertTrue(any("thế nào?" in phrase and len(phrase.split()) >= 4 for phrase in rendered_text))
+
+    def test_karaoke_sweeps_from_white_to_gold_and_uses_the_full_duration(self):
+        rendered = render._karaoke_ass_text("xin chào bạn", 1.37)
+        durations = [int(value) for value in re.findall(r"\\kf(\d+)", rendered)]
+
+        self.assertEqual(len(durations), 3)
+        self.assertEqual(sum(durations), 137)
+        self.assertIn("xin ", rendered)
+        self.assertTrue(rendered.endswith("bạn"))
 
     def test_no_space_language_is_split_into_balanced_character_phrases(self):
         parts = render._split_subtitle_words("这是一个没有空格的长字幕句子", 6)

@@ -14,6 +14,7 @@ RowLayout {
     property bool outputFolderEnabled: true
     property bool setupVisible: false
     property bool setupEnabled: true
+    property string deleteText: I18n.t("Delete project")
     property bool deleteEnabled: true
 
     signal projectFolderRequested()
@@ -89,7 +90,7 @@ RowLayout {
             }
 
             AppMenuItem {
-                text: I18n.t("Delete project")
+                text: root.deleteText
                 iconGlyph: "\uE74D"
                 tone: "danger"
                 enabled: root.deleteEnabled

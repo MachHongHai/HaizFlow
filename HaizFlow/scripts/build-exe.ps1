@@ -172,6 +172,13 @@ foreach ($BrandingAsset in ("haizflow-mark.png", "haizflow.ico")) {
   $ArgsList += @("--add-data", "$BrandingAssetPath;haizflow\desktop\assets\branding")
 }
 
+$SubtitleFontsPath = Join-Path $Root "src\haizflow\assets\fonts"
+$SubtitleFontPath = Join-Path $SubtitleFontsPath "Bangers-Regular.ttf"
+if (!(Test-Path -LiteralPath $SubtitleFontPath -PathType Leaf)) {
+  throw "Subtitle font is missing: $SubtitleFontPath"
+}
+$ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
+
 $ArgsList += @("--collect-all", "llama_cpp")
 $ArgsList += @("--collect-all", "accelerate")
 $ArgsList += @("--collect-all", "demucs")

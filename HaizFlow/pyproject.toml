@@ -44,6 +44,7 @@ haizflow = "haizflow.desktop.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"haizflow" = ["assets/fonts/Bangers-Regular.ttf"]
 "haizflow.desktop" = ["qml/*.qml", "qml/qmldir", "assets/branding/haizflow-mark.png", "assets/branding/haizflow.ico"]
 
 [tool.uv.sources]

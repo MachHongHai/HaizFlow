@@ -5,6 +5,9 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, replace
 from datetime import timedelta
+from pathlib import Path
+from threading import Event, Thread
+from typing import Callable
 
 import srt
 
@@ -20,6 +23,23 @@ from haizflow.utils.ffmpeg import (
 )
 
 
+KARAOKE_FONT_NAME = "Bangers"
+KARAOKE_FONT_FILENAME = "Bangers-Regular.ttf"
+
+
+def _karaoke_font_directory() -> Path:
+    directory = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+    font_path = directory / KARAOKE_FONT_FILENAME
+    if not font_path.is_file():
+        raise RuntimeError(f"Bundled karaoke subtitle font is missing: {font_path}")
+    return directory
+
+
+def _karaoke_outline(font_size: int, configured_outline: int) -> int:
+    """Return a compact heavy outline suited to short-video captions."""
+    return max(configured_outline, min(10, max(3, round(font_size * 0.09))))
+
+
 def _escape_ass_text(text: str) -> str:
     return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
 
@@ -30,6 +50,50 @@ def _ass_timestamp(value) -> str:
     minutes, remainder = divmod(remainder, 6000)
     seconds, centiseconds = divmod(remainder, 100)
     return f"{hours}:{minutes:02}:{seconds:02}.{centiseconds:02}"
+
+
+def _karaoke_units(text: str) -> list[str]:
+    """Return readable karaoke units while preserving visible spaces."""
+    normalized = " ".join(text.split())
+    if not normalized:
+        return []
+    words = normalized.split(" ")
+    if len(words) > 1:
+        return [word + (" " if index < len(words) - 1 else "") for index, word in enumerate(words)]
+    # Scripts such as Chinese, Japanese and Thai commonly arrive without
+    # spaces. Highlighting their visible characters is more natural than
+    # treating the entire sentence as one indivisible karaoke unit.
+    return list(normalized)
+
+
+def _allocate_centiseconds(units: list[str], duration_seconds: float) -> list[int]:
+    """Allocate the complete cue duration without cumulative rounding drift."""
+    if not units:
+        return []
+    total = max(len(units), round(max(0.01, duration_seconds) * 100))
+    weights = [max(1, sum(character.isalnum() for character in unit)) for unit in units]
+    remaining = total - len(units)
+    weight_total = sum(weights)
+    raw_extras = [remaining * weight / weight_total for weight in weights]
+    durations = [1 + math.floor(value) for value in raw_extras]
+    missing = total - sum(durations)
+    for index in sorted(
+        range(len(units)),
+        key=lambda item: raw_extras[item] - math.floor(raw_extras[item]),
+        reverse=True,
+    )[:missing]:
+        durations[index] += 1
+    return durations
+
+
+def _karaoke_ass_text(text: str, duration_seconds: float) -> str:
+    """Create a white-to-gold left-to-right ASS karaoke sweep."""
+    units = _karaoke_units(text)
+    durations = _allocate_centiseconds(units, duration_seconds)
+    return "".join(
+        f"{{\\kf{duration}}}{_escape_ass_text(unit)}"
+        for unit, duration in zip(units, durations)
+    )
 
 
 @dataclass(frozen=True)
@@ -233,8 +297,9 @@ def _write_positioned_ass(
         subtitles = list(srt.parse(file.read()))
     if not subtitles:
         raise RuntimeError("Final render requires at least one valid subtitle cue.")
-    x = round(width * subtitle_style.position_x_percent / 100)
-    y = round(height * subtitle_style.position_y_percent / 100)
+    style_outline = _karaoke_outline(
+        subtitle_style.font_size, subtitle_style.outline,
+    )
     header = "\n".join([
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -244,7 +309,10 @@ def _write_positioned_ass(
         "",
         "[V4+ Styles]",
         "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-        f"Style: Default,Arial,{subtitle_style.font_size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,{subtitle_style.outline},1,{5 if region_layout else 2},0,0,{subtitle_style.margin_bottom},1",
+        # ASS karaoke renders not-yet-spoken glyphs with SecondaryColour and
+        # sweeps PrimaryColour across each word. Bangers supplies the chunky,
+        # naturally slanted display shape used by modern short-video captions.
+        f"Style: Default,{KARAOKE_FONT_NAME},{subtitle_style.font_size},&H0000EFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,1,0,1,{style_outline},2,5,0,0,{subtitle_style.margin_bottom},1",
         "",
         "[Events]",
         "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -253,18 +321,31 @@ def _write_positioned_ass(
     if region_layout:
         subtitles = _merge_contiguous_subtitles(subtitles)
     for subtitle in subtitles:
+        x = round(width * subtitle_style.position_x_percent / 100)
+        y = round(height * subtitle_style.position_y_percent / 100)
         if region_layout:
             for start_time, end_time, content, font_size, scale_x in _subtitle_parts_for_region(
-                subtitle, region_layout, subtitle_style, fixed_font_size=fixed_font_size,
+                subtitle,
+                region_layout,
+                subtitle_style,
+                fixed_font_size=fixed_font_size,
             ):
+                karaoke = _karaoke_ass_text(content, (end_time - start_time).total_seconds())
+                cue_outline = _karaoke_outline(font_size, subtitle_style.outline)
                 lines.append(
                     f"Dialogue: 0,{_ass_timestamp(start_time)},{_ass_timestamp(end_time)},Default,,0,0,0,,"
-                    f"{{\\an5\\pos({x},{y})\\fs{font_size}\\fscx{scale_x}}}{_escape_ass_text(content)}"
+                    f"{{\\an5\\pos({x},{y})\\fs{font_size}\\fscx{scale_x}\\bord{cue_outline}\\shad2}}{karaoke}"
                 )
         else:
-            start = _ass_timestamp(subtitle.start)
-            end = _ass_timestamp(subtitle.end)
-            lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{{\\pos({x},{y})}}{_escape_ass_text(subtitle.content)}")
+            start_time = _ass_timestamp(subtitle.start)
+            end_time = _ass_timestamp(subtitle.end)
+            karaoke = _karaoke_ass_text(
+                subtitle.content, (subtitle.end - subtitle.start).total_seconds(),
+            )
+            lines.append(
+                f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,"
+                f"{{\\an5\\pos({x},{y})\\bord{style_outline}\\shad2}}{karaoke}"
+            )
     with open(ass_path, "w", encoding="utf-8-sig") as file:
         file.write("\n".join(lines))
 
@@ -381,7 +462,7 @@ def _style_for_original_subtitle_region(
     # ASS font size is larger than the visible glyph box. Around 60% of the
     # OCR row height matches the original visual weight without oversized text.
     font_size = max(12, min(112, round(detected_line_height * 0.60)))
-    outline = min(subtitle_style.outline, max(1, font_size // 14))
+    outline = _karaoke_outline(font_size, subtitle_style.outline)
     return subtitle_style.model_copy(update={
         "position_x_percent": x_percent,
         "position_y_percent": y_percent,
@@ -426,21 +507,18 @@ def _source_blur_region(region: dict | None, source_width: int, source_height: i
 def _subtitle_blur_filter(width: int, height: int) -> str:
     """Build a strong blur that fully suppresses burned-in subtitle detail."""
     shortest_side = max(2, min(width, height))
-    # FFmpeg requires the radius to be strictly smaller than half the
-    # corresponding plane dimension. Chroma is typically 4:2:0, so its plane
-    # is half-sized and needs a separate, smaller radius.
-    luma_radius = min(18, max(0, (shortest_side - 2) // 2))
-    chroma_radius = min(9, max(0, (shortest_side - 2) // 4))
-    return (
-        f"boxblur=luma_radius={luma_radius}:luma_power=4:"
-        f"chroma_radius={chroma_radius}:chroma_power=4"
-    )
+    # Gaussian blur suppresses the recognizable silhouettes of large outlined
+    # meme captions more reliably than repeatedly averaging a small box. Scale
+    # it with the source resolution, with conservative bounds for predictable
+    # render time on both 540p and 4K inputs.
+    sigma = max(2, min(48, round(shortest_side * 0.06)))
+    return f"gblur=sigma={sigma}:steps=4"
 
 
 def _feathered_blur_region(
     region: tuple[int, int, int, int], source_width: int, source_height: int,
 ) -> tuple[int, int, int, int, int]:
-    """Keep blur geometry exact and feather only inside the OCR rectangle."""
+    """Keep the blur box exact and blend its edge only inside that box."""
     x, y, width, height = region
     feather = max(2, min(16, round(min(width, height) * 0.08)))
     if feather % 2:
@@ -455,10 +533,12 @@ def _feathered_blur_region(
 def _subtitle_blur_prefix(
     region: tuple[int, int, int, int], source_width: int, source_height: int,
 ) -> str:
-    """Return an exact, internally feathered subtitle blur."""
-    x, y, width, height, feather = _feathered_blur_region(region, source_width, source_height)
+    """Build one stable, tightly cropped blur for the complete video."""
+    x, y, width, height, feather = _feathered_blur_region(
+        region, source_width, source_height,
+    )
     blur_filter = _subtitle_blur_filter(width, height)
-    edge_distance = f"min(min(X,W-1-X),min(Y,H-1-Y))"
+    edge_distance = "min(min(X,W-1-X),min(Y,H-1-Y))"
     blur_weight = f"min(1,{edge_distance}/{feather})"
     blend_filter = f"blend=all_expr='A*(1-{blur_weight})+B*{blur_weight}'"
     return (
@@ -496,7 +576,33 @@ def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
     )
 
 
-def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None, watermark_text: str = ""):
+def _ffmpeg_progress_fraction(progress_text: str, duration: float) -> float | None:
+    """Return the latest completed fraction from an FFmpeg progress file."""
+    if duration <= 0:
+        return None
+    values = {}
+    for line in progress_text.splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            values[key.strip()] = value.strip()
+    try:
+        if "out_time_us" in values:
+            seconds = int(values["out_time_us"]) / 1_000_000
+        elif "out_time_ms" in values:
+            # FFmpeg retains the historical ``_ms`` name although this value
+            # is expressed in microseconds in current builds.
+            seconds = int(values["out_time_ms"]) / 1_000_000
+        elif "out_time" in values:
+            hours, minutes, seconds_part = values["out_time"].split(":")
+            seconds = int(hours) * 3600 + int(minutes) * 60 + float(seconds_part)
+        else:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, seconds / duration))
+
+
+def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None, watermark_text: str = "", progress_callback: Callable[[float], None] | None = None):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
     supported_formats = {"keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"}
@@ -537,11 +643,16 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         subtitle_width,
         subtitle_height,
         ass_layout,
-        fixed_font_size=region_layout is None,
+        # One style is shared by every cue. Long translations are divided into
+        # sequential phrases instead of changing font size or aspect ratio.
+        fixed_font_size=True,
     )
     rel_video = _ffmpeg_path(video_path, video_temp_dir)
     rel_voice = _ffmpeg_path(voice_wav_path, video_temp_dir)
     rel_ass = _ffmpeg_path(ass_path, video_temp_dir)
+    rel_font_directory = _ffmpeg_path(
+        str(_karaoke_font_directory()), video_temp_dir,
+    )
     output_directory = os.path.dirname(os.path.abspath(output_path))
     os.makedirs(output_directory, exist_ok=True)
     output_extension = os.path.splitext(output_path)[1] or ".mp4"
@@ -553,13 +664,19 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     os.close(handle)
     rel_output = _ffmpeg_path(temporary_output, video_temp_dir)
     ass_filter_path = rel_ass.replace(":", "\\:").replace("'", "'\\\\''")
-    ass_filter = f"ass='{ass_filter_path}'"
+    font_filter_path = rel_font_directory.replace(":", "\\:").replace("'", "'\\\\''")
+    ass_filter = f"ass='{ass_filter_path}':fontsdir='{font_filter_path}'"
     watermark_filter = _watermark_filter(watermark_text, subtitle_width, subtitle_height)
     filters = []
     crop_filter = _crop_filter(crop)
     if crop_filter:
         filters.append(crop_filter)
-    blur_region = _source_blur_region(original_subtitle_region, source_width, source_height)
+    source_duration = get_video_duration(video_path)
+    if source_duration <= 0:
+        raise RuntimeError("Unable to determine the source video duration before rendering.")
+    blur_region = _source_blur_region(
+        original_subtitle_region, source_width, source_height,
+    )
     if output_format == "blur_background_9_16":
         prefix = ",".join(filters)
         input_label = "[0:v]"
@@ -588,9 +705,6 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
             vf_filter = ",".join(filters)
 
     video_encoder, video_encoder_args = preferred_video_encoder()
-    source_duration = get_video_duration(video_path)
-    if source_duration <= 0:
-        raise RuntimeError("Unable to determine the source video duration before rendering.")
     cmd_prefix = ["ffmpeg", "-y", "-i", rel_video, "-i", rel_voice]
     if blur_region or output_format == "blur_background_9_16":
         cmd_prefix.extend(["-filter_complex", vf_filter, "-map", "[outv]"])
@@ -600,18 +714,59 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     audio_args = ["-c:a", "aac", "-b:a", "192k", rel_output]
 
     def run_render(encoder: str, encoder_args: list[str]):
-        command = cmd_prefix + ["-c:v", encoder, *encoder_args, *audio_args]
+        progress_handle, progress_path = tempfile.mkstemp(
+            prefix=".ffmpeg-progress-",
+            suffix=".txt",
+            dir=video_temp_dir,
+        )
+        os.close(progress_handle)
+        rel_progress = _ffmpeg_path(progress_path, video_temp_dir)
+        command = cmd_prefix + [
+            "-progress", rel_progress,
+            "-stats_period", "0.5",
+            "-nostats",
+            "-c:v", encoder, *encoder_args, *audio_args,
+        ]
         log_to_video(video_id, f"Running FFmpeg render with {encoder} in Cwd: {video_temp_dir}")
         check_cancellation(video_id)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir)
-        _stdout, process_stderr = communicate_process(
-            video_id,
-            process,
-            label="FFmpeg video render",
-            timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
-        )
-        check_cancellation(video_id)
-        return process.returncode, process_stderr
+        stop_monitor = Event()
+
+        def monitor_progress() -> None:
+            last_reported = -1.0
+            while not stop_monitor.wait(0.4):
+                try:
+                    progress_text = Path(progress_path).read_text(encoding="utf-8")
+                except (OSError, UnicodeError):
+                    continue
+                fraction = _ffmpeg_progress_fraction(progress_text, source_duration)
+                if fraction is not None and fraction - last_reported >= 0.005:
+                    last_reported = fraction
+                    if progress_callback:
+                        progress_callback(fraction)
+
+        monitor = Thread(target=monitor_progress, name=f"ffmpeg-progress-{video_id}", daemon=True)
+        if progress_callback:
+            monitor.start()
+        try:
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir)
+            _stdout, process_stderr = communicate_process(
+                video_id,
+                process,
+                label="FFmpeg video render",
+                timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+            )
+            check_cancellation(video_id)
+            if process.returncode == 0 and progress_callback:
+                progress_callback(1.0)
+            return process.returncode, process_stderr
+        finally:
+            stop_monitor.set()
+            if monitor.is_alive():
+                monitor.join(timeout=1.0)
+            try:
+                os.remove(progress_path)
+            except FileNotFoundError:
+                pass
 
     try:
         return_code, stderr = run_render(video_encoder, video_encoder_args)
@@ -619,7 +774,7 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
             log_to_video(video_id, f"Hardware encoder {video_encoder} failed; retrying with libx264.")
             return_code, stderr = run_render("libx264", ["-preset", "veryfast", "-crf", "23"])
         if return_code != 0:
-            log_to_video(video_id, f"FFmpeg Render Error output:\n{stderr}")
+            log_to_video(video_id, f"FFmpeg Render Error output:\n{stderr}", level="ERROR", component="RENDER")
             raise RuntimeError(f"FFmpeg render failed with exit code {return_code}")
         if os.path.getsize(temporary_output) <= 0 or get_video_duration(temporary_output) <= 0:
             raise RuntimeError("FFmpeg render produced an empty or unreadable video.")

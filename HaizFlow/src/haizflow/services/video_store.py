@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import stat
+import sys
 import tempfile
 import threading
 import time
@@ -31,6 +32,18 @@ _METADATA_REVISION = 0
 _METADATA_REVISION_LOCK = threading.Lock()
 _METADATA_CHANGES: deque[tuple[int, str]] = deque(maxlen=4_096)
 _LEGACY_METADATA_NAME = "job.json"
+
+_LOG_COMPONENTS = {
+    "audio_separation": "DEMUCS",
+    "audio_timeline": "AUDIO",
+    "extract_audio": "FFMPEG",
+    "process_video": "PIPELINE",
+    "render": "RENDER",
+    "subtitle": "SUBTITLES",
+    "subtitle_ocr": "OCR",
+    "transcribe": "WHISPERX",
+    "translation": "TRANSLATE",
+}
 
 
 def _video_lock(video_id: str) -> threading.RLock:
@@ -781,16 +794,54 @@ def recover_interrupted_videos() -> list[str]:
     return recovered
 
 
-def log_to_video(video_id: str, message: str):
+def _log_component_from_caller() -> str:
+    """Return a concise component tag without requiring every call site to repeat it."""
+    try:
+        module = sys._getframe(2).f_globals.get("__name__", "")
+    except (AttributeError, ValueError):  # pragma: no cover - defensive only
+        return "APP"
+    return _LOG_COMPONENTS.get(module.rsplit(".", 1)[-1], "APP")
+
+
+def _infer_log_level(message: str, level: str | None) -> str:
+    if level:
+        normalized = str(level).upper()
+        return normalized if normalized in {"DEBUG", "INFO", "WARN", "ERROR"} else "INFO"
+    normalized = message.casefold()
+    if any(marker in normalized for marker in (
+        "traceback", " failed", "failure", " error", "exception", "cannot ", "unable to ",
+    )):
+        return "ERROR"
+    if any(marker in normalized for marker in (
+        "retry", "fallback", "deferred", "could not", "skipping", "paused", "cancelled",
+    )):
+        return "WARN"
+    return "INFO"
+
+
+def log_to_video(video_id: str, message: str, *, level: str | None = None, component: str | None = None):
+    """Append a compact, structured activity entry to one video's debug log.
+
+    Existing callers can keep passing a plain message.  Severity and component
+    are inferred centrally so the log remains consistent across the pipeline.
+    Multiline failures are written as individually timestamped entries: this
+    keeps stack traces readable in both the compact UI tail and exported logs.
+    """
     log_path = get_video_logs_path(video_id)
     if not os.path.exists(_existing_video_json_path(video_id)) and not os.path.exists(log_path):
         return
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    line = f"[{now}] {message}"
-    with open(log_path, "a", encoding="utf-8") as file:
-        file.write(f"{line}\n")
-    emit_log(video_id, line)
+    text = str(message or "").strip() or "(empty log message)"
+    severity = _infer_log_level(text, level)
+    source = (component or _log_component_from_caller()).upper().replace(" ", "_")
+    source = source if source.replace("_", "").isalnum() else "APP"
+    lines = [f"[{now}] [{severity}] [{source}] {entry}" for entry in text.splitlines() or [text]]
+    with _video_lock(video_id):
+        with open(log_path, "a", encoding="utf-8") as file:
+            file.write("\n".join(lines) + "\n")
+    for line in lines:
+        emit_log(video_id, line)
 
 
 def _force_remove_readonly(func, path, _exc_info):
