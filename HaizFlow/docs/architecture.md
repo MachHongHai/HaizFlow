@@ -2,7 +2,7 @@
 
 ## Purpose and Boundaries
 
-HaizFlow is a local-first Windows application. The desktop process owns the user interface, video state, and orchestration. Media processing happens in Python pipeline modules and external command-line tools. No HTTP backend, browser client, or cloud database is part of the runtime architecture.
+HaizFlow is a local-first Windows application. The desktop process owns the user interface, video state, and orchestration. Media processing happens in Python pipeline modules and external command-line tools. HaizFlow has no application-owned HTTP backend, browser client, or cloud database. The optional TikTok Publishing workspace is the explicit exception to local processing: it calls Zernio's REST API and uses Zernio OAuth to connect a user-owned TikTok account.
 
 ```text
 PySide6 / QML desktop shell
@@ -10,6 +10,7 @@ PySide6 / QML desktop shell
   -> local video store and project files
   -> pipeline orchestration
   -> WhisperX, HY-MT2 worker, Edge TTS, Demucs, FFmpeg
+  -> optional Zernio REST API -> TikTok
 ```
 
 ## Source Layout
@@ -28,6 +29,7 @@ src/haizflow/
     project_workspace_controller.py    Project selection and incremental catalog/model updates
     runtime_device_controller.py       Runtime warm-up, shutdown, and hardware transitions
     settings_controller.py             Persistent desktop settings operations
+    tiktok_publish_controller.py       Zernio account, upload, and publishing queue orchestration
     catalog.py              Supported target languages and TTS voices
     localization.py         Localized native Qt dialog adapters
     media.py                Video-path, thumbnail, and OS-open helpers
@@ -54,6 +56,9 @@ src/haizflow/
     translation.py          HY-MT2 worker protocol
     hymt2_worker.py         Isolated local translation worker entry point
     desktop_settings.py     Graphite appearance, language and device persistence
+    tiktok_publish.py       Atomic project-backed TikTok publishing state
+    zernio.py               Authenticated Zernio REST and streaming upload client
+    secure_credentials.py   Windows Credential Manager storage for external API keys
   schemas/
     video.py                  VideoConfig and VideoInfo contracts
     channel_import.py       Channel request, candidate, and session contracts
@@ -98,8 +103,8 @@ Run `scripts/test.ps1` before merging. It compiles application, script, and test
 1. `haizflow_desktop.py` relaunches itself with `.venv\Scripts\python.exe` when available. The source launcher exits after creating the project-runtime process; it does not import Qt or ML packages from the system Python installation.
 2. `haizflow.desktop.main` creates the Qt application and registers `HaizFlowController` with the QML engine.
 3. `HaizFlowController` loads settings and project metadata, starts polling timers, and schedules legacy migration/recovery/thumbnail maintenance only after the first Qt frame. Model warm-up also runs on a background thread.
-4. `Main.qml` routes between independent Single and Batch project libraries, their workspaces, the channel-import screen, and Settings.
-5. Closing the application cancels active network imports, unsubscribes log events, shuts down the HY-MT2 worker, and releases both warmed models.
+4. `Main.qml` routes between independent Download, Single, Batch, and TikTok Publishing project libraries, their workspaces, and Settings.
+5. Closing the application cancels active network imports and Zernio uploads, unsubscribes log events, shuts down the HY-MT2 worker, and releases both warmed models.
 
 ## Video State Model
 
@@ -124,6 +129,12 @@ Single projects accept one local file or one supported video URL. Batch projects
 Channel candidates are sorted after metadata collection and deduplicated using `platform + remote_video_id` with a normalized-URL fallback. YouTube content selection maps directly to the Shorts and Videos tabs; the all-video option merges both collections before deduplication. TikTok candidates are hydrated before display and are accepted only when metadata confirms a video stream. Douyin photo notes and slideshows are rejected by its isolated inspector. Cookie data from Edge, Chrome, or a selected Netscape `cookies.txt` file exists only in coordinator memory and subprocess input. It is excluded from manifests, session JSON, settings, and user-facing persisted errors.
 
 Each scan is stored under `<project>/imports/channel/<session-id>/session.json`. Completed downloads pass through `create_desktop_video`, so managed input, log, thumbnail, workspace, and export ownership remain identical to file imports. Because the download workspace already belongs to the project, the final media file is moved atomically into its video workspace instead of being copied a second time. Download workspaces are retained only for failed retries and removed after a successful project import. Reopening a project restores interrupted candidates as retryable entries; deleting the project cancels its coordinator session and removes the complete project-owned import tree. The download manager permits two workers while model processing is idle, throttles new work to one while the pipeline is active, and never starts the dubbing pipeline automatically.
+
+## TikTok Publishing through Zernio
+
+TikTok Publishing projects are separate from TikTok downloading. A publishing project copies selected MP4, MOV, or WebM videos into `publishing/media`, generates project-owned thumbnails, and persists its queue atomically in `.haizflow-tiktok-publish.json`. Reopening the project restores caption, normalized hashtags, account/privacy selection, stable idempotency request IDs, Zernio post IDs, and upload status. Replacing queue entries or deleting the project removes only project-owned files; startup cleanup removes interrupted and orphaned copies.
+
+The user creates a Zernio API key and HaizFlow stores it as a generic secret in Windows Credential Manager. Account connection opens the Zernio-provided TikTok OAuth URL in the user's active Chrome profile when available, otherwise in the Windows default browser. HaizFlow fetches TikTok creator information before publishing and only exposes privacy levels returned for that account. Publishing is sequential: request a presigned media URL, stream the video directly to it with cancellation/progress, then create a TikTok post through Zernio using one persistent `x-request-id`. The UI requires the user to review the queued posts and explicitly confirm upload consent. There is no Playwright, Selenium, DOM selector, managed browser profile for automation, cookie extraction, or TikTok Studio automation in this workflow.
 
 ## Pipeline
 
@@ -182,6 +193,8 @@ The two audio modes are mutually exclusive. Original mode mixes the source track
   .downloads/                      Temporary URL downloads; removed after import
   imports/channel/<session-id>/    Resumable channel import state and partials
   exports/                         Final rendered videos
+  publishing/                      TikTok publishing media and thumbnails
+  .haizflow-tiktok-publish.json    Atomic Zernio publishing queue (publish projects)
   videos/<video-id>/
     video.json, logs.txt
     input/, temp/, output/          Imported media and resumable workspace
@@ -210,6 +223,7 @@ Each HY-MT2 process also writes a bounded diagnostic log under `<runtime-data>/l
 - One foreground pipeline video is active at a time.
 - Batch videos are queued and run sequentially.
 - Channel downloads use an independent manager: at most two downloads while the pipeline is idle and one while media processing is active. TikTok and Douyin never run more than one download concurrently.
+- Zernio uploads and TikTok post creation run sequentially inside the active Publishing project. Closing or switching away cancels new work; project switching is blocked while a request is active.
 - CUDA warms HY-MT2 and WhisperX sequentially in the background to avoid competing model loads. CPU profiles warm only WhisperX when RAM permits.
 - HY-MT2 is isolated in one persistent worker; CPU profiles shut it down after an adaptive idle interval, while CUDA retains it for the desktop session.
 - Edge TTS is the only bounded fan-out stage, limited to one through four concurrent requests.

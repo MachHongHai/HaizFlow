@@ -25,6 +25,8 @@ from haizflow.desktop.media_probe import VideoDimensionProbe
 from haizflow.desktop.models import (
     ProjectGridModel,
     ProjectListModel,
+    TikTokProjectSourceListModel,
+    TikTokPublishListModel,
     VideoListModel,
 )
 from haizflow.desktop.preview_media_controller import PreviewMediaController
@@ -39,6 +41,7 @@ from haizflow.desktop.diagnostics_controller import DiagnosticsController
 from haizflow.desktop.external_links import open_external_url
 from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
 from haizflow.desktop.settings_controller import SettingsController
+from haizflow.desktop.tiktok_publish_controller import TikTokPublishController
 from haizflow.desktop.presenters import (
     build_project_summaries,
     format_duration,
@@ -111,6 +114,7 @@ class HaizFlowController(QObject):
     urlImportFinished = Signal()
     channelImportChanged = Signal()
     mediaImportChanged = Signal()
+    tiktokPublishChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -120,7 +124,10 @@ class HaizFlowController(QObject):
         self.single_projects = ProjectGridModel()
         self.batch_projects = ProjectGridModel()
         self.download_projects = ProjectGridModel()
+        self.publish_projects = ProjectGridModel()
         self.batch_videos = VideoListModel()
+        self.tiktok_publish_items = TikTokPublishListModel()
+        self.tiktok_project_sources = TikTokProjectSourceListModel()
         self._video_path = ""
         self._video_thumbnail_source = ""
         self._target_language = "vi"
@@ -187,6 +194,7 @@ class HaizFlowController(QObject):
         self._preview_media = PreviewMediaController(self)
         self._audio_preview = AudioPreviewController(self)
         self._media_downloader = MediaDownloadController(self)
+        self._tiktok_publisher = TikTokPublishController(self)
         self._settings_controller = SettingsController(self)
         self._project_workspace = ProjectWorkspaceController(self)
         self._project_commands = ProjectCommandsController(self)
@@ -278,6 +286,10 @@ class HaizFlowController(QObject):
         self._media_import_timer.timeout.connect(self._drain_media_import_events)
         self._media_import_timer.start(100)
 
+        self._tiktok_publish_timer = QTimer(self)
+        self._tiktok_publish_timer.timeout.connect(self._drain_tiktok_publish_events)
+        self._tiktok_publish_timer.start(100)
+
         self._audio_preview_timer = QTimer(self)
         self._audio_preview_timer.timeout.connect(self._drain_audio_preview_events)
         self._audio_preview_timer.start(100)
@@ -309,6 +321,9 @@ class HaizFlowController(QObject):
 
     def _drain_media_import_events(self) -> None:
         self._project_import.drain_background_events()
+
+    def _drain_tiktok_publish_events(self) -> None:
+        self._tiktok_publisher.drain_events()
 
     def _drain_audio_preview_events(self) -> None:
         self._audio_preview.drain_events()
@@ -394,6 +409,9 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        publisher = getattr(self, "_tiktok_publisher", None)
+        if publisher is not None:
+            publisher.shutdown()
         return HaizFlowController._runtime_device_for(self).shutdown()
 
     def _warm_models(self):
@@ -454,6 +472,86 @@ class HaizFlowController(QObject):
     @Property(QObject, constant=True)
     def downloadProjectModel(self):
         return self.download_projects
+
+    @Property(QObject, constant=True)
+    def publishProjectModel(self):
+        return self.publish_projects
+
+    @Property(QObject, constant=True)
+    def tiktokPublishModel(self):
+        return self.tiktok_publish_items
+
+    @Property(QObject, constant=True)
+    def tiktokProjectSourceModel(self):
+        return self.tiktok_project_sources
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def tiktokPublishBusy(self):
+        return self._tiktok_publisher.busy
+
+    @Property(str, notify=tiktokPublishChanged)
+    def tiktokPublishStatus(self):
+        return self._tiktok_publisher.status
+
+    @Property(str, notify=tiktokPublishChanged)
+    def tiktokDefaultCaption(self):
+        return self._tiktok_publisher.default_caption
+
+    @Property(str, notify=tiktokPublishChanged)
+    def tiktokDefaultHashtags(self):
+        return self._tiktok_publisher.default_hashtags
+
+    @Property(int, notify=tiktokPublishChanged)
+    def tiktokPublishCount(self):
+        return self._tiktok_publisher.count
+
+    @Property(int, notify=tiktokPublishChanged)
+    def tiktokPostedCount(self):
+        return self._tiktok_publisher.posted_count
+
+    @Property(int, notify=tiktokPublishChanged)
+    def tiktokProjectSourceSelectedCount(self):
+        return self._tiktok_publisher.project_source_selected_count
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioApiKeyConfigured(self):
+        return self._tiktok_publisher.api_key_configured
+
+    @Property("QStringList", notify=tiktokPublishChanged)
+    def zernioTikTokAccounts(self):
+        return self._tiktok_publisher.account_names
+
+    @Property(int, notify=tiktokPublishChanged)
+    def zernioSelectedAccountIndex(self):
+        return self._tiktok_publisher.selected_account_index
+
+    @Property("QStringList", notify=tiktokPublishChanged)
+    def zernioPrivacyLevels(self):
+        return self._tiktok_publisher.privacy_levels
+
+    @Property(str, notify=tiktokPublishChanged)
+    def zernioPrivacyLevel(self):
+        return self._tiktok_publisher.privacy_level
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioPublishNow(self):
+        return self._tiktok_publisher.publish_now
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioAllowComment(self):
+        return self._tiktok_publisher.allow_comment
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioAllowDuet(self):
+        return self._tiktok_publisher.allow_duet
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioAllowStitch(self):
+        return self._tiktok_publisher.allow_stitch
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioPublishConsentConfirmed(self):
+        return self._tiktok_publisher.consent_confirmed
 
     @Property(QObject, constant=True)
     def channelImporter(self):
@@ -1613,10 +1711,18 @@ class HaizFlowController(QObject):
         model = (
             self.batch_projects if project_type == "batch"
             else self.download_projects if project_type == "download"
+            else self.publish_projects if project_type == "publish"
             else self.single_projects
         )
         project = model.project_at(row)
         if not project:
+            return False
+        if not self._tiktok_publisher.can_switch_project(project["key"]):
+            QMessageBox.information(
+                None,
+                "TikTok publishing",
+                "Wait for the active Zernio upload or request to finish before opening another project.",
+            )
             return False
         if (
             project_type == "download"
@@ -1657,6 +1763,107 @@ class HaizFlowController(QObject):
             QMessageBox.information(None, "Download folder", "Open a download project first.")
             return
         self._open_path(project_store.project_downloads_dir_for_key(self._selected_project_key))
+
+    @Slot()
+    def browseTikTokPublishVideos(self):
+        self._tiktok_publisher.browse_videos()
+
+    @Slot()
+    def browseTikTokPublishFolder(self):
+        self._tiktok_publisher.browse_folder()
+
+    @Slot()
+    def refreshTikTokProjectSources(self):
+        self._tiktok_publisher.refresh_project_sources()
+
+    @Slot(int, bool, result=bool)
+    def setTikTokProjectSourceSelected(self, row: int, selected: bool):
+        return self._tiktok_publisher.set_project_source_selected(row, selected)
+
+    @Slot(result=bool)
+    def addSelectedTikTokProjectVideos(self):
+        return self._tiktok_publisher.add_selected_project_videos()
+
+    @Slot("QVariantList", result=bool)
+    def addTikTokPublishVideos(self, paths):
+        return self._tiktok_publisher.add_videos(paths)
+
+    @Slot(str, str, bool, result=bool)
+    def saveTikTokPublishDefaults(self, caption: str, hashtags: str, apply_to_existing: bool):
+        return self._tiktok_publisher.save_defaults(caption, hashtags, apply_to_existing)
+
+    @Slot(int, str, str, result=bool)
+    def updateTikTokPublishItem(self, row: int, caption: str, hashtags: str):
+        return self._tiktok_publisher.update_item(row, caption, hashtags)
+
+    @Slot(str, result=bool)
+    def saveZernioApiKey(self, api_key: str):
+        return self._tiktok_publisher.save_api_key(api_key)
+
+    @Slot(result=bool)
+    def clearZernioApiKey(self):
+        return self._tiktok_publisher.clear_api_key()
+
+    @Slot(result=bool)
+    def connectZernioTikTok(self):
+        return self._tiktok_publisher.connect_tiktok()
+
+    @Slot(result=bool)
+    def refreshZernioTikTokAccounts(self):
+        return self._tiktok_publisher.refresh_accounts()
+
+    @Slot(int, result=bool)
+    def selectZernioTikTokAccount(self, index: int):
+        return self._tiktok_publisher.select_account(index)
+
+    @Slot(str, bool, bool, bool, bool, result=bool)
+    def saveZernioPublishSettings(
+        self,
+        privacy_level: str,
+        publish_now: bool,
+        allow_comment: bool,
+        allow_duet: bool,
+        allow_stitch: bool,
+    ):
+        return self._tiktok_publisher.set_publish_settings(
+            privacy_level, publish_now, allow_comment, allow_duet, allow_stitch
+        )
+
+    @Slot(bool)
+    def setZernioPublishConsent(self, confirmed: bool):
+        self._tiktok_publisher.set_consent_confirmed(confirmed)
+
+    @Slot(int, result=bool)
+    def publishTikTokItem(self, row: int):
+        return self._tiktok_publisher.publish_item(row)
+
+    @Slot(result=bool)
+    def publishNextTikTokItem(self):
+        return self._tiktok_publisher.publish_next()
+
+    @Slot(result=bool)
+    def publishAllTikTokItems(self):
+        return self._tiktok_publisher.publish_all()
+
+    @Slot(result=bool)
+    def refreshTikTokPostStatuses(self):
+        return self._tiktok_publisher.refresh_post_statuses()
+
+    @Slot()
+    def cancelTikTokPublishing(self):
+        self._tiktok_publisher.cancel()
+
+    @Slot(int, result=bool)
+    def copyTikTokPublishCaption(self, row: int):
+        return self._tiktok_publisher.copy_caption(row)
+
+    @Slot(int, result=bool)
+    def openTikTokPublishedPost(self, row: int):
+        return self._tiktok_publisher.open_post(row)
+
+    @Slot(int, result=bool)
+    def removeTikTokPublishItem(self, row: int):
+        return self._tiktok_publisher.remove_item(row)
 
     @Slot(str, result=bool)
     def openExternalUrl(self, url: str) -> bool:

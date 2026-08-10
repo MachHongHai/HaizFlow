@@ -141,16 +141,16 @@ Rectangle {
 
             ThumbnailFallback {
                 anchors.fill: parent
-                visible: root.projectType !== "download"
+                visible: root.projectType !== "download" && root.projectType !== "publish"
                     && (root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error)
             }
 
             AppIcon {
                 anchors.centerIn: parent
-                visible: root.projectType === "download"
+                visible: root.projectType === "download" || root.projectType === "publish"
                 width: 42
                 height: 42
-                glyph: "\uE896"
+                glyph: root.projectType === "publish" ? "\uE768" : "\uE896"
                 iconColor: Theme.interactive
                 iconSize: 42
             }
@@ -159,7 +159,7 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.margins: Theme.space8
-                visible: root.projectType === "batch"
+                visible: root.projectType === "batch" || root.projectType === "publish"
                 implicitWidth: batchLabel.implicitWidth + 16
                 implicitHeight: 24
                 radius: Theme.radiusTiny
@@ -168,7 +168,9 @@ Rectangle {
                 Text {
                     id: batchLabel
                     anchors.centerIn: parent
-                    text: qsTr("%1 %2").arg(root.videoCount).arg(I18n.t("videos"))
+                    text: root.projectType === "publish"
+                        ? qsTr("%1 %2").arg(root.videoCount).arg(I18n.t("posts"))
+                        : qsTr("%1 %2").arg(root.videoCount).arg(I18n.t("videos"))
                     color: Theme.text
                     font.pixelSize: Theme.label
                     font.weight: Font.DemiBold
@@ -202,7 +204,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: 3
-                visible: root.projectType !== "download"
+                visible: root.projectType !== "download" && root.projectType !== "publish"
                 color: Theme.surfaceStrong
 
                 Rectangle {
@@ -253,6 +255,8 @@ Rectangle {
                         ? qsTr("%1 - %2").arg(root.videoCount).arg(I18n.t("videos"))
                         : root.projectType === "download"
                             ? I18n.t("Download workspace")
+                        : root.projectType === "publish"
+                            ? qsTr("%1 - %2").arg(root.videoCount).arg(I18n.t("posts"))
                         : root.statusLabel
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
@@ -261,7 +265,7 @@ Rectangle {
                 }
 
                 Text {
-                    visible: root.projectType !== "download"
+                    visible: root.projectType !== "download" && root.projectType !== "publish"
                     text: qsTr("%1%").arg(root.progress)
                     color: root.statusColor
                     font.pixelSize: Theme.caption

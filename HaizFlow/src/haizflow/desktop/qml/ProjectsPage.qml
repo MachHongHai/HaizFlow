@@ -14,6 +14,7 @@ Item {
     signal openProject(string projectType)
 
     readonly property bool downloadMode: projectType === "download"
+    readonly property bool publishMode: projectType === "publish"
 
     opacity: visible ? 1 : 0
     transform: Translate {
@@ -70,7 +71,9 @@ Item {
                         ? I18n.t("New batch project")
                         : root.downloadMode
                             ? I18n.t("New download project")
-                            : I18n.t("New single project")
+                            : root.publishMode
+                                ? I18n.t("New TikTok publishing project")
+                                : I18n.t("New single project")
                     scale: newProjectTap.pressed ? 0.99 : 1
 
                     Keys.onReturnPressed: root.requestNewProject()
@@ -116,7 +119,9 @@ Item {
                                 ? I18n.t("New batch project")
                                 : root.downloadMode
                                     ? I18n.t("New download project")
-                                    : I18n.t("New single project")
+                                    : root.publishMode
+                                        ? I18n.t("New TikTok publishing project")
+                                        : I18n.t("New single project")
                             color: Theme.text
                             font.pixelSize: Theme.bodyLarge
                             font.weight: Font.DemiBold
@@ -133,7 +138,9 @@ Item {
                                 ? I18n.t("Process videos in batch")
                                 : root.downloadMode
                                     ? I18n.t("Channels, videos, and audio")
-                                    : I18n.t("Process one video")
+                                    : root.publishMode
+                                        ? I18n.t("Publish videos through Zernio")
+                                        : I18n.t("Process one video")
                             color: Theme.textMuted
                             font.pixelSize: Theme.caption
                             horizontalAlignment: Text.AlignHCenter

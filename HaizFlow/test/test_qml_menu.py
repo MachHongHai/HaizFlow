@@ -245,7 +245,7 @@ ApplicationWindow {{
         self.assertIn("function navigateTo(page)", downloads)
         self.assertIn("function navigateBack()", downloads)
         self.assertIn("function navigateForward()", downloads)
-        self.assertEqual(main.count("Layout.leftMargin: root.width < 1400 ? 22 : 30"), 7)
+        self.assertEqual(main.count("Layout.leftMargin: root.width < 1400 ? 22 : 30"), 9)
         self.assertNotIn("Layout.topMargin: root.width < 1400 ? 30 : 36", main)
 
     def test_main_uses_the_branded_window_chrome(self):
@@ -382,7 +382,7 @@ ApplicationWindow {{
         self.assertIn("required property string projectName", downloads)
         self.assertIn("function navigateTo(page)", downloads)
 
-    def test_only_download_single_and_batch_workspaces_are_exposed(self):
+    def test_download_single_batch_and_publish_workspaces_are_exposed(self):
         main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
         menu = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
         setup = (QML_DIR / "ProjectSetupDialog.qml").read_text(encoding="utf-8")
@@ -390,12 +390,34 @@ ApplicationWindow {{
         self.assertIn('readonly property string routeDownloadProjects: "download-projects"', main)
         self.assertIn('readonly property string routeSingleProjects: "single-projects"', main)
         self.assertIn('readonly property string routeBatchProjects: "batch-projects"', main)
-        self.assertEqual(menu.count("signal new"), 3)
+        self.assertIn('readonly property string routePublishProjects: "publish-projects"', main)
+        self.assertEqual(menu.count("signal new"), 4)
         self.assertIn("signal newSingleProjectRequested", menu)
         self.assertIn("signal newBatchProjectRequested", menu)
         self.assertIn("signal newDownloadProjectRequested", menu)
+        self.assertIn("signal newPublishProjectRequested", menu)
         self.assertIn('type === "batch" ? "batch"', setup)
         self.assertIn(': type === "download" ? "download"', setup)
+        self.assertIn(': type === "publish" ? "publish"', setup)
+
+    def test_tiktok_publishing_uses_zernio_without_browser_automation(self):
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        page = (QML_DIR / "TikTokPublishPage.qml").read_text(encoding="utf-8")
+        controller = (ROOT / "src" / "haizflow" / "desktop" / "tiktok_publish_controller.py").read_text(
+            encoding="utf-8"
+        )
+        service = (ROOT / "src" / "haizflow" / "services" / "zernio.py").read_text(encoding="utf-8")
+        combined = "\n".join((main, page, controller, service)).lower()
+
+        self.assertIn('readonly property string routePublishProjects: "publish-projects"', main)
+        self.assertIn("TikTokPublishPage", main)
+        self.assertIn("Zernio connection", page)
+        self.assertIn("Windows Credential Manager", controller)
+        self.assertIn('"/media/presign"', service)
+        self.assertIn('"/posts"', service)
+        self.assertNotIn("playwright", combined)
+        self.assertNotIn("selenium", combined)
+        self.assertNotIn("tiktok studio", combined)
 
     def test_platform_selector_uses_rendered_marks_and_languages_stay_textual(self):
         platform_picker = (QML_DIR / "ChannelDownloadPage.qml").read_text(encoding="utf-8")

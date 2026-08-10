@@ -16,7 +16,9 @@ Dialog {
         ? I18n.t("Create batch project")
         : root.projectType === "download"
             ? I18n.t("Create download project")
-            : I18n.t("Create single project")
+            : root.projectType === "publish"
+                ? I18n.t("Create TikTok publishing project")
+                : I18n.t("Create single project")
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     parent: Overlay.overlay
     x: Math.round((parent.width - width) / 2)
@@ -28,6 +30,7 @@ Dialog {
     function openForType(type) {
         projectType = type === "batch" ? "batch"
             : type === "download" ? "download"
+            : type === "publish" ? "publish"
             : "single"
         open()
     }

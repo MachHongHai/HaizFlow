@@ -238,6 +238,138 @@ class ProjectGridModel(ProjectListModel):
         return roles
 
 
+class TikTokPublishListModel(QAbstractListModel):
+    """Stable ordered queue for project-owned Zernio TikTok posts."""
+
+    ItemIdRole = Qt.ItemDataRole.UserRole + 1
+    FileNameRole = Qt.ItemDataRole.UserRole + 2
+    FilePathRole = Qt.ItemDataRole.UserRole + 3
+    CaptionRole = Qt.ItemDataRole.UserRole + 4
+    HashtagsRole = Qt.ItemDataRole.UserRole + 5
+    PostTextRole = Qt.ItemDataRole.UserRole + 6
+    StatusRole = Qt.ItemDataRole.UserRole + 7
+    ErrorRole = Qt.ItemDataRole.UserRole + 8
+    ThumbnailRole = Qt.ItemDataRole.UserRole + 9
+    ProgressRole = Qt.ItemDataRole.UserRole + 10
+    PostIdRole = Qt.ItemDataRole.UserRole + 11
+    PlatformUrlRole = Qt.ItemDataRole.UserRole + 12
+
+    def __init__(self):
+        super().__init__()
+        self._items = []
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._items)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() < 0 or index.row() >= len(self._items):
+            return None
+        item = self._items[index.row()]
+        return {
+            self.ItemIdRole: item["id"],
+            self.FileNameRole: item["file_name"],
+            self.FilePathRole: item["file_path"],
+            self.CaptionRole: item["caption"],
+            self.HashtagsRole: item["hashtags"],
+            self.PostTextRole: item["post_text"],
+            self.StatusRole: item["status"],
+            self.ErrorRole: item["error"],
+            self.ThumbnailRole: item["thumbnail_source"],
+            self.ProgressRole: item.get("upload_progress", 0),
+            self.PostIdRole: item.get("zernio_post_id", ""),
+            self.PlatformUrlRole: item.get("platform_post_url", ""),
+        }.get(role)
+
+    def roleNames(self):
+        return {
+            self.ItemIdRole: b"itemId",
+            self.FileNameRole: b"fileName",
+            self.FilePathRole: b"filePath",
+            self.CaptionRole: b"caption",
+            self.HashtagsRole: b"hashtags",
+            self.PostTextRole: b"postText",
+            self.StatusRole: b"publishStatus",
+            self.ErrorRole: b"publishError",
+            self.ThumbnailRole: b"thumbnailSource",
+            self.ProgressRole: b"uploadProgress",
+            self.PostIdRole: b"zernioPostId",
+            self.PlatformUrlRole: b"platformPostUrl",
+        }
+
+    def set_items(self, items) -> None:
+        self.beginResetModel()
+        self._items = list(items)
+        self.endResetModel()
+
+    def item_at(self, row: int):
+        if row < 0 or row >= len(self._items):
+            return None
+        return self._items[row]
+
+
+class TikTokProjectSourceListModel(QAbstractListModel):
+    """Completed single and batch outputs that can be copied into a publish project."""
+
+    VideoIdRole = Qt.ItemDataRole.UserRole + 1
+    ProjectNameRole = Qt.ItemDataRole.UserRole + 2
+    ProjectTypeRole = Qt.ItemDataRole.UserRole + 3
+    FileNameRole = Qt.ItemDataRole.UserRole + 4
+    ThumbnailRole = Qt.ItemDataRole.UserRole + 5
+    VideoSizeRole = Qt.ItemDataRole.UserRole + 6
+    SelectedRole = Qt.ItemDataRole.UserRole + 7
+    VideoCountRole = Qt.ItemDataRole.UserRole + 8
+
+    def __init__(self):
+        super().__init__()
+        self._items = []
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._items)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() < 0 or index.row() >= len(self._items):
+            return None
+        item = self._items[index.row()]
+        return {
+            self.VideoIdRole: item["video_id"],
+            self.ProjectNameRole: item["project_name"],
+            self.ProjectTypeRole: item["project_type"],
+            self.FileNameRole: item["file_name"],
+            self.ThumbnailRole: item["thumbnail_source"],
+            self.VideoSizeRole: item["video_size"],
+            self.SelectedRole: item["selected"],
+            self.VideoCountRole: item.get("video_count", 1),
+        }.get(role)
+
+    def roleNames(self):
+        return {
+            self.VideoIdRole: b"videoId",
+            self.ProjectNameRole: b"projectName",
+            self.ProjectTypeRole: b"projectType",
+            self.FileNameRole: b"fileName",
+            self.ThumbnailRole: b"thumbnailSource",
+            self.VideoSizeRole: b"videoSize",
+            self.SelectedRole: b"sourceSelected",
+            self.VideoCountRole: b"sourceVideoCount",
+        }
+
+    def set_items(self, items) -> None:
+        self.beginResetModel()
+        self._items = list(items)
+        self.endResetModel()
+
+    def set_selected(self, row: int, selected: bool) -> bool:
+        if row < 0 or row >= len(self._items):
+            return False
+        value = bool(selected)
+        if self._items[row]["selected"] == value:
+            return True
+        self._items[row]["selected"] = value
+        index = self.index(row, 0)
+        self.dataChanged.emit(index, index, [self.SelectedRole])
+        return True
+
+
 class ChannelCandidateListModel(QAbstractListModel):
     CandidateIdRole = Qt.ItemDataRole.UserRole + 1
     SelectedRole = Qt.ItemDataRole.UserRole + 2

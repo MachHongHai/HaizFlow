@@ -2,7 +2,7 @@
 
 Tài liệu này là nguồn duy nhất theo dõi các rủi ro phát hành của ứng dụng Windows. Mỗi bản release phải cập nhật trạng thái, chạy toàn bộ release gate và lưu `BUILD-INFO.json` cùng `SHA256SUMS.txt` trong artifact.
 
-Ngày rà soát: 2026-07-27
+Ngày rà soát: 2026-08-10
 
 ## Quy ước trạng thái
 
@@ -24,12 +24,13 @@ Ngày rà soát: 2026-07-27
 | 8 | Schema migration | **Hoàn tất** | Project metadata dùng schema v4, video metadata dùng schema v5. Migration đổi `job.json`/`job_id` cũ thành `video.json`/`video_id`, lưu backup, giữ nguyên project root legacy và từ chối schema tương lai. |
 | 9 | Dependency lock tái lập | **Hoàn tất** | `requirements-lock-py313-win64.txt` khóa 137 dependency trực tiếp/gián tiếp bằng SHA-256 cho Windows x64/Python 3.13; Torch khóa đúng biến thể cu128. Manifest fingerprint phát hiện source/lock lệch, installer dùng `--require-hashes`, build gate đối chiếu toàn bộ `.venv`. |
 | 10 | Disk preflight và cache policy | **Hoàn tất cho build/installer** | Bootstrap tính đúng số byte model còn thiếu cộng 1 GiB headroom và tính cả phần `.part` có thể resume. Installer tính từ artifact thật, giữ hai bản khi upgrade và cộng 2 GiB workspace. Artifact dev đã nghiệm thu ngày 2026-07-27 là 5,373 GiB: preflight yêu cầu khoảng 7,37 GiB cho cài mới và 12,75 GiB cho upgrade. Model không nằm trong installer; dung lượng tải lần đầu được kiểm riêng trên chính ổ chứa `{app}\runtime\models`. |
-| 11 | Mô tả offline và quyền riêng tư | **Hoàn tất** | Lần chạy đầu nói rõ cần Internet để tải model; sau khi checksum hợp lệ, WhisperX/HY-MT2/Demucs/media xử lý local. Settings nói rõ Edge TTS nhận văn bản phụ đề, nhập URL/kênh kết nối nền tảng tương ứng và hành vi khi offline. |
+| 11 | Mô tả offline và quyền riêng tư | **Hoàn tất** | Lần chạy đầu nói rõ cần Internet để tải model; sau khi checksum hợp lệ, WhisperX/HY-MT2/Demucs/media xử lý local. Settings nói rõ Edge TTS nhận văn bản phụ đề, nhập URL/kênh kết nối nền tảng tương ứng và hành vi khi offline. README và UI nói rõ đăng TikTok là tùy chọn cloud: video được tải lên Zernio/TikTok và API key nằm trong Windows Credential Manager. |
 | 12 | Chẩn đoán production | **Hoàn tất** | App log xoay vòng 5 MiB × 4 file; bắt lỗi main thread, Python worker, unraisable exception và Qt message. Artifact có build ID. Settings xuất ZIP diagnostics đã redaction, giới hạn kích thước và không lấy tên/media/log project. |
 | 13 | Shutdown và phục hồi video gián đoạn | **Hoàn tất** | Close event hỏi xác nhận khi còn xử lý/tải; active video được pause, subprocess tree bị dừng, queue từ chối việc mới và chờ worker. Windows Job Object dọn process con khi app crash; lần mở sau chuyển metadata `processing` còn sót thành `paused` có thể resume. Smoke mode luôn dùng data tạm thay vì `.env` thật. |
 | 14 | Portable storage theo thư mục cài đặt | **Hoàn tất** | Trong frozen build, thư mục được chọn ở wizard là hard boundary: model tải sau cài đặt, Qt/QML, Torch, Hugging Face, pip/uv, CUDA/Numba, temp, log và settings đều nằm dưới `{app}\runtime`. User có thể chọn ổ C, D, E hoặc ổ khác miễn có quyền ghi. Source mode vẫn có thể dùng `HAIZFLOW_HOME`; smoke xác nhận không thoát khỏi boundary được cấu hình. |
 | 15 | Hygiene source và cấu trúc desktop | **Chặn release build** | Hai utility không dùng đã bị xóa; thư mục `build/` phải rỗng trước clean build. Chín desktop controller sau refactor, QML facade và tài liệu kiến trúc phải cùng nằm trong một commit; `git status --porcelain` phải rỗng trước khi chạy build release. |
 | 16 | Audit lỗ hổng dependency | **Hoàn tất với ngoại lệ có kiểm soát** | `pip` đã nâng 26.1.2; `scripts/audit-dependencies.ps1` dùng pip-audit pin version và fail với mọi advisory mới. Wheel CUDA `+cu128` được quét thêm bằng version PyTorch canonical. Ngoại lệ Transformers/DiskCache/PyTorch bị giới hạn đúng ID, có threat model, biện pháp giảm thiểu và hạn rà soát trong `docs/dependency-security.md`; alignment checkpoint không pin đã bị vô hiệu hóa. |
+| 17 | Đăng TikTok qua Zernio | **Còn lại trước production** | Source dùng REST API/OAuth chính thức của Zernio, upload tuần tự, idempotency key ổn định, consent rõ ràng và không còn Playwright/cookie/DOM automation. Unit test phải đạt; trước release công khai vẫn phải nghiệm thu end-to-end với tài khoản Zernio/TikTok thật, quota/gói dịch vụ hiện hành và điều khoản của cả hai bên. |
 
 ## License gate
 

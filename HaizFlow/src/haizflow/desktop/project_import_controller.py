@@ -837,6 +837,7 @@ class ProjectImportController:
             QMessageBox.warning(None, "Project storage location", "Choose a location for this project.")
             return False
         normalized_type = project_store.normalize_project_type(project_type)
+        publisher = getattr(host, "_tiktok_publisher", None)
         if (
             normalized_type == "download"
             and not host._media_downloader.can_switch_project("__new_download_project__")
@@ -845,6 +846,13 @@ class ProjectImportController:
                 None,
                 "Download project",
                 "Wait for the current channel task to finish or cancel it before creating another download project.",
+            )
+            return False
+        if publisher is not None and not publisher.can_switch_project("__new_project__"):
+            QMessageBox.information(
+                None,
+                "TikTok publishing",
+                "Wait for the current Zernio or publishing-project import task to finish before creating another project.",
             )
             return False
         host._project_name, host._project_directory = project_name, os.path.abspath(project_directory)
@@ -858,6 +866,11 @@ class ProjectImportController:
         self._reset_new_project_setup()
         if host._project_type == "download":
             host._media_downloader.attach_project(project["key"], project["project_root"])
+        elif host._project_type == "publish":
+            if publisher is not None:
+                publisher.attach_project(project["key"], project["project_root"])
+        elif publisher is not None:
+            publisher.detach_project()
         host.videoPath = ""
         host._selected_video_id, host._batch_video_ids = None, []
         host._refresh_batch_model()
