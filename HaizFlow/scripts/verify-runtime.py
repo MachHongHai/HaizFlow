@@ -73,7 +73,7 @@ def main() -> int:
         failures,
     )
 
-    check((3, 11) <= sys.version_info[:2] <= (3, 13), f"Python {sys.version.split()[0]}", failures)
+    check(sys.version_info[:2] == (3, 13), f"Python {sys.version.split()[0]}", failures)
     expected_venv = (ROOT / ".venv").resolve()
     check(Path(sys.prefix).resolve() == expected_venv, f"Project virtual environment: {expected_venv}", failures)
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from haizflow.desktop.localization import QMessageBox, _set_ui_language
 from haizflow.core.hardware import (
+    basic_hardware_capabilities,
     clear_runtime_profile_cache,
-    detect_hardware_capabilities,
     recommended_processing_device,
     validate_processing_device,
 )
@@ -23,7 +23,11 @@ class SettingsController:
         pipeline_active = host._pipeline_is_active()
         if processing_device != host._settings_processing_device and not (pipeline_active or host._device_switching):
             clear_runtime_profile_cache()
-        compatible, compatibility_message = validate_processing_device(processing_device)
+        capabilities = getattr(host, "_hardware_capabilities", None) or basic_hardware_capabilities()
+        compatible, compatibility_message = validate_processing_device(
+            processing_device,
+            capabilities,
+        )
         if not compatible:
             QMessageBox.warning(None, "Processing device", compatibility_message)
             return False
@@ -63,9 +67,10 @@ class SettingsController:
     def reset(self) -> None:
         host = self._host
         pipeline_active = host._pipeline_is_active()
+        capabilities = getattr(host, "_hardware_capabilities", None) or basic_hardware_capabilities()
         try:
             settings = desktop_settings.reset_settings()
-            settings["processing_device"] = recommended_processing_device(detect_hardware_capabilities())
+            settings["processing_device"] = recommended_processing_device(capabilities)
             settings["processing_device_origin"] = "detected"
             settings = desktop_settings.save_settings(settings)
         except OSError as exc:

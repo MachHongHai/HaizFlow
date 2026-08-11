@@ -1,6 +1,6 @@
 # Chính sách an toàn dependency
 
-Ngày rà soát: 2026-07-27
+Ngày rà soát: 2026-08-12
 
 Mỗi release phải chạy:
 
@@ -8,11 +8,12 @@ Mỗi release phải chạy:
 .\scripts\audit-dependencies.ps1
 ```
 
-Script dùng `pip-audit==2.10.1`, quét trực tiếp environment sẽ được đóng gói và chỉ bỏ qua đúng các advisory đã được đánh giá bên dưới. Advisory mới luôn làm release gate thất bại. Danh sách ngoại lệ phải được rà soát lại trước mỗi release và chậm nhất ngày 2026-08-27.
+Script dùng `pip-audit==2.10.1`, quét trực tiếp environment sẽ được đóng gói và chỉ bỏ qua đúng các advisory đã được đánh giá bên dưới. Advisory mới luôn làm release gate thất bại. Danh sách ngoại lệ phải được rà soát lại trước mỗi release và chậm nhất ngày 2026-09-12.
 
 ## Đã khắc phục
 
 - `pip` đã nâng từ 25.1.1 lên 26.1.2 và dependency lock đã được sinh lại bằng `uv==0.11.19`.
+- `aiohttp` đã nâng lên 3.14.3 để khắc phục `PYSEC-2026-3545`, `PYSEC-2026-3546` và `PYSEC-2026-3547`; version an toàn được pin trực tiếp trong `pyproject.toml` và lock có hash.
 - HY-MT2 chỉ đọc model đã pin revision và kiểm tra SHA-256, dùng `local_files_only=True`, `use_safetensors=True` và `trust_remote_code=False`.
 
 ## Ngoại lệ có kiểm soát
@@ -37,6 +38,14 @@ Advisory được chấp nhận tạm thời:
 - [`PYSEC-2026-2447`](https://osv.dev/vulnerability/PYSEC-2026-2447)
 
 Đây là dependency gián tiếp của `llama-cpp-python` và upstream chưa có phiên bản sửa. Lỗi yêu cầu kẻ tấn công ghi được dữ liệu pickle vào cache rồi làm ứng dụng đọc cache đó. HaizFlow không gọi `Llama.from_pretrained`, không dùng DiskCache và chỉ mở file GGUF local đã pin SHA-256. Runtime/cache nằm dưới thư mục cài đặt do người dùng chọn; người đã có quyền thay đổi thư mục này cũng có thể thay EXE/DLL/model của ứng dụng. Ngoại lệ phải được xóa ngay khi upstream phát hành bản sửa hoặc `llama-cpp-python` bỏ dependency này.
+
+### lightning 2.6.5
+
+Advisory được chấp nhận tạm thời:
+
+- [`PYSEC-2026-3624`](https://osv.dev/vulnerability/PYSEC-2026-3624) / CVE-2026-58659
+
+`pyannote-audio` yêu cầu Lightning và 2.6.5 hiện vẫn là bản phát hành mới nhất. Upstream đã merge bản vá nhưng chưa phát hành version chứa nó. HaizFlow backport đúng cơ chế allowlist của upstream trong `haizflow.core.dependency_security`: trước lần nạp model đầu tiên, cả hai namespace Lightning đều bị chặn nếu checkpoint yêu cầu import `_instantiator` ngoài hai đường CLI chính thức. Lớp bảo vệ có test chống import tùy ý, tự bỏ qua khi version Lightning tương lai đã có bản vá, và các model HaizFlow vẫn phải qua kiểm tra nguồn/size/SHA-256. Ngoại lệ này phải được xóa ngay khi Lightning phát hành bản chứa bản vá.
 
 ### torch 2.8.0+cu128
 

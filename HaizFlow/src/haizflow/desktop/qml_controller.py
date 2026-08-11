@@ -54,11 +54,12 @@ from haizflow.desktop.url_import import VideoUrlImportCoordinator
 from haizflow.config import MODELS_DIR, RUNTIME_DATA_DIR
 from haizflow.core.events import subscribe_log, unsubscribe_log
 from haizflow.core.hardware import (
+    basic_hardware_capabilities,
     configure_processing_device,
     clear_runtime_profile_cache,
     detect_hardware_capabilities,
     recommended_processing_device,
-    runtime_profile,
+    runtime_profile_for,
     validate_processing_device,
 )
 from haizflow.pipeline.process_registry import pause_video
@@ -114,6 +115,12 @@ class HaizFlowController(QObject):
     urlImportFinished = Signal()
     channelImportChanged = Signal()
     mediaImportChanged = Signal()
+    socialPublishStateChanged = Signal()
+    zernioAccountsChanged = Signal()
+    zernioPostOptionsChanged = Signal()
+    # Kept as a coarse compatibility signal for Python-side observers. QML
+    # properties use the narrower signals above so upload progress does not
+    # invalidate every Zernio binding on the page.
     tiktokPublishChanged = Signal()
 
     def __init__(self):
@@ -173,6 +180,10 @@ class HaizFlowController(QObject):
         self._model_setup_target_device = ""
         self._startup_maintenance_thread: threading.Thread | None = None
         self._startup_maintenance_events = queue.Queue()
+        self._hardware_probe_events = queue.Queue()
+        self._hardware_probe_lock = threading.Lock()
+        self._hardware_probe_running = False
+        self._startup_hardware_resolved = False
         self._background_shutdown_event = threading.Event()
         self._processing_lifecycle = ProcessingLifecycleController(self)
         self._processing_queue = SerialProcessingQueue(
@@ -208,29 +219,13 @@ class HaizFlowController(QObject):
         self._settings_processing_device = settings["processing_device"]
         self._processing_device_origin = settings["processing_device_origin"]
         _set_ui_language(self._settings_language)
-        # Re-check power and free VRAM at every launch before any model warm-up.
+        # Keep the first frame independent from Torch/CUDA initialization.  The
+        # warm-up worker replaces this cheap snapshot with a full probe before
+        # it selects or loads any model runtime.
         clear_runtime_profile_cache()
-        capabilities = detect_hardware_capabilities()
+        capabilities = basic_hardware_capabilities()
         self._hardware_capabilities = capabilities
         self._hardware_telemetry_active = False
-        device_valid, device_message = validate_processing_device(self._settings_processing_device, capabilities)
-        if self._processing_device_origin == "detected":
-            selected_device = recommended_processing_device(capabilities)
-        elif device_valid:
-            selected_device = self._settings_processing_device
-        else:
-            selected_device = "cpu"
-            self._processing_device_origin = "detected"
-        if selected_device != self._settings_processing_device or settings.get("processing_device_origin") != self._processing_device_origin:
-            self._settings_processing_device = selected_device
-            settings["processing_device"] = selected_device
-            settings["processing_device_origin"] = self._processing_device_origin
-            try:
-                desktop_settings.save_settings(settings)
-            except OSError:
-                pass
-        if not device_valid and selected_device == "cpu":
-            self._status_message = f"Saved GPU setting is unavailable: {device_message} Switched to CPU."
         configure_processing_device(self._settings_processing_device)
         self._active_processing_device = self._settings_processing_device
         if os.getenv("HAIZFLOW_SMOKE_TEST") != "1" and models_ready(
@@ -282,25 +277,12 @@ class HaizFlowController(QObject):
         self._log_timer.timeout.connect(self._drain_log_queue)
         self._log_timer.start(500)
 
-        self._media_import_timer = QTimer(self)
-        self._media_import_timer.timeout.connect(self._drain_media_import_events)
-        self._media_import_timer.start(100)
-
-        self._tiktok_publish_timer = QTimer(self)
-        self._tiktok_publish_timer.timeout.connect(self._drain_tiktok_publish_events)
-        self._tiktok_publish_timer.start(100)
-
-        self._audio_preview_timer = QTimer(self)
-        self._audio_preview_timer.timeout.connect(self._drain_audio_preview_events)
-        self._audio_preview_timer.start(100)
-
-        self._startup_maintenance_timer = QTimer(self)
-        self._startup_maintenance_timer.timeout.connect(self._drain_startup_maintenance_events)
-        self._startup_maintenance_timer.start(100)
-
-        self._model_setup_timer = QTimer(self)
-        self._model_setup_timer.timeout.connect(self._drain_model_setup_events)
-        self._model_setup_timer.start(100)
+        # These coordinators only transfer already-computed worker results to
+        # Qt.  One dispatcher avoids five independent 100 ms wake-ups on the
+        # GUI thread while preserving the same response latency.
+        self._background_events_timer = QTimer(self)
+        self._background_events_timer.timeout.connect(self._drain_background_events)
+        self._background_events_timer.start(100)
 
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self.poll_videos)
@@ -327,6 +309,14 @@ class HaizFlowController(QObject):
 
     def _drain_audio_preview_events(self) -> None:
         self._audio_preview.drain_events()
+
+    def _drain_background_events(self) -> None:
+        self._drain_media_import_events()
+        self._drain_tiktok_publish_events()
+        self._drain_audio_preview_events()
+        self._drain_startup_maintenance_events()
+        self._drain_model_setup_events()
+        HaizFlowController._runtime_device_for(self).drain_hardware_events()
 
     def _refresh_selected_elapsed(self) -> None:
         video = self._selected_video()
@@ -485,147 +475,147 @@ class HaizFlowController(QObject):
     def tiktokProjectSourceModel(self):
         return self.tiktok_project_sources
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=socialPublishStateChanged)
     def tiktokPublishBusy(self):
         return self._tiktok_publisher.busy
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioAccountsChanged)
     def zernioAccountSyncing(self):
         return self._tiktok_publisher.account_syncing
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=socialPublishStateChanged)
     def tiktokPublishStatus(self):
         return self._tiktok_publisher.status
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=socialPublishStateChanged)
     def tiktokDefaultCaption(self):
         return self._tiktok_publisher.default_caption
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=socialPublishStateChanged)
     def tiktokDefaultHashtags(self):
         return self._tiktok_publisher.default_hashtags
 
-    @Property(int, notify=tiktokPublishChanged)
+    @Property(int, notify=socialPublishStateChanged)
     def tiktokPublishCount(self):
         return self._tiktok_publisher.count
 
-    @Property(int, notify=tiktokPublishChanged)
+    @Property(int, notify=socialPublishStateChanged)
     def tiktokPostedCount(self):
         return self._tiktok_publisher.posted_count
 
-    @Property(int, notify=tiktokPublishChanged)
+    @Property(int, notify=socialPublishStateChanged)
     def tiktokProjectSourceSelectedCount(self):
         return self._tiktok_publisher.project_source_selected_count
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioAccountsChanged)
     def zernioApiKeyConfigured(self):
         return self._tiktok_publisher.api_key_configured
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioAccountsChanged)
     def zernioApiKeyVerified(self):
         return self._tiktok_publisher.api_key_verified
 
-    @Property(int, notify=tiktokPublishChanged)
+    @Property(int, notify=zernioAccountsChanged)
     def zernioConnectedAccountCount(self):
         return self._tiktok_publisher.connected_account_count
 
-    @Property(int, notify=tiktokPublishChanged)
+    @Property(int, notify=zernioAccountsChanged)
     def zernioProfileCount(self):
         return self._tiktok_publisher.profile_count
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=zernioAccountsChanged)
     def zernioConnectionProfileName(self):
         return self._tiktok_publisher.connection_profile_name
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioAccountsChanged)
     def zernioOauthSyncPending(self):
         return self._tiktok_publisher.oauth_sync_pending
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioAccountsChanged)
     def zernioAccountReady(self):
         return self._tiktok_publisher.account_ready
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioAccountsChanged)
     def zernioCanPostMore(self):
         return self._tiktok_publisher.can_post_more
 
-    @Property("QStringList", notify=tiktokPublishChanged)
+    @Property("QStringList", notify=zernioAccountsChanged)
     def zernioTikTokAccounts(self):
         return self._tiktok_publisher.account_names
 
-    @Property("QStringList", notify=tiktokPublishChanged)
+    @Property("QStringList", notify=zernioAccountsChanged)
     def zernioConnections(self):
         return self._tiktok_publisher.account_names
 
-    @Property("QStringList", notify=tiktokPublishChanged)
+    @Property("QStringList", notify=zernioAccountsChanged)
     def zernioConnectionPlatforms(self):
         return self._tiktok_publisher.account_platforms
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=zernioAccountsChanged)
     def zernioSelectedPlatform(self):
         return self._tiktok_publisher.selected_platform
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=zernioAccountsChanged)
     def zernioSelectedPlatformLabel(self):
         return self._tiktok_publisher.selected_platform_label
 
-    @Property(int, notify=tiktokPublishChanged)
+    @Property(int, notify=zernioAccountsChanged)
     def zernioSelectedAccountIndex(self):
         return self._tiktok_publisher.selected_account_index
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=zernioAccountsChanged)
     def zernioSelectedAccountName(self):
         return self._tiktok_publisher.selected_account_name
 
-    @Property("QStringList", notify=tiktokPublishChanged)
+    @Property("QStringList", notify=zernioPostOptionsChanged)
     def zernioPrivacyLevels(self):
         return self._tiktok_publisher.privacy_levels
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=zernioPostOptionsChanged)
     def zernioPrivacyLevel(self):
         return self._tiktok_publisher.privacy_level
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioPublishNow(self):
         return self._tiktok_publisher.publish_now
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioAllowComment(self):
         return self._tiktok_publisher.allow_comment
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioAllowDuet(self):
         return self._tiktok_publisher.allow_duet
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioAllowStitch(self):
         return self._tiktok_publisher.allow_stitch
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioShareToFeed(self):
         return self._tiktok_publisher.share_to_feed
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioAiGenerated(self):
         return self._tiktok_publisher.ai_generated
 
-    @Property(str, notify=tiktokPublishChanged)
+    @Property(str, notify=zernioPostOptionsChanged)
     def zernioFirstComment(self):
         return self._tiktok_publisher.first_comment
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioCommentAvailable(self):
         return self._tiktok_publisher.comment_available
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioDuetAvailable(self):
         return self._tiktok_publisher.duet_available
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=zernioPostOptionsChanged)
     def zernioStitchAvailable(self):
         return self._tiktok_publisher.stitch_available
 
-    @Property(bool, notify=tiktokPublishChanged)
+    @Property(bool, notify=socialPublishStateChanged)
     def zernioPublishConsentConfirmed(self):
         return self._tiktok_publisher.consent_confirmed
 
@@ -1287,15 +1277,21 @@ class HaizFlowController(QObject):
 
     @Property(bool, notify=settingsChanged)
     def cpuOnly(self):
-        return runtime_profile().is_cpu_only
+        return self._active_processing_device != "gpu"
 
     @Property(str, notify=settingsChanged)
     def performanceProfileLabel(self):
-        return runtime_profile().label
+        return runtime_profile_for(
+            self._hardware_capabilities,
+            self._active_processing_device,
+        ).label
 
     @Property(str, notify=settingsChanged)
     def performanceProfileDetail(self):
-        profile = runtime_profile()
+        profile = runtime_profile_for(
+            self._hardware_capabilities,
+            self._active_processing_device,
+        )
         if self._settings_language == "vi":
             if profile.cuda_available:
                 return f"Tăng tốc GPU - {profile.cuda_name or 'CUDA'}"
@@ -1307,7 +1303,7 @@ class HaizFlowController(QObject):
     def hardwareInfo(self):
         """Expose the active graphics adapter and detailed CPU telemetry."""
         capabilities = self._hardware_capabilities
-        profile = runtime_profile()
+        profile = runtime_profile_for(capabilities, self._active_processing_device)
         active_gpu_name = capabilities.cuda_name if profile.cuda_available else capabilities.active_display_gpu_name
         return {
             "activeGpuName": active_gpu_name,
@@ -1915,6 +1911,10 @@ class HaizFlowController(QObject):
     @Slot(result=bool)
     def refreshZernioConnections(self):
         return self._tiktok_publisher.refresh_accounts()
+
+    @Slot(result=bool)
+    def reconcileZernioConnections(self):
+        return self._tiktok_publisher.reconcile_accounts()
 
     @Slot(int, result=bool)
     def selectZernioTikTokAccount(self, index: int):

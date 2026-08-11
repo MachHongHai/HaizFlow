@@ -17,8 +17,6 @@ ComboBox {
     focusPolicy: Qt.TabFocus
     Accessible.name: displayText
 
-    Component.onCompleted: voicePopup.close()
-
     function logoAt(index) {
         if (!logoRole || index < 0 || !logoModel || logoModel[index] === undefined)
             return ""

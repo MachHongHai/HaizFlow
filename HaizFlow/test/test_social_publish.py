@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from haizflow.services import social_publish as tiktok_publish
 
@@ -131,6 +132,16 @@ class SocialPublishStateTests(unittest.TestCase):
             tiktok_publish.migrate_project_layout(project_root)
 
             self.assertTrue(user_file.is_file())
+
+    def test_current_layout_migration_does_not_rewrite_state_on_every_open(self):
+        with tempfile.TemporaryDirectory() as project_root:
+            tiktok_publish.save_state(project_root, tiktok_publish.empty_state())
+
+            with patch.object(tiktok_publish, "save_state") as save_state:
+                migrated = tiktok_publish.migrate_project_layout(project_root)
+
+            save_state.assert_not_called()
+            self.assertEqual(migrated["schema_version"], tiktok_publish.STATE_SCHEMA_VERSION)
 
     def test_cleanup_removes_only_unreferenced_project_owned_media(self):
         with tempfile.TemporaryDirectory() as project_root:

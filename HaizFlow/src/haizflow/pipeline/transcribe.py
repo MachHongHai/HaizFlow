@@ -13,6 +13,7 @@ import torch
 import torchaudio
 import whisperx
 
+from haizflow.core.dependency_security import install_lightning_checkpoint_guard
 from haizflow.core.hardware import runtime_profile
 from haizflow.core.model_integrity import (
     ALIGNMENT_MODELS,
@@ -25,6 +26,11 @@ from haizflow.core.model_integrity import (
 )
 from haizflow.pipeline.process_registry import check_cancellation, is_cancelled
 from haizflow.services.video_store import log_to_video
+
+
+# WhisperX imports Lightning before any model is opened. Backport Lightning's
+# upstream checkpoint allowlist before the first HaizFlow model load.
+install_lightning_checkpoint_guard()
 
 
 _MODEL_LOCK = threading.Lock()
@@ -601,7 +607,7 @@ def _verified_alignment_asset(language: str, video_id: str) -> tuple[object, dic
     bundle_name, _filename, _expected_size, _expected_sha256 = _VERIFIED_ALIGNMENT_MODELS[language]
     cache_directory = Path(MODELS_DIR) / "alignment"
     try:
-        model_path = verify_alignment_model(cache_directory, language)
+        verify_alignment_model(cache_directory, language)
     except ModelIntegrityError as exc:
         raise RuntimeError(
             f"The '{language}' alignment model is missing or corrupted. "

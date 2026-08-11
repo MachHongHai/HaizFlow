@@ -464,7 +464,17 @@ def migrate_project_layout(project_root: str) -> dict[str, Any]:
     """
     root = os.path.abspath(project_root)
     state = load_state(root)
-    save_state(root, state)
+    current_payload = _read_payload(state_path(root))
+    legacy_exists = any(
+        os.path.isfile(path)
+        for path in (legacy_state_path(root), legacy_backup_state_path(root))
+    )
+    if (
+        current_payload is None
+        or current_payload.get("schema_version") != STATE_SCHEMA_VERSION
+        or legacy_exists
+    ):
+        save_state(root, state)
     for directory_name in ("exports", "videos"):
         directory = os.path.join(root, directory_name)
         try:

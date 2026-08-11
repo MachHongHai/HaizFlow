@@ -64,7 +64,7 @@ Module {
             name: "tiktokPublishBusy"
             type: "bool"
             read: "tiktokPublishBusy"
-            notify: "tiktokPublishChanged"
+            notify: "socialPublishStateChanged"
             index: 8
             isReadonly: true
         }
@@ -72,7 +72,7 @@ Module {
             name: "tiktokPublishStatus"
             type: "QString"
             read: "tiktokPublishStatus"
-            notify: "tiktokPublishChanged"
+            notify: "socialPublishStateChanged"
             index: 9
             isReadonly: true
         }
@@ -80,7 +80,7 @@ Module {
             name: "tiktokDefaultCaption"
             type: "QString"
             read: "tiktokDefaultCaption"
-            notify: "tiktokPublishChanged"
+            notify: "socialPublishStateChanged"
             index: 10
             isReadonly: true
         }
@@ -88,7 +88,7 @@ Module {
             name: "tiktokDefaultHashtags"
             type: "QString"
             read: "tiktokDefaultHashtags"
-            notify: "tiktokPublishChanged"
+            notify: "socialPublishStateChanged"
             index: 11
             isReadonly: true
         }
@@ -96,7 +96,7 @@ Module {
             name: "tiktokPublishCount"
             type: "int"
             read: "tiktokPublishCount"
-            notify: "tiktokPublishChanged"
+            notify: "socialPublishStateChanged"
             index: 12
             isReadonly: true
         }
@@ -104,7 +104,7 @@ Module {
             name: "tiktokPostedCount"
             type: "int"
             read: "tiktokPostedCount"
-            notify: "tiktokPublishChanged"
+            notify: "socialPublishStateChanged"
             index: 13
             isReadonly: true
         }
@@ -112,7 +112,7 @@ Module {
             name: "tiktokProjectSourceSelectedCount"
             type: "int"
             read: "tiktokProjectSourceSelectedCount"
-            notify: "tiktokPublishChanged"
+            notify: "socialPublishStateChanged"
             index: 14
             isReadonly: true
         }
@@ -120,7 +120,7 @@ Module {
             name: "zernioApiKeyConfigured"
             type: "bool"
             read: "zernioApiKeyConfigured"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 15
             isReadonly: true
         }
@@ -128,7 +128,7 @@ Module {
             name: "zernioApiKeyVerified"
             type: "bool"
             read: "zernioApiKeyVerified"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 16
             isReadonly: true
         }
@@ -136,7 +136,7 @@ Module {
             name: "zernioConnectedAccountCount"
             type: "int"
             read: "zernioConnectedAccountCount"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 17
             isReadonly: true
         }
@@ -144,7 +144,7 @@ Module {
             name: "zernioAccountReady"
             type: "bool"
             read: "zernioAccountReady"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 18
             isReadonly: true
         }
@@ -152,7 +152,7 @@ Module {
             name: "zernioCanPostMore"
             type: "bool"
             read: "zernioCanPostMore"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 19
             isReadonly: true
         }
@@ -160,7 +160,7 @@ Module {
             name: "zernioTikTokAccounts"
             type: "QStringList"
             read: "zernioTikTokAccounts"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 20
             isReadonly: true
         }
@@ -168,35 +168,35 @@ Module {
             name: "zernioConnections"
             type: "QStringList"
             read: "zernioConnections"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             isReadonly: true
         }
         Property {
             name: "zernioConnectionPlatforms"
             type: "QStringList"
             read: "zernioConnectionPlatforms"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             isReadonly: true
         }
         Property {
             name: "zernioSelectedPlatform"
             type: "QString"
             read: "zernioSelectedPlatform"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             isReadonly: true
         }
         Property {
             name: "zernioSelectedPlatformLabel"
             type: "QString"
             read: "zernioSelectedPlatformLabel"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             isReadonly: true
         }
         Property {
             name: "zernioSelectedAccountIndex"
             type: "int"
             read: "zernioSelectedAccountIndex"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 21
             isReadonly: true
         }
@@ -204,14 +204,14 @@ Module {
             name: "zernioSelectedAccountName"
             type: "QString"
             read: "zernioSelectedAccountName"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             isReadonly: true
         }
         Property {
             name: "zernioPrivacyLevels"
             type: "QStringList"
             read: "zernioPrivacyLevels"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 22
             isReadonly: true
         }
@@ -219,7 +219,7 @@ Module {
             name: "zernioPrivacyLevel"
             type: "QString"
             read: "zernioPrivacyLevel"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 23
             isReadonly: true
         }
@@ -227,7 +227,7 @@ Module {
             name: "zernioPublishNow"
             type: "bool"
             read: "zernioPublishNow"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 24
             isReadonly: true
         }
@@ -235,7 +235,7 @@ Module {
             name: "zernioAllowComment"
             type: "bool"
             read: "zernioAllowComment"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 25
             isReadonly: true
         }
@@ -243,7 +243,7 @@ Module {
             name: "zernioAllowDuet"
             type: "bool"
             read: "zernioAllowDuet"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 26
             isReadonly: true
         }
@@ -251,7 +251,7 @@ Module {
             name: "zernioAllowStitch"
             type: "bool"
             read: "zernioAllowStitch"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 27
             isReadonly: true
         }
@@ -259,7 +259,7 @@ Module {
             name: "zernioCommentAvailable"
             type: "bool"
             read: "zernioCommentAvailable"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 28
             isReadonly: true
         }
@@ -267,7 +267,7 @@ Module {
             name: "zernioDuetAvailable"
             type: "bool"
             read: "zernioDuetAvailable"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 29
             isReadonly: true
         }
@@ -275,7 +275,7 @@ Module {
             name: "zernioStitchAvailable"
             type: "bool"
             read: "zernioStitchAvailable"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 30
             isReadonly: true
         }
@@ -283,7 +283,7 @@ Module {
             name: "zernioPublishConsentConfirmed"
             type: "bool"
             read: "zernioPublishConsentConfirmed"
-            notify: "tiktokPublishChanged"
+            notify: "socialPublishStateChanged"
             index: 31
             isReadonly: true
         }
@@ -1089,7 +1089,7 @@ Module {
             name: "zernioProfileCount"
             type: "int"
             read: "zernioProfileCount"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 133
             isReadonly: true
         }
@@ -1097,7 +1097,7 @@ Module {
             name: "zernioConnectionProfileName"
             type: "QString"
             read: "zernioConnectionProfileName"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 134
             isReadonly: true
         }
@@ -1105,7 +1105,7 @@ Module {
             name: "zernioOauthSyncPending"
             type: "bool"
             read: "zernioOauthSyncPending"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 135
             isReadonly: true
         }
@@ -1113,7 +1113,7 @@ Module {
             name: "zernioShareToFeed"
             type: "bool"
             read: "zernioShareToFeed"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 136
             isReadonly: true
         }
@@ -1121,7 +1121,7 @@ Module {
             name: "zernioAiGenerated"
             type: "bool"
             read: "zernioAiGenerated"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 137
             isReadonly: true
         }
@@ -1129,7 +1129,7 @@ Module {
             name: "zernioFirstComment"
             type: "QString"
             read: "zernioFirstComment"
-            notify: "tiktokPublishChanged"
+            notify: "zernioPostOptionsChanged"
             index: 138
             isReadonly: true
         }
@@ -1137,7 +1137,7 @@ Module {
             name: "zernioAccountSyncing"
             type: "bool"
             read: "zernioAccountSyncing"
-            notify: "tiktokPublishChanged"
+            notify: "zernioAccountsChanged"
             index: 139
             isReadonly: true
         }
@@ -1178,6 +1178,9 @@ Module {
         Signal { name: "urlImportFinished" }
         Signal { name: "channelImportChanged" }
         Signal { name: "mediaImportChanged" }
+        Signal { name: "socialPublishStateChanged" }
+        Signal { name: "zernioAccountsChanged" }
+        Signal { name: "zernioPostOptionsChanged" }
         Signal { name: "tiktokPublishChanged" }
         Method {
             name: "setHardwareTelemetryActive"
@@ -1381,6 +1384,7 @@ Module {
         Method { name: "openZernioDashboard"; type: "bool" }
         Method { name: "refreshZernioTikTokAccounts"; type: "bool" }
         Method { name: "refreshZernioConnections"; type: "bool" }
+        Method { name: "reconcileZernioConnections"; type: "bool" }
         Method {
             name: "selectZernioTikTokAccount"
             type: "bool"

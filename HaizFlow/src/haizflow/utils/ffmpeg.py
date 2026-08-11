@@ -1,11 +1,10 @@
 import json
-import subprocess
 import shutil
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 
 from haizflow.config import BIN_DIR
-from haizflow.core.hardware import runtime_profile
 
 
 def _binary(name: str) -> str:
@@ -50,7 +49,7 @@ def _encoder_works(encoder: str) -> bool:
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=20,
+            timeout=10,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -59,11 +58,13 @@ def _encoder_works(encoder: str) -> bool:
 
 
 def preferred_video_encoder() -> tuple[str, list[str]]:
-    """Return a verified hardware encoder, with a universal CPU fallback."""
-    profile = runtime_profile()
-    candidates = []
-    if profile.cuda_available:
-        candidates = ["h264_nvenc", "h264_qsv", "h264_amf"]
+    """Return a verified hardware encoder, with a universal CPU fallback.
+
+    Video encoding support is independent from the device selected for AI
+    inference.  A CPU inference profile can still use Intel Quick Sync, AMD
+    AMF, or an NVIDIA encoder, so probe every supported backend directly.
+    """
+    candidates = ["h264_nvenc", "h264_qsv", "h264_amf"]
     for encoder in candidates:
         if not _encoder_works(encoder):
             continue

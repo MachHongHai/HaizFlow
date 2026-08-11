@@ -53,15 +53,12 @@ ApplicationWindow {
     readonly property bool canNavigateBack: downloadCanGoBack || routeCanGoBack
     readonly property bool canNavigateForward: downloadCanGoForward || routeCanGoForward
 
-    // Returning from the Zernio dashboard is the natural completion point of
-    // its web-based account connection flow.  Refresh on window activation so
-    // a newly connected social account appears without reopening the project.
+    // Reconcile in the background whenever the user returns from a browser.
+    // This catches dashboard disconnects immediately without disabling the UI.
     onActiveChanged: {
-            if (active && currentRoute === routePublishWorkspace
-                && AppController.zernioOauthSyncPending
-                && !AppController.tiktokPublishBusy
-                && !AppController.zernioAccountSyncing)
-            AppController.refreshZernioConnections()
+        if (active && currentRoute === routePublishWorkspace
+                && !AppController.tiktokPublishBusy)
+            AppController.reconcileZernioConnections()
     }
 
     function routeIndex(route) {

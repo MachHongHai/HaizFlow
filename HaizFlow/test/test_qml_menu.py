@@ -454,7 +454,10 @@ ApplicationWindow {{
         self.assertIn("zernioConnectedAccountCount >= 2", connections)
         self.assertIn("Manage connections", guide)
         self.assertIn("onActiveChanged", main)
-        self.assertIn("refreshZernioConnections", main)
+        self.assertIn("reconcileZernioConnections", main)
+        connection_open = connections.split("Connections {", 1)[0]
+        self.assertNotIn("refreshZernioConnections", connection_open)
+        self.assertIn("reconcileZernioConnections", connection_open)
         self.assertIn("openZernioSignIn", guide)
         self.assertIn("openZernioApiKeys", key_dialog)
         self.assertIn("connectZernioPlatform", connections)

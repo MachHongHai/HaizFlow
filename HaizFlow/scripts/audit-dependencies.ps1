@@ -24,7 +24,11 @@ $AcceptedVulnerabilities = @(
   "PYSEC-2026-2288",
   "PYSEC-2026-2289",
   "PYSEC-2026-2290",
-  "PYSEC-2026-2447"
+  "PYSEC-2026-2447",
+  # Lightning 2.6.5 is the newest compatible release and upstream has not
+  # published the merged CVE-2026-58659 fix yet. HaizFlow backports the exact
+  # instantiator allowlist in core/dependency_security.py and tests it.
+  "PYSEC-2026-3624"
 )
 $AcceptedCanonicalTorchVulnerabilities = @(
   "PYSEC-2025-206",

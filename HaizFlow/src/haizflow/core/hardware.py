@@ -332,6 +332,35 @@ def detect_hardware_capabilities() -> HardwareCapabilities:
     )
 
 
+def basic_hardware_capabilities() -> HardwareCapabilities:
+    """Return cheap host telemetry without importing Torch or initializing CUDA.
+
+    The desktop uses this snapshot for its first frame.  Full CUDA detection is
+    deliberately deferred to the model warm-up worker because importing Torch
+    and initializing the driver can take several seconds on Windows.
+    """
+    ac_powered, battery_percent = _power_status()
+    system_info = _windows_system_info()
+    return HardwareCapabilities(
+        cuda_available=False,
+        cuda_name="",
+        total_vram_bytes=0,
+        free_vram_bytes=0,
+        total_ram_bytes=_total_memory_bytes(),
+        logical_cpu_count=max(1, os.cpu_count() or 1),
+        ac_powered=ac_powered,
+        battery_percent=battery_percent,
+        active_display_gpu_name=system_info.get("active_display_gpu_name", ""),
+        active_display_gpu_driver=system_info.get("active_display_gpu_driver", ""),
+        active_display_gpu_resolution=system_info.get("active_display_gpu_resolution", ""),
+        detected_graphics=tuple(system_info.get("detected_graphics", ())),
+        cpu_name=system_info.get("cpu_name", ""),
+        cpu_manufacturer=system_info.get("cpu_manufacturer", ""),
+        cpu_physical_cores=int(system_info.get("cpu_physical_cores", 0)),
+        cpu_max_mhz=int(system_info.get("cpu_max_mhz", 0)),
+    )
+
+
 def processing_device_preference() -> str:
     if os.getenv("HAIZFLOW_FORCE_CPU", "").strip().lower() in {"1", "true", "yes"}:
         return "cpu"
@@ -393,8 +422,16 @@ def configure_processing_device(preference: str) -> str:
 @lru_cache(maxsize=1)
 def runtime_profile() -> RuntimeProfile:
     """Detect a conservative profile that remains usable on CPU-only PCs."""
-    capabilities = hardware_capabilities()
-    preference = processing_device_preference()
+    return runtime_profile_for(hardware_capabilities(), processing_device_preference())
+
+
+def runtime_profile_for(
+    capabilities: HardwareCapabilities,
+    preference: str | None = None,
+) -> RuntimeProfile:
+    """Build a runtime profile from an existing, non-blocking snapshot."""
+    preference = preference or processing_device_preference()
+    preference = preference if preference in _DEVICE_PREFERENCES else "cpu"
     use_cuda = capabilities.gpu_supported and preference == "gpu"
     total_ram = capabilities.total_ram_bytes
     logical_cpus = capabilities.logical_cpu_count

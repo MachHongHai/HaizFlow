@@ -1,7 +1,6 @@
 import importlib.util
 import json
 import struct
-import sys
 import tempfile
 import unittest
 from pathlib import Path

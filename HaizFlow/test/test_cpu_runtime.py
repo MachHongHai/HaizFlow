@@ -1,5 +1,7 @@
+import queue
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +15,7 @@ if str(SRC) not in sys.path:
 
 from haizflow.core import hardware
 from haizflow.desktop import qml_controller
+from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
 from haizflow.pipeline import audio_separation
 from haizflow.services import hymt2_worker
 from haizflow.services import desktop_settings
@@ -72,6 +75,111 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(minimum.key, "cpu_minimum")
         self.assertEqual(minimum.whisper_batch_size, 1)
         self.assertFalse(minimum.warm_whisper_on_startup)
+
+    def test_basic_hardware_snapshot_never_initializes_cuda(self):
+        with (
+            mock.patch.object(hardware, "_cuda_details") as cuda_details,
+            mock.patch.object(hardware, "_cuda_memory_bytes") as cuda_memory,
+            mock.patch.object(hardware, "_cuda_free_memory_bytes") as cuda_free_memory,
+            mock.patch.object(hardware, "_total_memory_bytes", return_value=16 * 1024**3),
+            mock.patch.object(hardware, "_power_status", return_value=(True, 80)),
+            mock.patch.object(hardware, "_windows_system_info", return_value={}),
+            mock.patch.object(hardware.os, "cpu_count", return_value=12),
+        ):
+            capabilities = hardware.basic_hardware_capabilities()
+
+        cuda_details.assert_not_called()
+        cuda_memory.assert_not_called()
+        cuda_free_memory.assert_not_called()
+        self.assertFalse(capabilities.cuda_available)
+        self.assertEqual(capabilities.logical_cpu_count, 12)
+
+    def test_runtime_profile_can_use_a_cached_snapshot_without_detecting_hardware(self):
+        capabilities = hardware.HardwareCapabilities(
+            cuda_available=False,
+            cuda_name="",
+            total_vram_bytes=0,
+            free_vram_bytes=0,
+            total_ram_bytes=16 * 1024**3,
+            logical_cpu_count=12,
+            ac_powered=True,
+            battery_percent=90,
+        )
+        with mock.patch.object(hardware, "detect_hardware_capabilities") as detect:
+            profile = hardware.runtime_profile_for(capabilities, "cpu")
+
+        detect.assert_not_called()
+        self.assertEqual(profile.key, "cpu_balanced")
+
+    def test_live_hardware_refresh_only_schedules_the_expensive_probe(self):
+        capabilities = hardware.HardwareCapabilities(
+            cuda_available=False,
+            cuda_name="",
+            total_vram_bytes=0,
+            free_vram_bytes=0,
+            total_ram_bytes=16 * 1024**3,
+            logical_cpu_count=8,
+            ac_powered=True,
+            battery_percent=70,
+        )
+        host = SimpleNamespace(
+            _hardware_telemetry_active=True,
+            _shutdown_started=False,
+            _hardware_probe_lock=threading.Lock(),
+            _hardware_probe_running=False,
+            _hardware_probe_events=queue.Queue(),
+        )
+        detect = mock.Mock(return_value=capabilities)
+        controller = RuntimeDeviceController(host, detect_hardware=detect)
+        worker = mock.Mock()
+        with mock.patch(
+            "haizflow.desktop.runtime_device_controller.threading.Thread",
+            return_value=worker,
+        ) as thread:
+            controller._refresh_live_hardware()
+
+        detect.assert_not_called()
+        worker.start.assert_called_once_with()
+        thread.call_args.kwargs["target"]()
+        detect.assert_called_once_with()
+        self.assertEqual(host._hardware_probe_events.get_nowait()["capabilities"], capabilities)
+
+    def test_startup_hardware_probe_selects_gpu_before_model_warmup(self):
+        capabilities = hardware.HardwareCapabilities(
+            cuda_available=True,
+            cuda_name="RTX Test",
+            total_vram_bytes=8 * 1024**3,
+            free_vram_bytes=7 * 1024**3,
+            total_ram_bytes=16 * 1024**3,
+            logical_cpu_count=12,
+            ac_powered=True,
+            battery_percent=80,
+        )
+        host = SimpleNamespace(
+            _hardware_probe_lock=threading.Lock(),
+            _hardware_probe_running=False,
+            _hardware_probe_events=queue.Queue(),
+            _settings_processing_device="cpu",
+            _processing_device_origin="detected",
+            _settings_theme="graphite",
+            _settings_language="en",
+            _active_processing_device="cpu",
+            _startup_hardware_resolved=False,
+            _status_message="Ready",
+        )
+        controller = RuntimeDeviceController(host, detect_hardware=mock.Mock(return_value=capabilities))
+        with (
+            mock.patch("haizflow.desktop.runtime_device_controller.configure_processing_device") as configure,
+            mock.patch.object(desktop_settings, "save_settings") as save_settings,
+        ):
+            selected = controller._resolve_startup_processing_device()
+
+        self.assertEqual(selected, "gpu")
+        self.assertEqual(host._active_processing_device, "gpu")
+        self.assertTrue(host._startup_hardware_resolved)
+        configure.assert_called_once_with("gpu")
+        save_settings.assert_called_once()
+        self.assertEqual(host._hardware_probe_events.get_nowait()["kind"], "startup")
 
     def test_cuda_profile_keeps_existing_fast_path(self):
         profile = self._profile(cuda=True, vram_gib=12, ram_gib=16, cpu_count=12)
@@ -364,22 +472,37 @@ class CpuRuntimeTests(unittest.TestCase):
             hymt2_worker._TORCH_THREADING_CONFIGURED = original_configured
 
     def test_encoder_selection_probes_hardware_then_falls_back(self):
-        cuda_profile = SimpleNamespace(cuda_available=True)
-        with (
-            mock.patch.object(ffmpeg, "runtime_profile", return_value=cuda_profile),
-            mock.patch.object(ffmpeg, "_encoder_works", side_effect=lambda name: name == "h264_nvenc"),
+        with mock.patch.object(
+            ffmpeg,
+            "_encoder_works",
+            side_effect=lambda name: name == "h264_nvenc",
         ):
             encoder, _args = ffmpeg.preferred_video_encoder()
         self.assertEqual(encoder, "h264_nvenc")
 
-        cpu_profile = SimpleNamespace(cuda_available=False)
-        with (
-            mock.patch.object(ffmpeg, "runtime_profile", return_value=cpu_profile),
-            mock.patch.object(ffmpeg, "_encoder_works", return_value=False),
-        ):
+        with mock.patch.object(ffmpeg, "_encoder_works", return_value=False):
             encoder, args = ffmpeg.preferred_video_encoder()
         self.assertEqual(encoder, "libx264")
         self.assertIn("veryfast", args)
+
+    def test_encoder_selection_is_independent_from_ai_device(self):
+        with mock.patch.object(
+            ffmpeg,
+            "_encoder_works",
+            side_effect=lambda name: name == "h264_qsv",
+        ):
+            encoder, args = ffmpeg.preferred_video_encoder()
+
+        self.assertEqual(encoder, "h264_qsv")
+        self.assertIn("-global_quality", args)
+
+        with mock.patch.object(
+            ffmpeg,
+            "_encoder_works",
+            side_effect=lambda name: name == "h264_amf",
+        ):
+            encoder, _args = ffmpeg.preferred_video_encoder()
+        self.assertEqual(encoder, "h264_amf")
 
     def test_demucs_cpu_profile_limits_parallel_work(self):
         captured = {}

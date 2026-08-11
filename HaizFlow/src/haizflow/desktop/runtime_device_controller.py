@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import queue
 import threading
 from pathlib import Path
 
@@ -171,11 +172,81 @@ class RuntimeDeviceController:
             cancel_event=host._model_setup_cancel_event,
         )
 
+    def _resolve_startup_processing_device(self) -> str:
+        """Probe CUDA off the GUI thread before choosing the model runtime."""
+        host = self._host
+        probe_lock = getattr(host, "_hardware_probe_lock", None)
+        if probe_lock is not None:
+            with probe_lock:
+                host._hardware_probe_running = True
+        try:
+            capabilities = self._detect_hardware()
+        finally:
+            if probe_lock is not None:
+                with probe_lock:
+                    host._hardware_probe_running = False
+
+        requested_device = str(getattr(host, "_settings_processing_device", "cpu") or "cpu")
+        origin = str(getattr(host, "_processing_device_origin", "detected") or "detected")
+        device_valid, device_message = validate_processing_device(requested_device, capabilities)
+        if origin == "detected":
+            selected_device = recommended_processing_device(capabilities)
+        elif device_valid:
+            selected_device = requested_device
+        else:
+            selected_device = "cpu"
+            origin = "detected"
+
+        settings_changed = selected_device != requested_device or origin != getattr(
+            host, "_processing_device_origin", origin
+        )
+        host._hardware_capabilities = capabilities
+        host._settings_processing_device = selected_device
+        host._processing_device_origin = origin
+        host._active_processing_device = selected_device
+        host._startup_hardware_resolved = True
+        configure_processing_device(selected_device)
+
+        if settings_changed:
+            try:
+                desktop_settings.save_settings(
+                    {
+                        "theme": host._settings_theme,
+                        "language": host._settings_language,
+                        "processing_device": selected_device,
+                        "processing_device_origin": origin,
+                    }
+                )
+            except OSError:
+                pass
+
+        status_message = ""
+        if not device_valid and selected_device == "cpu" and requested_device == "gpu":
+            status_message = f"Saved GPU setting is unavailable: {device_message} Switched to CPU."
+            host._status_message = status_message
+        events = getattr(host, "_hardware_probe_events", None)
+        if events is not None:
+            events.put(
+                {
+                    "kind": "startup",
+                    "capabilities": capabilities,
+                    "settings_changed": settings_changed,
+                    "status_message": status_message,
+                }
+            )
+        return selected_device
+
     def _warm_models_at_startup(self):
         host = self._host
         setup_was_required = False
         try:
-            requested_device = host._model_setup_target_device or processing_device_preference()
+            if (
+                hasattr(host, "_hardware_probe_events")
+                and not getattr(host, "_startup_hardware_resolved", False)
+            ):
+                requested_device = self._resolve_startup_processing_device()
+            else:
+                requested_device = host._model_setup_target_device or processing_device_preference()
             setup_was_required = not models_ready(Path(MODELS_DIR), requested_device)
             if setup_was_required:
                 self._install_models(requested_device)
@@ -529,12 +600,9 @@ class RuntimeDeviceController:
             video_store.log_to_video(video_id, f"Using the updated {preference.upper()} runtime for this video.")
         except Exception as exc:
             video_store.log_to_video(video_id, f"Could not apply the updated processing device: {exc}")
-    def _refresh_live_hardware(self):
+    def _apply_live_hardware(self, capabilities) -> None:
+        """Apply a completed worker probe on the Qt GUI thread."""
         host = self._host
-        """Keep Settings telemetry live without changing a pipeline mid-video."""
-        if not host._hardware_telemetry_active:
-            return
-        capabilities = self._detect_hardware()
         recommended_device = recommended_processing_device(capabilities)
         # The pipeline can force a single video onto CPU after a GPU fault. Once
         # the queue is idle, persist that runtime choice so Settings never
@@ -564,6 +632,50 @@ class RuntimeDeviceController:
         host._apply_detected_processing_device(
             runtime_fallback_device if runtime_fallback_pending else recommended_device
         )
+
+    def _refresh_live_hardware(self):
+        """Schedule Settings telemetry without importing Torch on the GUI thread."""
+        host = self._host
+        if not host._hardware_telemetry_active or host._shutdown_started:
+            return
+        with host._hardware_probe_lock:
+            if host._hardware_probe_running:
+                return
+            host._hardware_probe_running = True
+
+        def probe() -> None:
+            try:
+                capabilities = self._detect_hardware()
+                host._hardware_probe_events.put({"kind": "telemetry", "capabilities": capabilities})
+            except Exception as exc:
+                host._hardware_probe_events.put({"kind": "error", "message": str(exc)})
+            finally:
+                with host._hardware_probe_lock:
+                    host._hardware_probe_running = False
+
+        threading.Thread(target=probe, name="hardware-live-probe", daemon=True).start()
+
+    def drain_hardware_events(self) -> None:
+        """Transfer hardware worker results to Qt without redundant repaints."""
+        host = self._host
+        events = getattr(host, "_hardware_probe_events", None)
+        if events is None:
+            return
+        while True:
+            try:
+                event = events.get_nowait()
+            except queue.Empty:
+                break
+            kind = event.get("kind")
+            if kind == "telemetry":
+                self._apply_live_hardware(event["capabilities"])
+            elif kind == "startup":
+                host._hardware_capabilities = event["capabilities"]
+                host.hardwareChanged.emit()
+                if event.get("settings_changed"):
+                    host.settingsChanged.emit()
+                if event.get("status_message"):
+                    host.statusMessageChanged.emit()
     def setHardwareTelemetryActive(self, active: bool):
         host = self._host
         """Only refresh dynamic telemetry while the Settings dialog needs it."""

@@ -25,16 +25,15 @@ Dialog {
     function openForSelection() {
         connectionCombo.currentIndex = AppController.zernioSelectedAccountIndex
         open()
-        if (AppController.zernioApiKeyVerified
-                && !AppController.tiktokPublishBusy
-                && !AppController.zernioAccountSyncing)
-            AppController.refreshZernioConnections()
+        // Show cached connections immediately, then reconcile silently. An
+        // unchanged response does not emit a UI-wide change notification.
+        Qt.callLater(AppController.reconcileZernioConnections)
     }
 
     Connections {
         target: AppController
 
-        function onTiktokPublishChanged() {
+        function onZernioAccountsChanged() {
             if (!root.visible)
                 return
             const selected = AppController.zernioSelectedAccountIndex

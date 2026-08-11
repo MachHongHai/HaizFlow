@@ -42,7 +42,8 @@ _POST_STATUS_POLL_SECONDS = 3.0
 _POST_STATUS_POLL_TIMEOUT_SECONDS = 180.0
 _OAUTH_ACCOUNT_POLL_SECONDS = 1.0
 _OAUTH_ACCOUNT_POLL_TIMEOUT_SECONDS = 30.0
-_ACCOUNT_BACKGROUND_REFRESH_SECONDS = 15.0
+_ACCOUNT_BACKGROUND_REFRESH_SECONDS = 5.0
+_CREATOR_INFO_CACHE_SECONDS = 300.0
 _ZERNIO_FREE_CONNECTED_ACCOUNTS = 2
 _ZERNIO_BILLING_ERROR_MARKERS = (
     "http 402",
@@ -64,17 +65,24 @@ class SocialPublishController:
         self._state = tiktok_publish.empty_state()
         self._busy = False
         self._account_syncing = False
-        self._account_sync_silent = False
+        self._background_account_refreshing = False
+        self._creator_syncing = False
+        self._account_generation = 0
+        self._creator_generation = 0
         self._status = ""
         self._events: queue.Queue[dict] = queue.Queue()
         self._cancel = threading.Event()
         self._worker: threading.Thread | None = None
         self._account_worker_thread: threading.Thread | None = None
+        self._background_account_worker_thread: threading.Thread | None = None
+        self._creator_worker_thread: threading.Thread | None = None
+        self._creator_cache: dict[str, tuple[float, dict]] = {}
         self._project_sources: list[dict] = []
         self._accounts: list[dict] = []
         self._profiles: list[dict] = []
         self._profile_id = ""
         self._profile_name = ""
+        self._api_key_cache: str | None = None
         self._api_key_verified = False
         self._privacy_levels: list[str] = []
         self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
@@ -90,6 +98,9 @@ class SocialPublishController:
         self._post_status_poll_deadline = 0.0
         self._post_status_poll_next = 0.0
         self._post_status_refreshing = False
+        self._publish_signal_snapshot: tuple | None = None
+        self._account_signal_snapshot: tuple | None = None
+        self._option_signal_snapshot: tuple | None = None
 
     @property
     def busy(self) -> bool:
@@ -97,7 +108,7 @@ class SocialPublishController:
 
     @property
     def account_syncing(self) -> bool:
-        return self._account_syncing and not self._account_sync_silent
+        return self._account_syncing
 
     @property
     def status(self) -> str:
@@ -270,7 +281,7 @@ class SocialPublishController:
         # as soon as the publishing project opens.  Users should not need to
         # press Refresh on every app launch just to make the page usable.
         if self.api_key_configured and not self._busy:
-            self.refresh_accounts()
+            self.reconcile_accounts()
 
     def detach_project(self) -> None:
         self._project_key = ""
@@ -285,8 +296,14 @@ class SocialPublishController:
         self._creator_info_loaded = False
         self._can_post_more = True
         self._account_syncing = False
-        self._account_sync_silent = False
+        self._background_account_refreshing = False
+        self._creator_syncing = False
+        self._account_generation += 1
+        self._creator_generation += 1
         self._account_worker_thread = None
+        self._background_account_worker_thread = None
+        self._creator_worker_thread = None
+        self._creator_cache.clear()
         self._account_refresh_next = 0.0
         self._consent_confirmed = False
         self._stop_oauth_sync()
@@ -340,10 +357,68 @@ class SocialPublishController:
         return updated
 
     def _emit_changed(self) -> None:
+        publish_snapshot = (
+            self._busy,
+            self._status,
+            self.default_caption,
+            self.default_hashtags,
+            self.count,
+            self.posted_count,
+            self.project_source_selected_count,
+            self._consent_confirmed,
+        )
+        account_snapshot = (
+            self._account_syncing,
+            self.api_key_configured,
+            self.api_key_verified,
+            self.connected_account_count,
+            self.profile_count,
+            self.connection_profile_name,
+            self._oauth_sync_pending,
+            self.account_ready,
+            self.can_post_more,
+            tuple(self.account_names),
+            tuple(self.account_platforms),
+            self.selected_platform,
+            self.selected_platform_label,
+            self.selected_account_index,
+            self.selected_account_name,
+        )
+        option_snapshot = (
+            tuple(self._privacy_levels),
+            self.privacy_level,
+            self.publish_now,
+            self.allow_comment,
+            self.allow_duet,
+            self.allow_stitch,
+            self.share_to_feed,
+            self.ai_generated,
+            self.first_comment,
+            self.comment_available,
+            self.duet_available,
+            self.stitch_available,
+        )
+
+        if publish_snapshot != self._publish_signal_snapshot:
+            self._publish_signal_snapshot = publish_snapshot
+            signal = getattr(self._host, "socialPublishStateChanged", None)
+            if signal is not None:
+                signal.emit()
+        if account_snapshot != self._account_signal_snapshot:
+            self._account_signal_snapshot = account_snapshot
+            signal = getattr(self._host, "zernioAccountsChanged", None)
+            if signal is not None:
+                signal.emit()
+        if option_snapshot != self._option_signal_snapshot:
+            self._option_signal_snapshot = option_snapshot
+            signal = getattr(self._host, "zernioPostOptionsChanged", None)
+            if signal is not None:
+                signal.emit()
+
         self._host.tiktokPublishChanged.emit()
 
     def save_api_key(self, value: str) -> bool:
-        if self._busy or self._account_syncing:
+        if self._busy or self._account_syncing or self._creator_syncing:
             return False
         key = str(value or "").strip()
         if not _API_KEY_PATTERN.fullmatch(key):
@@ -356,6 +431,7 @@ class SocialPublishController:
             self._status = f"Could not save the Zernio API key securely: {exc}"
             self._emit_changed()
             return False
+        self._api_key_cache = key
         self._accounts = []
         self._profiles = []
         self._profile_id = ""
@@ -365,6 +441,7 @@ class SocialPublishController:
         self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
         self._creator_info_loaded = False
         self._can_post_more = True
+        self._creator_cache.clear()
         self._stop_oauth_sync()
         self._stop_post_status_poll()
         self._status = "Zernio API key saved. Verifying the connection..."
@@ -372,7 +449,7 @@ class SocialPublishController:
         return self.refresh_accounts()
 
     def clear_api_key(self) -> bool:
-        if self._busy or self._account_syncing:
+        if self._busy or self._account_syncing or self._creator_syncing:
             return False
         try:
             secure_credentials.delete_secret(ZERNIO_CREDENTIAL_TARGET)
@@ -380,12 +457,14 @@ class SocialPublishController:
             self._status = f"Could not remove the Zernio API key: {exc}"
             self._emit_changed()
             return False
+        self._api_key_cache = ""
         self._accounts = []
         self._profiles = []
         self._privacy_levels = []
         self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
         self._creator_info_loaded = False
         self._can_post_more = True
+        self._creator_cache.clear()
         self._profile_id = ""
         self._profile_name = ""
         self._api_key_verified = False
@@ -456,6 +535,10 @@ class SocialPublishController:
     def refresh_accounts(self) -> bool:
         return self._start_account_worker("refresh")
 
+    def reconcile_accounts(self) -> bool:
+        """Refresh connected accounts without blocking or repainting the page."""
+        return self._start_account_worker("refresh", silent=True)
+
     def disconnect_account(self, index: int) -> bool:
         if index < 0 or index >= len(self._accounts):
             return False
@@ -471,15 +554,25 @@ class SocialPublishController:
         account_id: str = "",
         silent: bool = False,
     ) -> bool:
-        if self._busy or self._account_syncing:
+        if self._busy:
+            return False
+        if silent and (self._background_account_refreshing or self._account_syncing):
+            return False
+        if not silent and self._account_syncing:
             return False
         key = self._api_key()
         if not key:
-            self._status = "Add a Zernio API key first."
-            self._emit_changed()
+            if not silent:
+                self._status = "Add a Zernio API key first."
+                self._emit_changed()
             return False
-        self._account_syncing = True
-        self._account_sync_silent = bool(silent)
+        if silent:
+            self._background_account_refreshing = True
+            generation = self._account_generation
+        else:
+            self._account_generation += 1
+            generation = self._account_generation
+            self._account_syncing = True
         platform_name = str(platform or "").strip().casefold()
         if silent:
             pass
@@ -492,7 +585,7 @@ class SocialPublishController:
         self._account_refresh_next = time.monotonic() + _ACCOUNT_BACKGROUND_REFRESH_SECONDS
         if not silent:
             self._emit_changed()
-        self._account_worker_thread = threading.Thread(
+        worker = threading.Thread(
             target=self._account_worker,
             args=(
                 action,
@@ -500,13 +593,21 @@ class SocialPublishController:
                 self._project_key,
                 platform_name,
                 len(self._accounts),
+                generation,
                 bool(silent),
+                str(self._profile_id or "").strip(),
+                str(self._profile_name or "").strip(),
+                list(self._profiles),
                 str(account_id or "").strip(),
             ),
             name=f"haizflow-zernio-{action}",
             daemon=True,
         )
-        self._account_worker_thread.start()
+        if silent:
+            self._background_account_worker_thread = worker
+        else:
+            self._account_worker_thread = worker
+        worker.start()
         return True
 
     def _account_worker(
@@ -516,24 +617,52 @@ class SocialPublishController:
         project_key: str,
         platform: str = "",
         connected_account_count: int = 0,
+        generation: int = 0,
         silent: bool = False,
+        cached_profile_id: str = "",
+        cached_profile_name: str = "",
+        cached_profiles: list[dict] | None = None,
         account_id: str = "",
     ) -> None:
         api_key_verified = False
         try:
             client = zernio.ZernioClient(key)
-            profiles = client.list_profiles()
-            api_key_verified = True
-            profile = self._connection_profile(profiles)
-            if not profile:
-                profile = client.create_profile("HaizFlow", "Social publishing from HaizFlow")
-                profiles = [profile]
-            profile_id = self._object_id(profile)
-            if not profile_id:
-                raise zernio.ZernioError("Zernio did not return a profile ID.")
-            profile_name = str(profile.get("name") or "Zernio profile")
             if action == "connect":
-                auth_url = client.get_connect_url(profile_id, platform)
+                # A verified profile is stable across account disconnects. Use
+                # it directly so opening OAuth needs one request instead of a
+                # profile-list round trip followed by the authorization call.
+                # If it was deleted on Zernio, refresh once and retry below.
+                profiles = list(cached_profiles or [])
+                profile_id = str(cached_profile_id or "")
+                profile_name = str(cached_profile_name or "Zernio profile")
+                if profile_id:
+                    try:
+                        auth_url = client.get_connect_url(profile_id, platform)
+                        api_key_verified = True
+                    except zernio.ZernioError as exc:
+                        normalized_error = str(exc).casefold()
+                        stale_profile = (
+                            "http 404" in normalized_error
+                            or (
+                                "profile" in normalized_error
+                                and any(marker in normalized_error for marker in ("not found", "missing", "invalid"))
+                            )
+                        )
+                        if not stale_profile:
+                            raise
+                        profile_id = ""
+                if not profile_id:
+                    profiles = client.list_profiles()
+                    api_key_verified = True
+                    profile = self._connection_profile(profiles)
+                    if not profile:
+                        profile = client.create_profile("HaizFlow", "Social publishing from HaizFlow")
+                        profiles = [profile]
+                    profile_id = self._object_id(profile)
+                    if not profile_id:
+                        raise zernio.ZernioError("Zernio did not return a profile ID.")
+                    profile_name = str(profile.get("name") or "Zernio profile")
+                    auth_url = client.get_connect_url(profile_id, platform)
                 if not auth_url:
                     raise zernio.ZernioError("Zernio did not return an authorization URL.")
                 self._events.put({
@@ -544,8 +673,20 @@ class SocialPublishController:
                     "profiles": profiles,
                     "url": auth_url,
                     "platform": platform,
+                    "generation": int(generation),
+                    "silent": bool(silent),
                 })
                 return
+            profiles = client.list_profiles()
+            api_key_verified = True
+            profile = self._connection_profile(profiles)
+            if not profile:
+                profile = client.create_profile("HaizFlow", "Social publishing from HaizFlow")
+                profiles = [profile]
+            profile_id = self._object_id(profile)
+            if not profile_id:
+                raise zernio.ZernioError("Zernio did not return a profile ID.")
+            profile_name = str(profile.get("name") or "Zernio profile")
             if action == "disconnect":
                 client.disconnect_account(account_id)
             # Accounts connected in the Zernio dashboard may belong to any
@@ -560,6 +701,7 @@ class SocialPublishController:
                 "profile_name": profile_name,
                 "profiles": profiles,
                 "accounts": accounts,
+                "generation": int(generation),
                 "silent": bool(silent),
                 "message": (
                     "Social account disconnected."
@@ -575,6 +717,7 @@ class SocialPublishController:
                 "project_key": project_key,
                 "message": message,
                 "api_key_verified": api_key_verified,
+                "generation": int(generation),
                 "silent": bool(silent),
             })
 
@@ -599,20 +742,82 @@ class SocialPublishController:
         if not account_id:
             return False
         platform = self._account_platform(self._accounts[index])
+        previous_account_id = str(self._state.get("selected_account_id") or "")
+        previous_platform = self.selected_platform
+        if (
+            account_id == previous_account_id
+            and platform == previous_platform
+            and self._creator_info_loaded
+        ):
+            return True
         self._state = tiktok_publish.update_publish_settings(
             self._project_root,
             selected_account_id=account_id,
             selected_platform=platform,
         )
-        self._sync_model()
+        if platform != previous_platform:
+            self._sync_model()
         if platform == "tiktok":
+            cached = self._cached_creator_info(account_id)
+            if cached is not None:
+                self._invalidate_creator_sync()
+                self._apply_creator_info(cached)
+                self._status = "TikTok account is ready for publishing."
+                self._emit_changed()
+                return True
             return self._start_creator_info_worker(account_id)
         self._configure_non_tiktok_account(platform)
         self._status = f"{PLATFORM_LABELS.get(platform, platform.title())} connection is ready."
         self._emit_changed()
         return True
 
+    def _cached_creator_info(self, account_id: str) -> dict | None:
+        cached = self._creator_cache.get(str(account_id or ""))
+        if cached is None:
+            return None
+        cached_at, payload = cached
+        if time.monotonic() - cached_at > _CREATOR_INFO_CACHE_SECONDS:
+            self._creator_cache.pop(str(account_id or ""), None)
+            return None
+        return dict(payload)
+
+    def _apply_creator_info(self, payload: dict) -> None:
+        self._privacy_levels = list(payload.get("levels") or [])
+        interactions = payload.get("interactions") or {}
+        self._interaction_settings = {
+            "comment": bool(interactions.get("comment", False)),
+            "duet": bool(interactions.get("duet", False)),
+            "stitch": bool(interactions.get("stitch", False)),
+        }
+        self._creator_info_loaded = True
+        self._can_post_more = bool(payload.get("can_post_more", True))
+        selected = str(self._state.get("privacy_level") or "")
+        if self._privacy_levels and selected not in self._privacy_levels:
+            selected = (
+                "PUBLIC_TO_EVERYONE"
+                if "PUBLIC_TO_EVERYONE" in self._privacy_levels
+                else self._privacy_levels[0]
+            )
+        changes = {
+            "privacy_level": selected,
+            "allow_comment": bool(self.allow_comment and self.comment_available),
+            "allow_duet": bool(self.allow_duet and self.duet_available),
+            "allow_stitch": bool(self.allow_stitch and self.stitch_available),
+        }
+        if any(self._state.get(key) != value for key, value in changes.items()):
+            self._state = tiktok_publish.update_publish_settings(
+                self._project_root,
+                **changes,
+            )
+
+    def _invalidate_creator_sync(self) -> None:
+        """Invalidate a creator-info response that belongs to an old selection."""
+        self._creator_generation += 1
+        self._creator_syncing = False
+        self._creator_worker_thread = None
+
     def _configure_non_tiktok_account(self, platform: str) -> None:
+        self._invalidate_creator_sync()
         self._creator_info_loaded = True
         self._can_post_more = True
         self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
@@ -626,28 +831,36 @@ class SocialPublishController:
             )
 
     def _start_creator_info_worker(self, account_id: str) -> bool:
-        if self._busy or self._account_syncing:
+        if self._busy:
             return False
         key = self._api_key()
         if not key:
             return False
-        self._account_syncing = True
+        self._creator_generation += 1
+        generation = self._creator_generation
+        self._creator_syncing = True
         self._privacy_levels = []
         self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
         self._creator_info_loaded = False
         self._can_post_more = True
         self._status = "Loading TikTok publishing options"
         self._emit_changed()
-        self._account_worker_thread = threading.Thread(
+        self._creator_worker_thread = threading.Thread(
             target=self._creator_info_worker,
-            args=(key, account_id, self._project_key),
+            args=(key, account_id, self._project_key, generation),
             name="haizflow-zernio-creator-info",
             daemon=True,
         )
-        self._account_worker_thread.start()
+        self._creator_worker_thread.start()
         return True
 
-    def _creator_info_worker(self, key: str, account_id: str, project_key: str) -> None:
+    def _creator_info_worker(
+        self,
+        key: str,
+        account_id: str,
+        project_key: str,
+        generation: int,
+    ) -> None:
         try:
             info = zernio.ZernioClient(key).get_tiktok_creator_info(account_id)
             levels = info.get("privacyLevels") or info.get("privacy_levels") or []
@@ -657,12 +870,20 @@ class SocialPublishController:
             self._events.put({
                 "type": "creator",
                 "project_key": project_key,
+                "account_id": account_id,
+                "generation": generation,
                 "levels": [str(value) for value in levels if str(value)],
                 "interactions": interactions if isinstance(interactions, dict) else {},
                 "can_post_more": bool(info.get("canPostMore", True)),
             })
         except (OSError, ValueError, zernio.ZernioError) as exc:
-            self._events.put({"type": "error", "project_key": project_key, "message": str(exc)})
+            self._events.put({
+                "type": "creator_error",
+                "project_key": project_key,
+                "account_id": account_id,
+                "generation": generation,
+                "message": str(exc),
+            })
 
     def set_publish_settings(
         self,
@@ -970,7 +1191,7 @@ class SocialPublishController:
     def _ensure_ready_to_publish(self, item: dict) -> bool:
         if self._busy or not self._ensure_publish_project():
             return False
-        if self._account_syncing:
+        if self._account_syncing or self._creator_syncing:
             self._status = "Wait for the selected platform to finish loading."
         elif not self._api_key():
             self._status = "Add a Zernio API key first."
@@ -1110,6 +1331,9 @@ class SocialPublishController:
             kind = event["type"]
             event_changed = True
             if kind == "oauth":
+                generation = int(event.get("generation") or 0)
+                if generation != self._account_generation:
+                    continue
                 self._account_syncing = False
                 self._account_worker_thread = None
                 self._api_key_verified = True
@@ -1126,16 +1350,35 @@ class SocialPublishController:
                     self._status = "Could not open the Zernio authorization page."
             elif kind == "accounts":
                 silent = bool(event.get("silent"))
-                self._account_syncing = False
-                self._account_sync_silent = False
-                self._account_worker_thread = None
+                generation = int(event.get("generation") or 0)
+                if silent:
+                    self._background_account_refreshing = False
+                    self._background_account_worker_thread = None
+                else:
+                    self._account_syncing = False
+                    self._account_worker_thread = None
+                if generation != self._account_generation:
+                    continue
                 self._api_key_verified = True
                 self._profile_id = str(event.get("profile_id") or "")
                 self._profile_name = str(event.get("profile_name") or "")
                 self._profiles = list(event.get("profiles") or [])
                 previous_accounts = self._accounts
                 self._accounts = self._deduplicate_accounts(event.get("accounts") or [])
-                accounts_changed = previous_accounts != self._accounts
+                available_account_ids = {
+                    self._object_id(account)
+                    for account in self._accounts
+                    if self._object_id(account)
+                }
+                self._creator_cache = {
+                    account_id: cached
+                    for account_id, cached in self._creator_cache.items()
+                    if account_id in available_account_ids
+                }
+                accounts_changed = (
+                    self._account_visible_signature(previous_accounts)
+                    != self._account_visible_signature(self._accounts)
+                )
                 current_account_ids = {
                     self._object_id(account) for account in self._accounts if self._object_id(account)
                 }
@@ -1145,10 +1388,12 @@ class SocialPublishController:
                     self._stop_oauth_sync()
                 selected_id = str(self._state.get("selected_account_id") or "")
                 selected_changed = False
+                platform_changed = False
                 if self._accounts and not any(self._object_id(item) == selected_id for item in self._accounts):
                     selected_id = self._object_id(self._accounts[0])
                     selected_changed = True
                     platform = self._account_platform(self._accounts[0])
+                    platform_changed = self._state.get("selected_platform") != platform
                     self._state = tiktok_publish.update_publish_settings(
                         self._project_root,
                         selected_account_id=selected_id,
@@ -1161,9 +1406,11 @@ class SocialPublishController:
                     self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
                     self._creator_info_loaded = False
                     self._can_post_more = True
+                    self._invalidate_creator_sync()
                     self._state = tiktok_publish.update_publish_settings(
                         self._project_root,
                         selected_account_id="",
+                        selected_platform="",
                         privacy_level="",
                     )
                 elif selected_id:
@@ -1173,6 +1420,7 @@ class SocialPublishController:
                     )
                     platform = self._account_platform(selected_account)
                     if self._state.get("selected_platform") != platform:
+                        platform_changed = True
                         self._state = tiktok_publish.update_publish_settings(
                             self._project_root,
                             selected_platform=platform,
@@ -1180,7 +1428,8 @@ class SocialPublishController:
                 # Ready queue cards derive their target badge from the active
                 # publishing platform. Keep them in sync when account refresh
                 # auto-selects a newly connected account.
-                self._sync_model()
+                if accounts_changed or selected_changed or platform_changed:
+                    self._sync_model()
                 if not silent or event.get("message"):
                     self._status = str(event.get("message") or "") or (
                         f"{len(self._accounts)} publishing account(s) available."
@@ -1191,39 +1440,56 @@ class SocialPublishController:
                     selected_index = self.selected_account_index
                     platform = self._account_platform(self._accounts[selected_index]) if selected_index >= 0 else "tiktok"
                     if platform == "tiktok" and (
-                        not silent or selected_changed or not self._creator_info_loaded
+                        selected_changed
+                        or (not self._creator_info_loaded and not self._creator_syncing)
                     ):
-                        self._start_creator_info_worker(selected_id)
+                        cached = self._cached_creator_info(selected_id)
+                        if cached is not None:
+                            self._invalidate_creator_sync()
+                            self._apply_creator_info(cached)
+                        else:
+                            self._start_creator_info_worker(selected_id)
                     elif platform != "tiktok" and (
-                        not silent or selected_changed or not self._creator_info_loaded
+                        selected_changed or not self._creator_info_loaded
                     ):
                         self._configure_non_tiktok_account(platform)
-                event_changed = not silent or accounts_changed or selected_changed
-            elif kind == "creator":
-                self._account_syncing = False
-                self._account_worker_thread = None
-                self._privacy_levels = list(event.get("levels") or [])
-                interactions = event.get("interactions") or {}
-                self._interaction_settings = {
-                    "comment": bool(interactions.get("comment", False)),
-                    "duet": bool(interactions.get("duet", False)),
-                    "stitch": bool(interactions.get("stitch", False)),
-                }
-                self._creator_info_loaded = True
-                self._can_post_more = bool(event.get("can_post_more", True))
-                selected = str(self._state.get("privacy_level") or "")
-                if self._privacy_levels and selected not in self._privacy_levels:
-                    selected = "PUBLIC_TO_EVERYONE" if "PUBLIC_TO_EVERYONE" in self._privacy_levels else self._privacy_levels[0]
-                self._state = tiktok_publish.update_publish_settings(
-                    self._project_root,
-                    privacy_level=selected,
-                    allow_comment=bool(self.allow_comment and self.comment_available),
-                    allow_duet=bool(self.allow_duet and self.duet_available),
-                    allow_stitch=bool(self.allow_stitch and self.stitch_available),
+                event_changed = (
+                    not silent or accounts_changed or selected_changed or platform_changed
                 )
+            elif kind == "creator":
+                generation = int(event.get("generation") or 0)
+                account_id = str(event.get("account_id") or "")
+                if (
+                    generation != self._creator_generation
+                    or account_id != str(self._state.get("selected_account_id") or "")
+                ):
+                    continue
+                self._creator_syncing = False
+                self._creator_worker_thread = None
+                creator_payload = {
+                    "levels": list(event.get("levels") or []),
+                    "interactions": dict(event.get("interactions") or {}),
+                    "can_post_more": bool(event.get("can_post_more", True)),
+                }
+                self._creator_cache[account_id] = (time.monotonic(), creator_payload)
+                self._apply_creator_info(creator_payload)
                 self._status = (
                     "TikTok account is ready for publishing."
                     if self._can_post_more else "TikTok reports that this account has reached its posting limit."
+                )
+            elif kind == "creator_error":
+                generation = int(event.get("generation") or 0)
+                account_id = str(event.get("account_id") or "")
+                if (
+                    generation != self._creator_generation
+                    or account_id != str(self._state.get("selected_account_id") or "")
+                ):
+                    continue
+                self._creator_syncing = False
+                self._creator_worker_thread = None
+                self._creator_info_loaded = False
+                self._status = str(
+                    event.get("message") or "Could not load TikTok publishing options."
                 )
             elif kind == "import_progress":
                 self._status = f"Adding video {event['done']} / {event['total']}"
@@ -1312,9 +1578,15 @@ class SocialPublishController:
                 self._status = str(event.get("message") or "Could not refresh Zernio post statuses.")
             elif kind == "error":
                 silent = bool(event.get("silent"))
-                self._account_syncing = False
-                self._account_sync_silent = False
-                self._account_worker_thread = None
+                generation = int(event.get("generation") or 0)
+                if silent:
+                    self._background_account_refreshing = False
+                    self._background_account_worker_thread = None
+                else:
+                    self._account_syncing = False
+                    self._account_worker_thread = None
+                if generation != self._account_generation:
+                    continue
                 if "api_key_verified" in event and not silent:
                     self._api_key_verified = bool(event.get("api_key_verified"))
                 if not silent:
@@ -1392,10 +1664,13 @@ class SocialPublishController:
         environment_key = str(os.environ.get("ZERNIO_API_KEY") or "").strip()
         if environment_key:
             return environment_key
+        if self._api_key_cache is not None:
+            return self._api_key_cache
         try:
-            return secure_credentials.read_secret(ZERNIO_CREDENTIAL_TARGET)
+            self._api_key_cache = secure_credentials.read_secret(ZERNIO_CREDENTIAL_TARGET)
         except OSError:
-            return ""
+            self._api_key_cache = ""
+        return self._api_key_cache
 
     def _stop_oauth_sync(self) -> None:
         self._oauth_sync_pending = False
@@ -1428,7 +1703,7 @@ class SocialPublishController:
             return
         if now >= self._oauth_sync_next:
             self._oauth_sync_next = now + _OAUTH_ACCOUNT_POLL_SECONDS
-            self.refresh_accounts()
+            self._start_account_worker("refresh", silent=True)
 
     def _poll_connected_accounts(self) -> None:
         """Quietly reconcile connections changed in the Zernio dashboard."""
@@ -1436,6 +1711,7 @@ class SocialPublishController:
             self._oauth_sync_pending
             or self._busy
             or self._account_syncing
+            or self._background_account_refreshing
             or not self._project_key
             or not self.api_key_configured
         ):
@@ -1525,7 +1801,25 @@ class SocialPublishController:
                 continue
             seen.add(account_id)
             result.append(account)
+        platform_order = {platform: index for index, platform in enumerate(SUPPORTED_PLATFORMS)}
+        result.sort(key=lambda account: (
+            platform_order.get(cls._account_platform(account), len(platform_order)),
+            cls._account_label(account).casefold(),
+            cls._object_id(account),
+        ))
         return result
+
+    @classmethod
+    def _account_visible_signature(cls, accounts: list[dict]) -> tuple[tuple[str, str, str], ...]:
+        """Fields that can change the platform picker or active publishing target."""
+        return tuple(
+            (
+                cls._object_id(account),
+                cls._account_platform(account),
+                cls._account_label(account),
+            )
+            for account in accounts
+        )
 
     def _ensure_publish_project(self) -> bool:
         if self._host._project_type == "publish" and self._project_key and self._project_root:
