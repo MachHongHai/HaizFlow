@@ -53,6 +53,17 @@ ApplicationWindow {
     readonly property bool canNavigateBack: downloadCanGoBack || routeCanGoBack
     readonly property bool canNavigateForward: downloadCanGoForward || routeCanGoForward
 
+    // Returning from the Zernio dashboard is the natural completion point of
+    // its web-based account connection flow.  Refresh on window activation so
+    // a newly connected social account appears without reopening the project.
+    onActiveChanged: {
+            if (active && currentRoute === routePublishWorkspace
+                && AppController.zernioOauthSyncPending
+                && !AppController.tiktokPublishBusy
+                && !AppController.zernioAccountSyncing)
+            AppController.refreshZernioConnections()
+    }
+
     function routeIndex(route) {
         switch (route) {
         case routeSingleWorkspace:
@@ -408,19 +419,6 @@ ApplicationWindow {
                 SidebarButton {
                     Layout.fillWidth: true
                     compact: root.compactNavigation
-                    iconGlyph: "\uE789"
-                    text: I18n.t("TikTok publishing")
-                    selected: root.currentRoute === root.routePublishProjects
-                        || root.currentRoute === root.routePublishWorkspace
-                    onClicked: {
-                        AppController.refreshVideos()
-                        root.navigate(root.routePublishProjects)
-                    }
-                }
-
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
                     iconGlyph: "\uE714" // Used only by the compact navigation fallback.
                     text: I18n.t("Single")
                     selected: root.currentRoute === root.routeSingleProjects || root.currentRoute === root.routeSingleWorkspace
@@ -440,6 +438,19 @@ ApplicationWindow {
                     onClicked: {
                         AppController.refreshVideos()
                         root.navigate(root.routeBatchProjects)
+                    }
+                }
+
+                SidebarButton {
+                    Layout.fillWidth: true
+                    compact: root.compactNavigation
+                    iconGlyph: "\uE789"
+                    text: I18n.t("Social publishing")
+                    selected: root.currentRoute === root.routePublishProjects
+                        || root.currentRoute === root.routePublishWorkspace
+                    onClicked: {
+                        AppController.refreshVideos()
+                        root.navigate(root.routePublishProjects)
                     }
                 }
 
@@ -684,7 +695,7 @@ ApplicationWindow {
                     active: root.currentRoute === root.routePublishWorkspace
                     asynchronous: true
                     sourceComponent: Component {
-                        TikTokPublishPage {}
+                        SocialPublishPage {}
                     }
                 }
 

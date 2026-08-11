@@ -9,7 +9,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.desktop.models import ProjectGridModel, VideoListModel
+from haizflow.desktop.models import ProjectGridModel, SocialPublishListModel, VideoListModel
 
 
 class ModelUpdateTests(unittest.TestCase):
@@ -65,6 +65,30 @@ class ModelUpdateTests(unittest.TestCase):
         video = SimpleNamespace(video_width=0, video_height=0)
 
         self.assertEqual(VideoListModel._video_size(video), "")
+
+    def test_social_publish_refresh_updates_rows_without_resetting_the_grid(self):
+        model = SocialPublishListModel()
+        current = {
+            "id": "post-1", "file_name": "clip.mp4", "file_path": "D:/clip.mp4",
+            "caption": "Caption", "hashtags": "#one", "post_text": "Caption\n#one",
+            "status": "ready", "error": "", "thumbnail_source": "",
+            "upload_progress": 0, "zernio_post_id": "", "platform_post_url": "",
+            "target_platform": "tiktok",
+        }
+        model.set_items([current])
+        resets = []
+        changed = []
+        model.modelReset.connect(lambda: resets.append(True))
+        model.dataChanged.connect(
+            lambda first, last, roles: changed.append((first.row(), last.row(), roles))
+        )
+
+        model.set_items([{**current, "target_platform": "youtube"}])
+
+        self.assertEqual(resets, [])
+        self.assertEqual(len(changed), 1)
+        self.assertEqual(changed[0][:2], (0, 0))
+        self.assertEqual(changed[0][2], [SocialPublishListModel.TargetPlatformRole])
 
 
 if __name__ == "__main__":

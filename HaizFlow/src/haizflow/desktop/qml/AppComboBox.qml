@@ -23,6 +23,8 @@ ComboBox {
         if (!logoRole || index < 0 || !logoModel || logoModel[index] === undefined)
             return ""
         const entry = logoModel[index]
+        if (typeof entry === "string")
+            return entry
         return entry && entry[logoRole] !== undefined ? String(entry[logoRole]) : ""
     }
 

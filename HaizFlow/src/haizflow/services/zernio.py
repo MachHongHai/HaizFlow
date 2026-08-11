@@ -6,12 +6,13 @@ import http.client
 import json
 import mimetypes
 import os
+import re
 import socket
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -36,31 +37,71 @@ class ZernioClient:
         self.base_url = str(base_url or DEFAULT_BASE_URL).rstrip("/")
         self.timeout = max(1.0, float(timeout))
 
-    def list_profiles(self) -> list[dict[str, Any]]:
-        payload = self._request("GET", "/profiles")
+    def list_profiles(self, *, include_over_limit: bool = True) -> list[dict[str, Any]]:
+        query = {"includeOverLimit": "true"} if include_over_limit else None
+        payload = self._request("GET", "/profiles", query=query)
         return _object_list(payload, "profiles")
 
-    def create_profile(self, name: str, description: str = "HaizFlow TikTok publishing") -> dict[str, Any]:
+    def create_profile(self, name: str, description: str = "HaizFlow social publishing") -> dict[str, Any]:
         payload = self._request("POST", "/profiles", {"name": name, "description": description})
         return _object(payload, "profile")
 
-    def get_connect_url(self, profile_id: str) -> str:
-        payload = self._request("GET", "/connect/tiktok", query={"profileId": profile_id})
+    def get_connect_url(self, profile_id: str, platform: str = "tiktok") -> str:
+        platform_name = normalize_platform(platform)
+        payload = self._request("GET", f"/connect/{platform_name}", query={"profileId": profile_id})
         return str(payload.get("authUrl") or payload.get("url") or payload.get("connectUrl") or "")
 
-    def list_tiktok_accounts(self, profile_id: str = "") -> list[dict[str, Any]]:
-        query = {"platform": "tiktok"}
+    def list_tiktok_accounts(
+        self,
+        profile_id: str = "",
+        *,
+        include_over_limit: bool = True,
+    ) -> list[dict[str, Any]]:
+        return self.list_accounts(
+            profile_id,
+            platforms=("tiktok",),
+            include_over_limit=include_over_limit,
+        )
+
+    def list_accounts(
+        self,
+        profile_id: str = "",
+        *,
+        platforms: tuple[str, ...] | list[str] | None = None,
+        include_over_limit: bool = True,
+    ) -> list[dict[str, Any]]:
+        query = {"status": "connected"}
+        normalized_platforms = tuple(normalize_platform(value) for value in (platforms or ()))
+        if len(normalized_platforms) == 1:
+            query["platform"] = normalized_platforms[0]
+        if include_over_limit:
+            query["includeOverLimit"] = "true"
         if profile_id:
             query["profileId"] = profile_id
         payload = self._request("GET", "/accounts", query=query)
-        return [item for item in _object_list(payload, "accounts") if str(item.get("platform") or "").lower() == "tiktok"]
+        allowed = set(normalized_platforms)
+        accounts = _object_list(payload, "accounts")
+        if not allowed:
+            return accounts
+        return [
+            item for item in accounts
+            if str(item.get("platform") or "").strip().casefold() in allowed
+        ]
 
     def get_tiktok_creator_info(self, account_id: str) -> dict[str, Any]:
-        return self._request(
+        payload = self._request(
             "GET",
             f"/accounts/{account_id}/tiktok/creator-info",
             query={"mediaType": "video"},
         )
+        return normalize_tiktok_creator_info(payload)
+
+    def disconnect_account(self, account_id: str) -> dict[str, Any]:
+        """Disconnect one social account from Zernio."""
+        normalized_id = str(account_id or "").strip()
+        if not normalized_id:
+            raise ValueError("A Zernio account ID is required.")
+        return self._request("DELETE", f"/accounts/{quote(normalized_id, safe='')}")
 
     def presign_video(self, file_path: str) -> dict[str, Any]:
         path = os.path.abspath(file_path)
@@ -129,6 +170,7 @@ class ZernioClient:
         allow_comment: bool = True,
         allow_duet: bool = True,
         allow_stitch: bool = True,
+        ai_generated: bool = False,
     ) -> Any:
         body: dict[str, Any] = {
             "content": content,
@@ -141,7 +183,76 @@ class ZernioClient:
                 "allow_stitch": bool(allow_stitch),
                 "content_preview_confirmed": True,
                 "express_consent_given": True,
+                "video_made_with_ai": bool(ai_generated),
             },
+        }
+        if publish_now:
+            body["publishNow"] = True
+        return self._request("POST", "/posts", body, headers={"x-request-id": request_id})
+
+    def create_video_post(
+        self,
+        *,
+        platform: str,
+        account_id: str,
+        content: str,
+        media_url: str,
+        publish_now: bool,
+        request_id: str,
+        privacy_level: str = "",
+        title: str = "",
+        allow_comment: bool = True,
+        allow_duet: bool = True,
+        allow_stitch: bool = True,
+        share_to_feed: bool = True,
+        ai_generated: bool = False,
+        first_comment: str = "",
+    ) -> Any:
+        """Create one short-form video post for a supported Zernio connection."""
+        platform_name = normalize_platform(platform)
+        if platform_name == "tiktok":
+            return self.create_tiktok_post(
+                account_id=account_id,
+                content=content,
+                media_url=media_url,
+                privacy_level=privacy_level or "PUBLIC_TO_EVERYONE",
+                publish_now=publish_now,
+                request_id=request_id,
+                allow_comment=allow_comment,
+                allow_duet=allow_duet,
+                allow_stitch=allow_stitch,
+                ai_generated=ai_generated,
+            )
+
+        platform_data: dict[str, Any]
+        if platform_name == "youtube":
+            platform_data = {
+                "title": (str(title or "").strip() or "HaizFlow video")[:100],
+                "visibility": privacy_level if privacy_level in {"public", "private", "unlisted"} else "public",
+            }
+        elif platform_name == "facebook":
+            platform_data = {"contentType": "reel"}
+            if title:
+                platform_data["title"] = str(title).strip()[:255]
+            if first_comment:
+                platform_data["firstComment"] = str(first_comment).strip()
+        else:
+            platform_data = {
+                "contentType": "reels",
+                "shareToFeed": bool(share_to_feed),
+                "isAiGenerated": bool(ai_generated),
+            }
+            if first_comment:
+                platform_data["firstComment"] = str(first_comment).strip()
+
+        body: dict[str, Any] = {
+            "content": content,
+            "mediaItems": [{"type": "video", "url": media_url}],
+            "platforms": [{
+                "platform": platform_name,
+                "accountId": account_id,
+                "platformSpecificData": platform_data,
+            }],
         }
         if publish_now:
             body["publishNow"] = True
@@ -234,3 +345,102 @@ def _object_list(payload: Any, key: str) -> list[dict[str, Any]]:
     else:
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+def normalize_tiktok_creator_info(payload: Any) -> dict[str, Any]:
+    """Normalize Zernio's creator-info objects into values safe for desktop controls."""
+    info = dict(payload) if isinstance(payload, dict) else {}
+    raw_levels = info.get("privacyLevels") or info.get("privacy_levels") or []
+    levels: list[str] = []
+    if isinstance(raw_levels, list):
+        for entry in raw_levels:
+            value = entry.get("value") if isinstance(entry, dict) else entry
+            normalized = str(value or "").strip()
+            if normalized and normalized not in levels:
+                levels.append(normalized)
+    posting_limits = info.get("postingLimits") or info.get("posting_limits") or {}
+    if not isinstance(posting_limits, dict):
+        posting_limits = {}
+    interactions = posting_limits.get("interactionSettings") or posting_limits.get("interaction_settings") or {}
+    if not isinstance(interactions, dict):
+        interactions = {}
+    creator = info.get("creator") if isinstance(info.get("creator"), dict) else {}
+    info["privacyLevels"] = levels
+    info["interactionSettings"] = {
+        "comment": bool(interactions.get("comment", True)),
+        "duet": bool(interactions.get("duet", True)),
+        "stitch": bool(interactions.get("stitch", True)),
+    }
+    info["canPostMore"] = bool(creator.get("canPostMore", creator.get("can_post_more", True)))
+    return info
+
+
+SUPPORTED_PUBLISH_PLATFORMS = frozenset({"tiktok", "youtube", "facebook", "instagram"})
+
+
+def normalize_platform(value: str) -> str:
+    platform = str(value or "").strip().casefold()
+    if platform not in SUPPORTED_PUBLISH_PLATFORMS:
+        raise ValueError(f"Unsupported Zernio platform: {value}")
+    return platform
+
+
+def post_result(post: Any, platform: str) -> dict[str, str]:
+    """Return the effective platform status, URL, and error from a Zernio post."""
+    platform_name = normalize_platform(platform)
+    value = post if isinstance(post, dict) else {}
+    platform_entry: dict[str, Any] = {}
+    for key in ("platforms", "platformResults", "results"):
+        entries = value.get(key)
+        if not isinstance(entries, list):
+            continue
+        platform_entry = next(
+            (
+                entry
+                for entry in entries
+                if isinstance(entry, dict)
+                and str(entry.get("platform") or "").casefold() == platform_name
+            ),
+            {},
+        )
+        if platform_entry:
+            break
+
+    status = str(platform_entry.get("status") or value.get("status") or "publishing").casefold()
+    url = str(
+        platform_entry.get("platformPostUrl")
+        or platform_entry.get("url")
+        or value.get("platformPostUrl")
+        or value.get("url")
+        or ""
+    )
+    if platform_name == "tiktok" and not url and status in {"published", "posted"}:
+        platform_data = platform_entry.get("platformSpecificData")
+        if not isinstance(platform_data, dict):
+            platform_data = {}
+        account = platform_entry.get("accountId")
+        if not isinstance(account, dict):
+            account = {}
+        username = str(
+            account.get("username")
+            or platform_data.get("tiktokUsername")
+            or platform_data.get("__usernameSnapshot")
+            or ""
+        ).strip().lstrip("@")
+        platform_post_id = str(
+            platform_entry.get("platformPostId")
+            or platform_data.get("tiktokPublishId")
+            or ""
+        )
+        video_id_match = re.search(r"(\d{15,})$", platform_post_id)
+        if username and video_id_match:
+            url = f"https://www.tiktok.com/@{username}/video/{video_id_match.group(1)}"
+    error_value = platform_entry.get("error") or value.get("error") or ""
+    if isinstance(error_value, dict):
+        error_value = error_value.get("message") or error_value.get("code") or ""
+    return {"status": status, "url": url, "error": str(error_value or "")}
+
+
+def tiktok_post_result(post: Any) -> dict[str, str]:
+    """Backward-compatible TikTok-specific result helper."""
+    return post_result(post, "tiktok")

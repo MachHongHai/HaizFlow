@@ -109,6 +109,14 @@ class ExternalLinkTests(unittest.TestCase):
         self.assertTrue(open_external_url("mailto:machhonghaipr@gmail.com"))
         fallback.assert_called_once()
 
+    @patch("haizflow.desktop.external_links._shell_open_url", return_value=True)
+    @patch("haizflow.desktop.external_links.QDesktopServices.openUrl", return_value=False)
+    @patch("haizflow.desktop.external_links._active_chrome_launch", return_value=None)
+    def test_web_link_falls_back_to_windows_shell(self, _active_chrome, qt_open, shell_open):
+        self.assertTrue(open_external_url("https://zernio.com/dashboard/api-keys"))
+        qt_open.assert_called_once()
+        shell_open.assert_called_once_with("https://zernio.com/dashboard/api-keys")
+
     def test_about_email_is_displayed_as_non_clickable_text(self):
         about_dialog = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "AboutDialog.qml").read_text(encoding="utf-8")
         self.assertIn('text: "machhonghaipr@gmail.com"', about_dialog)

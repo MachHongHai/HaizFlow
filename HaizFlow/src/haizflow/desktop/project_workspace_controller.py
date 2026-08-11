@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from haizflow.desktop.media import thumbnail_source
-from haizflow.services import project_store, tiktok_publish, video_store
+from haizflow.services import project_store, social_publish as tiktok_publish, video_store
 from haizflow.services.desktop_videos import migrate_legacy_single_export
 
 

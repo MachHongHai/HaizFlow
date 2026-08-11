@@ -1,4 +1,4 @@
-"""Persistent TikTok publishing queues owned by HaizFlow projects."""
+"""Persistent Zernio social-publishing queues owned by HaizFlow projects."""
 
 from __future__ import annotations
 
@@ -13,12 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-STATE_FILE_NAME = ".haizflow-tiktok-publish.json"
-STATE_SCHEMA_VERSION = 2
+STATE_FILE_NAME = ".haizflow-social-publish.json"
+LEGACY_STATE_FILE_NAME = ".haizflow-tiktok-publish.json"
+STATE_SCHEMA_VERSION = 4
 MAX_POST_TEXT_UTF16 = 2200
 _STATE_LOCK = threading.RLock()
 _HASHTAG_SEPARATOR = re.compile(r"[\s,;]+", re.UNICODE)
 _HASHTAG_CLEANUP = re.compile(r"[^\w]", re.UNICODE)
+_CAPTION_HASHTAG = re.compile(r"(?<!\w)#([\w]+)", re.UNICODE)
 
 
 def _now() -> str:
@@ -31,11 +33,15 @@ def _empty_state() -> dict[str, Any]:
         "default_caption": "",
         "default_hashtags": "",
         "selected_account_id": "",
+        "selected_platform": "tiktok",
         "privacy_level": "",
         "allow_comment": True,
         "allow_duet": True,
         "allow_stitch": True,
         "publish_now": True,
+        "share_to_feed": True,
+        "ai_generated": False,
+        "first_comment": "",
         "items": [],
     }
 
@@ -51,6 +57,14 @@ def state_path(project_root: str) -> str:
 
 def backup_state_path(project_root: str) -> str:
     return f"{state_path(project_root)}.bak"
+
+
+def legacy_state_path(project_root: str) -> str:
+    return os.path.join(os.path.abspath(project_root), LEGACY_STATE_FILE_NAME)
+
+
+def legacy_backup_state_path(project_root: str) -> str:
+    return f"{legacy_state_path(project_root)}.bak"
 
 
 def media_directory(project_root: str) -> str:
@@ -93,11 +107,17 @@ def normalize_hashtags(value: str) -> str:
 
 
 def compose_post_text(caption: str, hashtags: str) -> str:
-    """Build one TikTok title without exceeding the API's UTF-16 limit."""
+    """Build one social caption without exceeding the conservative shared limit."""
     normalized_caption = normalize_caption(caption)
     normalized_tags = normalize_hashtags(hashtags)
+    caption_tags = {
+        match.group(1).casefold()
+        for match in _CAPTION_HASHTAG.finditer(normalized_caption)
+    }
     accepted_tags: list[str] = []
     for tag in normalized_tags.split():
+        if tag.lstrip("#").casefold() in caption_tags:
+            continue
         candidate_tags = " ".join((*accepted_tags, tag))
         if utf16_length(candidate_tags) > MAX_POST_TEXT_UTF16:
             break
@@ -115,16 +135,26 @@ def _read_payload(path: str) -> dict[str, Any] | None:
             payload = json.load(handle)
     except (FileNotFoundError, OSError, json.JSONDecodeError, TypeError, ValueError):
         return None
-    if not isinstance(payload, dict) or payload.get("schema_version") not in {1, STATE_SCHEMA_VERSION}:
+    if not isinstance(payload, dict) or payload.get("schema_version") not in {1, 2, 3, STATE_SCHEMA_VERSION}:
         return None
     return payload
 
 
 def load_state(project_root: str) -> dict[str, Any]:
     with _STATE_LOCK:
-        payload = _read_payload(state_path(project_root))
-        if payload is None:
-            payload = _read_payload(backup_state_path(project_root))
+        payload = next(
+            (
+                candidate
+                for path in (
+                    state_path(project_root),
+                    backup_state_path(project_root),
+                    legacy_state_path(project_root),
+                    legacy_backup_state_path(project_root),
+                )
+                if (candidate := _read_payload(path)) is not None
+            ),
+            None,
+        )
         if payload is None:
             return _empty_state()
     items = payload.get("items")
@@ -142,6 +172,7 @@ def load_state(project_root: str) -> dict[str, Any]:
                 "file_name": str(item.get("file_name") or os.path.basename(path_value)),
                 "file_path": path_value,
                 "thumbnail_path": str(item.get("thumbnail_path") or ""),
+                "source_path": str(item.get("source_path") or ""),
                 "caption": normalize_caption(str(item.get("caption") or "")),
                 "hashtags": normalize_hashtags(str(item.get("hashtags") or "")),
                 "status": str(item.get("status") or "ready"),
@@ -149,6 +180,10 @@ def load_state(project_root: str) -> dict[str, Any]:
                 "request_id": str(item.get("request_id") or uuid.uuid4()),
                 "zernio_post_id": str(item.get("zernio_post_id") or ""),
                 "platform_post_url": str(item.get("platform_post_url") or ""),
+                "target_platform": str(item.get("target_platform") or "tiktok").casefold(),
+                "duration_seconds": max(0.0, float(item.get("duration_seconds") or 0.0)),
+                "video_width": max(0, int(item.get("video_width") or 0)),
+                "video_height": max(0, int(item.get("video_height") or 0)),
                 "upload_progress": max(0, min(100, int(item.get("upload_progress") or 0))),
                 "created_at": str(item.get("created_at") or _now()),
                 "updated_at": str(item.get("updated_at") or _now()),
@@ -165,11 +200,15 @@ def load_state(project_root: str) -> dict[str, Any]:
         "default_caption": normalize_caption(str(payload.get("default_caption") or "")),
         "default_hashtags": normalize_hashtags(str(payload.get("default_hashtags") or "")),
         "selected_account_id": str(payload.get("selected_account_id") or ""),
+        "selected_platform": str(payload.get("selected_platform") or "tiktok").casefold(),
         "privacy_level": str(payload.get("privacy_level") or ""),
         "allow_comment": bool(payload.get("allow_comment", True)),
         "allow_duet": bool(payload.get("allow_duet", True)),
         "allow_stitch": bool(payload.get("allow_stitch", True)),
         "publish_now": bool(payload.get("publish_now", True)),
+        "share_to_feed": bool(payload.get("share_to_feed", True)),
+        "ai_generated": bool(payload.get("ai_generated", False)),
+        "first_comment": normalize_caption(str(payload.get("first_comment") or "")),
         "items": normalized_items,
     }
 
@@ -182,11 +221,15 @@ def save_state(project_root: str, state: dict[str, Any]) -> None:
         "default_caption": normalize_caption(str(state.get("default_caption") or "")),
         "default_hashtags": normalize_hashtags(str(state.get("default_hashtags") or "")),
         "selected_account_id": str(state.get("selected_account_id") or ""),
+        "selected_platform": str(state.get("selected_platform") or "tiktok").casefold(),
         "privacy_level": str(state.get("privacy_level") or ""),
         "allow_comment": bool(state.get("allow_comment", True)),
         "allow_duet": bool(state.get("allow_duet", True)),
         "allow_stitch": bool(state.get("allow_stitch", True)),
         "publish_now": bool(state.get("publish_now", True)),
+        "share_to_feed": bool(state.get("share_to_feed", True)),
+        "ai_generated": bool(state.get("ai_generated", False)),
+        "first_comment": normalize_caption(str(state.get("first_comment") or "")),
         "items": list(state.get("items") or []),
     }
     path = state_path(root)
@@ -203,6 +246,11 @@ def save_state(project_root: str, state: dict[str, Any]) -> None:
                 shutil.copy2(path, backup_state_path(root))
             os.replace(temporary_path, path)
             temporary_path = ""
+            for legacy_path in (legacy_state_path(root), legacy_backup_state_path(root)):
+                try:
+                    os.remove(legacy_path)
+                except FileNotFoundError:
+                    pass
         finally:
             if temporary_path:
                 try:
@@ -267,15 +315,17 @@ def update_defaults(
     hashtags: str,
     *,
     apply_to_ready_items: bool = False,
+    apply_to_empty_items: bool = True,
 ) -> dict[str, Any]:
     with _STATE_LOCK:
         state = load_state(project_root)
         state["default_caption"] = normalize_caption(caption)
         state["default_hashtags"] = normalize_hashtags(hashtags)
-        if apply_to_ready_items:
-            for item in state["items"]:
-                if item["status"] in {"published", "posted"}:
-                    continue
+        for item in state["items"]:
+            if item["status"] in {"uploading", "publishing", "published", "posted", "scheduled"}:
+                continue
+            item_is_empty = not item.get("caption") and not item.get("hashtags")
+            if apply_to_ready_items or (apply_to_empty_items and item_is_empty):
                 item["caption"] = state["default_caption"]
                 item["hashtags"] = state["default_hashtags"]
                 item["status"] = "ready"
@@ -292,18 +342,27 @@ def update_defaults(
 def update_publish_settings(project_root: str, **changes: Any) -> dict[str, Any]:
     allowed = {
         "selected_account_id",
+        "selected_platform",
         "privacy_level",
         "allow_comment",
         "allow_duet",
         "allow_stitch",
         "publish_now",
+        "share_to_feed",
+        "ai_generated",
+        "first_comment",
     }
     with _STATE_LOCK:
         state = load_state(project_root)
         for key, value in changes.items():
             if key not in allowed:
                 continue
-            state[key] = bool(value) if key.startswith("allow_") or key == "publish_now" else str(value or "")
+            if key.startswith("allow_") or key in {"publish_now", "share_to_feed", "ai_generated"}:
+                state[key] = bool(value)
+            elif key == "first_comment":
+                state[key] = normalize_caption(str(value or ""))
+            else:
+                state[key] = str(value or "")
         save_state(project_root, state)
         return state
 
@@ -316,6 +375,7 @@ def new_item(file_path: str, thumbnail_path: str, order: int, caption: str, hash
         "file_name": Path(file_path).name,
         "file_path": os.path.abspath(file_path),
         "thumbnail_path": os.path.abspath(thumbnail_path) if thumbnail_path else "",
+        "source_path": "",
         "caption": normalize_caption(caption),
         "hashtags": normalize_hashtags(hashtags),
         "status": "ready",
@@ -323,6 +383,10 @@ def new_item(file_path: str, thumbnail_path: str, order: int, caption: str, hash
         "request_id": str(uuid.uuid4()),
         "zernio_post_id": "",
         "platform_post_url": "",
+        "target_platform": "",
+        "duration_seconds": 0.0,
+        "video_width": 0,
+        "video_height": 0,
         "upload_progress": 0,
         "created_at": now,
         "updated_at": now,
@@ -361,6 +425,8 @@ def cleanup_orphaned_media(project_root: str) -> int:
     has_valid_state = (
         _read_payload(state_path(project_root)) is not None
         or _read_payload(backup_state_path(project_root)) is not None
+        or _read_payload(legacy_state_path(project_root)) is not None
+        or _read_payload(legacy_backup_state_path(project_root)) is not None
     )
     state = load_state(project_root)
     referenced = {
@@ -387,3 +453,22 @@ def cleanup_orphaned_media(project_root: str) -> int:
             except FileNotFoundError:
                 pass
     return removed
+
+
+def migrate_project_layout(project_root: str) -> dict[str, Any]:
+    """Migrate a publishing project without deleting any user-owned content.
+
+    Only the two known legacy directories are removed, and only when empty.
+    A successful write of the new social state happens before legacy state
+    files are retired, so a failed migration remains recoverable.
+    """
+    root = os.path.abspath(project_root)
+    state = load_state(root)
+    save_state(root, state)
+    for directory_name in ("exports", "videos"):
+        directory = os.path.join(root, directory_name)
+        try:
+            os.rmdir(directory)
+        except (FileNotFoundError, OSError):
+            pass
+    return state

@@ -129,7 +129,7 @@ Rectangle {
         AppMenuItem {
             id: newPublishProjectItem
 
-            text: I18n.t("New TikTok publishing project")
+            text: I18n.t("New social publishing project")
             onTriggered: root.newPublishProjectRequested()
         }
 

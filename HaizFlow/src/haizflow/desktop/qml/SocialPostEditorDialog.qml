@@ -63,7 +63,7 @@ Dialog {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Edit TikTok post")
+                    text: I18n.t("Edit social post")
                     color: Theme.text
                     font.pixelSize: Theme.h2
                     font.weight: Font.DemiBold
@@ -204,4 +204,3 @@ Dialog {
         }
     }
 }
-

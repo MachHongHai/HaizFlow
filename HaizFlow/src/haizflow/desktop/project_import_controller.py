@@ -851,7 +851,7 @@ class ProjectImportController:
         if publisher is not None and not publisher.can_switch_project("__new_project__"):
             QMessageBox.information(
                 None,
-                "TikTok publishing",
+                "Social publishing",
                 "Wait for the current Zernio or publishing-project import task to finish before creating another project.",
             )
             return False

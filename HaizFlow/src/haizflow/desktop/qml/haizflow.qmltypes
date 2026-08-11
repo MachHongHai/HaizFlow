@@ -125,11 +125,71 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "zernioApiKeyVerified"
+            type: "bool"
+            read: "zernioApiKeyVerified"
+            notify: "tiktokPublishChanged"
+            index: 16
+            isReadonly: true
+        }
+        Property {
+            name: "zernioConnectedAccountCount"
+            type: "int"
+            read: "zernioConnectedAccountCount"
+            notify: "tiktokPublishChanged"
+            index: 17
+            isReadonly: true
+        }
+        Property {
+            name: "zernioAccountReady"
+            type: "bool"
+            read: "zernioAccountReady"
+            notify: "tiktokPublishChanged"
+            index: 18
+            isReadonly: true
+        }
+        Property {
+            name: "zernioCanPostMore"
+            type: "bool"
+            read: "zernioCanPostMore"
+            notify: "tiktokPublishChanged"
+            index: 19
+            isReadonly: true
+        }
+        Property {
             name: "zernioTikTokAccounts"
             type: "QStringList"
             read: "zernioTikTokAccounts"
             notify: "tiktokPublishChanged"
-            index: 16
+            index: 20
+            isReadonly: true
+        }
+        Property {
+            name: "zernioConnections"
+            type: "QStringList"
+            read: "zernioConnections"
+            notify: "tiktokPublishChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "zernioConnectionPlatforms"
+            type: "QStringList"
+            read: "zernioConnectionPlatforms"
+            notify: "tiktokPublishChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "zernioSelectedPlatform"
+            type: "QString"
+            read: "zernioSelectedPlatform"
+            notify: "tiktokPublishChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "zernioSelectedPlatformLabel"
+            type: "QString"
+            read: "zernioSelectedPlatformLabel"
+            notify: "tiktokPublishChanged"
             isReadonly: true
         }
         Property {
@@ -137,7 +197,14 @@ Module {
             type: "int"
             read: "zernioSelectedAccountIndex"
             notify: "tiktokPublishChanged"
-            index: 17
+            index: 21
+            isReadonly: true
+        }
+        Property {
+            name: "zernioSelectedAccountName"
+            type: "QString"
+            read: "zernioSelectedAccountName"
+            notify: "tiktokPublishChanged"
             isReadonly: true
         }
         Property {
@@ -145,7 +212,7 @@ Module {
             type: "QStringList"
             read: "zernioPrivacyLevels"
             notify: "tiktokPublishChanged"
-            index: 18
+            index: 22
             isReadonly: true
         }
         Property {
@@ -153,7 +220,7 @@ Module {
             type: "QString"
             read: "zernioPrivacyLevel"
             notify: "tiktokPublishChanged"
-            index: 19
+            index: 23
             isReadonly: true
         }
         Property {
@@ -161,7 +228,7 @@ Module {
             type: "bool"
             read: "zernioPublishNow"
             notify: "tiktokPublishChanged"
-            index: 20
+            index: 24
             isReadonly: true
         }
         Property {
@@ -169,7 +236,7 @@ Module {
             type: "bool"
             read: "zernioAllowComment"
             notify: "tiktokPublishChanged"
-            index: 21
+            index: 25
             isReadonly: true
         }
         Property {
@@ -177,7 +244,7 @@ Module {
             type: "bool"
             read: "zernioAllowDuet"
             notify: "tiktokPublishChanged"
-            index: 22
+            index: 26
             isReadonly: true
         }
         Property {
@@ -185,7 +252,31 @@ Module {
             type: "bool"
             read: "zernioAllowStitch"
             notify: "tiktokPublishChanged"
-            index: 23
+            index: 27
+            isReadonly: true
+        }
+        Property {
+            name: "zernioCommentAvailable"
+            type: "bool"
+            read: "zernioCommentAvailable"
+            notify: "tiktokPublishChanged"
+            index: 28
+            isReadonly: true
+        }
+        Property {
+            name: "zernioDuetAvailable"
+            type: "bool"
+            read: "zernioDuetAvailable"
+            notify: "tiktokPublishChanged"
+            index: 29
+            isReadonly: true
+        }
+        Property {
+            name: "zernioStitchAvailable"
+            type: "bool"
+            read: "zernioStitchAvailable"
+            notify: "tiktokPublishChanged"
+            index: 30
             isReadonly: true
         }
         Property {
@@ -193,21 +284,21 @@ Module {
             type: "bool"
             read: "zernioPublishConsentConfirmed"
             notify: "tiktokPublishChanged"
-            index: 24
+            index: 31
             isReadonly: true
         }
         Property {
             name: "channelImporter"
             type: "QObject"
             read: "channelImporter"
-            index: 25
+            index: 32
             isReadonly: true
         }
         Property {
             name: "mediaDownloader"
             type: "QObject"
             read: "mediaDownloader"
-            index: 26
+            index: 33
             isReadonly: true
         }
         Property {
@@ -215,7 +306,7 @@ Module {
             type: "bool"
             read: "mediaImportBusy"
             notify: "mediaImportChanged"
-            index: 27
+            index: 34
             isReadonly: true
         }
         Property {
@@ -223,7 +314,7 @@ Module {
             type: "int"
             read: "mediaImportTotal"
             notify: "mediaImportChanged"
-            index: 28
+            index: 35
             isReadonly: true
         }
         Property {
@@ -231,7 +322,7 @@ Module {
             type: "int"
             read: "mediaImportCompleted"
             notify: "mediaImportChanged"
-            index: 29
+            index: 36
             isReadonly: true
         }
         Property {
@@ -239,7 +330,7 @@ Module {
             type: "QString"
             read: "mediaImportStatus"
             notify: "mediaImportChanged"
-            index: 30
+            index: 37
             isReadonly: true
         }
         Property {
@@ -247,7 +338,7 @@ Module {
             type: "bool"
             read: "hasChannelImportSession"
             notify: "channelImportChanged"
-            index: 31
+            index: 38
             isReadonly: true
         }
         Property {
@@ -255,7 +346,7 @@ Module {
             type: "bool"
             read: "channelImportBusy"
             notify: "channelImportChanged"
-            index: 32
+            index: 39
             isReadonly: true
         }
         Property {
@@ -263,7 +354,7 @@ Module {
             type: "int"
             read: "channelImportProgress"
             notify: "channelImportChanged"
-            index: 33
+            index: 40
             isReadonly: true
         }
         Property {
@@ -271,7 +362,7 @@ Module {
             type: "QString"
             read: "channelImportStatus"
             notify: "channelImportChanged"
-            index: 34
+            index: 41
             isReadonly: true
         }
         Property {
@@ -279,7 +370,7 @@ Module {
             type: "QString"
             read: "channelImportName"
             notify: "channelImportChanged"
-            index: 35
+            index: 42
             isReadonly: true
         }
         Property {
@@ -287,7 +378,7 @@ Module {
             type: "int"
             read: "channelImportCandidateCount"
             notify: "channelImportChanged"
-            index: 36
+            index: 43
             isReadonly: true
         }
         Property {
@@ -295,7 +386,7 @@ Module {
             type: "int"
             read: "channelImportImportedCount"
             notify: "channelImportChanged"
-            index: 37
+            index: 44
             isReadonly: true
         }
         Property {
@@ -303,14 +394,14 @@ Module {
             type: "int"
             read: "channelImportFailedCount"
             notify: "channelImportChanged"
-            index: 38
+            index: 45
             isReadonly: true
         }
         Property {
             name: "batchVideoModel"
             type: "QObject"
             read: "batchVideoModel"
-            index: 39
+            index: 46
             isReadonly: true
         }
         Property {
@@ -318,7 +409,7 @@ Module {
             type: "bool"
             read: "isBatchRunning"
             notify: "batchChanged"
-            index: 40
+            index: 47
             isReadonly: true
         }
         Property {
@@ -326,7 +417,7 @@ Module {
             type: "int"
             read: "batchCount"
             notify: "batchChanged"
-            index: 41
+            index: 48
             isReadonly: true
         }
         Property {
@@ -334,7 +425,7 @@ Module {
             type: "int"
             read: "batchCompletedCount"
             notify: "batchChanged"
-            index: 42
+            index: 49
             isReadonly: true
         }
         Property {
@@ -342,7 +433,7 @@ Module {
             type: "int"
             read: "batchPendingCount"
             notify: "batchChanged"
-            index: 43
+            index: 50
             isReadonly: true
         }
         Property {
@@ -350,7 +441,7 @@ Module {
             type: "int"
             read: "batchPausedCount"
             notify: "batchChanged"
-            index: 44
+            index: 51
             isReadonly: true
         }
         Property {
@@ -358,7 +449,7 @@ Module {
             type: "int"
             read: "batchProgress"
             notify: "batchChanged"
-            index: 45
+            index: 52
             isReadonly: true
         }
         Property {
@@ -366,7 +457,7 @@ Module {
             type: "QString"
             read: "batchTargetLanguageLabel"
             notify: "batchChanged"
-            index: 46
+            index: 53
             isReadonly: true
         }
         Property {
@@ -375,14 +466,14 @@ Module {
             read: "videoPath"
             write: "videoPath"
             notify: "videoPathChanged"
-            index: 47
+            index: 54
         }
         Property {
             name: "videoThumbnailSource"
             type: "QString"
             read: "videoThumbnailSource"
             notify: "videoThumbnailChanged"
-            index: 48
+            index: 55
             isReadonly: true
         }
         Property {
@@ -390,7 +481,7 @@ Module {
             type: "QVariantList"
             read: "targetLanguageOptions"
             notify: "languageOptionsChanged"
-            index: 49
+            index: 56
             isReadonly: true
         }
         Property {
@@ -399,14 +490,14 @@ Module {
             read: "targetLanguage"
             write: "targetLanguage"
             notify: "targetLanguageChanged"
-            index: 50
+            index: 57
         }
         Property {
             name: "targetLanguageLabel"
             type: "QString"
             read: "targetLanguageLabel"
             notify: "languageOptionsChanged"
-            index: 51
+            index: 58
             isReadonly: true
         }
         Property {
@@ -415,14 +506,14 @@ Module {
             read: "ttsVoice"
             write: "ttsVoice"
             notify: "ttsVoiceChanged"
-            index: 52
+            index: 59
         }
         Property {
             name: "ttsVoiceOptions"
             type: "QVariantList"
             read: "ttsVoiceOptions"
             notify: "ttsVoiceOptionsChanged"
-            index: 53
+            index: 60
             isReadonly: true
         }
         Property {
@@ -430,7 +521,7 @@ Module {
             type: "int"
             read: "ttsVoiceIndex"
             notify: "ttsVoiceOptionsChanged"
-            index: 54
+            index: 61
             isReadonly: true
         }
         Property {
@@ -439,7 +530,7 @@ Module {
             read: "enableAudioSeparation"
             write: "enableAudioSeparation"
             notify: "enableAudioSeparationChanged"
-            index: 55
+            index: 62
         }
         Property {
             name: "originalVolume"
@@ -447,7 +538,7 @@ Module {
             read: "originalVolume"
             write: "originalVolume"
             notify: "originalVolumeChanged"
-            index: 56
+            index: 63
         }
         Property {
             name: "backgroundMusicVolume"
@@ -455,7 +546,7 @@ Module {
             read: "backgroundMusicVolume"
             write: "backgroundMusicVolume"
             notify: "backgroundMusicVolumeChanged"
-            index: 57
+            index: 64
         }
         Property {
             name: "ttsVolume"
@@ -463,7 +554,7 @@ Module {
             read: "ttsVolume"
             write: "ttsVolume"
             notify: "ttsVolumeChanged"
-            index: 58
+            index: 65
         }
         Property {
             name: "watermarkText"
@@ -471,7 +562,7 @@ Module {
             read: "watermarkText"
             write: "watermarkText"
             notify: "watermarkTextChanged"
-            index: 59
+            index: 66
         }
         Property {
             name: "removeOriginalSubtitles"
@@ -479,7 +570,7 @@ Module {
             read: "removeOriginalSubtitles"
             write: "removeOriginalSubtitles"
             notify: "subtitleSettingsChanged"
-            index: 60
+            index: 67
         }
         Property {
             name: "subtitleFontSize"
@@ -487,7 +578,7 @@ Module {
             read: "subtitleFontSize"
             write: "subtitleFontSize"
             notify: "subtitleSettingsChanged"
-            index: 61
+            index: 68
         }
         Property {
             name: "subtitlePositionXPercent"
@@ -495,7 +586,7 @@ Module {
             read: "subtitlePositionXPercent"
             write: "subtitlePositionXPercent"
             notify: "subtitleSettingsChanged"
-            index: 62
+            index: 69
         }
         Property {
             name: "subtitlePositionYPercent"
@@ -503,7 +594,7 @@ Module {
             read: "subtitlePositionYPercent"
             write: "subtitlePositionYPercent"
             notify: "subtitleSettingsChanged"
-            index: 63
+            index: 70
         }
         Property {
             name: "subtitleBoxWidthPercent"
@@ -511,7 +602,7 @@ Module {
             read: "subtitleBoxWidthPercent"
             write: "subtitleBoxWidthPercent"
             notify: "subtitleSettingsChanged"
-            index: 64
+            index: 71
         }
         Property {
             name: "subtitleBoxHeightPercent"
@@ -519,14 +610,14 @@ Module {
             read: "subtitleBoxHeightPercent"
             write: "subtitleBoxHeightPercent"
             notify: "subtitleSettingsChanged"
-            index: 65
+            index: 72
         }
         Property {
             name: "backgroundMusicPath"
             type: "QString"
             read: "backgroundMusicPath"
             notify: "backgroundMusicChanged"
-            index: 66
+            index: 73
             isReadonly: true
         }
         Property {
@@ -534,7 +625,7 @@ Module {
             type: "bool"
             read: "backgroundMusicImportBusy"
             notify: "backgroundMusicImportChanged"
-            index: 67
+            index: 74
             isReadonly: true
         }
         Property {
@@ -542,7 +633,7 @@ Module {
             type: "QString"
             read: "backgroundMusicImportStatus"
             notify: "backgroundMusicImportChanged"
-            index: 68
+            index: 75
             isReadonly: true
         }
         Property {
@@ -550,7 +641,7 @@ Module {
             type: "QString"
             read: "audioPreviewSource"
             notify: "audioPreviewChanged"
-            index: 69
+            index: 76
             isReadonly: true
         }
         Property {
@@ -558,7 +649,7 @@ Module {
             type: "QString"
             read: "audioPreviewOriginalSource"
             notify: "audioPreviewChanged"
-            index: 70
+            index: 77
             isReadonly: true
         }
         Property {
@@ -566,7 +657,7 @@ Module {
             type: "QString"
             read: "audioPreviewBackgroundMusicSource"
             notify: "audioPreviewChanged"
-            index: 71
+            index: 78
             isReadonly: true
         }
         Property {
@@ -574,7 +665,7 @@ Module {
             type: "QString"
             read: "audioPreviewState"
             notify: "audioPreviewChanged"
-            index: 72
+            index: 79
             isReadonly: true
         }
         Property {
@@ -583,14 +674,14 @@ Module {
             read: "workflowMode"
             write: "workflowMode"
             notify: "workflowModeChanged"
-            index: 73
+            index: 80
         }
         Property {
             name: "isProcessing"
             type: "bool"
             read: "isProcessing"
             notify: "processingChanged"
-            index: 74
+            index: 81
             isReadonly: true
         }
         Property {
@@ -598,7 +689,7 @@ Module {
             type: "bool"
             read: "isSelectedVideoProcessing"
             notify: "processingChanged"
-            index: 75
+            index: 82
             isReadonly: true
         }
         Property {
@@ -606,7 +697,7 @@ Module {
             type: "bool"
             read: "isSelectedVideoQueued"
             notify: "selectedVideoChanged"
-            index: 76
+            index: 83
             isReadonly: true
         }
         Property {
@@ -614,7 +705,7 @@ Module {
             type: "bool"
             read: "canEditSelectedVideo"
             notify: "selectedVideoChanged"
-            index: 77
+            index: 84
             isReadonly: true
         }
         Property {
@@ -622,7 +713,7 @@ Module {
             type: "QString"
             read: "processingText"
             notify: "processingChanged"
-            index: 78
+            index: 85
             isReadonly: true
         }
         Property {
@@ -630,7 +721,7 @@ Module {
             type: "QString"
             read: "selectedTitle"
             notify: "selectedVideoChanged"
-            index: 79
+            index: 86
             isReadonly: true
         }
         Property {
@@ -638,7 +729,7 @@ Module {
             type: "bool"
             read: "hasSelectedVideo"
             notify: "selectedVideoChanged"
-            index: 80
+            index: 87
             isReadonly: true
         }
         Property {
@@ -646,7 +737,7 @@ Module {
             type: "bool"
             read: "hasOpenProject"
             notify: "projectSetupChanged"
-            index: 81
+            index: 88
             isReadonly: true
         }
         Property {
@@ -654,7 +745,7 @@ Module {
             type: "bool"
             read: "isSelectedBatchVideo"
             notify: "selectedVideoChanged"
-            index: 82
+            index: 89
             isReadonly: true
         }
         Property {
@@ -662,7 +753,7 @@ Module {
             type: "QVariantList"
             read: "reviewSegments"
             notify: "selectedVideoChanged"
-            index: 83
+            index: 90
             isReadonly: true
         }
         Property {
@@ -670,7 +761,7 @@ Module {
             type: "QString"
             read: "selectedFileName"
             notify: "selectedVideoChanged"
-            index: 84
+            index: 91
             isReadonly: true
         }
         Property {
@@ -678,7 +769,7 @@ Module {
             type: "QString"
             read: "selectedStatus"
             notify: "selectedVideoChanged"
-            index: 85
+            index: 92
             isReadonly: true
         }
         Property {
@@ -686,7 +777,7 @@ Module {
             type: "QString"
             read: "selectedStep"
             notify: "selectedVideoChanged"
-            index: 86
+            index: 93
             isReadonly: true
         }
         Property {
@@ -694,7 +785,7 @@ Module {
             type: "int"
             read: "selectedProgress"
             notify: "selectedVideoChanged"
-            index: 87
+            index: 94
             isReadonly: true
         }
         Property {
@@ -702,7 +793,7 @@ Module {
             type: "QString"
             read: "selectedStageLabel"
             notify: "selectedVideoChanged"
-            index: 88
+            index: 95
             isReadonly: true
         }
         Property {
@@ -710,7 +801,7 @@ Module {
             type: "QString"
             read: "selectedProgressDetail"
             notify: "selectedVideoChanged"
-            index: 89
+            index: 96
             isReadonly: true
         }
         Property {
@@ -718,7 +809,7 @@ Module {
             type: "QString"
             read: "selectedElapsed"
             notify: "selectedElapsedChanged"
-            index: 90
+            index: 97
             isReadonly: true
         }
         Property {
@@ -726,7 +817,7 @@ Module {
             type: "QString"
             read: "selectedUpdatedAt"
             notify: "selectedVideoChanged"
-            index: 91
+            index: 98
             isReadonly: true
         }
         Property {
@@ -734,7 +825,7 @@ Module {
             type: "QString"
             read: "selectedOutputFormat"
             notify: "selectedVideoChanged"
-            index: 92
+            index: 99
             isReadonly: true
         }
         Property {
@@ -742,7 +833,7 @@ Module {
             type: "QString"
             read: "selectedTargetLanguageLabel"
             notify: "selectedVideoChanged"
-            index: 93
+            index: 100
             isReadonly: true
         }
         Property {
@@ -750,7 +841,7 @@ Module {
             type: "QString"
             read: "selectedTranslatorProvider"
             notify: "selectedVideoChanged"
-            index: 94
+            index: 101
             isReadonly: true
         }
         Property {
@@ -758,7 +849,7 @@ Module {
             type: "QString"
             read: "selectedInputPath"
             notify: "selectedVideoChanged"
-            index: 95
+            index: 102
             isReadonly: true
         }
         Property {
@@ -766,7 +857,7 @@ Module {
             type: "QString"
             read: "selectedOutputPath"
             notify: "selectedVideoChanged"
-            index: 96
+            index: 103
             isReadonly: true
         }
         Property {
@@ -774,7 +865,7 @@ Module {
             type: "bool"
             read: "hasSelectedOutput"
             notify: "selectedVideoChanged"
-            index: 97
+            index: 104
             isReadonly: true
         }
         Property {
@@ -782,7 +873,7 @@ Module {
             type: "QString"
             read: "selectedSrtPath"
             notify: "selectedVideoChanged"
-            index: 98
+            index: 105
             isReadonly: true
         }
         Property {
@@ -790,7 +881,7 @@ Module {
             type: "QString"
             read: "selectedVoicePath"
             notify: "selectedVideoChanged"
-            index: 99
+            index: 106
             isReadonly: true
         }
         Property {
@@ -798,7 +889,7 @@ Module {
             type: "QString"
             read: "selectedLogsPath"
             notify: "selectedVideoChanged"
-            index: 100
+            index: 107
             isReadonly: true
         }
         Property {
@@ -806,7 +897,7 @@ Module {
             type: "QString"
             read: "logs"
             notify: "logsChanged"
-            index: 101
+            index: 108
             isReadonly: true
         }
         Property {
@@ -814,7 +905,7 @@ Module {
             type: "QString"
             read: "statusMessage"
             notify: "statusMessageChanged"
-            index: 102
+            index: 109
             isReadonly: true
         }
         Property {
@@ -822,7 +913,7 @@ Module {
             type: "QString"
             read: "runtimeState"
             notify: "runtimeStateChanged"
-            index: 103
+            index: 110
             isReadonly: true
         }
         Property {
@@ -830,7 +921,7 @@ Module {
             type: "bool"
             read: "modelSetupVisible"
             notify: "modelSetupChanged"
-            index: 104
+            index: 111
             isReadonly: true
         }
         Property {
@@ -838,7 +929,7 @@ Module {
             type: "bool"
             read: "modelSetupBusy"
             notify: "modelSetupChanged"
-            index: 105
+            index: 112
             isReadonly: true
         }
         Property {
@@ -846,7 +937,7 @@ Module {
             type: "bool"
             read: "modelSetupCanCancel"
             notify: "modelSetupChanged"
-            index: 106
+            index: 113
             isReadonly: true
         }
         Property {
@@ -854,7 +945,7 @@ Module {
             type: "int"
             read: "modelSetupProgress"
             notify: "modelSetupChanged"
-            index: 107
+            index: 114
             isReadonly: true
         }
         Property {
@@ -862,7 +953,7 @@ Module {
             type: "QString"
             read: "modelSetupState"
             notify: "modelSetupChanged"
-            index: 108
+            index: 115
             isReadonly: true
         }
         Property {
@@ -870,7 +961,7 @@ Module {
             type: "QString"
             read: "modelSetupComponent"
             notify: "modelSetupChanged"
-            index: 109
+            index: 116
             isReadonly: true
         }
         Property {
@@ -878,7 +969,7 @@ Module {
             type: "QString"
             read: "modelSetupDetail"
             notify: "modelSetupChanged"
-            index: 110
+            index: 117
             isReadonly: true
         }
         Property {
@@ -886,7 +977,7 @@ Module {
             type: "QString"
             read: "modelSetupSizeText"
             notify: "modelSetupChanged"
-            index: 111
+            index: 118
             isReadonly: true
         }
         Property {
@@ -894,16 +985,16 @@ Module {
             type: "QString"
             read: "modelSetupDirectory"
             notify: "modelSetupChanged"
-            index: 112
+            index: 119
             isReadonly: true
         }
-        Property { name: "urlImporter"; type: "QObject"; read: "urlImporter"; index: 113; isReadonly: true }
+        Property { name: "urlImporter"; type: "QObject"; read: "urlImporter"; index: 120; isReadonly: true }
         Property {
             name: "settingsTheme"
             type: "QString"
             read: "settingsTheme"
             notify: "settingsChanged"
-            index: 114
+            index: 121
             isReadonly: true
         }
         Property {
@@ -911,7 +1002,7 @@ Module {
             type: "QString"
             read: "settingsLanguage"
             notify: "settingsChanged"
-            index: 115
+            index: 122
             isReadonly: true
         }
         Property {
@@ -919,7 +1010,7 @@ Module {
             type: "QString"
             read: "processingDevice"
             notify: "settingsChanged"
-            index: 116
+            index: 123
             isReadonly: true
         }
         Property {
@@ -927,7 +1018,7 @@ Module {
             type: "bool"
             read: "cpuOnly"
             notify: "settingsChanged"
-            index: 117
+            index: 124
             isReadonly: true
         }
         Property {
@@ -935,7 +1026,7 @@ Module {
             type: "QString"
             read: "performanceProfileLabel"
             notify: "settingsChanged"
-            index: 118
+            index: 125
             isReadonly: true
         }
         Property {
@@ -943,7 +1034,7 @@ Module {
             type: "QString"
             read: "performanceProfileDetail"
             notify: "settingsChanged"
-            index: 119
+            index: 126
             isReadonly: true
         }
         Property {
@@ -951,7 +1042,7 @@ Module {
             type: "QVariantMap"
             read: "hardwareInfo"
             notify: "hardwareChanged"
-            index: 120
+            index: 127
             isReadonly: true
         }
         Property {
@@ -959,7 +1050,7 @@ Module {
             type: "QString"
             read: "projectDirectory"
             notify: "projectSetupChanged"
-            index: 121
+            index: 128
             isReadonly: true
         }
         Property {
@@ -967,7 +1058,7 @@ Module {
             type: "QString"
             read: "projectName"
             notify: "projectSetupChanged"
-            index: 122
+            index: 129
             isReadonly: true
         }
         Property {
@@ -975,7 +1066,7 @@ Module {
             type: "QString"
             read: "projectType"
             notify: "projectSetupChanged"
-            index: 123
+            index: 130
             isReadonly: true
         }
         Property {
@@ -983,7 +1074,7 @@ Module {
             type: "QString"
             read: "projectRoot"
             notify: "projectSetupChanged"
-            index: 124
+            index: 131
             isReadonly: true
         }
         Property {
@@ -991,7 +1082,63 @@ Module {
             type: "QString"
             read: "downloadOutputRoot"
             notify: "projectSetupChanged"
-            index: 125
+            index: 132
+            isReadonly: true
+        }
+        Property {
+            name: "zernioProfileCount"
+            type: "int"
+            read: "zernioProfileCount"
+            notify: "tiktokPublishChanged"
+            index: 133
+            isReadonly: true
+        }
+        Property {
+            name: "zernioConnectionProfileName"
+            type: "QString"
+            read: "zernioConnectionProfileName"
+            notify: "tiktokPublishChanged"
+            index: 134
+            isReadonly: true
+        }
+        Property {
+            name: "zernioOauthSyncPending"
+            type: "bool"
+            read: "zernioOauthSyncPending"
+            notify: "tiktokPublishChanged"
+            index: 135
+            isReadonly: true
+        }
+        Property {
+            name: "zernioShareToFeed"
+            type: "bool"
+            read: "zernioShareToFeed"
+            notify: "tiktokPublishChanged"
+            index: 136
+            isReadonly: true
+        }
+        Property {
+            name: "zernioAiGenerated"
+            type: "bool"
+            read: "zernioAiGenerated"
+            notify: "tiktokPublishChanged"
+            index: 137
+            isReadonly: true
+        }
+        Property {
+            name: "zernioFirstComment"
+            type: "QString"
+            read: "zernioFirstComment"
+            notify: "tiktokPublishChanged"
+            index: 138
+            isReadonly: true
+        }
+        Property {
+            name: "zernioAccountSyncing"
+            type: "bool"
+            read: "zernioAccountSyncing"
+            notify: "tiktokPublishChanged"
+            index: 139
             isReadonly: true
         }
         Signal { name: "videoPathChanged" }
@@ -1222,9 +1369,30 @@ Module {
         }
         Method { name: "clearZernioApiKey"; type: "bool" }
         Method { name: "connectZernioTikTok"; type: "bool" }
+        Method {
+            name: "connectZernioPlatform"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method { name: "openZernioSignUp"; type: "bool" }
+        Method { name: "openZernioSignIn"; type: "bool" }
+        Method { name: "openZernioApiKeys"; type: "bool" }
+        Method { name: "openZernioPostingDocs"; type: "bool" }
+        Method { name: "openZernioDashboard"; type: "bool" }
         Method { name: "refreshZernioTikTokAccounts"; type: "bool" }
+        Method { name: "refreshZernioConnections"; type: "bool" }
         Method {
             name: "selectZernioTikTokAccount"
+            type: "bool"
+            Parameter { name: "a1"; type: "int" }
+        }
+        Method {
+            name: "selectZernioConnection"
+            type: "bool"
+            Parameter { name: "a1"; type: "int" }
+        }
+        Method {
+            name: "disconnectZernioConnection"
             type: "bool"
             Parameter { name: "a1"; type: "int" }
         }
@@ -1236,6 +1404,9 @@ Module {
             Parameter { name: "a3"; type: "bool" }
             Parameter { name: "a4"; type: "bool" }
             Parameter { name: "a5"; type: "bool" }
+            Parameter { name: "a6"; type: "bool" }
+            Parameter { name: "a7"; type: "bool" }
+            Parameter { name: "a8"; type: "QString" }
         }
         Method {
             name: "setZernioPublishConsent"

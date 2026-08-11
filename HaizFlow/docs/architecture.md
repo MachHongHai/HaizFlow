@@ -29,7 +29,7 @@ src/haizflow/
     project_workspace_controller.py    Project selection and incremental catalog/model updates
     runtime_device_controller.py       Runtime warm-up, shutdown, and hardware transitions
     settings_controller.py             Persistent desktop settings operations
-    tiktok_publish_controller.py       Zernio account, upload, and publishing queue orchestration
+    social_publish_controller.py       Zernio account, upload, and publishing queue orchestration
     catalog.py              Supported target languages and TTS voices
     localization.py         Localized native Qt dialog adapters
     media.py                Video-path, thumbnail, and OS-open helpers
@@ -56,7 +56,7 @@ src/haizflow/
     translation.py          HY-MT2 worker protocol
     hymt2_worker.py         Isolated local translation worker entry point
     desktop_settings.py     Graphite appearance, language and device persistence
-    tiktok_publish.py       Atomic project-backed TikTok publishing state
+    social_publish.py       Atomic project-backed social publishing state
     zernio.py               Authenticated Zernio REST and streaming upload client
     secure_credentials.py   Windows Credential Manager storage for external API keys
   schemas/

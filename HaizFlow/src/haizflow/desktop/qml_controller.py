@@ -25,8 +25,8 @@ from haizflow.desktop.media_probe import VideoDimensionProbe
 from haizflow.desktop.models import (
     ProjectGridModel,
     ProjectListModel,
-    TikTokProjectSourceListModel,
-    TikTokPublishListModel,
+    SocialProjectSourceListModel,
+    SocialPublishListModel,
     VideoListModel,
 )
 from haizflow.desktop.preview_media_controller import PreviewMediaController
@@ -41,7 +41,7 @@ from haizflow.desktop.diagnostics_controller import DiagnosticsController
 from haizflow.desktop.external_links import open_external_url
 from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
 from haizflow.desktop.settings_controller import SettingsController
-from haizflow.desktop.tiktok_publish_controller import TikTokPublishController
+from haizflow.desktop.social_publish_controller import SocialPublishController
 from haizflow.desktop.presenters import (
     build_project_summaries,
     format_duration,
@@ -126,8 +126,8 @@ class HaizFlowController(QObject):
         self.download_projects = ProjectGridModel()
         self.publish_projects = ProjectGridModel()
         self.batch_videos = VideoListModel()
-        self.tiktok_publish_items = TikTokPublishListModel()
-        self.tiktok_project_sources = TikTokProjectSourceListModel()
+        self.tiktok_publish_items = SocialPublishListModel()
+        self.tiktok_project_sources = SocialProjectSourceListModel()
         self._video_path = ""
         self._video_thumbnail_source = ""
         self._target_language = "vi"
@@ -194,7 +194,7 @@ class HaizFlowController(QObject):
         self._preview_media = PreviewMediaController(self)
         self._audio_preview = AudioPreviewController(self)
         self._media_downloader = MediaDownloadController(self)
-        self._tiktok_publisher = TikTokPublishController(self)
+        self._tiktok_publisher = SocialPublishController(self)
         self._settings_controller = SettingsController(self)
         self._project_workspace = ProjectWorkspaceController(self)
         self._project_commands = ProjectCommandsController(self)
@@ -489,6 +489,10 @@ class HaizFlowController(QObject):
     def tiktokPublishBusy(self):
         return self._tiktok_publisher.busy
 
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioAccountSyncing(self):
+        return self._tiktok_publisher.account_syncing
+
     @Property(str, notify=tiktokPublishChanged)
     def tiktokPublishStatus(self):
         return self._tiktok_publisher.status
@@ -517,13 +521,61 @@ class HaizFlowController(QObject):
     def zernioApiKeyConfigured(self):
         return self._tiktok_publisher.api_key_configured
 
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioApiKeyVerified(self):
+        return self._tiktok_publisher.api_key_verified
+
+    @Property(int, notify=tiktokPublishChanged)
+    def zernioConnectedAccountCount(self):
+        return self._tiktok_publisher.connected_account_count
+
+    @Property(int, notify=tiktokPublishChanged)
+    def zernioProfileCount(self):
+        return self._tiktok_publisher.profile_count
+
+    @Property(str, notify=tiktokPublishChanged)
+    def zernioConnectionProfileName(self):
+        return self._tiktok_publisher.connection_profile_name
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioOauthSyncPending(self):
+        return self._tiktok_publisher.oauth_sync_pending
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioAccountReady(self):
+        return self._tiktok_publisher.account_ready
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioCanPostMore(self):
+        return self._tiktok_publisher.can_post_more
+
     @Property("QStringList", notify=tiktokPublishChanged)
     def zernioTikTokAccounts(self):
         return self._tiktok_publisher.account_names
 
+    @Property("QStringList", notify=tiktokPublishChanged)
+    def zernioConnections(self):
+        return self._tiktok_publisher.account_names
+
+    @Property("QStringList", notify=tiktokPublishChanged)
+    def zernioConnectionPlatforms(self):
+        return self._tiktok_publisher.account_platforms
+
+    @Property(str, notify=tiktokPublishChanged)
+    def zernioSelectedPlatform(self):
+        return self._tiktok_publisher.selected_platform
+
+    @Property(str, notify=tiktokPublishChanged)
+    def zernioSelectedPlatformLabel(self):
+        return self._tiktok_publisher.selected_platform_label
+
     @Property(int, notify=tiktokPublishChanged)
     def zernioSelectedAccountIndex(self):
         return self._tiktok_publisher.selected_account_index
+
+    @Property(str, notify=tiktokPublishChanged)
+    def zernioSelectedAccountName(self):
+        return self._tiktok_publisher.selected_account_name
 
     @Property("QStringList", notify=tiktokPublishChanged)
     def zernioPrivacyLevels(self):
@@ -548,6 +600,30 @@ class HaizFlowController(QObject):
     @Property(bool, notify=tiktokPublishChanged)
     def zernioAllowStitch(self):
         return self._tiktok_publisher.allow_stitch
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioShareToFeed(self):
+        return self._tiktok_publisher.share_to_feed
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioAiGenerated(self):
+        return self._tiktok_publisher.ai_generated
+
+    @Property(str, notify=tiktokPublishChanged)
+    def zernioFirstComment(self):
+        return self._tiktok_publisher.first_comment
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioCommentAvailable(self):
+        return self._tiktok_publisher.comment_available
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioDuetAvailable(self):
+        return self._tiktok_publisher.duet_available
+
+    @Property(bool, notify=tiktokPublishChanged)
+    def zernioStitchAvailable(self):
+        return self._tiktok_publisher.stitch_available
 
     @Property(bool, notify=tiktokPublishChanged)
     def zernioPublishConsentConfirmed(self):
@@ -1720,7 +1796,7 @@ class HaizFlowController(QObject):
         if not self._tiktok_publisher.can_switch_project(project["key"]):
             QMessageBox.information(
                 None,
-                "TikTok publishing",
+                "Social publishing",
                 "Wait for the active Zernio upload or request to finish before opening another project.",
             )
             return False
@@ -1808,15 +1884,51 @@ class HaizFlowController(QObject):
     def connectZernioTikTok(self):
         return self._tiktok_publisher.connect_tiktok()
 
+    @Slot(str, result=bool)
+    def connectZernioPlatform(self, platform: str):
+        return self._tiktok_publisher.connect_platform(platform)
+
+    @Slot(result=bool)
+    def openZernioSignUp(self):
+        return self._tiktok_publisher.open_zernio_sign_up()
+
+    @Slot(result=bool)
+    def openZernioSignIn(self):
+        return self._tiktok_publisher.open_zernio_sign_in()
+
+    @Slot(result=bool)
+    def openZernioApiKeys(self):
+        return self._tiktok_publisher.open_zernio_api_keys()
+
+    @Slot(result=bool)
+    def openZernioPostingDocs(self):
+        return self._tiktok_publisher.open_zernio_posting_docs()
+
+    @Slot(result=bool)
+    def openZernioDashboard(self):
+        return self._tiktok_publisher.open_zernio_dashboard()
+
     @Slot(result=bool)
     def refreshZernioTikTokAccounts(self):
+        return self._tiktok_publisher.refresh_accounts()
+
+    @Slot(result=bool)
+    def refreshZernioConnections(self):
         return self._tiktok_publisher.refresh_accounts()
 
     @Slot(int, result=bool)
     def selectZernioTikTokAccount(self, index: int):
         return self._tiktok_publisher.select_account(index)
 
-    @Slot(str, bool, bool, bool, bool, result=bool)
+    @Slot(int, result=bool)
+    def selectZernioConnection(self, index: int):
+        return self._tiktok_publisher.select_account(index)
+
+    @Slot(int, result=bool)
+    def disconnectZernioConnection(self, index: int):
+        return self._tiktok_publisher.disconnect_account(index)
+
+    @Slot(str, bool, bool, bool, bool, bool, bool, str, result=bool)
     def saveZernioPublishSettings(
         self,
         privacy_level: str,
@@ -1824,9 +1936,19 @@ class HaizFlowController(QObject):
         allow_comment: bool,
         allow_duet: bool,
         allow_stitch: bool,
+        share_to_feed: bool,
+        ai_generated: bool,
+        first_comment: str,
     ):
         return self._tiktok_publisher.set_publish_settings(
-            privacy_level, publish_now, allow_comment, allow_duet, allow_stitch
+            privacy_level,
+            publish_now,
+            allow_comment,
+            allow_duet,
+            allow_stitch,
+            share_to_feed,
+            ai_generated,
+            first_comment,
         )
 
     @Slot(bool)

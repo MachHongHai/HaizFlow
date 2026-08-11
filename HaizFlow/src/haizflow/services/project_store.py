@@ -585,13 +585,15 @@ def _load_index() -> list[dict[str, Any]]:
 def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any]) -> dict[str, Any]:
     """Persist one already-normalized record and its owned directory layout."""
     root = _record_root(record)
+    project_type = normalize_project_type(record.get("project_type"))
     os.makedirs(root, exist_ok=True)
-    os.makedirs(os.path.join(root, "exports"), exist_ok=True)
-    os.makedirs(os.path.join(root, "videos"), exist_ok=True)
-    if normalize_project_type(record.get("project_type")) == "download":
+    if project_type in {"single", "batch"}:
+        os.makedirs(os.path.join(root, "exports"), exist_ok=True)
+        os.makedirs(os.path.join(root, "videos"), exist_ok=True)
+    if project_type == "download":
         for category in ("channel", "video", "audio"):
             os.makedirs(os.path.join(root, "downloads", category), exist_ok=True)
-    elif normalize_project_type(record.get("project_type")) == "publish":
+    elif project_type == "publish":
         os.makedirs(os.path.join(root, "publishing", "media"), exist_ok=True)
         os.makedirs(os.path.join(root, "publishing", "thumbnails"), exist_ok=True)
     _write_json_atomic(os.path.join(root, PROJECT_MANIFEST_NAME), record)
@@ -605,7 +607,7 @@ def create_project(project_name: str, project_directory: str, project_type: str)
     """Create a distinct project, even when its display name is already used.
 
     The name is presentation only.  The UUID and its `project:<uuid>` key own
-    the manifest, inputs, exports, and all later project operations.
+    the manifest and the type-specific directories used by later operations.
     """
     name = project_name.strip()
     directory_input = project_directory.strip()

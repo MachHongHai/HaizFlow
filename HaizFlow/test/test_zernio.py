@@ -123,6 +123,95 @@ class ZernioClientTests(unittest.TestCase):
         self.assertEqual(progress[-1], (11, 11))
         self.assertTrue(connection.closed)
 
+    def test_instagram_reel_uses_platform_specific_payload(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            return _Response({"post": {"id": "post-instagram"}})
+
+        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+            zernio.ZernioClient(self.key).create_video_post(
+                platform="instagram",
+                account_id="ig-1",
+                content="Caption #tag",
+                media_url="https://media.example/reel.mp4",
+                publish_now=True,
+                request_id="request-instagram",
+                share_to_feed=False,
+                ai_generated=True,
+                first_comment="More details",
+            )
+
+        target = captured["body"]["platforms"][0]
+        self.assertEqual(target["platform"], "instagram")
+        self.assertEqual(target["platformSpecificData"], {
+            "contentType": "reels",
+            "shareToFeed": False,
+            "isAiGenerated": True,
+            "firstComment": "More details",
+        })
+
+    def test_facebook_reel_supports_title_and_first_comment(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            return _Response({"post": {"id": "post-facebook"}})
+
+        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+            zernio.ZernioClient(self.key).create_video_post(
+                platform="facebook",
+                account_id="fb-1",
+                content="Caption",
+                media_url="https://media.example/reel.mp4",
+                publish_now=True,
+                request_id="request-facebook",
+                title="Reel title",
+                first_comment="First comment",
+            )
+
+        data = captured["body"]["platforms"][0]["platformSpecificData"]
+        self.assertEqual(data, {
+            "contentType": "reel",
+            "title": "Reel title",
+            "firstComment": "First comment",
+        })
+
+    def test_youtube_video_uses_title_and_visibility(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            return _Response({"post": {"id": "post-youtube"}})
+
+        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+            zernio.ZernioClient(self.key).create_video_post(
+                platform="youtube",
+                account_id="yt-1",
+                content="Description",
+                media_url="https://media.example/short.mp4",
+                publish_now=True,
+                request_id="request-youtube",
+                title="My Short",
+                privacy_level="unlisted",
+            )
+
+        target = captured["body"]["platforms"][0]
+        self.assertEqual(target["platform"], "youtube")
+        self.assertEqual(target["platformSpecificData"], {"title": "My Short", "visibility": "unlisted"})
+
+    def test_list_supported_accounts_keeps_all_requested_platforms(self):
+        payload = {"accounts": [
+            {"id": "tik-1", "platform": "tiktok"},
+            {"id": "yt-1", "platform": "youtube"},
+            {"id": "ignored", "platform": "linkedin"},
+        ]}
+        with patch("haizflow.services.zernio.urlopen", return_value=_Response(payload)):
+            accounts = zernio.ZernioClient(self.key).list_accounts(platforms=("tiktok", "youtube"))
+
+        self.assertEqual([account["id"] for account in accounts], ["tik-1", "yt-1"])
+
     def test_list_accounts_accepts_a_data_array_response(self):
         payload = {
             "data": [
@@ -134,6 +223,117 @@ class ZernioClientTests(unittest.TestCase):
             accounts = zernio.ZernioClient(self.key).list_tiktok_accounts()
 
         self.assertEqual([account["id"] for account in accounts], ["tik-1"])
+
+    def test_list_accounts_requests_only_connected_tiktok_accounts(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            return _Response({"data": []})
+
+        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+            zernio.ZernioClient(self.key).list_tiktok_accounts("profile-1")
+
+        self.assertIn("platform=tiktok", captured["url"])
+        self.assertIn("status=connected", captured["url"])
+        self.assertIn("includeOverLimit=true", captured["url"])
+        self.assertIn("profileId=profile-1", captured["url"])
+
+    def test_list_accounts_can_sync_all_profiles_without_profile_filter(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            return _Response({"accounts": []})
+
+        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+            zernio.ZernioClient(self.key).list_tiktok_accounts()
+
+        self.assertIn("platform=tiktok", captured["url"])
+        self.assertNotIn("profileId=", captured["url"])
+
+    def test_disconnect_account_uses_delete_and_escapes_the_account_id(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return _Response({"message": "Account disconnected successfully"})
+
+        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+            result = zernio.ZernioClient(self.key).disconnect_account("account/id")
+
+        request = captured["request"]
+        self.assertEqual(request.method, "DELETE")
+        self.assertEqual(
+            request.full_url,
+            "https://zernio.com/api/v1/accounts/account%2Fid",
+        )
+        self.assertEqual(request.get_header("Authorization"), f"Bearer {self.key}")
+        self.assertEqual(result["message"], "Account disconnected successfully")
+
+    def test_list_profiles_includes_profiles_over_the_plan_limit_for_setup_visibility(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            return _Response({"profiles": []})
+
+        with patch("haizflow.services.zernio.urlopen", side_effect=fake_urlopen):
+            zernio.ZernioClient(self.key).list_profiles()
+
+        self.assertIn("includeOverLimit=true", captured["url"])
+
+    def test_creator_info_normalizes_privacy_values_and_interactions(self):
+        payload = {
+            "data": {
+                "creator": {"canPostMore": False},
+                "privacyLevels": [
+                    {"value": "PUBLIC_TO_EVERYONE", "label": "Public"},
+                    {"value": "SELF_ONLY", "label": "Only me"},
+                ],
+                "postingLimits": {
+                    "interactionSettings": {"comment": True, "duet": False, "stitch": True}
+                },
+            }
+        }
+        with patch("haizflow.services.zernio.urlopen", return_value=_Response(payload)):
+            info = zernio.ZernioClient(self.key).get_tiktok_creator_info("tik-1")
+
+        self.assertEqual(info["privacyLevels"], ["PUBLIC_TO_EVERYONE", "SELF_ONLY"])
+        self.assertEqual(info["interactionSettings"], {"comment": True, "duet": False, "stitch": True})
+        self.assertFalse(info["canPostMore"])
+
+    def test_tiktok_post_result_prefers_platform_status_over_stale_root_status(self):
+        result = zernio.tiktok_post_result({
+            "status": "publishing",
+            "platforms": [{
+                "platform": "tiktok",
+                "status": "published",
+                "platformPostUrl": "https://www.tiktok.com/@creator/video/123",
+            }],
+        })
+
+        self.assertEqual(result["status"], "published")
+        self.assertEqual(result["url"], "https://www.tiktok.com/@creator/video/123")
+        self.assertEqual(result["error"], "")
+
+    def test_tiktok_post_result_builds_public_url_while_zernio_resolves_it(self):
+        result = zernio.tiktok_post_result({
+            "status": "published",
+            "platforms": [{
+                "platform": "tiktok",
+                "status": "published",
+                "platformPostId": "v_pub_url~v2-1.7672661563752450049",
+                "platformPostUrl": "",
+                "accountId": {"username": "@creator"},
+            }],
+        })
+
+        self.assertEqual(
+            result["url"],
+            "https://www.tiktok.com/@creator/video/7672661563752450049",
+        )
 
     def test_http_error_is_safe_and_does_not_include_the_api_key(self):
         response = HTTPError(

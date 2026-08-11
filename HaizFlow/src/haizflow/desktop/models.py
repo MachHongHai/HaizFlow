@@ -238,8 +238,8 @@ class ProjectGridModel(ProjectListModel):
         return roles
 
 
-class TikTokPublishListModel(QAbstractListModel):
-    """Stable ordered queue for project-owned Zernio TikTok posts."""
+class SocialPublishListModel(QAbstractListModel):
+    """Stable ordered queue for project-owned Zernio social posts."""
 
     ItemIdRole = Qt.ItemDataRole.UserRole + 1
     FileNameRole = Qt.ItemDataRole.UserRole + 2
@@ -253,6 +253,23 @@ class TikTokPublishListModel(QAbstractListModel):
     ProgressRole = Qt.ItemDataRole.UserRole + 10
     PostIdRole = Qt.ItemDataRole.UserRole + 11
     PlatformUrlRole = Qt.ItemDataRole.UserRole + 12
+    TargetPlatformRole = Qt.ItemDataRole.UserRole + 13
+
+    _ROLE_FIELDS = {
+        ItemIdRole: "id",
+        FileNameRole: "file_name",
+        FilePathRole: "file_path",
+        CaptionRole: "caption",
+        HashtagsRole: "hashtags",
+        PostTextRole: "post_text",
+        StatusRole: "status",
+        ErrorRole: "error",
+        ThumbnailRole: "thumbnail_source",
+        ProgressRole: "upload_progress",
+        PostIdRole: "zernio_post_id",
+        PlatformUrlRole: "platform_post_url",
+        TargetPlatformRole: "target_platform",
+    }
 
     def __init__(self):
         super().__init__()
@@ -278,6 +295,7 @@ class TikTokPublishListModel(QAbstractListModel):
             self.ProgressRole: item.get("upload_progress", 0),
             self.PostIdRole: item.get("zernio_post_id", ""),
             self.PlatformUrlRole: item.get("platform_post_url", ""),
+            self.TargetPlatformRole: item.get("target_platform", ""),
         }.get(role)
 
     def roleNames(self):
@@ -294,12 +312,51 @@ class TikTokPublishListModel(QAbstractListModel):
             self.ProgressRole: b"uploadProgress",
             self.PostIdRole: b"zernioPostId",
             self.PlatformUrlRole: b"platformPostUrl",
+            self.TargetPlatformRole: b"targetPlatform",
         }
 
     def set_items(self, items) -> None:
-        self.beginResetModel()
-        self._items = list(items)
-        self.endResetModel()
+        updated_items = [dict(item) for item in items]
+        current_ids = [str(item.get("id") or "") for item in self._items]
+        updated_ids = [str(item.get("id") or "") for item in updated_items]
+        if current_ids != updated_ids:
+            self.beginResetModel()
+            self._items = updated_items
+            self.endResetModel()
+            return
+
+        for row, updated in enumerate(updated_items):
+            previous = self._items[row]
+            changed_roles = [
+                role for role, field in self._ROLE_FIELDS.items()
+                if previous.get(field) != updated.get(field)
+            ]
+            if not changed_roles:
+                continue
+            self._items[row] = updated
+            model_index = self.index(row, 0)
+            self.dataChanged.emit(model_index, model_index, changed_roles)
+
+    def update_item(self, item_id: str, item) -> bool:
+        """Update one queue row without resetting the whole GridView."""
+        row = next(
+            (index for index, candidate in enumerate(self._items) if candidate.get("id") == item_id),
+            -1,
+        )
+        if row < 0:
+            return False
+        updated = dict(item)
+        previous = self._items[row]
+        changed_roles = [
+            role for role, field in self._ROLE_FIELDS.items()
+            if previous.get(field) != updated.get(field)
+        ]
+        if not changed_roles:
+            return True
+        self._items[row] = updated
+        model_index = self.index(row, 0)
+        self.dataChanged.emit(model_index, model_index, changed_roles)
+        return True
 
     def item_at(self, row: int):
         if row < 0 or row >= len(self._items):
@@ -307,7 +364,7 @@ class TikTokPublishListModel(QAbstractListModel):
         return self._items[row]
 
 
-class TikTokProjectSourceListModel(QAbstractListModel):
+class SocialProjectSourceListModel(QAbstractListModel):
     """Completed single and batch outputs that can be copied into a publish project."""
 
     VideoIdRole = Qt.ItemDataRole.UserRole + 1

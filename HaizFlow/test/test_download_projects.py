@@ -45,6 +45,17 @@ class DownloadProjectTests(unittest.TestCase):
             "ready",
         )
 
+    def test_social_publish_project_creates_only_its_owned_directories(self):
+        project = project_store.create_project(
+            "Social campaign", str(self.root / "outputs"), "publish",
+        )
+        root = Path(project["project_root"])
+
+        self.assertTrue((root / "publishing" / "media").is_dir())
+        self.assertTrue((root / "publishing" / "thumbnails").is_dir())
+        self.assertFalse((root / "exports").exists())
+        self.assertFalse((root / "videos").exists())
+
     def test_each_queued_task_keeps_the_output_of_its_download_project(self):
         first = project_store.create_project("First", str(self.root / "outputs"), "download")
         second = project_store.create_project("Second", str(self.root / "outputs"), "download")

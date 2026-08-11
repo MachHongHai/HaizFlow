@@ -17,7 +17,7 @@ Dialog {
         : root.projectType === "download"
             ? I18n.t("Create download project")
             : root.projectType === "publish"
-                ? I18n.t("Create TikTok publishing project")
+                ? I18n.t("Create social publishing project")
                 : I18n.t("Create single project")
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     parent: Overlay.overlay

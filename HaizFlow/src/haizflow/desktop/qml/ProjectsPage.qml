@@ -72,7 +72,7 @@ Item {
                         : root.downloadMode
                             ? I18n.t("New download project")
                             : root.publishMode
-                                ? I18n.t("New TikTok publishing project")
+                                ? I18n.t("New social publishing project")
                                 : I18n.t("New single project")
                     scale: newProjectTap.pressed ? 0.99 : 1
 
@@ -120,7 +120,7 @@ Item {
                                 : root.downloadMode
                                     ? I18n.t("New download project")
                                     : root.publishMode
-                                        ? I18n.t("New TikTok publishing project")
+                                        ? I18n.t("New social publishing project")
                                         : I18n.t("New single project")
                             color: Theme.text
                             font.pixelSize: Theme.bodyLarge

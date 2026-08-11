@@ -19,14 +19,18 @@ Rectangle {
     required property int uploadProgress
     required property string zernioPostId
     required property string platformPostUrl
+    required property string targetPlatform
 
     signal editRequested()
+    signal publishRequested()
 
     readonly property bool working: publishStatus === "uploading" || publishStatus === "publishing"
     readonly property bool published: publishStatus === "published" || publishStatus === "posted"
     readonly property bool canPublish: !working && publishStatus !== "missing"
         && publishStatus !== "scheduled" && !AppController.tiktokPublishBusy
-        && AppController.zernioPublishConsentConfirmed
+        && !AppController.zernioAccountSyncing
+        && AppController.zernioApiKeyVerified
+        && AppController.zernioAccountReady
     readonly property string statusLabel: publishStatus === "ready" ? I18n.t("Ready")
         : publishStatus === "uploading" ? I18n.t("Uploading")
         : publishStatus === "publishing" ? I18n.t("Publishing")
@@ -50,6 +54,12 @@ Rectangle {
     border.color: activeFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : Theme.outline
     focusPolicy: Qt.TabFocus
     Accessible.name: fileName
+
+    function resetReusableState() {
+        actionMenu.close()
+        moreButton.focus = false
+        root.focus = false
+    }
 
     HoverHandler {
         id: hoverHandler
@@ -95,6 +105,39 @@ Rectangle {
                     height: parent.height
                     color: Theme.warning
                     Behavior on width { NumberAnimation { duration: Theme.motionStandard } }
+                }
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.margins: Theme.space8
+                implicitWidth: platformRow.implicitWidth + Theme.space12
+                implicitHeight: 24
+                radius: Theme.radiusSmall
+                color: Theme.scrim
+                visible: root.targetPlatform.length > 0
+
+                RowLayout {
+                    id: platformRow
+                    anchors.centerIn: parent
+                    spacing: Theme.space4
+
+                    PlatformLogo {
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        platform: root.targetPlatform
+                    }
+                    Text {
+                        text: root.targetPlatform === "youtube" ? "YouTube"
+                            : root.targetPlatform === "facebook" ? "Facebook"
+                            : root.targetPlatform === "instagram" ? "Instagram"
+                            : "TikTok"
+                        color: Theme.text
+                        font.pixelSize: Theme.label
+                        font.weight: Font.DemiBold
+                        textFormat: Text.PlainText
+                    }
                 }
             }
 
@@ -156,19 +199,24 @@ Rectangle {
                 AppButton {
                     Layout.fillWidth: true
                     compact: true
-                    text: root.published && root.platformPostUrl.length > 0
-                        ? I18n.t("Open post")
+                    text: root.published
+                        ? root.platformPostUrl.length > 0
+                            ? I18n.t("Open post") : I18n.t("Get post link")
                         : root.publishStatus === "failed" || root.publishStatus === "partial"
                             ? I18n.t("Retry")
                             : I18n.t("Publish")
-                    iconGlyph: root.published && root.platformPostUrl.length > 0 ? "\uE8A7" : "\uE768"
+                    iconGlyph: root.published
+                        ? root.platformPostUrl.length > 0 ? "\uE8A7" : "\uE72C"
+                        : "\uE768"
                     tone: root.published ? "secondary" : "primary"
-                    enabled: root.published ? root.platformPostUrl.length > 0 : root.canPublish
+                    enabled: root.published
+                        ? !AppController.tiktokPublishBusy && AppController.zernioApiKeyConfigured
+                        : root.canPublish
                     onClicked: {
                         if (root.published)
                             AppController.openTikTokPublishedPost(root.index)
                         else
-                            AppController.publishTikTokItem(root.index)
+                            root.publishRequested()
                     }
                 }
 
@@ -205,6 +253,7 @@ Rectangle {
                         AppMenuItem {
                             text: I18n.t("Edit caption")
                             iconGlyph: "\uE70F"
+                            collapsed: root.published || root.publishStatus === "scheduled"
                             enabled: !root.working
                             onTriggered: root.editRequested()
                         }
@@ -213,13 +262,6 @@ Rectangle {
                             text: I18n.t("Copy caption")
                             iconGlyph: "\uE8C8"
                             onTriggered: AppController.copyTikTokPublishCaption(root.index)
-                        }
-
-                        AppMenuItem {
-                            text: I18n.t("Open published post")
-                            iconGlyph: "\uE8A7"
-                            collapsed: root.platformPostUrl.length === 0
-                            onTriggered: AppController.openTikTokPublishedPost(root.index)
                         }
 
                         AppMenuItem {

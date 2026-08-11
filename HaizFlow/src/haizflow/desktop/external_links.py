@@ -94,9 +94,13 @@ def open_external_url(value: str, preferred_chrome_profile: dict[str, str] | Non
     url = str(value or "").strip()
     parsed = urlsplit(url)
     if parsed.scheme.lower() in {"http", "https"} and parsed.netloc:
-        chrome = _validated_chrome_launch(preferred_chrome_profile)
-        if chrome is None:
-            chrome = _active_chrome_launch() if os.name == "nt" else None
+        try:
+            chrome = _validated_chrome_launch(preferred_chrome_profile)
+            if chrome is None:
+                chrome = _active_chrome_launch() if os.name == "nt" else None
+        except (OSError, ValueError, ctypes.ArgumentError):
+            chrome = None
+            LOGGER.warning("Could not resolve the active Chrome profile", exc_info=True)
         if chrome is not None:
             command = [chrome.executable]
             if chrome.user_data_dir:
@@ -109,7 +113,32 @@ def open_external_url(value: str, preferred_chrome_profile: dict[str, str] | Non
                 return True
             except OSError:
                 LOGGER.warning("Could not open link in the active Chrome profile", exc_info=True)
-    return QDesktopServices.openUrl(QUrl(url))
+    try:
+        if QDesktopServices.openUrl(QUrl(url)):
+            return True
+    except RuntimeError:
+        LOGGER.warning("Qt could not open the external link", exc_info=True)
+    return _shell_open_url(url) if os.name == "nt" else False
+
+
+def _shell_open_url(url: str) -> bool:
+    """Last-resort Windows shell open when Qt has no URL handler."""
+    try:
+        shell_execute = ctypes.windll.shell32.ShellExecuteW
+        shell_execute.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_int,
+        ]
+        shell_execute.restype = ctypes.c_void_p
+        result = shell_execute(None, "open", url, None, None, 1)
+        return int(result or 0) > 32
+    except (AttributeError, OSError, TypeError, ValueError):
+        LOGGER.warning("Windows could not open the external link", exc_info=True)
+        return False
 
 
 def _validated_chrome_launch(profile: dict[str, str] | None) -> ChromeLaunch | None:
