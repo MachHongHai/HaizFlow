@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -7,6 +6,7 @@ Panel {
     id: root
 
     signal requestUrlImport()
+    signal requestDownloadProjectImport()
 
     property bool dropActive: false
 
@@ -114,7 +114,7 @@ Panel {
 
         TapHandler {
             enabled: AppController.videoPath.length === 0 && AppController.canEditSelectedVideo
-            onTapped: AppController.browseVideo()
+            onTapped: sourceImportButton.openMenu()
         }
 
         Behavior on color {
@@ -139,6 +139,7 @@ Panel {
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             spacing: 2
 
             Text {
@@ -160,59 +161,25 @@ Panel {
             }
         }
 
-        AppButton {
+        MediaSourceImportButton {
+            id: sourceImportButton
+
             visible: AppController.videoPath.length === 0
-            text: I18n.t("From link")
-            iconGlyph: "\uE71B"
-            compact: true
+            Layout.preferredWidth: 132
             enabled: AppController.canEditSelectedVideo
-            onClicked: root.requestUrlImport()
+            onFileRequested: AppController.browseVideo()
+            onLinkRequested: root.requestUrlImport()
+            onDownloadProjectRequested: root.requestDownloadProjectImport()
         }
 
-        AppButton {
+        MediaSourceImportButton {
             visible: AppController.videoPath.length > 0
-
-            property bool menuWasOpenOnPress: false
-
             text: I18n.t("Replace")
             iconGlyph: "\uE8B7"
-            compact: true
             enabled: AppController.canEditSelectedVideo
-            onPressed: menuWasOpenOnPress = replaceMenu.visible
-            onClicked: {
-                if (menuWasOpenOnPress || replaceMenu.visible)
-                    replaceMenu.close()
-                else
-                    replaceMenu.open()
-            }
-
-            Menu {
-                id: replaceMenu
-
-                width: 238
-                y: parent.height + Theme.space4
-                padding: 6
-                closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
-
-                background: Rectangle {
-                    color: Theme.surfaceElevated
-                    radius: Theme.radius
-                    border.width: 1
-                    border.color: Theme.outlineStrong
-                }
-
-                AppMenuItem {
-                    text: I18n.t("Replace with file")
-                    iconGlyph: "\uE8B7"
-                    onTriggered: AppController.browseVideo()
-                }
-
-                AppMenuItem {
-                    text: I18n.t("Replace from link")
-                    iconGlyph: "\uE71B"
-                    onTriggered: root.requestUrlImport()
-                }
-            }
+            onFileRequested: AppController.browseVideo()
+            onLinkRequested: root.requestUrlImport()
+            onDownloadProjectRequested: root.requestDownloadProjectImport()
         }
     }
 

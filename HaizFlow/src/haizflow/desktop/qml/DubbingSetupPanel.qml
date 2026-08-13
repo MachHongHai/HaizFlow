@@ -148,10 +148,42 @@ Panel {
             }
         }
 
+        RowLayout {
+            Layout.fillWidth: true
+            visible: AppController.removeOriginalSubtitles
+            spacing: Theme.space12
+
+            Text {
+                Layout.preferredWidth: 92
+                text: I18n.t("Removal method")
+                color: Theme.textMuted
+                font.pixelSize: Theme.caption
+                font.weight: Font.Medium
+                textFormat: Text.PlainText
+            }
+
+            SegmentedControl {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 38
+                enabled: AppController.canEditSelectedVideo
+                currentValue: AppController.originalSubtitleRemovalMode
+                options: [
+                    { "label": I18n.t("Blur"), "value": "blur" },
+                    { "label": I18n.t("Nearby patch"), "value": "patch" }
+                ]
+                onActivated: function(value) {
+                    AppController.originalSubtitleRemovalMode = value
+                    root.scheduleVideoSettingsSave()
+                }
+            }
+        }
+
         Text {
             Layout.fillWidth: true
             text: AppController.removeOriginalSubtitles
-                ? I18n.t("OCR locates burned-in subtitles and blurs that region")
+                ? AppController.originalSubtitleRemovalMode === "patch"
+                    ? I18n.t("Copy a nearby clean picture strip over the original subtitles")
+                    : I18n.t("OCR locates burned-in subtitles and blurs that region")
                 : I18n.t("OCR and blur are skipped; the source picture remains unchanged")
             color: Theme.textMuted
             font.pixelSize: Theme.label

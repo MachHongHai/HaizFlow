@@ -81,6 +81,7 @@ class ProjectImportController:
         style_payload = dict(values.get("subtitleStyle") or {})
         manual_layout = bool(style_payload.pop("manual", False))
         remove_original_subtitles = bool(values.get("removeOriginalSubtitles", True))
+        removal_mode = str(values.get("originalSubtitleRemovalMode") or "blur")
         return config.model_copy(update={
             "mode": "review" if values.get("workflowMode") == "review" else "A",
             "target_language": str(values.get("targetLanguage") or "vi"),
@@ -91,6 +92,7 @@ class ProjectImportController:
             "tts_volume": int(values.get("ttsVolume", 100)),
             "watermark_text": str(values.get("watermarkText") or ""),
             "remove_original_subtitles": remove_original_subtitles,
+            "original_subtitle_removal_mode": removal_mode,
             "subtitle_style": SubtitleStyle(**style_payload),
             "subtitle_layout_override": manual_layout and not remove_original_subtitles,
             "background_music_path": str(values.get("backgroundMusicPath") or ""),
@@ -789,6 +791,7 @@ class ProjectImportController:
             "_tts_volume": 100,
             "_watermark_text": "",
             "_remove_original_subtitles": True,
+            "_original_subtitle_removal_mode": "blur",
             "_subtitle_style": SubtitleStyle(),
             "_subtitle_layout_override": False,
             "_background_music_path": "",
@@ -803,6 +806,7 @@ class ProjectImportController:
             "_tts_volume": "ttsVolumeChanged",
             "_watermark_text": "watermarkTextChanged",
             "_remove_original_subtitles": "subtitleSettingsChanged",
+            "_original_subtitle_removal_mode": "subtitleSettingsChanged",
             "_subtitle_style": "subtitleSettingsChanged",
             "_subtitle_layout_override": "subtitleSettingsChanged",
             "_background_music_path": "backgroundMusicChanged",
@@ -912,6 +916,40 @@ class ProjectImportController:
         host._select_video(video)
         host.refreshVideos()
         return True
+
+    def refresh_download_project_sources(self) -> None:
+        self._host.download_project_sources.set_items(project_store.list_download_project_videos())
+        self._host.downloadProjectSourcesChanged.emit()
+
+    def set_download_project_source_selected(
+        self, row: int, selected: bool, *, exclusive: bool = False
+    ) -> bool:
+        changed = self._host.download_project_sources.set_selected(
+            row, selected, exclusive=exclusive
+        )
+        if changed:
+            self._host.downloadProjectSourcesChanged.emit()
+        return changed
+
+    def import_selected_download_project_videos(self, mode: str) -> bool:
+        selected = self._host.download_project_sources.selected_items()
+        paths = [str(item.get("file_path") or "") for item in selected]
+        paths = [path for path in paths if os.path.isfile(path)]
+        if not paths:
+            QMessageBox.information(
+                None, "Import from downloads", "Choose an available downloaded video first."
+            )
+            self.refresh_download_project_sources()
+            return False
+
+        if str(mode or "").strip().lower() == "batch":
+            self.import_batch_videos(paths)
+            return True
+
+        # The shared single-video editor also handles an individual video
+        # opened from a batch. In that case importing means replacing that
+        # selected card, while a new single project receives its first input.
+        return self.import_video(paths[0], replace_selected=bool(self._host._selected_video_id))
 
     def replace_video(self, video_id: str | None, path: str, media_source=None) -> bool:
         host = self._host

@@ -14,7 +14,7 @@ from pathlib import Path
 from PySide6.QtGui import QGuiApplication
 
 from haizflow.desktop.external_links import open_external_url
-from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
+from haizflow.desktop.localization import QMessageBox
 from haizflow.desktop.media import create_video_thumbnail_path, normalize_video_path, thumbnail_source
 from haizflow.services import project_store, secure_credentials, social_publish as tiktok_publish, video_store, zernio
 from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
@@ -927,39 +927,6 @@ class SocialPublishController:
         )
         self._emit_changed()
         return True
-
-    def browse_videos(self) -> None:
-        if not self._ensure_publish_project():
-            return
-        paths, _ = QFileDialog.getOpenFileNames(
-            None,
-            "Choose videos to publish",
-            native_media_dialog_directory(),
-            "Social video files (*.mp4 *.mov *.webm);;All files (*.*)",
-        )
-        if paths:
-            self.add_videos(paths)
-
-    def browse_folder(self) -> None:
-        if not self._ensure_publish_project():
-            return
-        folder = QFileDialog.getExistingDirectory(
-            None,
-            "Choose a folder of videos to publish",
-            native_media_dialog_directory(),
-            QFileDialog.Option.ShowDirsOnly,
-        )
-        if not folder:
-            return
-        paths = [
-            str(path.resolve())
-            for path in sorted(Path(folder).iterdir(), key=lambda value: value.name.lower())
-            if path.is_file() and self._supported_file(str(path))
-        ]
-        if not paths:
-            QMessageBox.warning(None, "Social publishing", "This folder contains no supported videos.")
-            return
-        self.add_videos(paths)
 
     def refresh_project_sources(self) -> None:
         candidates: list[dict] = []

@@ -81,6 +81,9 @@ class ProjectCommandsController:
                 "ttsVolume": host._tts_volume,
                 "watermarkText": host._watermark_text,
                 "removeOriginalSubtitles": bool(getattr(host, "_remove_original_subtitles", True)),
+                "originalSubtitleRemovalMode": str(
+                    getattr(host, "_original_subtitle_removal_mode", "blur") or "blur"
+                ),
                 "subtitleStyle": {
                     **(getattr(host, "_subtitle_style", None) or SubtitleStyle()).model_dump(),
                     "manual": bool(getattr(host, "_subtitle_layout_override", False)),
@@ -92,17 +95,19 @@ class ProjectCommandsController:
                 video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
                 video.original_video_volume, getattr(video, "background_music_volume", 30), getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
                 bool(getattr(video, "remove_original_subtitles", True)),
+                str(getattr(video, "original_subtitle_removal_mode", "blur") or "blur"),
                 _subtitle_style_items(video),
             )
             for video in videos
         ).most_common(1)[0]
-        workflow_mode, target_language, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume, watermark_text, remove_original_subtitles, subtitle_style_items = common
+        workflow_mode, target_language, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume, watermark_text, remove_original_subtitles, original_subtitle_removal_mode, subtitle_style_items = common
         baseline_video = next(
             (video for video in videos if (
                 video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
                 video.original_video_volume, getattr(video, "background_music_volume", 30),
                 getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
                 bool(getattr(video, "remove_original_subtitles", True)),
+                str(getattr(video, "original_subtitle_removal_mode", "blur") or "blur"),
                 _subtitle_style_items(video),
             ) == common),
             videos[0],
@@ -121,6 +126,7 @@ class ProjectCommandsController:
             "ttsVolume": int(tts_volume),
             "watermarkText": str(watermark_text or ""),
             "removeOriginalSubtitles": bool(remove_original_subtitles),
+            "originalSubtitleRemovalMode": str(original_subtitle_removal_mode),
             "subtitleStyle": dict(subtitle_style_items),
             "backgroundMusicPath": background_music_path,
         }
@@ -150,6 +156,7 @@ class ProjectCommandsController:
                 int(getattr(video, "tts_volume", 100)),
                 " ".join(str(getattr(video, "watermark_text", "") or "").split())[:80],
                 bool(getattr(video, "remove_original_subtitles", True)),
+                str(getattr(video, "original_subtitle_removal_mode", "blur") or "blur"),
                 _subtitle_style_items(video),
                 music_signature,
             )
@@ -157,7 +164,7 @@ class ProjectCommandsController:
         keys = (
             "workflow", "targetLanguage", "voice", "audioSource",
             "sourceVolume", "backgroundMusicVolume", "ttsVolume", "watermark",
-            "originalSubtitles", "subtitleLayout",
+            "originalSubtitles", "subtitleRemovalMode", "subtitleLayout",
             "backgroundMusic",
         )
         baseline, _count = Counter(values(video) for video in videos).most_common(1)[0]
@@ -175,7 +182,7 @@ class ProjectCommandsController:
     def apply_batch_settings(
         self, workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
         background_music_volume=None, tts_volume=None, watermark_text=None, background_music_path=None,
-        remove_original_subtitles=None, subtitle_style=None,
+        remove_original_subtitles=None, subtitle_style=None, original_subtitle_removal_mode=None,
     ) -> bool:
         host = self._host
         mode = "review" if workflow_mode == "review" else "A"
@@ -188,6 +195,12 @@ class ProjectCommandsController:
         watermark_text = " ".join(str(watermark_text or "").split())[:80]
         apply_background_music = background_music_path is not None
         apply_original_subtitles = remove_original_subtitles is not None
+        apply_removal_mode = original_subtitle_removal_mode is not None
+        removal_mode = str(original_subtitle_removal_mode or "blur").strip().lower()
+        if removal_mode == "inpaint":
+            removal_mode = "patch"
+        if removal_mode not in {"blur", "patch"}:
+            removal_mode = "blur"
         apply_subtitle_style = subtitle_style is not None
         subtitle_style_payload = dict(subtitle_style or {})
         subtitle_layout_override = bool(subtitle_style_payload.pop("manual", False))
@@ -233,6 +246,8 @@ class ProjectCommandsController:
                 changes["watermark_text"] = watermark_text
             if apply_original_subtitles:
                 changes["remove_original_subtitles"] = bool(remove_original_subtitles)
+            if apply_removal_mode:
+                changes["original_subtitle_removal_mode"] = removal_mode
             if normalized_subtitle_style is not None:
                 changes["subtitle_style"] = normalized_subtitle_style
                 changes["subtitle_layout_override"] = subtitle_layout_override
@@ -274,6 +289,7 @@ class ProjectCommandsController:
         host._tts_volume = values["ttsVolume"]
         host._watermark_text = values["watermarkText"]
         host._remove_original_subtitles = values["removeOriginalSubtitles"]
+        host._original_subtitle_removal_mode = values["originalSubtitleRemovalMode"]
         subtitle_style = dict(values["subtitleStyle"])
         host._subtitle_layout_override = bool(subtitle_style.pop("manual", False))
         host._subtitle_style = SubtitleStyle(**subtitle_style)

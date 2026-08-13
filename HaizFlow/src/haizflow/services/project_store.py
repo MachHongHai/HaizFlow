@@ -33,6 +33,8 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"LPT{number}" for number in range(1, 10)),
 }
 PROJECT_TYPES = frozenset({"single", "batch", "download", "publish"})
+DOWNLOAD_VIDEO_CATEGORIES = ("channel", "video")
+DOWNLOAD_VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".mkv"})
 
 
 def normalize_project_type(project_type: Any) -> str:
@@ -693,6 +695,61 @@ def list_projects() -> list[dict[str, Any]]:
         records = _load_index()
     valid = [record for record in records if record.get("key") and record.get("project_name")]
     return sorted(valid, key=lambda record: record.get("updated_at", ""), reverse=True)
+
+
+def list_download_project_videos() -> list[dict[str, Any]]:
+    """List importable videos owned by download projects.
+
+    Only the two video output areas are exposed. Audio downloads, temporary
+    files and project metadata must never appear as processing inputs.
+    """
+    items: list[dict[str, Any]] = []
+    for record in list_projects():
+        if normalize_project_type(record.get("project_type")) != "download":
+            continue
+        project_key_value = str(record.get("key") or "")
+        project_name = str(record.get("project_name") or "")
+        try:
+            downloads_root = Path(project_downloads_dir_for_key(project_key_value)).resolve()
+        except (OSError, ValueError):
+            continue
+
+        for category in DOWNLOAD_VIDEO_CATEGORIES:
+            category_root = downloads_root / category
+            if not category_root.is_dir():
+                continue
+            try:
+                candidates = sorted(
+                    category_root.rglob("*"),
+                    key=lambda path: path.stat().st_mtime_ns if path.is_file() else 0,
+                    reverse=True,
+                )
+            except OSError:
+                continue
+            for path in candidates:
+                try:
+                    resolved = path.resolve()
+                    relative = resolved.relative_to(category_root.resolve())
+                    if (
+                        not resolved.is_file()
+                        or resolved.suffix.lower() not in DOWNLOAD_VIDEO_EXTENSIONS
+                        or any(part.startswith(".") for part in relative.parts)
+                    ):
+                        continue
+                    stat_result = resolved.stat()
+                except (OSError, ValueError):
+                    continue
+                items.append({
+                    "item_id": f"{project_key_value}:{category}:{relative.as_posix()}",
+                    "project_key": project_key_value,
+                    "project_name": project_name,
+                    "category": category,
+                    "file_name": resolved.name,
+                    "file_path": str(resolved),
+                    "file_size": int(stat_result.st_size),
+                    "modified_ns": int(stat_result.st_mtime_ns),
+                })
+    return items
 
 
 def touch_project_by_key(project_key_value: str) -> bool:

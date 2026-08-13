@@ -8,6 +8,7 @@ Item {
 
     signal requestReviewTranslation()
     signal requestUrlImport()
+    signal requestDownloadProjectImport()
 
     readonly property bool editingBatchVideo: AppController.isSelectedBatchVideo
     readonly property bool wideLayout: width >= 1120
@@ -92,6 +93,7 @@ Item {
                     Layout.minimumHeight: implicitHeight
                     Layout.preferredHeight: implicitHeight
                     onRequestUrlImport: root.requestUrlImport()
+                    onRequestDownloadProjectImport: root.requestDownloadProjectImport()
                 }
 
                 DubbingSetupPanel {

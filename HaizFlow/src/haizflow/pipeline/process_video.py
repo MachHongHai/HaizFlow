@@ -511,7 +511,7 @@ def _original_subtitle_region_for_render(video, reporter, video_dir):
     video_id = video.video_id
     if not bool(getattr(video, "remove_original_subtitles", True)):
         reporter.update(87, "detecting_original_subtitles", "Keeping original video subtitles unchanged")
-        log_to_video(video_id, "Original subtitle OCR and blur disabled; preserving the source picture.")
+        log_to_video(video_id, "Original subtitle detection and removal disabled; preserving the source picture.")
         return None
 
     reporter.update(87, "detecting_original_subtitles", "Preparing original subtitle scan")
@@ -643,6 +643,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         )
         crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
         remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
+        original_subtitle_removal_mode = str(
+            getattr(video, "original_subtitle_removal_mode", "blur") or "blur"
+        )
         # Old project metadata may contain both flags after a user positioned
         # subtitles in keep-original mode and later enabled OCR covering.  OCR
         # placement must always win in cover mode, even before that metadata is
@@ -653,7 +656,8 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
             # Bump when changing the visual treatment so a previously rendered
             # luma-only result is never reused as a valid final export.
-            "static-largest-original-subtitle-ocr-v14-context-blur-font-boost", remove_original_subtitles,
+            "static-largest-original-subtitle-ocr-v16-neighbour-patch", remove_original_subtitles,
+            original_subtitle_removal_mode,
             original_subtitle_region,
             "watermark-bold-italic-keyline-v3",
             getattr(video, "watermark_text", ""),
@@ -682,6 +686,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
                 getattr(video, "watermark_text", ""),
                 subtitle_layout_override=manual_subtitle_layout,
                 progress_callback=report_render_progress,
+                original_subtitle_removal_mode=original_subtitle_removal_mode,
             )
             _mark_checkpoint(video, "render", render_signature)
 

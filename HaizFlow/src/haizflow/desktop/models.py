@@ -431,6 +431,82 @@ class SocialProjectSourceListModel(QAbstractListModel):
         return True
 
 
+class DownloadProjectSourceListModel(QAbstractListModel):
+    """Videos downloaded by HaizFlow that can be copied into processing projects."""
+
+    ItemIdRole = Qt.ItemDataRole.UserRole + 1
+    ProjectNameRole = Qt.ItemDataRole.UserRole + 2
+    CategoryRole = Qt.ItemDataRole.UserRole + 3
+    FileNameRole = Qt.ItemDataRole.UserRole + 4
+    FilePathRole = Qt.ItemDataRole.UserRole + 5
+    FileSizeRole = Qt.ItemDataRole.UserRole + 6
+    SelectedRole = Qt.ItemDataRole.UserRole + 7
+
+    def __init__(self):
+        super().__init__()
+        self._items: list[dict] = []
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._items)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() < 0 or index.row() >= len(self._items):
+            return None
+        item = self._items[index.row()]
+        return {
+            self.ItemIdRole: item["item_id"],
+            self.ProjectNameRole: item["project_name"],
+            self.CategoryRole: item["category"],
+            self.FileNameRole: item["file_name"],
+            self.FilePathRole: item["file_path"],
+            self.FileSizeRole: item["file_size"],
+            self.SelectedRole: item["selected"],
+        }.get(role)
+
+    def roleNames(self):
+        return {
+            self.ItemIdRole: b"downloadItemId",
+            self.ProjectNameRole: b"downloadProjectName",
+            self.CategoryRole: b"downloadCategory",
+            self.FileNameRole: b"downloadFileName",
+            self.FilePathRole: b"downloadFilePath",
+            self.FileSizeRole: b"downloadFileSize",
+            self.SelectedRole: b"downloadSelected",
+        }
+
+    def set_items(self, items) -> None:
+        self.beginResetModel()
+        self._items = [{**item, "selected": bool(item.get("selected", False))} for item in items]
+        self.endResetModel()
+
+    def set_selected(self, row: int, selected: bool, *, exclusive: bool = False) -> bool:
+        if row < 0 or row >= len(self._items):
+            return False
+        changed_rows: list[int] = []
+        if exclusive and selected:
+            for index, item in enumerate(self._items):
+                desired = index == row
+                if item["selected"] != desired:
+                    item["selected"] = desired
+                    changed_rows.append(index)
+        else:
+            value = bool(selected)
+            if self._items[row]["selected"] != value:
+                self._items[row]["selected"] = value
+                changed_rows.append(row)
+        for changed_row in changed_rows:
+            model_index = self.index(changed_row, 0)
+            self.dataChanged.emit(model_index, model_index, [self.SelectedRole])
+        return True
+
+    def selected_items(self) -> list[dict]:
+        return [dict(item) for item in self._items if item["selected"]]
+
+    @property
+    def selected_count(self) -> int:
+        return sum(1 for item in self._items if item["selected"])
+
+
 class ChannelCandidateListModel(QAbstractListModel):
     CandidateIdRole = Qt.ItemDataRole.UserRole + 1
     SelectedRole = Qt.ItemDataRole.UserRole + 2

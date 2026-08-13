@@ -23,6 +23,7 @@ from haizflow.desktop.media import (
 )
 from haizflow.desktop.media_probe import VideoDimensionProbe
 from haizflow.desktop.models import (
+    DownloadProjectSourceListModel,
     ProjectGridModel,
     ProjectListModel,
     SocialProjectSourceListModel,
@@ -116,6 +117,7 @@ class HaizFlowController(QObject):
     channelImportChanged = Signal()
     mediaImportChanged = Signal()
     socialPublishStateChanged = Signal()
+    downloadProjectSourcesChanged = Signal()
     zernioAccountsChanged = Signal()
     zernioPostOptionsChanged = Signal()
     # Kept as a coarse compatibility signal for Python-side observers. QML
@@ -135,6 +137,7 @@ class HaizFlowController(QObject):
         self.batch_videos = VideoListModel()
         self.tiktok_publish_items = SocialPublishListModel()
         self.tiktok_project_sources = SocialProjectSourceListModel()
+        self.download_project_sources = DownloadProjectSourceListModel()
         self._video_path = ""
         self._video_thumbnail_source = ""
         self._target_language = "vi"
@@ -145,6 +148,7 @@ class HaizFlowController(QObject):
         self._tts_volume = 100
         self._watermark_text = ""
         self._remove_original_subtitles = True
+        self._original_subtitle_removal_mode = "blur"
         self._subtitle_style = SubtitleStyle()
         self._subtitle_layout_override = False
         self._background_music_path = ""
@@ -474,6 +478,14 @@ class HaizFlowController(QObject):
     @Property(QObject, constant=True)
     def tiktokProjectSourceModel(self):
         return self.tiktok_project_sources
+
+    @Property(QObject, constant=True)
+    def downloadProjectSourceModel(self):
+        return self.download_project_sources
+
+    @Property(int, notify=downloadProjectSourcesChanged)
+    def downloadProjectSourceSelectedCount(self):
+        return self.download_project_sources.selected_count
 
     @Property(bool, notify=socialPublishStateChanged)
     def tiktokPublishBusy(self):
@@ -898,6 +910,21 @@ class HaizFlowController(QObject):
             self._remove_original_subtitles = normalized
             if layout_changed:
                 self._subtitle_layout_override = False
+            self.subtitleSettingsChanged.emit()
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def originalSubtitleRemovalMode(self):
+        return self._original_subtitle_removal_mode
+
+    @originalSubtitleRemovalMode.setter
+    def originalSubtitleRemovalMode(self, value):
+        normalized = str(value or "").strip().lower()
+        if normalized == "inpaint":
+            normalized = "patch"
+        if normalized not in {"blur", "patch"}:
+            normalized = "blur"
+        if self._original_subtitle_removal_mode != normalized:
+            self._original_subtitle_removal_mode = normalized
             self.subtitleSettingsChanged.emit()
 
     def _set_subtitle_style_value(self, key: str, value: int, minimum: int, maximum: int) -> None:
@@ -1536,6 +1563,20 @@ class HaizFlowController(QObject):
         return HaizFlowController._project_import_for(self).import_video(path)
 
     @Slot()
+    def refreshDownloadProjectSources(self):
+        HaizFlowController._project_import_for(self).refresh_download_project_sources()
+
+    @Slot(int, bool, bool, result=bool)
+    def setDownloadProjectSourceSelected(self, row: int, selected: bool, exclusive: bool):
+        return HaizFlowController._project_import_for(self).set_download_project_source_selected(
+            row, selected, exclusive=exclusive
+        )
+
+    @Slot(str, result=bool)
+    def importSelectedDownloadProjectVideos(self, mode: str):
+        return HaizFlowController._project_import_for(self).import_selected_download_project_videos(mode)
+
+    @Slot()
     def browseBatchVideos(self):
         HaizFlowController._project_import_for(self).browse_batch_videos()
 
@@ -1609,11 +1650,12 @@ class HaizFlowController(QObject):
         background_music_path=None,
         remove_original_subtitles=None,
         subtitle_style=None,
+        original_subtitle_removal_mode=None,
     ) -> bool:
         return HaizFlowController._project_commands_for(self).apply_batch_settings(
             workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
             background_music_volume, tts_volume, watermark_text, background_music_path,
-            remove_original_subtitles, subtitle_style,
+            remove_original_subtitles, subtitle_style, original_subtitle_removal_mode,
         )
 
     @Slot(result=bool)
@@ -1630,9 +1672,10 @@ class HaizFlowController(QObject):
             None,
             self._remove_original_subtitles,
             self._subtitle_style.model_dump(),
+            self._original_subtitle_removal_mode,
         )
 
-    @Slot(str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", result=bool)
+    @Slot(str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, result=bool)
     def applyBatchSettingsDraft(
         self,
         workflow_mode: str,
@@ -1646,6 +1689,7 @@ class HaizFlowController(QObject):
         background_music_path: str | None = None,
         remove_original_subtitles: bool | None = None,
         subtitle_style=None,
+        original_subtitle_removal_mode: str | None = None,
     ):
         return self._apply_batch_settings(
             workflow_mode,
@@ -1659,6 +1703,7 @@ class HaizFlowController(QObject):
             background_music_path,
             remove_original_subtitles,
             subtitle_style,
+            original_subtitle_removal_mode,
         )
 
     @Slot()
@@ -1838,14 +1883,6 @@ class HaizFlowController(QObject):
             QMessageBox.information(None, "Download folder", "Open a download project first.")
             return
         self._open_path(project_store.project_downloads_dir_for_key(self._selected_project_key))
-
-    @Slot()
-    def browseTikTokPublishVideos(self):
-        self._tiktok_publisher.browse_videos()
-
-    @Slot()
-    def browseTikTokPublishFolder(self):
-        self._tiktok_publisher.browse_folder()
 
     @Slot()
     def refreshTikTokProjectSources(self):
@@ -2105,6 +2142,7 @@ class HaizFlowController(QObject):
             subtitle_style=self._subtitle_style,
             subtitle_layout_override=manual_subtitle_layout,
             remove_original_subtitles=self._remove_original_subtitles,
+            original_subtitle_removal_mode=self._original_subtitle_removal_mode,
             output_format="keep_ratio",
             crop=CropSettings(),
             enable_audio_separation=self._enable_audio_separation,
@@ -2130,6 +2168,7 @@ class HaizFlowController(QObject):
             "subtitle_style": config.subtitle_style,
             "subtitle_layout_override": config.subtitle_layout_override,
             "remove_original_subtitles": config.remove_original_subtitles,
+            "original_subtitle_removal_mode": config.original_subtitle_removal_mode,
             "output_format": config.output_format,
             "crop": config.crop,
             "enable_audio_separation": config.enable_audio_separation,

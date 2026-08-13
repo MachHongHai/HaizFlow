@@ -56,6 +56,25 @@ class DownloadProjectTests(unittest.TestCase):
         self.assertFalse((root / "exports").exists())
         self.assertFalse((root / "videos").exists())
 
+    def test_download_video_catalog_excludes_audio_metadata_and_hidden_files(self):
+        project = project_store.create_project(
+            "Import source", str(self.root / "outputs"), "download",
+        )
+        downloads = Path(project_store.project_downloads_dir_for_key(project["key"]))
+        (downloads / "channel" / "creator").mkdir(parents=True)
+        (downloads / "channel" / "creator" / "first.mp4").write_bytes(b"video")
+        (downloads / "video" / "second.mkv").write_bytes(b"video")
+        (downloads / "audio" / "sound.mp3").write_bytes(b"audio")
+        (downloads / "video" / "details.json").write_text("{}", encoding="utf-8")
+        (downloads / "video" / ".partial").mkdir()
+        (downloads / "video" / ".partial" / "ignored.mp4").write_bytes(b"partial")
+
+        items = project_store.list_download_project_videos()
+
+        self.assertEqual({item["file_name"] for item in items}, {"first.mp4", "second.mkv"})
+        self.assertEqual({item["category"] for item in items}, {"channel", "video"})
+        self.assertTrue(all(item["project_key"] == project["key"] for item in items))
+
     def test_each_queued_task_keeps_the_output_of_its_download_project(self):
         first = project_store.create_project("First", str(self.root / "outputs"), "download")
         second = project_store.create_project("Second", str(self.root / "outputs"), "download")

@@ -141,53 +141,12 @@ Item {
 
                 AppButton {
                     id: addVideosButton
-
-                    property bool menuWasOpenOnPress: false
-
                     compact: true
-                    text: I18n.t("Add videos")
+                    text: I18n.t("Add from projects")
                     iconGlyph: "\uE710"
                     tone: "primary"
                     enabled: !AppController.tiktokPublishBusy
-                    onPressed: menuWasOpenOnPress = addVideoMenu.visible
-                    onClicked: {
-                        if (menuWasOpenOnPress || addVideoMenu.visible)
-                            addVideoMenu.close()
-                        else
-                            addVideoMenu.open()
-                    }
-
-                    Menu {
-                        id: addVideoMenu
-
-                        width: 230
-                        y: addVideosButton.height + Theme.space4
-                        padding: 6
-                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
-
-                        background: Rectangle {
-                            color: Theme.surfaceElevated
-                            radius: Theme.radius
-                            border.width: 1
-                            border.color: Theme.outlineStrong
-                        }
-
-                        AppMenuItem {
-                            text: I18n.t("From files")
-                            iconGlyph: "\uE8B7"
-                            onTriggered: AppController.browseTikTokPublishVideos()
-                        }
-                        AppMenuItem {
-                            text: I18n.t("From folder")
-                            iconGlyph: "\uE8B7"
-                            onTriggered: AppController.browseTikTokPublishFolder()
-                        }
-                        AppMenuItem {
-                            text: I18n.t("From projects")
-                            iconGlyph: "\uE8F1"
-                            onTriggered: projectSourceDialog.openForSelection()
-                        }
-                    }
+                    onClicked: projectSourceDialog.openForSelection()
                 }
             }
         }

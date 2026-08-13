@@ -25,7 +25,78 @@ from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycle
 from haizflow.schemas.video import VideoConfig
 
 
+class _DownloadSourceModel:
+    def __init__(self):
+        self.items = []
+
+    def set_items(self, items):
+        self.items = [{**item, "selected": False} for item in items]
+
+    def set_selected(self, row, selected, *, exclusive=False):
+        if not 0 <= row < len(self.items):
+            return False
+        if exclusive and selected:
+            for index, item in enumerate(self.items):
+                item["selected"] = index == row
+        else:
+            self.items[row]["selected"] = bool(selected)
+        return True
+
+    def selected_items(self):
+        return [item for item in self.items if item["selected"]]
+
+
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_download_project_source_import_uses_single_replace_and_batch_copy_flows(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            first = Path(temporary) / "first.mp4"
+            second = Path(temporary) / "second.mp4"
+            first.write_bytes(b"first")
+            second.write_bytes(b"second")
+            signal = SimpleNamespace(emit=Mock())
+            host = SimpleNamespace(
+                download_project_sources=_DownloadSourceModel(),
+                downloadProjectSourcesChanged=signal,
+                _selected_video_id="selected-video",
+            )
+            controller = ProjectImportController(host)
+            controller.import_video = Mock(return_value=True)
+            controller.import_batch_videos = Mock()
+            sources = [
+                {"item_id": "one", "project_name": "Downloads", "category": "video",
+                 "file_name": first.name, "file_path": str(first), "file_size": 5},
+                {"item_id": "two", "project_name": "Downloads", "category": "channel",
+                 "file_name": second.name, "file_path": str(second), "file_size": 6},
+            ]
+
+            with patch.object(project_import_controller.project_store, "list_download_project_videos", return_value=sources):
+                controller.refresh_download_project_sources()
+            controller.set_download_project_source_selected(0, True, exclusive=True)
+            self.assertTrue(controller.import_selected_download_project_videos("single"))
+            controller.import_video.assert_called_once_with(str(first), replace_selected=True)
+
+            controller.set_download_project_source_selected(0, True, exclusive=False)
+            controller.set_download_project_source_selected(1, True, exclusive=False)
+            self.assertTrue(controller.import_selected_download_project_videos("batch"))
+            controller.import_batch_videos.assert_called_once_with([str(first), str(second)])
+
+    def test_download_project_source_single_selection_is_exclusive(self):
+        model = _DownloadSourceModel()
+        model.set_items([
+            {"item_id": "one", "selected": False},
+            {"item_id": "two", "selected": False},
+        ])
+        host = SimpleNamespace(
+            download_project_sources=model,
+            downloadProjectSourcesChanged=SimpleNamespace(emit=Mock()),
+        )
+        controller = ProjectImportController(host)
+
+        controller.set_download_project_source_selected(0, True, exclusive=True)
+        controller.set_download_project_source_selected(1, True, exclusive=True)
+
+        self.assertEqual([item["item_id"] for item in model.selected_items()], ["two"])
+
     def test_covering_original_subtitles_clears_stale_manual_layout(self):
         host = SimpleNamespace(
             _remove_original_subtitles=False,
@@ -37,6 +108,17 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertTrue(host._remove_original_subtitles)
         self.assertFalse(host._subtitle_layout_override)
+        host.subtitleSettingsChanged.emit.assert_called_once_with()
+
+    def test_original_subtitle_removal_mode_rejects_unknown_values(self):
+        host = SimpleNamespace(
+            _original_subtitle_removal_mode="patch",
+            subtitleSettingsChanged=SimpleNamespace(emit=Mock()),
+        )
+
+        HaizFlowController.originalSubtitleRemovalMode.fset(host, "unsupported")
+
+        self.assertEqual(host._original_subtitle_removal_mode, "blur")
         host.subtitleSettingsChanged.emit.assert_called_once_with()
 
     def test_new_project_setup_resets_all_project_local_settings(self):
@@ -54,6 +136,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             _workflow_mode="review", _target_language="en", _tts_voice="en-US-GuyNeural",
             _enable_audio_separation=True, _original_volume=15, _background_music_volume=75,
             _tts_volume=55, _watermark_text="Previous project", _background_music_path="old.m4a",
+            _original_subtitle_removal_mode="inpaint",
             _audio_preview=preview, **changed,
         )
         controller = ProjectImportController(host)
@@ -68,6 +151,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual((host._original_volume, host._background_music_volume, host._tts_volume), (60, 30, 100))
         self.assertEqual(host._watermark_text, "")
         self.assertEqual(host._background_music_path, "")
+        self.assertEqual(host._original_subtitle_removal_mode, "blur")
         preview.invalidate.assert_called_once_with()
         controller.cancel_background_music_link_import.assert_called_once_with()
 
@@ -125,6 +209,7 @@ class MultiProjectControllerTests(unittest.TestCase):
                 "ttsVolume": 90,
                 "watermarkText": "batch",
                 "removeOriginalSubtitles": True,
+                "originalSubtitleRemovalMode": "patch",
                 "subtitleStyle": {"font_size": 64, "manual": True},
                 "backgroundMusicPath": "music.mp3",
             }),
@@ -136,6 +221,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(config.tts_voice, "vi-VN-HoaiMyNeural")
         self.assertEqual(config.watermark_text, "batch")
         self.assertTrue(config.remove_original_subtitles)
+        self.assertEqual(config.original_subtitle_removal_mode, "patch")
         self.assertFalse(config.subtitle_layout_override)
         self.assertEqual(config.subtitle_style.font_size, 64)
         self.assertEqual(config.background_music_path, "music.mp3")

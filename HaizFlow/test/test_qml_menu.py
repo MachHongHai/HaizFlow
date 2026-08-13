@@ -437,6 +437,12 @@ ApplicationWindow {{
         self.assertIn("zernioConnectedAccountCount", setup)
         self.assertNotIn('I18n.t("Zernio setup")', setup)
         self.assertIn('I18n.t("Video sources")', page)
+        self.assertIn('I18n.t("Add from projects")', page)
+        self.assertIn("projectSourceDialog.openForSelection()", page)
+        self.assertNotIn('I18n.t("From files")', page)
+        self.assertNotIn('I18n.t("From folder")', page)
+        self.assertNotIn("browseTikTokPublishVideos", page)
+        self.assertNotIn("browseTikTokPublishFolder", page)
         self.assertIn('I18n.t("Default post text")', page)
         self.assertIn('I18n.t("Edit content")', page)
         self.assertLess(page.index("ZernioAccessPanel"), page.index("ZernioSetupPanel"))
@@ -519,6 +525,24 @@ ApplicationWindow {{
         self.assertIn("contentItem: ColumnLayout", language_picker)
         self.assertIn("onClicked: root.openPicker(true)", language_picker)
         self.assertNotIn("property bool userEditing", language_picker)
+
+    def test_processing_projects_can_import_from_download_projects(self):
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        source_panel = (QML_DIR / "SourceMediaPanel.qml").read_text(encoding="utf-8")
+        batch_page = (QML_DIR / "BatchPage.qml").read_text(encoding="utf-8")
+        dialog = (QML_DIR / "DownloadProjectSourceDialog.qml").read_text(encoding="utf-8")
+        import_button = (QML_DIR / "MediaSourceImportButton.qml").read_text(encoding="utf-8")
+
+        self.assertIn("DownloadProjectSourceDialog", main)
+        self.assertIn("requestDownloadProjectImport", source_panel)
+        self.assertIn("MediaSourceImportButton", source_panel)
+        self.assertIn("requestDownloadProjectImport", batch_page)
+        self.assertIn("MediaSourceImportButton", batch_page)
+        self.assertIn('I18n.t("File")', import_button)
+        self.assertIn('I18n.t("Link")', import_button)
+        self.assertIn('I18n.t("Downloads")', import_button)
+        self.assertIn("AppController.downloadProjectSourceModel", dialog)
+        self.assertIn("AppController.importSelectedDownloadProjectVideos", dialog)
 
 
 if __name__ == "__main__":

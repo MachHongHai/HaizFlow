@@ -61,6 +61,21 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "downloadProjectSourceModel"
+            type: "QObject"
+            read: "downloadProjectSourceModel"
+            index: 140
+            isReadonly: true
+        }
+        Property {
+            name: "downloadProjectSourceSelectedCount"
+            type: "int"
+            read: "downloadProjectSourceSelectedCount"
+            notify: "downloadProjectSourcesChanged"
+            index: 141
+            isReadonly: true
+        }
+        Property {
             name: "tiktokPublishBusy"
             type: "bool"
             read: "tiktokPublishBusy"
@@ -571,6 +586,14 @@ Module {
             write: "removeOriginalSubtitles"
             notify: "subtitleSettingsChanged"
             index: 67
+        }
+        Property {
+            name: "originalSubtitleRemovalMode"
+            type: "QString"
+            read: "originalSubtitleRemovalMode"
+            write: "originalSubtitleRemovalMode"
+            notify: "subtitleSettingsChanged"
+            index: 140
         }
         Property {
             name: "subtitleFontSize"
@@ -1182,6 +1205,7 @@ Module {
         Signal { name: "zernioAccountsChanged" }
         Signal { name: "zernioPostOptionsChanged" }
         Signal { name: "tiktokPublishChanged" }
+        Signal { name: "downloadProjectSourcesChanged" }
         Method {
             name: "setHardwareTelemetryActive"
             Parameter { name: "a1"; type: "bool" }
@@ -1273,6 +1297,19 @@ Module {
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
         }
+        Method { name: "refreshDownloadProjectSources" }
+        Method {
+            name: "setDownloadProjectSourceSelected"
+            type: "bool"
+            Parameter { name: "a1"; type: "int" }
+            Parameter { name: "a2"; type: "bool" }
+            Parameter { name: "a3"; type: "bool" }
+        }
+        Method {
+            name: "importSelectedDownloadProjectVideos"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
         Method { name: "browseBatchVideos" }
         Method { name: "browseBatchFolder" }
         Method {
@@ -1298,6 +1335,7 @@ Module {
             Parameter { name: "a9"; type: "QString" }
             Parameter { name: "a10"; type: "bool" }
             Parameter { name: "a11"; type: "QVariantMap" }
+            Parameter { name: "a12"; type: "QString" }
         }
         Method { name: "loadBatchSettings" }
         Method { name: "saveSelectedVideoSettings"; type: "bool" }
@@ -1336,8 +1374,6 @@ Module {
         Method { name: "deleteSelectedVideo" }
         Method { name: "openProjectFolder" }
         Method { name: "openDownloadOutputFolder" }
-        Method { name: "browseTikTokPublishVideos" }
-        Method { name: "browseTikTokPublishFolder" }
         Method { name: "refreshTikTokProjectSources" }
         Method {
             name: "setTikTokProjectSourceSelected"

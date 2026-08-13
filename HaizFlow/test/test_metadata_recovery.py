@@ -215,6 +215,7 @@ class VideoMetadataMigrationTests(unittest.TestCase):
                 "tts_volume": 444,
                 "subtitle_style": {"font_size": -2, "position_y_percent": 999},
                 "crop": {"zoom_percent": 0, "pan_x_percent": -999},
+                "original_subtitle_removal_mode": "inpaint",
             }
         )
         path.write_text(json.dumps(legacy), encoding="utf-8")
@@ -233,6 +234,7 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.subtitle_style.position_y_percent, 100)
         self.assertEqual(migrated.crop.zoom_percent, 1)
         self.assertEqual(migrated.crop.pan_x_percent, -100)
+        self.assertEqual(migrated.original_subtitle_removal_mode, "patch")
         self.assertEqual(saved["translator_provider"], "hymt2")
         self.assertTrue(Path(f"{path}.schema-migration.bak").is_file())
 
@@ -291,6 +293,19 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
         self.assertTrue(migrated.remove_original_subtitles)
         self.assertFalse(migrated.subtitle_layout_override)
+
+    def test_v10_metadata_keeps_blur_as_the_compatible_removal_mode(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        legacy = json.loads(path.read_text(encoding="utf-8"))
+        legacy["schema_version"] = 10
+        legacy.pop("original_subtitle_removal_mode", None)
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
+        self.assertEqual(migrated.original_subtitle_removal_mode, "blur")
 
     def test_v9_metadata_preserves_the_visible_finished_session_duration(self):
         video = self._create_video()

@@ -11,6 +11,7 @@ Item {
     signal openVideoDetail
     signal requestBatchSettings
     signal requestUrlImport
+    signal requestDownloadProjectImport
 
     property bool dropActive: false
     readonly property bool compactHeight: height < 740
@@ -59,8 +60,8 @@ Item {
             Rectangle {
                 id: importCard
 
-                Layout.preferredWidth: Math.min(640, Math.max(380, root.width * 0.42))
-                Layout.minimumWidth: 380
+                Layout.preferredWidth: Math.min(640, Math.max(500, root.width * 0.48))
+                Layout.minimumWidth: 500
                 Layout.maximumWidth: 640
                 Layout.fillHeight: true
                 radius: Theme.radiusSmall
@@ -103,28 +104,12 @@ Item {
                         elide: Text.ElideRight
                     }
 
-                    AppButton {
-                        Layout.preferredWidth: 88
-                        text: I18n.t("Videos")
+                    MediaSourceImportButton {
+                        Layout.preferredWidth: 132
                         tone: "violet"
-                        compact: true
-                        onClicked: AppController.browseBatchVideos()
-                    }
-
-                    AppButton {
-                        Layout.preferredWidth: 88
-                        text: I18n.t("Folder")
-                        tone: "secondary"
-                        compact: true
-                        onClicked: AppController.browseBatchFolder()
-                    }
-
-                    AppButton {
-                        Layout.preferredWidth: 88
-                        text: I18n.t("Link")
-                        tone: "secondary"
-                        compact: true
-                        onClicked: root.requestUrlImport()
+                        onFileRequested: AppController.browseBatchVideos()
+                        onLinkRequested: root.requestUrlImport()
+                        onDownloadProjectRequested: root.requestDownloadProjectImport()
                     }
                 }
 

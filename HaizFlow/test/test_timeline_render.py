@@ -348,6 +348,51 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertNotIn("between(t", filter_prefix)
         self.assertNotIn("drawbox", filter_prefix)
 
+    def test_subtitle_patch_copies_real_pixels_from_an_adjacent_strip(self):
+        filter_prefix = render._subtitle_patch_prefix(
+            (78, 562, 418, 54), 576, 1024,
+        )
+
+        self.assertEqual(
+            filter_prefix,
+            "[0:v]split=2[source_clean][source_patch];"
+            "[source_patch]crop=418:54:78:504,format=rgba,"
+            "geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+            "a='255*min(1,min(min(X,W-1-X),min(Y,H-1-Y))/3)'[subtitle_patch];"
+            "[source_clean][subtitle_patch]overlay=78:562[source_without_original];",
+        )
+        self.assertNotIn("gblur", filter_prefix)
+        self.assertNotIn("delogo", filter_prefix)
+
+    def test_subtitle_removal_mode_defaults_to_existing_blur(self):
+        region = (78, 562, 418, 54)
+
+        self.assertIn(
+            "gblur=",
+            render._original_subtitle_removal_prefix(region, 576, 1024, "unknown"),
+        )
+        self.assertIn(
+            "[source_patch]crop=",
+            render._original_subtitle_removal_prefix(region, 576, 1024, "patch"),
+        )
+
+    def test_subtitle_patch_uses_the_available_side_near_frame_edges(self):
+        self.assertEqual(
+            render._subtitle_patch_source_y((40, 20, 300, 80), 1024),
+            106,
+        )
+        self.assertEqual(
+            render._subtitle_patch_source_y((40, 900, 300, 80), 1024),
+            814,
+        )
+
+    def test_subtitle_patch_falls_back_to_blur_when_no_clean_strip_fits(self):
+        filter_prefix = render._subtitle_patch_prefix(
+            (20, 40, 300, 160), 576, 220,
+        )
+
+        self.assertIn("gblur=", filter_prefix)
+
     def test_multiline_removal_region_uses_single_source_line_for_font_size(self):
         region = {
             "x_percent": 14,

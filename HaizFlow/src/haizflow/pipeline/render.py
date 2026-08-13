@@ -517,7 +517,7 @@ def _manual_subtitle_layout(
     return SubtitleRegionLayout(x, y, width, height)
 
 
-def _source_blur_region(region: dict | None, source_width: int, source_height: int) -> tuple[int, int, int, int] | None:
+def _source_subtitle_removal_region(region: dict | None, source_width: int, source_height: int) -> tuple[int, int, int, int] | None:
     if not region:
         return None
     try:
@@ -594,6 +594,59 @@ def _subtitle_blur_prefix(
     )
 
 
+def _subtitle_patch_source_y(
+    region: tuple[int, int, int, int], source_height: int,
+) -> int | None:
+    """Choose a clean adjacent strip without overlapping the subtitle box."""
+    _x, y, _width, height = region
+    gap = max(2, min(12, round(height * 0.08)))
+    room_above = y
+    room_below = source_height - (y + height)
+    required_room = height + gap
+    if room_above < required_room and room_below < required_room:
+        return None
+    # Sample toward the larger uninterrupted side. Besides avoiding frame
+    # edges, this makes lower captions copy from above and upper captions copy
+    # from below, where perspective and lighting are normally most similar.
+    if room_above >= room_below and room_above >= required_room:
+        return y - height - gap
+    if room_below >= required_room:
+        return y + height + gap
+    return y - height - gap
+
+
+def _subtitle_patch_prefix(
+    region: tuple[int, int, int, int], source_width: int, source_height: int,
+) -> str:
+    """Cover the OCR box with real pixels from an adjacent picture strip."""
+    x, y, width, height = region
+    x = max(0, min(source_width - 2, x))
+    y = max(0, min(source_height - 2, y))
+    width = max(2, min(width, source_width - x))
+    height = max(2, min(height, source_height - y))
+    patch_y = _subtitle_patch_source_y((x, y, width, height), source_height)
+    if patch_y is None:
+        return _subtitle_blur_prefix((x, y, width, height), source_width, source_height)
+    feather = max(2, min(8, round(min(width, height) * 0.06)))
+    edge_distance = "min(min(X,W-1-X),min(Y,H-1-Y))"
+    return (
+        f"[0:v]split=2[source_clean][source_patch];"
+        f"[source_patch]crop={width}:{height}:{x}:{patch_y},format=rgba,"
+        f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+        f"a='255*min(1,{edge_distance}/{feather})'[subtitle_patch];"
+        f"[source_clean][subtitle_patch]overlay={x}:{y}[source_without_original];"
+    )
+
+
+def _original_subtitle_removal_prefix(
+    region: tuple[int, int, int, int], source_width: int, source_height: int,
+    mode: str,
+) -> str:
+    if str(mode or "").strip().lower() in {"patch", "inpaint"}:
+        return _subtitle_patch_prefix(region, source_width, source_height)
+    return _subtitle_blur_prefix(region, source_width, source_height)
+
+
 def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
     """Return a polished, continuously moving creator watermark filter."""
     normalized = " ".join(str(text or "").split())[:80]
@@ -661,7 +714,7 @@ def _ffmpeg_progress_fraction(progress_text: str, duration: float) -> float | No
     return max(0.0, min(1.0, seconds / duration))
 
 
-def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None, watermark_text: str = "", subtitle_layout_override: bool = False, progress_callback: Callable[[float], None] | None = None):
+def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None, watermark_text: str = "", subtitle_layout_override: bool = False, progress_callback: Callable[[float], None] | None = None, original_subtitle_removal_mode: str = "blur"):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
     supported_formats = {"keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"}
@@ -735,34 +788,38 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     source_duration = get_video_duration(video_path)
     if source_duration <= 0:
         raise RuntimeError("Unable to determine the source video duration before rendering.")
-    blur_region = _source_blur_region(
+    removal_region = _source_subtitle_removal_region(
         original_subtitle_region, source_width, source_height,
     )
-    if blur_region:
-        x, y, width, height = blur_region
+    requested_removal_mode = str(original_subtitle_removal_mode).strip().lower()
+    removal_mode = "patch" if requested_removal_mode in {"patch", "inpaint"} else "blur"
+    if removal_region:
+        x, y, width, height = removal_region
         log_to_video(
             video_id,
-            "Applying original subtitle blur to source pixels "
+            f"Applying original subtitle {removal_mode} treatment to source pixels "
             f"({x},{y}) {width}x{height}; replacement-subtitle layout is independent.",
             component="RENDER",
         )
     elif original_subtitle_region:
         log_to_video(
             video_id,
-            "Original subtitle blur was skipped because the detected region was outside the source frame.",
+            "Original subtitle removal was skipped because the detected region was outside the source frame.",
             level="WARNING",
             component="RENDER",
         )
     if output_format == "blur_background_9_16":
         prefix = ",".join(filters)
         input_label = "[0:v]"
-        blur_prefix = ""
-        if blur_region:
-            blur_prefix = _subtitle_blur_prefix(blur_region, source_width, source_height)
+        removal_prefix = ""
+        if removal_region:
+            removal_prefix = _original_subtitle_removal_prefix(
+                removal_region, source_width, source_height, removal_mode,
+            )
             input_label = "[source_without_original]"
         source = f"{input_label}{prefix + ',' if prefix else ''}split[base][fg]"
         vf_filter = (
-            f"{blur_prefix}{source};[base]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=15:3[bg];"
+            f"{removal_prefix}{source};[base]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=15:3[bg];"
             f"[fg]scale=1080:1920:force_original_aspect_ratio=decrease[front];[bg][front]overlay=(W-w)/2:(H-h)/2,{ass_filter}"
             f"{',' + watermark_filter if watermark_filter else ''}[outv]"
         )
@@ -772,17 +829,19 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         filters.append(ass_filter)
         if watermark_filter:
             filters.append(watermark_filter)
-        if blur_region:
-            blur_prefix = _subtitle_blur_prefix(blur_region, source_width, source_height)
+        if removal_region:
+            removal_prefix = _original_subtitle_removal_prefix(
+                removal_region, source_width, source_height, removal_mode,
+            )
             vf_filter = (
-                f"{blur_prefix}[source_without_original]{','.join(filters)}[outv]"
+                f"{removal_prefix}[source_without_original]{','.join(filters)}[outv]"
             )
         else:
             vf_filter = ",".join(filters)
 
     video_encoder, video_encoder_args = preferred_video_encoder()
     cmd_prefix = ["ffmpeg", "-y", "-i", rel_video, "-i", rel_voice]
-    if blur_region or output_format == "blur_background_9_16":
+    if removal_region or output_format == "blur_background_9_16":
         cmd_prefix.extend(["-filter_complex", vf_filter, "-map", "[outv]"])
     else:
         cmd_prefix.extend(["-map", "0:v:0", "-vf", vf_filter])

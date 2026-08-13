@@ -40,6 +40,9 @@ class ProjectWorkspaceController:
         host._tts_volume = getattr(video, "tts_volume", 100)
         host._watermark_text = str(getattr(video, "watermark_text", "") or "")
         host._remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
+        host._original_subtitle_removal_mode = str(
+            getattr(video, "original_subtitle_removal_mode", "blur") or "blur"
+        )
         host._subtitle_style = video.subtitle_style
         host._subtitle_layout_override = bool(getattr(video, "subtitle_layout_override", False))
         host._background_music_path = str((video.files or {}).get("background_music") or "")

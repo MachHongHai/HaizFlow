@@ -218,6 +218,7 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         subtitle_style=config.subtitle_style,
         subtitle_layout_override=config.subtitle_layout_override,
         remove_original_subtitles=config.remove_original_subtitles,
+        original_subtitle_removal_mode=config.original_subtitle_removal_mode,
         output_format=config.output_format,
         crop=config.crop,
         enable_audio_separation=config.enable_audio_separation,
@@ -377,6 +378,13 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("processing_elapsed_seconds", elapsed)
             version = 10
             continue
+        if version == 10:
+            data["schema_version"] = 11
+            # Existing projects keep the established blur treatment.  The
+            # edge-filled mode is opt-in so an upgrade cannot change exports.
+            data.setdefault("original_subtitle_removal_mode", "blur")
+            version = 11
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -422,6 +430,15 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     data["subtitle_style"] = style_defaults
     data["subtitle_layout_override"] = bool(data.get("subtitle_layout_override", False))
     data["remove_original_subtitles"] = bool(data.get("remove_original_subtitles", True))
+    removal_mode = data.get("original_subtitle_removal_mode")
+    # Early development builds called the neighbouring-picture patch
+    # "inpaint". Preserve those projects while using the accurate production
+    # name from schema v11 onward.
+    if removal_mode == "inpaint":
+        removal_mode = "patch"
+    data["original_subtitle_removal_mode"] = (
+        removal_mode if removal_mode in {"blur", "patch"} else "blur"
+    )
     try:
         processing_elapsed = float(data.get("processing_elapsed_seconds", 0.0))
     except (TypeError, ValueError):

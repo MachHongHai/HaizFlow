@@ -2,12 +2,13 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 10
+VIDEO_METADATA_SCHEMA_VERSION = 11
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
 ProjectType = Literal["single", "batch"]
+OriginalSubtitleRemovalMode = Literal["blur", "patch"]
 
 
 class MediaSource(BaseModel):
@@ -53,6 +54,7 @@ class VideoConfig(BaseModel):
     subtitle_style: SubtitleStyle = Field(default_factory=SubtitleStyle)
     subtitle_layout_override: bool = False
     remove_original_subtitles: bool = True
+    original_subtitle_removal_mode: OriginalSubtitleRemovalMode = "blur"
     output_format: OutputFormat = "keep_ratio"  # The desktop workflow preserves the original aspect ratio.
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = False
@@ -83,6 +85,7 @@ class VideoInfo(BaseModel):
     subtitle_style: SubtitleStyle
     subtitle_layout_override: bool = False
     remove_original_subtitles: bool = True
+    original_subtitle_removal_mode: OriginalSubtitleRemovalMode = "blur"
     output_format: OutputFormat
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = False

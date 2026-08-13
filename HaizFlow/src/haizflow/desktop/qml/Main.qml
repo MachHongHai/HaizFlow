@@ -234,6 +234,10 @@ ApplicationWindow {
         id: urlImportDialog
     }
 
+    DownloadProjectSourceDialog {
+        id: downloadProjectSourceDialog
+    }
+
     AboutDialog {
         id: aboutDialog
     }
@@ -562,6 +566,7 @@ ApplicationWindow {
                         CreateVideoPage {
                             onRequestReviewTranslation: translationReviewDialog.open()
                             onRequestUrlImport: urlImportDialog.openForMode("single")
+                            onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("single")
                         }
                     }
                 }
@@ -600,6 +605,7 @@ ApplicationWindow {
                         BatchPage {
                             onRequestBatchSettings: batchSettingsDialog.open()
                             onRequestUrlImport: urlImportDialog.openForMode("batch")
+                            onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("batch")
                             onOpenVideoDetail: {
                                 root.workspaceReturnRoute = root.routeBatchWorkspace
                                 root.navigate(root.routeBatchVideo)
@@ -621,6 +627,7 @@ ApplicationWindow {
                         CreateVideoPage {
                             onRequestReviewTranslation: translationReviewDialog.open()
                             onRequestUrlImport: urlImportDialog.openForMode("batch")
+                            onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("single")
                         }
                     }
                 }

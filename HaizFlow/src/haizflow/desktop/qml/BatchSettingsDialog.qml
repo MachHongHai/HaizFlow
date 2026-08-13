@@ -20,6 +20,7 @@ Dialog {
     property string draftWatermarkText: ""
     property string draftBackgroundMusicPath: ""
     property bool draftRemoveOriginalSubtitles: true
+    property string draftOriginalSubtitleRemovalMode: "blur"
     property int draftSubtitleFontSize: 60
     property int draftSubtitlePositionX: 51
     property int draftSubtitlePositionY: 96
@@ -61,6 +62,7 @@ Dialog {
         draftWatermarkText = settings.watermarkText || ""
         draftBackgroundMusicPath = settings.backgroundMusicPath || ""
         draftRemoveOriginalSubtitles = settings.removeOriginalSubtitles !== false
+        draftOriginalSubtitleRemovalMode = settings.originalSubtitleRemovalMode || "blur"
         const style = settings.subtitleStyle || ({})
         draftSubtitleFontSize = Number(style.font_size !== undefined ? style.font_size : 60)
         draftSubtitlePositionX = Number(style.position_x_percent !== undefined ? style.position_x_percent : 51)
@@ -85,6 +87,7 @@ Dialog {
             || draftWatermarkText !== (baselineSettings.watermarkText || "")
             || draftBackgroundMusicPath !== (baselineSettings.backgroundMusicPath || "")
             || draftRemoveOriginalSubtitles !== (baselineSettings.removeOriginalSubtitles !== false)
+            || draftOriginalSubtitleRemovalMode !== (baselineSettings.originalSubtitleRemovalMode || "blur")
             || draftSubtitleFontSize !== Number((baselineSettings.subtitleStyle || {}).font_size !== undefined ? baselineSettings.subtitleStyle.font_size : 60)
             || draftSubtitlePositionX !== Number((baselineSettings.subtitleStyle || {}).position_x_percent !== undefined ? baselineSettings.subtitleStyle.position_x_percent : 51)
             || draftSubtitlePositionY !== Number((baselineSettings.subtitleStyle || {}).position_y_percent !== undefined ? baselineSettings.subtitleStyle.position_y_percent : 96)
@@ -117,7 +120,8 @@ Dialog {
                     "box_width_percent": draftSubtitleBoxWidth,
                     "box_height_percent": draftSubtitleBoxHeight,
                     "manual": draftSubtitleManual
-                }
+                },
+                draftOriginalSubtitleRemovalMode
             )) {
             baselineSettings = {
                 "workflowMode": draftWorkflowMode,
@@ -130,6 +134,7 @@ Dialog {
                 "watermarkText": draftWatermarkText,
                 "backgroundMusicPath": draftBackgroundMusicPath,
                 "removeOriginalSubtitles": draftRemoveOriginalSubtitles,
+                "originalSubtitleRemovalMode": draftOriginalSubtitleRemovalMode,
                 "subtitleStyle": {
                     "font_size": draftSubtitleFontSize,
                     "margin_bottom": draftSubtitleMarginBottom,
@@ -167,6 +172,7 @@ Dialog {
         case "ttsVolume": return I18n.t("TTS volume")
         case "watermark": return I18n.t("Watermark")
         case "originalSubtitles": return I18n.t("Original subtitles")
+        case "subtitleRemovalMode": return I18n.t("Removal method")
         case "subtitleLayout": return I18n.t("Subtitle layout")
         case "backgroundMusic": return I18n.t("Background music")
         default: return ""
@@ -494,10 +500,39 @@ Dialog {
                             }
                         }
 
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: root.draftRemoveOriginalSubtitles
+                            spacing: Theme.space12
+
+                            Text {
+                                Layout.preferredWidth: 112
+                                text: I18n.t("Removal method")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.caption
+                                font.weight: Font.Medium
+                            }
+
+                            SegmentedControl {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 38
+                                currentValue: root.draftOriginalSubtitleRemovalMode
+                                options: [
+                                    { "label": I18n.t("Blur"), "value": "blur" },
+                                    { "label": I18n.t("Nearby patch"), "value": "patch" }
+                                ]
+                                onActivated: function(value) {
+                                    root.draftOriginalSubtitleRemovalMode = value
+                                }
+                            }
+                        }
+
                         Text {
                             Layout.fillWidth: true
                             text: root.draftRemoveOriginalSubtitles
-                                ? I18n.t("OCR locates burned-in subtitles and blurs that region")
+                                ? root.draftOriginalSubtitleRemovalMode === "patch"
+                                    ? I18n.t("Copy a nearby clean picture strip over the original subtitles")
+                                    : I18n.t("OCR locates burned-in subtitles and blurs that region")
                                 : I18n.t("OCR and blur are skipped; the source picture remains unchanged")
                             color: Theme.textMuted
                             font.pixelSize: Theme.label
