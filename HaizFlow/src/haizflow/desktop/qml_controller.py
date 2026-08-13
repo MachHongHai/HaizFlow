@@ -1137,18 +1137,21 @@ class HaizFlowController(QObject):
     @Property(str, notify=selectedElapsedChanged)
     def selectedElapsed(self):
         video = self._selected_video()
-        if not video or not video.started_at:
+        if not video:
             return ""
+        seconds = max(0.0, float(getattr(video, "processing_elapsed_seconds", 0.0) or 0.0))
         try:
-            started_at = datetime.fromisoformat(video.started_at.replace("Z", "+00:00"))
-            if video.status == "processing":
-                seconds = (datetime.now(timezone.utc) - started_at).total_seconds()
-            else:
+            if video.status == "processing" and video.started_at:
+                started_at = datetime.fromisoformat(video.started_at.replace("Z", "+00:00"))
+                seconds += max(0.0, (datetime.now(timezone.utc) - started_at).total_seconds())
+            elif seconds <= 0 and video.started_at:
+                # Compatibility with metadata not yet migrated on disk.
+                started_at = datetime.fromisoformat(video.started_at.replace("Z", "+00:00"))
                 finished_at = datetime.fromisoformat(video.updated_at.replace("Z", "+00:00"))
-                seconds = (finished_at - started_at).total_seconds()
+                seconds = max(0.0, (finished_at - started_at).total_seconds())
             return self._format_duration(max(0, seconds))
-        except ValueError:
-            return ""
+        except (TypeError, ValueError):
+            return self._format_duration(seconds) if seconds else ""
 
     @Property(str, notify=selectedVideoChanged)
     def selectedUpdatedAt(self):

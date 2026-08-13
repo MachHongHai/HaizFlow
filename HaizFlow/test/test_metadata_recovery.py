@@ -5,7 +5,9 @@ import sys
 import tempfile
 import unittest
 import uuid
+from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 from haizflow.schemas.video import VIDEO_METADATA_SCHEMA_VERSION, VideoConfig, MediaSource
 from haizflow.services import video_store, project_store
@@ -289,6 +291,60 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
         self.assertTrue(migrated.remove_original_subtitles)
         self.assertFalse(migrated.subtitle_layout_override)
+
+    def test_v9_metadata_preserves_the_visible_finished_session_duration(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        legacy = json.loads(path.read_text(encoding="utf-8"))
+        legacy["schema_version"] = 9
+        legacy["status"] = "paused"
+        legacy["started_at"] = "2026-08-13T01:00:00Z"
+        legacy["updated_at"] = "2026-08-13T01:02:30Z"
+        legacy.pop("processing_elapsed_seconds", None)
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
+        self.assertEqual(migrated.processing_elapsed_seconds, 150.0)
+        self.assertIsNone(migrated.started_at)
+
+    def test_processing_time_accumulates_once_for_each_resumed_session(self):
+        video = self._create_video()
+        first_started = "2026-08-13T01:00:00Z"
+        with mock.patch.object(
+            video_store,
+            "datetime",
+            wraps=video_store.datetime,
+        ) as mocked_datetime:
+            mocked_datetime.now.return_value = datetime.fromisoformat("2026-08-13T01:00:10+00:00")
+            video_store.update_video(
+                video.video_id,
+                status="processing",
+                started_at=first_started,
+            )
+            paused = video_store.update_video(video.video_id, status="paused")
+            repeated = video_store.update_video(video.video_id, status="paused")
+
+        self.assertEqual(paused.processing_elapsed_seconds, 10.0)
+        self.assertEqual(repeated.processing_elapsed_seconds, 10.0)
+        self.assertIsNone(repeated.started_at)
+
+        with mock.patch.object(
+            video_store,
+            "datetime",
+            wraps=video_store.datetime,
+        ) as mocked_datetime:
+            mocked_datetime.now.return_value = datetime.fromisoformat("2026-08-13T01:01:05+00:00")
+            video_store.update_video(
+                video.video_id,
+                status="processing",
+                started_at="2026-08-13T01:01:00Z",
+            )
+            finished = video_store.update_video(video.video_id, status="done")
+
+        self.assertEqual(finished.processing_elapsed_seconds, 15.0)
+        self.assertIsNone(finished.started_at)
 
     def test_current_metadata_normalizes_unsafe_watermark_text(self):
         video = self._create_video()

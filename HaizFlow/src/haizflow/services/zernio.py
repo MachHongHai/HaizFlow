@@ -385,6 +385,80 @@ def normalize_platform(value: str) -> str:
     return platform
 
 
+_PUBLIC_POST_URL_KEYS = (
+    "platformPostUrl",
+    "platform_post_url",
+    "publishedUrl",
+    "published_url",
+    "permalink",
+    "permalinkUrl",
+    "postUrl",
+    "publicUrl",
+    "shareUrl",
+)
+
+
+def public_post_url(value: Any, platform: str) -> str:
+    """Return *value* only when it is a public post URL for *platform*.
+
+    Zernio media URLs, dashboard URLs, and TikTok's temporary
+    ``v_pub_url`` publish identifiers are deliberately not accepted here.
+    They are not public post permalinks and opening them can show a different
+    or unavailable video.
+    """
+    platform_name = normalize_platform(platform)
+    candidate = str(value or "").strip()
+    if not candidate:
+        return ""
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError:
+        return ""
+    if parsed.scheme.casefold() not in {"http", "https"}:
+        return ""
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    path = parsed.path or "/"
+    if platform_name == "tiktok":
+        if host in {"vm.tiktok.com", "vt.tiktok.com"}:
+            return candidate if path != "/" else ""
+        return candidate if host in {"tiktok.com", "www.tiktok.com", "m.tiktok.com"} and (
+            re.search(r"/@[^/]+/video/\d+/?$", path, flags=re.IGNORECASE)
+            or re.search(r"/(?:t|v)/[^/]+", path, flags=re.IGNORECASE)
+        ) else ""
+    if platform_name == "youtube":
+        return candidate if (
+            host in {"youtu.be", "www.youtu.be"} and path != "/"
+        ) or (
+            host in {"youtube.com", "www.youtube.com", "m.youtube.com"}
+            and (path.startswith("/watch") or path.startswith("/shorts/") or path.startswith("/live/"))
+        ) else ""
+    if platform_name == "instagram":
+        return candidate if host in {"instagram.com", "www.instagram.com"} and re.match(
+            r"/(?:p|reel|reels|tv)/[^/]+", path, flags=re.IGNORECASE
+        ) else ""
+    if platform_name == "facebook":
+        return candidate if (
+            host in {"fb.watch", "www.fb.watch"} and path != "/"
+        ) or (
+            host in {"facebook.com", "www.facebook.com", "m.facebook.com"} and path != "/"
+        ) else ""
+    return ""
+
+
+def _explicit_public_post_url(container: Any, platform: str) -> str:
+    if not isinstance(container, dict):
+        return ""
+    for key in _PUBLIC_POST_URL_KEYS:
+        if url := public_post_url(container.get(key), platform):
+            return url
+    for key in ("platformSpecificData", "platformData", "result", "data"):
+        nested = container.get(key)
+        if isinstance(nested, dict):
+            if url := _explicit_public_post_url(nested, platform):
+                return url
+    return ""
+
+
 def post_result(post: Any, platform: str) -> dict[str, str]:
     """Return the effective platform status, URL, and error from a Zernio post."""
     platform_name = normalize_platform(platform)
@@ -407,34 +481,9 @@ def post_result(post: Any, platform: str) -> dict[str, str]:
             break
 
     status = str(platform_entry.get("status") or value.get("status") or "publishing").casefold()
-    url = str(
-        platform_entry.get("platformPostUrl")
-        or platform_entry.get("url")
-        or value.get("platformPostUrl")
-        or value.get("url")
-        or ""
-    )
-    if platform_name == "tiktok" and not url and status in {"published", "posted"}:
-        platform_data = platform_entry.get("platformSpecificData")
-        if not isinstance(platform_data, dict):
-            platform_data = {}
-        account = platform_entry.get("accountId")
-        if not isinstance(account, dict):
-            account = {}
-        username = str(
-            account.get("username")
-            or platform_data.get("tiktokUsername")
-            or platform_data.get("__usernameSnapshot")
-            or ""
-        ).strip().lstrip("@")
-        platform_post_id = str(
-            platform_entry.get("platformPostId")
-            or platform_data.get("tiktokPublishId")
-            or ""
-        )
-        video_id_match = re.search(r"(\d{15,})$", platform_post_id)
-        if username and video_id_match:
-            url = f"https://www.tiktok.com/@{username}/video/{video_id_match.group(1)}"
+    url = _explicit_public_post_url(platform_entry, platform_name)
+    if not url:
+        url = _explicit_public_post_url(value, platform_name)
     error_value = platform_entry.get("error") or value.get("error") or ""
     if isinstance(error_value, dict):
         error_value = error_value.get("message") or error_value.get("code") or ""

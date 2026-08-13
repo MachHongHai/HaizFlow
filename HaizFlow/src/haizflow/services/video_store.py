@@ -358,6 +358,25 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("subtitle_layout_override", False)
             version = 9
             continue
+        if version == 9:
+            data["schema_version"] = 10
+            elapsed = 0.0
+            started_at = data.get("started_at")
+            # Older metadata only stored the beginning of the latest session.
+            # Preserve that visible duration when upgrading a stopped video.
+            if started_at and data.get("status") != "processing":
+                try:
+                    started = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
+                    finished = datetime.fromisoformat(
+                        str(data.get("updated_at") or started_at).replace("Z", "+00:00")
+                    )
+                    elapsed = max(0.0, (finished - started).total_seconds())
+                    data["started_at"] = None
+                except (TypeError, ValueError):
+                    pass
+            data.setdefault("processing_elapsed_seconds", elapsed)
+            version = 10
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -403,6 +422,11 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     data["subtitle_style"] = style_defaults
     data["subtitle_layout_override"] = bool(data.get("subtitle_layout_override", False))
     data["remove_original_subtitles"] = bool(data.get("remove_original_subtitles", True))
+    try:
+        processing_elapsed = float(data.get("processing_elapsed_seconds", 0.0))
+    except (TypeError, ValueError):
+        processing_elapsed = 0.0
+    data["processing_elapsed_seconds"] = max(0.0, processing_elapsed)
 
     crop_defaults = CropSettings().model_dump()
     crop_value = data.get("crop")
@@ -527,10 +551,25 @@ def update_video(video_id: str, **kwargs) -> Optional[VideoInfo]:
         video_info = _get_video_unlocked(video_id)
         if not video_info:
             return None
+        now = datetime.now(timezone.utc)
+        requested_status = kwargs.get("status", video_info.status)
+        if video_info.status == "processing" and requested_status != "processing":
+            # Close exactly one active run session. Repeated pause/failure
+            # updates see a non-processing status and cannot double-count it.
+            if "processing_elapsed_seconds" not in kwargs and video_info.started_at:
+                try:
+                    started = datetime.fromisoformat(video_info.started_at.replace("Z", "+00:00"))
+                    previous = max(0.0, float(video_info.processing_elapsed_seconds or 0.0))
+                    kwargs["processing_elapsed_seconds"] = previous + max(
+                        0.0, (now - started).total_seconds()
+                    )
+                except (TypeError, ValueError):
+                    pass
+            kwargs.setdefault("started_at", None)
         for key, value in kwargs.items():
             if hasattr(video_info, key):
                 setattr(video_info, key, value)
-        video_info.updated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        video_info.updated_at = now.isoformat().replace("+00:00", "Z")
         _save_video_unlocked(video_info)
         return video_info
 
@@ -612,6 +651,7 @@ def replace_video_input(
             video.gpu_recovery_attempted = False
             video.checkpoints = {}
             video.started_at = None
+            video.processing_elapsed_seconds = 0.0
             video.estimated_remaining_seconds = None
             video.step_detail = "New source video imported"
             video.current_item = 0
@@ -735,6 +775,7 @@ def prepare_video_restart(video_id: str) -> Optional[VideoInfo]:
         video.gpu_recovery_attempted = False
         video.checkpoints = {}
         video.started_at = None
+        video.processing_elapsed_seconds = 0.0
         video.estimated_remaining_seconds = None
         video.step_detail = "Queued to restart"
         video.current_item = 0
@@ -786,6 +827,14 @@ def recover_interrupted_videos() -> list[str]:
         interrupted_step = video.resume_step or video.step or "processing"
         if interrupted_step == "paused":
             interrupted_step = "processing"
+        elapsed = max(0.0, float(video.processing_elapsed_seconds or 0.0))
+        if video.started_at:
+            try:
+                started = datetime.fromisoformat(video.started_at.replace("Z", "+00:00"))
+                last_activity = datetime.fromisoformat(video.updated_at.replace("Z", "+00:00"))
+                elapsed += max(0.0, (last_activity - started).total_seconds())
+            except (TypeError, ValueError):
+                pass
         updated = update_video(
             video.video_id,
             status="paused",
@@ -793,6 +842,8 @@ def recover_interrupted_videos() -> list[str]:
             step="paused",
             resume_step=interrupted_step,
             step_detail=f"Recovered after an interrupted exit during {interrupted_step}",
+            processing_elapsed_seconds=elapsed,
+            started_at=None,
             estimated_remaining_seconds=None,
         )
         if not updated:

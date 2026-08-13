@@ -254,6 +254,7 @@ class SocialPublishListModel(QAbstractListModel):
     PostIdRole = Qt.ItemDataRole.UserRole + 11
     PlatformUrlRole = Qt.ItemDataRole.UserRole + 12
     TargetPlatformRole = Qt.ItemDataRole.UserRole + 13
+    PlatformUrlVerifiedRole = Qt.ItemDataRole.UserRole + 14
 
     _ROLE_FIELDS = {
         ItemIdRole: "id",
@@ -269,6 +270,7 @@ class SocialPublishListModel(QAbstractListModel):
         PostIdRole: "zernio_post_id",
         PlatformUrlRole: "platform_post_url",
         TargetPlatformRole: "target_platform",
+        PlatformUrlVerifiedRole: "platform_post_url_verified",
     }
 
     def __init__(self):
@@ -296,6 +298,7 @@ class SocialPublishListModel(QAbstractListModel):
             self.PostIdRole: item.get("zernio_post_id", ""),
             self.PlatformUrlRole: item.get("platform_post_url", ""),
             self.TargetPlatformRole: item.get("target_platform", ""),
+            self.PlatformUrlVerifiedRole: bool(item.get("platform_post_url_verified", False)),
         }.get(role)
 
     def roleNames(self):
@@ -313,6 +316,7 @@ class SocialPublishListModel(QAbstractListModel):
             self.PostIdRole: b"zernioPostId",
             self.PlatformUrlRole: b"platformPostUrl",
             self.TargetPlatformRole: b"targetPlatform",
+            self.PlatformUrlVerifiedRole: b"platformPostUrlVerified",
         }
 
     def set_items(self, items) -> None:

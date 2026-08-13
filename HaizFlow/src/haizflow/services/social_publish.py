@@ -13,9 +13,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from haizflow.services import zernio
+
 STATE_FILE_NAME = ".haizflow-social-publish.json"
 LEGACY_STATE_FILE_NAME = ".haizflow-tiktok-publish.json"
-STATE_SCHEMA_VERSION = 4
+STATE_SCHEMA_VERSION = 5
 MAX_POST_TEXT_UTF16 = 2200
 _STATE_LOCK = threading.RLock()
 _HASHTAG_SEPARATOR = re.compile(r"[\s,;]+", re.UNICODE)
@@ -135,7 +137,7 @@ def _read_payload(path: str) -> dict[str, Any] | None:
             payload = json.load(handle)
     except (FileNotFoundError, OSError, json.JSONDecodeError, TypeError, ValueError):
         return None
-    if not isinstance(payload, dict) or payload.get("schema_version") not in {1, 2, 3, STATE_SCHEMA_VERSION}:
+    if not isinstance(payload, dict) or payload.get("schema_version") not in {1, 2, 3, 4, STATE_SCHEMA_VERSION}:
         return None
     return payload
 
@@ -165,6 +167,19 @@ def load_state(project_root: str) -> dict[str, Any]:
         if not isinstance(item, dict):
             continue
         path_value = os.path.abspath(str(item.get("file_path") or "")) if item.get("file_path") else ""
+        target_platform = str(item.get("target_platform") or "tiktok").casefold()
+        stored_url = str(item.get("platform_post_url") or "")
+        url_verified = bool(item.get("platform_post_url_verified", False))
+        if (
+            int(payload.get("schema_version") or 0) < STATE_SCHEMA_VERSION
+            and stored_url
+            and target_platform != "tiktok"
+            and zernio.public_post_url(stored_url, target_platform)
+        ):
+            # Older releases did not record URL provenance. Non-TikTok URLs
+            # came directly from the API; TikTok URLs could be guessed from a
+            # temporary publish identifier and must be resolved again.
+            url_verified = True
         normalized_items.append(
             {
                 "id": str(item.get("id") or uuid.uuid4()),
@@ -179,8 +194,9 @@ def load_state(project_root: str) -> dict[str, Any]:
                 "error": str(item.get("error") or ""),
                 "request_id": str(item.get("request_id") or uuid.uuid4()),
                 "zernio_post_id": str(item.get("zernio_post_id") or ""),
-                "platform_post_url": str(item.get("platform_post_url") or ""),
-                "target_platform": str(item.get("target_platform") or "tiktok").casefold(),
+                "platform_post_url": stored_url,
+                "platform_post_url_verified": url_verified,
+                "target_platform": target_platform,
                 "duration_seconds": max(0.0, float(item.get("duration_seconds") or 0.0)),
                 "video_width": max(0, int(item.get("video_width") or 0)),
                 "video_height": max(0, int(item.get("video_height") or 0)),
@@ -289,6 +305,7 @@ def update_item(project_root: str, item_id: str, **changes: Any) -> dict[str, An
             changes["request_id"] = str(uuid.uuid4())
             changes["zernio_post_id"] = ""
             changes["platform_post_url"] = ""
+            changes["platform_post_url_verified"] = False
             changes["upload_progress"] = 0
         item.update(changes)
         item["updated_at"] = _now()
@@ -333,6 +350,7 @@ def update_defaults(
                 item["request_id"] = str(uuid.uuid4())
                 item["zernio_post_id"] = ""
                 item["platform_post_url"] = ""
+                item["platform_post_url_verified"] = False
                 item["upload_progress"] = 0
                 item["updated_at"] = _now()
         save_state(project_root, state)
@@ -383,6 +401,7 @@ def new_item(file_path: str, thumbnail_path: str, order: int, caption: str, hash
         "request_id": str(uuid.uuid4()),
         "zernio_post_id": "",
         "platform_post_url": "",
+        "platform_post_url_verified": False,
         "target_platform": "",
         "duration_seconds": 0.0,
         "video_width": 0,

@@ -3,6 +3,8 @@ import contextlib
 import json
 import os
 import re
+import threading
+import time
 import unicodedata
 import uuid
 
@@ -13,10 +15,14 @@ from haizflow.pipeline.process_registry import check_cancellation, is_cancelled
 from haizflow.services.video_store import log_to_video
 
 
-_INITIAL_RETRIES = 3
-_RECOVERY_RETRIES = 5
+_INITIAL_RETRIES = 2
+_RECOVERY_RETRIES = 3
 _MP3_MIN_BYTES = 512
+_EDGE_MIN_REQUEST_INTERVAL_SECONDS = 1.5
+_EDGE_TRANSIENT_COOLDOWN_SECONDS = 6.0
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_EDGE_REQUEST_GUARD = threading.Lock()
+_EDGE_NEXT_REQUEST_AT = 0.0
 
 
 def preprocess_text_for_tts(text: str) -> str:
@@ -114,6 +120,29 @@ async def _sleep_with_cancellation(delay: float, video_id: str | None) -> None:
         await asyncio.sleep(min(0.25, remaining))
 
 
+async def _pace_edge_request(video_id: str | None) -> None:
+    """Space requests across previews and pipelines to avoid Edge throttling."""
+    global _EDGE_NEXT_REQUEST_AT
+    with _EDGE_REQUEST_GUARD:
+        now = time.monotonic()
+        delay = max(0.0, _EDGE_NEXT_REQUEST_AT - now)
+        _EDGE_NEXT_REQUEST_AT = max(now, _EDGE_NEXT_REQUEST_AT) + _EDGE_MIN_REQUEST_INTERVAL_SECONDS
+    if delay:
+        await _sleep_with_cancellation(delay, video_id)
+
+
+def _penalize_edge_requests(error: Exception) -> None:
+    """Apply one shared cooldown after a transient service/network failure."""
+    global _EDGE_NEXT_REQUEST_AT
+    if _tts_error_code(error) not in {"edge_no_audio", "network_timeout", "network_connection"}:
+        return
+    with _EDGE_REQUEST_GUARD:
+        _EDGE_NEXT_REQUEST_AT = max(
+            _EDGE_NEXT_REQUEST_AT,
+            time.monotonic() + _EDGE_TRANSIENT_COOLDOWN_SECONDS,
+        )
+
+
 async def _save_with_cancellation(communicate, path: str, video_id: str | None) -> None:
     task = asyncio.create_task(communicate.save(path))
     try:
@@ -156,6 +185,7 @@ async def tts_segment_with_retry(
             check_cancellation(video_id)
         temporary_path = f"{output_path}.part-{uuid.uuid4().hex}"
         try:
+            await _pace_edge_request(video_id)
             communicate = edge_tts.Communicate(
                 processed_text,
                 voice,
@@ -175,6 +205,7 @@ async def tts_segment_with_retry(
             if video_id and is_cancelled(video_id):
                 check_cancellation(video_id)
             last_error = exc
+            _penalize_edge_requests(exc)
             if attempt >= retries:
                 break
             delay = min(12.0, base_delay * (2 ** (attempt - 1)) + stagger)

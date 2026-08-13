@@ -311,11 +311,11 @@ class TimelineRenderTests(unittest.TestCase):
 
         self.assertIn("drawtext=fontfile='", watermark)
         self.assertIn("text='HaizFlow\\: creator\\'s cut'", watermark)
-        self.assertIn("fontsize=43", watermark)
-        self.assertIn("fontcolor=white@0.62", watermark)
-        self.assertIn("borderw=3", watermark)
-        self.assertIn("bordercolor=black@0.62", watermark)
-        self.assertIn("shadowx=1:shadowy=2:shadowcolor=black@0.35", watermark)
+        self.assertIn("fontsize=31", watermark)
+        self.assertIn("fontcolor=white@0.46", watermark)
+        self.assertIn("borderw=2", watermark)
+        self.assertIn("bordercolor=black@0.48", watermark)
+        self.assertIn("shadowx=1:shadowy=1:shadowcolor=black@0.22", watermark)
         self.assertIn("sin(2*PI*t/31)", watermark)
         self.assertIn("sin(2*PI*t/43+1.2)", watermark)
 

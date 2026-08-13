@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 9
+VIDEO_METADATA_SCHEMA_VERSION = 10
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
@@ -113,6 +113,9 @@ class VideoInfo(BaseModel):
     checkpoints: Dict[str, str] = Field(default_factory=dict)
     created_at: str
     updated_at: str
+    # Total wall-clock processing time from completed run sessions.  The
+    # active session, when any, is represented separately by ``started_at``.
+    processing_elapsed_seconds: float = Field(default=0.0, ge=0)
     started_at: Optional[str] = None
     estimated_remaining_seconds: Optional[int] = None
     step_detail: str = ""

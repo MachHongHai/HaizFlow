@@ -237,10 +237,15 @@ class ProgressReporter:
         self.video_id = video_id
         self.started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         self.started_monotonic = time.monotonic()
+        existing = get_video(video_id)
+        self.previous_elapsed = max(
+            0.0, float(getattr(existing, "processing_elapsed_seconds", 0.0) or 0.0)
+        )
 
     def update(self, progress: int, step: str, detail: str, current: int = 0, total: int = 0):
         progress = max(0, min(99, int(progress)))
-        elapsed = time.monotonic() - self.started_monotonic
+        session_elapsed = time.monotonic() - self.started_monotonic
+        elapsed = self.previous_elapsed + session_elapsed
         eta = None
         if progress >= 5:
             eta = max(0, round(elapsed * (100 - progress) / progress))
@@ -576,9 +581,14 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             reporter.update(82, "creating_voice", "Reusing generated voices", expected_parts, expected_parts)
         else:
             reporter.update(65, "creating_voice", "Starting voice synthesis")
-            if os.path.isdir(voice_parts_dir):
+            partial_signature_matches = video.checkpoints.get("voice_partial") == voice_signature
+            if os.path.isdir(voice_parts_dir) and not partial_signature_matches:
                 shutil.rmtree(voice_parts_dir)
             os.makedirs(voice_parts_dir, exist_ok=True)
+            # Persist the input signature before the first online request. If
+            # the user pauses during Edge TTS, resume can safely retain every
+            # already verified MP3 and regenerate only missing segments.
+            _mark_checkpoint(video, "voice_partial", voice_signature)
             def report_voice_progress(current, total):
                 detail = f"Verified voice audio {current} of {total}"
                 reporter.update(65 + round(17 * current / max(1, total)), "creating_voice", detail, current, total)
@@ -682,6 +692,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             step="done",
             step_detail="Final video ready",
             estimated_remaining_seconds=0,
+            resume_step="",
             runtime_recovery_step="",
         )
         log_to_video(video_id, "Pipeline run finished successfully.")

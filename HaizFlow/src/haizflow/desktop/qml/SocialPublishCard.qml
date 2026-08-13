@@ -19,21 +19,33 @@ Rectangle {
     required property int uploadProgress
     required property string zernioPostId
     required property string platformPostUrl
+    required property bool platformPostUrlVerified
     required property string targetPlatform
 
     signal editRequested()
     signal publishRequested()
 
+    readonly property bool hasRemotePost: zernioPostId.length > 0
+    readonly property bool remoteInFlight: hasRemotePost && !published
+        && publishStatus !== "failed" && publishStatus !== "partial"
+        && publishStatus !== "cancelled" && publishStatus !== "deleted"
+        && publishStatus !== "draft" && publishStatus !== "scheduled"
     readonly property bool working: publishStatus === "uploading" || publishStatus === "publishing"
+        || publishStatus === "pending" || publishStatus === "processing" || publishStatus === "queued"
+        || remoteInFlight
     readonly property bool published: publishStatus === "published" || publishStatus === "posted"
     readonly property bool canPublish: !working && publishStatus !== "missing"
-        && publishStatus !== "scheduled" && !AppController.tiktokPublishBusy
+        && publishStatus !== "scheduled" && (!hasRemotePost
+            || publishStatus === "failed" || publishStatus === "partial" || publishStatus === "draft")
+        && !AppController.tiktokPublishBusy
         && !AppController.zernioAccountSyncing
         && AppController.zernioApiKeyVerified
         && AppController.zernioAccountReady
     readonly property string statusLabel: publishStatus === "ready" ? I18n.t("Ready")
         : publishStatus === "uploading" ? I18n.t("Uploading")
         : publishStatus === "publishing" ? I18n.t("Publishing")
+        : publishStatus === "pending" || publishStatus === "processing" || publishStatus === "queued"
+            ? I18n.t("Publishing")
         : publishStatus === "published" || publishStatus === "posted" ? I18n.t("Published")
         : publishStatus === "scheduled" ? I18n.t("Scheduled")
         : publishStatus === "draft" ? I18n.t("Draft")
@@ -200,13 +212,15 @@ Rectangle {
                     Layout.fillWidth: true
                     compact: true
                     text: root.published
-                        ? root.platformPostUrl.length > 0
+                        ? root.platformPostUrlVerified && root.platformPostUrl.length > 0
                             ? I18n.t("Open post") : I18n.t("Get post link")
+                        : root.working || root.publishStatus === "scheduled"
+                            ? root.statusLabel
                         : root.publishStatus === "failed" || root.publishStatus === "partial"
                             ? I18n.t("Retry")
                             : I18n.t("Publish")
                     iconGlyph: root.published
-                        ? root.platformPostUrl.length > 0 ? "\uE8A7" : "\uE72C"
+                        ? root.platformPostUrlVerified && root.platformPostUrl.length > 0 ? "\uE8A7" : "\uE72C"
                         : "\uE768"
                     tone: root.published ? "secondary" : "primary"
                     enabled: root.published

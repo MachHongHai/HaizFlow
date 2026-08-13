@@ -318,7 +318,7 @@ class ZernioClientTests(unittest.TestCase):
         self.assertEqual(result["url"], "https://www.tiktok.com/@creator/video/123")
         self.assertEqual(result["error"], "")
 
-    def test_tiktok_post_result_builds_public_url_while_zernio_resolves_it(self):
+    def test_tiktok_post_result_does_not_guess_url_from_temporary_publish_id(self):
         result = zernio.tiktok_post_result({
             "status": "published",
             "platforms": [{
@@ -330,9 +330,34 @@ class ZernioClientTests(unittest.TestCase):
             }],
         })
 
+        self.assertEqual(result["url"], "")
+
+    def test_post_result_rejects_generic_media_or_dashboard_urls(self):
+        for invalid_url in (
+            "https://media.zernio.com/media/video.mp4",
+            "https://zernio.com/dashboard/posts/post-1",
+            "https://www.tiktok.com/tiktokstudio/upload",
+        ):
+            with self.subTest(url=invalid_url):
+                result = zernio.tiktok_post_result({
+                    "status": "published",
+                    "url": invalid_url,
+                    "platforms": [{
+                        "platform": "tiktok",
+                        "status": "published",
+                        "url": invalid_url,
+                    }],
+                })
+                self.assertEqual(result["url"], "")
+
+    def test_public_post_url_accepts_supported_platform_permalinks(self):
         self.assertEqual(
-            result["url"],
-            "https://www.tiktok.com/@creator/video/7672661563752450049",
+            zernio.public_post_url("https://www.tiktok.com/@creator/video/123", "tiktok"),
+            "https://www.tiktok.com/@creator/video/123",
+        )
+        self.assertEqual(
+            zernio.public_post_url("https://www.youtube.com/shorts/abc", "youtube"),
+            "https://www.youtube.com/shorts/abc",
         )
 
     def test_http_error_is_safe_and_does_not_include_the_api_key(self):

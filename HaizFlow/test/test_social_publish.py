@@ -91,12 +91,58 @@ class SocialPublishStateTests(unittest.TestCase):
             tiktok_publish.save_state(project_root, migrated)
             restored = tiktok_publish.load_state(project_root)
 
-            self.assertEqual(restored["schema_version"], 4)
+            self.assertEqual(restored["schema_version"], tiktok_publish.STATE_SCHEMA_VERSION)
             self.assertEqual(restored["selected_platform"], "tiktok")
             self.assertEqual(restored["items"][0]["request_id"], request_id)
             self.assertTrue(request_id)
             self.assertTrue(restored["allow_comment"])
             self.assertTrue(restored["publish_now"])
+
+    def test_schema_four_tiktok_permalink_is_not_trusted_without_api_provenance(self):
+        with tempfile.TemporaryDirectory() as project_root:
+            media = Path(project_root, "publishing", "media", "clip.mp4")
+            media.parent.mkdir(parents=True)
+            media.write_bytes(b"video")
+            Path(tiktok_publish.state_path(project_root)).write_text(
+                json.dumps({
+                    "schema_version": 4,
+                    "items": [{
+                        "id": "item-1",
+                        "file_path": str(media),
+                        "status": "published",
+                        "target_platform": "tiktok",
+                        "platform_post_url": "https://www.tiktok.com/@creator/video/123",
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            restored = tiktok_publish.load_state(project_root)["items"][0]
+
+            self.assertFalse(restored["platform_post_url_verified"])
+
+    def test_schema_four_non_tiktok_permalink_keeps_api_provenance(self):
+        with tempfile.TemporaryDirectory() as project_root:
+            media = Path(project_root, "publishing", "media", "clip.mp4")
+            media.parent.mkdir(parents=True)
+            media.write_bytes(b"video")
+            Path(tiktok_publish.state_path(project_root)).write_text(
+                json.dumps({
+                    "schema_version": 4,
+                    "items": [{
+                        "id": "item-1",
+                        "file_path": str(media),
+                        "status": "published",
+                        "target_platform": "youtube",
+                        "platform_post_url": "https://www.youtube.com/shorts/abc",
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            restored = tiktok_publish.load_state(project_root)["items"][0]
+
+            self.assertTrue(restored["platform_post_url_verified"])
 
     def test_legacy_tiktok_state_is_migrated_and_empty_legacy_directories_are_removed(self):
         with tempfile.TemporaryDirectory() as project_root:

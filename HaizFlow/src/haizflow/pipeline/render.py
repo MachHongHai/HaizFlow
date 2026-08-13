@@ -609,11 +609,11 @@ def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
         .replace("]", "\\]")
         .replace(";", "\\;")
     )
-    # The reference treatment used by short-video creators is a clean, bold,
-    # italic white mark with a soft dark keyline.  It stays readable against
-    # bright footage without becoming a prominent title card.
-    font_size = max(18, min(52, round(min(output_width, output_height) * 0.040)))
-    border_width = max(2, min(5, round(font_size * 0.075)))
+    # Keep the mark deliberately secondary to the picture: it must remain
+    # recognizable after recompression, but never read like a headline in the
+    # middle of the video.
+    font_size = max(15, min(38, round(min(output_width, output_height) * 0.029)))
+    border_width = max(1, min(3, round(font_size * 0.065)))
     font_path = str(_watermark_font_path()).replace("\\", "/")
     escaped_font_path = (
         font_path.replace("\\", "\\\\")
@@ -629,8 +629,8 @@ def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
     y = "(H-text_h)*(0.10+0.80*(0.5+0.5*sin(2*PI*t/43+1.2)))"
     return (
         f"drawtext=fontfile='{escaped_font_path}':text='{escaped}':"
-        f"fontsize={font_size}:fontcolor=white@0.62:borderw={border_width}:"
-        f"bordercolor=black@0.62:shadowx=1:shadowy=2:shadowcolor=black@0.35:"
+        f"fontsize={font_size}:fontcolor=white@0.46:borderw={border_width}:"
+        f"bordercolor=black@0.48:shadowx=1:shadowy=1:shadowcolor=black@0.22:"
         f"x='{x}':y='{y}'"
     )
 

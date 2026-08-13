@@ -145,6 +145,63 @@ class RestartCheckpointTests(unittest.TestCase):
 
         self.assertEqual(stale_was_removed, [True])
 
+    def test_matching_partial_voice_signature_keeps_verified_parts_on_resume(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            transcript = root / "temp" / "vi_segments.json"
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text(
+                '[{"start": 0, "end": 1, "text": "hello"}]',
+                encoding="utf-8",
+            )
+            (root / "input.mp4").write_bytes(b"source-video")
+            existing_part = root / "temp" / "voice_parts" / "voice_0001.mp3"
+            existing_part.parent.mkdir()
+            existing_part.write_bytes(b"existing-voice" * 100)
+            transcript_state = process_video._file_state(str(transcript))
+            voice_signature = process_video._signature(transcript_state, "same-voice")
+            video = SimpleNamespace(
+                video_id="video-1",
+                files={
+                    "video_input": str(root / "input.mp4"),
+                    "final_video": str(root / "final.mp4"),
+                    "srt_output": str(root / "temp" / "vi.srt"),
+                    "voice_output": str(root / "temp" / "voice.wav"),
+                    "transcript_json": str(transcript),
+                },
+                subtitle_style=SimpleNamespace(max_chars_per_line=24),
+                tts_voice="same-voice",
+                resume_step="creating_voice",
+                runtime_recovery_step="",
+                checkpoints={"voice_partial": voice_signature},
+            )
+            reporter = SimpleNamespace(update=mock.Mock())
+            retained = []
+
+            def stop_after_check(*_args, **_kwargs):
+                retained.append(existing_part.exists())
+                raise RuntimeError("stop after partial voice check")
+
+            with (
+                mock.patch.object(process_video, "check_cancellation"),
+                mock.patch.object(process_video, "generate_srt"),
+                mock.patch.object(process_video, "_mark_checkpoint"),
+                mock.patch.object(
+                    process_video,
+                    "generate_voice_parts",
+                    side_effect=stop_after_check,
+                ),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "stop after partial voice check"):
+                    process_video._finish_after_translation(
+                        video,
+                        reporter,
+                        str(root),
+                        str(root / "temp" / "audio.wav"),
+                    )
+
+        self.assertEqual(retained, [True])
+
     def test_checkpoint_is_only_valid_for_a_paused_video_being_resumed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             artifact = Path(temp_dir) / "translation.json"
@@ -240,6 +297,21 @@ class InterruptedVideoRecoveryTests(unittest.TestCase):
         self.assertIn("interrupted exit", restored.step_detail)
         self.assertEqual(video_store.get_video(completed.video_id).status, "done")
         self.assertEqual(video_store.recover_interrupted_videos(), [])
+
+    def test_interrupted_recovery_does_not_count_time_while_the_app_was_closed(self):
+        interrupted = self._create_video("processing", "creating_voice")
+        metadata_path = Path(video_store.get_video_json_path(interrupted.video_id))
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["processing_elapsed_seconds"] = 45.0
+        metadata["started_at"] = "2026-08-13T01:00:00Z"
+        metadata["updated_at"] = "2026-08-13T01:00:30Z"
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        video_store.recover_interrupted_videos()
+
+        restored = video_store.get_video(interrupted.video_id)
+        self.assertEqual(restored.processing_elapsed_seconds, 75.0)
+        self.assertIsNone(restored.started_at)
 
 
 if __name__ == "__main__":

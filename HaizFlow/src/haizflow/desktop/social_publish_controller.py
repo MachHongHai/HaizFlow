@@ -38,6 +38,7 @@ PLATFORM_LABELS = {
 _API_KEY_PATTERN = re.compile(r"^sk_[0-9a-fA-F]{64}$")
 _POLLABLE_POST_STATUSES = frozenset({"uploading", "publishing", "pending", "processing", "queued"})
 _SUCCESS_POST_STATUSES = frozenset({"published", "posted"})
+_FAILED_POST_STATUSES = frozenset({"failed", "partial", "cancelled", "deleted"})
 _POST_STATUS_POLL_SECONDS = 3.0
 _POST_STATUS_POLL_TIMEOUT_SECONDS = 180.0
 _OAUTH_ACCOUNT_POLL_SECONDS = 1.0
@@ -336,6 +337,12 @@ class SocialPublishController:
             "post_text": tiktok_publish.compose_post_text(item["caption"], item["hashtags"]),
             "thumbnail_source": thumbnail_source(item.get("thumbnail_path") or ""),
             "target_platform": target_platform,
+            # Never expose a guessed, media, or dashboard URL as an "Open post"
+            # action. TikTok can report success before its permalink is ready.
+            "platform_post_url": (
+                zernio.public_post_url(item.get("platform_post_url"), target_platform)
+                if item.get("platform_post_url_verified") else ""
+            ),
         }
 
     def _update_item_state(self, item_id: str, **changes) -> dict | None:
@@ -1260,6 +1267,16 @@ class SocialPublishController:
             post_id = self._object_id(post)
             post_result = zernio.post_result(post, settings["platform"])
             status = post_result["status"] or ("publishing" if settings["publish_now"] else "draft")
+            # The create response may briefly expose an internal/legacy status
+            # even though Zernio already accepted this logical post. Do not
+            # make the card publishable again while that remote post exists.
+            if (
+                settings["publish_now"]
+                and post_id
+                and status not in _SUCCESS_POST_STATUSES
+                and status not in _FAILED_POST_STATUSES
+            ):
+                status = "publishing"
             self._events.put({
                 "type": "publish_finished", "project_key": project_key, "item_id": item["id"],
                 "post_id": post_id, "status": status, "url": post_result["url"],
@@ -1515,6 +1532,7 @@ class SocialPublishController:
                     event["item_id"], status=status,
                     error=str(event.get("error") or ""), zernio_post_id=str(event.get("post_id") or ""),
                     platform_post_url=str(event.get("url") or ""),
+                    platform_post_url_verified=bool(event.get("url")),
                     target_platform=str(event.get("platform") or self.selected_platform),
                     upload_progress=100 if status != "ready" else 0,
                 )
@@ -1526,7 +1544,7 @@ class SocialPublishController:
                     status in _POLLABLE_POST_STATUSES
                     or (status in _SUCCESS_POST_STATUSES and not event.get("url"))
                 ):
-                    self._schedule_post_status_poll()
+                    self._schedule_post_status_poll(immediate=True)
                 refresh_projects = True
                 continue_queue = self._auto_continue and status not in {"ready"}
                 if status == "failed":
@@ -1548,6 +1566,7 @@ class SocialPublishController:
                         "status": update["status"],
                         "error": update.get("error") or "",
                         "platform_post_url": update.get("url") or "",
+                        "platform_post_url_verified": bool(update.get("url")),
                     }
                     if any(current.get(key) != value for key, value in changes.items()):
                         status_changed = True
@@ -1559,7 +1578,7 @@ class SocialPublishController:
                     self._schedule_post_status_poll()
                     waiting_for_link = any(
                         str(item.get("status") or "").casefold() in _SUCCESS_POST_STATUSES
-                        and not item.get("platform_post_url")
+                        and not bool(item.get("platform_post_url_verified"))
                         for item in self._state.get("items") or []
                     )
                     self._status = (
@@ -1617,12 +1636,22 @@ class SocialPublishController:
         item = self._host.tiktok_publish_items.item_at(row)
         if not item:
             return False
-        url = str(item.get("platform_post_url") or "")
+        platform = str(item.get("target_platform") or self.selected_platform or "tiktok")
+        raw_url = str(item.get("platform_post_url") or "")
+        url = (
+            zernio.public_post_url(raw_url, platform)
+            if item.get("platform_post_url_verified") else ""
+        )
         if url:
             return bool(open_external_url(url))
+        if raw_url:
+            self._update_item_state(
+                item["id"], platform_post_url="", platform_post_url_verified=False
+            )
         if item.get("zernio_post_id") and self._api_key():
             self._status = "The post is published; retrieving its public link."
             self._emit_changed()
+            self._schedule_post_status_poll(immediate=True)
             self._start_status_worker(only_pending=False)
         return False
 
@@ -1733,9 +1762,17 @@ class SocialPublishController:
     @staticmethod
     def _item_needs_status_poll(item: dict) -> bool:
         status = str(item.get("status") or "").casefold()
-        return status in _POLLABLE_POST_STATUSES or (
-            status in _SUCCESS_POST_STATUSES and not item.get("platform_post_url")
+        platform = str(item.get("target_platform") or "tiktok")
+        has_public_url = bool(item.get("platform_post_url_verified")) and bool(
+            zernio.public_post_url(item.get("platform_post_url"), platform)
         )
+        if status in _SUCCESS_POST_STATUSES:
+            return not has_public_url
+        if status in _FAILED_POST_STATUSES or status == "draft":
+            return False
+        # Any other state attached to an existing remote post is transitional,
+        # including new statuses introduced by Zernio after this app release.
+        return bool(item.get("zernio_post_id"))
 
     def _schedule_post_status_poll(self, *, immediate: bool = False) -> None:
         now = time.monotonic()

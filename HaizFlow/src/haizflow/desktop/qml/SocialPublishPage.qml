@@ -243,6 +243,7 @@ Item {
                 required property int uploadProgress
                 required property string zernioPostId
                 required property string platformPostUrl
+                required property bool platformPostUrlVerified
                 required property string targetPlatform
 
                 width: queueGrid.cellWidth
@@ -274,6 +275,7 @@ Item {
                     uploadProgress: queueDelegate.uploadProgress
                     zernioPostId: queueDelegate.zernioPostId
                     platformPostUrl: queueDelegate.platformPostUrl
+                    platformPostUrlVerified: queueDelegate.platformPostUrlVerified
                     targetPlatform: queueDelegate.targetPlatform
                     onPublishRequested: root.confirmPublish(queueDelegate.index, false)
                     onEditRequested: postEditor.openForItem(

@@ -341,7 +341,47 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.assertEqual(self.controller._pending_post_ids(), ["post-1"])
 
         item["platform_post_url"] = "https://www.tiktok.com/@creator/video/123"
+        item["platform_post_url_verified"] = True
         self.assertEqual(self.controller._pending_post_ids(), [])
+
+    def test_published_post_with_guessed_tiktok_url_is_polled_again(self):
+        item = {
+            "status": "published",
+            "zernio_post_id": "post-1",
+            "target_platform": "tiktok",
+            "platform_post_url": "https://zernio.com/posts/post-1",
+        }
+        self.controller._state["items"] = [item]
+
+        self.assertEqual(self.controller._pending_post_ids(), ["post-1"])
+
+    def test_unknown_remote_post_status_cannot_fall_back_to_publishable(self):
+        item = {
+            "status": "accepted",
+            "zernio_post_id": "post-1",
+            "target_platform": "tiktok",
+            "platform_post_url": "",
+        }
+        self.controller._state["items"] = [item]
+
+        self.assertEqual(self.controller._pending_post_ids(), ["post-1"])
+
+    def test_model_hides_invalid_cached_post_url(self):
+        item = {
+            "caption": "Caption",
+            "hashtags": "#tag",
+            "status": "published",
+            "target_platform": "tiktok",
+            "platform_post_url": "https://www.tiktok.com/@creator/video/123",
+            "platform_post_url_verified": True,
+            "thumbnail_path": "",
+        }
+        self.assertEqual(
+            self.controller._model_item(item)["platform_post_url"],
+            "https://www.tiktok.com/@creator/video/123",
+        )
+        item["platform_post_url"] = "https://zernio.com/posts/post-1"
+        self.assertEqual(self.controller._model_item(item)["platform_post_url"], "")
 
     def test_opening_publish_project_restores_zernio_accounts_automatically(self):
         with (
