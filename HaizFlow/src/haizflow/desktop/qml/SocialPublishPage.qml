@@ -141,12 +141,52 @@ Item {
 
                 AppButton {
                     id: addVideosButton
+                    property bool menuWasOpenOnPress: false
+
                     compact: true
-                    text: I18n.t("Add from projects")
+                    text: I18n.t("Add videos")
                     iconGlyph: "\uE710"
                     tone: "primary"
                     enabled: !AppController.tiktokPublishBusy
-                    onClicked: projectSourceDialog.openForSelection()
+                    onPressed: menuWasOpenOnPress = addSourceMenu.visible
+                    onClicked: {
+                        if (menuWasOpenOnPress || addSourceMenu.visible)
+                            addSourceMenu.close()
+                        else
+                            addSourceMenu.open()
+                    }
+
+                    Menu {
+                        id: addSourceMenu
+                        width: 210
+                        x: parent.width - width
+                        y: parent.height + Theme.space4
+                        padding: Theme.space4
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+
+                        background: Rectangle {
+                            radius: Theme.radiusSmall
+                            color: Theme.surfaceElevated
+                            border.width: 1
+                            border.color: Theme.outlineStrong
+                        }
+
+                        AppMenuItem {
+                            text: I18n.t("From files")
+                            iconGlyph: "\uE8B7"
+                            onTriggered: AppController.browseSocialPublishVideos()
+                        }
+                        AppMenuItem {
+                            text: I18n.t("From folder")
+                            iconGlyph: "\uE8B7"
+                            onTriggered: AppController.browseSocialPublishFolder()
+                        }
+                        AppMenuItem {
+                            text: I18n.t("Add from projects")
+                            iconGlyph: "\uE7C3"
+                            onTriggered: projectSourceDialog.openForSelection()
+                        }
+                    }
                 }
             }
         }

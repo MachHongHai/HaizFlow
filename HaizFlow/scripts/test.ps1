@@ -35,6 +35,15 @@ try {
     }
   }
 
+  # Keep the release gate focused on correctness.  The repository still has
+  # historical formatting debt, but undefined names and invalid Python
+  # constructs must never reach PyInstaller just because compileall accepts
+  # them.
+  & $Python -m ruff check (Join-Path $Root "src") (Join-Path $Root "scripts") --select F
+  if ($LASTEXITCODE -ne 0) {
+    throw "Python correctness lint failed."
+  }
+
   & $Python -m unittest discover -s (Join-Path $Root "test") -p "test_*.py"
   if ($LASTEXITCODE -ne 0) {
     throw "Test suite failed."

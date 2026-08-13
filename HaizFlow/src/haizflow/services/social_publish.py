@@ -53,6 +53,13 @@ def empty_state() -> dict[str, Any]:
     return _empty_state()
 
 
+def initialize_project(project_root: str) -> dict[str, Any]:
+    """Create an explicit, clean state for a newly-created publish project."""
+    state = _empty_state()
+    save_state(project_root, state)
+    return state
+
+
 def state_path(project_root: str) -> str:
     return os.path.join(os.path.abspath(project_root), STATE_FILE_NAME)
 

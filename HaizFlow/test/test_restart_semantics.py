@@ -159,7 +159,14 @@ class RestartCheckpointTests(unittest.TestCase):
             existing_part.parent.mkdir()
             existing_part.write_bytes(b"existing-voice" * 100)
             transcript_state = process_video._file_state(str(transcript))
-            voice_signature = process_video._signature(transcript_state, "same-voice")
+            voice_signature = process_video._signature(
+                transcript_state,
+                "edge",
+                "edge",
+                "vi",
+                "same-voice",
+                "vieneu-v3-turbo-onnx-int8-r1",
+            )
             video = SimpleNamespace(
                 video_id="video-1",
                 files={

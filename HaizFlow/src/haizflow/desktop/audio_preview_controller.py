@@ -9,7 +9,12 @@ import uuid
 from pathlib import Path
 
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, RUNTIME_DATA_DIR
-from haizflow.pipeline.tts import _run_coroutine, tts_segment_with_retry
+from haizflow.pipeline.tts import (
+    _run_coroutine,
+    preprocess_text_for_tts,
+    resolve_tts_provider,
+    tts_segment_with_retry,
+)
 from haizflow.services import video_store
 from haizflow.utils.ffmpeg import _binary
 
@@ -72,6 +77,7 @@ class AudioPreviewController:
         background_music_volume: int | None = None,
         tts_volume: int | None = None,
         voice: str | None = None,
+        provider: str | None = None,
         target_language: str | None = None,
     ) -> bool:
         """Build a preview from persisted settings or an unsaved editor draft."""
@@ -119,6 +125,9 @@ class AudioPreviewController:
             ),
             "tts_volume": int(getattr(host, "_tts_volume", 100) if tts_volume is None else tts_volume),
             "voice": str(getattr(host, "_tts_voice", "") if voice is None else voice),
+            "provider": str(
+                getattr(host, "_tts_provider", "vieneu") if provider is None else provider
+            ),
             "target_language": effective_target_language,
             "directory": video_store.get_video_dir(video.video_id) if video else str(RUNTIME_DATA_DIR),
         }
@@ -139,14 +148,28 @@ class AudioPreviewController:
         source_output_path = preview_dir / f"source-{token}.m4a"
         music_output_path = preview_dir / f"music-{token}.m4a"
         try:
-            _run_coroutine(
-                tts_segment_with_retry(
-                    self._preview_text(snapshot["target_language"]),
+            preview_text = self._preview_text(snapshot["target_language"])
+            effective_provider = resolve_tts_provider(
+                snapshot["provider"], snapshot["target_language"]
+            )
+            if effective_provider == "vieneu":
+                from haizflow.pipeline.vieneu_tts import synthesize_to_mp3
+
+                synthesize_to_mp3(
+                    preprocess_text_for_tts(preview_text),
                     snapshot["voice"],
                     str(voice_path),
-                    retries=2,
+                    f"audio-preview-{token}",
                 )
-            )
+            else:
+                _run_coroutine(
+                    tts_segment_with_retry(
+                        preview_text,
+                        snapshot["voice"],
+                        str(voice_path),
+                        retries=2,
+                    )
+                )
             self._encode_track(snapshot["source_path"], source_output_path)
             music_path = ""
             if snapshot["background_music_path"] and os.path.isfile(snapshot["background_music_path"]):

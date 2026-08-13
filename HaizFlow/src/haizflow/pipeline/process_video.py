@@ -21,7 +21,7 @@ from haizflow.pipeline.render import render_video
 from haizflow.pipeline.subtitle_ocr import detect_original_subtitle_region
 from haizflow.pipeline.subtitle import generate_srt
 from haizflow.pipeline.transcribe import TIMING_SOURCE, transcribe
-from haizflow.pipeline.tts import generate_voice_parts
+from haizflow.pipeline.tts import generate_voice_parts, resolve_tts_provider
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services.video_store import get_video, log_to_video, update_video
 from haizflow.services.translation import (
@@ -531,7 +531,7 @@ def _original_subtitle_region_for_render(video, reporter, video_dir):
     if region:
         log_to_video(
             video_id,
-            "Original subtitle coverage is enabled: blurring source region "
+            "Original subtitle coverage is enabled: covering source region "
             f"x={region['x_percent']}%, y={region['y_percent']}%, "
             f"w={region['width_percent']}%, h={region['height_percent']}%. "
             "Manual replacement-subtitle positioning does not change this region.",
@@ -567,7 +567,19 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             _mark_checkpoint(video, "subtitles", subtitle_signature)
 
         check_cancellation(video_id)
-        voice_signature = _signature(transcript_state, video.tts_voice)
+        target_language = str(getattr(video, "target_language", "vi") or "vi")
+        configured_tts_provider = str(getattr(video, "tts_provider", "edge") or "edge")
+        effective_tts_provider = resolve_tts_provider(
+            configured_tts_provider, target_language
+        )
+        voice_signature = _signature(
+            transcript_state,
+            configured_tts_provider,
+            effective_tts_provider,
+            target_language,
+            video.tts_voice,
+            "vieneu-v3-turbo-onnx-int8-r1",
+        )
         with open(transcript_json, "r", encoding="utf-8") as transcript_file:
             transcript_segments = json.load(transcript_file)
         if not isinstance(transcript_segments, list) or not transcript_segments:
@@ -596,6 +608,8 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             generate_voice_parts(
                 transcript_json, voice_parts_dir, video.tts_voice, video_id,
                 progress_callback=report_voice_progress,
+                provider=configured_tts_provider,
+                target_language=target_language,
             )
             _mark_checkpoint(video, "voice", voice_signature)
 
@@ -656,7 +670,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
             # Bump when changing the visual treatment so a previously rendered
             # luma-only result is never reused as a valid final export.
-            "static-largest-original-subtitle-ocr-v16-neighbour-patch", remove_original_subtitles,
+            "static-largest-original-subtitle-ocr-v17-fixed-caption-presets", remove_original_subtitles,
             original_subtitle_removal_mode,
             original_subtitle_region,
             "watermark-bold-italic-keyline-v3",

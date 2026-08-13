@@ -316,19 +316,35 @@ def _native_windows_folder_dialog(caption: str, directory: str) -> tuple[bool, s
 
 
 class QMessageBox(QtMessageBox):
-    """Keep native dialogs aligned with the application language setting."""
+    """Localize messages and route non-interactive alerts into the QML shell."""
+
+    _alert_handler = None
+
+    @classmethod
+    def set_alert_handler(cls, handler) -> None:
+        cls._alert_handler = handler
+
+    @classmethod
+    def _show_alert(cls, severity, parent, title, text, *args):
+        localized_title = _ui_text(title)
+        localized_text = _ui_text(text)
+        if parent is None and cls._alert_handler is not None:
+            cls._alert_handler(localized_title, localized_text, severity)
+            return QtMessageBox.StandardButton.Ok
+        method = getattr(QtMessageBox, severity)
+        return method(parent, localized_title, localized_text, *args)
 
     @staticmethod
     def information(parent, title, text, *args):
-        return QtMessageBox.information(parent, _ui_text(title), _ui_text(text), *args)
+        return QMessageBox._show_alert("information", parent, title, text, *args)
 
     @staticmethod
     def warning(parent, title, text, *args):
-        return QtMessageBox.warning(parent, _ui_text(title), _ui_text(text), *args)
+        return QMessageBox._show_alert("warning", parent, title, text, *args)
 
     @staticmethod
     def critical(parent, title, text, *args):
-        return QtMessageBox.critical(parent, _ui_text(title), _ui_text(text), *args)
+        return QMessageBox._show_alert("critical", parent, title, text, *args)
 
     @staticmethod
     def question(parent, title, text, *args):

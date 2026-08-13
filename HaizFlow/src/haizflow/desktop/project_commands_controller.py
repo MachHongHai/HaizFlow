@@ -74,6 +74,7 @@ class ProjectCommandsController:
             return {
                 "workflowMode": host._workflow_mode,
                 "targetLanguage": host._target_language,
+                "ttsProvider": host._tts_provider,
                 "ttsVoice": host._tts_voice,
                 "enableAudioSeparation": host._enable_audio_separation,
                 "originalVolume": host._original_volume,
@@ -92,7 +93,8 @@ class ProjectCommandsController:
             }
         common, _count = Counter(
             (
-                video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
+                video.mode, video.target_language, getattr(video, "tts_provider", "edge"),
+                video.tts_voice, video.enable_audio_separation,
                 video.original_video_volume, getattr(video, "background_music_volume", 30), getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
                 bool(getattr(video, "remove_original_subtitles", True)),
                 str(getattr(video, "original_subtitle_removal_mode", "blur") or "blur"),
@@ -100,10 +102,11 @@ class ProjectCommandsController:
             )
             for video in videos
         ).most_common(1)[0]
-        workflow_mode, target_language, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume, watermark_text, remove_original_subtitles, original_subtitle_removal_mode, subtitle_style_items = common
+        workflow_mode, target_language, tts_provider, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume, watermark_text, remove_original_subtitles, original_subtitle_removal_mode, subtitle_style_items = common
         baseline_video = next(
             (video for video in videos if (
-                video.mode, video.target_language, video.tts_voice, video.enable_audio_separation,
+                video.mode, video.target_language, getattr(video, "tts_provider", "edge"),
+                video.tts_voice, video.enable_audio_separation,
                 video.original_video_volume, getattr(video, "background_music_volume", 30),
                 getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
                 bool(getattr(video, "remove_original_subtitles", True)),
@@ -116,10 +119,14 @@ class ProjectCommandsController:
         if background_music_path and not os.path.isfile(background_music_path):
             background_music_path = ""
         target_language = str(target_language or "vi")
+        tts_provider = host._normalized_tts_provider(target_language, tts_provider)
         return {
             "workflowMode": "review" if workflow_mode == "review" else "A",
             "targetLanguage": target_language,
-            "ttsVoice": host._normalized_voice_for_language(target_language, tts_voice),
+            "ttsProvider": tts_provider,
+            "ttsVoice": host._normalized_voice_for_language(
+                target_language, tts_voice, tts_provider
+            ),
             "enableAudioSeparation": bool(audio_separation),
             "originalVolume": int(original_volume),
             "backgroundMusicVolume": int(background_music_volume),
@@ -149,6 +156,7 @@ class ProjectCommandsController:
             return (
                 "review" if video.mode == "review" else "A",
                 str(video.target_language or "vi"),
+                str(getattr(video, "tts_provider", "edge") or "edge"),
                 str(video.tts_voice or ""),
                 bool(video.enable_audio_separation),
                 int(video.original_video_volume),
@@ -162,7 +170,7 @@ class ProjectCommandsController:
             )
 
         keys = (
-            "workflow", "targetLanguage", "voice", "audioSource",
+            "workflow", "targetLanguage", "ttsProvider", "voice", "audioSource",
             "sourceVolume", "backgroundMusicVolume", "ttsVolume", "watermark",
             "originalSubtitles", "subtitleRemovalMode", "subtitleLayout",
             "backgroundMusic",
@@ -180,14 +188,23 @@ class ProjectCommandsController:
         return overrides
 
     def apply_batch_settings(
-        self, workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
+        self, workflow_mode, target_language, tts_provider, tts_voice,
+        enable_audio_separation, original_volume,
         background_music_volume=None, tts_volume=None, watermark_text=None, background_music_path=None,
         remove_original_subtitles=None, subtitle_style=None, original_subtitle_removal_mode=None,
     ) -> bool:
         host = self._host
         mode = "review" if workflow_mode == "review" else "A"
         language = str(target_language or "vi")
-        voice = host._normalized_voice_for_language(language, tts_voice)
+        normalize_provider = getattr(host, "_normalized_tts_provider", None)
+        provider = (
+            normalize_provider(language, tts_provider)
+            if normalize_provider else (str(tts_provider or "vieneu").lower())
+        )
+        try:
+            voice = host._normalized_voice_for_language(language, tts_voice, provider)
+        except TypeError:
+            voice = host._normalized_voice_for_language(language, tts_voice)
         apply_mix_volumes = background_music_volume is not None or tts_volume is not None
         background_music_volume = getattr(host, "_background_music_volume", 30) if background_music_volume is None else int(background_music_volume)
         tts_volume = getattr(host, "_tts_volume", 100) if tts_volume is None else int(tts_volume)
@@ -233,6 +250,7 @@ class ProjectCommandsController:
                 "mode": mode,
                 "source_language": "auto",
                 "target_language": language,
+                "tts_provider": provider,
                 "tts_voice": voice,
                 "enable_audio_separation": bool(enable_audio_separation),
                 "original_video_volume": int(original_volume),
@@ -282,6 +300,7 @@ class ProjectCommandsController:
         values = self.batch_settings_values()
         host._workflow_mode = values["workflowMode"]
         host._target_language = values["targetLanguage"]
+        host._tts_provider = values["ttsProvider"]
         host._tts_voice = values["ttsVoice"]
         host._enable_audio_separation = values["enableAudioSeparation"]
         host._original_volume = values["originalVolume"]
@@ -296,6 +315,8 @@ class ProjectCommandsController:
         host._background_music_path = str(values.get("backgroundMusicPath") or "")
         host.workflowModeChanged.emit()
         host.targetLanguageChanged.emit()
+        host.ttsProviderChanged.emit()
+        host.ttsProviderOptionsChanged.emit()
         host.ttsVoiceChanged.emit()
         host.ttsVoiceOptionsChanged.emit()
         host.enableAudioSeparationChanged.emit()

@@ -94,6 +94,33 @@ Panel {
         spacing: Theme.space4
 
         Text {
+            text: I18n.t("TTS engine")
+            color: Theme.textMuted
+            font.pixelSize: Theme.caption
+            font.weight: Font.Medium
+            textFormat: Text.PlainText
+        }
+
+        AppComboBox {
+            Layout.fillWidth: true
+            enabled: AppController.canEditSelectedVideo
+            textRole: "label"
+            valueRole: "provider"
+            model: AppController.ttsProviderOptions
+            currentIndex: AppController.ttsProviderIndex
+            onActivated: {
+                AppController.ttsProvider = currentValue
+                root.scheduleVideoSettingsSave()
+            }
+        }
+
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Theme.space4
+
+        Text {
             text: I18n.t("Voice")
             color: Theme.textMuted
             font.pixelSize: Theme.caption

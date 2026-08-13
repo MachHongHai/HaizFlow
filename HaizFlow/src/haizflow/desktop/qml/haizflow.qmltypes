@@ -516,6 +516,30 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "ttsProvider"
+            type: "QString"
+            read: "ttsProvider"
+            write: "ttsProvider"
+            notify: "ttsProviderChanged"
+            index: 142
+        }
+        Property {
+            name: "ttsProviderOptions"
+            type: "QVariantList"
+            read: "ttsProviderOptions"
+            notify: "ttsProviderOptionsChanged"
+            index: 143
+            isReadonly: true
+        }
+        Property {
+            name: "ttsProviderIndex"
+            type: "int"
+            read: "ttsProviderIndex"
+            notify: "ttsProviderOptionsChanged"
+            index: 144
+            isReadonly: true
+        }
+        Property {
             name: "ttsVoice"
             type: "QString"
             read: "ttsVoice"
@@ -1169,6 +1193,8 @@ Module {
         Signal { name: "targetLanguageChanged" }
         Signal { name: "ttsVoiceChanged" }
         Signal { name: "ttsVoiceOptionsChanged" }
+        Signal { name: "ttsProviderChanged" }
+        Signal { name: "ttsProviderOptionsChanged" }
         Signal { name: "enableAudioSeparationChanged" }
         Signal { name: "originalVolumeChanged" }
         Signal { name: "backgroundMusicVolumeChanged" }
@@ -1206,6 +1232,12 @@ Module {
         Signal { name: "zernioPostOptionsChanged" }
         Signal { name: "tiktokPublishChanged" }
         Signal { name: "downloadProjectSourcesChanged" }
+        Signal {
+            name: "appAlertRequested"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+            Parameter { name: "a3"; type: "QString" }
+        }
         Method {
             name: "setHardwareTelemetryActive"
             Parameter { name: "a1"; type: "bool" }
@@ -1216,6 +1248,29 @@ Module {
             name: "voiceOptionsForLanguage"
             type: "QVariantList"
             Parameter { name: "a1"; type: "QString" }
+        }
+        Method {
+            name: "ttsProviderOptionsForLanguage"
+            type: "QVariantList"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method {
+            name: "fallbackFromVieneuForLanguage"
+            type: "QString"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method { name: "enableInAppAlerts" }
+        Method {
+            name: "showAppAlert"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+            Parameter { name: "a3"; type: "QString" }
+        }
+        Method {
+            name: "voiceOptionsForLanguageAndProvider"
+            type: "QVariantList"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
         }
         Method {
             name: "processingDeviceCompatible"

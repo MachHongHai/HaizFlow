@@ -451,34 +451,50 @@ def _explicit_public_post_url(container: Any, platform: str) -> str:
     for key in _PUBLIC_POST_URL_KEYS:
         if url := public_post_url(container.get(key), platform):
             return url
-    for key in ("platformSpecificData", "platformData", "result", "data"):
-        nested = container.get(key)
+    for nested in container.values():
         if isinstance(nested, dict):
             if url := _explicit_public_post_url(nested, platform):
                 return url
+        elif isinstance(nested, list):
+            for entry in nested:
+                if isinstance(entry, dict):
+                    if url := _explicit_public_post_url(entry, platform):
+                        return url
     return ""
+
+
+def _platform_result_entry(container: Any, platform: str) -> dict[str, Any]:
+    """Locate a platform result across Zernio's wrapped response shapes."""
+    if not isinstance(container, dict):
+        return {}
+    platform_name = normalize_platform(platform)
+    direct_platform = str(
+        container.get("platform") or container.get("provider") or container.get("network") or ""
+    ).casefold()
+    if direct_platform == platform_name:
+        return container
+    for key in ("platforms", "platformResults", "results"):
+        entries = container.get(key)
+        if isinstance(entries, dict):
+            direct = entries.get(platform_name)
+            if isinstance(direct, dict):
+                return direct
+            entries = list(entries.values())
+        if isinstance(entries, list):
+            for entry in entries:
+                if found := _platform_result_entry(entry, platform_name):
+                    return found
+    for key in ("post", "data", "result", "existingPost"):
+        if found := _platform_result_entry(container.get(key), platform_name):
+            return found
+    return {}
 
 
 def post_result(post: Any, platform: str) -> dict[str, str]:
     """Return the effective platform status, URL, and error from a Zernio post."""
     platform_name = normalize_platform(platform)
     value = post if isinstance(post, dict) else {}
-    platform_entry: dict[str, Any] = {}
-    for key in ("platforms", "platformResults", "results"):
-        entries = value.get(key)
-        if not isinstance(entries, list):
-            continue
-        platform_entry = next(
-            (
-                entry
-                for entry in entries
-                if isinstance(entry, dict)
-                and str(entry.get("platform") or "").casefold() == platform_name
-            ),
-            {},
-        )
-        if platform_entry:
-            break
+    platform_entry = _platform_result_entry(value, platform_name)
 
     status = str(platform_entry.get("status") or value.get("status") or "publishing").casefold()
     url = _explicit_public_post_url(platform_entry, platform_name)

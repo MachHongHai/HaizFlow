@@ -36,6 +36,27 @@ def _video(video_id, filename, project_name, project_type, status, progress, upd
 
 
 class ProjectGroupingTests(unittest.TestCase):
+    def test_editing_video_settings_does_not_reorder_legacy_project_cards(self):
+        older_project = _video(
+            "older", "older.mp4", "Older", "single", "pending", 0,
+            "2026-08-14T15:00:00Z",
+        )
+        older_project.created_at = "2026-08-14T10:00:00Z"
+        newer_project = _video(
+            "newer", "newer.mp4", "Newer", "single", "pending", 0,
+            "2026-08-14T12:00:00Z",
+        )
+        newer_project.created_at = "2026-08-14T12:00:00Z"
+
+        summaries = HaizFlowController._build_project_summaries(
+            [older_project, newer_project]
+        )
+
+        self.assertEqual(
+            [project["project_name"] for project in summaries],
+            ["Newer", "Older"],
+        )
+
     def test_same_name_single_and_batch_projects_have_distinct_storage(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

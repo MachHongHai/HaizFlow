@@ -2,10 +2,11 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 11
+VIDEO_METADATA_SCHEMA_VERSION = 12
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
+TTSProvider = Literal["auto", "vieneu", "edge"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
 ProjectType = Literal["single", "batch"]
 OriginalSubtitleRemovalMode = Literal["blur", "patch"]
@@ -50,7 +51,8 @@ class VideoConfig(BaseModel):
     source_language: str = "auto"  # Automatic detection is performed for every speech segment.
     target_language: str = "vi"
     translator_provider: TranslatorProvider = "hymt2"
-    tts_voice: str = "vi-VN-HoaiMyNeural"
+    tts_provider: TTSProvider = "vieneu"
+    tts_voice: str = "Trúc Ly"
     subtitle_style: SubtitleStyle = Field(default_factory=SubtitleStyle)
     subtitle_layout_override: bool = False
     remove_original_subtitles: bool = True
@@ -81,6 +83,7 @@ class VideoInfo(BaseModel):
     source_language: str
     target_language: str
     translator_provider: TranslatorProvider = "hymt2"
+    tts_provider: TTSProvider = "vieneu"
     tts_voice: str
     subtitle_style: SubtitleStyle
     subtitle_layout_override: bool = False

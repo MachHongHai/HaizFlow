@@ -318,6 +318,30 @@ class ZernioClientTests(unittest.TestCase):
         self.assertEqual(result["url"], "https://www.tiktok.com/@creator/video/123")
         self.assertEqual(result["error"], "")
 
+    def test_post_result_reads_wrapped_platform_mapping_and_permalink(self):
+        result = zernio.post_result(
+            {
+                "data": {
+                    "post": {
+                        "status": "publishing",
+                        "platformResults": {
+                            "youtube": {
+                                "platform": "youtube",
+                                "status": "published",
+                                "result": {
+                                    "platformPostUrl": "https://www.youtube.com/shorts/abc123"
+                                },
+                            }
+                        },
+                    }
+                }
+            },
+            "youtube",
+        )
+
+        self.assertEqual(result["status"], "published")
+        self.assertEqual(result["url"], "https://www.youtube.com/shorts/abc123")
+
     def test_tiktok_post_result_does_not_guess_url_from_temporary_publish_id(self):
         result = zernio.tiktok_post_result({
             "status": "published",

@@ -34,6 +34,8 @@ Rectangle {
         || publishStatus === "pending" || publishStatus === "processing" || publishStatus === "queued"
         || remoteInFlight
     readonly property bool published: publishStatus === "published" || publishStatus === "posted"
+    readonly property bool awaitingPublicUrl: published && hasRemotePost
+        && (!platformPostUrlVerified || platformPostUrl.length === 0)
     readonly property bool canPublish: !working && publishStatus !== "missing"
         && publishStatus !== "scheduled" && (!hasRemotePost
             || publishStatus === "failed" || publishStatus === "partial" || publishStatus === "draft")
@@ -46,13 +48,15 @@ Rectangle {
         : publishStatus === "publishing" ? I18n.t("Publishing")
         : publishStatus === "pending" || publishStatus === "processing" || publishStatus === "queued"
             ? I18n.t("Publishing")
-        : publishStatus === "published" || publishStatus === "posted" ? I18n.t("Published")
+        : publishStatus === "published" || publishStatus === "posted"
+            ? awaitingPublicUrl ? I18n.t("Finalizing video") : I18n.t("Published")
         : publishStatus === "scheduled" ? I18n.t("Scheduled")
         : publishStatus === "draft" ? I18n.t("Draft")
         : publishStatus === "failed" || publishStatus === "partial" ? I18n.t("Failed")
         : publishStatus === "missing" ? I18n.t("Missing file")
         : publishStatus
-    readonly property color statusColor: published ? Theme.success
+    readonly property color statusColor: awaitingPublicUrl ? Theme.warning
+        : published ? Theme.success
         : publishStatus === "failed" || publishStatus === "partial" || publishStatus === "missing" ? Theme.danger
         : working ? Theme.warning
         : publishStatus === "scheduled" || publishStatus === "draft" ? Theme.violet
@@ -213,21 +217,23 @@ Rectangle {
                     compact: true
                     text: root.published
                         ? root.platformPostUrlVerified && root.platformPostUrl.length > 0
-                            ? I18n.t("Open post") : I18n.t("Get post link")
+                            ? I18n.t("Open post") : I18n.t("Finalizing video")
                         : root.working || root.publishStatus === "scheduled"
                             ? root.statusLabel
                         : root.publishStatus === "failed" || root.publishStatus === "partial"
                             ? I18n.t("Retry")
                             : I18n.t("Publish")
                     iconGlyph: root.published
-                        ? root.platformPostUrlVerified && root.platformPostUrl.length > 0 ? "\uE8A7" : "\uE72C"
+                        ? root.platformPostUrlVerified && root.platformPostUrl.length > 0 ? "\uE8A7" : ""
                         : "\uE768"
                     tone: root.published ? "secondary" : "primary"
                     enabled: root.published
-                        ? !AppController.tiktokPublishBusy && AppController.zernioApiKeyConfigured
+                        ? root.platformPostUrlVerified && root.platformPostUrl.length > 0
+                            && !AppController.tiktokPublishBusy
                         : root.canPublish
                     onClicked: {
-                        if (root.published)
+                        if (root.published && root.platformPostUrlVerified
+                                && root.platformPostUrl.length > 0)
                             AppController.openTikTokPublishedPost(root.index)
                         else
                             root.publishRequested()

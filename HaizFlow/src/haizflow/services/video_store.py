@@ -214,6 +214,7 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         source_language=config.source_language,
         target_language=config.target_language,
         translator_provider=config.translator_provider,
+        tts_provider=config.tts_provider,
         tts_voice=config.tts_voice,
         subtitle_style=config.subtitle_style,
         subtitle_layout_override=config.subtitle_layout_override,
@@ -385,6 +386,14 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("original_subtitle_removal_mode", "blur")
             version = 11
             continue
+        if version == 11:
+            data["schema_version"] = 12
+            # Preserve the output of existing projects. New projects use the
+            # recommended automatic provider, while previously saved voices
+            # remain explicitly tied to Edge TTS.
+            data.setdefault("tts_provider", "edge")
+            version = 12
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -393,6 +402,8 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     # strict production models must remain able to open and repair them.
     data["mode"] = data.get("mode") if data.get("mode") in {"A", "review"} else "A"
     data["translator_provider"] = "hymt2"
+    if data.get("tts_provider") not in {"auto", "vieneu", "edge"}:
+        data["tts_provider"] = "edge"
     data["output_format"] = (
         data.get("output_format")
         if data.get("output_format") in {

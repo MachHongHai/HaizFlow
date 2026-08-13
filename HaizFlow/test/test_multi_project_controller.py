@@ -146,7 +146,8 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertEqual(host._workflow_mode, "A")
         self.assertEqual(host._target_language, "vi")
-        self.assertEqual(host._tts_voice, "vi-VN-HoaiMyNeural")
+        self.assertEqual(host._tts_provider, "vieneu")
+        self.assertEqual(host._tts_voice, "Trúc Ly")
         self.assertFalse(host._enable_audio_separation)
         self.assertEqual((host._original_volume, host._background_music_volume, host._tts_volume), (60, 30, 100))
         self.assertEqual(host._watermark_text, "")
@@ -482,6 +483,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             host = SimpleNamespace(
                 _batch_video_ids=list(videos),
                 _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+                _normalized_tts_provider=Mock(return_value="auto"),
                 _normalized_voice_for_language=Mock(return_value="vi-VN-HoaiMyNeural"),
                 refreshVideos=Mock(),
                 batchChanged=SimpleNamespace(emit=Mock()),
@@ -497,7 +499,7 @@ class MultiProjectControllerTests(unittest.TestCase):
                 ) as set_music,
             ):
                 applied = ProjectCommandsController(host).apply_batch_settings(
-                    "A", "vi", "", False, 60, 25, 100, "", str(music)
+                    "A", "vi", "auto", "", False, 60, 25, 100, "", str(music)
                 )
 
         self.assertTrue(applied)
@@ -568,7 +570,8 @@ class MultiProjectControllerTests(unittest.TestCase):
             )
             with patch.object(qml_controller.video_store, "get_video", return_value=video):
                 result = HaizFlowController.previewBatchAudioMix(
-                    controller, "vi", "vi-VN-HoaiMyNeural", True, 40, 25, 90, "music.mp3"
+                    controller, "vi", "edge", "vi-VN-HoaiMyNeural",
+                    True, 40, 25, 90, "music.mp3"
                 )
 
         self.assertTrue(result)
@@ -580,6 +583,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             background_music_volume=25,
             tts_volume=90,
             voice="vi-VN-HoaiMyNeural",
+            provider="edge",
             target_language="vi",
         )
 
@@ -621,13 +625,14 @@ class MultiProjectControllerTests(unittest.TestCase):
         controller = SimpleNamespace(
             _batch_video_ids=[video.video_id],
             _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
-            _voice_options_for_language=lambda language: {
+            _voice_options_for_language=lambda language, provider="edge": {
                 "vi": [{"voice": "vi-VN-HoaiMyNeural"}],
                 "en": [{"voice": "en-US-JennyNeural"}],
             }[language],
             refreshVideos=Mock(),
             batchChanged=SimpleNamespace(emit=Mock()),
         )
+        controller._normalized_tts_provider = HaizFlowController._normalized_tts_provider
         controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(controller)
         controller._apply_batch_settings = HaizFlowController._apply_batch_settings.__get__(controller)
 
@@ -639,6 +644,7 @@ class MultiProjectControllerTests(unittest.TestCase):
                 controller,
                 "review",
                 "en",
+                "edge",
                 "vi-VN-HoaiMyNeural",
                 True,
                 35,
@@ -653,6 +659,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             mode="review",
             source_language="auto",
             target_language="en",
+            tts_provider="edge",
             tts_voice="en-US-JennyNeural",
             enable_audio_separation=True,
             original_video_volume=35,
@@ -833,6 +840,7 @@ class MultiProjectControllerTests(unittest.TestCase):
     def test_target_language_replaces_an_incompatible_saved_voice(self):
         controller = SimpleNamespace(
             _target_language="vi",
+            _tts_provider="edge",
             _tts_voice="vi-VN-NamMinhNeural",
             _voice_options_for_language=lambda language: {
                 "vi": [{"voice": "vi-VN-HoaiMyNeural"}],
@@ -842,6 +850,8 @@ class MultiProjectControllerTests(unittest.TestCase):
             languageOptionsChanged=SimpleNamespace(emit=Mock()),
             ttsVoiceChanged=SimpleNamespace(emit=Mock()),
             ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
+            ttsProviderChanged=SimpleNamespace(emit=Mock()),
+            ttsProviderOptionsChanged=SimpleNamespace(emit=Mock()),
         )
         controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(controller)
 
@@ -853,9 +863,41 @@ class MultiProjectControllerTests(unittest.TestCase):
         controller.ttsVoiceChanged.emit.assert_called_once()
         controller.ttsVoiceOptionsChanged.emit.assert_called_once()
 
+    def test_unsupported_vieneu_language_falls_back_to_edge_and_alerts(self):
+        preview = SimpleNamespace(invalidate=Mock())
+        controller = SimpleNamespace(
+            _target_language="vi",
+            _tts_provider="vieneu",
+            _tts_voice="Trúc Ly",
+            _audio_preview=preview,
+            _voice_options_for_language=lambda language, provider="vieneu": (
+                [{"voice": "Trúc Ly"}]
+                if provider == "vieneu"
+                else [{"voice": "ja-JP-NanamiNeural"}]
+            ),
+            targetLanguageChanged=SimpleNamespace(emit=Mock()),
+            languageOptionsChanged=SimpleNamespace(emit=Mock()),
+            ttsProviderChanged=SimpleNamespace(emit=Mock()),
+            ttsProviderOptionsChanged=SimpleNamespace(emit=Mock()),
+            ttsVoiceChanged=SimpleNamespace(emit=Mock()),
+            ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
+            _show_vieneu_fallback_alert=Mock(),
+        )
+        controller._normalized_voice_for_language = (
+            HaizFlowController._normalized_voice_for_language.__get__(controller)
+        )
+
+        HaizFlowController.targetLanguage.fset(controller, "ja")
+
+        self.assertEqual(controller._tts_provider, "edge")
+        self.assertEqual(controller._tts_voice, "ja-JP-NanamiNeural")
+        controller._show_vieneu_fallback_alert.assert_called_once_with("ja")
+        preview.invalidate.assert_called_once_with()
+
     def test_voice_setter_rejects_a_voice_from_another_language(self):
         controller = SimpleNamespace(
             _target_language="en",
+            _tts_provider="edge",
             _tts_voice="en-US-GuyNeural",
             _voice_options_for_language=lambda language: [
                 {"voice": "en-US-JennyNeural"},
@@ -871,6 +913,31 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(controller._tts_voice, "en-US-JennyNeural")
         controller.ttsVoiceChanged.emit.assert_called_once()
         controller.ttsVoiceOptionsChanged.emit.assert_called_once()
+
+    def test_tts_engine_change_invalidates_the_rendered_audio_preview(self):
+        preview = SimpleNamespace(invalidate=Mock())
+        controller = SimpleNamespace(
+            _target_language="vi",
+            _tts_provider="auto",
+            _tts_voice="Trúc Ly",
+            _audio_preview=preview,
+            _voice_options_for_language=lambda language, provider="auto": (
+                [{"voice": "Trúc Ly"}] if provider in {"auto", "vieneu"}
+                else [{"voice": "vi-VN-HoaiMyNeural"}]
+            ),
+            ttsProviderChanged=SimpleNamespace(emit=Mock()),
+            ttsProviderOptionsChanged=SimpleNamespace(emit=Mock()),
+            ttsVoiceChanged=SimpleNamespace(emit=Mock()),
+            ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
+        )
+        controller._normalized_tts_provider = HaizFlowController._normalized_tts_provider
+        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(controller)
+
+        HaizFlowController.ttsProvider.fset(controller, "edge")
+
+        self.assertEqual(controller._tts_provider, "edge")
+        self.assertEqual(controller._tts_voice, "vi-VN-HoaiMyNeural")
+        preview.invalidate.assert_called_once()
 
     def test_pipeline_waits_for_startup_warmup_without_blocking_the_ui_thread(self):
         warmup_done = threading.Event()

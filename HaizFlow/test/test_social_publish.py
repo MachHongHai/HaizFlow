@@ -8,6 +8,30 @@ from haizflow.services import social_publish as tiktok_publish
 
 
 class SocialPublishStateTests(unittest.TestCase):
+    def test_initialize_project_replaces_inherited_defaults_and_settings(self):
+        with tempfile.TemporaryDirectory() as project_root:
+            tiktok_publish.update_defaults(
+                project_root, "Old caption", "#old", apply_to_ready_items=False
+            )
+            tiktok_publish.update_publish_settings(
+                project_root,
+                selected_account_id="account-old",
+                selected_platform="youtube",
+                privacy_level="PRIVATE",
+                publish_now=False,
+            )
+
+            initialized = tiktok_publish.initialize_project(project_root)
+            restored = tiktok_publish.load_state(project_root)
+
+            self.assertEqual(initialized, restored)
+            self.assertEqual(restored["default_caption"], "")
+            self.assertEqual(restored["default_hashtags"], "")
+            self.assertEqual(restored["selected_account_id"], "")
+            self.assertEqual(restored["selected_platform"], "tiktok")
+            self.assertEqual(restored["privacy_level"], "")
+            self.assertTrue(restored["publish_now"])
+
     def test_post_text_normalizes_duplicate_hashtags_and_preserves_newline(self):
         text = tiktok_publish.compose_post_text(
             "  A useful caption  ",

@@ -463,19 +463,24 @@ def _style_for_original_subtitle_region(
     output_width: int,
     output_height: int,
 ) -> SubtitleStyle:
-    """Centre generated captions inside the detected blur region."""
-    if not region_layout:
-        return subtitle_style
-    x_percent = round(max(0, min(100, (region_layout.x + region_layout.width / 2) * 100 / output_width)))
-    y_percent = round(max(0, min(100, (region_layout.y + region_layout.height / 2) * 100 / output_height)))
-    # The removal region can contain two or three source rows. Replacement
-    # glyphs should match one source row rather than scale with the whole block.
-    detected_line_height = region_layout.line_height or region_layout.height
-    # ASS font size is larger than the visible glyph box. A modest 66% of the
-    # OCR row height gives the replacement line more presence inside the
-    # covered region while leaving room for its outline and karaoke sweep.
-    font_size = max(12, min(112, round(detected_line_height * 0.66)))
+    """Use a stable caption preset and centre it on the detected source text."""
+    short_side = max(1, min(output_width, output_height))
+    aspect_ratio = output_height / max(1, output_width)
+    # Fixed presets at the common 1080-pixel short edge. Only the output
+    # resolution scales them; OCR box height and sentence length never do.
+    # This keeps TikTok/Reels/Shorts consistent while retaining a slightly
+    # calmer size for landscape YouTube-style video.
+    reference_size = (
+        74 if aspect_ratio >= 1.2 else 64 if aspect_ratio <= (1 / 1.2) else 66
+    )
+    font_size = max(28, min(148, round(reference_size * short_side / 1080)))
     outline = _karaoke_outline(font_size, subtitle_style.outline)
+    if region_layout:
+        x_percent = round(max(0, min(100, (region_layout.x + region_layout.width / 2) * 100 / output_width)))
+        y_percent = round(max(0, min(100, (region_layout.y + region_layout.height / 2) * 100 / output_height)))
+    else:
+        x_percent = subtitle_style.position_x_percent
+        y_percent = subtitle_style.position_y_percent
     return subtitle_style.model_copy(update={
         "position_x_percent": x_percent,
         "position_y_percent": y_percent,

@@ -12,6 +12,7 @@ Dialog {
     property int ttsVolume: 100
     property int backgroundMusicVolume: 30
     property string targetLanguage: "vi"
+    property string ttsProvider: "vieneu"
     property string ttsVoice: ""
     property string backgroundMusicPath: ""
     readonly property bool sourceAudioAdjustable: !audioSeparationEnabled
@@ -65,6 +66,7 @@ Dialog {
         }
         AppController.previewBatchAudioMix(
             root.targetLanguage,
+            root.ttsProvider,
             root.ttsVoice,
             root.audioSeparationEnabled,
             root.originalVolume,
@@ -258,6 +260,8 @@ Dialog {
             else if (root.visible && AppController.audioPreviewState === "ready"
                      && AppController.audioPreviewSource.length > 0)
                 root.playPreview()
+            else
+                root.stopPreview()
         }
     }
 }

@@ -143,6 +143,8 @@ def generate(output_directory: Path, *, strict: bool) -> int:
         "| HY-MT2 1.8B Transformers, revision 9a341cd1b679d3efd23b46e847b01745a71ed792 | First-run downloaded model | Apache-2.0 | https://huggingface.co/tencent/Hy-MT2-1.8B |",
         "| HY-MT2 1.8B GGUF, revision 1cd5208700acedef4ef93019b6cfc148b8522d45 | First-run downloaded model | Apache-2.0 | https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF |",
         "| PP-OCRv5 Mobile ONNX (RapidOCR v3.8.0) | First-run downloaded model | Apache-2.0 | https://github.com/PaddlePaddle/PaddleOCR |",
+        "| VieNeu-TTS SDK 3.2.5 and VieNeu-TTS v3 Turbo ONNX INT8, revision 75ff82a72f54d55ed389e1eeb12041d3c4bac7d4 | First-run downloaded runtime and model | Apache-2.0 | https://github.com/pnnbao97/VieNeu-TTS |",
+        "| MOSS Audio Tokenizer Nano ONNX, revision ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae | First-run downloaded audio codec | Apache-2.0 | https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX |",
         "| Douyin X-Bogus compatibility helper | Bundled adapted source | Apache-2.0 | https://github.com/jiji262/douyin-downloader |",
         "",
         "The release bundles the signed upstream FFmpeg 8.1.2 source archive under `sources/ffmpeg`. The publisher must also satisfy corresponding-source obligations for covered statically linked libraries.",

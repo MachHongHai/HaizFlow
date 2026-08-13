@@ -386,6 +386,12 @@ def _migrate_project_record(raw_record: dict[str, Any]) -> tuple[dict[str, Any],
             "project_type": kind,
             "created_at": str(record.get("created_at") or record.get("updated_at") or _now()),
             "updated_at": str(record.get("updated_at") or record.get("created_at") or _now()),
+            "activity_at": str(
+                record.get("activity_at")
+                or record.get("updated_at")
+                or record.get("created_at")
+                or _now()
+            ),
         }
     )
     return record, record != original
@@ -643,6 +649,7 @@ def create_project(project_name: str, project_directory: str, project_type: str)
             "project_type": kind,
             "created_at": now,
             "updated_at": now,
+            "activity_at": now,
         }
         return _write_project_record(records, record)
 
@@ -694,7 +701,11 @@ def list_projects() -> list[dict[str, Any]]:
     with _index_guard():
         records = _load_index()
     valid = [record for record in records if record.get("key") and record.get("project_name")]
-    return sorted(valid, key=lambda record: record.get("updated_at", ""), reverse=True)
+    return sorted(
+        valid,
+        key=lambda record: record.get("activity_at") or record.get("created_at", ""),
+        reverse=True,
+    )
 
 
 def list_download_project_videos() -> list[dict[str, Any]]:
@@ -762,7 +773,9 @@ def touch_project_by_key(project_key_value: str) -> bool:
         record = next((item for item in records if item.get("key") == key), None)
         if not record:
             return False
-        record["updated_at"] = _now()
+        now = _now()
+        record["updated_at"] = now
+        record["activity_at"] = now
         _write_project_record(records, record)
         return True
 

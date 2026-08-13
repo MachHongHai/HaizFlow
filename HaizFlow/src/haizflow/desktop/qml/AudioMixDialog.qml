@@ -269,6 +269,8 @@ Dialog {
             else if (root.visible && AppController.audioPreviewState === "ready"
                      && AppController.audioPreviewSource.length > 0)
                 root.playPreview()
+            else
+                root.stopPreview()
         }
     }
 }

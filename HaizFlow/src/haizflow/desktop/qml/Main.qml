@@ -207,6 +207,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         I18n.language = AppController.settingsLanguage
+        AppController.enableInAppAlerts()
     }
 
     Shortcut {
@@ -254,6 +255,10 @@ ApplicationWindow {
         id: translationReviewDialog
     }
 
+    AppAlertDialog {
+        id: appAlertDialog
+    }
+
     Connections {
         target: AppController
 
@@ -281,6 +286,10 @@ ApplicationWindow {
 
         function onSettingsChanged() {
             I18n.language = AppController.settingsLanguage
+        }
+
+        function onAppAlertRequested(title, message, severity) {
+            appAlertDialog.showAlert(title, message, severity)
         }
 
         function onProjectPrepared() {

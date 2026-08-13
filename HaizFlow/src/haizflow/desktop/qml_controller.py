@@ -64,6 +64,7 @@ from haizflow.core.hardware import (
     validate_processing_device,
 )
 from haizflow.pipeline.process_registry import pause_video
+from haizflow.pipeline.tts import VIENEU_LANGUAGES
 from haizflow.schemas.video import CropSettings, VideoConfig, SubtitleStyle
 from haizflow.services import desktop_settings, video_store, project_store
 from haizflow.services.desktop_videos import create_desktop_video, migrate_legacy_single_export
@@ -85,6 +86,8 @@ class HaizFlowController(QObject):
     videoPathChanged = Signal()
     videoThumbnailChanged = Signal()
     targetLanguageChanged = Signal()
+    ttsProviderChanged = Signal()
+    ttsProviderOptionsChanged = Signal()
     ttsVoiceChanged = Signal()
     ttsVoiceOptionsChanged = Signal()
     enableAudioSeparationChanged = Signal()
@@ -124,6 +127,7 @@ class HaizFlowController(QObject):
     # properties use the narrower signals above so upload progress does not
     # invalidate every Zernio binding on the page.
     tiktokPublishChanged = Signal()
+    appAlertRequested = Signal(str, str, str)
 
     def __init__(self):
         super().__init__()
@@ -141,7 +145,8 @@ class HaizFlowController(QObject):
         self._video_path = ""
         self._video_thumbnail_source = ""
         self._target_language = "vi"
-        self._tts_voice = "vi-VN-HoaiMyNeural"
+        self._tts_provider = "vieneu"
+        self._tts_voice = "Trúc Ly"
         self._enable_audio_separation = False
         self._original_volume = 60
         self._background_music_volume = 30
@@ -792,24 +797,115 @@ class HaizFlowController(QObject):
     def targetLanguage(self, value):
         language = str(value or "vi")
         language_changed = self._target_language != language
-        normalized_voice = self._normalized_voice_for_language(language, self._tts_voice)
+        current_provider = getattr(self, "_tts_provider", "edge")
+        unsupported_vieneu = (
+            current_provider == "vieneu" and language.lower() not in VIENEU_LANGUAGES
+        )
+        normalized_provider = HaizFlowController._normalized_tts_provider(
+            language, current_provider
+        )
+        provider_changed = current_provider != normalized_provider
+        normalized_voice = self._normalized_voice_for_language(
+            language, self._tts_voice, normalized_provider
+        )
         voice_changed = self._tts_voice != normalized_voice
-        if not language_changed and not voice_changed:
+        if not language_changed and not provider_changed and not voice_changed:
             return
 
         self._target_language = language
+        self._tts_provider = normalized_provider
         self._tts_voice = normalized_voice
+        # A preview includes a rendered narration file, so it is invalid as
+        # soon as its language, provider, or selected voice changes.
+        preview = getattr(self, "_audio_preview", None)
+        if preview is not None:
+            preview.invalidate()
         if language_changed:
             self.targetLanguageChanged.emit()
             self.languageOptionsChanged.emit()
         if voice_changed:
             self.ttsVoiceChanged.emit()
+        if provider_changed:
+            signal = getattr(self, "ttsProviderChanged", None)
+            if signal:
+                signal.emit()
+        signal = getattr(self, "ttsProviderOptionsChanged", None)
+        if signal:
+            signal.emit()
         # The option model and selected index depend on both language and voice.
         self.ttsVoiceOptionsChanged.emit()
+        if unsupported_vieneu:
+            self._show_vieneu_fallback_alert(language)
 
     @Property(str, notify=languageOptionsChanged)
     def targetLanguageLabel(self):
         return self._language_label(self._target_language)
+
+    @Property(str, notify=ttsProviderChanged)
+    def ttsProvider(self):
+        return self._tts_provider
+
+    @ttsProvider.setter
+    def ttsProvider(self, value):
+        requested_provider = str(value or "").strip().lower()
+        unsupported_vieneu = (
+            requested_provider == "vieneu"
+            and self._target_language.lower() not in VIENEU_LANGUAGES
+        )
+        provider = self._normalized_tts_provider(self._target_language, value)
+        normalized_voice = self._normalized_voice_for_language(
+            self._target_language, self._tts_voice, provider
+        )
+        provider_changed = self._tts_provider != provider
+        voice_changed = self._tts_voice != normalized_voice
+        if not provider_changed and not voice_changed:
+            if unsupported_vieneu:
+                self._show_vieneu_fallback_alert(self._target_language)
+            return
+        self._tts_provider = provider
+        self._tts_voice = normalized_voice
+        preview = getattr(self, "_audio_preview", None)
+        if preview is not None:
+            preview.invalidate()
+        if provider_changed:
+            self.ttsProviderChanged.emit()
+        if voice_changed:
+            self.ttsVoiceChanged.emit()
+        self.ttsProviderOptionsChanged.emit()
+        self.ttsVoiceOptionsChanged.emit()
+        if unsupported_vieneu:
+            self._show_vieneu_fallback_alert(self._target_language)
+
+    @Property("QVariantList", notify=ttsProviderOptionsChanged)
+    def ttsProviderOptions(self):
+        return self._tts_provider_options_for_language(self._target_language)
+
+    @Slot(str, result="QVariantList")
+    def ttsProviderOptionsForLanguage(self, language_code: str):
+        return self._tts_provider_options_for_language(str(language_code or "vi"))
+
+    @Slot(str, result=str)
+    def fallbackFromVieneuForLanguage(self, language_code: str) -> str:
+        language = str(language_code or "vi").strip().lower()
+        if language not in VIENEU_LANGUAGES:
+            self._show_vieneu_fallback_alert(language)
+            return "edge"
+        return "vieneu"
+
+    @Slot()
+    def enableInAppAlerts(self) -> None:
+        QMessageBox.set_alert_handler(self._show_app_alert)
+
+    @Slot(str, str, str)
+    def showAppAlert(self, title: str, message: str, severity: str = "information") -> None:
+        self._show_app_alert(title, message, severity)
+
+    @Property(int, notify=ttsProviderOptionsChanged)
+    def ttsProviderIndex(self):
+        for index, item in enumerate(self.ttsProviderOptions):
+            if item["provider"] == self._tts_provider:
+                return index
+        return 0
 
     @Property(str, notify=ttsVoiceChanged)
     def ttsVoice(self):
@@ -817,23 +913,37 @@ class HaizFlowController(QObject):
 
     @ttsVoice.setter
     def ttsVoice(self, value):
-        normalized_voice = self._normalized_voice_for_language(self._target_language, value)
+        normalized_voice = self._normalized_voice_for_language(
+            self._target_language, value, getattr(self, "_tts_provider", "edge")
+        )
         if self._tts_voice != normalized_voice:
             self._tts_voice = normalized_voice
+            preview = getattr(self, "_audio_preview", None)
+            if preview is not None:
+                preview.invalidate()
             self.ttsVoiceChanged.emit()
             self.ttsVoiceOptionsChanged.emit()
 
     @Property("QVariantList", notify=ttsVoiceOptionsChanged)
     def ttsVoiceOptions(self):
-        return self._voice_options_for_language(self._target_language)
+        return self._voice_options_for_language(self._target_language, self._tts_provider)
 
     @Slot(str, result="QVariantList")
     def voiceOptionsForLanguage(self, language_code: str):
-        return self._voice_options_for_language(str(language_code or "vi"))
+        language = str(language_code or "vi")
+        provider = "vieneu" if language.lower() in VIENEU_LANGUAGES else "edge"
+        return self._voice_options_for_language(language, provider)
+
+    @Slot(str, str, result="QVariantList")
+    def voiceOptionsForLanguageAndProvider(self, language_code: str, provider: str):
+        return self._voice_options_for_language(
+            str(language_code or "vi"),
+            self._normalized_tts_provider(language_code, provider),
+        )
 
     @Property(int, notify=ttsVoiceOptionsChanged)
     def ttsVoiceIndex(self):
-        voices = self._voice_options_for_language(self._target_language)
+        voices = self._voice_options_for_language(self._target_language, self._tts_provider)
         for index, item in enumerate(voices):
             if item["voice"] == self._tts_voice:
                 return index
@@ -1484,10 +1594,11 @@ class HaizFlowController(QObject):
     def previewAudioMix(self):
         return self._audio_preview.start()
 
-    @Slot(str, str, bool, int, int, int, str, result=bool)
+    @Slot(str, str, str, bool, int, int, int, str, result=bool)
     def previewBatchAudioMix(
         self,
         target_language: str,
+        tts_provider: str,
         tts_voice: str,
         enable_audio_separation: bool,
         original_volume: int,
@@ -1516,6 +1627,7 @@ class HaizFlowController(QObject):
             background_music_volume=background_music_volume,
             tts_volume=tts_volume,
             voice=tts_voice,
+            provider=tts_provider,
             target_language=target_language,
         )
 
@@ -1641,6 +1753,7 @@ class HaizFlowController(QObject):
         self,
         workflow_mode: str,
         target_language: str,
+        tts_provider: str,
         tts_voice: str,
         enable_audio_separation: bool,
         original_volume: int,
@@ -1653,7 +1766,8 @@ class HaizFlowController(QObject):
         original_subtitle_removal_mode=None,
     ) -> bool:
         return HaizFlowController._project_commands_for(self).apply_batch_settings(
-            workflow_mode, target_language, tts_voice, enable_audio_separation, original_volume,
+            workflow_mode, target_language, tts_provider, tts_voice,
+            enable_audio_separation, original_volume,
             background_music_volume, tts_volume, watermark_text, background_music_path,
             remove_original_subtitles, subtitle_style, original_subtitle_removal_mode,
         )
@@ -1663,6 +1777,7 @@ class HaizFlowController(QObject):
         return self._apply_batch_settings(
             self._workflow_mode,
             self._target_language,
+            self._tts_provider,
             self._tts_voice,
             self._enable_audio_separation,
             self._original_volume,
@@ -1675,11 +1790,12 @@ class HaizFlowController(QObject):
             self._original_subtitle_removal_mode,
         )
 
-    @Slot(str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, result=bool)
+    @Slot(str, str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, result=bool)
     def applyBatchSettingsDraft(
         self,
         workflow_mode: str,
         target_language: str,
+        tts_provider: str,
         tts_voice: str,
         enable_audio_separation: bool,
         original_volume: int,
@@ -1694,6 +1810,7 @@ class HaizFlowController(QObject):
         return self._apply_batch_settings(
             workflow_mode,
             target_language,
+            tts_provider,
             tts_voice,
             enable_audio_separation,
             original_volume,
@@ -1899,6 +2016,14 @@ class HaizFlowController(QObject):
     @Slot("QVariantList", result=bool)
     def addTikTokPublishVideos(self, paths):
         return self._tiktok_publisher.add_videos(paths)
+
+    @Slot(result=bool)
+    def browseSocialPublishVideos(self):
+        return self._tiktok_publisher.browse_videos()
+
+    @Slot(result=bool)
+    def browseSocialPublishFolder(self):
+        return self._tiktok_publisher.browse_folder()
 
     @Slot(str, str, bool, result=bool)
     def saveTikTokPublishDefaults(self, caption: str, hashtags: str, apply_to_existing: bool):
@@ -2138,6 +2263,7 @@ class HaizFlowController(QObject):
             source_language="auto",
             target_language=self._target_language,
             translator_provider="hymt2",
+            tts_provider=self._tts_provider,
             tts_voice=self._tts_voice,
             subtitle_style=self._subtitle_style,
             subtitle_layout_override=manual_subtitle_layout,
@@ -2164,6 +2290,7 @@ class HaizFlowController(QObject):
             "mode": config.mode,
             "source_language": config.source_language,
             "target_language": config.target_language,
+            "tts_provider": config.tts_provider,
             "tts_voice": config.tts_voice,
             "subtitle_style": config.subtitle_style,
             "subtitle_layout_override": config.subtitle_layout_override,
@@ -2251,15 +2378,79 @@ class HaizFlowController(QObject):
     _format_duration = staticmethod(format_duration)
     _format_memory_size = staticmethod(format_memory_size)
 
-    def _voice_options_for_language(self, language_code):
-        return voice_options_for_language(language_code, self._settings_language)
+    @staticmethod
+    def _normalized_tts_provider(language_code, provider):
+        language = str(language_code or "vi").strip().lower()
+        normalized = str(provider or "vieneu").strip().lower()
+        if normalized not in {"auto", "vieneu", "edge"}:
+            normalized = "vieneu" if language in VIENEU_LANGUAGES else "edge"
+        if normalized == "auto":
+            return "vieneu" if language == "vi" else "edge"
+        if normalized == "vieneu" and language not in VIENEU_LANGUAGES:
+            return "edge"
+        return normalized
 
-    def _voice_codes_for_language(self, language_code):
-        return [item["voice"] for item in self._voice_options_for_language(language_code)]
+    def _tts_provider_options_for_language(self, language_code):
+        if getattr(self, "_settings_language", "en") == "vi":
+            return [
+                {"provider": "vieneu", "label": "VieNeu · Chạy cục bộ bằng CPU"},
+                {"provider": "edge", "label": "Edge TTS · Trực tuyến"},
+            ]
+        return [
+            {"provider": "vieneu", "label": "VieNeu · Local CPU"},
+            {"provider": "edge", "label": "Edge TTS · Online"},
+        ]
 
-    def _normalized_voice_for_language(self, language_code, voice):
-        """Return a valid Edge voice for the selected output language."""
-        options = self._voice_options_for_language(language_code)
+    def _show_app_alert(self, title: str, message: str, severity: str = "information") -> None:
+        level = str(severity or "information").strip().lower()
+        if level not in {"information", "warning", "critical"}:
+            level = "information"
+        self.appAlertRequested.emit(str(title or "HaizFlow"), str(message or ""), level)
+
+    def _show_vieneu_fallback_alert(self, language_code: str) -> None:
+        language_name = self._language_label(str(language_code or ""))
+        if self._settings_language == "vi":
+            title = "Đã chuyển sang Edge TTS"
+            message = (
+                f"VieNeu chưa hỗ trợ {language_name}. HaizFlow đã tự chuyển sang "
+                "Edge TTS để giọng đọc phù hợp với ngôn ngữ đích."
+            )
+        else:
+            title = "Switched to Edge TTS"
+            message = (
+                f"VieNeu does not support {language_name}. HaizFlow switched to "
+                "Edge TTS so the selected language can be synthesized."
+            )
+        self._show_app_alert(title, message, "warning")
+
+    def _voice_options_for_language(self, language_code, provider="vieneu"):
+        try:
+            return voice_options_for_language(
+                language_code, self._settings_language, provider
+            )
+        except AttributeError:
+            # Small controller doubles in tests and integrations can provide
+            # their own catalog without carrying desktop localization state.
+            callback = self.__dict__.get("_voice_options_for_language")
+            if callback:
+                try:
+                    return callback(language_code, provider)
+                except TypeError:
+                    return callback(language_code)
+            raise
+
+    def _voice_codes_for_language(self, language_code, provider="vieneu"):
+        return [
+            item["voice"]
+            for item in self._voice_options_for_language(language_code, provider)
+        ]
+
+    def _normalized_voice_for_language(self, language_code, voice, provider="vieneu"):
+        """Return a valid voice for the selected output language and provider."""
+        try:
+            options = self._voice_options_for_language(language_code, provider)
+        except TypeError:
+            options = self._voice_options_for_language(language_code)
         supported_voices = [item["voice"] for item in options]
         if voice in supported_voices:
             return voice

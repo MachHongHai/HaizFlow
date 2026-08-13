@@ -399,6 +399,67 @@ class SocialPublishControllerTests(unittest.TestCase):
 
         refresh.assert_called_once_with()
 
+    def test_switching_publish_projects_clears_transient_creator_state(self):
+        self.controller._project_key = "old-project"
+        self.controller._project_root = "D:/HaizFlowData/old-project"
+        self.controller._privacy_levels = ["PUBLIC_TO_EVERYONE"]
+        self.controller._interaction_settings = {
+            "comment": True, "duet": True, "stitch": True,
+        }
+        self.controller._creator_info_loaded = True
+
+        with (
+            patch.object(self.controller, "_reload"),
+            patch.object(self.controller, "_api_key", return_value=""),
+            patch(
+                "haizflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"
+            ),
+            patch(
+                "haizflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"
+            ),
+        ):
+            self.controller.attach_project("new-project", "D:/HaizFlowData/new-project")
+
+        self.assertEqual(self.controller._privacy_levels, [])
+        self.assertEqual(
+            self.controller._interaction_settings,
+            {"comment": False, "duet": False, "stitch": False},
+        )
+        self.assertFalse(self.controller._creator_info_loaded)
+
+    def test_browse_videos_forwards_native_selection_to_project_import(self):
+        with (
+            patch.object(self.controller, "_ensure_publish_project", return_value=True),
+            patch(
+                "haizflow.desktop.social_publish_controller.QFileDialog.getOpenFileNames",
+                return_value=(["D:/media/one.mp4", "D:/media/two.mov"], "Video files"),
+            ),
+            patch.object(self.controller, "add_videos", return_value=True) as add_videos,
+        ):
+            self.assertTrue(self.controller.browse_videos())
+
+        add_videos.assert_called_once_with(["D:/media/one.mp4", "D:/media/two.mov"])
+
+    def test_browse_folder_adds_supported_video_files_recursively(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "nested").mkdir()
+            (root / "one.mp4").write_bytes(b"one")
+            (root / "nested" / "two.webm").write_bytes(b"two")
+            (root / "ignore.txt").write_text("ignore", encoding="utf-8")
+            with (
+                patch.object(self.controller, "_ensure_publish_project", return_value=True),
+                patch(
+                    "haizflow.desktop.social_publish_controller.QFileDialog.getExistingDirectory",
+                    return_value=folder,
+                ),
+                patch.object(self.controller, "add_videos", return_value=True) as add_videos,
+            ):
+                self.assertTrue(self.controller.browse_folder())
+
+        selected = add_videos.call_args.args[0]
+        self.assertEqual({Path(path).suffix for path in selected}, {".mp4", ".webm"})
+
     def test_refresh_syncs_supported_accounts_across_all_zernio_profiles(self):
         client = MagicMock()
         client.list_profiles.return_value = [

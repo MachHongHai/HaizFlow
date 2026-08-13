@@ -2,7 +2,11 @@
 
 import os
 
-from haizflow.desktop.catalog import EDGE_TTS_VOICES_BY_LANGUAGE, POPULAR_TARGET_LANGUAGES
+from haizflow.desktop.catalog import (
+    EDGE_TTS_VOICES_BY_LANGUAGE,
+    POPULAR_TARGET_LANGUAGES,
+    VIENEU_TTS_VOICES,
+)
 from haizflow.desktop.models import VideoListModel
 from haizflow.services import project_store
 
@@ -40,6 +44,7 @@ def build_project_summaries(videos, persisted_projects=None):
             "project_type": project_store.normalize_project_type(persisted.get("project_type")),
             "videos": [],
             "updated_at": persisted.get("updated_at", ""),
+            "activity_at": persisted.get("activity_at") or persisted.get("created_at", ""),
         }
     for video in videos:
         project_type = (
@@ -64,6 +69,12 @@ def build_project_summaries(videos, persisted_projects=None):
                 "project_type": project_type,
                 "videos": [],
                 "updated_at": video.updated_at,
+                # A video-only summary is a legacy compatibility path.  Its
+                # mutable metadata timestamp also changes when users merely
+                # edit settings, so use the immutable import timestamp for
+                # recent-project ordering until migration creates a project
+                # record with its own activity_at value.
+                "activity_at": getattr(video, "created_at", "") or video.updated_at,
             },
         )
         project["videos"].append(video)
@@ -129,7 +140,11 @@ def build_project_summaries(videos, persisted_projects=None):
                 "updated_at": max(video.updated_at for video in project_videos),
             }
         )
-    return sorted(summaries, key=lambda project: project["updated_at"], reverse=True)
+    return sorted(
+        summaries,
+        key=lambda project: project.get("activity_at") or project.get("updated_at", ""),
+        reverse=True,
+    )
 
 
 def language_label(code: str, ui_language: str) -> str:
@@ -156,12 +171,22 @@ def format_memory_size(value: int) -> str:
     return f"{value / (1024 ** 3):.1f} GB"
 
 
-def voice_options_for_language(language_code: str, ui_language: str):
-    voices = EDGE_TTS_VOICES_BY_LANGUAGE.get(language_code) or EDGE_TTS_VOICES_BY_LANGUAGE["en"]
+def voice_options_for_language(language_code: str, ui_language: str, provider: str = "vieneu"):
+    effective = (
+        "vieneu"
+        if provider == "vieneu" or (provider == "auto" and language_code == "vi")
+        else "edge"
+    )
+    voices = (
+        VIENEU_TTS_VOICES
+        if effective == "vieneu"
+        else EDGE_TTS_VOICES_BY_LANGUAGE.get(language_code) or EDGE_TTS_VOICES_BY_LANGUAGE["en"]
+    )
     return [
         {
             "voice": voice,
-            "label": f"{localized_voice_label(label, ui_language)} ({voice})",
+            "label": localized_voice_label(label, ui_language) if effective == "vieneu"
+            else f"{localized_voice_label(label, ui_language)} ({voice})",
         }
         for voice, label in voices
     ]

@@ -7,7 +7,7 @@ import queue
 from haizflow.desktop.activity_log import ActivityLogBuffer
 from haizflow.core.hardware import runtime_profile
 from haizflow.pipeline.process_registry import is_cancelled, is_paused, prepare_video_resume
-from haizflow.services import video_store
+from haizflow.services import project_store, video_store
 from haizflow.services.translation import warm_hymt2_worker
 
 
@@ -29,6 +29,7 @@ class ProcessingLifecycleController:
         video_store.update_video(video_id, status="pending", step="queued", step_detail="Queued for processing")
         if not host._processing_queue.enqueue(video_id):
             return False
+        project_store.touch_project_by_key(str(getattr(video, "project_key", "") or ""))
         video_store.log_to_video(video_id, "Added to the processing queue.")
         self.update_queue_positions()
         host.processingChanged.emit()
@@ -60,6 +61,9 @@ class ProcessingLifecycleController:
         host._log_queue.put(f"__QUEUE_STARTED__:{video_id}")
 
     def on_queue_video_finished(self, video_id: str) -> None:
+        video = video_store.get_video(video_id)
+        if video:
+            project_store.touch_project_by_key(str(getattr(video, "project_key", "") or ""))
         self.update_queue_positions()
         self._host._log_queue.put(f"__QUEUE_FINISHED__:{video_id}")
 

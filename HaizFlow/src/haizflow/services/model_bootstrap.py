@@ -34,6 +34,16 @@ from haizflow.core.model_integrity import (
     HYMT2_GPU_REVISION,
     SUBTITLE_OCR_BASE_URL,
     SUBTITLE_OCR_FILES,
+    VIENEU_CODEC_FILES,
+    VIENEU_CODEC_REPO,
+    VIENEU_CODEC_REVISION,
+    VIENEU_MODEL_FILES,
+    VIENEU_MODEL_REPO,
+    VIENEU_MODEL_REVISION,
+    VIENEU_SDK_FILE,
+    VIENEU_SDK_SHA256,
+    VIENEU_SDK_SIZE,
+    VIENEU_SDK_URL,
     WHISPER_FILES,
     WHISPER_REPO,
     WHISPER_REVISION,
@@ -46,6 +56,8 @@ from haizflow.core.model_integrity import (
     verify_demucs_model,
     verify_gpu_model,
     verify_subtitle_ocr_models,
+    verify_vieneu_models,
+    verify_vieneu_sdk,
     verify_whisper_model,
     verify_whisperx_vad_model,
 )
@@ -166,9 +178,19 @@ def required_assets(device: str) -> tuple[ModelAsset, ...]:
         )
         for _language, (_bundle, filename, size, digest) in ALIGNMENT_MODELS.items()
     )
+    assets.append(
+        ModelAsset(
+            "vieneu-sdk",
+            "VieNeu local voice runtime",
+            VIENEU_SDK_URL,
+            f"vieneu/sdk/{VIENEU_SDK_FILE}",
+            VIENEU_SDK_SIZE,
+            VIENEU_SDK_SHA256,
+        )
+    )
     ocr_paths = {
         "subtitle-det.onnx": "det/ch_PP-OCRv5_det_mobile.onnx",
-        "subtitle-rec.onnx": "rec/latin_PP-OCRv5_rec_mobile.onnx",
+        "subtitle-rec.onnx": "rec/ch_PP-OCRv5_rec_mobile.onnx",
         "subtitle-cls.onnx": "cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx",
     }
     assets.extend(
@@ -181,6 +203,28 @@ def required_assets(device: str) -> tuple[ModelAsset, ...]:
             digest,
         )
         for filename, (size, digest) in SUBTITLE_OCR_FILES.items()
+    )
+    assets.extend(
+        ModelAsset(
+            "vieneu",
+            "VieNeu local Vietnamese voice",
+            _hub_url(VIENEU_MODEL_REPO, VIENEU_MODEL_REVISION, f"onnx_int8/{filename}"),
+            f"vieneu/v3-turbo/onnx_int8/{filename}",
+            size,
+            digest,
+        )
+        for filename, (size, digest) in VIENEU_MODEL_FILES.items()
+    )
+    assets.extend(
+        ModelAsset(
+            "vieneu-codec",
+            "VieNeu audio codec",
+            _hub_url(VIENEU_CODEC_REPO, VIENEU_CODEC_REVISION, filename),
+            f"vieneu/codec/{filename}",
+            size,
+            digest,
+        )
+        for filename, (size, digest) in VIENEU_CODEC_FILES.items()
     )
     return tuple(assets)
 
@@ -243,6 +287,7 @@ def _approved_download_url(url: str) -> bool:
         or host == "dl.fbaipublicfiles.com"
         or host == "modelscope.cn"
         or host.endswith(".modelscope.cn")
+        or host == "files.pythonhosted.org"
     )
 
 
@@ -388,6 +433,8 @@ def _verify_installed_components(root: Path, device: str) -> None:
     verify_demucs_model(root / "demucs")
     verify_alignment_models(root / "alignment")
     verify_subtitle_ocr_models(root / "subtitle-ocr")
+    verify_vieneu_models(root / "vieneu")
+    verify_vieneu_sdk(root / "vieneu")
 
 
 def models_ready(root: Path, device: str) -> bool:

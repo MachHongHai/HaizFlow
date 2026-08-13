@@ -14,7 +14,7 @@ from pathlib import Path
 from PySide6.QtGui import QGuiApplication
 
 from haizflow.desktop.external_links import open_external_url
-from haizflow.desktop.localization import QMessageBox
+from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import create_video_thumbnail_path, normalize_video_path, thumbnail_source
 from haizflow.services import project_store, secure_credentials, social_publish as tiktok_publish, video_store, zernio
 from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
@@ -40,7 +40,7 @@ _POLLABLE_POST_STATUSES = frozenset({"uploading", "publishing", "pending", "proc
 _SUCCESS_POST_STATUSES = frozenset({"published", "posted"})
 _FAILED_POST_STATUSES = frozenset({"failed", "partial", "cancelled", "deleted"})
 _POST_STATUS_POLL_SECONDS = 3.0
-_POST_STATUS_POLL_TIMEOUT_SECONDS = 180.0
+_POST_STATUS_POLL_TIMEOUT_SECONDS = 900.0
 _OAUTH_ACCOUNT_POLL_SECONDS = 1.0
 _OAUTH_ACCOUNT_POLL_TIMEOUT_SECONDS = 30.0
 _ACCOUNT_BACKGROUND_REFRESH_SECONDS = 5.0
@@ -267,11 +267,22 @@ class SocialPublishController:
         return not self._busy or not self._project_key or self._project_key == target
 
     def attach_project(self, project_key: str, project_root: str) -> None:
-        if self._project_key != str(project_key or ""):
+        next_key = str(project_key or "")
+        next_root = os.path.abspath(project_root) if project_root else ""
+        project_changed = self._project_key != next_key or self._project_root != next_root
+        if project_changed:
             self._consent_confirmed = False
             self._stop_post_status_poll()
-        self._project_key = str(project_key or "")
-        self._project_root = os.path.abspath(project_root) if project_root else ""
+            self._account_generation += 1
+            self._creator_generation += 1
+            self._privacy_levels = []
+            self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
+            self._creator_info_loaded = False
+            self._can_post_more = True
+            self._creator_syncing = False
+            self._creator_worker_thread = None
+        self._project_key = next_key
+        self._project_root = next_root
         if not self._busy and self._project_root:
             tiktok_publish.migrate_project_layout(self._project_root)
             tiktok_publish.cleanup_orphaned_media(self._project_root)
@@ -982,6 +993,45 @@ class SocialPublishController:
         labels = {source["output_path"]: source["display_name"] for source in sources}
         return self.add_videos([source["output_path"] for source in sources], labels)
 
+    def browse_videos(self) -> bool:
+        if self._busy or not self._ensure_publish_project():
+            return False
+        paths, _selected_filter = QFileDialog.getOpenFileNames(
+            None,
+            "Choose videos for social publishing",
+            native_media_dialog_directory(),
+            "Video files (*.mp4 *.mov *.webm);;All files (*.*)",
+        )
+        return self.add_videos(paths) if paths else False
+
+    def browse_folder(self) -> bool:
+        if self._busy or not self._ensure_publish_project():
+            return False
+        folder = QFileDialog.getExistingDirectory(
+            None,
+            "Choose a folder of videos for social publishing",
+            native_media_dialog_directory(),
+            QFileDialog.Option.ShowDirsOnly,
+        )
+        if not folder:
+            return False
+        paths = sorted(
+            (
+                str(candidate)
+                for candidate in Path(folder).rglob("*")
+                if candidate.is_file() and candidate.suffix.casefold() in PUBLISH_VIDEO_EXTENSIONS
+            ),
+            key=lambda value: value.casefold(),
+        )
+        if not paths:
+            QMessageBox.warning(
+                None,
+                "Social publishing",
+                "The selected folder does not contain an MP4, MOV, or WebM video.",
+            )
+            return False
+        return self.add_videos(paths)
+
     def add_videos(self, paths, display_names: dict[str, str] | None = None) -> bool:
         if not self._ensure_publish_project() or self._busy:
             return False
@@ -1560,8 +1610,12 @@ class SocialPublishController:
                 event_changed = status_changed or self._status != previous_status_text
             elif kind == "status_error":
                 self._post_status_refreshing = False
-                self._stop_post_status_poll()
-                self._status = str(event.get("message") or "Could not refresh Zernio post statuses.")
+                if self._pending_post_ids() and time.monotonic() < self._post_status_poll_deadline:
+                    self._schedule_post_status_poll()
+                    self._status = "The platform status is temporarily unavailable; retrying in the background."
+                else:
+                    self._stop_post_status_poll()
+                    self._status = str(event.get("message") or "Could not refresh Zernio post statuses.")
             elif kind == "error":
                 silent = bool(event.get("silent"))
                 generation = int(event.get("generation") or 0)
@@ -1758,7 +1812,7 @@ class SocialPublishController:
         now = time.monotonic()
         if now >= self._post_status_poll_deadline:
             self._stop_post_status_poll()
-            self._status = "The platform is still processing the post. Use Refresh status later."
+            self._status = "The platform is still preparing the public post link. HaizFlow will check again when this project is reopened."
             self._emit_changed()
             return
         if now >= self._post_status_poll_next:

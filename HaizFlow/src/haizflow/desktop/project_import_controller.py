@@ -16,7 +16,7 @@ from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media
 from haizflow.desktop.media import collect_batch_video_paths, create_video_thumbnail_path, normalize_video_path
 from haizflow.core.paths import app_data_dir
 from haizflow.schemas.video import SubtitleStyle, VideoConfig
-from haizflow.services import project_store, video_store
+from haizflow.services import project_store, social_publish, video_store
 from haizflow.services.channel_import import normalize_remote_url
 from haizflow.services.desktop_videos import create_desktop_video, set_desktop_background_music
 from haizflow.services.video_download import DownloadCancelled, _load_yt_dlp, _youtube_dl_options, validate_video_url
@@ -85,6 +85,7 @@ class ProjectImportController:
         return config.model_copy(update={
             "mode": "review" if values.get("workflowMode") == "review" else "A",
             "target_language": str(values.get("targetLanguage") or "vi"),
+            "tts_provider": str(values.get("ttsProvider") or "vieneu"),
             "tts_voice": str(values.get("ttsVoice") or ""),
             "enable_audio_separation": bool(values.get("enableAudioSeparation", False)),
             "original_video_volume": int(values.get("originalVolume", 60)),
@@ -784,7 +785,8 @@ class ProjectImportController:
         defaults = {
             "_workflow_mode": "A",
             "_target_language": "vi",
-            "_tts_voice": "vi-VN-HoaiMyNeural",
+            "_tts_provider": "vieneu",
+            "_tts_voice": "Trúc Ly",
             "_enable_audio_separation": False,
             "_original_volume": 60,
             "_background_music_volume": 30,
@@ -799,6 +801,7 @@ class ProjectImportController:
         changed_signals = {
             "_workflow_mode": "workflowModeChanged",
             "_target_language": "targetLanguageChanged",
+            "_tts_provider": "ttsProviderChanged",
             "_tts_voice": "ttsVoiceChanged",
             "_enable_audio_separation": "enableAudioSeparationChanged",
             "_original_volume": "originalVolumeChanged",
@@ -812,6 +815,7 @@ class ProjectImportController:
             "_background_music_path": "backgroundMusicChanged",
         }
         voice_changed = getattr(host, "_tts_voice", None) != defaults["_tts_voice"]
+        provider_changed = getattr(host, "_tts_provider", None) != defaults["_tts_provider"]
         for attribute, value in defaults.items():
             if getattr(host, attribute, None) == value:
                 continue
@@ -819,8 +823,12 @@ class ProjectImportController:
             signal = getattr(host, changed_signals[attribute], None)
             if signal:
                 signal.emit()
-        if voice_changed:
+        if voice_changed or provider_changed:
             signal = getattr(host, "ttsVoiceOptionsChanged", None)
+            if signal:
+                signal.emit()
+        if provider_changed:
+            signal = getattr(host, "ttsProviderOptionsChanged", None)
             if signal:
                 signal.emit()
 
@@ -872,6 +880,11 @@ class ProjectImportController:
             host._media_downloader.attach_project(project["key"], project["project_root"])
         elif host._project_type == "publish":
             if publisher is not None:
+                # A publishing project owns its caption, hashtags, selected
+                # platform and post options. Persist a blank state up front so
+                # no transient state from the previously-open project can be
+                # mistaken for this project's defaults.
+                social_publish.initialize_project(project["project_root"])
                 publisher.attach_project(project["key"], project["project_root"])
         elif publisher is not None:
             publisher.detach_project()

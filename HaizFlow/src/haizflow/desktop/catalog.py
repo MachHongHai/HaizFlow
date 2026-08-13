@@ -60,3 +60,21 @@ EDGE_TTS_VOICES_BY_LANGUAGE = {
     "km": [("km-KH-SreymomNeural", "Sreymom - Female"), ("km-KH-PisethNeural", "Piseth - Male")],
     "lo": [("lo-LA-KeomanyNeural", "Keomany - Female"), ("lo-LA-ChanthavongNeural", "Chanthavong - Male")],
 }
+
+
+VIENEU_TTS_VOICES = [
+    ("Trúc Ly", "Trúc Ly - Female"),
+    ("Ngọc Linh", "Ngọc Linh - Female"),
+    ("Đoan Trang", "Đoan Trang - Female"),
+    ("Mai Anh", "Mai Anh - Female"),
+    ("Thục Đoan", "Thục Đoan - Female"),
+    ("Thùy Dung", "Thùy Dung - Female"),
+    ("Ngọc Trân", "Ngọc Trân - Female"),
+    ("Minh Đức", "Minh Đức - Male"),
+    ("Phạm Tuyên", "Phạm Tuyên - Male"),
+    ("Thái Sơn", "Thái Sơn - Male"),
+    ("Xuân Vĩnh", "Xuân Vĩnh - Male"),
+    ("Thanh Bình", "Thanh Bình - Male"),
+    ("Minh Triết", "Minh Triết - Male"),
+    ("Quang Sơn", "Quang Sơn - Male"),
+]

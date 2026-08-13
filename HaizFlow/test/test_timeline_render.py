@@ -393,7 +393,7 @@ class TimelineRenderTests(unittest.TestCase):
 
         self.assertIn("gblur=", filter_prefix)
 
-    def test_multiline_removal_region_uses_single_source_line_for_font_size(self):
+    def test_removal_region_does_not_change_vertical_caption_preset(self):
         region = {
             "x_percent": 14,
             "y_percent": 53,
@@ -412,6 +412,23 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertAlmostEqual(layout.height, 153.6)
         self.assertAlmostEqual(layout.line_height, 59.392)
         self.assertEqual(style.font_size, 39)
+
+        much_taller_layout = render.SubtitleRegionLayout(20, 400, 530, 300, 120)
+        much_taller_style = render._style_for_original_subtitle_region(
+            SubtitleStyle(font_size=20), much_taller_layout, 576, 1024,
+        )
+        self.assertEqual(much_taller_style.font_size, 39)
+
+    def test_common_video_formats_use_stable_caption_presets(self):
+        style = SubtitleStyle(font_size=12)
+
+        vertical = render._style_for_original_subtitle_region(style, None, 1080, 1920)
+        landscape = render._style_for_original_subtitle_region(style, None, 1920, 1080)
+        square = render._style_for_original_subtitle_region(style, None, 1080, 1080)
+
+        self.assertEqual(vertical.font_size, 74)
+        self.assertEqual(landscape.font_size, 64)
+        self.assertEqual(square.font_size, 66)
 
     def test_manual_subtitle_frame_maps_position_and_size_to_output(self):
         style = SubtitleStyle(

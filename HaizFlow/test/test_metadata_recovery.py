@@ -307,6 +307,19 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
         self.assertEqual(migrated.original_subtitle_removal_mode, "blur")
 
+    def test_v11_metadata_keeps_existing_projects_on_edge_tts(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        legacy = json.loads(path.read_text(encoding="utf-8"))
+        legacy["schema_version"] = 11
+        legacy.pop("tts_provider", None)
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
+        self.assertEqual(migrated.tts_provider, "edge")
+
     def test_v9_metadata_preserves_the_visible_finished_session_duration(self):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))

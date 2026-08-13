@@ -34,12 +34,48 @@ DEMUCS_MODEL_SIZE = 84_141_911
 DEMUCS_MODEL_SHA256 = "8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4"
 # PP-OCRv5 Mobile is intentionally external to the frozen application.  The
 # small ONNX bundle is checksum-pinned and fetched once by model_bootstrap.
-SUBTITLE_OCR_REVISION = "rapidocr-v3.8.0-pp-ocrv5-mobile"
+SUBTITLE_OCR_REVISION = "rapidocr-v3.8.0-pp-ocrv5-chinese-mobile"
 SUBTITLE_OCR_BASE_URL = "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.8.0/onnx/PP-OCRv5/"
 SUBTITLE_OCR_FILES = {
     "subtitle-det.onnx": (4_819_576, "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae"),
-    "subtitle-rec.onnx": (7_904_513, "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a"),
+    # Use the Chinese/English recognizer rather than the Latin-only model.
+    # Subtitle removal needs reliable text identity (not just polygons) to
+    # distinguish changing CJK captions from a moving creator watermark.
+    "subtitle-rec.onnx": (16_631_306, "5825fc7ebf84ae7a412be049820b4d86d77620f204a041697b0494669b1742c5"),
     "subtitle-cls.onnx": (1_018_508, "54379ae5174d026780215fc748a7f31910dee36818e63d49e17dc598ecc82df7"),
+}
+# VieNeu v3 Turbo is the recommended local Vietnamese TTS backend. Only the
+# preset-voice ONNX INT8 payload is installed; voice-cloning weights are not
+# needed by HaizFlow and would add avoidable disk and startup cost.
+VIENEU_MODEL_REPO = "pnnbao-ump/VieNeu-TTS-v3-Turbo"
+VIENEU_MODEL_REVISION = "75ff82a72f54d55ed389e1eeb12041d3c4bac7d4"
+VIENEU_SDK_VERSION = "3.2.5"
+VIENEU_SDK_FILE = "vieneu-3.2.5-py3-none-any.whl"
+VIENEU_SDK_URL = (
+    "https://files.pythonhosted.org/packages/ff/02/"
+    "41b67c880d1fbe54dec79c06450c1cfd37369c4465f74d023c4095af8e49/"
+    + VIENEU_SDK_FILE
+)
+VIENEU_SDK_SIZE = 1_162_151
+VIENEU_SDK_SHA256 = "a37474eaeb3e1da523f2ff5eaf76da8b339840afe6cb775205dfc2fae0397b68"
+VIENEU_MODEL_FILES = {
+    "config.json": (2_152, "a9f8d9c4b4736448ab355d1a98cfe48f5e39aecf2916c37b0806c228612e9a2d"),
+    "tokenizer.json": (22_320, "6cc6bcbe380b8c37bd9f2514e37c5dfa3e00e122c6e3125dae5c4afe48e39158"),
+    "vieneu_acoustic_cached.onnx": (7_207_223, "0be6575ffe1c4c2009edb9c9b218c235f09665f630d1840e63c74bef30d462c1"),
+    "vieneu_backbone_shared.data": (103_891_968, "68c0bd5e75f9cf2d557040201f5465dc03a61206813845f2de1ebe6542652b92"),
+    "vieneu_decode_step.onnx": (1_062_040, "7907f8e067de22ee88f0912ffc8ccaf7cf90025e1d41351d2a5bb7cec44fc859"),
+    "vieneu_prefill.onnx": (1_090_823, "9d04bd8023c5a003dd60939848bba7e85c5d8448480e607a9ae7aa3ecd6d7494"),
+    "vieneu_v3_heads.npz": (52_219_622, "c2eadeb5b0b85c3009270352adea8c05a72f31c5a9f189ead9184333fb1becb8"),
+}
+VIENEU_CODEC_REPO = "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX"
+VIENEU_CODEC_REVISION = "ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae"
+VIENEU_CODEC_FILES = {
+    "codec_browser_onnx_meta.json": (17_036, "3e291c883bb7d11ff2fe8e964e3e495519760358859f35c951254c7741592731"),
+    "moss_audio_tokenizer_decode_full.onnx": (681_902, "0fbbafe3fd4afa2a019af5c5ced204af6e2d1db044fa40f021525d2aee95b4ac"),
+    "moss_audio_tokenizer_decode_shared.data": (44_198_912, "e69d52e0f4e84ca27850557ee54face46632d3a5a16c89bd246c7c408466dcad"),
+    "moss_audio_tokenizer_decode_step.onnx": (351_400, "9527c86a29e1837edec1f74db57d5eeaadb3a715af3382703566460afed25855"),
+    "moss_audio_tokenizer_encode.data": (44_507_136, "aa751265b2bab2887eac224484546b194875aa7494b607115439b3dc6b228a2c"),
+    "moss_audio_tokenizer_encode.onnx": (815_775, "eadea4a645abdcf98714c7aead122ee2ce7da6e080f9f80b977cd1ca8e19473a"),
 }
 ALIGNMENT_MODEL_BASE_URL = "https://download.pytorch.org/torchaudio/models/"
 ALIGNMENT_MODELS = {
@@ -254,6 +290,35 @@ def verify_subtitle_ocr_models(model_directory: Path) -> Path:
         expected=SUBTITLE_OCR_FILES,
         marker_name=".haizflow-subtitle-ocr-integrity.json",
     )
+
+
+def verify_vieneu_models(model_directory: Path) -> tuple[Path, Path]:
+    model_root = _verify(
+        model_directory / "v3-turbo" / "onnx_int8",
+        kind="VieNeu v3 Turbo ONNX INT8",
+        revision=VIENEU_MODEL_REVISION,
+        expected=VIENEU_MODEL_FILES,
+        marker_name=".haizflow-vieneu-model-integrity.json",
+    )
+    codec_root = _verify(
+        model_directory / "codec",
+        kind="VieNeu MOSS audio codec",
+        revision=VIENEU_CODEC_REVISION,
+        expected=VIENEU_CODEC_FILES,
+        marker_name=".haizflow-vieneu-codec-integrity.json",
+    )
+    return model_root, codec_root
+
+
+def verify_vieneu_sdk(model_directory: Path) -> Path:
+    root = _verify(
+        model_directory / "sdk",
+        kind=f"VieNeu SDK {VIENEU_SDK_VERSION}",
+        revision=VIENEU_SDK_SHA256,
+        expected={VIENEU_SDK_FILE: (VIENEU_SDK_SIZE, VIENEU_SDK_SHA256)},
+        marker_name=".haizflow-vieneu-sdk-integrity.json",
+    )
+    return root / VIENEU_SDK_FILE
 
 
 def verify_alignment_model(model_directory: Path, language: str) -> Path:

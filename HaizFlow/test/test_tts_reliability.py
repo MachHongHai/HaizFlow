@@ -20,6 +20,16 @@ def _write_test_mp3(path: str) -> None:
 
 
 class TtsReliabilityTests(unittest.TestCase):
+    def test_auto_provider_prefers_local_vieneu_only_for_vietnamese(self):
+        self.assertEqual(tts.resolve_tts_provider("auto", "vi"), "vieneu")
+        self.assertEqual(tts.resolve_tts_provider("auto", "en"), "edge")
+        self.assertEqual(tts.resolve_tts_provider("auto", "ja"), "edge")
+
+    def test_explicit_vieneu_rejects_languages_outside_its_verified_catalog(self):
+        self.assertEqual(tts.resolve_tts_provider("vieneu", "en"), "vieneu")
+        with self.assertRaisesRegex(ValueError, "does not support target language"):
+            tts.resolve_tts_provider("vieneu", "ja")
+
     def test_empty_transcript_is_rejected_before_reporting_tts_success(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             segments_path = Path(temp_dir) / "segments.json"
@@ -38,6 +48,21 @@ class TtsReliabilityTests(unittest.TestCase):
             "  Xin\u00a0chao\u200b \u2013 tu nhien\u2026  "
         )
         self.assertEqual(normalized, "Xin chao, tu nhien...")
+
+    def test_long_edge_request_is_split_at_natural_boundaries(self):
+        text = (
+            "Câu thứ nhất có độ dài vừa phải. " * 8
+            + "Câu thứ hai cũng phải được giữ nguyên từ và dấu câu. " * 5
+        )
+
+        chunks = tts._split_edge_request(text, limit=120)
+
+        self.assertGreater(len(chunks), 2)
+        self.assertTrue(all(0 < len(chunk) <= 120 for chunk in chunks))
+        self.assertEqual(
+            " ".join(chunks).replace("  ", " "),
+            tts.preprocess_text_for_tts(text),
+        )
 
     def test_segment_retry_uses_a_fresh_connection_and_atomic_valid_file(self):
         class FakeCommunicate:
@@ -68,6 +93,41 @@ class TtsReliabilityTests(unittest.TestCase):
             self.assertEqual(attempts, 2)
             self.assertTrue(tts._is_valid_mp3(output))
             self.assertEqual(list(Path(temp_dir).glob("*.part-*")), [])
+
+    def test_edge_request_timeout_cancels_a_stalled_connection(self):
+        class StalledCommunicate:
+            cancelled = False
+
+            async def save(self, _path):
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    type(self).cancelled = True
+                    raise
+
+        clock = {"value": 0.0}
+
+        async def fast_wait(_tasks, timeout):
+            clock["value"] += float(timeout or 0)
+            await asyncio.sleep(0)
+            return set(), set()
+
+        class FastLoop:
+            @staticmethod
+            def time():
+                return clock["value"]
+
+        async def run_timeout():
+            with (
+                mock.patch.object(tts.asyncio, "wait", fast_wait),
+                mock.patch.object(tts.asyncio, "get_running_loop", return_value=FastLoop()),
+                mock.patch.object(tts, "_EDGE_REQUEST_TIMEOUT_SECONDS", 0.5),
+            ):
+                await tts._save_with_cancellation(StalledCommunicate(), "unused.mp3", None)
+
+        with self.assertRaises(TimeoutError):
+            asyncio.run(run_timeout())
+        self.assertTrue(StalledCommunicate.cancelled)
 
     def test_failed_parallel_segment_is_recovered_sequentially(self):
         calls = []

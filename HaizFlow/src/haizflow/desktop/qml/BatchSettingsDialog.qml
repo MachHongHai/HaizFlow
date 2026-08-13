@@ -12,6 +12,7 @@ Dialog {
     property var baselineSettings: ({})
     property string draftWorkflowMode: "A"
     property string draftTargetLanguage: "vi"
+    property string draftTtsProvider: "vieneu"
     property string draftTtsVoice: ""
     property bool draftEnableAudioSeparation: false
     property int draftOriginalVolume: 60
@@ -31,7 +32,16 @@ Dialog {
     property int draftSubtitleOutline: 2
     property int draftSubtitleMaxChars: 32
     property var settingOverrides: []
-    readonly property var draftVoiceOptions: AppController.voiceOptionsForLanguage(draftTargetLanguage)
+    readonly property var draftProviderOptions: AppController.ttsProviderOptionsForLanguage(draftTargetLanguage)
+    readonly property var draftVoiceOptions: AppController.voiceOptionsForLanguageAndProvider(
+        draftTargetLanguage, draftTtsProvider)
+    readonly property int draftTtsProviderIndex: {
+        for (let index = 0; index < draftProviderOptions.length; ++index) {
+            if (draftProviderOptions[index].provider === draftTtsProvider)
+                return index
+        }
+        return 0
+    }
     readonly property int draftTtsVoiceIndex: {
         for (let index = 0; index < draftVoiceOptions.length; ++index) {
             if (draftVoiceOptions[index].voice === draftTtsVoice)
@@ -40,8 +50,8 @@ Dialog {
         return 0
     }
 
-    function normalizedDraftVoice(languageCode, preferredVoice) {
-        const options = AppController.voiceOptionsForLanguage(languageCode)
+    function normalizedDraftVoice(languageCode, provider, preferredVoice) {
+        const options = AppController.voiceOptionsForLanguageAndProvider(languageCode, provider)
         for (let index = 0; index < options.length; ++index) {
             if (options[index].voice === preferredVoice)
                 return preferredVoice
@@ -54,7 +64,9 @@ Dialog {
         baselineSettings = settings
         draftWorkflowMode = settings.workflowMode || "A"
         draftTargetLanguage = settings.targetLanguage || "vi"
-        draftTtsVoice = normalizedDraftVoice(draftTargetLanguage, settings.ttsVoice || "")
+        draftTtsProvider = settings.ttsProvider || "vieneu"
+        draftTtsVoice = normalizedDraftVoice(
+            draftTargetLanguage, draftTtsProvider, settings.ttsVoice || "")
         draftEnableAudioSeparation = Boolean(settings.enableAudioSeparation)
         draftOriginalVolume = Number(settings.originalVolume !== undefined ? settings.originalVolume : 60)
         draftBackgroundMusicVolume = Number(settings.backgroundMusicVolume !== undefined ? settings.backgroundMusicVolume : 30)
@@ -79,6 +91,7 @@ Dialog {
     function hasDraftChanges() {
         return draftWorkflowMode !== (baselineSettings.workflowMode || "A")
             || draftTargetLanguage !== (baselineSettings.targetLanguage || "vi")
+            || draftTtsProvider !== (baselineSettings.ttsProvider || "vieneu")
             || draftTtsVoice !== (baselineSettings.ttsVoice || "")
             || draftEnableAudioSeparation !== Boolean(baselineSettings.enableAudioSeparation)
             || draftOriginalVolume !== Number(baselineSettings.originalVolume !== undefined ? baselineSettings.originalVolume : 60)
@@ -102,6 +115,7 @@ Dialog {
         if (AppController.applyBatchSettingsDraft(
                 draftWorkflowMode,
                 draftTargetLanguage,
+                draftTtsProvider,
                 draftTtsVoice,
                 draftEnableAudioSeparation,
                 draftOriginalVolume,
@@ -126,6 +140,7 @@ Dialog {
             baselineSettings = {
                 "workflowMode": draftWorkflowMode,
                 "targetLanguage": draftTargetLanguage,
+                "ttsProvider": draftTtsProvider,
                 "ttsVoice": draftTtsVoice,
                 "enableAudioSeparation": draftEnableAudioSeparation,
                 "originalVolume": draftOriginalVolume,
@@ -444,9 +459,46 @@ Dialog {
                             selectedCode: root.draftTargetLanguage
                             onSelected: function(code) {
                                 root.draftTargetLanguage = code
-                                root.draftTtsVoice = root.normalizedDraftVoice(code, root.draftTtsVoice)
+                                if (root.draftTtsProvider === "vieneu"
+                                        && code !== "vi" && code !== "en")
+                                    root.draftTtsProvider = AppController.fallbackFromVieneuForLanguage(code)
+                                root.draftTtsVoice = root.normalizedDraftVoice(
+                                    code, root.draftTtsProvider, root.draftTtsVoice)
                             }
                         }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.space4
+
+                        Text {
+                            text: I18n.t("TTS engine")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.Medium
+                        }
+
+                        AppComboBox {
+                            Layout.fillWidth: true
+                            textRole: "label"
+                            valueRole: "provider"
+                            model: root.draftProviderOptions
+                            currentIndex: root.draftTtsProviderIndex
+                            onActivated: {
+                                root.draftTtsProvider = currentValue === "vieneu"
+                                        && root.draftTargetLanguage !== "vi"
+                                        && root.draftTargetLanguage !== "en"
+                                    ? AppController.fallbackFromVieneuForLanguage(root.draftTargetLanguage)
+                                    : currentValue
+                                root.draftTtsVoice = root.normalizedDraftVoice(
+                                    root.draftTargetLanguage,
+                                    root.draftTtsProvider,
+                                    root.draftTtsVoice
+                                )
+                            }
+                        }
+
                     }
 
                     ColumnLayout {
@@ -600,6 +652,7 @@ Dialog {
                                 batchAudioMixDialog.ttsVolume = root.draftTtsVolume
                                 batchAudioMixDialog.backgroundMusicVolume = root.draftBackgroundMusicVolume
                                 batchAudioMixDialog.targetLanguage = root.draftTargetLanguage
+                                batchAudioMixDialog.ttsProvider = root.draftTtsProvider
                                 batchAudioMixDialog.ttsVoice = root.draftTtsVoice
                                 batchAudioMixDialog.backgroundMusicPath = root.draftBackgroundMusicPath
                                 batchAudioMixDialog.open()

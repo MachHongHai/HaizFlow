@@ -30,10 +30,25 @@ class ProjectWorkspaceController:
             video = video_store.get_video(video.video_id) or video
         host._workflow_mode = video.mode
         host._target_language = str(video.target_language or "vi")
-        host._tts_voice = host._normalized_voice_for_language(host._target_language, video.tts_voice)
-        if host._tts_voice != video.tts_voice and video.status != "processing":
-            video = video_store.update_video(video.video_id, tts_voice=host._tts_voice) or video
-            video_store.log_to_video(video.video_id, "Updated an incompatible saved TTS voice to match the target language.")
+        host._tts_provider = host._normalized_tts_provider(
+            host._target_language, getattr(video, "tts_provider", "edge")
+        )
+        host._tts_voice = host._normalized_voice_for_language(
+            host._target_language, video.tts_voice, host._tts_provider
+        )
+        if (
+            host._tts_voice != video.tts_voice
+            or host._tts_provider != getattr(video, "tts_provider", "edge")
+        ) and video.status != "processing":
+            video = video_store.update_video(
+                video.video_id,
+                tts_provider=host._tts_provider,
+                tts_voice=host._tts_voice,
+            ) or video
+            video_store.log_to_video(
+                video.video_id,
+                "Updated incompatible saved TTS settings for the target language.",
+            )
         host._enable_audio_separation = video.enable_audio_separation
         host._original_volume = video.original_video_volume
         host._background_music_volume = getattr(video, "background_music_volume", 30)
@@ -53,6 +68,8 @@ class ProjectWorkspaceController:
         host.videoPathChanged.emit()
         host.videoThumbnailChanged.emit()
         host.targetLanguageChanged.emit()
+        host.ttsProviderChanged.emit()
+        host.ttsProviderOptionsChanged.emit()
         host.ttsVoiceChanged.emit()
         host.ttsVoiceOptionsChanged.emit()
         host.enableAudioSeparationChanged.emit()

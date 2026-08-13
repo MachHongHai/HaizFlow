@@ -169,6 +169,34 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         self.assertEqual(region["height_percent"], 8)
         self.assertEqual(region["width_percent"], 46)
 
+    def test_similar_height_creator_handle_does_not_enlarge_cjk_caption(self):
+        items = []
+        for frame, caption, watermark_x, watermark_text in [
+            (1, "皇帝每天都要吃草", 15, "抖音@凡人匠"),
+            (2, "为什么这草也要吃", 24, "科音@凡人匠"),
+            (3, "等干透后点燃烧尽", 42, "抖音@H人匠"),
+            (4, "接着用细筛过滤", 58, "科音@凡人匠"),
+        ]:
+            items.extend([
+                candidate(frame, caption, x=20, y=69, width=60, height=4),
+                candidate(
+                    frame,
+                    watermark_text,
+                    x=watermark_x,
+                    y=74.7,
+                    width=24,
+                    height=3.3,
+                    confidence=0.93,
+                ),
+            ])
+
+        region = select_subtitle_region(items, sample_count=12)
+
+        self.assertIsNotNone(region)
+        self.assertEqual(region["y_percent"], 69)
+        self.assertEqual(region["height_percent"], 4)
+        self.assertEqual(region["width_percent"], 60)
+
     def test_largest_real_three_line_caption_defines_the_static_region(self):
         items = []
         for frame in range(1, 13):

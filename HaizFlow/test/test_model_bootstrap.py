@@ -48,6 +48,9 @@ class ModelBootstrapTests(unittest.TestCase):
         self.assertFalse(any(path.endswith(".gguf") for path in gpu_paths))
         self.assertTrue(any(path.startswith("whisper/") for path in cpu_paths))
         self.assertTrue(any(path.startswith("demucs/") for path in gpu_paths))
+        self.assertTrue(any(path.startswith("vieneu/v3-turbo/") for path in cpu_paths))
+        self.assertTrue(any(path.startswith("vieneu/codec/") for path in gpu_paths))
+        self.assertTrue(any(path.endswith("vieneu-3.2.5-py3-none-any.whl") for path in cpu_paths))
         self.assertEqual(
             {path for path in cpu_paths if path.startswith("subtitle-ocr/")},
             {

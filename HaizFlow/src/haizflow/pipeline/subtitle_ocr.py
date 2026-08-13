@@ -32,7 +32,7 @@ from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
 # source captions change length.
 SAMPLE_COUNT = 36
 MIN_CONFIDENCE = 0.68
-DETECTOR_CACHE_VERSION = 20
+DETECTOR_CACHE_VERSION = 21
 OCR_FRAME_MAX_WIDTH = 720
 
 
@@ -53,6 +53,19 @@ def _normalise_text(text: str) -> str:
 
 def _is_meaningful(text: str) -> bool:
     return sum(character.isalnum() for character in text) >= 2
+
+
+def _looks_like_creator_watermark(text: str) -> bool:
+    """Identify social handles that must not enlarge a subtitle block.
+
+    Moving creator handles often sit immediately below a one-line caption and
+    can have almost the same glyph height. Geometry alone therefore cannot
+    reliably keep the two rows separate. Handles are not discarded globally:
+    keeping them as their own candidates still lets the temporal/static-text
+    checks reject them without hiding a legitimate caption elsewhere.
+    """
+    normalised = _normalise_text(text)
+    return "@" in normalised or normalised.startswith(("douyin ", "tiktok "))
 
 
 def _percentile(values: list[float], fraction: float) -> float:
@@ -137,6 +150,8 @@ def _merge_frame_blocks(lines: list[TextCandidate]) -> list[TextCandidate]:
                     and abs(item_centre_x - block_centre_x) <= 10
                     and line_height_ratio >= 0.55
                     and combined_height <= 20
+                    and not _looks_like_creator_watermark(item.text)
+                    and not any(_looks_like_creator_watermark(value.text) for value in block)
                 ):
                     block.append(item)
                     break
