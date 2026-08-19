@@ -717,7 +717,12 @@ ApplicationWindow {
         }
     }
 
-    ModelSetupOverlay {
+    Loader {
+        id: modelSetupOverlayLoader
         anchors.fill: parent
+        active: AppController.modelSetupVisible
+        sourceComponent: Component {
+            ModelSetupOverlay {}
+        }
     }
 }

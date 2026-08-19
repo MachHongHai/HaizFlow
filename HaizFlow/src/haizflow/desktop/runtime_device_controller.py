@@ -165,10 +165,26 @@ class RuntimeDeviceController:
     def _install_models(self, device: str) -> None:
         host = self._host
         host._model_setup_target_device = device
+
+        def report(progress: ModelProgress) -> None:
+            # File verification is not the end of first-run setup: the selected
+            # runtime still has to be probed and warmed. Do not briefly emit a
+            # terminal ``ready`` state that can unload/reload the overlay
+            # between those two phases.
+            if progress.state == "ready":
+                progress = ModelProgress(
+                    "warming",
+                    "",
+                    "Preparing the local model runtime",
+                    progress.completed_bytes,
+                    progress.total_bytes,
+                )
+            self._queue_model_setup(host, progress)
+
         install_required_models(
             Path(MODELS_DIR),
             device,
-            progress=lambda value: self._queue_model_setup(host, value),
+            progress=report,
             cancel_event=host._model_setup_cancel_event,
         )
 
@@ -298,25 +314,29 @@ class RuntimeDeviceController:
                 host._status_message = f"Model runtime unavailable: {host._runtime_probe_error}"
                 self._set_runtime_state("failed")
                 host.statusMessageChanged.emit()
-                if setup_was_required:
-                    self._queue_model_setup(
-                        host,
-                        state="failed",
-                        component="",
-                        detail=host._status_message,
-                    )
+                self._queue_model_setup(
+                    host,
+                    state="failed",
+                    component="",
+                    detail=host._status_message,
+                )
                 return
             host._warm_models()
             if host._runtime_state == "ready":
                 host._model_setup_target_device = ""
-                if setup_was_required:
-                    self._queue_model_setup(
-                        host,
-                        state="ready",
-                        component="",
-                        detail="Models are ready",
-                    )
-            elif setup_was_required:
+                # Always finish the setup lifecycle. The constructor may have
+                # checked models for the saved device before the background
+                # hardware probe selected a different (already-installed)
+                # device. In that case no download was required, but leaving
+                # the state at ``checking`` kept the first-run overlay visible
+                # forever.
+                self._queue_model_setup(
+                    host,
+                    state="ready",
+                    component="",
+                    detail="Models are ready",
+                )
+            else:
                 self._queue_model_setup(
                     host,
                     state="failed",
@@ -328,25 +348,23 @@ class RuntimeDeviceController:
             host._status_message = host._runtime_probe_error
             self._set_runtime_state("failed")
             host.statusMessageChanged.emit()
-            if setup_was_required:
-                self._queue_model_setup(
-                    host,
-                    state="cancelled",
-                    component="",
-                    detail="Model download was cancelled. You can retry when ready.",
-                )
+            self._queue_model_setup(
+                host,
+                state="cancelled",
+                component="",
+                detail="Model download was cancelled. You can retry when ready.",
+            )
         except Exception as exc:
             host._runtime_probe_error = str(exc)
             host._status_message = f"Model setup failed: {exc}"
             self._set_runtime_state("failed")
             host.statusMessageChanged.emit()
-            if setup_was_required:
-                self._queue_model_setup(
-                    host,
-                    state="failed",
-                    component="",
-                    detail=str(exc),
-                )
+            self._queue_model_setup(
+                host,
+                state="failed",
+                component="",
+                detail=str(exc),
+            )
         finally:
             host._initial_model_warmup_done.set()
 
@@ -465,6 +483,15 @@ class RuntimeDeviceController:
                         pass
                     host._status_message = f"Cannot switch to {preference.upper()}: {probe.message}"
                     self._set_runtime_state("ready")
+                    # The current runtime is still usable. Close any setup UI
+                    # opened for the rejected switch instead of trapping the
+                    # user behind a stale checking screen.
+                    self._queue_model_setup(
+                        host,
+                        state="ready",
+                        component="",
+                        detail="Models are ready",
+                    )
                     host.settingsChanged.emit()
                     host.statusMessageChanged.emit()
                     return
@@ -491,7 +518,7 @@ class RuntimeDeviceController:
                     host._warm_models_unlocked()
                 host.settingsChanged.emit()
                 host.hardwareChanged.emit()
-                if setup_required and host._runtime_state == "ready":
+                if host._runtime_state == "ready":
                     host._model_setup_target_device = ""
                     self._queue_model_setup(
                         host,

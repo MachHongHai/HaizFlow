@@ -132,12 +132,24 @@ _RUNTIME_ENVIRONMENT = {
     "HF_DATASETS_CACHE": os.path.join(HF_HOME, "datasets"),
     "TORCH_HOME": TORCH_HOME,
     "TORCH_EXTENSIONS_DIR": os.path.join(TORCH_HOME, "extensions"),
+    "TORCHINDUCTOR_CACHE_DIR": os.path.join(TORCH_HOME, "inductor"),
+    "PYTORCH_KERNEL_CACHE_PATH": os.path.join(TORCH_HOME, "kernels"),
     "PIP_CACHE_DIR": PIP_CACHE_DIR,
     "UV_CACHE_DIR": UV_CACHE_DIR,
     "XDG_CACHE_HOME": CACHE_DIR,
+    "XDG_DATA_HOME": os.path.join(APP_DATA_DIR, "data", "xdg"),
+    "XDG_CONFIG_HOME": os.path.join(APP_DATA_DIR, "config", "xdg"),
     "NUMBA_CACHE_DIR": os.path.join(CACHE_DIR, "numba"),
     "NLTK_DATA": os.path.join(CACHE_DIR, "nltk"),
     "MPLCONFIGDIR": os.path.join(CACHE_DIR, "matplotlib"),
+    # Optional/legacy OCR and model helpers use home-directory defaults even
+    # when the active pipeline supplies explicit local model paths. Contain
+    # those fallbacks too, so installing on D: can never recreate model caches
+    # under C:\\Users.
+    "EASYOCR_MODULE_PATH": os.path.join(CACHE_DIR, "easyocr"),
+    "PADDLE_HOME": os.path.join(CACHE_DIR, "paddle"),
+    "PADDLEX_HOME": os.path.join(CACHE_DIR, "paddlex"),
+    "KAGGLEHUB_CACHE": os.path.join(CACHE_DIR, "kagglehub"),
     "CUDA_CACHE_PATH": os.path.join(CACHE_DIR, "nvidia", "compute-cache"),
     "TRITON_CACHE_DIR": os.path.join(CACHE_DIR, "triton"),
     "QML_DISK_CACHE_PATH": os.path.join(CACHE_DIR, "qt", "qmlcache"),

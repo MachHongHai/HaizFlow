@@ -38,6 +38,31 @@ class _Response:
 
 
 class ModelBootstrapTests(unittest.TestCase):
+    def test_runtime_install_does_not_finish_overlay_before_warmup(self):
+        class _Host:
+            def __init__(self):
+                self._model_setup_target_device = ""
+                self._model_setup_cancel_event = threading.Event()
+                self._model_setup_events = queue.Queue()
+
+        host = _Host()
+        controller = RuntimeDeviceController(host)
+
+        def install(_root, _device, *, progress, cancel_event):
+            self.assertIs(cancel_event, host._model_setup_cancel_event)
+            progress(model_bootstrap.ModelProgress("ready", "", "Models are ready", 10, 10))
+
+        with patch(
+            "haizflow.desktop.runtime_device_controller.install_required_models",
+            side_effect=install,
+        ):
+            controller._install_models("cpu")
+
+        event = host._model_setup_events.get_nowait()
+        self.assertEqual(event["state"], "warming")
+        self.assertEqual(event["completed_bytes"], 10)
+        self.assertEqual(event["total_bytes"], 10)
+
     def test_plan_downloads_only_the_selected_translation_backend(self):
         cpu_paths = {asset.relative_path for asset in model_bootstrap.required_assets("cpu")}
         gpu_paths = {asset.relative_path for asset in model_bootstrap.required_assets("gpu")}
@@ -220,7 +245,7 @@ class ModelBootstrapTests(unittest.TestCase):
             "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.8.0/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
         ))
 
-    def test_completed_install_skips_setup_ui_and_only_warms_models(self):
+    def test_completed_install_finishes_setup_ui_and_only_warms_models(self):
         class _Host:
             def __init__(self):
                 self._model_setup_target_device = ""
@@ -253,8 +278,46 @@ class ModelBootstrapTests(unittest.TestCase):
             controller._warm_models_at_startup()
 
         install.assert_not_called()
-        setup_event.assert_not_called()
+        setup_event.assert_called_once_with(
+            host,
+            state="ready",
+            component="",
+            detail="Models are ready",
+        )
         self.assertTrue(host.warmed)
+        self.assertTrue(host._initial_model_warmup_done.is_set())
+
+    def test_existing_models_report_runtime_failure_instead_of_sticking_on_checking(self):
+        class _Signal:
+            def emit(self):
+                pass
+
+        class _Host:
+            def __init__(self):
+                self._model_setup_target_device = ""
+                self._runtime_probe_error = ""
+                self._runtime_state = "warming"
+                self._model_setup_events = queue.Queue()
+                self._initial_model_warmup_done = threading.Event()
+                self.statusMessageChanged = _Signal()
+
+        host = _Host()
+        controller = RuntimeDeviceController(host)
+        with patch(
+            "haizflow.desktop.runtime_device_controller.processing_device_preference",
+            return_value="cpu",
+        ), patch(
+            "haizflow.desktop.runtime_device_controller.models_ready",
+            return_value=True,
+        ), patch(
+            "haizflow.desktop.runtime_device_controller.probe_runtime",
+            return_value=type("Probe", (), {"ok": False, "message": "broken runtime"})(),
+        ):
+            controller._warm_models_at_startup()
+
+        event = host._model_setup_events.get_nowait()
+        self.assertEqual(event["state"], "failed")
+        self.assertIn("broken runtime", event["detail"])
         self.assertTrue(host._initial_model_warmup_done.is_set())
 
 

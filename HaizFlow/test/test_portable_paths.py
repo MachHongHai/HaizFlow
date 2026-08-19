@@ -54,7 +54,9 @@ class PortablePathTests(unittest.TestCase):
             script = (
                 "import json, os; import haizflow.config as c; "
                 "values = {name: os.environ[name] for name in "
-                "('HF_HOME','TORCH_HOME','XDG_CACHE_HOME','NUMBA_CACHE_DIR','MPLCONFIGDIR',"
+                "('HF_HOME','TORCH_HOME','TORCHINDUCTOR_CACHE_DIR','PYTORCH_KERNEL_CACHE_PATH',"
+                "'XDG_CACHE_HOME','XDG_DATA_HOME','XDG_CONFIG_HOME','NUMBA_CACHE_DIR','MPLCONFIGDIR',"
+                "'EASYOCR_MODULE_PATH','PADDLE_HOME','PADDLEX_HOME','KAGGLEHUB_CACHE',"
                 "'CUDA_CACHE_PATH','QML_DISK_CACHE_PATH','NLTK_DATA','LOCALAPPDATA','APPDATA','TMP','TEMP')}; "
                 "values['MODELS_DIR'] = c.MODELS_DIR; print(json.dumps(values))"
             )
@@ -109,7 +111,9 @@ class PortablePathTests(unittest.TestCase):
                 "sys._MEIPASS = os.environ['HAIZFLOW_TEST_BUNDLE_ROOT']; "
                 "import haizflow.config as c; "
                 "names = ('APP_DATA_DIR','RUNTIME_DATA_DIR','MODELS_DIR','BIN_DIR','HF_HOME','TORCH_HOME',"
-                "'XDG_CACHE_HOME','NUMBA_CACHE_DIR','MPLCONFIGDIR','CUDA_CACHE_PATH','QML_DISK_CACHE_PATH',"
+                "'TORCHINDUCTOR_CACHE_DIR','PYTORCH_KERNEL_CACHE_PATH','XDG_CACHE_HOME','XDG_DATA_HOME',"
+                "'XDG_CONFIG_HOME','NUMBA_CACHE_DIR','MPLCONFIGDIR','EASYOCR_MODULE_PATH','PADDLE_HOME',"
+                "'PADDLEX_HOME','KAGGLEHUB_CACHE','CUDA_CACHE_PATH','QML_DISK_CACHE_PATH',"
                 "'LOCALAPPDATA','APPDATA','HOME','USERPROFILE','NLTK_DATA','TMP','TEMP'); "
                 "print(json.dumps({name: getattr(c, name, os.environ.get(name)) for name in names}))"
             )

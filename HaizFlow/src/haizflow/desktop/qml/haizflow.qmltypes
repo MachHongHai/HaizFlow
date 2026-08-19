@@ -1442,6 +1442,8 @@ Module {
             type: "bool"
             Parameter { name: "a1"; type: "QVariantList" }
         }
+        Method { name: "browseSocialPublishVideos"; type: "bool" }
+        Method { name: "browseSocialPublishFolder"; type: "bool" }
         Method {
             name: "saveTikTokPublishDefaults"
             type: "bool"

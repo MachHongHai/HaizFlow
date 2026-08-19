@@ -67,7 +67,7 @@ def app_data_dir() -> Path:
 
 
 def runtime_data_dir() -> Path:
-    """All mutable app-level data: settings, diagnostics, model caches, and project index."""
+    """Durable app data: settings, diagnostics, logs, and the project index."""
     if not runtime_overrides_allowed():
         return app_data_dir() / "data"
     override = os.getenv("RUNTIME_DATA_DIR")
@@ -112,7 +112,17 @@ def storage_dir() -> Path:
 
 
 def cache_dir() -> Path:
-    return runtime_data_dir() / "cache"
+    # Caches are disposable runtime state, not user/project data. Keep them as
+    # a sibling of ``data`` and ``models`` so a frozen install has one clear,
+    # portable layout:
+    #
+    #   <install>/runtime/{data,models,cache,tmp}
+    #
+    # Source deployments that explicitly override RUNTIME_DATA_DIR retain the
+    # old location for compatibility with their existing development cache.
+    if os.getenv("RUNTIME_DATA_DIR") and runtime_overrides_allowed():
+        return runtime_data_dir() / "cache"
+    return app_data_dir() / "cache"
 
 
 def logs_dir() -> Path:

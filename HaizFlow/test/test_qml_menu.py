@@ -546,6 +546,13 @@ ApplicationWindow {{
         self.assertIn("AppController.downloadProjectSourceModel", dialog)
         self.assertIn("AppController.importSelectedDownloadProjectVideos", dialog)
 
+    def test_model_setup_overlay_is_unloaded_after_setup_finishes(self):
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+
+        self.assertIn("id: modelSetupOverlayLoader", main)
+        self.assertIn("active: AppController.modelSetupVisible", main)
+        self.assertIn("sourceComponent: Component", main)
+
 
 if __name__ == "__main__":
     unittest.main()
