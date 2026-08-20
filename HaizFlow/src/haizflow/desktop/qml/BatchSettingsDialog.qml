@@ -12,16 +12,17 @@ Dialog {
     property var baselineSettings: ({})
     property string draftWorkflowMode: "A"
     property string draftTargetLanguage: "vi"
-    property string draftTtsProvider: "vieneu"
+    property string draftSpeechRecognitionModel: "small"
+    property string draftTtsProvider: "omnivoice"
     property string draftTtsVoice: ""
-    property bool draftEnableAudioSeparation: false
+    property bool draftEnableAudioSeparation: true
     property int draftOriginalVolume: 60
     property int draftBackgroundMusicVolume: 30
     property int draftTtsVolume: 100
     property string draftWatermarkText: ""
     property string draftBackgroundMusicPath: ""
     property bool draftRemoveOriginalSubtitles: true
-    property string draftOriginalSubtitleRemovalMode: "blur"
+    property string draftOriginalSubtitleRemovalMode: "patch"
     property int draftSubtitleFontSize: 60
     property int draftSubtitlePositionX: 51
     property int draftSubtitlePositionY: 96
@@ -64,17 +65,19 @@ Dialog {
         baselineSettings = settings
         draftWorkflowMode = settings.workflowMode || "A"
         draftTargetLanguage = settings.targetLanguage || "vi"
-        draftTtsProvider = settings.ttsProvider || "vieneu"
+        draftSpeechRecognitionModel = settings.speechRecognitionModel || "small"
+        draftTtsProvider = settings.ttsProvider || "omnivoice"
         draftTtsVoice = normalizedDraftVoice(
             draftTargetLanguage, draftTtsProvider, settings.ttsVoice || "")
-        draftEnableAudioSeparation = Boolean(settings.enableAudioSeparation)
+        draftEnableAudioSeparation = settings.enableAudioSeparation !== undefined
+            ? Boolean(settings.enableAudioSeparation) : true
         draftOriginalVolume = Number(settings.originalVolume !== undefined ? settings.originalVolume : 60)
         draftBackgroundMusicVolume = Number(settings.backgroundMusicVolume !== undefined ? settings.backgroundMusicVolume : 30)
         draftTtsVolume = Number(settings.ttsVolume !== undefined ? settings.ttsVolume : 100)
         draftWatermarkText = settings.watermarkText || ""
         draftBackgroundMusicPath = settings.backgroundMusicPath || ""
         draftRemoveOriginalSubtitles = settings.removeOriginalSubtitles !== false
-        draftOriginalSubtitleRemovalMode = settings.originalSubtitleRemovalMode || "blur"
+        draftOriginalSubtitleRemovalMode = settings.originalSubtitleRemovalMode || "patch"
         const style = settings.subtitleStyle || ({})
         draftSubtitleFontSize = Number(style.font_size !== undefined ? style.font_size : 60)
         draftSubtitlePositionX = Number(style.position_x_percent !== undefined ? style.position_x_percent : 51)
@@ -91,16 +94,18 @@ Dialog {
     function hasDraftChanges() {
         return draftWorkflowMode !== (baselineSettings.workflowMode || "A")
             || draftTargetLanguage !== (baselineSettings.targetLanguage || "vi")
-            || draftTtsProvider !== (baselineSettings.ttsProvider || "vieneu")
+            || draftSpeechRecognitionModel !== (baselineSettings.speechRecognitionModel || "small")
+            || draftTtsProvider !== (baselineSettings.ttsProvider || "omnivoice")
             || draftTtsVoice !== (baselineSettings.ttsVoice || "")
-            || draftEnableAudioSeparation !== Boolean(baselineSettings.enableAudioSeparation)
+            || draftEnableAudioSeparation !== (baselineSettings.enableAudioSeparation !== undefined
+                ? Boolean(baselineSettings.enableAudioSeparation) : true)
             || draftOriginalVolume !== Number(baselineSettings.originalVolume !== undefined ? baselineSettings.originalVolume : 60)
             || draftBackgroundMusicVolume !== Number(baselineSettings.backgroundMusicVolume !== undefined ? baselineSettings.backgroundMusicVolume : 30)
             || draftTtsVolume !== Number(baselineSettings.ttsVolume !== undefined ? baselineSettings.ttsVolume : 100)
             || draftWatermarkText !== (baselineSettings.watermarkText || "")
             || draftBackgroundMusicPath !== (baselineSettings.backgroundMusicPath || "")
             || draftRemoveOriginalSubtitles !== (baselineSettings.removeOriginalSubtitles !== false)
-            || draftOriginalSubtitleRemovalMode !== (baselineSettings.originalSubtitleRemovalMode || "blur")
+            || draftOriginalSubtitleRemovalMode !== (baselineSettings.originalSubtitleRemovalMode || "patch")
             || draftSubtitleFontSize !== Number((baselineSettings.subtitleStyle || {}).font_size !== undefined ? baselineSettings.subtitleStyle.font_size : 60)
             || draftSubtitlePositionX !== Number((baselineSettings.subtitleStyle || {}).position_x_percent !== undefined ? baselineSettings.subtitleStyle.position_x_percent : 51)
             || draftSubtitlePositionY !== Number((baselineSettings.subtitleStyle || {}).position_y_percent !== undefined ? baselineSettings.subtitleStyle.position_y_percent : 96)
@@ -115,6 +120,7 @@ Dialog {
         if (AppController.applyBatchSettingsDraft(
                 draftWorkflowMode,
                 draftTargetLanguage,
+                draftSpeechRecognitionModel,
                 draftTtsProvider,
                 draftTtsVoice,
                 draftEnableAudioSeparation,
@@ -140,6 +146,7 @@ Dialog {
             baselineSettings = {
                 "workflowMode": draftWorkflowMode,
                 "targetLanguage": draftTargetLanguage,
+                "speechRecognitionModel": draftSpeechRecognitionModel,
                 "ttsProvider": draftTtsProvider,
                 "ttsVoice": draftTtsVoice,
                 "enableAudioSeparation": draftEnableAudioSeparation,
@@ -180,6 +187,7 @@ Dialog {
         switch (key) {
         case "workflow": return I18n.t("Workflow")
         case "targetLanguage": return I18n.t("Target language")
+        case "speechRecognitionModel": return I18n.t("Speech recognition")
         case "voice": return I18n.t("Voice")
         case "audioSource": return I18n.t("Audio source")
         case "sourceVolume": return I18n.t("Source audio volume")
@@ -433,11 +441,32 @@ Dialog {
                             currentValue: root.draftWorkflowMode
                             options: [
                                 { "label": I18n.t("Full auto"), "value": "A" },
-                                { "label": I18n.t("Review then dub"), "value": "review" }
+                                { "label": I18n.t("Review subtitles"), "value": "review" }
                             ]
                             onActivated: function(value) {
                                 root.draftWorkflowMode = value
                             }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.space4
+
+                        Text {
+                            text: I18n.t("Speech recognition")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                            font.weight: Font.Medium
+                        }
+
+                        AppComboBox {
+                            Layout.fillWidth: true
+                            textRole: "label"
+                            valueRole: "value"
+                            model: AppController.speechRecognitionModelOptions
+                            currentIndex: root.draftSpeechRecognitionModel === "large-v3-turbo" ? 1 : 0
+                            onActivated: root.draftSpeechRecognitionModel = currentValue
                         }
                     }
 
@@ -459,9 +488,6 @@ Dialog {
                             selectedCode: root.draftTargetLanguage
                             onSelected: function(code) {
                                 root.draftTargetLanguage = code
-                                if (root.draftTtsProvider === "vieneu"
-                                        && code !== "vi" && code !== "en")
-                                    root.draftTtsProvider = AppController.fallbackFromVieneuForLanguage(code)
                                 root.draftTtsVoice = root.normalizedDraftVoice(
                                     code, root.draftTtsProvider, root.draftTtsVoice)
                             }
@@ -486,11 +512,7 @@ Dialog {
                             model: root.draftProviderOptions
                             currentIndex: root.draftTtsProviderIndex
                             onActivated: {
-                                root.draftTtsProvider = currentValue === "vieneu"
-                                        && root.draftTargetLanguage !== "vi"
-                                        && root.draftTargetLanguage !== "en"
-                                    ? AppController.fallbackFromVieneuForLanguage(root.draftTargetLanguage)
-                                    : currentValue
+                                root.draftTtsProvider = currentValue
                                 root.draftTtsVoice = root.normalizedDraftVoice(
                                     root.draftTargetLanguage,
                                     root.draftTtsProvider,
@@ -512,13 +534,12 @@ Dialog {
                             font.weight: Font.Medium
                         }
 
-                        AppComboBox {
+                        VoicePicker {
                             Layout.fillWidth: true
-                            textRole: "label"
-                            valueRole: "voice"
+                            allowVoiceClone: false
                             model: root.draftVoiceOptions
-                            currentIndex: root.draftTtsVoiceIndex
-                            onActivated: root.draftTtsVoice = currentValue
+                            currentValue: root.draftTtsVoice
+                            onSelected: function(voice) { root.draftTtsVoice = voice }
                         }
                     }
 

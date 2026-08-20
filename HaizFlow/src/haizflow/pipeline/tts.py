@@ -13,7 +13,7 @@ import edge_tts
 
 from haizflow.config import TTS_MAX_CONCURRENCY
 from haizflow.pipeline.process_registry import check_cancellation, is_cancelled
-from haizflow.services.video_store import log_to_video
+from haizflow.services.video_store import get_video, log_to_video
 
 
 _INITIAL_RETRIES = 2
@@ -22,26 +22,28 @@ _MP3_MIN_BYTES = 512
 _EDGE_MIN_REQUEST_INTERVAL_SECONDS = 1.5
 _EDGE_TRANSIENT_COOLDOWN_SECONDS = 6.0
 _EDGE_MAX_REQUEST_CHARACTERS = 180
+_EDGE_CJK_MAX_REQUEST_CHARACTERS = 64
 _EDGE_REQUEST_TIMEOUT_SECONDS = 75.0
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _EDGE_REQUEST_GUARD = threading.Lock()
 _EDGE_NEXT_REQUEST_AT = 0.0
-VIENEU_LANGUAGES = frozenset({"vi", "en"})
+_CJK_CHARACTER = re.compile(r"[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]")
 
 
 def resolve_tts_provider(provider: str, target_language: str) -> str:
     normalized = str(provider or "auto").strip().lower()
-    language = str(target_language or "vi").strip().lower()
-    if normalized == "auto":
-        # ``auto`` remains readable for projects created by earlier releases,
-        # but new UI/configuration stores one explicit provider.  VieNeu's
-        # verified local catalog currently covers Vietnamese and English.
-        return "vieneu" if language == "vi" else "edge"
-    if normalized == "vieneu" and language not in VIENEU_LANGUAGES:
-        raise ValueError(f"VieNeu does not support target language '{language}'. Use Edge TTS.")
-    if normalized not in {"vieneu", "edge"}:
+    if normalized in {"auto", "vieneu"}:
+        # Read old projects without preserving the retired VieNeu runtime.
+        return "omnivoice"
+    if normalized not in {"omnivoice", "edge"}:
         raise ValueError(f"Unsupported TTS provider: {provider}")
     return normalized
+
+
+def _edge_request_limit(text: str, upper_bound: int | None = None) -> int:
+    """Use materially smaller requests for unspaced CJK transcripts."""
+    base = _EDGE_CJK_MAX_REQUEST_CHARACTERS if _CJK_CHARACTER.search(text or "") else _EDGE_MAX_REQUEST_CHARACTERS
+    return min(base, upper_bound) if upper_bound else base
 
 
 def preprocess_text_for_tts(text: str) -> str:
@@ -68,7 +70,7 @@ def preprocess_text_for_tts(text: str) -> str:
     )
     text = " ".join(text.split())
     text = re.sub(r"\s+([,.;:!?])", r"\1", text)
-    if text and text[-1] not in ".!?,;:":
+    if text and text[-1] not in ".!?,;:。！？；：":
         text += "."
     return text
 
@@ -78,14 +80,20 @@ def _split_edge_request(text: str, limit: int = _EDGE_MAX_REQUEST_CHARACTERS) ->
     normalised = preprocess_text_for_tts(text)
     if len(normalised) <= limit:
         return [normalised] if normalised else []
-    pieces = re.split(r"(?<=[.!?;:])\s+", normalised)
+    # Chinese/Japanese transcripts commonly have no spaces. Split after both
+    # Western and CJK punctuation, with optional whitespace.
+    pieces = re.split(r"(?<=[.!?;:。！？；：])\s*", normalised)
     chunks: list[str] = []
     current = ""
     for piece in pieces:
         remaining = piece.strip()
         while len(remaining) > limit:
             boundary = max(
-                remaining.rfind(", ", 0, limit + 1),
+                max(
+                    remaining.rfind(", ", 0, limit + 1),
+                    remaining.rfind("，", 0, limit + 1),
+                    remaining.rfind("、", 0, limit + 1),
+                ),
                 remaining.rfind(" ", 0, limit + 1),
             )
             boundary = boundary + (1 if boundary >= 0 else 0)
@@ -213,9 +221,7 @@ async def _save_with_cancellation(communicate, path: str, video_id: str | None) 
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
-                raise TimeoutError(
-                    f"Edge TTS request exceeded {_EDGE_REQUEST_TIMEOUT_SECONDS:.0f} seconds."
-                )
+                raise TimeoutError(f"Edge TTS request exceeded {_EDGE_REQUEST_TIMEOUT_SECONDS:.0f} seconds.")
         await task
     except BaseException:
         if not task.done():
@@ -289,10 +295,10 @@ async def _tts_text_with_retry(
     video_id: str | None = None,
     base_delay: float = 1.5,
     retry_callback=None,
-    chunk_limit: int = _EDGE_MAX_REQUEST_CHARACTERS,
+    chunk_limit: int | None = None,
 ) -> int:
     """Synthesize long text in bounded Edge requests and join it atomically."""
-    chunks = _split_edge_request(text, limit=chunk_limit)
+    chunks = _split_edge_request(text, limit=_edge_request_limit(text, chunk_limit))
     if not chunks:
         raise ValueError("TTS text is empty after normalization.")
     if len(chunks) == 1:
@@ -300,8 +306,13 @@ async def _tts_text_with_retry(
             # Preserve the original request for the single-chunk path.  The
             # lower-level function owns normalization already; doing it here
             # as well would subtly change retry/resume identity and logs.
-            text, voice, output_path, retries,
-            video_id=video_id, base_delay=base_delay, retry_callback=retry_callback,
+            text,
+            voice,
+            output_path,
+            retries,
+            video_id=video_id,
+            base_delay=base_delay,
+            retry_callback=retry_callback,
         )
 
     from pydub import AudioSegment
@@ -317,8 +328,13 @@ async def _tts_text_with_retry(
                 check_cancellation(video_id)
             part_path = os.path.join(chunk_root, f"part-{index:03d}.mp3")
             attempts += await tts_segment_with_retry(
-                chunk, voice, part_path, retries,
-                video_id=video_id, base_delay=base_delay, retry_callback=retry_callback,
+                chunk,
+                voice,
+                part_path,
+                retries,
+                video_id=video_id,
+                base_delay=base_delay,
+                retry_callback=retry_callback,
             )
             parts.append(AudioSegment.from_file(part_path, format="mp3"))
         joined = AudioSegment.empty()
@@ -360,8 +376,7 @@ def _generate_edge_voice_parts(
     request_mode = "sequential" if TTS_MAX_CONCURRENCY == 1 else "controlled_parallel"
     log_to_video(
         video_id,
-        f"[TTS][SESSION_START] voice={voice} mode={request_mode} "
-        f"max_concurrency={TTS_MAX_CONCURRENCY}",
+        f"[TTS][SESSION_START] voice={voice} mode={request_mode} max_concurrency={TTS_MAX_CONCURRENCY}",
     )
     os.makedirs(voice_parts_dir, exist_ok=True)
     with open(segments_json_path, "r", encoding="utf-8") as file:
@@ -413,8 +428,7 @@ def _generate_edge_voice_parts(
             check_cancellation(video_id)
             log_to_video(
                 video_id,
-                f"[TTS][QUEUED] segment={index}/{total} characters={len(text)} "
-                f"text={_tts_text_preview(text)}",
+                f"[TTS][QUEUED] segment={index}/{total} characters={len(text)} text={_tts_text_preview(text)}",
             )
             async with limiter:
                 try:
@@ -449,9 +463,7 @@ def _generate_edge_voice_parts(
             for index, segment in enumerate(segments, 1):
                 await synthesize(index, segment)
         else:
-            await asyncio.gather(
-                *(synthesize(index, segment) for index, segment in enumerate(segments, 1))
-            )
+            await asyncio.gather(*(synthesize(index, segment) for index, segment in enumerate(segments, 1)))
 
         permanent_failures = []
         if transient_failures:
@@ -477,7 +489,7 @@ def _generate_edge_voice_parts(
                         video_id=video_id,
                         base_delay=2.5,
                         retry_callback=retry_logger(index, "recovery", text),
-                        chunk_limit=120,
+                        chunk_limit=96,
                     )
                 except Exception as exc:
                     if is_cancelled(video_id):
@@ -524,11 +536,9 @@ def generate_voice_parts(
 ):
     effective = resolve_tts_provider(provider, target_language)
     if effective == "edge":
-        return _generate_edge_voice_parts(
-            segments_json_path, voice_parts_dir, voice, video_id, progress_callback
-        )
+        return _generate_edge_voice_parts(segments_json_path, voice_parts_dir, voice, video_id, progress_callback)
 
-    from haizflow.pipeline.vieneu_tts import synthesize_to_mp3
+    from haizflow.pipeline.omnivoice_tts import runtime_description, synthesize_batch_to_mp3
 
     with open(segments_json_path, "r", encoding="utf-8") as file:
         segments = json.load(file)
@@ -537,9 +547,18 @@ def generate_voice_parts(
     total = len(segments)
     log_to_video(
         video_id,
-        f"[TTS][SESSION_START] provider=vieneu backend=onnx-int8 device=cpu voice={voice}",
+        f"[TTS][SESSION_START] provider=omnivoice backend=local device={runtime_description()} voice={voice}",
     )
     os.makedirs(voice_parts_dir, exist_ok=True)
+    pending = []
+    current_video = get_video(video_id)
+    current_files = dict((current_video.files if current_video else {}) or {})
+    clone_reference = str(current_files.get("voice_reference") or "")
+    clone_transcript = str(current_files.get("voice_reference_transcript") or "")
+    if voice == "omnivoice:clone" and (
+        not clone_reference or not os.path.isfile(clone_reference) or not clone_transcript.strip()
+    ):
+        raise RuntimeError("OmniVoice voice cloning requires an authorised sample and its exact transcript.")
     for index, segment in enumerate(segments, 1):
         text = str((segment or {}).get("text") or "").strip() if isinstance(segment, dict) else ""
         if not text:
@@ -547,13 +566,44 @@ def generate_voice_parts(
         part_path = os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3")
         if not _is_valid_mp3(part_path):
             _remove_file(part_path)
-            log_to_video(video_id, f"[TTS][START] provider=vieneu segment={index}/{total} voice={voice}")
-            synthesize_to_mp3(preprocess_text_for_tts(text), voice, part_path, video_id)
-            if not _is_valid_mp3(part_path):
-                raise RuntimeError(f"VieNeu produced invalid audio for subtitle segment {index}.")
-        if progress_callback:
-            progress_callback(index, total)
-    log_to_video(video_id, "VieNeu generated and verified every voice segment locally.")
+            log_to_video(video_id, f"[TTS][QUEUED] provider=omnivoice segment={index}/{total} voice={voice}")
+            pending.append(
+                {
+                    "text": preprocess_text_for_tts(text),
+                    "voice": voice,
+                    "output_path": part_path,
+                    "index": str(index),
+                    "reference_path": clone_reference if voice == "omnivoice:clone" else "",
+                    "reference_text": clone_transcript if voice == "omnivoice:clone" else "",
+                }
+            )
+    completed_before_worker = total - len(pending)
+    if progress_callback and completed_before_worker:
+        progress_callback(completed_before_worker, total)
+    if pending:
+
+        def report_omnivoice_progress(completed, _pending_total, stage):
+            if progress_callback is None:
+                return
+            # Loading the local checkpoint is meaningful progress but no new
+            # segment is complete yet. Keep the verified count stable until
+            # the worker atomically finishes each waveform.
+            verified = completed_before_worker + completed
+            progress_callback(min(verified, total), total)
+
+        synthesize_batch_to_mp3(
+            pending,
+            video_id,
+            language_id=target_language,
+            progress_callback=report_omnivoice_progress,
+        )
+    for index in range(1, total + 1):
+        part_path = os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3")
+        if not _is_valid_mp3(part_path):
+            raise RuntimeError(f"OmniVoice produced invalid audio for subtitle segment {index}.")
+    if progress_callback:
+        progress_callback(total, total)
+    log_to_video(video_id, "OmniVoice generated and verified every voice segment locally.")
 
 
 def generate_single_voice(
@@ -569,13 +619,30 @@ def generate_single_voice(
     log_to_video(video_id, f"Generating single narration voice file with '{voice}'.")
 
     effective = resolve_tts_provider(provider, target_language)
-    if effective == "vieneu":
-        from haizflow.pipeline.vieneu_tts import synthesize_to_mp3
-        synthesize_to_mp3(preprocess_text_for_tts(text), voice, output_path, video_id)
+    if effective == "omnivoice":
+        from haizflow.pipeline.omnivoice_tts import synthesize_to_mp3
+
+        current_video = get_video(video_id)
+        current_files = dict((current_video.files if current_video else {}) or {})
+        reference_path = str(current_files.get("voice_reference") or "")
+        reference_text = str(current_files.get("voice_reference_transcript") or "")
+        if voice == "omnivoice:clone" and (
+            not reference_path or not os.path.isfile(reference_path) or not reference_text.strip()
+        ):
+            raise RuntimeError("OmniVoice voice cloning requires an authorised sample and its exact transcript.")
+        synthesize_to_mp3(
+            preprocess_text_for_tts(text),
+            voice,
+            output_path,
+            video_id,
+            language_id=target_language,
+            reference_path=reference_path if voice == "omnivoice:clone" else "",
+            reference_text=reference_text if voice == "omnivoice:clone" else "",
+        )
     else:
+
         async def run_single():
-            await _tts_text_with_retry(
-                text, voice, output_path, _INITIAL_RETRIES, video_id=video_id
-            )
+            await _tts_text_with_retry(text, voice, output_path, _INITIAL_RETRIES, video_id=video_id)
+
         _run_coroutine(run_single())
     log_to_video(video_id, f"Successfully created narration file: {output_path}")

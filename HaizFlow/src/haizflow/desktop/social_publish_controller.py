@@ -56,6 +56,77 @@ _ZERNIO_BILLING_ERROR_MARKERS = (
     "quota",
     "authorization url",
 )
+_CREATE_POST_TRANSIENT_STATUSES = frozenset({0, 408, 425, 429, 500, 502, 503, 504})
+
+
+def _remote_account_id(value) -> str:
+    if isinstance(value, dict):
+        return str(value.get("_id") or value.get("id") or value.get("accountId") or "")
+    return str(value or "")
+
+
+def _post_matches_create_arguments(post: dict, arguments: dict) -> bool:
+    """Match a recent post without relying on response-only request metadata.
+
+    Zernio's list response does not promise to echo ``x-request-id``.  The
+    create endpoint's 24-hour dedup fingerprint includes the platform,
+    account, content, and media URL, so requiring those same fields is a safe
+    way to recover an accepted request whose HTTP response was lost.
+    """
+    if str(post.get("content") or "") != str(arguments.get("content") or ""):
+        return False
+    expected_platform = str(arguments.get("platform") or "").casefold()
+    expected_account = str(arguments.get("account_id") or "")
+    platforms = post.get("platforms") or []
+    if isinstance(platforms, dict):
+        platforms = list(platforms.values())
+    platform_matches = any(
+        isinstance(entry, dict)
+        and str(entry.get("platform") or "").casefold() == expected_platform
+        and _remote_account_id(entry.get("accountId") or entry.get("account_id")) == expected_account
+        for entry in platforms
+    )
+    if not platform_matches:
+        return False
+    expected_media = str(arguments.get("media_url") or "")
+    media_items = post.get("mediaItems") or post.get("media_items") or []
+    if isinstance(media_items, dict):
+        media_items = list(media_items.values())
+    return any(
+        isinstance(entry, dict) and str(entry.get("url") or entry.get("mediaUrl") or "") == expected_media
+        for entry in media_items
+    )
+
+
+def _create_post_idempotently(client, create_arguments: dict):
+    """Recover a lost create response without ever changing the logical request ID."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            return client.create_video_post(**create_arguments)
+        except zernio.ZernioError as exc:
+            last_error = exc
+            if exc.existing_post_id or exc.status not in _CREATE_POST_TRANSIENT_STATUSES:
+                raise
+            if attempt >= 2:
+                request_id = str(create_arguments.get("request_id") or "")
+                if request_id:
+                    try:
+                        for post in client.list_posts():
+                            remote_request_id = str(
+                                post.get("requestId") or post.get("request_id") or post.get("idempotencyKey") or ""
+                            )
+                            if remote_request_id == request_id:
+                                return {"existingPost": post}
+                            if _post_matches_create_arguments(post, create_arguments):
+                                return {"existingPost": post}
+                    except (OSError, ValueError, zernio.ZernioError):
+                        pass
+                raise
+            # Zernio treats the unchanged x-request-id as the same logical
+            # post, so this recovers responses lost after server acceptance.
+            time.sleep(0.75 * (attempt + 1))
+    raise last_error or zernio.ZernioError("Zernio did not acknowledge the post.")
 
 
 class SocialPublishController:
@@ -332,16 +403,11 @@ class SocialPublishController:
         self._emit_changed()
 
     def _sync_model(self) -> None:
-        self._host.tiktok_publish_items.set_items(
-            [self._model_item(item) for item in self._state.get("items") or []]
-        )
+        self._host.tiktok_publish_items.set_items([self._model_item(item) for item in self._state.get("items") or []])
 
     def _model_item(self, item: dict) -> dict:
         target_platform = str(item.get("target_platform") or "tiktok")
-        if (
-            str(item.get("status") or "") in {"ready", "failed", "missing"}
-            and not item.get("zernio_post_id")
-        ):
+        if str(item.get("status") or "") in {"ready", "failed", "missing"} and not item.get("zernio_post_id"):
             target_platform = self.selected_platform
         return {
             **item,
@@ -352,7 +418,8 @@ class SocialPublishController:
             # action. TikTok can report success before its permalink is ready.
             "platform_post_url": (
                 zernio.public_post_url(item.get("platform_post_url"), target_platform)
-                if item.get("platform_post_url_verified") else ""
+                if item.get("platform_post_url_verified")
+                else ""
             ),
         }
 
@@ -511,10 +578,7 @@ class SocialPublishController:
 
     def _open_zernio_page(self, url: str, success: str, failure: str) -> bool:
         opened = open_external_url(url)
-        self._status = (
-            success
-            if opened else failure
-        )
+        self._status = success if opened else failure
         self._emit_changed()
         return opened
 
@@ -659,12 +723,9 @@ class SocialPublishController:
                         api_key_verified = True
                     except zernio.ZernioError as exc:
                         normalized_error = str(exc).casefold()
-                        stale_profile = (
-                            "http 404" in normalized_error
-                            or (
-                                "profile" in normalized_error
-                                and any(marker in normalized_error for marker in ("not found", "missing", "invalid"))
-                            )
+                        stale_profile = "http 404" in normalized_error or (
+                            "profile" in normalized_error
+                            and any(marker in normalized_error for marker in ("not found", "missing", "invalid"))
                         )
                         if not stale_profile:
                             raise
@@ -683,17 +744,19 @@ class SocialPublishController:
                     auth_url = client.get_connect_url(profile_id, platform)
                 if not auth_url:
                     raise zernio.ZernioError("Zernio did not return an authorization URL.")
-                self._events.put({
-                    "type": "oauth",
-                    "project_key": project_key,
-                    "profile_id": profile_id,
-                    "profile_name": profile_name,
-                    "profiles": profiles,
-                    "url": auth_url,
-                    "platform": platform,
-                    "generation": int(generation),
-                    "silent": bool(silent),
-                })
+                self._events.put(
+                    {
+                        "type": "oauth",
+                        "project_key": project_key,
+                        "profile_id": profile_id,
+                        "profile_name": profile_name,
+                        "profiles": profiles,
+                        "url": auth_url,
+                        "platform": platform,
+                        "generation": int(generation),
+                        "silent": bool(silent),
+                    }
+                )
                 return
             profiles = client.list_profiles()
             api_key_verified = True
@@ -712,39 +775,39 @@ class SocialPublishController:
             # profile used for new HaizFlow OAuth connections made those valid
             # accounts disappear from the desktop UI.
             accounts = client.list_accounts(platforms=SUPPORTED_PLATFORMS)
-            self._events.put({
-                "type": "accounts",
-                "project_key": project_key,
-                "profile_id": profile_id,
-                "profile_name": profile_name,
-                "profiles": profiles,
-                "accounts": accounts,
-                "generation": int(generation),
-                "silent": bool(silent),
-                "message": (
-                    "Social account disconnected."
-                    if action == "disconnect" else ""
-                ),
-            })
+            self._events.put(
+                {
+                    "type": "accounts",
+                    "project_key": project_key,
+                    "profile_id": profile_id,
+                    "profile_name": profile_name,
+                    "profiles": profiles,
+                    "accounts": accounts,
+                    "generation": int(generation),
+                    "silent": bool(silent),
+                    "message": ("Social account disconnected." if action == "disconnect" else ""),
+                }
+            )
         except (OSError, ValueError, zernio.ZernioError) as exc:
             message = str(exc)
             if action == "connect":
                 message = self._connection_error_message(message, connected_account_count)
-            self._events.put({
-                "type": "error",
-                "project_key": project_key,
-                "message": message,
-                "api_key_verified": api_key_verified,
-                "generation": int(generation),
-                "silent": bool(silent),
-            })
+            self._events.put(
+                {
+                    "type": "error",
+                    "project_key": project_key,
+                    "message": message,
+                    "api_key_verified": api_key_verified,
+                    "generation": int(generation),
+                    "silent": bool(silent),
+                }
+            )
 
     @staticmethod
     def _connection_error_message(message: str, connected_account_count: int) -> str:
         normalized = str(message or "").casefold()
-        if (
-            connected_account_count >= _ZERNIO_FREE_CONNECTED_ACCOUNTS
-            and any(marker in normalized for marker in _ZERNIO_BILLING_ERROR_MARKERS)
+        if connected_account_count >= _ZERNIO_FREE_CONNECTED_ACCOUNTS and any(
+            marker in normalized for marker in _ZERNIO_BILLING_ERROR_MARKERS
         ):
             return (
                 "Zernio includes the first 2 connected accounts for free. "
@@ -762,11 +825,7 @@ class SocialPublishController:
         platform = self._account_platform(self._accounts[index])
         previous_account_id = str(self._state.get("selected_account_id") or "")
         previous_platform = self.selected_platform
-        if (
-            account_id == previous_account_id
-            and platform == previous_platform
-            and self._creator_info_loaded
-        ):
+        if account_id == previous_account_id and platform == previous_platform and self._creator_info_loaded:
             return True
         self._state = tiktok_publish.update_publish_settings(
             self._project_root,
@@ -811,11 +870,7 @@ class SocialPublishController:
         self._can_post_more = bool(payload.get("can_post_more", True))
         selected = str(self._state.get("privacy_level") or "")
         if self._privacy_levels and selected not in self._privacy_levels:
-            selected = (
-                "PUBLIC_TO_EVERYONE"
-                if "PUBLIC_TO_EVERYONE" in self._privacy_levels
-                else self._privacy_levels[0]
-            )
+            selected = "PUBLIC_TO_EVERYONE" if "PUBLIC_TO_EVERYONE" in self._privacy_levels else self._privacy_levels[0]
         changes = {
             "privacy_level": selected,
             "allow_comment": bool(self.allow_comment and self.comment_available),
@@ -885,23 +940,27 @@ class SocialPublishController:
             if not isinstance(levels, list):
                 levels = []
             interactions = info.get("interactionSettings") or {}
-            self._events.put({
-                "type": "creator",
-                "project_key": project_key,
-                "account_id": account_id,
-                "generation": generation,
-                "levels": [str(value) for value in levels if str(value)],
-                "interactions": interactions if isinstance(interactions, dict) else {},
-                "can_post_more": bool(info.get("canPostMore", True)),
-            })
+            self._events.put(
+                {
+                    "type": "creator",
+                    "project_key": project_key,
+                    "account_id": account_id,
+                    "generation": generation,
+                    "levels": [str(value) for value in levels if str(value)],
+                    "interactions": interactions if isinstance(interactions, dict) else {},
+                    "can_post_more": bool(info.get("canPostMore", True)),
+                }
+            )
         except (OSError, ValueError, zernio.ZernioError) as exc:
-            self._events.put({
-                "type": "creator_error",
-                "project_key": project_key,
-                "account_id": account_id,
-                "generation": generation,
-                "message": str(exc),
-            })
+            self._events.put(
+                {
+                    "type": "creator_error",
+                    "project_key": project_key,
+                    "account_id": account_id,
+                    "generation": generation,
+                    "message": str(exc),
+                }
+            )
 
     def set_publish_settings(
         self,
@@ -923,15 +982,9 @@ class SocialPublishController:
             self._project_root,
             privacy_level=level,
             publish_now=publish_now,
-            allow_comment=bool(
-                allow_comment and (self.comment_available if self._creator_info_loaded else True)
-            ),
-            allow_duet=bool(
-                allow_duet and (self.duet_available if self._creator_info_loaded else True)
-            ),
-            allow_stitch=bool(
-                allow_stitch and (self.stitch_available if self._creator_info_loaded else True)
-            ),
+            allow_comment=bool(allow_comment and (self.comment_available if self._creator_info_loaded else True)),
+            allow_duet=bool(allow_duet and (self.duet_available if self._creator_info_loaded else True)),
+            allow_stitch=bool(allow_stitch and (self.stitch_available if self._creator_info_loaded else True)),
             share_to_feed=bool(share_to_feed),
             ai_generated=bool(ai_generated),
             first_comment=first_comment,
@@ -957,23 +1010,34 @@ class SocialPublishController:
                 candidate = batch_groups.get(group_key)
                 if candidate is None:
                     candidate = {
-                        "video_id": f"batch:{group_key}", "project_name": project_name, "project_type": "batch",
-                        "file_name": "", "output_paths": [],
+                        "video_id": f"batch:{group_key}",
+                        "project_name": project_name,
+                        "project_type": "batch",
+                        "file_name": "",
+                        "output_paths": [],
                         "thumbnail_source": thumbnail_source((video.files or {}).get("thumbnail") or ""),
-                        "video_size": "", "video_count": 0, "selected": False,
+                        "video_size": "",
+                        "video_count": 0,
+                        "selected": False,
                     }
                     batch_groups[group_key] = candidate
                     candidates.append(candidate)
                 candidate["output_paths"].append(source)
                 candidate["video_count"] = len(candidate["output_paths"])
             else:
-                candidates.append({
-                    "video_id": video.video_id, "project_name": project_name, "project_type": "single",
-                    "file_name": video.original_filename, "output_paths": [source],
-                    "thumbnail_source": thumbnail_source((video.files or {}).get("thumbnail") or ""),
-                    "video_size": f"{width} x {height}" if width and height else "", "video_count": 1,
-                    "selected": False,
-                })
+                candidates.append(
+                    {
+                        "video_id": video.video_id,
+                        "project_name": project_name,
+                        "project_type": "single",
+                        "file_name": video.original_filename,
+                        "output_paths": [source],
+                        "thumbnail_source": thumbnail_source((video.files or {}).get("thumbnail") or ""),
+                        "video_size": f"{width} x {height}" if width and height else "",
+                        "video_count": 1,
+                        "selected": False,
+                    }
+                )
         self._project_sources = candidates
         self._host.tiktok_project_sources.set_items(candidates)
         self._emit_changed()
@@ -1064,7 +1128,14 @@ class SocialPublishController:
         self._emit_changed()
         self._worker = threading.Thread(
             target=self._import_worker,
-            args=(self._project_key, self._project_root, valid, self.default_caption, self.default_hashtags, self.count),
+            args=(
+                self._project_key,
+                self._project_root,
+                valid,
+                self.default_caption,
+                self.default_hashtags,
+                self.count,
+            ),
             name="haizflow-social-import",
             daemon=True,
         )
@@ -1098,8 +1169,11 @@ class SocialPublishController:
                 width, height = get_video_dimensions(destination, timeout_seconds=20.0)
                 create_video_thumbnail_path(destination, thumbnail_path, cancel_event=self._cancel)
                 item = tiktok_publish.new_item(
-                    destination, thumbnail_path if os.path.isfile(thumbnail_path) else "",
-                    starting_order + offset, caption, hashtags,
+                    destination,
+                    thumbnail_path if os.path.isfile(thumbnail_path) else "",
+                    starting_order + offset,
+                    caption,
+                    hashtags,
                 )
                 item["id"] = item_id
                 item["file_name"] = display_name
@@ -1109,7 +1183,9 @@ class SocialPublishController:
                 item["video_height"] = int(height)
                 tiktok_publish.append_items(project_root, [item])
                 imported += 1
-                self._events.put({"type": "import_progress", "project_key": project_key, "done": imported, "total": len(sources)})
+                self._events.put(
+                    {"type": "import_progress", "project_key": project_key, "done": imported, "total": len(sources)}
+                )
             except InterruptedError:
                 for candidate in (destination, thumbnail_path):
                     try:
@@ -1131,10 +1207,16 @@ class SocialPublishController:
                         os.remove(candidate)
                     except FileNotFoundError:
                         pass
-        self._events.put({
-            "type": "import_finished", "project_key": project_key, "done": imported,
-            "total": len(sources), "errors": errors, "cancelled": self._cancel.is_set(),
-        })
+        self._events.put(
+            {
+                "type": "import_finished",
+                "project_key": project_key,
+                "done": imported,
+                "total": len(sources),
+                "errors": errors,
+                "cancelled": self._cancel.is_set(),
+            }
+        )
 
     def save_defaults(self, caption: str, hashtags: str, apply_to_existing: bool) -> bool:
         if not self._ensure_publish_project():
@@ -1157,8 +1239,12 @@ class SocialPublishController:
         ):
             return False
         updated = tiktok_publish.update_item(
-            self._project_root, item["id"], caption=caption, hashtags=hashtags,
-            status="ready" if item["status"] not in {"published", "posted"} else item["status"], error="",
+            self._project_root,
+            item["id"],
+            caption=caption,
+            hashtags=hashtags,
+            status="ready" if item["status"] not in {"published", "posted"} else item["status"],
+            error="",
         )
         if updated is None:
             return False
@@ -1251,10 +1337,14 @@ class SocialPublishController:
                 percent = round(done * 100 / total) if total else 0
                 if percent >= last_progress + 2 or percent == 100:
                     last_progress = percent
-                    self._events.put({
-                        "type": "upload_progress", "project_key": project_key,
-                        "item_id": item["id"], "progress": percent,
-                    })
+                    self._events.put(
+                        {
+                            "type": "upload_progress",
+                            "project_key": project_key,
+                            "item_id": item["id"],
+                            "progress": percent,
+                        }
+                    )
 
             client.upload_file(upload_url, item["file_path"], progress=report, cancelled=self._cancel.is_set)
             if self._cancel.is_set():
@@ -1262,21 +1352,24 @@ class SocialPublishController:
             self._events.put({"type": "publishing", "project_key": project_key, "item_id": item["id"]})
             content = tiktok_publish.compose_post_text(item["caption"], item["hashtags"])
             title = next((line.strip() for line in content.splitlines() if line.strip()), Path(item["file_path"]).stem)
-            result = client.create_video_post(
-                platform=settings["platform"],
-                account_id=settings["account_id"],
-                content=content,
-                media_url=public_url,
-                privacy_level=settings["privacy_level"],
-                publish_now=settings["publish_now"],
-                request_id=item["request_id"],
-                title=title,
-                allow_comment=settings["allow_comment"],
-                allow_duet=settings["allow_duet"],
-                allow_stitch=settings["allow_stitch"],
-                share_to_feed=settings["share_to_feed"],
-                ai_generated=settings["ai_generated"],
-                first_comment=settings["first_comment"],
+            result = _create_post_idempotently(
+                client,
+                {
+                    "platform": settings["platform"],
+                    "account_id": settings["account_id"],
+                    "content": content,
+                    "media_url": public_url,
+                    "privacy_level": settings["privacy_level"],
+                    "publish_now": settings["publish_now"],
+                    "request_id": item["request_id"],
+                    "title": title,
+                    "allow_comment": settings["allow_comment"],
+                    "allow_duet": settings["allow_duet"],
+                    "allow_stitch": settings["allow_stitch"],
+                    "share_to_feed": settings["share_to_feed"],
+                    "ai_generated": settings["ai_generated"],
+                    "first_comment": settings["first_comment"],
+                },
             )
             post = result.get("post") if isinstance(result.get("post"), dict) else result.get("existingPost")
             if not isinstance(post, dict):
@@ -1294,15 +1387,77 @@ class SocialPublishController:
                 and status not in _FAILED_POST_STATUSES
             ):
                 status = "publishing"
-            self._events.put({
-                "type": "publish_finished", "project_key": project_key, "item_id": item["id"],
-                "post_id": post_id, "status": status, "url": post_result["url"],
-                "error": post_result["error"], "platform": settings["platform"],
-            })
+            self._events.put(
+                {
+                    "type": "publish_finished",
+                    "project_key": project_key,
+                    "item_id": item["id"],
+                    "post_id": post_id,
+                    "status": status,
+                    "url": post_result["url"],
+                    "error": post_result["error"],
+                    "platform": settings["platform"],
+                }
+            )
         except zernio.ZernioCancelled as exc:
-            self._events.put({"type": "publish_finished", "project_key": project_key, "item_id": item["id"], "status": "ready", "error": str(exc)})
-        except (OSError, ValueError, zernio.ZernioError) as exc:
-            self._events.put({"type": "publish_finished", "project_key": project_key, "item_id": item["id"], "status": "failed", "error": str(exc)})
+            self._events.put(
+                {
+                    "type": "publish_finished",
+                    "project_key": project_key,
+                    "item_id": item["id"],
+                    "status": "ready",
+                    "error": str(exc),
+                }
+            )
+        except zernio.ZernioError as exc:
+            # Zernio's 24-hour content dedup response carries the original
+            # post ID. Recover that accepted post instead of showing Retry,
+            # which previously let users submit the same video again.
+            post_id = exc.existing_post_id
+            if post_id:
+                status = "publishing"
+                url = ""
+                error = ""
+                try:
+                    post = zernio.ZernioClient(key).get_post(post_id)
+                    recovered = zernio.post_result(post, settings["platform"])
+                    status = recovered["status"] or status
+                    url = recovered["url"]
+                    error = recovered["error"]
+                except (OSError, ValueError, zernio.ZernioError):
+                    pass
+                self._events.put(
+                    {
+                        "type": "publish_finished",
+                        "project_key": project_key,
+                        "item_id": item["id"],
+                        "post_id": post_id,
+                        "status": status,
+                        "url": url,
+                        "error": error,
+                        "platform": settings["platform"],
+                    }
+                )
+            else:
+                self._events.put(
+                    {
+                        "type": "publish_finished",
+                        "project_key": project_key,
+                        "item_id": item["id"],
+                        "status": "failed",
+                        "error": str(exc),
+                    }
+                )
+        except (OSError, ValueError) as exc:
+            self._events.put(
+                {
+                    "type": "publish_finished",
+                    "project_key": project_key,
+                    "item_id": item["id"],
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            )
 
     def refresh_post_statuses(self) -> bool:
         return self._start_status_worker(only_pending=False)
@@ -1311,6 +1466,7 @@ class SocialPublishController:
         posts = [
             (item["id"], item.get("zernio_post_id") or "", item.get("target_platform") or "tiktok")
             for item in self._state.get("items") or []
+            if item.get("zernio_post_id")
         ]
         if only_pending:
             posts = [
@@ -1341,12 +1497,30 @@ class SocialPublishController:
             for item_id, post_id, platform in posts:
                 post = client.get_post(post_id)
                 result = zernio.post_result(post, platform)
-                updates.append({
-                    "item_id": item_id,
-                    "status": result["status"],
-                    "url": result["url"],
-                    "error": result["error"],
-                })
+                if result["status"] in _SUCCESS_POST_STATUSES and not result["url"]:
+                    # Some Zernio platform adapters update the collection view
+                    # before GET /posts/{id} exposes the final public permalink.
+                    # Recover it immediately instead of leaving the card without
+                    # an Open post action until a much later app session.
+                    try:
+                        recent = next(
+                            (candidate for candidate in client.list_posts() if self._object_id(candidate) == post_id),
+                            None,
+                        )
+                        if recent:
+                            listed_result = zernio.post_result(recent, platform)
+                            if listed_result["url"]:
+                                result = listed_result
+                    except (OSError, ValueError, zernio.ZernioError):
+                        pass
+                updates.append(
+                    {
+                        "item_id": item_id,
+                        "status": result["status"],
+                        "url": result["url"],
+                        "error": result["error"],
+                    }
+                )
             self._events.put({"type": "statuses", "project_key": project_key, "updates": updates})
         except (OSError, ValueError, zernio.ZernioError) as exc:
             self._events.put({"type": "status_error", "project_key": project_key, "message": str(exc)})
@@ -1378,7 +1552,9 @@ class SocialPublishController:
                 if opened:
                     self._start_oauth_sync()
                     platform = str(event.get("platform") or "")
-                    self._status = f"Finish connecting {PLATFORM_LABELS.get(platform, platform.title())} in the browser."
+                    self._status = (
+                        f"Finish connecting {PLATFORM_LABELS.get(platform, platform.title())} in the browser."
+                    )
                 else:
                     self._stop_oauth_sync()
                     self._status = "Could not open the Zernio authorization page."
@@ -1400,25 +1576,20 @@ class SocialPublishController:
                 previous_accounts = self._accounts
                 self._accounts = self._deduplicate_accounts(event.get("accounts") or [])
                 available_account_ids = {
-                    self._object_id(account)
-                    for account in self._accounts
-                    if self._object_id(account)
+                    self._object_id(account) for account in self._accounts if self._object_id(account)
                 }
                 self._creator_cache = {
                     account_id: cached
                     for account_id, cached in self._creator_cache.items()
                     if account_id in available_account_ids
                 }
-                accounts_changed = (
-                    self._account_visible_signature(previous_accounts)
-                    != self._account_visible_signature(self._accounts)
-                )
+                accounts_changed = self._account_visible_signature(
+                    previous_accounts
+                ) != self._account_visible_signature(self._accounts)
                 current_account_ids = {
                     self._object_id(account) for account in self._accounts if self._object_id(account)
                 }
-                if self._oauth_sync_pending and (
-                    current_account_ids - self._oauth_account_ids_before
-                ):
+                if self._oauth_sync_pending and (current_account_ids - self._oauth_account_ids_before):
                     self._stop_oauth_sync()
                 selected_id = str(self._state.get("selected_account_id") or "")
                 selected_changed = False
@@ -1467,15 +1638,16 @@ class SocialPublishController:
                 if not silent or event.get("message"):
                     self._status = str(event.get("message") or "") or (
                         f"{len(self._accounts)} publishing account(s) available."
-                        if self._accounts else
-                        "No supported publishing account is available."
+                        if self._accounts
+                        else "No supported publishing account is available."
                     )
                 if selected_id:
                     selected_index = self.selected_account_index
-                    platform = self._account_platform(self._accounts[selected_index]) if selected_index >= 0 else "tiktok"
+                    platform = (
+                        self._account_platform(self._accounts[selected_index]) if selected_index >= 0 else "tiktok"
+                    )
                     if platform == "tiktok" and (
-                        selected_changed
-                        or (not self._creator_info_loaded and not self._creator_syncing)
+                        selected_changed or (not self._creator_info_loaded and not self._creator_syncing)
                     ):
                         cached = self._cached_creator_info(selected_id)
                         if cached is not None:
@@ -1483,19 +1655,14 @@ class SocialPublishController:
                             self._apply_creator_info(cached)
                         else:
                             self._start_creator_info_worker(selected_id)
-                    elif platform != "tiktok" and (
-                        selected_changed or not self._creator_info_loaded
-                    ):
+                    elif platform != "tiktok" and (selected_changed or not self._creator_info_loaded):
                         self._configure_non_tiktok_account(platform)
-                event_changed = (
-                    not silent or accounts_changed or selected_changed or platform_changed
-                )
+                event_changed = not silent or accounts_changed or selected_changed or platform_changed
             elif kind == "creator":
                 generation = int(event.get("generation") or 0)
                 account_id = str(event.get("account_id") or "")
-                if (
-                    generation != self._creator_generation
-                    or account_id != str(self._state.get("selected_account_id") or "")
+                if generation != self._creator_generation or account_id != str(
+                    self._state.get("selected_account_id") or ""
                 ):
                     continue
                 self._creator_syncing = False
@@ -1509,22 +1676,20 @@ class SocialPublishController:
                 self._apply_creator_info(creator_payload)
                 self._status = (
                     "TikTok account is ready for publishing."
-                    if self._can_post_more else "TikTok reports that this account has reached its posting limit."
+                    if self._can_post_more
+                    else "TikTok reports that this account has reached its posting limit."
                 )
             elif kind == "creator_error":
                 generation = int(event.get("generation") or 0)
                 account_id = str(event.get("account_id") or "")
-                if (
-                    generation != self._creator_generation
-                    or account_id != str(self._state.get("selected_account_id") or "")
+                if generation != self._creator_generation or account_id != str(
+                    self._state.get("selected_account_id") or ""
                 ):
                     continue
                 self._creator_syncing = False
                 self._creator_worker_thread = None
                 self._creator_info_loaded = False
-                self._status = str(
-                    event.get("message") or "Could not load TikTok publishing options."
-                )
+                self._status = str(event.get("message") or "Could not load TikTok publishing options.")
             elif kind == "import_progress":
                 self._status = f"Adding video {event['done']} / {event['total']}"
             elif kind == "import_finished":
@@ -1533,7 +1698,11 @@ class SocialPublishController:
                 self._consent_confirmed = False
                 self._reload()
                 errors = list(event.get("errors") or [])
-                self._status = f"Added {event['done']} video(s)." if not errors else f"Added {event['done']} video(s); {len(errors)} failed."
+                self._status = (
+                    f"Added {event['done']} video(s)."
+                    if not errors
+                    else f"Added {event['done']} video(s); {len(errors)} failed."
+                )
                 refresh_projects = True
             elif kind == "upload_progress":
                 self._update_item_state(event["item_id"], upload_progress=event["progress"])
@@ -1544,10 +1713,19 @@ class SocialPublishController:
             elif kind == "publish_finished":
                 self._busy = False
                 self._worker = None
-                status = str(event.get("status") or "failed")
+                status = str(event.get("status") or "failed").casefold()
+                post_id = str(event.get("post_id") or "")
+                # A create response can briefly carry a failed/unknown
+                # platform state while the accepted post is still being
+                # processed. Once a remote ID exists, polling is authoritative;
+                # never expose the card as retryable and risk a second submit.
+                if post_id and status in _FAILED_POST_STATUSES:
+                    status = "publishing"
                 self._update_item_state(
-                    event["item_id"], status=status,
-                    error=str(event.get("error") or ""), zernio_post_id=str(event.get("post_id") or ""),
+                    event["item_id"],
+                    status=status,
+                    error="" if post_id else str(event.get("error") or ""),
+                    zernio_post_id=post_id,
                     platform_post_url=str(event.get("url") or ""),
                     platform_post_url_verified=bool(event.get("url")),
                     target_platform=str(event.get("platform") or self.selected_platform),
@@ -1556,10 +1734,12 @@ class SocialPublishController:
                 if status in _SUCCESS_POST_STATUSES:
                     self._status = f"{PLATFORM_LABELS.get(str(event.get('platform') or ''), 'The platform')} published the video successfully."
                 else:
-                    self._status = str(event.get("error") or ("Post sent to Zernio." if status != "draft" else "Draft created in Zernio."))
-                if event.get("post_id") and (
-                    status in _POLLABLE_POST_STATUSES
-                    or (status in _SUCCESS_POST_STATUSES and not event.get("url"))
+                    self._status = str(
+                        event.get("error")
+                        or ("Post sent to Zernio." if status != "draft" else "Draft created in Zernio.")
+                    )
+                if post_id and (
+                    status in _POLLABLE_POST_STATUSES or (status in _SUCCESS_POST_STATUSES and not event.get("url"))
                 ):
                     self._schedule_post_status_poll(immediate=True)
                 refresh_projects = True
@@ -1572,11 +1752,7 @@ class SocialPublishController:
                 previous_status_text = self._status
                 for update in event.get("updates") or []:
                     current = next(
-                        (
-                            item
-                            for item in self._state.get("items") or []
-                            if item.get("id") == update["item_id"]
-                        ),
+                        (item for item in self._state.get("items") or [] if item.get("id") == update["item_id"]),
                         {},
                     )
                     changes = {
@@ -1588,7 +1764,8 @@ class SocialPublishController:
                     if any(current.get(key) != value for key, value in changes.items()):
                         status_changed = True
                     self._update_item_state(
-                        update["item_id"], **changes,
+                        update["item_id"],
+                        **changes,
                     )
                 pending = self._pending_post_ids()
                 if pending:
@@ -1600,8 +1777,8 @@ class SocialPublishController:
                     )
                     self._status = (
                         "The platform published the video; waiting for its public link."
-                        if waiting_for_link else
-                        f"Waiting for the platforms to finish {len(pending)} post(s)."
+                        if waiting_for_link
+                        else f"Waiting for the platforms to finish {len(pending)} post(s)."
                     )
                 else:
                     self._stop_post_status_poll()
@@ -1659,16 +1836,11 @@ class SocialPublishController:
             return False
         platform = str(item.get("target_platform") or self.selected_platform or "tiktok")
         raw_url = str(item.get("platform_post_url") or "")
-        url = (
-            zernio.public_post_url(raw_url, platform)
-            if item.get("platform_post_url_verified") else ""
-        )
+        url = zernio.public_post_url(raw_url, platform) if item.get("platform_post_url_verified") else ""
         if url:
             return bool(open_external_url(url))
         if raw_url:
-            self._update_item_state(
-                item["id"], platform_post_url="", platform_post_url_verified=False
-            )
+            self._update_item_state(item["id"], platform_post_url="", platform_post_url_verified=False)
         if item.get("zernio_post_id") and self._api_key():
             self._status = "The post is published; retrieving its public link."
             self._emit_changed()
@@ -1680,9 +1852,12 @@ class SocialPublishController:
         item = self._host.tiktok_publish_items.item_at(row)
         if not item or not self._ensure_publish_project() or self._busy:
             return False
-        if QMessageBox.question(
-            None, "Remove publishing item", f"Remove '{item['file_name']}' and its project-owned copy?"
-        ) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                None, "Remove publishing item", f"Remove '{item['file_name']}' and its project-owned copy?"
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return False
         removed = tiktok_publish.remove_item(self._project_root, item["id"])
         if removed is None:
@@ -1738,12 +1913,7 @@ class SocialPublishController:
         self._oauth_sync_next = now + _OAUTH_ACCOUNT_POLL_SECONDS
 
     def _poll_oauth_accounts(self) -> None:
-        if (
-            not self._oauth_sync_pending
-            or self._busy
-            or self._account_syncing
-            or not self._project_key
-        ):
+        if not self._oauth_sync_pending or self._busy or self._account_syncing or not self._project_key:
             return
         now = time.monotonic()
         if now >= self._oauth_sync_deadline:
@@ -1776,8 +1946,7 @@ class SocialPublishController:
         return [
             str(item.get("zernio_post_id") or "")
             for item in self._state.get("items") or []
-            if item.get("zernio_post_id")
-            and self._item_needs_status_poll(item)
+            if item.get("zernio_post_id") and self._item_needs_status_poll(item)
         ]
 
     @staticmethod
@@ -1802,12 +1971,7 @@ class SocialPublishController:
         self._post_status_poll_next = now if immediate else now + _POST_STATUS_POLL_SECONDS
 
     def _poll_post_statuses(self) -> None:
-        if (
-            not self._post_status_poll_next
-            or self._busy
-            or self._post_status_refreshing
-            or not self._project_key
-        ):
+        if not self._post_status_poll_next or self._busy or self._post_status_refreshing or not self._project_key:
             return
         now = time.monotonic()
         if now >= self._post_status_poll_deadline:
@@ -1860,11 +2024,13 @@ class SocialPublishController:
             seen.add(account_id)
             result.append(account)
         platform_order = {platform: index for index, platform in enumerate(SUPPORTED_PLATFORMS)}
-        result.sort(key=lambda account: (
-            platform_order.get(cls._account_platform(account), len(platform_order)),
-            cls._account_label(account).casefold(),
-            cls._object_id(account),
-        ))
+        result.sort(
+            key=lambda account: (
+                platform_order.get(cls._account_platform(account), len(platform_order)),
+                cls._account_label(account).casefold(),
+                cls._object_id(account),
+            )
+        )
         return result
 
     @classmethod

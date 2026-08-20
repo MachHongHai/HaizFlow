@@ -2,15 +2,16 @@
 
 ## Purpose and Boundaries
 
-HaizFlow is a local-first Windows application. The desktop process owns the user interface, video state, and orchestration. Media processing happens in Python pipeline modules and external command-line tools. HaizFlow has no application-owned HTTP backend, browser client, or cloud database. The optional TikTok Publishing workspace is the explicit exception to local processing: it calls Zernio's REST API and uses Zernio OAuth to connect a user-owned TikTok account.
+HaizFlow is a local-first Windows application. The desktop process owns the user interface, video state, and orchestration. Media processing happens in Python pipeline modules and external command-line tools. HaizFlow has no application-owned HTTP backend, browser client, or cloud database. The optional social-publishing workspace is the explicit exception to local processing: it calls Zernio's REST API and uses Zernio OAuth connections owned by the user.
 
 ```text
 PySide6 / QML desktop shell
   -> HaizFlowController
   -> local video store and project files
   -> pipeline orchestration
-  -> WhisperX, HY-MT2 worker, Edge TTS, Demucs, FFmpeg
-  -> optional Zernio REST API -> TikTok
+  -> WhisperX small or Whisper large-v3-turbo, HY-MT2 worker
+  -> OmniVoice local or Edge TTS, Demucs, FFmpeg
+  -> optional Zernio REST API -> connected social platforms
 ```
 
 ## Source Layout
@@ -43,7 +44,8 @@ src/haizflow/
     extract_audio.py        FFmpeg audio extraction
     transcribe.py           WhisperX warm cache, transcription, and alignment
     audio_separation.py     Optional Demucs integration
-    tts.py                  Bounded-concurrency Edge TTS synthesis
+    tts.py                  OmniVoice/Edge provider routing and synthesis policy
+    omnivoice_tts.py        Dependency-isolated local OmniVoice worker
     audio_timeline.py       Timestamped speech and background-audio mixing
     subtitle.py             SRT generation
     render.py               FFmpeg video and ASS subtitle rendering
@@ -103,7 +105,7 @@ Run `scripts/test.ps1` before merging. It compiles application, script, and test
 1. `haizflow_desktop.py` relaunches itself with `.venv\Scripts\python.exe` when available. The source launcher exits after creating the project-runtime process; it does not import Qt or ML packages from the system Python installation.
 2. `haizflow.desktop.main` creates the Qt application and registers `HaizFlowController` with the QML engine.
 3. `HaizFlowController` loads settings and project metadata, starts polling timers, and schedules legacy migration/recovery/thumbnail maintenance only after the first Qt frame. Model warm-up also runs on a background thread.
-4. `Main.qml` routes between independent Download, Single, Batch, and TikTok Publishing project libraries, their workspaces, and Settings.
+4. `Main.qml` routes between independent Download, Single, Batch, and Social Publishing project libraries, their workspaces, and Settings.
 5. Closing the application cancels active network imports and Zernio uploads, unsubscribes log events, shuts down the HY-MT2 worker, and releases both warmed models.
 
 ## Video State Model
@@ -120,7 +122,7 @@ Run `scripts/test.ps1` before merging. It compiles application, script, and test
 | `failed` | The pipeline captured an exception and wrote it to the video log. |
 | `cancelled` | A destructive cancellation occurred. |
 
-Every update persists progress, stage detail, current/total item counts, timestamps, and a `MediaSource` provenance record. Video metadata uses schema v5 in `video.json`, a per-video lock, atomic replacement (`temp -> fsync -> replace`), and the last valid `.bak` copy, so UI polling cannot observe a partially written file. Schema v2 adds `media_source.type = local_file`; schema v4 binds each video to its immutable `project_id` and `project_key`; schema v5 renames the legacy `job_id` identity to `video_id`. Unversioned metadata migrates through every ordered step and preserves its pre-migration JSON as `.schema-migration.bak`. A schema newer than the running application is rejected rather than rewritten.
+Every update persists progress, stage detail, current/total item counts, timestamps, and a `MediaSource` provenance record. Video metadata uses schema v13 in `video.json`, a per-video lock, atomic replacement (`temp -> fsync -> replace`), and the last valid `.bak` copy, so UI polling cannot observe a partially written file. Ordered migrations retain legacy identity/provenance while adding recovery checkpoints and current ASR, TTS, subtitle-removal, audio-mix and watermark settings. Unversioned metadata migrates through every ordered step and preserves its pre-migration JSON as `.schema-migration.bak`. A schema newer than the running application is rejected rather than rewritten.
 
 ## Media Import
 
@@ -130,11 +132,11 @@ Channel candidates are sorted after metadata collection and deduplicated using `
 
 Each scan is stored under `<project>/imports/channel/<session-id>/session.json`. Completed downloads pass through `create_desktop_video`, so managed input, log, thumbnail, workspace, and export ownership remain identical to file imports. Because the download workspace already belongs to the project, the final media file is moved atomically into its video workspace instead of being copied a second time. Download workspaces are retained only for failed retries and removed after a successful project import. Reopening a project restores interrupted candidates as retryable entries; deleting the project cancels its coordinator session and removes the complete project-owned import tree. The download manager permits two workers while model processing is idle, throttles new work to one while the pipeline is active, and never starts the dubbing pipeline automatically.
 
-## TikTok Publishing through Zernio
+## Social Publishing through Zernio
 
-TikTok Publishing projects are separate from TikTok downloading. A publishing project copies selected MP4, MOV, or WebM videos into `publishing/media`, generates project-owned thumbnails, and persists its queue atomically in `.haizflow-tiktok-publish.json`. Reopening the project restores caption, normalized hashtags, account/privacy selection, stable idempotency request IDs, Zernio post IDs, and upload status. Replacing queue entries or deleting the project removes only project-owned files; startup cleanup removes interrupted and orphaned copies.
+Publishing projects are separate from media downloading. A publishing project copies selected MP4, MOV, or WebM videos into `publishing/media`, generates project-owned thumbnails, and persists its queue atomically in the legacy-compatible `.haizflow-tiktok-publish.json` store. Reopening the project restores caption, normalized hashtags, platform/connection selection, stable idempotency request IDs, Zernio post IDs, and upload status. Replacing queue entries or deleting the project removes only project-owned files; startup cleanup removes interrupted and orphaned copies.
 
-The user creates a Zernio API key and HaizFlow stores it as a generic secret in Windows Credential Manager. Account connection opens the Zernio-provided TikTok OAuth URL in the user's active Chrome profile when available, otherwise in the Windows default browser. HaizFlow fetches TikTok creator information before publishing and only exposes privacy levels returned for that account. Publishing is sequential: request a presigned media URL, stream the video directly to it with cancellation/progress, then create a TikTok post through Zernio using one persistent `x-request-id`. The UI requires the user to review the queued posts and explicitly confirm upload consent. There is no Playwright, Selenium, DOM selector, managed browser profile for automation, cookie extraction, or TikTok Studio automation in this workflow.
+The user creates a Zernio API key and HaizFlow stores it as a generic secret in Windows Credential Manager. Account connection opens a Zernio-provided OAuth URL in the user's active Chrome profile when available, otherwise in the Windows default browser. Supported post options are derived from the selected platform instead of exposing TikTok-only controls everywhere. Publishing is sequential: request a presigned media URL, stream the video directly to it with cancellation/progress, then create a platform post through Zernio using one persistent `x-request-id`. The UI requires an explicit confirmation before upload. There is no Playwright, Selenium, DOM selector, managed browser profile, cookie extraction, or social-site browser automation in this workflow.
 
 ## Pipeline
 
@@ -142,11 +144,12 @@ The user creates a Zernio API key and HaizFlow stores it as a generic secret in 
 video input
   -> extract audio
   -> selected audio mode: preserve the original track, or use Demucs vocals/no-vocals separation
-  -> WhisperX transcription, sentence alignment, and per-subtitle language identification
+  -> selected ASR: WhisperX small or Whisper large-v3-turbo
+  -> sentence alignment and per-subtitle language identification
   -> HY-MT2 translation
-  -> optional translation review
+  -> optional subtitle review with a project-backed editable draft and timeline
   -> SRT generation
-  -> Edge TTS voice parts
+  -> selected TTS: local OmniVoice (presets or authorized clone) or online Edge TTS
   -> audio timeline construction
   -> FFmpeg render
 ```
@@ -159,7 +162,7 @@ cancelled downloads remove their staging directory. The processing queue therefo
 
 ### WhisperX
 
-`pipeline.transcribe` owns a process-local ASR cache. Warm-up loads the configured WhisperX model in a background thread when the detected memory profile can safely retain it. Subsequent transcription calls reuse it when the device matches. CUDA uses FP16 and a larger batch; CPU uses INT8, a RAM-aware batch of one to four, and a bounded thread count. Low-memory CPU profiles release the warm ASR model before translation. The pickle-based VAD checkpoint from the locked WhisperX release is excluded from the installer, downloaded by first-run bootstrap from a commit-pinned URL, and checked against fixed size/SHA-256 before it is loaded through an explicit local path. WhisperX first produces sentence-level subtitle boundaries, then the same ASR model identifies the language of each sentence from only that sentence's audio. Detected language switches are transcribed again with the appropriate tokenizer, so a mixed-language video is not forced into the language detected at its beginning. Alignment is permitted only for five fixed torchaudio assets (`en/fr/de/es/it`): URL, exact size and SHA-256 are production constants. The first-run model bootstrap downloads them atomically with visible progress and cancellation, then PyTorch receives `weights_only=True`. Pipeline code is local-only and refuses a missing or corrupt payload instead of starting a hidden download. WhisperX's mutable Hugging Face alignment table is never used; other languages safely retain the Whisper span and derive sentence boundaries proportionally. HaizFlow supplies a no-download single-span sentence splitter, preventing WhisperX from fetching mutable NLTK `punkt_tab` data. Alignment models are short-lived and released after use because they are language-specific and can consume significant memory.
+`pipeline.transcribe` owns a process-local ASR cache. The user can select WhisperX small for CPU/low-VRAM systems or Whisper large-v3-turbo for a CUDA system whose downloaded checkpoint passed integrity verification. Warm-up loads the selected model in a background thread when the detected memory profile can safely retain it. Subsequent transcription calls reuse it only when both device and model match. CUDA uses FP16 and a larger batch; CPU uses INT8, a RAM-aware batch of one to four, and a bounded thread count. Low-memory profiles release warm ASR before translation or local TTS. The pickle-based VAD checkpoint from the locked WhisperX release is excluded from the installer, downloaded by first-run bootstrap from a commit-pinned URL, and checked against fixed size/SHA-256 before it is loaded through an explicit local path. Whisper first produces sentence-level subtitle boundaries, then the same ASR model identifies the language of each sentence from only that sentence's audio. Detected language switches are transcribed again with the appropriate tokenizer, so a mixed-language video is not forced into the language detected at its beginning. Alignment is permitted only for five fixed torchaudio assets (`en/fr/de/es/it`): URL, exact size and SHA-256 are production constants. The first-run model bootstrap downloads them atomically with visible progress and cancellation, then PyTorch receives `weights_only=True`. Pipeline code is local-only and refuses a missing or corrupt payload instead of starting a hidden download. WhisperX's mutable Hugging Face alignment table is never used; other languages safely retain the Whisper span and derive sentence boundaries proportionally. HaizFlow supplies a no-download single-span sentence splitter, preventing WhisperX from fetching mutable NLTK `punkt_tab` data. Alignment models are short-lived and released after use because they are language-specific and can consume significant memory.
 
 Audio is decoded by the bundled FFmpeg process and passed to WhisperX as an in-memory waveform. The active pipeline therefore does not depend on TorchCodec's optional native decoder. Enabling that decoder on Windows would additionally require a compatible FFmpeg `full-shared` distribution; the static command-line FFmpeg bundle is intentionally kept smaller.
 
@@ -171,7 +174,9 @@ The runtime selects one of two inference backends according to the persisted `gp
 
 ### Voice Synthesis
 
-`pipeline.tts` creates one MP3 per translated segment. Edge TTS requests run sequentially by default because its consumer WebSocket endpoint is less reliable under concurrent requests; `TTS_MAX_CONCURRENCY` remains an advanced override. Each response is written to a temporary file and promoted atomically only after MP3 validation. Segments that exhaust the primary retry budget are recovered with fresh connections and longer backoff. Persistent failures stop the pipeline before rendering instead of inserting silent audio. Completion callbacks update both persistent progress and the project log.
+`pipeline.tts` creates one validated MP3 per translated segment. OmniVoice runs locally in a dependency-isolated worker so its Transformers 5 runtime cannot replace the application's pinned Transformers 4 stack. The worker loads the checkpoint once per video, uses FP16/TF32 on CUDA or bounded FP32 threads on CPU, emits progress/heartbeat status, and is terminated if it stops making progress. Presets use only the SDK's validated instruction vocabulary. Voice cloning requires a user-authorized sample plus its exact transcript and is stored per video. The checkpoint and runtime wheels are revision, size, and SHA-256 pinned and loaded below `runtime\models`; no hidden cache download is allowed. The model checkpoint's CC-BY-NC-4.0 license remains a release/commercial-use gate.
+
+Edge TTS remains the online alternative. Its requests run sequentially by default because the consumer WebSocket endpoint is less reliable under concurrent requests; `TTS_MAX_CONCURRENCY` remains an advanced override. Long text, especially unspaced CJK text, is split at natural boundaries before transport. Each response is written to a temporary file and promoted atomically only after MP3 validation. Segments that exhaust the primary retry budget are recovered with fresh connections and longer backoff. Persistent failures from either provider stop the pipeline before rendering instead of inserting silent audio. Completion callbacks update both persistent progress and the project log.
 
 ### Audio Source Modes
 
@@ -183,7 +188,7 @@ The two audio modes are mutually exclusive. Original mode mixes the source track
 
 ## Runtime Data and Packaging
 
-`core.paths` uses `HAIZFLOW_HOME` as a hard containment root in source mode. In a frozen build the installer-selected `{app}` directory is authoritative: mutable data and downloaded models default to `{app}\runtime`, while native tools remain below `{app}\_internal`. The user may select a writable directory on C, D, E, or another drive; no drive letter is hardcoded. Model staging, Qt caches, Torch/Hugging Face caches, settings, diagnostics, temporary files, and the project index therefore remain below that selected application root. `projects.json` is protected by an OS-level interprocess lock and atomic replacement. A valid previous index is retained as `.bak`; corrupt input is copied to a timestamped quarantine file and recovered by merging the backup with `.haizflow-project.json` manifests discovered under registered project roots. Project records use schema v4; per-video metadata uses schema v5. Each project has an immutable UUID-backed `project:<uuid>` identity, so projects can share a display name without sharing inputs, exports, or deletion operations.
+`core.paths` uses `HAIZFLOW_HOME` as a hard containment root in source mode. In a frozen build the installer-selected `{app}` directory is authoritative: mutable data and downloaded models default to `{app}\runtime`, while native tools remain below `{app}\_internal`. The user may select a writable directory on C, D, E, or another drive; no drive letter is hardcoded. Model staging, Qt caches, Torch/Hugging Face caches, settings, diagnostics, temporary files, and the project index therefore remain below that selected application root. `projects.json` is protected by an OS-level interprocess lock and atomic replacement. A valid previous index is retained as `.bak`; corrupt input is copied to a timestamped quarantine file and recovered by merging the backup with `.haizflow-project.json` manifests discovered under registered project roots. Project records use schema v4; per-video metadata uses schema v13. Each project has an immutable UUID-backed `project:<uuid>` identity, so projects can share a display name without sharing inputs, exports, or deletion operations.
 
 The frozen runtime layout is deliberately stable: `{app}\runtime\models` contains checksum-verified model payloads, `{app}\runtime\cache` contains disposable third-party caches, `{app}\runtime\data` contains durable settings/logs/indexes, and `{app}\runtime\tmp` contains transient work. The launcher establishes this boundary before importing Qt, Torch, Transformers, WhisperX, OCR, or TTS code. It redirects Hugging Face, Torch/TorchInductor, CUDA, Triton, Qt/QML, NumPy/Numba, Matplotlib, NLTK, pip/uv, EasyOCR, Paddle/PaddleX, KaggleHub, XDG, profile, and temporary-directory fallbacks into it. Model loaders accept only explicit files below `runtime\models` and do not invoke library download helpers. Source runs can use `HAIZFLOW_HOME`; a real frozen build ignores inherited machine-wide overrides so a user-selected D: or E: install cannot silently write HaizFlow-owned data back to C:.
 
@@ -195,8 +200,8 @@ The frozen runtime layout is deliberately stable: `{app}\runtime\models` contain
   .downloads/                      Temporary URL downloads; removed after import
   imports/channel/<session-id>/    Resumable channel import state and partials
   exports/                         Final rendered videos
-  publishing/                      TikTok publishing media and thumbnails
-  .haizflow-tiktok-publish.json    Atomic Zernio publishing queue (publish projects)
+  publishing/                      Social publishing media and thumbnails
+  .haizflow-tiktok-publish.json    Legacy-compatible atomic Zernio publishing queue
   videos/<video-id>/
     video.json, logs.txt
     input/, temp/, output/          Imported media and resumable workspace
@@ -225,9 +230,9 @@ Each HY-MT2 process also writes a bounded diagnostic log under `<runtime-data>/l
 - One foreground pipeline video is active at a time.
 - Batch videos are queued and run sequentially.
 - Channel downloads use an independent manager: at most two downloads while the pipeline is idle and one while media processing is active. TikTok and Douyin never run more than one download concurrently.
-- Zernio uploads and TikTok post creation run sequentially inside the active Publishing project. Closing or switching away cancels new work; project switching is blocked while a request is active.
+- Zernio uploads and platform post creation run sequentially inside the active Publishing project. Closing or switching away cancels new work; project switching is blocked while a request is active.
 - CUDA warms HY-MT2 and WhisperX sequentially in the background to avoid competing model loads. CPU profiles warm only WhisperX when RAM permits.
 - HY-MT2 is isolated in one persistent worker; CPU profiles shut it down after an adaptive idle interval, while CUDA retains it for the desktop session.
-- Edge TTS is the only bounded fan-out stage, limited to one through four concurrent requests.
+- Edge TTS is limited to one through four requests; OmniVoice uses one isolated local worker per active video and queues preview requests rather than loading concurrent model copies.
 
 This policy favours GPU stability and reproducibility over maximising throughput on a single workstation.

@@ -369,9 +369,7 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             if started_at and data.get("status") != "processing":
                 try:
                     started = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
-                    finished = datetime.fromisoformat(
-                        str(data.get("updated_at") or started_at).replace("Z", "+00:00")
-                    )
+                    finished = datetime.fromisoformat(str(data.get("updated_at") or started_at).replace("Z", "+00:00"))
                     elapsed = max(0.0, (finished - started).total_seconds())
                     data["started_at"] = None
                 except (TypeError, ValueError):
@@ -394,6 +392,15 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("tts_provider", "edge")
             version = 12
             continue
+        if version == 12:
+            data["schema_version"] = 13
+            data.setdefault("speech_recognition_model", "small")
+            # VieNeu and the old automatic alias were removed in favour of
+            # OmniVoice. Explicit Edge projects retain their online voice.
+            if data.get("tts_provider") in {"auto", "vieneu", None, ""}:
+                data["tts_provider"] = "omnivoice"
+            version = 13
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -402,11 +409,16 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     # strict production models must remain able to open and repair them.
     data["mode"] = data.get("mode") if data.get("mode") in {"A", "review"} else "A"
     data["translator_provider"] = "hymt2"
-    if data.get("tts_provider") not in {"auto", "vieneu", "edge"}:
-        data["tts_provider"] = "edge"
+    if data.get("tts_provider") in {"auto", "vieneu"}:
+        data["tts_provider"] = "omnivoice"
+    if data.get("tts_provider") not in {"omnivoice", "edge"}:
+        data["tts_provider"] = "omnivoice"
+    if data.get("speech_recognition_model") not in {"small", "large-v3-turbo"}:
+        data["speech_recognition_model"] = "small"
     data["output_format"] = (
         data.get("output_format")
-        if data.get("output_format") in {
+        if data.get("output_format")
+        in {
             "keep_ratio",
             "tiktok_9_16_crop",
             "blur_background_9_16",
@@ -447,9 +459,7 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     # name from schema v11 onward.
     if removal_mode == "inpaint":
         removal_mode = "patch"
-    data["original_subtitle_removal_mode"] = (
-        removal_mode if removal_mode in {"blur", "patch"} else "blur"
-    )
+    data["original_subtitle_removal_mode"] = removal_mode if removal_mode in {"blur", "patch"} else "patch"
     try:
         processing_elapsed = float(data.get("processing_elapsed_seconds", 0.0))
     except (TypeError, ValueError):
@@ -588,9 +598,7 @@ def update_video(video_id: str, **kwargs) -> Optional[VideoInfo]:
                 try:
                     started = datetime.fromisoformat(video_info.started_at.replace("Z", "+00:00"))
                     previous = max(0.0, float(video_info.processing_elapsed_seconds or 0.0))
-                    kwargs["processing_elapsed_seconds"] = previous + max(
-                        0.0, (now - started).total_seconds()
-                    )
+                    kwargs["processing_elapsed_seconds"] = previous + max(0.0, (now - started).total_seconds())
                 except (TypeError, ValueError):
                     pass
             kwargs.setdefault("started_at", None)
@@ -898,13 +906,31 @@ def _infer_log_level(message: str, level: str | None) -> str:
         normalized = str(level).upper()
         return normalized if normalized in {"DEBUG", "INFO", "WARN", "ERROR"} else "INFO"
     normalized = message.casefold()
-    if any(marker in normalized for marker in (
-        "traceback", " failed", "failure", " error", "exception", "cannot ", "unable to ",
-    )):
+    if any(
+        marker in normalized
+        for marker in (
+            "traceback",
+            " failed",
+            "failure",
+            " error",
+            "exception",
+            "cannot ",
+            "unable to ",
+        )
+    ):
         return "ERROR"
-    if any(marker in normalized for marker in (
-        "retry", "fallback", "deferred", "could not", "skipping", "paused", "cancelled",
-    )):
+    if any(
+        marker in normalized
+        for marker in (
+            "retry",
+            "fallback",
+            "deferred",
+            "could not",
+            "skipping",
+            "paused",
+            "cancelled",
+        )
+    ):
         return "WARN"
     return "INFO"
 
@@ -1002,6 +1028,7 @@ def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) 
         _VIDEO_METADATA_CACHE.pop(video_id, None)
         _mark_metadata_changed(video_id)
         return True
+
 
 def cleanup_batch_project_orphans(project_key_value: str) -> list[str]:
     """Remove app-owned batch workspaces/exports that no video references.
@@ -1136,8 +1163,12 @@ def migrate_legacy_project_data() -> list[str]:
                 continue
         for checkpoint_key, checkpoint_path in (video.checkpoints or {}).items():
             try:
-                if os.path.commonpath([os.path.abspath(source), os.path.abspath(checkpoint_path)]) == os.path.abspath(source):
-                    video.checkpoints[checkpoint_key] = os.path.join(destination, os.path.relpath(checkpoint_path, source))
+                if os.path.commonpath([os.path.abspath(source), os.path.abspath(checkpoint_path)]) == os.path.abspath(
+                    source
+                ):
+                    video.checkpoints[checkpoint_key] = os.path.join(
+                        destination, os.path.relpath(checkpoint_path, source)
+                    )
             except (TypeError, ValueError):
                 continue
 

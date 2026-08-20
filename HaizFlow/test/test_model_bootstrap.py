@@ -68,14 +68,18 @@ class ModelBootstrapTests(unittest.TestCase):
         gpu_paths = {asset.relative_path for asset in model_bootstrap.required_assets("gpu")}
 
         self.assertTrue(any(path.endswith(".gguf") for path in cpu_paths))
-        self.assertFalse(any(path.endswith(".safetensors") for path in cpu_paths))
-        self.assertTrue(any(path.endswith(".safetensors") for path in gpu_paths))
+        cpu_hymt2 = {path for path in cpu_paths if path.startswith("hymt2-")}
+        gpu_hymt2 = {path for path in gpu_paths if path.startswith("hymt2-")}
+        self.assertFalse(any(path.endswith(".safetensors") for path in cpu_hymt2))
+        self.assertTrue(any(path.endswith(".safetensors") for path in gpu_hymt2))
         self.assertFalse(any(path.endswith(".gguf") for path in gpu_paths))
         self.assertTrue(any(path.startswith("whisper/") for path in cpu_paths))
         self.assertTrue(any(path.startswith("demucs/") for path in gpu_paths))
-        self.assertTrue(any(path.startswith("vieneu/v3-turbo/") for path in cpu_paths))
-        self.assertTrue(any(path.startswith("vieneu/codec/") for path in gpu_paths))
-        self.assertTrue(any(path.endswith("vieneu-3.2.5-py3-none-any.whl") for path in cpu_paths))
+        self.assertTrue(any(path.startswith("omnivoice/") for path in cpu_paths))
+        self.assertTrue(any(path.startswith("omnivoice/") for path in gpu_paths))
+        self.assertTrue(any(path.startswith("omnivoice/sdk/") for path in cpu_paths))
+        self.assertFalse(any(path.startswith("whisper/large-v3-turbo/") for path in cpu_paths))
+        self.assertTrue(any(path.startswith("whisper/large-v3-turbo/") for path in gpu_paths))
         self.assertEqual(
             {path for path in cpu_paths if path.startswith("subtitle-ocr/")},
             {
@@ -100,19 +104,21 @@ class ModelBootstrapTests(unittest.TestCase):
             sha256=hashlib.sha256(payload).hexdigest(),
         )
         progress = []
-        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
-            model_bootstrap, "required_assets", return_value=(asset,)
-        ), patch.object(
-            model_bootstrap, "_verify_installed_components"
-        ), patch.object(
-            model_bootstrap.shutil,
-            "disk_usage",
-            return_value=type("Usage", (), {"free": model_bootstrap.DOWNLOAD_HEADROOM_BYTES * 2})(),
-        ), patch.object(
-            model_bootstrap.urllib.request,
-            "urlopen",
-            return_value=_Response(payload, asset.url),
-        ) as urlopen:
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(model_bootstrap, "required_assets", return_value=(asset,)),
+            patch.object(model_bootstrap, "_verify_installed_components"),
+            patch.object(
+                model_bootstrap.shutil,
+                "disk_usage",
+                return_value=type("Usage", (), {"free": model_bootstrap.DOWNLOAD_HEADROOM_BYTES * 2})(),
+            ),
+            patch.object(
+                model_bootstrap.urllib.request,
+                "urlopen",
+                return_value=_Response(payload, asset.url),
+            ) as urlopen,
+        ):
             root = Path(temp_dir)
             model_bootstrap.install_required_models(root, "cpu", progress=progress.append)
             destination = root / asset.relative_path
@@ -138,9 +144,11 @@ class ModelBootstrapTests(unittest.TestCase):
         )
         cancelled = threading.Event()
         cancelled.set()
-        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
-            model_bootstrap, "required_assets", return_value=(asset,)
-        ), patch.object(model_bootstrap.urllib.request, "urlopen") as urlopen:
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(model_bootstrap, "required_assets", return_value=(asset,)),
+            patch.object(model_bootstrap.urllib.request, "urlopen") as urlopen,
+        ):
             with self.assertRaises(model_bootstrap.ModelBootstrapCancelled):
                 model_bootstrap.install_required_models(
                     Path(temp_dir),
@@ -165,19 +173,21 @@ class ModelBootstrapTests(unittest.TestCase):
         response = _Response(payload[offset:], asset.url)
         response.status = 206
         progress = []
-        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
-            model_bootstrap, "required_assets", return_value=(asset,)
-        ), patch.object(
-            model_bootstrap, "_verify_installed_components"
-        ), patch.object(
-            model_bootstrap.shutil,
-            "disk_usage",
-            return_value=type("Usage", (), {"free": model_bootstrap.DOWNLOAD_HEADROOM_BYTES * 2})(),
-        ), patch.object(
-            model_bootstrap.urllib.request,
-            "urlopen",
-            return_value=response,
-        ) as urlopen:
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(model_bootstrap, "required_assets", return_value=(asset,)),
+            patch.object(model_bootstrap, "_verify_installed_components"),
+            patch.object(
+                model_bootstrap.shutil,
+                "disk_usage",
+                return_value=type("Usage", (), {"free": model_bootstrap.DOWNLOAD_HEADROOM_BYTES * 2})(),
+            ),
+            patch.object(
+                model_bootstrap.urllib.request,
+                "urlopen",
+                return_value=response,
+            ) as urlopen,
+        ):
             root = Path(temp_dir)
             partial = root / "test" / "model.bin.part"
             partial.parent.mkdir(parents=True)
@@ -200,14 +210,15 @@ class ModelBootstrapTests(unittest.TestCase):
             size=len(payload),
             sha256=hashlib.sha256(payload).hexdigest(),
         )
-        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
-            model_bootstrap, "required_assets", return_value=(asset,)
-        ), patch.object(
-            model_bootstrap, "_verify_installed_components"
-        ), patch.object(
-            model_bootstrap.urllib.request,
-            "urlopen",
-        ) as urlopen:
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(model_bootstrap, "required_assets", return_value=(asset,)),
+            patch.object(model_bootstrap, "_verify_installed_components"),
+            patch.object(
+                model_bootstrap.urllib.request,
+                "urlopen",
+            ) as urlopen,
+        ):
             root = Path(temp_dir)
             partial = root / "test" / "model.bin.part"
             partial.parent.mkdir(parents=True)
@@ -241,9 +252,11 @@ class ModelBootstrapTests(unittest.TestCase):
                 model_bootstrap._open_download(asset, 0)
 
     def test_modelscope_ocr_source_is_approved(self):
-        self.assertTrue(model_bootstrap._approved_download_url(
-            "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.8.0/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
-        ))
+        self.assertTrue(
+            model_bootstrap._approved_download_url(
+                "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.8.0/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
+            )
+        )
 
     def test_completed_install_finishes_setup_ui_and_only_warms_models(self):
         class _Host:
@@ -261,20 +274,22 @@ class ModelBootstrapTests(unittest.TestCase):
 
         host = _Host()
         controller = RuntimeDeviceController(host)
-        with patch(
-            "haizflow.desktop.runtime_device_controller.processing_device_preference",
-            return_value="cpu",
-        ), patch(
-            "haizflow.desktop.runtime_device_controller.models_ready",
-            return_value=True,
-        ), patch(
-            "haizflow.desktop.runtime_device_controller.probe_runtime",
-            return_value=type("Probe", (), {"ok": True, "message": "ready"})(),
-        ), patch.object(
-            controller, "_install_models"
-        ) as install, patch.object(
-            controller, "_queue_model_setup"
-        ) as setup_event:
+        with (
+            patch(
+                "haizflow.desktop.runtime_device_controller.processing_device_preference",
+                return_value="cpu",
+            ),
+            patch(
+                "haizflow.desktop.runtime_device_controller.models_ready",
+                return_value=True,
+            ),
+            patch(
+                "haizflow.desktop.runtime_device_controller.probe_runtime",
+                return_value=type("Probe", (), {"ok": True, "message": "ready"})(),
+            ),
+            patch.object(controller, "_install_models") as install,
+            patch.object(controller, "_queue_model_setup") as setup_event,
+        ):
             controller._warm_models_at_startup()
 
         install.assert_not_called()
@@ -303,15 +318,19 @@ class ModelBootstrapTests(unittest.TestCase):
 
         host = _Host()
         controller = RuntimeDeviceController(host)
-        with patch(
-            "haizflow.desktop.runtime_device_controller.processing_device_preference",
-            return_value="cpu",
-        ), patch(
-            "haizflow.desktop.runtime_device_controller.models_ready",
-            return_value=True,
-        ), patch(
-            "haizflow.desktop.runtime_device_controller.probe_runtime",
-            return_value=type("Probe", (), {"ok": False, "message": "broken runtime"})(),
+        with (
+            patch(
+                "haizflow.desktop.runtime_device_controller.processing_device_preference",
+                return_value="cpu",
+            ),
+            patch(
+                "haizflow.desktop.runtime_device_controller.models_ready",
+                return_value=True,
+            ),
+            patch(
+                "haizflow.desktop.runtime_device_controller.probe_runtime",
+                return_value=type("Probe", (), {"ok": False, "message": "broken runtime"})(),
+            ),
         ):
             controller._warm_models_at_startup()
 

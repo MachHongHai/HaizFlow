@@ -47,6 +47,38 @@ class _DownloadSourceModel:
 
 
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_whisper_turbo_option_uses_verified_model_and_selected_gpu(self):
+        host = SimpleNamespace(
+            _hardware_capabilities=SimpleNamespace(cuda_available=False),
+            _active_processing_device="gpu",
+            _settings_processing_device="gpu",
+            _whisper_turbo_model_ready=True,
+            _settings_language="en",
+        )
+
+        options = HaizFlowController.speechRecognitionModelOptions.fget(host)
+
+        self.assertTrue(options[1]["available"])
+
+    def test_whisper_turbo_option_stays_locked_until_integrity_passes(self):
+        host = SimpleNamespace(
+            _hardware_capabilities=SimpleNamespace(cuda_available=True),
+            _active_processing_device="gpu",
+            _settings_processing_device="gpu",
+            _whisper_turbo_model_ready=False,
+            _settings_language="en",
+        )
+
+        options = HaizFlowController.speechRecognitionModelOptions.fget(host)
+
+        self.assertFalse(options[1]["available"])
+
+    def test_whisper_turbo_readiness_uses_the_integrity_verifier(self):
+        with patch.object(qml_controller, "verify_whisper_turbo_model") as verifier:
+            self.assertTrue(HaizFlowController._detect_whisper_turbo_model_ready())
+
+        verifier.assert_called_once()
+
     def test_download_project_source_import_uses_single_replace_and_batch_copy_flows(self):
         with tempfile.TemporaryDirectory() as temporary:
             first = Path(temporary) / "first.mp4"
@@ -63,13 +95,27 @@ class MultiProjectControllerTests(unittest.TestCase):
             controller.import_video = Mock(return_value=True)
             controller.import_batch_videos = Mock()
             sources = [
-                {"item_id": "one", "project_name": "Downloads", "category": "video",
-                 "file_name": first.name, "file_path": str(first), "file_size": 5},
-                {"item_id": "two", "project_name": "Downloads", "category": "channel",
-                 "file_name": second.name, "file_path": str(second), "file_size": 6},
+                {
+                    "item_id": "one",
+                    "project_name": "Downloads",
+                    "category": "video",
+                    "file_name": first.name,
+                    "file_path": str(first),
+                    "file_size": 5,
+                },
+                {
+                    "item_id": "two",
+                    "project_name": "Downloads",
+                    "category": "channel",
+                    "file_name": second.name,
+                    "file_path": str(second),
+                    "file_size": 6,
+                },
             ]
 
-            with patch.object(project_import_controller.project_store, "list_download_project_videos", return_value=sources):
+            with patch.object(
+                project_import_controller.project_store, "list_download_project_videos", return_value=sources
+            ):
                 controller.refresh_download_project_sources()
             controller.set_download_project_source_selected(0, True, exclusive=True)
             self.assertTrue(controller.import_selected_download_project_videos("single"))
@@ -82,10 +128,12 @@ class MultiProjectControllerTests(unittest.TestCase):
 
     def test_download_project_source_single_selection_is_exclusive(self):
         model = _DownloadSourceModel()
-        model.set_items([
-            {"item_id": "one", "selected": False},
-            {"item_id": "two", "selected": False},
-        ])
+        model.set_items(
+            [
+                {"item_id": "one", "selected": False},
+                {"item_id": "two", "selected": False},
+            ]
+        )
         host = SimpleNamespace(
             download_project_sources=model,
             downloadProjectSourcesChanged=SimpleNamespace(emit=Mock()),
@@ -118,26 +166,39 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         HaizFlowController.originalSubtitleRemovalMode.fset(host, "unsupported")
 
-        self.assertEqual(host._original_subtitle_removal_mode, "blur")
+        self.assertEqual(host._original_subtitle_removal_mode, "patch")
         host.subtitleSettingsChanged.emit.assert_called_once_with()
 
     def test_new_project_setup_resets_all_project_local_settings(self):
         changed = {
             name: SimpleNamespace(emit=Mock())
             for name in (
-                "workflowModeChanged", "targetLanguageChanged", "ttsVoiceChanged",
-                "ttsVoiceOptionsChanged", "enableAudioSeparationChanged", "originalVolumeChanged",
-                "backgroundMusicVolumeChanged", "ttsVolumeChanged", "watermarkTextChanged",
+                "workflowModeChanged",
+                "targetLanguageChanged",
+                "ttsVoiceChanged",
+                "ttsVoiceOptionsChanged",
+                "enableAudioSeparationChanged",
+                "originalVolumeChanged",
+                "backgroundMusicVolumeChanged",
+                "ttsVolumeChanged",
+                "watermarkTextChanged",
                 "backgroundMusicChanged",
             )
         }
         preview = SimpleNamespace(invalidate=Mock())
         host = SimpleNamespace(
-            _workflow_mode="review", _target_language="en", _tts_voice="en-US-GuyNeural",
-            _enable_audio_separation=True, _original_volume=15, _background_music_volume=75,
-            _tts_volume=55, _watermark_text="Previous project", _background_music_path="old.m4a",
+            _workflow_mode="review",
+            _target_language="en",
+            _tts_voice="en-US-GuyNeural",
+            _enable_audio_separation=True,
+            _original_volume=15,
+            _background_music_volume=75,
+            _tts_volume=55,
+            _watermark_text="Previous project",
+            _background_music_path="old.m4a",
             _original_subtitle_removal_mode="inpaint",
-            _audio_preview=preview, **changed,
+            _audio_preview=preview,
+            **changed,
         )
         controller = ProjectImportController(host)
         controller.cancel_background_music_link_import = Mock()
@@ -146,25 +207,31 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertEqual(host._workflow_mode, "A")
         self.assertEqual(host._target_language, "vi")
-        self.assertEqual(host._tts_provider, "vieneu")
-        self.assertEqual(host._tts_voice, "Trúc Ly")
-        self.assertFalse(host._enable_audio_separation)
+        self.assertEqual(host._tts_provider, "omnivoice")
+        self.assertEqual(host._tts_voice, "omnivoice:female")
+        self.assertTrue(host._enable_audio_separation)
         self.assertEqual((host._original_volume, host._background_music_volume, host._tts_volume), (60, 30, 100))
         self.assertEqual(host._watermark_text, "")
         self.assertEqual(host._background_music_path, "")
-        self.assertEqual(host._original_subtitle_removal_mode, "blur")
+        self.assertEqual(host._original_subtitle_removal_mode, "patch")
         preview.invalidate.assert_called_once_with()
         controller.cancel_background_music_link_import.assert_called_once_with()
 
     def test_new_batch_import_is_persisted_before_existing_cards(self):
         project_key = "batch:campaign"
         existing = SimpleNamespace(
-            video_id="existing", project_type="batch", project_key=project_key,
-            batch_import_order=0, created_at="2026-08-01T10:00:00Z",
+            video_id="existing",
+            project_type="batch",
+            project_key=project_key,
+            batch_import_order=0,
+            created_at="2026-08-01T10:00:00Z",
         )
         newly_imported = SimpleNamespace(
-            video_id="new", project_type="batch", project_key=project_key,
-            batch_import_order=0, created_at="2026-08-01T11:00:00Z",
+            video_id="new",
+            project_type="batch",
+            project_key=project_key,
+            batch_import_order=0,
+            created_at="2026-08-01T11:00:00Z",
         )
         videos = {video.video_id: video for video in (existing, newly_imported)}
         host = SimpleNamespace(
@@ -200,20 +267,22 @@ class MultiProjectControllerTests(unittest.TestCase):
             _project_type="batch",
             _batch_video_ids=["baseline", "custom"],
             _build_config=Mock(return_value=custom_editor_config),
-            _batch_settings_values=Mock(return_value={
-                "workflowMode": "A",
-                "targetLanguage": "vi",
-                "ttsVoice": "vi-VN-HoaiMyNeural",
-                "enableAudioSeparation": True,
-                "originalVolume": 45,
-                "backgroundMusicVolume": 20,
-                "ttsVolume": 90,
-                "watermarkText": "batch",
-                "removeOriginalSubtitles": True,
-                "originalSubtitleRemovalMode": "patch",
-                "subtitleStyle": {"font_size": 64, "manual": True},
-                "backgroundMusicPath": "music.mp3",
-            }),
+            _batch_settings_values=Mock(
+                return_value={
+                    "workflowMode": "A",
+                    "targetLanguage": "vi",
+                    "ttsVoice": "vi-VN-HoaiMyNeural",
+                    "enableAudioSeparation": True,
+                    "originalVolume": 45,
+                    "backgroundMusicVolume": 20,
+                    "ttsVolume": 90,
+                    "watermarkText": "batch",
+                    "removeOriginalSubtitles": True,
+                    "originalSubtitleRemovalMode": "patch",
+                    "subtitleStyle": {"font_size": 64, "manual": True},
+                    "backgroundMusicPath": "music.mp3",
+                }
+            ),
         )
 
         config = ProjectImportController(host)._config_for_project_import()
@@ -228,12 +297,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(config.background_music_path, "music.mp3")
 
     def test_batch_card_opens_the_selected_video_settings(self):
-        batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(
-            encoding="utf-8"
-        )
-        card = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchVideoCard.qml").read_text(
-            encoding="utf-8"
-        )
+        batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(encoding="utf-8")
+        card = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchVideoCard.qml").read_text(encoding="utf-8")
 
         self.assertIn("AppController.selectBatchVideo(index)", batch_page)
         self.assertIn("root.openVideoDetail()", batch_page)
@@ -244,9 +309,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertNotIn('glyph: "\\uE70F"', card)
         self.assertIn("ThumbnailFallback", card)
 
-        project_card = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectCard.qml").read_text(
-            encoding="utf-8"
-        )
+        project_card = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectCard.qml").read_text(encoding="utf-8")
         self.assertIn("required property string videoSize", project_card)
         self.assertIn("id: sizeLabel", project_card)
         self.assertIn("root.videoSize.length > 0", project_card)
@@ -255,9 +318,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn('I18n.t("Open project folder")', project_card)
         self.assertIn('I18n.t("Delete project")', project_card)
 
-        projects_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectsPage.qml").read_text(
-            encoding="utf-8"
-        )
+        projects_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectsPage.qml").read_text(encoding="utf-8")
         self.assertIn("onProjectFolderRequested", projects_page)
         self.assertIn("onDeleteRequested", projects_page)
 
@@ -401,9 +462,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             ),
             patch("haizflow.desktop.processing_lifecycle_controller.video_store.update_video"),
             patch("haizflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
-            patch(
-                "haizflow.desktop.processing_lifecycle_controller.prepare_video_resume"
-            ) as prepare_resume,
+            patch("haizflow.desktop.processing_lifecycle_controller.prepare_video_resume") as prepare_resume,
         ):
             self.assertTrue(ProcessingLifecycleController(host).enqueue_video(video.video_id))
 
@@ -447,14 +506,20 @@ class MultiProjectControllerTests(unittest.TestCase):
 
     def test_batch_setting_overrides_identify_each_changed_video_and_field(self):
         common = dict(
-            mode="A", target_language="vi", tts_voice="vi-VN-HoaiMyNeural",
-            enable_audio_separation=False, original_video_volume=60,
-            background_music_volume=30, tts_volume=100, watermark_text="",
+            mode="A",
+            target_language="vi",
+            tts_voice="vi-VN-HoaiMyNeural",
+            enable_audio_separation=False,
+            original_video_volume=60,
+            background_music_volume=30,
+            tts_volume=100,
+            watermark_text="",
         )
         first = SimpleNamespace(video_id="video-1", original_filename="first.mp4", **common)
         second = SimpleNamespace(video_id="video-2", original_filename="second.mp4", **common)
         custom = SimpleNamespace(
-            video_id="video-3", original_filename="custom.mp4",
+            video_id="video-3",
+            original_filename="custom.mp4",
             **{**common, "target_language": "en", "tts_voice": "en-US-GuyNeural", "watermark_text": "HaizFlow"},
         )
         videos = {video.video_id: video for video in (first, second, custom)}
@@ -466,11 +531,16 @@ class MultiProjectControllerTests(unittest.TestCase):
         ):
             overrides = ProjectCommandsController(host).batch_setting_overrides()
 
-        self.assertEqual(overrides, [{
-            "videoId": "video-3",
-            "fileName": "custom.mp4",
-            "differences": ["targetLanguage", "voice", "watermark"],
-        }])
+        self.assertEqual(
+            overrides,
+            [
+                {
+                    "videoId": "video-3",
+                    "fileName": "custom.mp4",
+                    "differences": ["targetLanguage", "voice", "watermark"],
+                }
+            ],
+        )
 
     def test_batch_settings_apply_one_background_music_source_to_every_video(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -494,9 +564,7 @@ class MultiProjectControllerTests(unittest.TestCase):
                     side_effect=lambda video_id: videos.get(video_id),
                 ),
                 patch("haizflow.desktop.project_commands_controller.video_store.update_video"),
-                patch(
-                    "haizflow.desktop.project_commands_controller.set_desktop_background_music"
-                ) as set_music,
+                patch("haizflow.desktop.project_commands_controller.set_desktop_background_music") as set_music,
             ):
                 applied = ProjectCommandsController(host).apply_batch_settings(
                     "A", "vi", "auto", "", False, 60, 25, 100, "", str(music)
@@ -507,9 +575,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual([call.args[1] for call in set_music.call_args_list], [str(music), str(music)])
 
     def test_batch_page_exposes_settings_resume_and_bottom_progress(self):
-        batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(
-            encoding="utf-8"
-        )
+        batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(encoding="utf-8")
         settings = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
             encoding="utf-8"
         )
@@ -537,22 +603,22 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("onClosed: saveDraft()", settings)
         self.assertNotIn('I18n.t("Apply to all videos")', settings)
 
-        batch_audio_dialog = (
-            ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchAudioMixDialog.qml"
-        ).read_text(encoding="utf-8")
+        batch_audio_dialog = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchAudioMixDialog.qml").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("AudioLevelControl", batch_audio_dialog)
         self.assertIn("root.audioSeparationEnabled", batch_audio_dialog)
         self.assertIn("backgroundMusicPath.length > 0", batch_audio_dialog)
         self.assertIn("AppController.previewBatchAudioMix(", batch_audio_dialog)
         self.assertIn("function pausePreview()", batch_audio_dialog)
         self.assertIn("onClosed: pausePreview()", batch_audio_dialog)
-        self.assertIn("root.visible && AppController.audioPreviewState === \"ready\"", batch_audio_dialog)
+        self.assertIn('root.visible && AppController.audioPreviewState === "ready"', batch_audio_dialog)
         self.assertIn("readonly property bool previewPlaying", batch_audio_dialog)
         self.assertIn('root.previewPlaying ? "\\uE769" : "\\uE768"', batch_audio_dialog)
 
-        dubbing_setup = (
-            ROOT / "src" / "haizflow" / "desktop" / "qml" / "DubbingSetupPanel.qml"
-        ).read_text(encoding="utf-8")
+        dubbing_setup = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "DubbingSetupPanel.qml").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("videoSettingsSaveTimer.restart()", dubbing_setup)
         self.assertIn("AppController.persistSelectedVideoSettings()", dubbing_setup)
         self.assertNotIn("AppController.saveSelectedVideoSettings()", dubbing_setup)
@@ -570,8 +636,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             )
             with patch.object(qml_controller.video_store, "get_video", return_value=video):
                 result = HaizFlowController.previewBatchAudioMix(
-                    controller, "vi", "edge", "vi-VN-HoaiMyNeural",
-                    True, 40, 25, 90, "music.mp3"
+                    controller, "vi", "edge", "vi-VN-HoaiMyNeural", True, 40, 25, 90, "music.mp3"
                 )
 
         self.assertTrue(result)
@@ -606,7 +671,9 @@ class MultiProjectControllerTests(unittest.TestCase):
             project_directory = Path(temp_dir) / "project"
             project_directory.mkdir()
             host = SimpleNamespace(
-                _project_directory=str(project_directory), videoPath="", _selected_video_id=None,
+                _project_directory=str(project_directory),
+                videoPath="",
+                _selected_video_id=None,
             )
             importer = ProjectImportController(host)
 
@@ -633,7 +700,9 @@ class MultiProjectControllerTests(unittest.TestCase):
             batchChanged=SimpleNamespace(emit=Mock()),
         )
         controller._normalized_tts_provider = HaizFlowController._normalized_tts_provider
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(controller)
+        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+            controller
+        )
         controller._apply_batch_settings = HaizFlowController._apply_batch_settings.__get__(controller)
 
         with (
@@ -659,6 +728,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             mode="review",
             source_language="auto",
             target_language="en",
+            speech_recognition_model="small",
             tts_provider="edge",
             tts_voice="en-US-JennyNeural",
             enable_audio_separation=True,
@@ -751,6 +821,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             source.write_bytes(b"changed source")
             os.utime(source, None)
             self.assertEqual(HaizFlowController._missing_thumbnail_ids(controller, [video]), ["thumbnail-video"])
+
     def test_close_confirmation_is_only_required_for_background_work(self):
         idle_controller = SimpleNamespace(
             _processing_queue=SimpleNamespace(has_work=False),
@@ -853,7 +924,9 @@ class MultiProjectControllerTests(unittest.TestCase):
             ttsProviderChanged=SimpleNamespace(emit=Mock()),
             ttsProviderOptionsChanged=SimpleNamespace(emit=Mock()),
         )
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(controller)
+        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+            controller
+        )
 
         HaizFlowController.targetLanguage.fset(controller, "en")
 
@@ -863,35 +936,32 @@ class MultiProjectControllerTests(unittest.TestCase):
         controller.ttsVoiceChanged.emit.assert_called_once()
         controller.ttsVoiceOptionsChanged.emit.assert_called_once()
 
-    def test_unsupported_vieneu_language_falls_back_to_edge_and_alerts(self):
+    def test_omnivoice_remains_available_when_target_language_changes(self):
         preview = SimpleNamespace(invalidate=Mock())
         controller = SimpleNamespace(
             _target_language="vi",
-            _tts_provider="vieneu",
-            _tts_voice="Trúc Ly",
+            _tts_provider="omnivoice",
+            _tts_voice="omnivoice:female",
             _audio_preview=preview,
-            _voice_options_for_language=lambda language, provider="vieneu": (
-                [{"voice": "Trúc Ly"}]
-                if provider == "vieneu"
-                else [{"voice": "ja-JP-NanamiNeural"}]
-            ),
+            _voice_options_for_language=lambda language, provider="omnivoice": [
+                {"voice": "omnivoice:female"},
+                {"voice": "omnivoice:male"},
+            ],
             targetLanguageChanged=SimpleNamespace(emit=Mock()),
             languageOptionsChanged=SimpleNamespace(emit=Mock()),
             ttsProviderChanged=SimpleNamespace(emit=Mock()),
             ttsProviderOptionsChanged=SimpleNamespace(emit=Mock()),
             ttsVoiceChanged=SimpleNamespace(emit=Mock()),
             ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
-            _show_vieneu_fallback_alert=Mock(),
         )
-        controller._normalized_voice_for_language = (
-            HaizFlowController._normalized_voice_for_language.__get__(controller)
+        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+            controller
         )
 
         HaizFlowController.targetLanguage.fset(controller, "ja")
 
-        self.assertEqual(controller._tts_provider, "edge")
-        self.assertEqual(controller._tts_voice, "ja-JP-NanamiNeural")
-        controller._show_vieneu_fallback_alert.assert_called_once_with("ja")
+        self.assertEqual(controller._tts_provider, "omnivoice")
+        self.assertEqual(controller._tts_voice, "omnivoice:female")
         preview.invalidate.assert_called_once_with()
 
     def test_voice_setter_rejects_a_voice_from_another_language(self):
@@ -906,7 +976,9 @@ class MultiProjectControllerTests(unittest.TestCase):
             ttsVoiceChanged=SimpleNamespace(emit=Mock()),
             ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
         )
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(controller)
+        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+            controller
+        )
 
         HaizFlowController.ttsVoice.fset(controller, "vi-VN-NamMinhNeural")
 
@@ -918,12 +990,11 @@ class MultiProjectControllerTests(unittest.TestCase):
         preview = SimpleNamespace(invalidate=Mock())
         controller = SimpleNamespace(
             _target_language="vi",
-            _tts_provider="auto",
-            _tts_voice="Trúc Ly",
+            _tts_provider="omnivoice",
+            _tts_voice="omnivoice:female",
             _audio_preview=preview,
-            _voice_options_for_language=lambda language, provider="auto": (
-                [{"voice": "Trúc Ly"}] if provider in {"auto", "vieneu"}
-                else [{"voice": "vi-VN-HoaiMyNeural"}]
+            _voice_options_for_language=lambda language, provider="omnivoice": (
+                [{"voice": "omnivoice:female"}] if provider == "omnivoice" else [{"voice": "vi-VN-HoaiMyNeural"}]
             ),
             ttsProviderChanged=SimpleNamespace(emit=Mock()),
             ttsProviderOptionsChanged=SimpleNamespace(emit=Mock()),
@@ -931,7 +1002,9 @@ class MultiProjectControllerTests(unittest.TestCase):
             ttsVoiceOptionsChanged=SimpleNamespace(emit=Mock()),
         )
         controller._normalized_tts_provider = HaizFlowController._normalized_tts_provider
-        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(controller)
+        controller._normalized_voice_for_language = HaizFlowController._normalized_voice_for_language.__get__(
+            controller
+        )
 
         HaizFlowController.ttsProvider.fset(controller, "edge")
 
@@ -1002,7 +1075,9 @@ class MultiProjectControllerTests(unittest.TestCase):
             _project_directory="D:/Projects",
             _selected_video_id=selected_video.video_id,
             _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
-            _apply_setup_to_video=lambda video, review_approved: calls.append(("setup", video.video_id, review_approved)),
+            _apply_setup_to_video=lambda video, review_approved: calls.append(
+                ("setup", video.video_id, review_approved)
+            ),
             _enqueue_video=lambda video_id: calls.append(("enqueue", video_id)),
             selectedVideoChanged=SimpleNamespace(emit=Mock()),
             refreshVideos=Mock(),
@@ -1165,6 +1240,40 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(media_source["channel_url"], target["channel_url"])
         importer.complete_video.assert_called_once_with("session", "abc", True)
         controller.refreshVideos.assert_called_once()
+
+    def test_translation_review_draft_is_saved_atomically_and_restored(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            video = SimpleNamespace(
+                video_id="video-1",
+                status="awaiting_review",
+                files={"transcript_json": str(Path(temporary) / "translated.json")},
+            )
+            host = SimpleNamespace(
+                _selected_video_id="video-1",
+                _status_message="",
+                statusMessageChanged=SimpleNamespace(emit=Mock()),
+                _selected_video=lambda: video,
+            )
+
+            def update_video(_video_id, **changes):
+                for key, value in changes.items():
+                    setattr(video, key, value)
+                return video
+
+            payload = '[{"start": 0.0, "end": 1.5, "text": "Draft translation"}]'
+            with (
+                patch.object(qml_controller.video_store, "get_video", return_value=video),
+                patch.object(qml_controller.video_store, "get_video_dir", return_value=temporary),
+                patch.object(qml_controller.video_store, "update_video", side_effect=update_video),
+                patch.object(qml_controller.video_store, "log_to_video"),
+            ):
+                self.assertTrue(ProjectCommandsController(host).save_translation_review_draft(payload))
+                restored = HaizFlowController.reviewSegments.fget(host)
+
+            draft_path = Path(video.files["translation_review_draft"])
+            self.assertTrue(draft_path.is_file())
+            self.assertEqual(restored[0]["text"], "Draft translation")
+            self.assertFalse(any(path.name.endswith(".tmp") for path in Path(temporary).iterdir()))
 
 
 if __name__ == "__main__":

@@ -55,10 +55,36 @@ Panel {
             currentValue: AppController.workflowMode
             options: [
                 { "label": I18n.t("Full auto"), "value": "A" },
-                { "label": I18n.t("Review then dub"), "value": "review" }
+                { "label": I18n.t("Review subtitles"), "value": "review" }
             ]
             onActivated: function(value) {
                 AppController.workflowMode = value
+                root.scheduleVideoSettingsSave()
+            }
+        }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Theme.space4
+
+        Text {
+            text: I18n.t("Speech recognition")
+            color: Theme.textMuted
+            font.pixelSize: Theme.caption
+            font.weight: Font.Medium
+            textFormat: Text.PlainText
+        }
+
+        AppComboBox {
+            Layout.fillWidth: true
+            enabled: AppController.canEditSelectedVideo
+            textRole: "label"
+            valueRole: "value"
+            model: AppController.speechRecognitionModelOptions
+            currentIndex: AppController.speechRecognitionModelIndex
+            onActivated: {
+                AppController.speechRecognitionModel = currentValue
                 root.scheduleVideoSettingsSave()
             }
         }
@@ -128,15 +154,17 @@ Panel {
             textFormat: Text.PlainText
         }
 
-        AppComboBox {
+        VoicePicker {
             Layout.fillWidth: true
             enabled: AppController.canEditSelectedVideo
-            textRole: "label"
-            valueRole: "voice"
             model: AppController.ttsVoiceOptions
-            currentIndex: AppController.ttsVoiceIndex
-            onActivated: {
-                AppController.ttsVoice = currentValue
+            currentValue: AppController.ttsVoice
+            onSelected: function(voice) {
+                if (voice === "omnivoice:clone") {
+                    voiceCloneDialog.openForSelectedVideo()
+                    return
+                }
+                AppController.ttsVoice = voice
                 root.scheduleVideoSettingsSave()
             }
         }
@@ -437,6 +465,10 @@ Panel {
             AppController.subtitleBoxHeightPercent = boxHeight
             root.scheduleVideoSettingsSave()
         }
+    }
+
+    VoiceCloneDialog {
+        id: voiceCloneDialog
     }
 
     AppButton {

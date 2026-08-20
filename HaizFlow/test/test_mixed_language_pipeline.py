@@ -66,11 +66,14 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual(repaired, 1)
         self.assertEqual(segments[0]["end"], 2.75)
         self.assertEqual(segments[1]["start"], 2.75)
-        self.assertEqual([segment["text"] for segment in segments], [
-            "Cau tieng Viet.",
-            "A short English phrase.",
-            "Cau tiep theo.",
-        ])
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            [
+                "Cau tieng Viet.",
+                "A short English phrase.",
+                "Cau tiep theo.",
+            ],
+        )
         transcribe._validate_timestamp_invariants(segments, 6.0)
 
     def test_context_alignment_cannot_intrude_into_a_neighbouring_language(self):
@@ -95,9 +98,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             {**second, "start": 9.0, "end": 9.7},
         ]
 
-        self.assertIsNone(
-            transcribe._alignment_intrusion_detail([first, second], aligned, [first, second])
-        )
+        self.assertIsNone(transcribe._alignment_intrusion_detail([first, second], aligned, [first, second]))
 
     def test_segment_language_detection_uses_immutable_sentence_clips(self):
         original_log = transcribe.log_to_video
@@ -172,6 +173,65 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual(language, "en")
         self.assertEqual(output[0]["text"], "S tier.")
         self.assertEqual(model.calls, [{"batch_size": 8, "language": None}])
+
+    def test_switching_asr_model_releases_mismatched_warm_model(self):
+        class WhisperModel:
+            model = _LanguageModel([("en", 0.99)])
+
+            def transcribe(self, _audio, **_kwargs):
+                return {
+                    "language": "en",
+                    "segments": [{"start": 0.1, "end": 1.1, "text": "Ready."}],
+                }
+
+        warm_model = object()
+        loaded_model = WhisperModel()
+        profile = SimpleNamespace(
+            cuda_available=False,
+            cpu_threads=4,
+            whisper_batch_size=8,
+        )
+        original_warm = transcribe._WARM_ASR_MODEL
+        original_device = transcribe._WARM_DEVICE
+        original_name = transcribe._WARM_MODEL_NAME
+        transcribe._WARM_ASR_MODEL = warm_model
+        transcribe._WARM_DEVICE = "cuda"
+        transcribe._WARM_MODEL_NAME = "large-v3-turbo"
+        try:
+            with (
+                tempfile.TemporaryDirectory() as temp_dir,
+                mock.patch.object(transcribe, "runtime_profile", return_value=profile),
+                mock.patch.object(transcribe, "_load_whisper_model", return_value=loaded_model) as load_model,
+                mock.patch.object(
+                    transcribe.whisperx,
+                    "load_audio",
+                    return_value=np.zeros(32_000, dtype=np.float32),
+                ),
+                mock.patch.object(
+                    transcribe,
+                    "_align_segments_by_language",
+                    side_effect=lambda _audio, segments, *_args, **_kwargs: segments,
+                ),
+                mock.patch.object(transcribe, "_release_cuda"),
+                mock.patch.object(transcribe, "log_to_video"),
+                mock.patch.object(transcribe.torch.cuda, "is_available", return_value=False),
+            ):
+                transcribe.transcribe(
+                    "audio.wav",
+                    str(Path(temp_dir) / "segments.json"),
+                    "auto",
+                    "test-video",
+                    model_name="small",
+                )
+
+            load_model.assert_called_once_with("cpu", "int8", 4, "small")
+            self.assertIsNone(transcribe._WARM_ASR_MODEL)
+            self.assertIsNone(transcribe._WARM_DEVICE)
+            self.assertIsNone(transcribe._WARM_MODEL_NAME)
+        finally:
+            transcribe._WARM_ASR_MODEL = original_warm
+            transcribe._WARM_DEVICE = original_device
+            transcribe._WARM_MODEL_NAME = original_name
 
     def test_mixed_language_retranscription_changes_text_only(self):
         class WhisperModel:
@@ -323,8 +383,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
                 "end": 8.781,
                 "text": source["text"],
                 "words": [
-                    {"word": word, "start": 0.031, "end": 0.081, "score": 0.01}
-                    for word in source["text"].split()
+                    {"word": word, "start": 0.031, "end": 0.081, "score": 0.01} for word in source["text"].split()
                 ],
             }
         ]
@@ -332,7 +391,10 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         original_align = transcribe._align_without_nltk_download
         original_release = transcribe._release_cuda
         original_log = transcribe.log_to_video
-        transcribe._verified_alignment_asset = lambda *_args, **_kwargs: (SimpleNamespace(to=lambda _device: object()), {})
+        transcribe._verified_alignment_asset = lambda *_args, **_kwargs: (
+            SimpleNamespace(to=lambda _device: object()),
+            {},
+        )
         transcribe._align_without_nltk_download = lambda *_args, **_kwargs: {"segments": compressed}
         transcribe._release_cuda = lambda *_args, **_kwargs: None
         transcribe.log_to_video = lambda *_args, **_kwargs: None
@@ -435,11 +497,14 @@ class MixedLanguagePipelineTests(unittest.TestCase):
 
         groups = transcribe._alignment_groups(segments)
 
-        self.assertEqual([[item["text"] for item in group] for group in groups], [
-            ["One.", "Two."],
-            ["Trois."],
-            ["Quatre."],
-        ])
+        self.assertEqual(
+            [[item["text"] for item in group] for group in groups],
+            [
+                ["One.", "Two."],
+                ["Trois."],
+                ["Quatre."],
+            ],
+        )
 
     def test_unpinned_huggingface_alignment_model_is_never_downloaded(self):
         source = {
@@ -491,10 +556,18 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as temp_dir,
             mock.patch.object(transcribe, "MODELS_DIR", temp_dir),
-            mock.patch.object(transcribe, "WHISPER_MODEL", "small"),
         ):
             with self.assertRaisesRegex(RuntimeError, "missing or corrupted"):
                 transcribe._whisper_model_source()
+
+    def test_whisper_source_ignores_external_model_environment_override(self):
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            mock.patch.object(transcribe, "MODELS_DIR", temp_dir),
+            mock.patch.dict(os.environ, {"WHISPER_MODEL": "untrusted/model"}),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "missing or corrupted"):
+                transcribe._whisper_model_source("small")
 
     def test_bootstrap_whisperx_vad_asset_matches_pinned_manifest(self):
         self.assertEqual(transcribe._WHISPERX_VAD_SIZE, 17_719_103)
@@ -548,7 +621,10 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             captured = {}
             original_worker = translation._translate_with_hymt2_worker
             original_log = translation.log_to_video
-            translation._translate_with_hymt2_worker = lambda texts, **kwargs: captured.update(kwargs) or ["Bonjour", "Hello"]
+            translation._translate_with_hymt2_worker = lambda texts, **kwargs: captured.update(kwargs) or [
+                "Bonjour",
+                "Hello",
+            ]
             translation.log_to_video = lambda *_args, **_kwargs: None
             try:
                 translated = translation.translate_segments(
@@ -589,14 +665,16 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             current_path = Path(temp_dir) / "current.json"
             legacy_path = Path(temp_dir) / "legacy.json"
             current_path.write_text(
-                json.dumps([
-                    {
-                        "start": 0,
-                        "end": 1,
-                        "text": "Hello",
-                        "timing_source": transcribe.TIMING_SOURCE,
-                    }
-                ]),
+                json.dumps(
+                    [
+                        {
+                            "start": 0,
+                            "end": 1,
+                            "text": "Hello",
+                            "timing_source": transcribe.TIMING_SOURCE,
+                        }
+                    ]
+                ),
                 encoding="utf-8",
             )
             legacy_path.write_text(
@@ -797,10 +875,8 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         original_emit = hymt2_worker._emit_event
         hymt2_worker._model_runtime = lambda: (object(), object(), object(), "cpu")
         hymt2_worker.runtime_profile = lambda: SimpleNamespace(is_cpu_only=False)
-        hymt2_worker._translate_prompt_batch = (
-            lambda _model, _tokenizer, _torch, _device, _prompts, source_texts: (
-                captured_source_texts.extend(source_texts) or ["Xin chào", "Không gluten"]
-            )
+        hymt2_worker._translate_prompt_batch = lambda _model, _tokenizer, _torch, _device, _prompts, source_texts: (
+            captured_source_texts.extend(source_texts) or ["Xin chào", "Không gluten"]
         )
         hymt2_worker._emit_event = lambda _payload: None
         try:
@@ -877,10 +953,14 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             assert process.stdout is not None
             process.stdin.write('{"request_id":"ping-1","command":"ping"}\n')
             process.stdin.flush()
-            self.assertEqual(json.loads(process.stdout.readline()), {"event": "response", "request_id": "ping-1", "ready": True})
+            self.assertEqual(
+                json.loads(process.stdout.readline()), {"event": "response", "request_id": "ping-1", "ready": True}
+            )
             process.stdin.write('{"request_id":"stop-1","command":"shutdown"}\n')
             process.stdin.flush()
-            self.assertEqual(json.loads(process.stdout.readline()), {"event": "response", "request_id": "stop-1", "stopped": True})
+            self.assertEqual(
+                json.loads(process.stdout.readline()), {"event": "response", "request_id": "stop-1", "stopped": True}
+            )
             process.stdin.close()
             self.assertEqual(process.wait(timeout=5), 0)
         finally:

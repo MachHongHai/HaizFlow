@@ -3,17 +3,17 @@ param()
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
-$SitePackages = Join-Path $Root ".venv\Lib\site-packages"
+$DependencyLock = Join-Path $Root "requirements-lock-py313-win64.txt"
 $Uv = Get-Command uvx -ErrorAction SilentlyContinue
 
 if (!$Uv) {
   throw "uvx is required to run the pinned dependency vulnerability audit."
 }
-if (!(Test-Path -LiteralPath $SitePackages -PathType Container)) {
-  throw "Project environment is missing. Run scripts\install-desktop-env.ps1 first."
-}
 if (!(Test-Path -LiteralPath $Python -PathType Leaf)) {
   throw "Project Python is missing: $Python"
+}
+if (!(Test-Path -LiteralPath $DependencyLock -PathType Leaf)) {
+  throw "Dependency lock is missing: $DependencyLock"
 }
 
 # Reviewed exceptions are documented in docs/dependency-security.md. Any new
@@ -44,7 +44,9 @@ $AcceptedCanonicalTorchVulnerabilities = @(
 $Arguments = @(
   "--from", "pip-audit==2.10.1",
   "pip-audit",
-  "--path", $SitePackages,
+  "--requirement", $DependencyLock,
+  "--no-deps",
+  "--disable-pip",
   "--progress-spinner", "off"
 )
 foreach ($Vulnerability in $AcceptedVulnerabilities) {
@@ -79,6 +81,7 @@ try {
     "pip-audit",
     "--requirement", $CanonicalRequirements,
     "--no-deps",
+    "--disable-pip",
     "--progress-spinner", "off"
   )
   foreach ($Vulnerability in $AcceptedCanonicalTorchVulnerabilities) {
@@ -99,4 +102,4 @@ finally {
   }
 }
 
-Write-Output "Dependency vulnerability audit passed; reviewed exceptions are documented and CUDA wheels were audited by canonical version."
+Write-Output "Dependency vulnerability audit passed for the exact hashed lock; reviewed exceptions are documented and CUDA wheels were audited by canonical version."

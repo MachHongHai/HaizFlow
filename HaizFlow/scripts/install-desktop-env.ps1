@@ -79,9 +79,22 @@ if (!(Test-Path -LiteralPath $DependencyLock -PathType Leaf)) {
   throw "Dependency lock is missing: $DependencyLock"
 }
 
-& $Python -m pip install --require-hashes -r $DependencyLock
-if ($LASTEXITCODE -ne 0) {
-  throw "Hashed dependency installation failed with exit code $LASTEXITCODE."
+$Uv = Get-Command uv -ErrorAction SilentlyContinue
+if ($Uv) {
+  # ``sync`` removes packages left behind by older dependency sets.  This is
+  # important for reproducible builds and prevents stale demo/server packages
+  # from leaking into vulnerability and license inventories.
+  & $Uv.Source pip sync --python $Python --strict $DependencyLock
+  if ($LASTEXITCODE -ne 0) {
+    throw "Locked dependency synchronization failed with exit code $LASTEXITCODE."
+  }
+}
+else {
+  Write-Warning "uv is unavailable; installing the hash-locked set without pruning stale packages."
+  & $Python -m pip install --require-hashes -r $DependencyLock
+  if ($LASTEXITCODE -ne 0) {
+    throw "Hashed dependency installation failed with exit code $LASTEXITCODE."
+  }
 }
 & $Python -m pip install --no-deps --no-build-isolation -e $Root
 if ($LASTEXITCODE -ne 0) {

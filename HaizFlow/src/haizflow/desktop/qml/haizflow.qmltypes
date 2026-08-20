@@ -516,6 +516,30 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "speechRecognitionModel"
+            type: "QString"
+            read: "speechRecognitionModel"
+            write: "speechRecognitionModel"
+            notify: "speechRecognitionModelChanged"
+            index: 145
+        }
+        Property {
+            name: "speechRecognitionModelOptions"
+            type: "QVariantList"
+            read: "speechRecognitionModelOptions"
+            notify: "speechRecognitionModelOptionsChanged"
+            index: 146
+            isReadonly: true
+        }
+        Property {
+            name: "speechRecognitionModelIndex"
+            type: "int"
+            read: "speechRecognitionModelIndex"
+            notify: "speechRecognitionModelChanged"
+            index: 147
+            isReadonly: true
+        }
+        Property {
             name: "ttsProvider"
             type: "QString"
             read: "ttsProvider"
@@ -561,6 +585,22 @@ Module {
             read: "ttsVoiceIndex"
             notify: "ttsVoiceOptionsChanged"
             index: 61
+            isReadonly: true
+        }
+        Property {
+            name: "voiceCloneReferencePath"
+            type: "QString"
+            read: "voiceCloneReferencePath"
+            notify: "selectedVideoChanged"
+            index: 160
+            isReadonly: true
+        }
+        Property {
+            name: "voiceCloneReferenceTranscript"
+            type: "QString"
+            read: "voiceCloneReferenceTranscript"
+            notify: "selectedVideoChanged"
+            index: 161
             isReadonly: true
         }
         Property {
@@ -900,6 +940,14 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "selectedInputSource"
+            type: "QUrl"
+            read: "selectedInputSource"
+            notify: "selectedVideoChanged"
+            index: 162
+            isReadonly: true
+        }
+        Property {
             name: "selectedOutputPath"
             type: "QString"
             read: "selectedOutputPath"
@@ -1191,6 +1239,8 @@ Module {
         Signal { name: "videoPathChanged" }
         Signal { name: "videoThumbnailChanged" }
         Signal { name: "targetLanguageChanged" }
+        Signal { name: "speechRecognitionModelChanged" }
+        Signal { name: "speechRecognitionModelOptionsChanged" }
         Signal { name: "ttsVoiceChanged" }
         Signal { name: "ttsVoiceOptionsChanged" }
         Signal { name: "ttsProviderChanged" }
@@ -1252,11 +1302,6 @@ Module {
         Method {
             name: "ttsProviderOptionsForLanguage"
             type: "QVariantList"
-            Parameter { name: "a1"; type: "QString" }
-        }
-        Method {
-            name: "fallbackFromVieneuForLanguage"
-            type: "QString"
             Parameter { name: "a1"; type: "QString" }
         }
         Method { name: "enableInAppAlerts" }
@@ -1382,15 +1427,17 @@ Module {
             Parameter { name: "a1"; type: "QString" }
             Parameter { name: "a2"; type: "QString" }
             Parameter { name: "a3"; type: "QString" }
-            Parameter { name: "a4"; type: "bool" }
-            Parameter { name: "a5"; type: "int" }
-            Parameter { name: "a6"; type: "int" }
+            Parameter { name: "a4"; type: "QString" }
+            Parameter { name: "a5"; type: "QString" }
+            Parameter { name: "a6"; type: "bool" }
             Parameter { name: "a7"; type: "int" }
-            Parameter { name: "a8"; type: "QString" }
-            Parameter { name: "a9"; type: "QString" }
-            Parameter { name: "a10"; type: "bool" }
-            Parameter { name: "a11"; type: "QVariantMap" }
-            Parameter { name: "a12"; type: "QString" }
+            Parameter { name: "a8"; type: "int" }
+            Parameter { name: "a9"; type: "int" }
+            Parameter { name: "a10"; type: "QString" }
+            Parameter { name: "a11"; type: "QString" }
+            Parameter { name: "a12"; type: "bool" }
+            Parameter { name: "a13"; type: "QVariantMap" }
+            Parameter { name: "a14"; type: "QString" }
         }
         Method { name: "loadBatchSettings" }
         Method { name: "saveSelectedVideoSettings"; type: "bool" }
@@ -1408,6 +1455,19 @@ Module {
             name: "approveTranslationReview"
             Parameter { name: "a1"; type: "QString" }
         }
+        Method {
+            name: "saveTranslationReviewDraft"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method { name: "chooseVoiceCloneReference"; type: "QString" }
+        Method {
+            name: "setVoiceCloneReference"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+        }
+        Method { name: "clearVoiceCloneReference"; type: "bool" }
         Method {
             name: "selectVideo"
             Parameter { name: "a1"; type: "int" }

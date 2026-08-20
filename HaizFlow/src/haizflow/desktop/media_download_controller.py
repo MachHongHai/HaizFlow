@@ -58,66 +58,86 @@ class MediaDownloadController(QObject):
         self._video_preview.changed.connect(self.changed.emit)
 
     @Property(str, notify=changed)
-    def videoOutputDirectory(self): return self._video_output_directory
+    def videoOutputDirectory(self):
+        return self._video_output_directory
 
     @Property(str, notify=changed)
-    def audioOutputDirectory(self): return self._audio_output_directory
+    def audioOutputDirectory(self):
+        return self._audio_output_directory
 
     @Property(str, notify=changed)
-    def channelOutputDirectory(self): return self._channel_output_directory
+    def channelOutputDirectory(self):
+        return self._channel_output_directory
 
     @Property(bool, notify=changed)
-    def outputManaged(self): return bool(self._project_key and self._project_root)
+    def outputManaged(self):
+        return bool(self._project_key and self._project_root)
 
     @Property(str, notify=changed)
-    def projectRoot(self): return self._project_root
+    def projectRoot(self):
+        return self._project_root
 
     # Compatibility for an existing QML cache. New UI uses the explicit
     # destination for its own operation so files cannot land in the wrong folder.
     @Property(str, notify=changed)
-    def outputDirectory(self): return self._video_output_directory
+    def outputDirectory(self):
+        return self._video_output_directory
 
     @Property(str, notify=changed)
-    def audioSource(self): return self._audio_source
+    def audioSource(self):
+        return self._audio_source
 
     @Property(bool, notify=changed)
-    def videoPreviewBusy(self): return self._video_preview.busy
+    def videoPreviewBusy(self):
+        return self._video_preview.busy
 
     @Property(bool, notify=changed)
-    def videoPreviewReady(self): return self._video_preview.state in {"ready", "retry"}
+    def videoPreviewReady(self):
+        return self._video_preview.state in {"ready", "retry"}
 
     @Property(str, notify=changed)
-    def videoPreviewUrl(self): return self._video_preview.url
+    def videoPreviewUrl(self):
+        return self._video_preview.url
 
     @Property(str, notify=changed)
-    def videoPreviewStatus(self): return self._video_preview.status
+    def videoPreviewStatus(self):
+        return self._video_preview.status
 
     @Property(str, notify=changed)
-    def videoPreviewTitle(self): return self._video_preview.title
+    def videoPreviewTitle(self):
+        return self._video_preview.title
 
     @Property(str, notify=changed)
-    def videoPreviewPlatform(self): return self._video_preview.platform
+    def videoPreviewPlatform(self):
+        return self._video_preview.platform
 
     @Property(str, notify=changed)
-    def videoPreviewUploader(self): return self._video_preview.uploader
+    def videoPreviewUploader(self):
+        return self._video_preview.uploader
 
     @Property(str, notify=changed)
-    def videoPreviewDuration(self): return self._video_preview.duration
+    def videoPreviewDuration(self):
+        return self._video_preview.duration
 
     @Property(str, notify=changed)
-    def videoPreviewThumbnail(self): return self._video_preview.thumbnailSource
+    def videoPreviewThumbnail(self):
+        return self._video_preview.thumbnailSource
 
     @Property(bool, notify=changed)
-    def busy(self): return self._active_task is not None
+    def busy(self):
+        return self._active_task is not None
 
     @Property(bool, notify=changed)
-    def hasWork(self): return self.busy or self.channelBusy or bool(self._pending_tasks)
+    def hasWork(self):
+        return self.busy or self.channelBusy or bool(self._pending_tasks)
 
     @Property(bool, notify=changed)
-    def currentProjectHasWork(self): return self.has_project_work(self._project_key)
+    def currentProjectHasWork(self):
+        return self.has_project_work(self._project_key)
 
     @Property(int, notify=changed)
-    def queueCount(self): return len(self._pending_tasks)
+    def queueCount(self):
+        return len(self._pending_tasks)
 
     @Property(str, notify=changed)
     def queueStatus(self):
@@ -131,37 +151,48 @@ class MediaDownloadController(QObject):
         return ""
 
     @Property(bool, notify=changed)
-    def channelBusy(self): return self._channel_importer.busy
+    def channelBusy(self):
+        return self._channel_importer.busy
 
     @Property(int, notify=changed)
-    def channelProgress(self): return self._channel_importer.progress
+    def channelProgress(self):
+        return self._channel_importer.progress
 
     @Property(str, notify=changed)
-    def channelStatus(self): return self._channel_importer.status
+    def channelStatus(self):
+        return self._channel_importer.status
 
     @Property(str, notify=changed)
-    def channelState(self): return self._channel_importer.state
+    def channelState(self):
+        return self._channel_importer.state
 
     @Property(int, notify=changed)
-    def channelCandidateCount(self): return self._channel_importer.candidateCount
+    def channelCandidateCount(self):
+        return self._channel_importer.candidateCount
 
     @Property(int, notify=changed)
-    def channelSelectedCount(self): return self._channel_importer.selectedCount
+    def channelSelectedCount(self):
+        return self._channel_importer.selectedCount
 
     @Property(int, notify=changed)
-    def channelSelectableCount(self): return self._channel_importer.selectableCount
+    def channelSelectableCount(self):
+        return self._channel_importer.selectableCount
 
     @Property(str, notify=changed)
-    def channelName(self): return self._channel_importer.channelName
+    def channelName(self):
+        return self._channel_importer.channelName
 
     @Property(QObject, constant=True)
-    def channelCandidateModel(self): return self._channel_importer.candidateModel
+    def channelCandidateModel(self):
+        return self._channel_importer.candidateModel
 
     @Property(int, notify=changed)
-    def progress(self): return self._progress_value
+    def progress(self):
+        return self._progress_value
 
     @Property(str, notify=changed)
-    def status(self): return self._status
+    def status(self):
+        return self._status
 
     def attach_project(self, project_key: str, project_root: str) -> None:
         key = str(project_key or "").strip()
@@ -214,7 +245,9 @@ class MediaDownloadController(QObject):
 
     @Slot()
     def chooseVideoOutputDirectory(self):
-        folder = QFileDialog.getExistingDirectory(None, "Choose video download folder", self._video_output_directory or native_media_dialog_directory())
+        folder = QFileDialog.getExistingDirectory(
+            None, "Choose video download folder", self._video_output_directory or native_media_dialog_directory()
+        )
         if folder:
             self._video_output_directory = os.path.abspath(folder)
             self._status = ""
@@ -222,7 +255,9 @@ class MediaDownloadController(QObject):
 
     @Slot()
     def chooseAudioOutputDirectory(self):
-        folder = QFileDialog.getExistingDirectory(None, "Choose audio download folder", self._audio_output_directory or native_media_dialog_directory())
+        folder = QFileDialog.getExistingDirectory(
+            None, "Choose audio download folder", self._audio_output_directory or native_media_dialog_directory()
+        )
         if folder:
             self._audio_output_directory = os.path.abspath(folder)
             self._status = ""
@@ -230,7 +265,9 @@ class MediaDownloadController(QObject):
 
     @Slot()
     def chooseChannelOutputDirectory(self):
-        folder = QFileDialog.getExistingDirectory(None, "Choose channel download folder", self._channel_output_directory or native_media_dialog_directory())
+        folder = QFileDialog.getExistingDirectory(
+            None, "Choose channel download folder", self._channel_output_directory or native_media_dialog_directory()
+        )
         if folder:
             self._channel_output_directory = os.path.abspath(folder)
             self.changed.emit()
@@ -242,7 +279,9 @@ class MediaDownloadController(QObject):
     @Slot()
     def chooseAudioSource(self):
         path, _ = QFileDialog.getOpenFileName(
-            None, "Choose audio or video file", native_media_dialog_directory(),
+            None,
+            "Choose audio or video file",
+            native_media_dialog_directory(),
             "Media files (*.mp3 *.m4a *.aac *.wav *.flac *.ogg *.opus *.mp4 *.mov *.mkv *.webm);;All files (*.*)",
         )
         if path:
@@ -300,12 +339,19 @@ class MediaDownloadController(QObject):
         if not str(url or "").strip():
             self._reject("Paste a channel or profile link first.")
             return
-        self._enqueue({
-            "kind": "channel_scan", "label": "channel preview", "url": str(url).strip(),
-            "platform": str(platform or ""), "ranking": str(ranking or "newest"),
-            "limit": max(1, min(100, int(limit))), "duration_filter": str(duration_filter or "all"),
-            "scan_scope": max(0, int(scan_scope)), "output": "",
-        })
+        self._enqueue(
+            {
+                "kind": "channel_scan",
+                "label": "channel preview",
+                "url": str(url).strip(),
+                "platform": str(platform or ""),
+                "ranking": str(ranking or "newest"),
+                "limit": max(1, min(100, int(limit))),
+                "duration_filter": str(duration_filter or "all"),
+                "scan_scope": max(0, int(scan_scope)),
+                "output": "",
+            }
+        )
 
     @Slot(int, bool)
     def setChannelSelected(self, row, selected):
@@ -322,11 +368,14 @@ class MediaDownloadController(QObject):
         if not self._channel_output_directory or not os.path.isdir(self._channel_output_directory):
             self._reject("Choose a channel download folder before downloading selected videos.")
             return
-        self._enqueue({
-            "kind": "channel_download", "label": "channel download",
-            "session_id": self._channel_importer.sessionId,
-            "output": self._channel_output_directory,
-        })
+        self._enqueue(
+            {
+                "kind": "channel_download",
+                "label": "channel download",
+                "session_id": self._channel_importer.sessionId,
+                "output": self._channel_output_directory,
+            }
+        )
 
     @Slot(int, result=bool)
     def retryChannelVideo(self, row):
@@ -336,12 +385,15 @@ class MediaDownloadController(QObject):
         if not self._channel_output_directory or not os.path.isdir(self._channel_output_directory):
             self._reject("Choose a channel download folder before retrying this video.")
             return False
-        self._enqueue({
-            "kind": "channel_download", "label": "channel video retry",
-            "session_id": self._channel_importer.sessionId,
-            "candidate_id": candidate.remote_video_id,
-            "output": self._channel_output_directory,
-        })
+        self._enqueue(
+            {
+                "kind": "channel_download",
+                "label": "channel video retry",
+                "session_id": self._channel_importer.sessionId,
+                "candidate_id": candidate.remote_video_id,
+                "output": self._channel_output_directory,
+            }
+        )
         return True
 
     @Slot(str)
@@ -357,10 +409,12 @@ class MediaDownloadController(QObject):
         self._channel_importer.clearAuthentication()
 
     @Property(str, notify=changed)
-    def channelCookieBrowser(self): return self._channel_importer.cookieBrowser
+    def channelCookieBrowser(self):
+        return self._channel_importer.cookieBrowser
 
     @Property(str, notify=changed)
-    def channelCookieFile(self): return self._channel_importer.cookieFile
+    def channelCookieFile(self):
+        return self._channel_importer.cookieFile
 
     def _queue_download(self, value: str, mode: str, output_directory: str, label: str):
         if not output_directory or not os.path.isdir(output_directory):
@@ -369,9 +423,14 @@ class MediaDownloadController(QObject):
         if not str(value or "").strip():
             self._reject("Paste a link first.")
             return
-        self._enqueue({
-            "kind": mode, "label": label, "value": str(value).strip(), "output": output_directory,
-        })
+        self._enqueue(
+            {
+                "kind": mode,
+                "label": label,
+                "value": str(value).strip(),
+                "output": output_directory,
+            }
+        )
 
     def _enqueue(self, task: dict) -> None:
         task.setdefault("project_key", self._project_key)
@@ -427,8 +486,12 @@ class MediaDownloadController(QObject):
             self._channel_importer.clearAuthentication()
             self._channel_importer.attach_project(self._channel_project_key, self._channel_workspace, set())
             self._channel_importer.inspect(
-                task["url"], task["platform"], task["ranking"], task["limit"],
-                task["duration_filter"], task["scan_scope"],
+                task["url"],
+                task["platform"],
+                task["ranking"],
+                task["limit"],
+                task["duration_filter"],
+                task["scan_scope"],
             )
         finally:
             self._channel_starting = False
@@ -475,24 +538,52 @@ class MediaDownloadController(QObject):
 
     def _download_audio(self, url: str, destination: Path):
         import yt_dlp
+
         options = {
-            "quiet": True, "no_warnings": True, "noplaylist": True, "socket_timeout": 20,
-            "outtmpl": str(destination.with_suffix(".%(ext)s")), "format": "bestaudio/best",
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "socket_timeout": 20,
+            "outtmpl": str(destination.with_suffix(".%(ext)s")),
+            "format": "bestaudio/best",
             "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
-            "progress_hooks": [self._yt_progress], "nopart": True, "overwrites": True,
+            "progress_hooks": [self._yt_progress],
+            "nopart": True,
+            "overwrites": True,
         }
         if os.path.isdir(BIN_DIR):
             options["ffmpeg_location"] = BIN_DIR
         with yt_dlp.YoutubeDL(options) as downloader:
             downloader.extract_info(url, download=True)
-        produced = destination if destination.is_file() else next(destination.parent.glob(f"{destination.stem}.*"), None)
+        produced = (
+            destination if destination.is_file() else next(destination.parent.glob(f"{destination.stem}.*"), None)
+        )
         if not produced or not Path(produced).is_file():
             raise RuntimeError("The link did not produce an audio file.")
         if Path(produced) != destination:
             shutil.move(str(produced), destination)
 
     def _extract(self, source: str, destination: Path):
-        result = subprocess.run([_binary("ffmpeg"), "-y", "-v", "error", "-i", source, "-vn", "-map", "0:a:0?", "-c:a", "aac", str(destination)], capture_output=True, text=True, timeout=MEDIA_PROCESS_TIMEOUT_SECONDS, check=False)
+        result = subprocess.run(
+            [
+                _binary("ffmpeg"),
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                source,
+                "-vn",
+                "-map",
+                "0:a:0?",
+                "-c:a",
+                "aac",
+                str(destination),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=MEDIA_PROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
         if result.returncode or not destination.is_file():
             raise RuntimeError((result.stderr or "Could not extract audio from this file.").strip()[:400])
 
@@ -500,23 +591,35 @@ class MediaDownloadController(QObject):
         if self._cancel.is_set():
             raise DownloadCancelled("Download cancelled.")
         if event.get("status") == "downloading":
-            done, total = int(event.get("downloaded_bytes") or 0), int(event.get("total_bytes") or event.get("total_bytes_estimate") or 0)
+            done = int(event.get("downloaded_bytes") or 0)
+            total = int(event.get("total_bytes") or event.get("total_bytes_estimate") or 0)
             self._report(round(done * 100 / total) if total else 0, "Downloading audio")
 
-    def _report(self, progress, detail): self._progress.emit(max(0, min(100, int(progress))), str(detail))
+    def _report(self, progress, detail):
+        self._progress.emit(max(0, min(100, int(progress))), str(detail))
+
     def _unique_path(self, path: Path):
         candidate, index = path, 2
         while candidate.exists():
             candidate = path.with_name(f"{path.stem} ({index}){path.suffix}")
             index += 1
         return candidate
-    def _reject(self, message): self._status = message; self.changed.emit()
-    def _set_progress(self, progress, detail): self._progress_value, self._status = progress, detail; self.changed.emit()
+
+    def _reject(self, message):
+        self._status = message
+        self.changed.emit()
+
+    def _set_progress(self, progress, detail):
+        self._progress_value = progress
+        self._status = detail
+        self.changed.emit()
+
     def _set_finished(self, destination):
         self._progress_value = 100
         self._finish_active(f"Saved to {destination}")
 
-    def _set_failed(self, message): self._finish_active(message)
+    def _set_failed(self, message):
+        self._finish_active(message)
 
     def _finish_active(self, status: str) -> None:
         self._active_task = None

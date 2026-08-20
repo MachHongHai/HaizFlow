@@ -10,8 +10,12 @@ from haizflow.config import MODELS_DIR
 from haizflow.desktop.localization import QMessageBox
 from haizflow.core.events import unsubscribe_log
 from haizflow.core.hardware import (
-    configure_processing_device, detect_hardware_capabilities, processing_device_preference,
-    recommended_processing_device, runtime_profile, validate_processing_device,
+    configure_processing_device,
+    detect_hardware_capabilities,
+    processing_device_preference,
+    recommended_processing_device,
+    runtime_profile,
+    validate_processing_device,
 )
 from haizflow.core.runtime_probe import probe_runtime
 from haizflow.pipeline.process_registry import pause_video
@@ -48,13 +52,9 @@ class RuntimeDeviceController:
             host._processing_queue.has_work
             or host._url_importer.busy
             or host._channel_importer.busy
-            or (
-                getattr(host, "_media_downloader", None)
-                and host._media_downloader.hasWork
-            )
+            or (getattr(host, "_media_downloader", None) and host._media_downloader.hasWork)
             or getattr(host, "_media_import_busy", False)
-            or getattr(host, "_model_setup_state", "ready")
-            in {"checking", "downloading", "verifying"}
+            or getattr(host, "_model_setup_state", "ready") in {"checking", "downloading", "verifying"}
         )
         if not background_work:
             host._close_confirmed = True
@@ -70,6 +70,7 @@ class RuntimeDeviceController:
         )
         host._close_confirmed = answer == QMessageBox.StandardButton.Yes
         return host._close_confirmed
+
     def shutdown(self):
         host = self._host
         if host._shutdown_started:
@@ -145,6 +146,7 @@ class RuntimeDeviceController:
             release_warm_whisperx_model()
         if getattr(type(host), "_qml_instance", None) is host:
             type(host)._qml_instance = None
+
     def _warm_models(self):
         host = self._host
         with host._model_runtime_lock:
@@ -256,10 +258,7 @@ class RuntimeDeviceController:
         host = self._host
         setup_was_required = False
         try:
-            if (
-                hasattr(host, "_hardware_probe_events")
-                and not getattr(host, "_startup_hardware_resolved", False)
-            ):
+            if hasattr(host, "_hardware_probe_events") and not getattr(host, "_startup_hardware_resolved", False):
                 requested_device = self._resolve_startup_processing_device()
             else:
                 requested_device = host._model_setup_target_device or processing_device_preference()
@@ -304,10 +303,11 @@ class RuntimeDeviceController:
                     host._status_message = f"GPU runtime unavailable; using CPU. {probe.message}"
                     host.settingsChanged.emit()
                     host.hardwareChanged.emit()
+                    options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
+                    if options_changed:
+                        options_changed.emit()
                 else:
-                    host._runtime_probe_error = (
-                        f"GPU runtime: {probe.message} CPU runtime: {cpu_probe.message}"
-                    )
+                    host._runtime_probe_error = f"GPU runtime: {probe.message} CPU runtime: {cpu_probe.message}"
             elif not probe.ok:
                 host._runtime_probe_error = probe.message
             if host._runtime_probe_error:
@@ -398,6 +398,7 @@ class RuntimeDeviceController:
         host._model_setup_cancel_event.set()
         host._model_setup_detail = "Cancelling model download"
         host.modelSetupChanged.emit()
+
     def _warm_models_unlocked(self):
         host = self._host
         profile = runtime_profile()
@@ -412,15 +413,14 @@ class RuntimeDeviceController:
                 warm_whisperx_model()
                 warmed.append("WhisperX")
             host._status_message = (
-                f"{', '.join(warmed)} ready - {profile.summary}"
-                if warmed
-                else f"Ready - {profile.summary}"
+                f"{', '.join(warmed)} ready - {profile.summary}" if warmed else f"Ready - {profile.summary}"
             )
             self._set_runtime_state("ready")
         except Exception as exc:
             host._status_message = f"Model warm-up unavailable: {exc}"
             self._set_runtime_state("failed")
         host.statusMessageChanged.emit()
+
     def _switch_processing_device(self, preference: str):
         host = self._host
         previous_device = host._active_processing_device
@@ -518,6 +518,9 @@ class RuntimeDeviceController:
                     host._warm_models_unlocked()
                 host.settingsChanged.emit()
                 host.hardwareChanged.emit()
+                options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
+                if options_changed:
+                    options_changed.emit()
                 if host._runtime_state == "ready":
                     host._model_setup_target_device = ""
                     self._queue_model_setup(
@@ -557,10 +560,12 @@ class RuntimeDeviceController:
                 host.processingChanged.emit()
 
         threading.Thread(target=switch_models, name="processing-device-switch", daemon=True).start()
+
     def _pipeline_is_active(self) -> bool:
         host = self._host
         """Return whether a video is currently inside the serial worker."""
         return bool(host._processing_queue.active_video_id)
+
     def _activate_pending_device_for_next_video(self, video_id: str) -> None:
         host = self._host
         """Switch only between two queued videos, never during a pipeline."""
@@ -588,7 +593,9 @@ class RuntimeDeviceController:
                 )
             except OSError:
                 pass
-            video_store.log_to_video(video_id, f"Requested GPU runtime is no longer safe: {message} Falling back to CPU.")
+            video_store.log_to_video(
+                video_id, f"Requested GPU runtime is no longer safe: {message} Falling back to CPU."
+            )
 
         probe = probe_runtime(preference)
         if not probe.ok and preference == "gpu":
@@ -627,6 +634,7 @@ class RuntimeDeviceController:
             video_store.log_to_video(video_id, f"Using the updated {preference.upper()} runtime for this video.")
         except Exception as exc:
             video_store.log_to_video(video_id, f"Could not apply the updated processing device: {exc}")
+
     def _apply_live_hardware(self, capabilities) -> None:
         """Apply a completed worker probe on the Qt GUI thread."""
         host = self._host
@@ -636,18 +644,19 @@ class RuntimeDeviceController:
         # claims that GPU is active while the app is actually using CPU.
         runtime_fallback_device = processing_device_preference()
         runtime_fallback_pending = (
-            not host._pending_processing_device
-            and runtime_fallback_device != host._settings_processing_device
+            not host._pending_processing_device and runtime_fallback_device != host._settings_processing_device
         )
         should_fallback_to_cpu = host._settings_processing_device == "gpu" and recommended_device == "cpu"
         should_follow_recommendation = (
-            host._processing_device_origin == "detected"
-            and recommended_device != host._settings_processing_device
+            host._processing_device_origin == "detected" and recommended_device != host._settings_processing_device
         )
         runtime_needs_switch = runtime_fallback_pending or should_fallback_to_cpu or should_follow_recommendation
         if capabilities != host._hardware_capabilities:
             host._hardware_capabilities = capabilities
             host.hardwareChanged.emit()
+            options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
+            if options_changed:
+                options_changed.emit()
         if host._pipeline_is_active():
             return
         if host._pending_processing_device:
@@ -698,17 +707,25 @@ class RuntimeDeviceController:
                 self._apply_live_hardware(event["capabilities"])
             elif kind == "startup":
                 host._hardware_capabilities = event["capabilities"]
+                refresh_turbo = getattr(host, "_refresh_whisper_turbo_model_ready", None)
+                if refresh_turbo:
+                    refresh_turbo()
                 host.hardwareChanged.emit()
+                options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
+                if options_changed:
+                    options_changed.emit()
                 if event.get("settings_changed"):
                     host.settingsChanged.emit()
                 if event.get("status_message"):
                     host.statusMessageChanged.emit()
+
     def setHardwareTelemetryActive(self, active: bool):
         host = self._host
         """Only refresh dynamic telemetry while the Settings dialog needs it."""
         host._hardware_telemetry_active = bool(active)
         if host._hardware_telemetry_active:
             host._refresh_live_hardware()
+
     def _apply_detected_processing_device(self, device: str):
         host = self._host
         """Persist a safe device chosen from live hardware telemetry."""
@@ -729,6 +746,7 @@ class RuntimeDeviceController:
             pass
         host.settingsChanged.emit()
         host._switch_processing_device(device)
+
     def _set_warmup_status(self, detail: str):
         host = self._host
         host._status_message = detail

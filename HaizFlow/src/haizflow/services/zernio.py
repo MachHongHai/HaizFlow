@@ -24,6 +24,24 @@ UPLOAD_CHUNK_BYTES = 1024 * 1024
 class ZernioError(RuntimeError):
     """A safe, user-facing Zernio error without credentials or signed URLs."""
 
+    def __init__(self, message: str, *, status: int = 0, payload: Any = None):
+        super().__init__(message)
+        self.status = int(status or 0)
+        self.payload = payload if isinstance(payload, dict) else {}
+
+    @property
+    def existing_post_id(self) -> str:
+        value = self.payload
+        details = value.get("details") if isinstance(value.get("details"), dict) else {}
+        candidates = (
+            value.get("existingPostId"),
+            value.get("existing_post_id"),
+            details.get("existingPostId"),
+            details.get("existing_post_id"),
+            (value.get("error") or {}).get("existingPostId") if isinstance(value.get("error"), dict) else "",
+        )
+        return next((str(item) for item in candidates if item), "")
+
 
 class ZernioCancelled(ZernioError):
     pass
@@ -83,10 +101,7 @@ class ZernioClient:
         accounts = _object_list(payload, "accounts")
         if not allowed:
             return accounts
-        return [
-            item for item in accounts
-            if str(item.get("platform") or "").strip().casefold() in allowed
-        ]
+        return [item for item in accounts if str(item.get("platform") or "").strip().casefold() in allowed]
 
     def get_tiktok_creator_info(self, account_id: str) -> dict[str, Any]:
         payload = self._request(
@@ -248,11 +263,13 @@ class ZernioClient:
         body: dict[str, Any] = {
             "content": content,
             "mediaItems": [{"type": "video", "url": media_url}],
-            "platforms": [{
-                "platform": platform_name,
-                "accountId": account_id,
-                "platformSpecificData": platform_data,
-            }],
+            "platforms": [
+                {
+                    "platform": platform_name,
+                    "accountId": account_id,
+                    "platformSpecificData": platform_data,
+                }
+            ],
         }
         if publish_now:
             body["publishNow"] = True
@@ -260,6 +277,10 @@ class ZernioClient:
 
     def get_post(self, post_id: str) -> dict[str, Any]:
         return _object(self._request("GET", f"/posts/{post_id}"), "post")
+
+    def list_posts(self) -> list[dict[str, Any]]:
+        """Return recent posts for status/link recovery after asynchronous publishing."""
+        return _object_list(self._request("GET", "/posts"), "posts")
 
     def _request(
         self,
@@ -288,7 +309,8 @@ class ZernioClient:
                 raw = response.read()
         except HTTPError as exc:
             raw = exc.read()
-            raise ZernioError(_error_message(raw, exc.code)) from exc
+            payload = _error_payload(raw)
+            raise ZernioError(_error_message(raw, exc.code), status=exc.code, payload=payload) from exc
         except (URLError, OSError, TimeoutError) as exc:
             reason = getattr(exc, "reason", exc)
             raise ZernioError(f"Could not reach Zernio: {reason}") from exc
@@ -320,6 +342,17 @@ def _error_message(raw: bytes, status: int) -> str:
     except (UnicodeDecodeError, json.JSONDecodeError):
         pass
     return f"Zernio request failed (HTTP {status}){': ' + message if message else '.'}"
+
+
+def _error_payload(raw: bytes) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw.decode("utf-8")) if raw else {}
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    data = payload.get("data")
+    return data if isinstance(data, dict) else payload
 
 
 def _object(payload: Any, key: str) -> dict[str, Any]:
@@ -421,27 +454,39 @@ def public_post_url(value: Any, platform: str) -> str:
     if platform_name == "tiktok":
         if host in {"vm.tiktok.com", "vt.tiktok.com"}:
             return candidate if path != "/" else ""
-        return candidate if host in {"tiktok.com", "www.tiktok.com", "m.tiktok.com"} and (
-            re.search(r"/@[^/]+/video/\d+/?$", path, flags=re.IGNORECASE)
-            or re.search(r"/(?:t|v)/[^/]+", path, flags=re.IGNORECASE)
-        ) else ""
+        return (
+            candidate
+            if host in {"tiktok.com", "www.tiktok.com", "m.tiktok.com"}
+            and (
+                re.search(r"/@[^/]+/video/\d+/?$", path, flags=re.IGNORECASE)
+                or re.search(r"/(?:t|v)/[^/]+", path, flags=re.IGNORECASE)
+            )
+            else ""
+        )
     if platform_name == "youtube":
-        return candidate if (
-            host in {"youtu.be", "www.youtu.be"} and path != "/"
-        ) or (
-            host in {"youtube.com", "www.youtube.com", "m.youtube.com"}
-            and (path.startswith("/watch") or path.startswith("/shorts/") or path.startswith("/live/"))
-        ) else ""
+        return (
+            candidate
+            if (host in {"youtu.be", "www.youtu.be"} and path != "/")
+            or (
+                host in {"youtube.com", "www.youtube.com", "m.youtube.com"}
+                and (path.startswith("/watch") or path.startswith("/shorts/") or path.startswith("/live/"))
+            )
+            else ""
+        )
     if platform_name == "instagram":
-        return candidate if host in {"instagram.com", "www.instagram.com"} and re.match(
-            r"/(?:p|reel|reels|tv)/[^/]+", path, flags=re.IGNORECASE
-        ) else ""
+        return (
+            candidate
+            if host in {"instagram.com", "www.instagram.com"}
+            and re.match(r"/(?:p|reel|reels|tv)/[^/]+", path, flags=re.IGNORECASE)
+            else ""
+        )
     if platform_name == "facebook":
-        return candidate if (
-            host in {"fb.watch", "www.fb.watch"} and path != "/"
-        ) or (
-            host in {"facebook.com", "www.facebook.com", "m.facebook.com"} and path != "/"
-        ) else ""
+        return (
+            candidate
+            if (host in {"fb.watch", "www.fb.watch"} and path != "/")
+            or (host in {"facebook.com", "www.facebook.com", "m.facebook.com"} and path != "/")
+            else ""
+        )
     return ""
 
 

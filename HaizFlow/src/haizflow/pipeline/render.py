@@ -102,10 +102,7 @@ def _karaoke_ass_text(text: str, duration_seconds: float) -> str:
     """Create a white-to-gold left-to-right ASS karaoke sweep."""
     units = _karaoke_units(text)
     durations = _allocate_centiseconds(units, duration_seconds)
-    return "".join(
-        f"{{\\kf{duration}}}{_escape_ass_text(unit)}"
-        for unit, duration in zip(units, durations)
-    )
+    return "".join(f"{{\\kf{duration}}}{_escape_ass_text(unit)}" for unit, duration in zip(units, durations))
 
 
 @dataclass(frozen=True)
@@ -118,7 +115,10 @@ class SubtitleRegionLayout:
 
 
 def _wrap_subtitle_for_region(
-    text: str, layout: SubtitleRegionLayout, preferred_font_size: int, outline: int,
+    text: str,
+    layout: SubtitleRegionLayout,
+    preferred_font_size: int,
+    outline: int,
 ) -> tuple[str, int, int]:
     """Fit one undistorted text line inside the exact OCR region."""
     content = " ".join(text.split())
@@ -151,7 +151,7 @@ def _split_subtitle_words(text: str, max_chars: int, *, strict_max_chars: bool =
         cursor = 0
         for index in range(part_count):
             size = base_size + (1 if index < remainder else 0)
-            pieces.append(characters[cursor:cursor + size])
+            pieces.append(characters[cursor : cursor + size])
             cursor += size
         return pieces
     content_length = len(" ".join(words))
@@ -182,7 +182,7 @@ def _split_subtitle_words(text: str, max_chars: int, *, strict_max_chars: bool =
                 tail = solve(end, remaining - 1)
                 if tail is None:
                     continue
-                singleton_penalty = target_length ** 2 if end == start + 1 and len(words) >= part_count * 2 else 0
+                singleton_penalty = target_length**2 if end == start + 1 and len(words) >= part_count * 2 else 0
                 cost = (len(phrase) - target_length) ** 2 + singleton_penalty + tail[0]
                 if best is None or cost < best[0]:
                     best = (cost, [phrase, *tail[1]])
@@ -208,12 +208,7 @@ def _merge_contiguous_subtitles(subtitles: list[srt.Subtitle]) -> list[srt.Subti
         combined_duration = (following.end - current.start).total_seconds()
         combined_length = len(current_text) + 1 + len(following_text)
         ends_sentence = bool(re.search(r"[.!?。！？…][\"'”’)]*$", current_text))
-        if (
-            -0.12 <= gap_seconds <= 0.12
-            and not ends_sentence
-            and combined_duration <= 8.0
-            and combined_length <= 180
-        ):
+        if -0.12 <= gap_seconds <= 0.12 and not ends_sentence and combined_duration <= 8.0 and combined_length <= 180:
             current = srt.Subtitle(
                 index=current.index,
                 start=current.start,
@@ -240,9 +235,7 @@ def _subtitle_parts_for_region(
     text_row_height = min(layout.height, layout.line_height or layout.height)
     inner_height = max(20, text_row_height - subtitle_style.outline * 2)
     display_font = (
-        subtitle_style.font_size
-        if fixed_font_size
-        else min(subtitle_style.font_size, int(inner_height / 1.05))
+        subtitle_style.font_size if fixed_font_size else min(subtitle_style.font_size, int(inner_height / 1.05))
     )
     display_font = max(10, display_font)
     # Split early enough that each phrase keeps large, normally proportioned
@@ -266,13 +259,19 @@ def _subtitle_parts_for_region(
         return result
     if len(parts) == 1:
         text, font_size, scale_x = _wrap_subtitle_for_region(
-            content, layout, subtitle_style.font_size, subtitle_style.outline,
+            content,
+            layout,
+            subtitle_style.font_size,
+            subtitle_style.outline,
         )
         return [(subtitle.start, subtitle.end, text, font_size, scale_x)]
 
     fitted_parts = [
         _wrap_subtitle_for_region(
-            part, layout, subtitle_style.font_size, subtitle_style.outline,
+            part,
+            layout,
+            subtitle_style.font_size,
+            subtitle_style.outline,
         )
         for part in parts
     ]
@@ -310,25 +309,28 @@ def _write_positioned_ass(
     if not subtitles:
         raise RuntimeError("Final render requires at least one valid subtitle cue.")
     style_outline = _karaoke_outline(
-        subtitle_style.font_size, subtitle_style.outline,
+        subtitle_style.font_size,
+        subtitle_style.outline,
     )
-    header = "\n".join([
-        "[Script Info]",
-        "ScriptType: v4.00+",
-        "ScaledBorderAndShadow: yes",
-        f"PlayResX: {width}",
-        f"PlayResY: {height}",
-        "",
-        "[V4+ Styles]",
-        "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-        # ASS karaoke renders not-yet-spoken glyphs with SecondaryColour and
-        # sweeps PrimaryColour across each word. Bangers supplies the chunky,
-        # naturally slanted display shape used by modern short-video captions.
-        f"Style: Default,{KARAOKE_FONT_NAME},{subtitle_style.font_size},&H0000EFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,1,0,1,{style_outline},2,5,0,0,{subtitle_style.margin_bottom},1",
-        "",
-        "[Events]",
-        "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
-    ])
+    header = "\n".join(
+        [
+            "[Script Info]",
+            "ScriptType: v4.00+",
+            "ScaledBorderAndShadow: yes",
+            f"PlayResX: {width}",
+            f"PlayResY: {height}",
+            "",
+            "[V4+ Styles]",
+            "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
+            # ASS karaoke renders not-yet-spoken glyphs with SecondaryColour and
+            # sweeps PrimaryColour across each word. Bangers supplies the chunky,
+            # naturally slanted display shape used by modern short-video captions.
+            f"Style: Default,{KARAOKE_FONT_NAME},{subtitle_style.font_size},&H0000EFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,1,0,1,{style_outline},2,5,0,0,{subtitle_style.margin_bottom},1",
+            "",
+            "[Events]",
+            "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
+        ]
+    )
     lines = [header]
     if region_layout:
         subtitles = _merge_contiguous_subtitles(subtitles)
@@ -352,7 +354,8 @@ def _write_positioned_ass(
             start_time = _ass_timestamp(subtitle.start)
             end_time = _ass_timestamp(subtitle.end)
             karaoke = _karaoke_ass_text(
-                subtitle.content, (subtitle.end - subtitle.start).total_seconds(),
+                subtitle.content,
+                (subtitle.end - subtitle.start).total_seconds(),
             )
             lines.append(
                 f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,"
@@ -379,10 +382,7 @@ def _crop_filter(crop: CropSettings) -> str | None:
     zoom = crop.zoom_percent / 100
     x_factor = max(0, min(1, (crop.pan_x_percent + 100) / 200))
     y_factor = max(0, min(1, (crop.pan_y_percent + 100) / 200))
-    return (
-        f"crop=trunc(iw/{zoom}/2)*2:trunc(ih/{zoom}/2)*2:"
-        f"(iw-ow)*{x_factor:.4f}:(ih-oh)*{y_factor:.4f}"
-    )
+    return f"crop=trunc(iw/{zoom}/2)*2:trunc(ih/{zoom}/2)*2:(iw-ow)*{x_factor:.4f}:(ih-oh)*{y_factor:.4f}"
 
 
 def _ffmpeg_path(path: str, working_dir: str) -> str:
@@ -427,9 +427,7 @@ def _output_subtitle_region_layout(
         source_y = source_height * float(region["y_percent"]) / 100
         source_region_width = source_width * float(region["width_percent"]) / 100
         source_region_height = source_height * float(region["height_percent"]) / 100
-        source_line_height = source_height * float(
-            region.get("line_height_percent", region["height_percent"])
-        ) / 100
+        source_line_height = source_height * float(region.get("line_height_percent", region["height_percent"])) / 100
     except (KeyError, TypeError, ValueError):
         return None
     crop_x, crop_y, crop_width, crop_height = _crop_geometry(source_width, source_height, crop)
@@ -470,9 +468,7 @@ def _style_for_original_subtitle_region(
     # resolution scales them; OCR box height and sentence length never do.
     # This keeps TikTok/Reels/Shorts consistent while retaining a slightly
     # calmer size for landscape YouTube-style video.
-    reference_size = (
-        74 if aspect_ratio >= 1.2 else 64 if aspect_ratio <= (1 / 1.2) else 66
-    )
+    reference_size = 74 if aspect_ratio >= 1.2 else 64 if aspect_ratio <= (1 / 1.2) else 66
     font_size = max(28, min(148, round(reference_size * short_side / 1080)))
     outline = _karaoke_outline(font_size, subtitle_style.outline)
     if region_layout:
@@ -481,22 +477,30 @@ def _style_for_original_subtitle_region(
     else:
         x_percent = subtitle_style.position_x_percent
         y_percent = subtitle_style.position_y_percent
-    return subtitle_style.model_copy(update={
-        "position_x_percent": x_percent,
-        "position_y_percent": y_percent,
-        "font_size": font_size,
-        "outline": outline,
-    }) if hasattr(subtitle_style, "model_copy") else replace(
-        subtitle_style,
-        position_x_percent=x_percent,
-        position_y_percent=y_percent,
-        font_size=font_size,
-        outline=outline,
+    return (
+        subtitle_style.model_copy(
+            update={
+                "position_x_percent": x_percent,
+                "position_y_percent": y_percent,
+                "font_size": font_size,
+                "outline": outline,
+            }
+        )
+        if hasattr(subtitle_style, "model_copy")
+        else replace(
+            subtitle_style,
+            position_x_percent=x_percent,
+            position_y_percent=y_percent,
+            font_size=font_size,
+            outline=outline,
+        )
     )
 
 
 def _default_subtitle_layout(
-    subtitle_style: SubtitleStyle, output_width: int, output_height: int,
+    subtitle_style: SubtitleStyle,
+    output_width: int,
+    output_height: int,
 ) -> SubtitleRegionLayout:
     """Reserve a wide single caption row when the source has no subtitles."""
     width = max(160, output_width * max(0.82, subtitle_style.box_width_percent / 100))
@@ -508,7 +512,9 @@ def _default_subtitle_layout(
 
 
 def _manual_subtitle_layout(
-    subtitle_style: SubtitleStyle, output_width: int, output_height: int,
+    subtitle_style: SubtitleStyle,
+    output_width: int,
+    output_height: int,
 ) -> SubtitleRegionLayout:
     """Map the user-edited preview frame into output-video coordinates."""
     width = max(24, output_width * subtitle_style.box_width_percent / 100)
@@ -522,7 +528,9 @@ def _manual_subtitle_layout(
     return SubtitleRegionLayout(x, y, width, height)
 
 
-def _source_subtitle_removal_region(region: dict | None, source_width: int, source_height: int) -> tuple[int, int, int, int] | None:
+def _source_subtitle_removal_region(
+    region: dict | None, source_width: int, source_height: int
+) -> tuple[int, int, int, int] | None:
     if not region:
         return None
     try:
@@ -548,7 +556,9 @@ def _subtitle_blur_filter(width: int, height: int) -> str:
 
 
 def _feathered_blur_region(
-    region: tuple[int, int, int, int], source_width: int, source_height: int,
+    region: tuple[int, int, int, int],
+    source_width: int,
+    source_height: int,
 ) -> tuple[int, int, int, int, int]:
     """Keep the blur box exact and blend its edge only inside that box."""
     x, y, width, height = region
@@ -563,11 +573,15 @@ def _feathered_blur_region(
 
 
 def _subtitle_blur_prefix(
-    region: tuple[int, int, int, int], source_width: int, source_height: int,
+    region: tuple[int, int, int, int],
+    source_width: int,
+    source_height: int,
 ) -> str:
     """Build one stable blur that completely suppresses text inside the OCR box."""
     x, y, width, height, feather = _feathered_blur_region(
-        region, source_width, source_height,
+        region,
+        source_width,
+        source_height,
     )
     blur_filter = _subtitle_blur_filter(width, height)
     # Blur an expanded sample so glyphs touching an OCR-box edge can mix with
@@ -600,7 +614,8 @@ def _subtitle_blur_prefix(
 
 
 def _subtitle_patch_source_y(
-    region: tuple[int, int, int, int], source_height: int,
+    region: tuple[int, int, int, int],
+    source_height: int,
 ) -> int | None:
     """Choose a clean adjacent strip without overlapping the subtitle box."""
     _x, y, _width, height = region
@@ -621,7 +636,9 @@ def _subtitle_patch_source_y(
 
 
 def _subtitle_patch_prefix(
-    region: tuple[int, int, int, int], source_width: int, source_height: int,
+    region: tuple[int, int, int, int],
+    source_width: int,
+    source_height: int,
 ) -> str:
     """Cover the OCR box with real pixels from an adjacent picture strip."""
     x, y, width, height = region
@@ -644,7 +661,9 @@ def _subtitle_patch_prefix(
 
 
 def _original_subtitle_removal_prefix(
-    region: tuple[int, int, int, int], source_width: int, source_height: int,
+    region: tuple[int, int, int, int],
+    source_width: int,
+    source_height: int,
     mode: str,
 ) -> str:
     if str(mode or "").strip().lower() in {"patch", "inpaint"}:
@@ -719,7 +738,21 @@ def _ffmpeg_progress_fraction(progress_text: str, duration: float) -> float | No
     return max(0.0, min(1.0, seconds / duration))
 
 
-def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_path: str, output_format: str, subtitle_style: SubtitleStyle, crop: CropSettings, video_id: str, original_subtitle_region: dict | None = None, watermark_text: str = "", subtitle_layout_override: bool = False, progress_callback: Callable[[float], None] | None = None, original_subtitle_removal_mode: str = "blur"):
+def render_video(
+    video_path: str,
+    voice_wav_path: str,
+    srt_path: str,
+    output_path: str,
+    output_format: str,
+    subtitle_style: SubtitleStyle,
+    crop: CropSettings,
+    video_id: str,
+    original_subtitle_region: dict | None = None,
+    watermark_text: str = "",
+    subtitle_layout_override: bool = False,
+    progress_callback: Callable[[float], None] | None = None,
+    original_subtitle_removal_mode: str = "patch",
+):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
     supported_formats = {"keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"}
@@ -742,10 +775,23 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
 
     ass_path = os.path.join(video_temp_dir, "positioned_subtitles.ass")
     region_layout = _output_subtitle_region_layout(
-        original_subtitle_region, source_width, source_height, output_format, crop, subtitle_width, subtitle_height,
+        original_subtitle_region,
+        source_width,
+        source_height,
+        output_format,
+        crop,
+        subtitle_width,
+        subtitle_height,
     )
-    effective_style = subtitle_style if subtitle_layout_override else _style_for_original_subtitle_region(
-        subtitle_style, region_layout, subtitle_width, subtitle_height,
+    effective_style = (
+        subtitle_style
+        if subtitle_layout_override
+        else _style_for_original_subtitle_region(
+            subtitle_style,
+            region_layout,
+            subtitle_width,
+            subtitle_height,
+        )
     )
     # A virtual layout keeps captions in one large row even when OCR finds no
     # original subtitle box. Long text is shown as sequential phrases instead
@@ -770,7 +816,8 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     rel_voice = _ffmpeg_path(voice_wav_path, video_temp_dir)
     rel_ass = _ffmpeg_path(ass_path, video_temp_dir)
     rel_font_directory = _ffmpeg_path(
-        str(_karaoke_font_directory()), video_temp_dir,
+        str(_karaoke_font_directory()),
+        video_temp_dir,
     )
     output_directory = os.path.dirname(os.path.abspath(output_path))
     os.makedirs(output_directory, exist_ok=True)
@@ -794,7 +841,9 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
     if source_duration <= 0:
         raise RuntimeError("Unable to determine the source video duration before rendering.")
     removal_region = _source_subtitle_removal_region(
-        original_subtitle_region, source_width, source_height,
+        original_subtitle_region,
+        source_width,
+        source_height,
     )
     requested_removal_mode = str(original_subtitle_removal_mode).strip().lower()
     removal_mode = "patch" if requested_removal_mode in {"patch", "inpaint"} else "blur"
@@ -819,7 +868,10 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         removal_prefix = ""
         if removal_region:
             removal_prefix = _original_subtitle_removal_prefix(
-                removal_region, source_width, source_height, removal_mode,
+                removal_region,
+                source_width,
+                source_height,
+                removal_mode,
             )
             input_label = "[source_without_original]"
         source = f"{input_label}{prefix + ',' if prefix else ''}split[base][fg]"
@@ -836,11 +888,12 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
             filters.append(watermark_filter)
         if removal_region:
             removal_prefix = _original_subtitle_removal_prefix(
-                removal_region, source_width, source_height, removal_mode,
+                removal_region,
+                source_width,
+                source_height,
+                removal_mode,
             )
-            vf_filter = (
-                f"{removal_prefix}[source_without_original]{','.join(filters)}[outv]"
-            )
+            vf_filter = f"{removal_prefix}[source_without_original]{','.join(filters)}[outv]"
         else:
             vf_filter = ",".join(filters)
 
@@ -862,10 +915,15 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         os.close(progress_handle)
         rel_progress = _ffmpeg_path(progress_path, video_temp_dir)
         command = cmd_prefix + [
-            "-progress", rel_progress,
-            "-stats_period", "0.5",
+            "-progress",
+            rel_progress,
+            "-stats_period",
+            "0.5",
             "-nostats",
-            "-c:v", encoder, *encoder_args, *audio_args,
+            "-c:v",
+            encoder,
+            *encoder_args,
+            *audio_args,
         ]
         log_to_video(video_id, f"Running FFmpeg render with {encoder} in Cwd: {video_temp_dir}")
         check_cancellation(video_id)
@@ -888,7 +946,9 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
         if progress_callback:
             monitor.start()
         try:
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir)
+            process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir
+            )
             _stdout, process_stderr = communicate_process(
                 video_id,
                 process,
@@ -920,9 +980,7 @@ def render_video(video_path: str, voice_wav_path: str, srt_path: str, output_pat
             raise RuntimeError("FFmpeg render produced an empty or unreadable video.")
         stream_types = get_media_stream_types(temporary_output)
         if not {"video", "audio"}.issubset(stream_types):
-            raise RuntimeError(
-                "FFmpeg render output is missing its video or dubbed-audio stream."
-            )
+            raise RuntimeError("FFmpeg render output is missing its video or dubbed-audio stream.")
         os.replace(temporary_output, output_path)
         temporary_output = ""
     finally:

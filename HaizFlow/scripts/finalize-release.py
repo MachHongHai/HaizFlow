@@ -116,10 +116,15 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
         HYMT2_CPU_REVISION,
         HYMT2_GPU_FILES,
         HYMT2_GPU_REVISION,
+        OMNIVOICE_FILES,
+        OMNIVOICE_REVISION,
+        OMNIVOICE_RUNTIME_FILES,
         SUBTITLE_OCR_FILES,
         SUBTITLE_OCR_REVISION,
         WHISPER_FILES,
         WHISPER_REVISION,
+        WHISPER_TURBO_FILES,
+        WHISPER_TURBO_REVISION,
         WHISPERX_VAD_FILE,
         WHISPERX_VAD_SIZE,
     )
@@ -145,20 +150,21 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
         ("bundled_cpu_model", False),
         ("bundled_gpu_model", False),
         ("bundled_whisper_model", False),
+        ("bundled_whisper_turbo_model", False),
+        ("bundled_omnivoice_model", False),
         ("bundled_demucs_model", False),
         ("bundled_alignment_models", False),
         ("bundled_subtitle_ocr_models", False),
         ("hymt2_cpu_revision", HYMT2_CPU_REVISION),
         ("hymt2_gpu_revision", HYMT2_GPU_REVISION),
         ("whisper_revision", WHISPER_REVISION),
+        ("whisper_turbo_revision", WHISPER_TURBO_REVISION),
+        ("omnivoice_revision", OMNIVOICE_REVISION),
         ("demucs_model_sha256", DEMUCS_MODEL_SHA256),
         ("subtitle_ocr_revision", SUBTITLE_OCR_REVISION),
         (
             "alignment_model_sha256",
-            {
-                language: digest
-                for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()
-            },
+            {language: digest for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()},
         ),
     ):
         _require_build_value(build_info, name, expected)
@@ -181,30 +187,32 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
         )
     forbidden_model_files = {
         (filename.lower(), size)
-        for filename, (size, _digest) in {**WHISPER_FILES, **HYMT2_GPU_FILES}.items()
+        for filename, (size, _digest) in {
+            **WHISPER_FILES,
+            **WHISPER_TURBO_FILES,
+            **HYMT2_GPU_FILES,
+            **OMNIVOICE_FILES,
+            **OMNIVOICE_RUNTIME_FILES,
+        }.items()
     }
     forbidden_model_files.update(
         {
             (HYMT2_CPU_FILE.lower(), 1_133_080_448),
             (DEMUCS_MODEL_FILE.lower(), DEMUCS_MODEL_SIZE),
             (WHISPERX_VAD_FILE.lower(), WHISPERX_VAD_SIZE),
-            *(
-                (filename.lower(), size)
-                for _bundle, filename, size, _digest in ALIGNMENT_MODELS.values()
-            ),
+            *((filename.lower(), size) for _bundle, filename, size, _digest in ALIGNMENT_MODELS.values()),
         }
     )
-    forbidden_model_files.update(
-        (filename.lower(), size)
-        for filename, (size, _digest) in SUBTITLE_OCR_FILES.items()
-    )
+    forbidden_model_files.update((filename.lower(), size) for filename, (size, _digest) in SUBTITLE_OCR_FILES.items())
     # RapidOCR's wheel includes unpinned default ONNX files.  The executable
     # may carry the library and its YAML configuration, never its model data.
-    forbidden_model_files.update({
-        ("ch_pp-ocrv4_det_infer.onnx", 4_745_517),
-        ("ch_pp-ocrv4_rec_infer.onnx", 10_855_758),
-        ("ch_ppocr_mobile_v2.0_cls_infer.onnx", 585_532),
-    })
+    forbidden_model_files.update(
+        {
+            ("ch_pp-ocrv4_det_infer.onnx", 4_745_517),
+            ("ch_pp-ocrv4_rec_infer.onnx", 10_855_758),
+            ("ch_ppocr_mobile_v2.0_cls_infer.onnx", 585_532),
+        }
+    )
     accidental_models = [
         path.relative_to(artifact).as_posix()
         for path in artifact.rglob("*")
@@ -212,8 +220,7 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
     ]
     if accidental_models:
         raise RuntimeError(
-            "Known model payload must not be bundled in the installer: "
-            + ", ".join(accidental_models[:5])
+            "Known model payload must not be bundled in the installer: " + ", ".join(accidental_models[:5])
         )
     print("Release artifact is eligible for installer packaging.", flush=True)
 
@@ -231,8 +238,10 @@ def finalize(artifact_directory: Path) -> None:
         DEMUCS_MODEL_SHA256,
         HYMT2_CPU_REVISION,
         HYMT2_GPU_REVISION,
+        OMNIVOICE_REVISION,
         SUBTITLE_OCR_REVISION,
         WHISPER_REVISION,
+        WHISPER_TURBO_REVISION,
     )
 
     version = _release_version()
@@ -253,17 +262,20 @@ def finalize(artifact_directory: Path) -> None:
         "bundled_cpu_model": False,
         "bundled_gpu_model": False,
         "bundled_whisper_model": False,
+        "bundled_whisper_turbo_model": False,
+        "bundled_omnivoice_model": False,
         "bundled_demucs_model": False,
         "bundled_alignment_models": False,
         "bundled_subtitle_ocr_models": False,
         "hymt2_cpu_revision": HYMT2_CPU_REVISION,
         "hymt2_gpu_revision": HYMT2_GPU_REVISION,
         "whisper_revision": WHISPER_REVISION,
+        "whisper_turbo_revision": WHISPER_TURBO_REVISION,
+        "omnivoice_revision": OMNIVOICE_REVISION,
         "demucs_model_sha256": DEMUCS_MODEL_SHA256,
         "subtitle_ocr_revision": SUBTITLE_OCR_REVISION,
         "alignment_model_sha256": {
-            language: digest
-            for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()
+            language: digest for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()
         },
         "packaging": "PyInstaller onedir",
     }

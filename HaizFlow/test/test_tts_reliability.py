@@ -20,15 +20,14 @@ def _write_test_mp3(path: str) -> None:
 
 
 class TtsReliabilityTests(unittest.TestCase):
-    def test_auto_provider_prefers_local_vieneu_only_for_vietnamese(self):
-        self.assertEqual(tts.resolve_tts_provider("auto", "vi"), "vieneu")
-        self.assertEqual(tts.resolve_tts_provider("auto", "en"), "edge")
-        self.assertEqual(tts.resolve_tts_provider("auto", "ja"), "edge")
+    def test_legacy_provider_aliases_migrate_to_omnivoice(self):
+        self.assertEqual(tts.resolve_tts_provider("auto", "vi"), "omnivoice")
+        self.assertEqual(tts.resolve_tts_provider("vieneu", "en"), "omnivoice")
+        self.assertEqual(tts.resolve_tts_provider("omnivoice", "ja"), "omnivoice")
 
-    def test_explicit_vieneu_rejects_languages_outside_its_verified_catalog(self):
-        self.assertEqual(tts.resolve_tts_provider("vieneu", "en"), "vieneu")
-        with self.assertRaisesRegex(ValueError, "does not support target language"):
-            tts.resolve_tts_provider("vieneu", "ja")
+    def test_unknown_provider_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported TTS provider"):
+            tts.resolve_tts_provider("unknown", "vi")
 
     def test_empty_transcript_is_rejected_before_reporting_tts_success(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -44,16 +43,11 @@ class TtsReliabilityTests(unittest.TestCase):
                     )
 
     def test_text_normalization_removes_transport_sensitive_punctuation(self):
-        normalized = tts.preprocess_text_for_tts(
-            "  Xin\u00a0chao\u200b \u2013 tu nhien\u2026  "
-        )
+        normalized = tts.preprocess_text_for_tts("  Xin\u00a0chao\u200b \u2013 tu nhien\u2026  ")
         self.assertEqual(normalized, "Xin chao, tu nhien...")
 
     def test_long_edge_request_is_split_at_natural_boundaries(self):
-        text = (
-            "Câu thứ nhất có độ dài vừa phải. " * 8
-            + "Câu thứ hai cũng phải được giữ nguyên từ và dấu câu. " * 5
-        )
+        text = "Câu thứ nhất có độ dài vừa phải. " * 8 + "Câu thứ hai cũng phải được giữ nguyên từ và dấu câu. " * 5
 
         chunks = tts._split_edge_request(text, limit=120)
 
@@ -63,6 +57,15 @@ class TtsReliabilityTests(unittest.TestCase):
             " ".join(chunks).replace("  ", " "),
             tts.preprocess_text_for_tts(text),
         )
+
+    def test_long_chinese_edge_request_is_split_without_losing_text(self):
+        text = "这是一个很长的中文字幕片段，用于验证在线语音请求不会因为缺少空格而成为一个超长请求。" * 5
+
+        chunks = tts._split_edge_request(text, limit=64)
+
+        self.assertGreater(len(chunks), 2)
+        self.assertTrue(all(0 < len(chunk) <= 64 for chunk in chunks))
+        self.assertEqual("".join(chunks), tts.preprocess_text_for_tts(text))
 
     def test_segment_retry_uses_a_fresh_connection_and_atomic_valid_file(self):
         class FakeCommunicate:
@@ -86,9 +89,7 @@ class TtsReliabilityTests(unittest.TestCase):
                 mock.patch.object(tts.edge_tts, "Communicate", FakeCommunicate),
                 mock.patch.object(tts, "_sleep_with_cancellation", no_wait),
             ):
-                attempts = asyncio.run(
-                    tts.tts_segment_with_retry("Xin chao", "voice", output, retries=2)
-                )
+                attempts = asyncio.run(tts.tts_segment_with_retry("Xin chao", "voice", output, retries=2))
 
             self.assertEqual(attempts, 2)
             self.assertTrue(tts._is_valid_mp3(output))
@@ -185,9 +186,7 @@ class TtsReliabilityTests(unittest.TestCase):
                 mock.patch.object(tts, "tts_segment_with_retry", fake_synthesize),
                 mock.patch.object(tts, "log_to_video", lambda _video, line: logs.append(line)),
             ):
-                tts.generate_voice_parts(
-                    str(segments_path), str(Path(temp_dir) / "voice"), "voice", "video"
-                )
+                tts.generate_voice_parts(str(segments_path), str(Path(temp_dir) / "voice"), "voice", "video")
 
         self.assertTrue(any("[TTS][START] segment=1/3" in line for line in logs))
         self.assertTrue(any("[TTS][START] segment=1/3" in line and 'text="first"' in line for line in logs))
@@ -226,9 +225,7 @@ class TtsReliabilityTests(unittest.TestCase):
                 mock.patch.object(tts, "tts_segment_with_retry", measured_synthesize),
                 mock.patch.object(tts, "log_to_video"),
             ):
-                tts.generate_voice_parts(
-                    str(segments_path), str(Path(temp_dir) / "voice"), "voice", "video"
-                )
+                tts.generate_voice_parts(str(segments_path), str(Path(temp_dir) / "voice"), "voice", "video")
 
         self.assertEqual(maximum_active, 1)
 
@@ -251,9 +248,7 @@ class TtsReliabilityTests(unittest.TestCase):
                 mock.patch.object(tts, "log_to_video", lambda _video, line: logs.append(line)),
             ):
                 with self.assertRaisesRegex(RuntimeError, "segment\\(s\\): 1"):
-                    tts.generate_voice_parts(
-                        str(segments_path), str(Path(temp_dir) / "voice"), "voice", "video"
-                    )
+                    tts.generate_voice_parts(str(segments_path), str(Path(temp_dir) / "voice"), "voice", "video")
 
         self.assertTrue(any("[TTS][RETRY]" in line and "error=edge_no_audio" in line for line in logs))
         self.assertTrue(any("[TTS][FAILED]" in line and "error=edge_no_audio" in line for line in logs))
@@ -275,9 +270,7 @@ class TtsReliabilityTests(unittest.TestCase):
                 mock.patch.object(tts, "log_to_video"),
             ):
                 with self.assertRaisesRegex(RuntimeError, "segment\\(s\\): 1"):
-                    tts.generate_voice_parts(
-                        str(segments_path), str(voice_dir), "voice", "video"
-                    )
+                    tts.generate_voice_parts(str(segments_path), str(voice_dir), "voice", "video")
 
             output = voice_dir / "voice_0001.mp3"
             self.assertFalse(output.exists())
@@ -305,13 +298,77 @@ class TtsReliabilityTests(unittest.TestCase):
                 mock.patch.object(tts, "tts_segment_with_retry", fake_synthesize),
                 mock.patch.object(tts, "log_to_video"),
             ):
-                tts.generate_voice_parts(
-                    str(segments_path), str(voice_dir), "voice", "video"
-                )
+                tts.generate_voice_parts(str(segments_path), str(voice_dir), "voice", "video")
 
             self.assertEqual(calls, [("missing", tts._INITIAL_RETRIES)])
             self.assertTrue(tts._is_valid_mp3(str(voice_dir / "voice_0001.mp3")))
             self.assertTrue(tts._is_valid_mp3(str(voice_dir / "voice_0002.mp3")))
+
+    def test_omnivoice_loads_once_for_all_missing_segments(self):
+        from haizflow.pipeline import omnivoice_tts
+
+        calls = []
+
+        def synthesize_batch(items, video_id, *, language_id):
+            calls.append((items, video_id, language_id))
+            for item in items:
+                _write_test_mp3(item["output_path"])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            segments_path = Path(temp_dir) / "segments.json"
+            segments_path.write_text(
+                json.dumps([{"text": "Xin chào"}, {"text": "Thế giới"}]),
+                encoding="utf-8",
+            )
+            voice_dir = Path(temp_dir) / "voice"
+            with (
+                mock.patch.object(omnivoice_tts, "synthesize_batch_to_mp3", side_effect=synthesize_batch),
+                mock.patch.object(omnivoice_tts, "runtime_description", return_value="cpu worker"),
+                mock.patch.object(tts, "log_to_video"),
+            ):
+                tts.generate_voice_parts(
+                    str(segments_path),
+                    str(voice_dir),
+                    "omnivoice:female",
+                    "video",
+                    provider="omnivoice",
+                    target_language="vi",
+                )
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1:], ("video", "vi"))
+        self.assertEqual([item["text"] for item in calls[0][0]], ["Xin chào.", "Thế giới."])
+
+    def test_omnivoice_presets_use_the_sdk_instruction_vocabulary(self):
+        from haizflow.pipeline.omnivoice_tts import OMNIVOICE_VOICE_INSTRUCTIONS
+
+        valid_items = {
+            "male",
+            "female",
+            "child",
+            "young adult",
+            "elderly",
+            "whisper",
+            "low pitch",
+            "moderate pitch",
+            "high pitch",
+            "very high pitch",
+        }
+        for instruction in OMNIVOICE_VOICE_INSTRUCTIONS.values():
+            self.assertTrue(set(instruction.split(", ")).issubset(valid_items))
+
+    def test_omnivoice_maps_standard_arabic_to_the_sdk_language_id(self):
+        from haizflow.pipeline.omnivoice_tts import _omnivoice_language_id
+
+        self.assertEqual(_omnivoice_language_id("ar"), "arb")
+        self.assertEqual(_omnivoice_language_id("vi"), "vi")
+
+    def test_omnivoice_gpu_fallback_only_matches_runtime_resource_failures(self):
+        from haizflow.pipeline.omnivoice_tts import _is_cuda_resource_failure
+
+        self.assertTrue(_is_cuda_resource_failure("CUDA out of memory"))
+        self.assertTrue(_is_cuda_resource_failure("CUBLAS_STATUS_ALLOC_FAILED"))
+        self.assertFalse(_is_cuda_resource_failure("Unsupported instruct items"))
 
 
 if __name__ == "__main__":

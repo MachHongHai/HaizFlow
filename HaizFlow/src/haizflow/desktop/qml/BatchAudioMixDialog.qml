@@ -12,7 +12,7 @@ Dialog {
     property int ttsVolume: 100
     property int backgroundMusicVolume: 30
     property string targetLanguage: "vi"
-    property string ttsProvider: "vieneu"
+    property string ttsProvider: "omnivoice"
     property string ttsVoice: ""
     property string backgroundMusicPath: ""
     readonly property bool sourceAudioAdjustable: !audioSeparationEnabled

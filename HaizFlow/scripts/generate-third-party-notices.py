@@ -53,6 +53,24 @@ def _direct_dependencies() -> set[str]:
     return direct
 
 
+def _locked_distributions() -> set[str]:
+    """Return the distributions that can actually enter the frozen artifact."""
+
+    lock_path = ROOT / "requirements-lock-py313-win64.txt"
+    if not lock_path.is_file():
+        raise RuntimeError(f"Dependency lock is missing: {lock_path}")
+    names = {
+        canonicalize_name(match.group(1))
+        for match in re.finditer(
+            r"(?m)^([A-Za-z0-9][A-Za-z0-9_.-]*)==[^\s\\]+",
+            lock_path.read_text(encoding="utf-8"),
+        )
+    }
+    if not names:
+        raise RuntimeError(f"No pinned distributions found in dependency lock: {lock_path}")
+    return names
+
+
 def _copy_distribution_licenses(distribution, destination: Path) -> list[str]:
     copied: list[str] = []
     seen_hashes: set[str] = set()
@@ -93,9 +111,11 @@ def generate(output_directory: Path, *, strict: bool) -> int:
     component_licenses.mkdir(parents=True)
 
     direct = _direct_dependencies()
+    locked = _locked_distributions()
     rows = []
     unresolved_direct = []
     unresolved_all = []
+    seen_distributions: set[tuple[str, str]] = set()
     distributions = sorted(
         importlib.metadata.distributions(),
         key=lambda item: canonicalize_name(item.metadata.get("Name") or ""),
@@ -103,6 +123,16 @@ def generate(output_directory: Path, *, strict: bool) -> int:
     for distribution in distributions:
         name = str(distribution.metadata.get("Name") or "unknown")
         canonical_name = canonicalize_name(name)
+        if canonical_name not in locked and canonical_name != "haizflow":
+            continue
+        distribution_key = (canonical_name, str(distribution.version))
+        # Editable installs can expose both their ``.dist-info`` directory and
+        # an additional metadata entry for the same project.  Treat those as
+        # one distribution so a second empty entry cannot remove or invalidate
+        # license evidence already copied for the first one.
+        if distribution_key in seen_distributions:
+            continue
+        seen_distributions.add(distribution_key)
         license_text = _license_summary(distribution.metadata)
         package_destination = python_licenses / f"{_safe_name(name)}-{_safe_name(distribution.version)}"
         copied = _copy_distribution_licenses(distribution, package_destination)
@@ -143,8 +173,8 @@ def generate(output_directory: Path, *, strict: bool) -> int:
         "| HY-MT2 1.8B Transformers, revision 9a341cd1b679d3efd23b46e847b01745a71ed792 | First-run downloaded model | Apache-2.0 | https://huggingface.co/tencent/Hy-MT2-1.8B |",
         "| HY-MT2 1.8B GGUF, revision 1cd5208700acedef4ef93019b6cfc148b8522d45 | First-run downloaded model | Apache-2.0 | https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF |",
         "| PP-OCRv5 Mobile ONNX (RapidOCR v3.8.0) | First-run downloaded model | Apache-2.0 | https://github.com/PaddlePaddle/PaddleOCR |",
-        "| VieNeu-TTS SDK 3.2.5 and VieNeu-TTS v3 Turbo ONNX INT8, revision 75ff82a72f54d55ed389e1eeb12041d3c4bac7d4 | First-run downloaded runtime and model | Apache-2.0 | https://github.com/pnnbao97/VieNeu-TTS |",
-        "| MOSS Audio Tokenizer Nano ONNX, revision ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae | First-run downloaded audio codec | Apache-2.0 | https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX |",
+        "| OmniVoice SDK 0.2.1 | First-run downloaded runtime | Apache-2.0 | https://github.com/k2-fsa/OmniVoice |",
+        "| OmniVoice checkpoint, revision c5fdb5ccb189668d56333f77ba2629f4cd7535f4 | First-run downloaded model | CC-BY-NC-4.0 (non-commercial) | https://huggingface.co/k2-fsa/OmniVoice |",
         "| Douyin X-Bogus compatibility helper | Bundled adapted source | Apache-2.0 | https://github.com/jiji262/douyin-downloader |",
         "",
         "The release bundles the signed upstream FFmpeg 8.1.2 source archive under `sources/ffmpeg`. The publisher must also satisfy corresponding-source obligations for covered statically linked libraries.",

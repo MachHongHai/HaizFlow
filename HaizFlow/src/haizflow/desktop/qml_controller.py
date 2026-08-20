@@ -5,7 +5,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, Property, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, Property, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
 
@@ -63,8 +63,8 @@ from haizflow.core.hardware import (
     runtime_profile_for,
     validate_processing_device,
 )
+from haizflow.core.model_integrity import ModelIntegrityError, verify_whisper_turbo_model
 from haizflow.pipeline.process_registry import pause_video
-from haizflow.pipeline.tts import VIENEU_LANGUAGES
 from haizflow.schemas.video import CropSettings, VideoConfig, SubtitleStyle
 from haizflow.services import desktop_settings, video_store, project_store
 from haizflow.services.desktop_videos import create_desktop_video, migrate_legacy_single_export
@@ -86,6 +86,8 @@ class HaizFlowController(QObject):
     videoPathChanged = Signal()
     videoThumbnailChanged = Signal()
     targetLanguageChanged = Signal()
+    speechRecognitionModelChanged = Signal()
+    speechRecognitionModelOptionsChanged = Signal()
     ttsProviderChanged = Signal()
     ttsProviderOptionsChanged = Signal()
     ttsVoiceChanged = Signal()
@@ -145,15 +147,16 @@ class HaizFlowController(QObject):
         self._video_path = ""
         self._video_thumbnail_source = ""
         self._target_language = "vi"
-        self._tts_provider = "vieneu"
-        self._tts_voice = "Trúc Ly"
-        self._enable_audio_separation = False
+        self._speech_recognition_model = "small"
+        self._tts_provider = "omnivoice"
+        self._tts_voice = "omnivoice:female"
+        self._enable_audio_separation = True
         self._original_volume = 60
         self._background_music_volume = 30
         self._tts_volume = 100
         self._watermark_text = ""
         self._remove_original_subtitles = True
-        self._original_subtitle_removal_mode = "blur"
+        self._original_subtitle_removal_mode = "patch"
         self._subtitle_style = SubtitleStyle()
         self._subtitle_layout_override = False
         self._background_music_path = ""
@@ -237,9 +240,8 @@ class HaizFlowController(QObject):
         self._hardware_telemetry_active = False
         configure_processing_device(self._settings_processing_device)
         self._active_processing_device = self._settings_processing_device
-        if os.getenv("HAIZFLOW_SMOKE_TEST") != "1" and models_ready(
-            Path(MODELS_DIR), self._active_processing_device
-        ):
+        self._whisper_turbo_model_ready = self._detect_whisper_turbo_model_ready()
+        if os.getenv("HAIZFLOW_SMOKE_TEST") != "1" and models_ready(Path(MODELS_DIR), self._active_processing_device):
             # Integrity markers make this a small local check. A completed
             # installation goes straight to background warm-up with no setup UI.
             self._model_setup_state = "ready"
@@ -263,9 +265,7 @@ class HaizFlowController(QObject):
         self._url_importer.downloadReady.connect(self._handle_url_download_ready)
         self._url_importer.importFinished.connect(self.urlImportFinished.emit)
         self._channel_importer = ChannelImportCoordinator(self)
-        self._channel_importer.set_worker_limit_provider(
-            lambda: 1 if self._processing_queue.active_video_id else 2
-        )
+        self._channel_importer.set_worker_limit_provider(lambda: 1 if self._processing_queue.active_video_id else 2)
         self._channel_import_targets = {}
         self._channel_importer.changed.connect(self.channelImportChanged.emit)
         self._channel_importer.videoReady.connect(self._handle_channel_video_ready)
@@ -378,6 +378,7 @@ class HaizFlowController(QObject):
 
     def _drain_model_setup_events(self) -> None:
         changed = False
+        turbo_state_may_have_changed = False
         while True:
             try:
                 event = self._model_setup_events.get_nowait()
@@ -390,12 +391,31 @@ class HaizFlowController(QObject):
             self._model_setup_completed_bytes = max(
                 0, int(event.get("completed_bytes", self._model_setup_completed_bytes))
             )
-            self._model_setup_total_bytes = max(
-                0, int(event.get("total_bytes", self._model_setup_total_bytes))
-            )
+            self._model_setup_total_bytes = max(0, int(event.get("total_bytes", self._model_setup_total_bytes)))
+            if state == "ready":
+                turbo_state_may_have_changed = True
             changed = True
         if changed:
             self.modelSetupChanged.emit()
+        if turbo_state_may_have_changed:
+            self._refresh_whisper_turbo_model_ready()
+
+    @staticmethod
+    def _detect_whisper_turbo_model_ready() -> bool:
+        """Read the bootstrap integrity marker once, never in a QML getter."""
+        try:
+            verify_whisper_turbo_model(Path(MODELS_DIR) / "whisper" / "large-v3-turbo")
+        except (ModelIntegrityError, OSError):
+            return False
+        return True
+
+    def _refresh_whisper_turbo_model_ready(self) -> bool:
+        """Refresh the cached integrity result after a model or device event."""
+        ready = self._detect_whisper_turbo_model_ready()
+        if ready != self._whisper_turbo_model_ready:
+            self._whisper_turbo_model_ready = ready
+            self.speechRecognitionModelOptionsChanged.emit()
+        return ready
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.Close and not self._close_confirmed:
@@ -797,17 +817,10 @@ class HaizFlowController(QObject):
     def targetLanguage(self, value):
         language = str(value or "vi")
         language_changed = self._target_language != language
-        current_provider = getattr(self, "_tts_provider", "edge")
-        unsupported_vieneu = (
-            current_provider == "vieneu" and language.lower() not in VIENEU_LANGUAGES
-        )
-        normalized_provider = HaizFlowController._normalized_tts_provider(
-            language, current_provider
-        )
+        current_provider = getattr(self, "_tts_provider", "omnivoice")
+        normalized_provider = HaizFlowController._normalized_tts_provider(language, current_provider)
         provider_changed = current_provider != normalized_provider
-        normalized_voice = self._normalized_voice_for_language(
-            language, self._tts_voice, normalized_provider
-        )
+        normalized_voice = self._normalized_voice_for_language(language, self._tts_voice, normalized_provider)
         voice_changed = self._tts_voice != normalized_voice
         if not language_changed and not provider_changed and not voice_changed:
             return
@@ -834,8 +847,75 @@ class HaizFlowController(QObject):
             signal.emit()
         # The option model and selected index depend on both language and voice.
         self.ttsVoiceOptionsChanged.emit()
-        if unsupported_vieneu:
-            self._show_vieneu_fallback_alert(language)
+
+    @Property(str, notify=speechRecognitionModelChanged)
+    def speechRecognitionModel(self):
+        return self._speech_recognition_model
+
+    @speechRecognitionModel.setter
+    def speechRecognitionModel(self, value):
+        requested = str(value or "small").strip().lower()
+        if requested not in {"small", "large-v3-turbo"}:
+            requested = "small"
+        capabilities = getattr(self, "_hardware_capabilities", None)
+        gpu_available = bool(
+            (capabilities and capabilities.cuda_available)
+            or getattr(self, "_active_processing_device", "") == "gpu"
+            or getattr(self, "_settings_processing_device", "") == "gpu"
+        )
+        if requested == "large-v3-turbo":
+            if not gpu_available:
+                self._show_app_alert(
+                    "Whisper Turbo requires a GPU",
+                    "Whisper large-v3-turbo needs an NVIDIA CUDA GPU. WhisperX small remains selected.",
+                    "warning",
+                )
+                requested = "small"
+            elif not getattr(self, "_whisper_turbo_model_ready", False):
+                self._show_app_alert(
+                    "Whisper Turbo is not ready",
+                    "The downloaded Whisper Turbo files are missing or have not passed integrity verification yet.",
+                    "warning",
+                )
+                requested = "small"
+        if self._speech_recognition_model != requested:
+            self._speech_recognition_model = requested
+            self.speechRecognitionModelChanged.emit()
+
+    @Property("QVariantList", notify=speechRecognitionModelOptionsChanged)
+    def speechRecognitionModelOptions(self):
+        # The cheap startup probe deliberately avoids importing Torch and
+        # therefore reports CUDA as unavailable.  This property is evaluated
+        # after the asynchronous hardware probe as well, so use its cached,
+        # authoritative result instead of permanently disabling Turbo.
+        capabilities = getattr(self, "_hardware_capabilities", None)
+        gpu_available = bool(
+            (capabilities and capabilities.cuda_available)
+            or getattr(self, "_active_processing_device", "") == "gpu"
+            or getattr(self, "_settings_processing_device", "") == "gpu"
+        )
+        turbo_available = gpu_available and bool(getattr(self, "_whisper_turbo_model_ready", False))
+        if getattr(self, "_settings_language", "en") == "vi":
+            return [
+                {"value": "small", "label": "WhisperX small · CPU / GPU VRAM thấp", "available": True},
+                {
+                    "value": "large-v3-turbo",
+                    "label": "Whisper large-v3-turbo · GPU chất lượng cao",
+                    "available": turbo_available,
+                },
+            ]
+        return [
+            {"value": "small", "label": "WhisperX small · CPU / low VRAM", "available": True},
+            {
+                "value": "large-v3-turbo",
+                "label": "Whisper large-v3-turbo · High-quality GPU",
+                "available": turbo_available,
+            },
+        ]
+
+    @Property(int, notify=speechRecognitionModelChanged)
+    def speechRecognitionModelIndex(self):
+        return 1 if self._speech_recognition_model == "large-v3-turbo" else 0
 
     @Property(str, notify=languageOptionsChanged)
     def targetLanguageLabel(self):
@@ -847,20 +927,11 @@ class HaizFlowController(QObject):
 
     @ttsProvider.setter
     def ttsProvider(self, value):
-        requested_provider = str(value or "").strip().lower()
-        unsupported_vieneu = (
-            requested_provider == "vieneu"
-            and self._target_language.lower() not in VIENEU_LANGUAGES
-        )
         provider = self._normalized_tts_provider(self._target_language, value)
-        normalized_voice = self._normalized_voice_for_language(
-            self._target_language, self._tts_voice, provider
-        )
+        normalized_voice = self._normalized_voice_for_language(self._target_language, self._tts_voice, provider)
         provider_changed = self._tts_provider != provider
         voice_changed = self._tts_voice != normalized_voice
         if not provider_changed and not voice_changed:
-            if unsupported_vieneu:
-                self._show_vieneu_fallback_alert(self._target_language)
             return
         self._tts_provider = provider
         self._tts_voice = normalized_voice
@@ -873,8 +944,6 @@ class HaizFlowController(QObject):
             self.ttsVoiceChanged.emit()
         self.ttsProviderOptionsChanged.emit()
         self.ttsVoiceOptionsChanged.emit()
-        if unsupported_vieneu:
-            self._show_vieneu_fallback_alert(self._target_language)
 
     @Property("QVariantList", notify=ttsProviderOptionsChanged)
     def ttsProviderOptions(self):
@@ -883,14 +952,6 @@ class HaizFlowController(QObject):
     @Slot(str, result="QVariantList")
     def ttsProviderOptionsForLanguage(self, language_code: str):
         return self._tts_provider_options_for_language(str(language_code or "vi"))
-
-    @Slot(str, result=str)
-    def fallbackFromVieneuForLanguage(self, language_code: str) -> str:
-        language = str(language_code or "vi").strip().lower()
-        if language not in VIENEU_LANGUAGES:
-            self._show_vieneu_fallback_alert(language)
-            return "edge"
-        return "vieneu"
 
     @Slot()
     def enableInAppAlerts(self) -> None:
@@ -926,20 +987,42 @@ class HaizFlowController(QObject):
 
     @Property("QVariantList", notify=ttsVoiceOptionsChanged)
     def ttsVoiceOptions(self):
-        return self._voice_options_for_language(self._target_language, self._tts_provider)
+        options = self._voice_options_for_language(self._target_language, self._tts_provider)
+        # Selecting the clone entry opens its setup dialog.  Do not disable the
+        # entry before a sample exists, otherwise the user has no path to add
+        # the authorised sample and exact transcript.
+        return [{**item, "available": True} for item in options]
+
+    @Property(str, notify=selectedVideoChanged)
+    def voiceCloneReferencePath(self):
+        video = self._selected_video()
+        path = str(((video.files if video else {}) or {}).get("voice_reference") or "")
+        return path if path and os.path.isfile(path) else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def voiceCloneReferenceTranscript(self):
+        video = self._selected_video()
+        return str(((video.files if video else {}) or {}).get("voice_reference_transcript") or "")
 
     @Slot(str, result="QVariantList")
     def voiceOptionsForLanguage(self, language_code: str):
         language = str(language_code or "vi")
-        provider = "vieneu" if language.lower() in VIENEU_LANGUAGES else "edge"
-        return self._voice_options_for_language(language, provider)
+        return [
+            {**item, "available": item.get("voice") != "omnivoice:clone"}
+            for item in self._voice_options_for_language(language, "omnivoice")
+        ]
 
     @Slot(str, str, result="QVariantList")
     def voiceOptionsForLanguageAndProvider(self, language_code: str, provider: str):
-        return self._voice_options_for_language(
+        options = self._voice_options_for_language(
             str(language_code or "vi"),
             self._normalized_tts_provider(language_code, provider),
         )
+        # This method supplies the project-wide and batch editors. Voice
+        # cloning is deliberately per-video because every source needs its own
+        # authorised sample and exact transcript. The selected-video property
+        # above enables it only when those files actually exist.
+        return [{**item, "available": item.get("voice") != "omnivoice:clone"} for item in options]
 
     @Property(int, notify=ttsVoiceOptionsChanged)
     def ttsVoiceIndex(self):
@@ -1032,7 +1115,7 @@ class HaizFlowController(QObject):
         if normalized == "inpaint":
             normalized = "patch"
         if normalized not in {"blur", "patch"}:
-            normalized = "blur"
+            normalized = "patch"
         if self._original_subtitle_removal_mode != normalized:
             self._original_subtitle_removal_mode = normalized
             self.subtitleSettingsChanged.emit()
@@ -1116,7 +1199,8 @@ class HaizFlowController(QObject):
         return self._audio_preview_state
 
     @Property(str, notify=workflowModeChanged)
-    def workflowMode(self): return self._workflow_mode
+    def workflowMode(self):
+        return self._workflow_mode
 
     @workflowMode.setter
     def workflowMode(self, value):
@@ -1131,10 +1215,7 @@ class HaizFlowController(QObject):
 
     @Property(bool, notify=processingChanged)
     def isSelectedVideoProcessing(self):
-        return bool(
-            self._selected_video_id
-            and self._selected_video_id == self._processing_queue.active_video_id
-        )
+        return bool(self._selected_video_id and self._selected_video_id == self._processing_queue.active_video_id)
 
     @Property(bool, notify=selectedVideoChanged)
     def isSelectedVideoQueued(self):
@@ -1143,10 +1224,7 @@ class HaizFlowController(QObject):
     @Property(bool, notify=selectedVideoChanged)
     def canEditSelectedVideo(self):
         """Only freeze the video whose immutable pipeline snapshot is queued."""
-        return not (
-            self._selected_video_id
-            and self._processing_queue.contains(self._selected_video_id)
-        )
+        return not (self._selected_video_id and self._processing_queue.contains(self._selected_video_id))
 
     @Property(str, notify=processingChanged)
     def processingText(self):
@@ -1212,7 +1290,9 @@ class HaizFlowController(QObject):
         video = self._selected_video()
         if not video or video.status != "awaiting_review":
             return []
-        transcript_path = (video.files or {}).get("transcript_json")
+        transcript_path = (video.files or {}).get("translation_review_draft") or (video.files or {}).get(
+            "transcript_json"
+        )
         if not isinstance(transcript_path, str) or not transcript_path.strip():
             return []
         try:
@@ -1314,6 +1394,11 @@ class HaizFlowController(QObject):
     def selectedInputPath(self):
         video = self._selected_video()
         return self._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
+
+    @Property(QUrl, notify=selectedVideoChanged)
+    def selectedInputSource(self):
+        path = self.selectedInputPath
+        return QUrl.fromLocalFile(path) if path else QUrl()
 
     @Property(str, notify=selectedVideoChanged)
     def selectedOutputPath(self):
@@ -1480,17 +1565,19 @@ class HaizFlowController(QObject):
         if preference == "gpu":
             if not capabilities.cuda_available:
                 return "Không phát hiện GPU NVIDIA tương thích CUDA."
-            if capabilities.total_vram_bytes < 7 * 1024 ** 3:
-                return f"GPU cần ít nhất 7 GB VRAM; hiện có {capabilities.total_vram_bytes / (1024 ** 3):.1f} GB."
-            if capabilities.free_vram_bytes and capabilities.free_vram_bytes < 5 * 1024 ** 3:
-                return f"GPU cần ít nhất 5 GB VRAM trống; hiện có {capabilities.free_vram_bytes / (1024 ** 3):.1f} GB trống."
-            if capabilities.total_ram_bytes and capabilities.total_ram_bytes < 8 * 1024 ** 3:
-                return f"GPU cần ít nhất 8 GB RAM hệ thống; hiện có {capabilities.total_ram_bytes / (1024 ** 3):.1f} GB."
-            return f"GPU sẵn sàng: {capabilities.cuda_name}, {capabilities.total_vram_bytes / (1024 ** 3):.0f} GB VRAM."
+            if capabilities.total_vram_bytes < 7 * 1024**3:
+                return f"GPU cần ít nhất 7 GB VRAM; hiện có {capabilities.total_vram_bytes / (1024**3):.1f} GB."
+            if capabilities.free_vram_bytes and capabilities.free_vram_bytes < 5 * 1024**3:
+                return (
+                    f"GPU cần ít nhất 5 GB VRAM trống; hiện có {capabilities.free_vram_bytes / (1024**3):.1f} GB trống."
+                )
+            if capabilities.total_ram_bytes and capabilities.total_ram_bytes < 8 * 1024**3:
+                return f"GPU cần ít nhất 8 GB RAM hệ thống; hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GB."
+            return f"GPU sẵn sàng: {capabilities.cuda_name}, {capabilities.total_vram_bytes / (1024**3):.0f} GB VRAM."
         if preference == "cpu":
             if not compatible:
-                return f"Chế độ CPU cần khoảng 6 GB RAM; hiện có {capabilities.total_ram_bytes / (1024 ** 3):.1f} GB."
-            return f"CPU sẵn sàng: {capabilities.total_ram_bytes / (1024 ** 3):.0f} GB RAM, {capabilities.logical_cpu_count} luồng logic."
+                return f"Chế độ CPU cần khoảng 6 GB RAM; hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GB."
+            return f"CPU sẵn sàng: {capabilities.total_ram_bytes / (1024**3):.0f} GB RAM, {capabilities.logical_cpu_count} luồng logic."
         if capabilities.gpu_supported:
             return f"Chế độ tự động sẽ dùng {capabilities.cuda_name}."
         if capabilities.cpu_supported:
@@ -1556,7 +1643,9 @@ class HaizFlowController(QObject):
         return HaizFlowController._project_import_for(self).retry_channel_video(row)
 
     def _handle_channel_video_ready(self, path, _workspace, candidate_payload, project_key, session_id):
-        HaizFlowController._project_import_for(self).handle_channel_video_ready(path, _workspace, candidate_payload, project_key, session_id)
+        HaizFlowController._project_import_for(self).handle_channel_video_ready(
+            path, _workspace, candidate_payload, project_key, session_id
+        )
 
     @Slot(str)
     def _finish_channel_import_target(self, session_id):
@@ -1569,6 +1658,18 @@ class HaizFlowController(QObject):
     @Slot()
     def browseBackgroundMusic(self):
         HaizFlowController._project_import_for(self).browse_background_music()
+
+    @Slot(result=str)
+    def chooseVoiceCloneReference(self):
+        return HaizFlowController._project_import_for(self).choose_voice_reference()
+
+    @Slot(str, str, result=bool)
+    def setVoiceCloneReference(self, path, transcript):
+        return HaizFlowController._project_import_for(self).set_voice_reference(path, transcript)
+
+    @Slot(result=bool)
+    def clearVoiceCloneReference(self):
+        return HaizFlowController._project_import_for(self).clear_voice_reference()
 
     @Slot(result=str)
     def chooseBatchBackgroundMusic(self):
@@ -1609,7 +1710,8 @@ class HaizFlowController(QObject):
         """Preview a batch draft without applying it to each video."""
         preview_video_id = next(
             (
-                video_id for video_id in self._batch_video_ids
+                video_id
+                for video_id in self._batch_video_ids
                 if (video := video_store.get_video(video_id))
                 and os.path.isfile(str((video.files or {}).get("video_input") or ""))
             ),
@@ -1648,7 +1750,9 @@ class HaizFlowController(QObject):
 
     @Slot(str, str, str, result=bool)
     def prepareProject(self, project_name, project_directory, project_type):
-        return HaizFlowController._project_import_for(self).prepare_project(project_name, project_directory, project_type)
+        return HaizFlowController._project_import_for(self).prepare_project(
+            project_name, project_directory, project_type
+        )
 
     @Slot(str, str, str, result=bool)
     def applySettings(self, theme, language, processing_device):
@@ -1753,6 +1857,7 @@ class HaizFlowController(QObject):
         self,
         workflow_mode: str,
         target_language: str,
+        speech_recognition_model: str,
         tts_provider: str,
         tts_voice: str,
         enable_audio_separation: bool,
@@ -1766,10 +1871,20 @@ class HaizFlowController(QObject):
         original_subtitle_removal_mode=None,
     ) -> bool:
         return HaizFlowController._project_commands_for(self).apply_batch_settings(
-            workflow_mode, target_language, tts_provider, tts_voice,
-            enable_audio_separation, original_volume,
-            background_music_volume, tts_volume, watermark_text, background_music_path,
-            remove_original_subtitles, subtitle_style, original_subtitle_removal_mode,
+            workflow_mode,
+            target_language,
+            tts_provider,
+            tts_voice,
+            enable_audio_separation,
+            original_volume,
+            background_music_volume,
+            tts_volume,
+            watermark_text,
+            background_music_path,
+            remove_original_subtitles,
+            subtitle_style,
+            original_subtitle_removal_mode,
+            speech_recognition_model=speech_recognition_model,
         )
 
     @Slot(result=bool)
@@ -1777,6 +1892,7 @@ class HaizFlowController(QObject):
         return self._apply_batch_settings(
             self._workflow_mode,
             self._target_language,
+            self._speech_recognition_model,
             self._tts_provider,
             self._tts_voice,
             self._enable_audio_separation,
@@ -1790,11 +1906,12 @@ class HaizFlowController(QObject):
             self._original_subtitle_removal_mode,
         )
 
-    @Slot(str, str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, result=bool)
+    @Slot(str, str, str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, result=bool)
     def applyBatchSettingsDraft(
         self,
         workflow_mode: str,
         target_language: str,
+        speech_recognition_model: str,
         tts_provider: str,
         tts_voice: str,
         enable_audio_separation: bool,
@@ -1807,9 +1924,28 @@ class HaizFlowController(QObject):
         subtitle_style=None,
         original_subtitle_removal_mode: str | None = None,
     ):
+        # Keep direct Python callers from older integrations working while the
+        # QML-facing signature carries the new ASR model field.
+        if speech_recognition_model not in {"small", "large-v3-turbo"}:
+            legacy_provider = speech_recognition_model
+            legacy_voice = tts_provider
+            legacy_separation = bool(tts_voice)
+            legacy_original_volume = int(enable_audio_separation)
+            legacy_background_volume = int(original_volume)
+            legacy_tts_volume = int(background_music_volume) if background_music_volume is not None else None
+            legacy_watermark = str(tts_volume or "") if tts_volume is not None else None
+            speech_recognition_model = getattr(self, "_speech_recognition_model", "small")
+            tts_provider = legacy_provider
+            tts_voice = legacy_voice
+            enable_audio_separation = legacy_separation
+            original_volume = legacy_original_volume
+            background_music_volume = legacy_background_volume
+            tts_volume = legacy_tts_volume
+            watermark_text = legacy_watermark
         return self._apply_batch_settings(
             workflow_mode,
             target_language,
+            speech_recognition_model,
             tts_provider,
             tts_voice,
             enable_audio_separation,
@@ -1871,7 +2007,9 @@ class HaizFlowController(QObject):
         )
         output_directory = os.path.abspath(os.path.dirname(output_path))
         try:
-            if not any(os.path.commonpath([exports_root, output_directory]) == exports_root for exports_root in export_roots):
+            if not any(
+                os.path.commonpath([exports_root, output_directory]) == exports_root for exports_root in export_roots
+            ):
                 return ""
         except ValueError:
             return ""
@@ -1919,6 +2057,10 @@ class HaizFlowController(QObject):
     def approveTranslationReview(self, payload):
         HaizFlowController._project_commands_for(self).approve_translation_review(payload)
 
+    @Slot(str, result=bool)
+    def saveTranslationReviewDraft(self, payload):
+        return HaizFlowController._project_commands_for(self).save_translation_review_draft(payload)
+
     @Slot(int)
     def selectVideo(self, row: int):
         video = self.videos.video_at(row)
@@ -1946,9 +2088,12 @@ class HaizFlowController(QObject):
     @Slot(int, str, result=bool)
     def selectProjectInMode(self, row: int, project_type: str):
         model = (
-            self.batch_projects if project_type == "batch"
-            else self.download_projects if project_type == "download"
-            else self.publish_projects if project_type == "publish"
+            self.batch_projects
+            if project_type == "batch"
+            else self.download_projects
+            if project_type == "download"
+            else self.publish_projects
+            if project_type == "publish"
             else self.single_projects
         )
         project = model.project_at(row)
@@ -1961,10 +2106,7 @@ class HaizFlowController(QObject):
                 "Wait for the active Zernio upload or request to finish before opening another project.",
             )
             return False
-        if (
-            project_type == "download"
-            and not self._media_downloader.can_switch_project(project["key"])
-        ):
+        if project_type == "download" and not self._media_downloader.can_switch_project(project["key"]):
             QMessageBox.information(
                 None,
                 "Download project",
@@ -1990,9 +2132,7 @@ class HaizFlowController(QObject):
         if not self.hasOpenProject:
             QMessageBox.information(None, "Project folder", "This project's folder is not available yet.")
             return
-        self._open_path(
-            self._selected_project_root()
-        )
+        self._open_path(self._selected_project_root())
 
     @Slot()
     def openDownloadOutputFolder(self):
@@ -2255,13 +2395,12 @@ class HaizFlowController(QObject):
         self.batchChanged.emit()
 
     def _build_config(self):
-        manual_subtitle_layout = bool(
-            self._subtitle_layout_override and not self._remove_original_subtitles
-        )
+        manual_subtitle_layout = bool(self._subtitle_layout_override and not self._remove_original_subtitles)
         return VideoConfig(
             mode=self._workflow_mode,
             source_language="auto",
             target_language=self._target_language,
+            speech_recognition_model=self._speech_recognition_model,
             translator_provider="hymt2",
             tts_provider=self._tts_provider,
             tts_voice=self._tts_voice,
@@ -2290,6 +2429,7 @@ class HaizFlowController(QObject):
             "mode": config.mode,
             "source_language": config.source_language,
             "target_language": config.target_language,
+            "speech_recognition_model": config.speech_recognition_model,
             "tts_provider": config.tts_provider,
             "tts_voice": config.tts_voice,
             "subtitle_style": config.subtitle_style,
@@ -2380,24 +2520,19 @@ class HaizFlowController(QObject):
 
     @staticmethod
     def _normalized_tts_provider(language_code, provider):
-        language = str(language_code or "vi").strip().lower()
-        normalized = str(provider or "vieneu").strip().lower()
-        if normalized not in {"auto", "vieneu", "edge"}:
-            normalized = "vieneu" if language in VIENEU_LANGUAGES else "edge"
-        if normalized == "auto":
-            return "vieneu" if language == "vi" else "edge"
-        if normalized == "vieneu" and language not in VIENEU_LANGUAGES:
-            return "edge"
-        return normalized
+        normalized = str(provider or "omnivoice").strip().lower()
+        if normalized in {"auto", "vieneu"}:
+            return "omnivoice"
+        return normalized if normalized in {"omnivoice", "edge"} else "omnivoice"
 
     def _tts_provider_options_for_language(self, language_code):
         if getattr(self, "_settings_language", "en") == "vi":
             return [
-                {"provider": "vieneu", "label": "VieNeu · Chạy cục bộ bằng CPU"},
+                {"provider": "omnivoice", "label": "OmniVoice · Chạy cục bộ"},
                 {"provider": "edge", "label": "Edge TTS · Trực tuyến"},
             ]
         return [
-            {"provider": "vieneu", "label": "VieNeu · Local CPU"},
+            {"provider": "omnivoice", "label": "OmniVoice · Local"},
             {"provider": "edge", "label": "Edge TTS · Online"},
         ]
 
@@ -2407,27 +2542,9 @@ class HaizFlowController(QObject):
             level = "information"
         self.appAlertRequested.emit(str(title or "HaizFlow"), str(message or ""), level)
 
-    def _show_vieneu_fallback_alert(self, language_code: str) -> None:
-        language_name = self._language_label(str(language_code or ""))
-        if self._settings_language == "vi":
-            title = "Đã chuyển sang Edge TTS"
-            message = (
-                f"VieNeu chưa hỗ trợ {language_name}. HaizFlow đã tự chuyển sang "
-                "Edge TTS để giọng đọc phù hợp với ngôn ngữ đích."
-            )
-        else:
-            title = "Switched to Edge TTS"
-            message = (
-                f"VieNeu does not support {language_name}. HaizFlow switched to "
-                "Edge TTS so the selected language can be synthesized."
-            )
-        self._show_app_alert(title, message, "warning")
-
-    def _voice_options_for_language(self, language_code, provider="vieneu"):
+    def _voice_options_for_language(self, language_code, provider="omnivoice"):
         try:
-            return voice_options_for_language(
-                language_code, self._settings_language, provider
-            )
+            return voice_options_for_language(language_code, self._settings_language, provider)
         except AttributeError:
             # Small controller doubles in tests and integrations can provide
             # their own catalog without carrying desktop localization state.
@@ -2439,13 +2556,10 @@ class HaizFlowController(QObject):
                     return callback(language_code)
             raise
 
-    def _voice_codes_for_language(self, language_code, provider="vieneu"):
-        return [
-            item["voice"]
-            for item in self._voice_options_for_language(language_code, provider)
-        ]
+    def _voice_codes_for_language(self, language_code, provider="omnivoice"):
+        return [item["voice"] for item in self._voice_options_for_language(language_code, provider)]
 
-    def _normalized_voice_for_language(self, language_code, voice, provider="vieneu"):
+    def _normalized_voice_for_language(self, language_code, voice, provider="omnivoice"):
         """Return a valid voice for the selected output language and provider."""
         try:
             options = self._voice_options_for_language(language_code, provider)

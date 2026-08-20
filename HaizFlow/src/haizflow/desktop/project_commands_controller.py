@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 from collections import Counter
+from pathlib import Path
 
 from haizflow.desktop.localization import QMessageBox
 from haizflow.core.hardware import runtime_profile
@@ -22,6 +23,41 @@ def _subtitle_style_items(video) -> tuple[tuple[str, object], ...]:
     return tuple(values.items()) + (("manual", bool(getattr(video, "subtitle_layout_override", False))),)
 
 
+def _validated_review_segments(payload: str) -> list[dict]:
+    segments = json.loads(payload)
+    if not isinstance(segments, list) or not segments:
+        raise ValueError("The review must contain at least one translated segment.")
+    for index, item in enumerate(segments, 1):
+        if not isinstance(item, dict) or not str(item.get("text", "")).strip():
+            raise ValueError(f"Translation segment {index} must contain text.")
+        try:
+            start = float(item["start"])
+            end = float(item["end"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"Translation segment {index} has invalid timestamps.") from exc
+        if start < 0 or end <= start:
+            raise ValueError(f"Translation segment {index} has an invalid time range.")
+    return segments
+
+
+def _write_json_atomic(path: str, payload) -> None:
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    handle, temporary_path = tempfile.mkstemp(prefix=".haizflow-review-", suffix=".json.tmp", dir=directory)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=2)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary_path, path)
+    except Exception:
+        try:
+            os.remove(temporary_path)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 class ProjectCommandsController:
     def __init__(self, host, *, create_video=None):
         self._host = host
@@ -30,7 +66,8 @@ class ProjectCommandsController:
     def start_batch(self) -> None:
         host = self._host
         pending_ids = [
-            video_id for video_id in host._batch_video_ids
+            video_id
+            for video_id in host._batch_video_ids
             if (video := video_store.get_video(video_id)) and video.status == "pending"
         ]
         if not pending_ids:
@@ -74,6 +111,7 @@ class ProjectCommandsController:
             return {
                 "workflowMode": host._workflow_mode,
                 "targetLanguage": host._target_language,
+                "speechRecognitionModel": getattr(host, "_speech_recognition_model", "small"),
                 "ttsProvider": host._tts_provider,
                 "ttsVoice": host._tts_voice,
                 "enableAudioSeparation": host._enable_audio_separation,
@@ -83,7 +121,7 @@ class ProjectCommandsController:
                 "watermarkText": host._watermark_text,
                 "removeOriginalSubtitles": bool(getattr(host, "_remove_original_subtitles", True)),
                 "originalSubtitleRemovalMode": str(
-                    getattr(host, "_original_subtitle_removal_mode", "blur") or "blur"
+                    getattr(host, "_original_subtitle_removal_mode", "patch") or "patch"
                 ),
                 "subtitleStyle": {
                     **(getattr(host, "_subtitle_style", None) or SubtitleStyle()).model_dump(),
@@ -93,26 +131,58 @@ class ProjectCommandsController:
             }
         common, _count = Counter(
             (
-                video.mode, video.target_language, getattr(video, "tts_provider", "edge"),
-                video.tts_voice, video.enable_audio_separation,
-                video.original_video_volume, getattr(video, "background_music_volume", 30), getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
+                video.mode,
+                video.target_language,
+                getattr(video, "speech_recognition_model", "small"),
+                getattr(video, "tts_provider", "edge"),
+                video.tts_voice,
+                video.enable_audio_separation,
+                video.original_video_volume,
+                getattr(video, "background_music_volume", 30),
+                getattr(video, "tts_volume", 100),
+                getattr(video, "watermark_text", ""),
                 bool(getattr(video, "remove_original_subtitles", True)),
-                str(getattr(video, "original_subtitle_removal_mode", "blur") or "blur"),
+                str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
                 _subtitle_style_items(video),
             )
             for video in videos
         ).most_common(1)[0]
-        workflow_mode, target_language, tts_provider, tts_voice, audio_separation, original_volume, background_music_volume, tts_volume, watermark_text, remove_original_subtitles, original_subtitle_removal_mode, subtitle_style_items = common
+        (
+            workflow_mode,
+            target_language,
+            speech_recognition_model,
+            tts_provider,
+            tts_voice,
+            audio_separation,
+            original_volume,
+            background_music_volume,
+            tts_volume,
+            watermark_text,
+            remove_original_subtitles,
+            original_subtitle_removal_mode,
+            subtitle_style_items,
+        ) = common
         baseline_video = next(
-            (video for video in videos if (
-                video.mode, video.target_language, getattr(video, "tts_provider", "edge"),
-                video.tts_voice, video.enable_audio_separation,
-                video.original_video_volume, getattr(video, "background_music_volume", 30),
-                getattr(video, "tts_volume", 100), getattr(video, "watermark_text", ""),
-                bool(getattr(video, "remove_original_subtitles", True)),
-                str(getattr(video, "original_subtitle_removal_mode", "blur") or "blur"),
-                _subtitle_style_items(video),
-            ) == common),
+            (
+                video
+                for video in videos
+                if (
+                    video.mode,
+                    video.target_language,
+                    getattr(video, "speech_recognition_model", "small"),
+                    getattr(video, "tts_provider", "edge"),
+                    video.tts_voice,
+                    video.enable_audio_separation,
+                    video.original_video_volume,
+                    getattr(video, "background_music_volume", 30),
+                    getattr(video, "tts_volume", 100),
+                    getattr(video, "watermark_text", ""),
+                    bool(getattr(video, "remove_original_subtitles", True)),
+                    str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
+                    _subtitle_style_items(video),
+                )
+                == common
+            ),
             videos[0],
         )
         background_music_path = str((baseline_video.files or {}).get("background_music") or "")
@@ -123,10 +193,9 @@ class ProjectCommandsController:
         return {
             "workflowMode": "review" if workflow_mode == "review" else "A",
             "targetLanguage": target_language,
+            "speechRecognitionModel": str(speech_recognition_model or "small"),
             "ttsProvider": tts_provider,
-            "ttsVoice": host._normalized_voice_for_language(
-                target_language, tts_voice, tts_provider
-            ),
+            "ttsVoice": host._normalized_voice_for_language(target_language, tts_voice, tts_provider),
             "enableAudioSeparation": bool(audio_separation),
             "originalVolume": int(original_volume),
             "backgroundMusicVolume": int(background_music_volume),
@@ -152,10 +221,15 @@ class ProjectCommandsController:
 
         def values(video) -> tuple[object, ...]:
             music_path = str((getattr(video, "files", None) or {}).get("background_music") or "")
-            music_signature = (os.path.splitext(music_path)[1].lower(), os.path.getsize(music_path)) if os.path.isfile(music_path) else ()
+            music_signature = (
+                (os.path.splitext(music_path)[1].lower(), os.path.getsize(music_path))
+                if os.path.isfile(music_path)
+                else ()
+            )
             return (
                 "review" if video.mode == "review" else "A",
                 str(video.target_language or "vi"),
+                str(getattr(video, "speech_recognition_model", "small") or "small"),
                 str(getattr(video, "tts_provider", "edge") or "edge"),
                 str(video.tts_voice or ""),
                 bool(video.enable_audio_separation),
@@ -164,15 +238,25 @@ class ProjectCommandsController:
                 int(getattr(video, "tts_volume", 100)),
                 " ".join(str(getattr(video, "watermark_text", "") or "").split())[:80],
                 bool(getattr(video, "remove_original_subtitles", True)),
-                str(getattr(video, "original_subtitle_removal_mode", "blur") or "blur"),
+                str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
                 _subtitle_style_items(video),
                 music_signature,
             )
 
         keys = (
-            "workflow", "targetLanguage", "ttsProvider", "voice", "audioSource",
-            "sourceVolume", "backgroundMusicVolume", "ttsVolume", "watermark",
-            "originalSubtitles", "subtitleRemovalMode", "subtitleLayout",
+            "workflow",
+            "targetLanguage",
+            "speechRecognitionModel",
+            "ttsProvider",
+            "voice",
+            "audioSource",
+            "sourceVolume",
+            "backgroundMusicVolume",
+            "ttsVolume",
+            "watermark",
+            "originalSubtitles",
+            "subtitleRemovalMode",
+            "subtitleLayout",
             "backgroundMusic",
         )
         baseline, _count = Counter(values(video) for video in videos).most_common(1)[0]
@@ -180,18 +264,31 @@ class ProjectCommandsController:
         for video in videos:
             differences = [key for key, value, expected in zip(keys, values(video), baseline) if value != expected]
             if differences:
-                overrides.append({
-                    "videoId": video.video_id,
-                    "fileName": video.original_filename,
-                    "differences": differences,
-                })
+                overrides.append(
+                    {
+                        "videoId": video.video_id,
+                        "fileName": video.original_filename,
+                        "differences": differences,
+                    }
+                )
         return overrides
 
     def apply_batch_settings(
-        self, workflow_mode, target_language, tts_provider, tts_voice,
-        enable_audio_separation, original_volume,
-        background_music_volume=None, tts_volume=None, watermark_text=None, background_music_path=None,
-        remove_original_subtitles=None, subtitle_style=None, original_subtitle_removal_mode=None,
+        self,
+        workflow_mode,
+        target_language,
+        tts_provider,
+        tts_voice,
+        enable_audio_separation,
+        original_volume,
+        background_music_volume=None,
+        tts_volume=None,
+        watermark_text=None,
+        background_music_path=None,
+        remove_original_subtitles=None,
+        subtitle_style=None,
+        original_subtitle_removal_mode=None,
+        speech_recognition_model=None,
     ) -> bool:
         host = self._host
         mode = "review" if workflow_mode == "review" else "A"
@@ -199,39 +296,81 @@ class ProjectCommandsController:
         normalize_provider = getattr(host, "_normalized_tts_provider", None)
         provider = (
             normalize_provider(language, tts_provider)
-            if normalize_provider else (str(tts_provider or "vieneu").lower())
+            if normalize_provider
+            else (str(tts_provider or "omnivoice").lower())
         )
+        asr_model = (
+            str(speech_recognition_model or getattr(host, "_speech_recognition_model", "small") or "small")
+            .strip()
+            .lower()
+        )
+        if asr_model not in {"small", "large-v3-turbo"}:
+            asr_model = "small"
+        capabilities = getattr(host, "_hardware_capabilities", None)
+        turbo_gpu_available = bool(
+            (capabilities and capabilities.cuda_available)
+            or getattr(host, "_active_processing_device", "") == "gpu"
+            or getattr(host, "_settings_processing_device", "") == "gpu"
+            or runtime_profile().cuda_available
+        )
+        turbo_model_ready = bool(getattr(host, "_whisper_turbo_model_ready", False))
+        if asr_model == "large-v3-turbo" and (not turbo_gpu_available or not turbo_model_ready):
+            show_alert = getattr(host, "_show_app_alert", None)
+            message = (
+                "Whisper large-v3-turbo has not finished downloading or integrity verification. "
+                "Wait for model setup to finish, or select WhisperX small."
+                if turbo_gpu_available and not turbo_model_ready
+                else "Whisper large-v3-turbo requires an NVIDIA CUDA GPU. Select WhisperX small for this device."
+            )
+            if callable(show_alert):
+                show_alert(
+                    "Speech recognition",
+                    message,
+                    "warning",
+                )
+            else:
+                QMessageBox.warning(
+                    None,
+                    "Speech recognition",
+                    message,
+                )
+            return False
         try:
             voice = host._normalized_voice_for_language(language, tts_voice, provider)
         except TypeError:
             voice = host._normalized_voice_for_language(language, tts_voice)
         apply_mix_volumes = background_music_volume is not None or tts_volume is not None
-        background_music_volume = getattr(host, "_background_music_volume", 30) if background_music_volume is None else int(background_music_volume)
+        background_music_volume = (
+            getattr(host, "_background_music_volume", 30)
+            if background_music_volume is None
+            else int(background_music_volume)
+        )
         tts_volume = getattr(host, "_tts_volume", 100) if tts_volume is None else int(tts_volume)
         apply_watermark = watermark_text is not None
         watermark_text = " ".join(str(watermark_text or "").split())[:80]
         apply_background_music = background_music_path is not None
         apply_original_subtitles = remove_original_subtitles is not None
         apply_removal_mode = original_subtitle_removal_mode is not None
-        removal_mode = str(original_subtitle_removal_mode or "blur").strip().lower()
+        removal_mode = str(original_subtitle_removal_mode or "patch").strip().lower()
         if removal_mode == "inpaint":
             removal_mode = "patch"
         if removal_mode not in {"blur", "patch"}:
-            removal_mode = "blur"
+            removal_mode = "patch"
         apply_subtitle_style = subtitle_style is not None
         subtitle_style_payload = dict(subtitle_style or {})
         subtitle_layout_override = bool(subtitle_style_payload.pop("manual", False))
         normalized_subtitle_style = SubtitleStyle(**subtitle_style_payload) if apply_subtitle_style else None
-        background_music_path = os.path.abspath(str(background_music_path or "").strip()) if background_music_path else ""
-        if apply_background_music and background_music_path and (
-            not os.path.isfile(background_music_path) or os.path.getsize(background_music_path) <= 0
+        background_music_path = (
+            os.path.abspath(str(background_music_path or "").strip()) if background_music_path else ""
+        )
+        if (
+            apply_background_music
+            and background_music_path
+            and (not os.path.isfile(background_music_path) or os.path.getsize(background_music_path) <= 0)
         ):
             QMessageBox.warning(None, "Background music", "The selected background music is no longer available.")
             return False
-        videos = [
-            video for video_id in host._batch_video_ids
-            if (video := video_store.get_video(video_id))
-        ]
+        videos = [video for video_id in host._batch_video_ids if (video := video_store.get_video(video_id))]
         if not videos:
             QMessageBox.information(None, "Batch settings", "Add at least one video before applying settings.")
             return False
@@ -250,6 +389,7 @@ class ProjectCommandsController:
                 "mode": mode,
                 "source_language": "auto",
                 "target_language": language,
+                "speech_recognition_model": asr_model,
                 "tts_provider": provider,
                 "tts_voice": voice,
                 "enable_audio_separation": bool(enable_audio_separation),
@@ -273,7 +413,9 @@ class ProjectCommandsController:
                 try:
                     set_desktop_background_music(video, background_music_path)
                 except (OSError, RuntimeError, ValueError) as exc:
-                    QMessageBox.warning(None, "Background music", f"Could not apply background music to every video: {exc}")
+                    QMessageBox.warning(
+                        None, "Background music", f"Could not apply background music to every video: {exc}"
+                    )
                     return False
             video_store.update_video(video_id, **changes)
             updated += 1
@@ -300,6 +442,7 @@ class ProjectCommandsController:
         values = self.batch_settings_values()
         host._workflow_mode = values["workflowMode"]
         host._target_language = values["targetLanguage"]
+        host._speech_recognition_model = values["speechRecognitionModel"]
         host._tts_provider = values["ttsProvider"]
         host._tts_voice = values["ttsVoice"]
         host._enable_audio_separation = values["enableAudioSeparation"]
@@ -315,6 +458,7 @@ class ProjectCommandsController:
         host._background_music_path = str(values.get("backgroundMusicPath") or "")
         host.workflowModeChanged.emit()
         host.targetLanguageChanged.emit()
+        host.speechRecognitionModelChanged.emit()
         host.ttsProviderChanged.emit()
         host.ttsProviderOptionsChanged.emit()
         host.ttsVoiceChanged.emit()
@@ -360,7 +504,12 @@ class ProjectCommandsController:
         host = self._host
         if not host.isBatchRunning:
             return
-        if QMessageBox.question(None, "Pause batch", "Pause the active video and the remaining queue? You can resume this batch later.") != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                None, "Pause batch", "Pause the active video and the remaining queue? You can resume this batch later."
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         host._batch_stop_requested = True
         active_video_id, waiting_video_ids = host._processing_queue.detach_pending(host._batch_video_ids)
@@ -416,8 +565,16 @@ class ProjectCommandsController:
             "This removes processing logs, temporary data, copied inputs, and generated videos. "
             "If processing is active, it will be stopped first."
         )
-        if QMessageBox.question(None, "Delete project", message, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                None,
+                "Delete project",
+                message,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         current_key = host._selected_project_key
         try:
@@ -426,7 +583,9 @@ class ProjectCommandsController:
             QMessageBox.warning(None, "Delete project", str(exc))
             return
         if not host._channel_importer.cancel_project(current_key):
-            QMessageBox.information(None, "Channel import", "Channel import is still stopping. Try deleting the project again in a moment.")
+            QMessageBox.information(
+                None, "Channel import", "Channel import is still stopping. Try deleting the project again in a moment."
+            )
             return
         for session_id, target in tuple(host._channel_import_targets.items()):
             if target.get("project_key") == current_key:
@@ -458,9 +617,12 @@ class ProjectCommandsController:
         host.logsChanged.emit()
         host.refreshVideos()
         if failures:
-            QMessageBox.warning(None, "Batch delete incomplete",
-                                "Some videos could not be deleted. You can retry after closing any program using them.\n\n"
-                                + "\n".join(failures[:5]))
+            QMessageBox.warning(
+                None,
+                "Batch delete incomplete",
+                "Some videos could not be deleted. You can retry after closing any program using them.\n\n"
+                + "\n".join(failures[:5]),
+            )
             return
         try:
             project_store.delete_project_by_key(current_key)
@@ -519,8 +681,11 @@ class ProjectCommandsController:
             return False
         try:
             video = self._create_video(
-                host._video_path, host._build_config(), project_name=host._project_name,
-                project_directory=host._project_directory, project_key_value=host._selected_project_key,
+                host._video_path,
+                host._build_config(),
+                project_name=host._project_name,
+                project_directory=host._project_directory,
+                project_key_value=host._selected_project_key,
             )
         except Exception as exc:
             QMessageBox.critical(None, "Cannot create project", str(exc))
@@ -547,12 +712,21 @@ class ProjectCommandsController:
         if host.isSelectedBatchVideo:
             self.stop_batch()
             return
-        if QMessageBox.question(None, "Pause video", "Pause this video? You can resume it later from Projects.") != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(None, "Pause video", "Pause this video? You can resume it later from Projects.")
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         resume_step = selected_video.step
         pause_video(selected_video_id)
-        video_store.update_video(selected_video_id, status="paused", error=None, step="paused",
-                                 resume_step=resume_step, step_detail=f"Paused during {resume_step or 'startup'}")
+        video_store.update_video(
+            selected_video_id,
+            status="paused",
+            error=None,
+            step="paused",
+            resume_step=resume_step,
+            step_detail=f"Paused during {resume_step or 'startup'}",
+        )
         video_store.log_to_video(selected_video_id, "Pause requested. Active subprocesses were stopped.")
         host.selectedVideoChanged.emit()
         host.refreshVideos()
@@ -572,15 +746,23 @@ class ProjectCommandsController:
         if not video or host._processing_queue.contains(video.video_id):
             return
         if host._device_switching:
-            QMessageBox.information(None, "Processing device", "Wait for the processing device to finish switching before restarting.")
+            QMessageBox.information(
+                None, "Processing device", "Wait for the processing device to finish switching before restarting."
+            )
             return
-        if QMessageBox.question(None, "Restart video", "Apply the current dubbing setup and restart this project?") != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(None, "Restart video", "Apply the current dubbing setup and restart this project?")
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         host._apply_setup_to_video(video, review_approved=False)
         restarted = video_store.prepare_video_restart(video.video_id)
         if not restarted:
             return
-        video_store.log_to_video(restarted.video_id, f"Restart requested with the latest dubbing setup and runtime: {runtime_profile().summary}.")
+        video_store.log_to_video(
+            restarted.video_id,
+            f"Restart requested with the latest dubbing setup and runtime: {runtime_profile().summary}.",
+        )
         host._enqueue_video(restarted.video_id)
         host.selectedVideoChanged.emit()
 
@@ -590,44 +772,23 @@ class ProjectCommandsController:
         if not video or video.status != "awaiting_review":
             return
         try:
-            segments = json.loads(payload)
-            if not isinstance(segments, list) or not segments:
-                raise ValueError("The review must contain at least one translated segment.")
-            for index, item in enumerate(segments, 1):
-                if not isinstance(item, dict) or not str(item.get("text", "")).strip():
-                    raise ValueError(f"Translation segment {index} must contain text.")
-                try:
-                    start = float(item["start"])
-                    end = float(item["end"])
-                except (KeyError, TypeError, ValueError) as exc:
-                    raise ValueError(f"Translation segment {index} has invalid timestamps.") from exc
-                if start < 0 or end <= start:
-                    raise ValueError(f"Translation segment {index} has an invalid time range.")
-
+            segments = _validated_review_segments(payload)
             transcript_path = (video.files or {}).get("transcript_json")
             if not isinstance(transcript_path, str) or not transcript_path.strip():
                 raise ValueError("Video metadata is missing its translation-review path.")
-            transcript_directory = os.path.dirname(os.path.abspath(transcript_path))
-            os.makedirs(transcript_directory, exist_ok=True)
-            handle, temporary_path = tempfile.mkstemp(
-                prefix=".reviewed-translation-",
-                suffix=".json.tmp",
-                dir=transcript_directory,
-            )
-            try:
-                with os.fdopen(handle, "w", encoding="utf-8") as file:
-                    json.dump(segments, file, ensure_ascii=False, indent=2)
-                    file.flush()
-                    os.fsync(file.fileno())
-                os.replace(temporary_path, transcript_path)
-            except Exception:
-                try:
-                    os.remove(temporary_path)
-                except FileNotFoundError:
-                    pass
-                raise
+            _write_json_atomic(transcript_path, segments)
+            draft_path = str((video.files or {}).get("translation_review_draft") or "")
+            if draft_path:
+                Path(draft_path).unlink(missing_ok=True)
+                files = dict(video.files or {})
+                files.pop("translation_review_draft", None)
+                video_store.update_video(video.video_id, files=files)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            QMessageBox.warning(None, "Translation review", str(exc))
+            host._show_app_alert(
+                "Could not approve subtitles",
+                str(exc),
+                "warning",
+            )
             return
         translation_checkpoint = video.checkpoints.get("translation")
         checkpoints = {"translation": translation_checkpoint} if translation_checkpoint else {}
@@ -641,9 +802,36 @@ class ProjectCommandsController:
             checkpoints=checkpoints,
             step_detail="Queued to create dub",
         )
-        video_store.log_to_video(video.video_id, f"Translation review approved with {len(segments)} edited segments. Added to the processing queue.")
+        video_store.log_to_video(
+            video.video_id,
+            f"Translation review approved with {len(segments)} edited segments. Added to the processing queue.",
+        )
         host._enqueue_video(video.video_id)
         host.selectedVideoChanged.emit()
+
+    def save_translation_review_draft(self, payload: str) -> bool:
+        host = self._host
+        video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        if not video or video.status != "awaiting_review":
+            return False
+        try:
+            segments = _validated_review_segments(payload)
+            draft_path = os.path.join(video_store.get_video_dir(video.video_id), "translation-review-draft.json")
+            _write_json_atomic(draft_path, segments)
+            files = dict(video.files or {})
+            files["translation_review_draft"] = draft_path
+            video_store.update_video(video.video_id, files=files)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            host._show_app_alert(
+                "Could not save subtitle draft",
+                str(exc),
+                "warning",
+            )
+            return False
+        host._status_message = "Translation-review draft saved."
+        host.statusMessageChanged.emit()
+        video_store.log_to_video(video.video_id, f"Translation review draft saved with {len(segments)} segments.")
+        return True
 
     def delete_selected_video(self) -> None:
         host = self._host
@@ -653,11 +841,15 @@ class ProjectCommandsController:
         video_id = host._selected_video_id
         video = video_store.get_video(video_id)
         label = video.original_filename if video else video_id
-        if QMessageBox.question(
-            None, "Remove video",
-            f"Remove this video from the batch project and delete its generated files?\n\n{label}\n\n"
-            "If it is running, it will be stopped first.",
-        ) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                None,
+                "Remove video",
+                f"Remove this video from the batch project and delete its generated files?\n\n{label}\n\n"
+                "If it is running, it will be stopped first.",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         if video and (video.status == "processing" or host._processing_queue.active_video_id == video_id):
             cancel_video(video_id)
@@ -691,20 +883,14 @@ class ProjectCommandsController:
             QMessageBox.information(None, "Delete project", "Select a project first.")
             return
         current_key = host._selected_project_key
-        if (
-            host._project_type == "download"
-            and host._media_downloader.has_project_work(current_key)
-        ):
+        if host._project_type == "download" and host._media_downloader.has_project_work(current_key):
             QMessageBox.information(
                 None,
                 "Delete project",
                 "Finish or cancel this project's downloads before deleting it.",
             )
             return
-        if (
-            host._project_type == "publish"
-            and host._tiktok_publisher.has_project_work(current_key)
-        ):
+        if host._project_type == "publish" and host._tiktok_publisher.has_project_work(current_key):
             QMessageBox.information(
                 None,
                 "Delete project",
@@ -712,14 +898,23 @@ class ProjectCommandsController:
             )
             return
         project_videos = [
-            video for video in video_store.list_videos()
+            video
+            for video in video_store.list_videos()
             if video.project_directory and host._video_project_key(video) == current_key
         ]
-        suffix = "" if not project_videos else f"\n\nThis also removes {len(project_videos)} video(s) and their generated files."
-        if QMessageBox.question(
-            None, "Delete project",
-            f"Delete project '{host._project_name}' and all files inside its project folder?{suffix}",
-        ) != QMessageBox.StandardButton.Yes:
+        suffix = (
+            ""
+            if not project_videos
+            else f"\n\nThis also removes {len(project_videos)} video(s) and their generated files."
+        )
+        if (
+            QMessageBox.question(
+                None,
+                "Delete project",
+                f"Delete project '{host._project_name}' and all files inside its project folder?{suffix}",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         try:
             project_store.validate_project_deletion_by_key(current_key)
@@ -727,7 +922,9 @@ class ProjectCommandsController:
             QMessageBox.critical(None, "Delete project", str(exc))
             return
         if not host._channel_importer.cancel_project(current_key):
-            QMessageBox.information(None, "Channel import", "Channel import is still stopping. Try deleting the project again in a moment.")
+            QMessageBox.information(
+                None, "Channel import", "Channel import is still stopping. Try deleting the project again in a moment."
+            )
             return
         for session_id, target in tuple(host._channel_import_targets.items()):
             if target.get("project_key") == current_key:

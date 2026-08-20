@@ -1541,9 +1541,7 @@ onnxruntime==1.27.0 \
     --hash=sha256:d0d1f68868e2ef30ef70998ba9bbbc5c305e9b17041e3936751c1b8aa6aade06 \
     --hash=sha256:e4f7b0e90d2d212e2c2deaa6c8291616183ab815d3ec558ea12d3ac8b26d36f4 \
     --hash=sha256:ff050e4f6bf7f12918fa14dcb047c0b02e295f35e86d42532552be4b3d54e977
-    # via
-    #   haizflow (pyproject.toml)
-    #   faster-whisper
+    # via faster-whisper
 opencv-python==5.0.0.93 \
     --hash=sha256:08d5d91d967b58d6db86073b2ad3eaef88ca4ebdfd45c9059bf59f5ded0c7ad2 \
     --hash=sha256:198a75138241810206a17c829dbcc40a7cb1841cda538ca86cbbfc6c7d95f898 \
@@ -2572,15 +2570,6 @@ scipy==1.18.0 \
     # via
     #   pyannote-metrics
     #   scikit-learn
-sea-g2p==0.8.4 \
-    --hash=sha256:1d01a2ea8edf1c572dfc13c50a102b8e01baad91e1f95f28ac9298e90e752ed9 \
-    --hash=sha256:1d251d739f7bd3b8ef583a09ba20e043f810849be26b63e22098f9c1ad2e4f69 \
-    --hash=sha256:2dfeaf33a0335bea5485fc0a014a58ae2e00ca28610c92acff7e2ca7b38dc009 \
-    --hash=sha256:432ae4c71e717d129473ac50858b01e20b5771708d11279b970bd1ba46bcf6d8 \
-    --hash=sha256:4518447c2989328cba893b8e442b274efcea48c42918b4bccde7a532b4c8fe09 \
-    --hash=sha256:67fa25ab687a3d818429e6bf6e0a1da0283f82f9c32f96cb47807c8cafecf893 \
-    --hash=sha256:d18de4b05344c99702e5d94d5c162d19b0884e47d128c5716f25f4371f538189
-    # via haizflow (pyproject.toml)
 setuptools==83.0.0 \
     --hash=sha256:025bccbbf0fa05b6192bc64ae1e7b16e001fd6d6d4d5de03c97b1c1ade523bef \
     --hash=sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3

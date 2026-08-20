@@ -113,33 +113,65 @@ ComboBox {
 
         required property int index
         required property var modelData
+        readonly property bool optionAvailable: !voiceDelegate.modelData
+                                                || voiceDelegate.modelData.available === undefined
+                                                || voiceDelegate.modelData.available !== false
+        readonly property string optionCategory: voiceDelegate.modelData
+            && voiceDelegate.modelData.category !== undefined
+            ? String(voiceDelegate.modelData.category) : ""
+        readonly property bool showCategory: optionCategory.length > 0
+            && (voiceDelegate.index === 0
+                || !root.model[voiceDelegate.index - 1]
+                || String(root.model[voiceDelegate.index - 1].category || "") !== optionCategory)
 
         width: root.popup.width - 12
-        height: 40
-        highlighted: root.highlightedIndex === voiceDelegate.index
+        height: 40 + (showCategory ? 26 : 0)
+        enabled: voiceDelegate.optionAvailable
+        highlighted: voiceDelegate.enabled && root.highlightedIndex === voiceDelegate.index
 
-        contentItem: RowLayout {
-            spacing: 8
-
-            PlatformLogo {
-                Layout.preferredWidth: 22
-                Layout.preferredHeight: 22
-                platform: root.logoAt(voiceDelegate.index)
-                visible: platform.length > 0
-            }
+        contentItem: ColumnLayout {
+            spacing: 0
 
             Text {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                text: root.textAt(voiceDelegate.index)
-                color: voiceDelegate.highlighted ? Theme.interactive : Theme.text
-                font.pixelSize: Theme.body
-                fontSizeMode: Text.HorizontalFit
-                minimumPixelSize: Theme.label
-                font.weight: voiceDelegate.highlighted ? Font.DemiBold : Font.Normal
-                verticalAlignment: Text.AlignVCenter
+                Layout.preferredHeight: voiceDelegate.showCategory ? 26 : 0
+                visible: voiceDelegate.showCategory
+                text: String(voiceDelegate.modelData.categoryLabel || voiceDelegate.optionCategory)
+                color: Theme.textSubtle
+                font.pixelSize: Theme.caption
+                font.weight: Font.DemiBold
+                verticalAlignment: Text.AlignBottom
+                leftPadding: 8
                 textFormat: Text.PlainText
-                elide: Text.ElideNone
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 8
+
+                PlatformLogo {
+                    Layout.preferredWidth: 22
+                    Layout.preferredHeight: 22
+                    platform: root.logoAt(voiceDelegate.index)
+                    visible: platform.length > 0
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    text: root.textAt(voiceDelegate.index)
+                    color: !voiceDelegate.enabled
+                           ? Theme.textDisabled
+                           : (voiceDelegate.highlighted ? Theme.interactive : Theme.text)
+                    font.pixelSize: Theme.body
+                    fontSizeMode: Text.HorizontalFit
+                    minimumPixelSize: Theme.label
+                    font.weight: voiceDelegate.highlighted ? Font.DemiBold : Font.Normal
+                    verticalAlignment: Text.AlignVCenter
+                    textFormat: Text.PlainText
+                    elide: Text.ElideNone
+                }
             }
         }
 

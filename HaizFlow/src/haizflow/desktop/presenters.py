@@ -5,7 +5,7 @@ import os
 from haizflow.desktop.catalog import (
     EDGE_TTS_VOICES_BY_LANGUAGE,
     POPULAR_TARGET_LANGUAGES,
-    VIENEU_TTS_VOICES,
+    OMNIVOICE_TTS_VOICES,
 )
 from haizflow.desktop.models import VideoListModel
 from haizflow.services import project_store
@@ -47,9 +47,7 @@ def build_project_summaries(videos, persisted_projects=None):
             "activity_at": persisted.get("activity_at") or persisted.get("created_at", ""),
         }
     for video in videos:
-        project_type = (
-            "batch" if getattr(video, "project_type", "single") == "batch" else "single"
-        )
+        project_type = "batch" if getattr(video, "project_type", "single") == "batch" else "single"
         project_name = video.project_name or os.path.splitext(video.original_filename)[0]
         project_directory = video.project_directory or ""
         key = str(getattr(video, "project_key", "") or "")
@@ -168,28 +166,43 @@ def format_duration(seconds) -> str:
 def format_memory_size(value: int) -> str:
     if not value:
         return "--"
-    return f"{value / (1024 ** 3):.1f} GB"
+    return f"{value / (1024**3):.1f} GB"
 
 
-def voice_options_for_language(language_code: str, ui_language: str, provider: str = "vieneu"):
-    effective = (
-        "vieneu"
-        if provider == "vieneu" or (provider == "auto" and language_code == "vi")
-        else "edge"
-    )
+def voice_options_for_language(language_code: str, ui_language: str, provider: str = "omnivoice"):
+    effective = "omnivoice" if provider in {"omnivoice", "auto", "vieneu"} else "edge"
     voices = (
-        VIENEU_TTS_VOICES
-        if effective == "vieneu"
+        OMNIVOICE_TTS_VOICES
+        if effective == "omnivoice"
         else EDGE_TTS_VOICES_BY_LANGUAGE.get(language_code) or EDGE_TTS_VOICES_BY_LANGUAGE["en"]
     )
-    return [
-        {
-            "voice": voice,
-            "label": localized_voice_label(label, ui_language) if effective == "vieneu"
-            else f"{localized_voice_label(label, ui_language)} ({voice})",
-        }
-        for voice, label in voices
-    ]
+    options = []
+    for item in voices:
+        voice, label = item[:2]
+        category = item[2] if len(item) > 2 else "language"
+        options.append(
+            {
+                "voice": voice,
+                "label": localized_voice_label(label, ui_language)
+                if effective == "omnivoice"
+                else f"{localized_voice_label(label, ui_language)} ({voice})",
+                "category": category if effective == "omnivoice" else "language",
+                "categoryLabel": (
+                    "Giọng của tôi"
+                    if ui_language == "vi" and category == "clone"
+                    else "Giọng meme & sáng tạo"
+                    if ui_language == "vi" and category == "meme"
+                    else "Giọng ngôn ngữ"
+                    if ui_language == "vi"
+                    else "My voice"
+                    if category == "clone"
+                    else "Meme & creative voices"
+                    if category == "meme"
+                    else "Language voices"
+                ),
+            }
+        )
+    return options
 
 
 def localized_voice_label(label: str, ui_language: str) -> str:

@@ -5,6 +5,7 @@ import shutil
 import time
 import traceback
 from datetime import datetime, timezone
+from pathlib import Path
 
 from haizflow.config import HYMT2_MODEL_REVISION
 from haizflow.core.hardware import (
@@ -64,8 +65,7 @@ def _timing_file_is_current(path):
         with open(path, "r", encoding="utf-8") as timing_file:
             segments = json.load(timing_file)
         return bool(segments) and all(
-            isinstance(segment, dict) and segment.get("timing_source") == TIMING_SOURCE
-            for segment in segments
+            isinstance(segment, dict) and segment.get("timing_source") == TIMING_SOURCE for segment in segments
         )
     except (OSError, json.JSONDecodeError, TypeError):
         return False
@@ -99,7 +99,13 @@ class GpuRuntimeUnavailable(RuntimeError):
 
 
 _GPU_FAILURE_MARKERS = (
-    "cuda", "cudnn", "cublas", "nvidia", "gpu", "device-side", "driver",
+    "cuda",
+    "cudnn",
+    "cublas",
+    "nvidia",
+    "gpu",
+    "device-side",
+    "driver",
 )
 
 _NON_RECOVERABLE_RUNTIME_MARKERS = (
@@ -119,7 +125,9 @@ def _ensure_gpu_available(stage: str) -> None:
         return
     capabilities = detect_hardware_capabilities()
     if not capabilities.cuda_available or capabilities.ac_powered is False:
-        reason = "the NVIDIA GPU is no longer detected" if not capabilities.cuda_available else "AC power was disconnected"
+        reason = (
+            "the NVIDIA GPU is no longer detected" if not capabilities.cuda_available else "AC power was disconnected"
+        )
         raise GpuRuntimeUnavailable(f"GPU became unavailable before {stage}: {reason}.")
 
 
@@ -238,9 +246,7 @@ class ProgressReporter:
         self.started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         self.started_monotonic = time.monotonic()
         existing = get_video(video_id)
-        self.previous_elapsed = max(
-            0.0, float(getattr(existing, "processing_elapsed_seconds", 0.0) or 0.0)
-        )
+        self.previous_elapsed = max(0.0, float(getattr(existing, "processing_elapsed_seconds", 0.0) or 0.0))
 
     def update(self, progress: int, step: str, detail: str, current: int = 0, total: int = 0):
         progress = max(0, min(99, int(progress)))
@@ -262,7 +268,9 @@ class ProgressReporter:
         )
 
 
-def _finish_recovered_translation(video, reporter, video_dir, temp_audio_wav, source_segments_json, transcript_json, translation_signature):
+def _finish_recovered_translation(
+    video, reporter, video_dir, temp_audio_wav, source_segments_json, transcript_json, translation_signature
+):
     """Continue from a durable translation or post-translation artifact."""
     recovery_step = getattr(video, "runtime_recovery_step", "")
     late_stages = {"creating_subtitle", "creating_voice", "building_audio_timeline", "rendering"}
@@ -342,12 +350,21 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         temp_audio_wav = os.path.join(video_dir, "temp", "audio.wav")
         source_segments_json = os.path.join(video_dir, "temp", "source_segments.json")
         translation_signature = _signature(
-            _file_state(video_input), TIMING_SOURCE, "hymt2-tencent-structured-context-v17",
-            video.target_language, video.enable_audio_separation, "hymt2", HYMT2_MODEL_REVISION
+            _file_state(video_input),
+            TIMING_SOURCE,
+            "hymt2-tencent-structured-context-v17",
+            video.target_language,
+            video.enable_audio_separation,
+            getattr(video, "speech_recognition_model", "small"),
+            "hymt2",
+            HYMT2_MODEL_REVISION,
         )
 
         if _checkpoint_valid(video, "translation", translation_signature, [transcript_json]):
-            log_to_video(video_id, "Checkpoint hit: reusing translated segments; skipping audio extraction, transcription and translation.")
+            log_to_video(
+                video_id,
+                "Checkpoint hit: reusing translated segments; skipping audio extraction, transcription and translation.",
+            )
             if video.mode == "review" and not video.review_approved:
                 update_video(
                     video_id,
@@ -416,7 +433,9 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
             files["background_audio"] = no_vocals_path
             video.files = files
             update_video(video_id, files=files)
-            log_to_video(video_id, "Separated mode selected. The no-vocals track will be used as the final background audio.")
+            log_to_video(
+                video_id, "Separated mode selected. The no-vocals track will be used as the final background audio."
+            )
             reporter.update(22, "separating_audio", "Speech track ready")
         else:
             log_to_video(video_id, "Audio separation disabled. Transcribing from original audio.")
@@ -430,23 +449,34 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
             video.source_language,
             video_id,
             progress_callback=lambda event, detail: reporter.update(
-                {"loading_model": 25, "transcribing": 29, "transcribed": 39,
-                 "loading_alignment": 40, "aligning": 41, "segmenting": 42,
-                 "detecting_languages": 46, "saved": 48}.get(event, 24),
+                {
+                    "loading_model": 25,
+                    "transcribing": 29,
+                    "transcribed": 39,
+                    "loading_alignment": 40,
+                    "aligning": 41,
+                    "segmenting": 42,
+                    "detecting_languages": 46,
+                    "saved": 48,
+                }.get(event, 24),
                 "transcribing",
                 detail,
             ),
+            model_name=getattr(video, "speech_recognition_model", "small"),
         )
 
         if profile.key in {"cpu_low_memory", "cpu_minimum", "cuda_low_memory"}:
             from haizflow.pipeline.transcribe import release_warm_whisperx_model
 
             release_warm_whisperx_model()
-            log_to_video(video_id, "Released the warmed WhisperX model before translation to conserve processing memory.")
+            log_to_video(
+                video_id, "Released the warmed WhisperX model before translation to conserve processing memory."
+            )
 
         check_cancellation(video_id)
         _ensure_gpu_available("translation")
         reporter.update(50, "translating", "Starting HY-MT2 translation")
+
         def report_translation_progress(current, total, detail):
             progress = 50 + round(12 * current / total) if total else 50
             reporter.update(progress, "translating", detail, current, total)
@@ -462,6 +492,14 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         )
         _mark_checkpoint(video, "translation", translation_signature)
 
+        refreshed = get_video(video_id)
+        draft_path = str(((refreshed.files if refreshed else {}) or {}).get("translation_review_draft") or "")
+        if draft_path:
+            Path(draft_path).unlink(missing_ok=True)
+            files = dict((refreshed.files if refreshed else {}) or {})
+            files.pop("translation_review_draft", None)
+            update_video(video_id, files=files)
+
         if video.mode == "review" and not video.review_approved:
             update_video(
                 video_id,
@@ -471,7 +509,9 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
                 resume_step="creating_subtitle",
                 step_detail="Translation ready for review",
             )
-            log_to_video(video_id, "Translation review is ready. Edit the translated segments, then continue the video.")
+            log_to_video(
+                video_id, "Translation review is ready. Edit the translated segments, then continue the video."
+            )
             return
 
         _finish_after_translation(video, reporter, video_dir, original_audio_target)
@@ -548,170 +588,204 @@ def _original_subtitle_region_for_render(video, reporter, video_dir):
 
 
 def _finish_after_translation(video, reporter, video_dir, original_audio_target):
-        video_id = video.video_id
-        video_input = _required_video_path(video, "video_input", must_exist=True)
-        final_video = _required_video_path(video, "final_video")
-        srt_output = _required_video_path(video, "srt_output")
-        voice_output = _required_video_path(video, "voice_output")
-        transcript_json = _required_video_path(video, "transcript_json", must_exist=True)
-        voice_parts_dir = os.path.join(video_dir, "temp", "voice_parts")
-        transcript_state = _file_state(transcript_json)
-        subtitle_style = getattr(video, "subtitle_style", None) or SubtitleStyle()
-        subtitle_signature = _signature(transcript_state, subtitle_style.max_chars_per_line)
-        check_cancellation(video_id)
-        if _checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]) or _recovery_checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]):
-            reporter.update(64, "creating_subtitle", "Reusing subtitles checkpoint")
-        else:
-            reporter.update(63, "creating_subtitle", "Formatting timed subtitles")
-            generate_srt(transcript_json, srt_output, subtitle_style.max_chars_per_line, video_id)
-            _mark_checkpoint(video, "subtitles", subtitle_signature)
+    video_id = video.video_id
+    video_input = _required_video_path(video, "video_input", must_exist=True)
+    final_video = _required_video_path(video, "final_video")
+    srt_output = _required_video_path(video, "srt_output")
+    voice_output = _required_video_path(video, "voice_output")
+    transcript_json = _required_video_path(video, "transcript_json", must_exist=True)
+    voice_parts_dir = os.path.join(video_dir, "temp", "voice_parts")
+    transcript_state = _file_state(transcript_json)
+    subtitle_style = getattr(video, "subtitle_style", None) or SubtitleStyle()
+    subtitle_signature = _signature(transcript_state, subtitle_style.max_chars_per_line)
+    check_cancellation(video_id)
+    if _checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]) or _recovery_checkpoint_valid(
+        video, "subtitles", subtitle_signature, [srt_output]
+    ):
+        reporter.update(64, "creating_subtitle", "Reusing subtitles checkpoint")
+    else:
+        reporter.update(63, "creating_subtitle", "Formatting timed subtitles")
+        generate_srt(transcript_json, srt_output, subtitle_style.max_chars_per_line, video_id)
+        _mark_checkpoint(video, "subtitles", subtitle_signature)
 
-        check_cancellation(video_id)
-        target_language = str(getattr(video, "target_language", "vi") or "vi")
-        configured_tts_provider = str(getattr(video, "tts_provider", "edge") or "edge")
-        effective_tts_provider = resolve_tts_provider(
-            configured_tts_provider, target_language
-        )
-        voice_signature = _signature(
-            transcript_state,
-            configured_tts_provider,
-            effective_tts_provider,
-            target_language,
-            video.tts_voice,
-            "vieneu-v3-turbo-onnx-int8-r1",
-        )
-        with open(transcript_json, "r", encoding="utf-8") as transcript_file:
-            transcript_segments = json.load(transcript_file)
-        if not isinstance(transcript_segments, list) or not transcript_segments:
-            raise RuntimeError("The translated transcript contains no subtitle segments.")
-        for index, segment in enumerate(transcript_segments, 1):
-            if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
-                raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
-        expected_parts = len(transcript_segments)
-        voice_outputs = [os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3") for index in range(1, expected_parts + 1)]
-        if _checkpoint_valid(video, "voice", voice_signature, voice_outputs) or _recovery_checkpoint_valid(video, "voice", voice_signature, voice_outputs):
-            reporter.update(82, "creating_voice", "Reusing generated voices", expected_parts, expected_parts)
-        else:
-            reporter.update(65, "creating_voice", "Starting voice synthesis")
-            partial_signature_matches = video.checkpoints.get("voice_partial") == voice_signature
-            if os.path.isdir(voice_parts_dir) and not partial_signature_matches:
-                shutil.rmtree(voice_parts_dir)
-            os.makedirs(voice_parts_dir, exist_ok=True)
-            # Persist the input signature before the first online request. If
-            # the user pauses during Edge TTS, resume can safely retain every
-            # already verified MP3 and regenerate only missing segments.
-            _mark_checkpoint(video, "voice_partial", voice_signature)
-            def report_voice_progress(current, total):
-                detail = f"Verified voice audio {current} of {total}"
-                reporter.update(65 + round(17 * current / max(1, total)), "creating_voice", detail, current, total)
+    check_cancellation(video_id)
+    target_language = str(getattr(video, "target_language", "vi") or "vi")
+    configured_tts_provider = str(getattr(video, "tts_provider", "edge") or "edge")
+    effective_tts_provider = resolve_tts_provider(configured_tts_provider, target_language)
+    voice_reference = str((video.files or {}).get("voice_reference") or "")
+    voice_reference_transcript = str((video.files or {}).get("voice_reference_transcript") or "")
+    voice_signature = _signature(
+        transcript_state,
+        configured_tts_provider,
+        effective_tts_provider,
+        target_language,
+        video.tts_voice,
+        _file_state(voice_reference),
+        voice_reference_transcript,
+        "omnivoice-c5fdb5c-r2",
+    )
+    with open(transcript_json, "r", encoding="utf-8") as transcript_file:
+        transcript_segments = json.load(transcript_file)
+    if not isinstance(transcript_segments, list) or not transcript_segments:
+        raise RuntimeError("The translated transcript contains no subtitle segments.")
+    for index, segment in enumerate(transcript_segments, 1):
+        if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
+            raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
+    expected_parts = len(transcript_segments)
+    voice_outputs = [os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3") for index in range(1, expected_parts + 1)]
+    if _checkpoint_valid(video, "voice", voice_signature, voice_outputs) or _recovery_checkpoint_valid(
+        video, "voice", voice_signature, voice_outputs
+    ):
+        reporter.update(82, "creating_voice", "Reusing generated voices", expected_parts, expected_parts)
+    else:
+        reporter.update(65, "creating_voice", "Starting voice synthesis")
+        if effective_tts_provider == "omnivoice":
+            # Translation and speech recognition can leave several GB of
+            # model weights resident on the GPU. OmniVoice runs in an
+            # isolated process, so hand the accelerator over before that
+            # worker loads its own checkpoint instead of waiting for an
+            # avoidable CUDA allocation failure.
+            from haizflow.pipeline.transcribe import release_warm_whisperx_model
 
-            generate_voice_parts(
-                transcript_json, voice_parts_dir, video.tts_voice, video_id,
-                progress_callback=report_voice_progress,
-                provider=configured_tts_provider,
-                target_language=target_language,
-            )
-            _mark_checkpoint(video, "voice", voice_signature)
-
-        check_cancellation(video_id)
-        mix_audio_path, mix_audio_volume = _prepare_audio_mix(
-            video,
-            reporter,
-            video_dir,
-            original_audio_target,
-        )
-        timeline_signature = _signature(
-            voice_signature,
-            _file_state(video_input),
-            _file_state(mix_audio_path),
-            video.enable_audio_separation,
-            mix_audio_volume,
-            _file_state((video.files or {}).get("background_music") or ""),
-            getattr(video, "background_music_volume", 30),
-            getattr(video, "tts_volume", 100),
-            "exclusive-audio-source-v4-source-speech-window-sync",
-        )
-        if _checkpoint_valid(video, "timeline", timeline_signature, [voice_output]) or _recovery_checkpoint_valid(video, "timeline", timeline_signature, [voice_output]):
-            reporter.update(87, "building_audio_timeline", "Reusing mixed audio checkpoint")
-        else:
-            reporter.update(83, "building_audio_timeline", "Fitting voices to the video timeline")
-            build_audio_timeline(
-                transcript_json,
-                voice_parts_dir,
-                video_input,
-                voice_output,
+            shutdown_hymt2_worker()
+            release_warm_whisperx_model()
+            log_to_video(
                 video_id,
-                background_audio_path=mix_audio_path,
-                original_video_volume=mix_audio_volume,
-                background_music_path=(video.files or {}).get("background_music") or None,
-                background_music_volume=getattr(video, "background_music_volume", 30),
-                tts_volume=getattr(video, "tts_volume", 100),
+                "Released translation and speech-recognition models before local TTS.",
             )
-            _mark_checkpoint(video, "timeline", timeline_signature)
+        partial_signature_matches = video.checkpoints.get("voice_partial") == voice_signature
+        if os.path.isdir(voice_parts_dir) and not partial_signature_matches:
+            shutil.rmtree(voice_parts_dir)
+        os.makedirs(voice_parts_dir, exist_ok=True)
+        # Persist the input signature before the first online request. If
+        # the user pauses during Edge TTS, resume can safely retain every
+        # already verified MP3 and regenerate only missing segments.
+        _mark_checkpoint(video, "voice_partial", voice_signature)
 
-        check_cancellation(video_id)
-        style_data = (
-            subtitle_style.model_dump()
-            if hasattr(subtitle_style, "model_dump")
-            else subtitle_style.dict()
-        )
-        crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
-        remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
-        original_subtitle_removal_mode = str(
-            getattr(video, "original_subtitle_removal_mode", "blur") or "blur"
-        )
-        # Old project metadata may contain both flags after a user positioned
-        # subtitles in keep-original mode and later enabled OCR covering.  OCR
-        # placement must always win in cover mode, even before that metadata is
-        # opened and normalized by the desktop UI.
-        manual_subtitle_layout = _manual_subtitle_layout_for_render(video)
-        original_subtitle_region = _original_subtitle_region_for_render(video, reporter, video_dir)
-        render_signature = _signature(
-            timeline_signature, subtitle_signature, video.output_format, style_data, crop_data,
-            # Bump when changing the visual treatment so a previously rendered
-            # luma-only result is never reused as a valid final export.
-            "static-largest-original-subtitle-ocr-v17-fixed-caption-presets", remove_original_subtitles,
-            original_subtitle_removal_mode,
-            original_subtitle_region,
-            "watermark-bold-italic-keyline-v3",
-            getattr(video, "watermark_text", ""),
-            manual_subtitle_layout,
-        )
-        if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(video, "render", render_signature, [final_video]):
-            reporter.update(99, "rendering", "Reusing rendered video checkpoint")
-        else:
-            _ensure_gpu_available("final video render")
-            reporter.update(88, "rendering", "Rendering final video")
+        def report_voice_progress(current, total):
+            detail = f"Verified voice audio {current} of {total}"
+            reporter.update(65 + round(17 * current / max(1, total)), "creating_voice", detail, current, total)
 
-            def report_render_progress(fraction: float) -> None:
-                percent = max(0, min(100, round(fraction * 100)))
-                pipeline_progress = min(98, 88 + round(fraction * 10))
-                reporter.update(
-                    pipeline_progress,
-                    "rendering",
-                    f"Rendering final video ({percent}%)",
-                    percent,
-                    100,
-                )
-
-            render_video(
-                video_input, voice_output, srt_output, final_video, video.output_format,
-                subtitle_style, video.crop, video_id, original_subtitle_region,
-                getattr(video, "watermark_text", ""),
-                subtitle_layout_override=manual_subtitle_layout,
-                progress_callback=report_render_progress,
-                original_subtitle_removal_mode=original_subtitle_removal_mode,
-            )
-            _mark_checkpoint(video, "render", render_signature)
-
-        update_video(
+        generate_voice_parts(
+            transcript_json,
+            voice_parts_dir,
+            video.tts_voice,
             video_id,
-            status="done",
-            progress=100,
-            step="done",
-            step_detail="Final video ready",
-            estimated_remaining_seconds=0,
-            resume_step="",
-            runtime_recovery_step="",
+            progress_callback=report_voice_progress,
+            provider=configured_tts_provider,
+            target_language=target_language,
         )
-        log_to_video(video_id, "Pipeline run finished successfully.")
+        _mark_checkpoint(video, "voice", voice_signature)
+
+    check_cancellation(video_id)
+    mix_audio_path, mix_audio_volume = _prepare_audio_mix(
+        video,
+        reporter,
+        video_dir,
+        original_audio_target,
+    )
+    timeline_signature = _signature(
+        voice_signature,
+        _file_state(video_input),
+        _file_state(mix_audio_path),
+        video.enable_audio_separation,
+        mix_audio_volume,
+        _file_state((video.files or {}).get("background_music") or ""),
+        getattr(video, "background_music_volume", 30),
+        getattr(video, "tts_volume", 100),
+        "exclusive-audio-source-v4-source-speech-window-sync",
+    )
+    if _checkpoint_valid(video, "timeline", timeline_signature, [voice_output]) or _recovery_checkpoint_valid(
+        video, "timeline", timeline_signature, [voice_output]
+    ):
+        reporter.update(87, "building_audio_timeline", "Reusing mixed audio checkpoint")
+    else:
+        reporter.update(83, "building_audio_timeline", "Fitting voices to the video timeline")
+        build_audio_timeline(
+            transcript_json,
+            voice_parts_dir,
+            video_input,
+            voice_output,
+            video_id,
+            background_audio_path=mix_audio_path,
+            original_video_volume=mix_audio_volume,
+            background_music_path=(video.files or {}).get("background_music") or None,
+            background_music_volume=getattr(video, "background_music_volume", 30),
+            tts_volume=getattr(video, "tts_volume", 100),
+        )
+        _mark_checkpoint(video, "timeline", timeline_signature)
+
+    check_cancellation(video_id)
+    style_data = subtitle_style.model_dump() if hasattr(subtitle_style, "model_dump") else subtitle_style.dict()
+    crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
+    remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
+    original_subtitle_removal_mode = str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch")
+    # Old project metadata may contain both flags after a user positioned
+    # subtitles in keep-original mode and later enabled OCR covering.  OCR
+    # placement must always win in cover mode, even before that metadata is
+    # opened and normalized by the desktop UI.
+    manual_subtitle_layout = _manual_subtitle_layout_for_render(video)
+    original_subtitle_region = _original_subtitle_region_for_render(video, reporter, video_dir)
+    render_signature = _signature(
+        timeline_signature,
+        subtitle_signature,
+        video.output_format,
+        style_data,
+        crop_data,
+        # Bump when changing the visual treatment so a previously rendered
+        # luma-only result is never reused as a valid final export.
+        "static-largest-original-subtitle-ocr-v17-fixed-caption-presets",
+        remove_original_subtitles,
+        original_subtitle_removal_mode,
+        original_subtitle_region,
+        "watermark-bold-italic-keyline-v3",
+        getattr(video, "watermark_text", ""),
+        manual_subtitle_layout,
+    )
+    if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(
+        video, "render", render_signature, [final_video]
+    ):
+        reporter.update(99, "rendering", "Reusing rendered video checkpoint")
+    else:
+        _ensure_gpu_available("final video render")
+        reporter.update(88, "rendering", "Rendering final video")
+
+        def report_render_progress(fraction: float) -> None:
+            percent = max(0, min(100, round(fraction * 100)))
+            pipeline_progress = min(98, 88 + round(fraction * 10))
+            reporter.update(
+                pipeline_progress,
+                "rendering",
+                f"Rendering final video ({percent}%)",
+                percent,
+                100,
+            )
+
+        render_video(
+            video_input,
+            voice_output,
+            srt_output,
+            final_video,
+            video.output_format,
+            subtitle_style,
+            video.crop,
+            video_id,
+            original_subtitle_region,
+            getattr(video, "watermark_text", ""),
+            subtitle_layout_override=manual_subtitle_layout,
+            progress_callback=report_render_progress,
+            original_subtitle_removal_mode=original_subtitle_removal_mode,
+        )
+        _mark_checkpoint(video, "render", render_signature)
+
+    update_video(
+        video_id,
+        status="done",
+        progress=100,
+        step="done",
+        step_detail="Final video ready",
+        estimated_remaining_seconds=0,
+        resume_step="",
+        runtime_recovery_step="",
+    )
+    log_to_video(video_id, "Pipeline run finished successfully.")

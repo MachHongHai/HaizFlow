@@ -2,7 +2,7 @@
 
 Tài liệu này là nguồn duy nhất theo dõi các rủi ro phát hành của ứng dụng Windows. Mỗi bản release phải cập nhật trạng thái, chạy toàn bộ release gate và lưu `BUILD-INFO.json` cùng `SHA256SUMS.txt` trong artifact.
 
-Ngày rà soát: 2026-08-10
+Ngày rà soát: 2026-08-20
 
 ## Quy ước trạng thái
 
@@ -15,22 +15,22 @@ Ngày rà soát: 2026-08-10
 | ID | Hạng mục | Trạng thái | Điều kiện nghiệm thu |
 | --- | --- | --- | --- |
 | 1 | Định danh và xóa project an toàn | **Hoàn tất** | Project mới dùng UUID; project đơn/batch cùng tên có root riêng; legacy root được giữ; manifest, shared-root và path traversal được kiểm tra trước khi xóa. |
-| 2 | License và third-party compliance | **Runtime đã nâng cấp, còn legal gate** | Source code dùng Apache-2.0; FFmpeg đã nâng lên 8.1.2 Essentials, pin SHA-256 và kèm source archive có chữ ký. Build sinh notices từ đúng `.venv`. Trước khi công khai vẫn phải cung cấp corresponding source/build material của các thư viện GPL liên kết tĩnh và được người chịu trách nhiệm pháp lý duyệt. |
+| 2 | License và third-party compliance | **Runtime đã nâng cấp, còn legal gate** | Source code dùng Apache-2.0; FFmpeg đã nâng lên 8.1.2 Essentials, pin SHA-256 và kèm source archive có chữ ký. Build sinh notices từ đúng `.venv`. OmniVoice SDK dùng Apache-2.0 nhưng checkpoint dùng CC-BY-NC-4.0, vì vậy phải được duyệt riêng trước mọi phát hành hoặc mục đích thương mại. Trước khi công khai vẫn phải cung cấp corresponding source/build material của các thư viện GPL liên kết tĩnh và được người chịu trách nhiệm pháp lý duyệt. |
 | 3 | Frozen acceptance và artifact mới | **Chặn phát hành cho đến khi source sạch** | Build xóa artifact cũ có kiểm soát, chạy dependency/native-tool check và Qt/QML smoke trong một home/model/cache/temp cô lập; sau smoke mới tạo metadata/checksum. Release gate từ chối mọi model bị nhúng nhầm dưới `_internal/models`. `dist/` không được commit, nên mỗi revision phát hành phải được commit trước, rồi build và nghiệm thu artifact mới. Artifact ngày 2026-07-16 chỉ là bằng chứng lịch sử, không thay thế nghiệm thu revision hiện tại. |
 | 4 | Installer, nâng cấp và code signing | **Chờ certificate và artifact sạch** | Có định nghĩa Inno Setup, kiểm tra dung lượng theo artifact thật, version resource/icon và cơ chế ký Authenticode. Cần certificate thật, artifact từ worktree sạch và nghiệm thu trên Windows sạch trước khi ký EXE/installer. |
-| 5 | Khóa revision và checksum model | **Hoàn tất** | HY-MT2 GPU khóa `9a341cd1…`, HY-MT2 CPU khóa `1cd52087…`, Whisper small khóa `536b0662…`, Demucs `htdemucs` khóa full SHA-256 `8726e21a…`; năm model alignment `en/fr/de/es/it` cũng có size/full SHA-256 cố định. Installer không chứa model. Bootstrap lần chạy đầu tải atomic vào `runtime\models`, có progress/cancel/retry, kiểm tra dung lượng, host HTTPS, size và SHA-256 trước khi pipeline được phép chạy. |
+| 5 | Khóa revision và checksum model | **Hoàn tất** | HY-MT2 GPU/CPU, Whisper small, Whisper large-v3-turbo, OmniVoice, OCR, Demucs và năm model alignment đều khóa immutable revision, kích thước và full SHA-256. Pipeline không chấp nhận model Whisper từ biến môi trường hoặc tự tải vào cache. Installer không chứa model; bootstrap lần chạy đầu tải atomic vào `runtime\models`, có progress/cancel/retry và xác minh trước khi nạp. |
 | 6 | Single-instance ứng dụng | **Hoàn tất** | `QLocalServer` tạo named pipe theo user. Instance thứ hai gửi yêu cầu activate rồi thoát; instance chính khôi phục cửa sổ. Stale server được xử lý và smoke mode không chiếm khóa. Khóa file/index là phạm vi riêng của ID 7. |
 | 7 | Phục hồi project index | **Hoàn tất** | `projects.json` được khóa liên tiến trình, ghi atomic, giữ last-known-good `.bak`, sao chép bản hỏng sang quarantine và rebuild từ manifest trong các project root đã đăng ký. Backup được hợp nhất với manifest mới hơn; lỗi không thể phục hồi chặn ghi thay vì tạo index rỗng. |
-| 8 | Schema migration | **Hoàn tất** | Project metadata dùng schema v4, video metadata dùng schema v5. Migration đổi `job.json`/`job_id` cũ thành `video.json`/`video_id`, lưu backup, giữ nguyên project root legacy và từ chối schema tương lai. |
-| 9 | Dependency lock tái lập | **Hoàn tất** | `requirements-lock-py313-win64.txt` khóa 137 dependency trực tiếp/gián tiếp bằng SHA-256 cho Windows x64/Python 3.13; Torch khóa đúng biến thể cu128. Manifest fingerprint phát hiện source/lock lệch, installer dùng `--require-hashes`, build gate đối chiếu toàn bộ `.venv`. |
-| 10 | Disk preflight và cache policy | **Hoàn tất cho build/installer** | Bootstrap tính đúng số byte model còn thiếu cộng 1 GiB headroom và tính cả phần `.part` có thể resume. Installer tính từ artifact thật, giữ hai bản khi upgrade và cộng 2 GiB workspace. Artifact dev đã nghiệm thu ngày 2026-07-27 là 5,373 GiB: preflight yêu cầu khoảng 7,37 GiB cho cài mới và 12,75 GiB cho upgrade. Model không nằm trong installer; dung lượng tải lần đầu được kiểm riêng trên chính ổ chứa `{app}\runtime\models`. |
-| 11 | Mô tả offline và quyền riêng tư | **Hoàn tất** | Lần chạy đầu nói rõ cần Internet để tải model; sau khi checksum hợp lệ, WhisperX/HY-MT2/Demucs/media xử lý local. Settings nói rõ Edge TTS nhận văn bản phụ đề, nhập URL/kênh kết nối nền tảng tương ứng và hành vi khi offline. README và UI nói rõ đăng TikTok là tùy chọn cloud: video được tải lên Zernio/TikTok và API key nằm trong Windows Credential Manager. |
+| 8 | Schema migration | **Hoàn tất** | Project metadata dùng schema v4, video metadata dùng schema v13. Migration tuần tự giữ backup, chuyển định danh `job` cũ, bổ sung checkpoint/settings mới, giữ project root legacy và từ chối schema tương lai. |
+| 9 | Dependency lock tái lập | **Hoàn tất** | `requirements-lock-py313-win64.txt` khóa toàn bộ dependency trực tiếp/gián tiếp bằng SHA-256 cho Windows x64/Python 3.13; Torch khóa đúng biến thể cu128. Manifest fingerprint phát hiện source/lock lệch, installer dùng `--require-hashes`, build gate đối chiếu toàn bộ `.venv`. |
+| 10 | Disk preflight và cache policy | **Hoàn tất cho build/installer** | Bootstrap tính đúng số byte model còn thiếu cộng 1 GiB headroom và tính cả phần `.part` có thể resume. Installer tính từ artifact thật, giữ hai bản khi upgrade, cộng 2 GiB workspace và dự trù bộ model CPU/GPU lần đầu lớn hơn theo chính manifest checksum. Với artifact dev hiện tại khoảng 5,66 GiB, preflight yêu cầu khoảng 19,36 GiB cho cài mới và 25,02 GiB cho upgrade. Model vẫn không nằm trong installer; chúng được tải sau lần mở đầu vào chính `{app}\runtime\models`. |
+| 11 | Mô tả offline và quyền riêng tư | **Hoàn tất** | Lần chạy đầu nói rõ cần Internet để tải model; sau khi checksum hợp lệ, Whisper/HY-MT2/OmniVoice/Demucs/media xử lý local. Settings nói rõ Edge TTS nhận văn bản phụ đề, nhập URL/kênh kết nối nền tảng tương ứng và hành vi khi offline. README và UI nói rõ đăng mạng xã hội là tùy chọn cloud: video được tải qua Zernio tới nền tảng đã chọn và API key nằm trong Windows Credential Manager. |
 | 12 | Chẩn đoán production | **Hoàn tất** | App log xoay vòng 5 MiB × 4 file; bắt lỗi main thread, Python worker, unraisable exception và Qt message. Artifact có build ID. Settings xuất ZIP diagnostics đã redaction, giới hạn kích thước và không lấy tên/media/log project. |
 | 13 | Shutdown và phục hồi video gián đoạn | **Hoàn tất** | Close event hỏi xác nhận khi còn xử lý/tải; active video được pause, subprocess tree bị dừng, queue từ chối việc mới và chờ worker. Windows Job Object dọn process con khi app crash; lần mở sau chuyển metadata `processing` còn sót thành `paused` có thể resume. Smoke mode luôn dùng data tạm thay vì `.env` thật. |
 | 14 | Portable storage theo thư mục cài đặt | **Hoàn tất** | Trong frozen build, thư mục được chọn ở wizard là hard boundary: model tải sau cài đặt, Qt/QML, Torch, Hugging Face, pip/uv, CUDA/Numba, temp, log và settings đều nằm dưới `{app}\runtime`. User có thể chọn ổ C, D, E hoặc ổ khác miễn có quyền ghi. Source mode vẫn có thể dùng `HAIZFLOW_HOME`; smoke xác nhận không thoát khỏi boundary được cấu hình. |
 | 15 | Hygiene source và cấu trúc desktop | **Chặn release build** | Hai utility không dùng đã bị xóa; thư mục `build/` phải rỗng trước clean build. Chín desktop controller sau refactor, QML facade và tài liệu kiến trúc phải cùng nằm trong một commit; `git status --porcelain` phải rỗng trước khi chạy build release. |
 | 16 | Audit lỗ hổng dependency | **Hoàn tất với ngoại lệ có kiểm soát** | `pip` đã nâng 26.1.2; `scripts/audit-dependencies.ps1` dùng pip-audit pin version và fail với mọi advisory mới. Wheel CUDA `+cu128` được quét thêm bằng version PyTorch canonical. Ngoại lệ Transformers/DiskCache/PyTorch bị giới hạn đúng ID, có threat model, biện pháp giảm thiểu và hạn rà soát trong `docs/dependency-security.md`; alignment checkpoint không pin đã bị vô hiệu hóa. |
-| 17 | Đăng TikTok qua Zernio | **Còn lại trước production** | Source dùng REST API/OAuth chính thức của Zernio, upload tuần tự, idempotency key ổn định, consent rõ ràng và không còn Playwright/cookie/DOM automation. Unit test phải đạt; trước release công khai vẫn phải nghiệm thu end-to-end với tài khoản Zernio/TikTok thật, quota/gói dịch vụ hiện hành và điều khoản của cả hai bên. |
+| 17 | Đăng mạng xã hội qua Zernio | **Còn lại trước production** | Source dùng REST API/OAuth của Zernio, upload tuần tự, idempotency key ổn định, consent rõ ràng và không còn Playwright/cookie/DOM automation. Unit test phải đạt; trước release công khai vẫn phải nghiệm thu end-to-end với tài khoản thật trên từng nền tảng được hỗ trợ, quota/gói dịch vụ hiện hành và điều khoản của các bên. |
 
 ## License gate
 
@@ -40,6 +40,9 @@ Các nguồn chính thức dùng để xác định nghĩa vụ:
 - FFmpeg legal checklist: https://ffmpeg.org/legal.html
 - FFmpeg license: https://ffmpeg.org/doxygen/trunk/md_LICENSE.html
 - HY-MT2 model card: https://huggingface.co/tencent/Hy-MT2-1.8B
+- Whisper large-v3-turbo model card: https://huggingface.co/openai/whisper-large-v3-turbo
+- OmniVoice source và language table: https://github.com/k2-fsa/OmniVoice
+- OmniVoice checkpoint/license: https://huggingface.co/k2-fsa/OmniVoice
 - Edge TTS repository và mô tả online service: https://github.com/rany2/edge-tts
 
 Mỗi artifact phải chứa:
@@ -59,11 +62,11 @@ SHA256SUMS.txt
 
 Artifact frozen dev đã được build lại và nghiệm thu ngày 2026-07-27. Vì worktree cố ý còn dirty trên nhánh test và installer chưa có Authenticode certificate, artifact này chỉ dùng để kiểm chứng kỹ thuật, không phải release candidate công khai.
 
-Kết quả kiểm chứng source hiện tại (2026-07-27):
+Kết quả kiểm chứng source hiện tại (2026-08-20):
 
 - Bộ `scripts/test.ps1` phải đạt hoàn toàn ở commit phát hành; không ghi cố định số test trong tài liệu để tránh số liệu cũ.
 - Qt/QML source smoke test thành công.
-- Runtime gate xác nhận Whisper, HY-MT2 CPU/GPU, Demucs và cả năm model alignment, CPU/GPU native runtime và FFmpeg.
+- Runtime gate xác nhận Whisper small/large-v3-turbo, OmniVoice, HY-MT2 CPU/GPU, OCR, Demucs và cả năm model alignment, CPU/GPU native runtime và FFmpeg.
 - Integration test liên tiến trình xác nhận instance thứ hai kích hoạt instance chính rồi thoát.
 
 Mốc frozen dev hiện tại:
@@ -71,7 +74,7 @@ Mốc frozen dev hiện tại:
 - Artifact: `dist\HaizFlow`, PyInstaller onedir, không nhúng model.
 - Quy mô: 11.497 file, 5,373 GiB.
 - Đã đối chiếu thành công toàn bộ 11.497 SHA-256 trong `SHA256SUMS.txt`.
-- 367 unit/integration test và `qmllint` thành công; frozen self-test, FFmpeg/FFprobe, CPU/GPU runtime gate và Qt/QML startup đều thành công.
+- Bộ unit/integration test và `qmllint` tại thời điểm đóng băng artifact đã thành công; frozen self-test, FFmpeg/FFprobe, CPU/GPU runtime gate và Qt/QML startup đều thành công.
 - Installer Inno Setup dev r2 có kích thước 2.240.951.379 byte. Smoke cài trên ổ D xác minh đủ 11.497 checksum, đủ 13 file `torch\_inductor\runtime`, không có checkpoint model; frozen QML startup từ thư mục đã cài exit 0.
 - Silent uninstall xóa EXE/payload nhưng giữ duy nhất `runtime\` và marker dữ liệu thử nghiệm.
 - `BUILD-INFO.json` ghi rõ commit, branch, dirty state, Python, `model_delivery=first-run-download` và xác nhận mọi cờ `bundled_*_model` là `false`.

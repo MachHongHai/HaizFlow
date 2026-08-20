@@ -56,10 +56,14 @@ class AudioPreviewController:
         self._host = host
         self._thread: threading.Thread | None = None
         self._token = ""
+        self._pending_snapshot: dict | None = None
+        self._state_lock = threading.Lock()
 
     def invalidate(self) -> None:
         """Discard an unfinished preview when its project context changes."""
         self._token = uuid.uuid4().hex
+        with self._state_lock:
+            self._pending_snapshot = None
         host = self._host
         host._audio_preview_source = ""
         host._audio_preview_original_source = ""
@@ -81,22 +85,26 @@ class AudioPreviewController:
         target_language: str | None = None,
     ) -> bool:
         """Build a preview from persisted settings or an unsaved editor draft."""
-        if self._thread and self._thread.is_alive():
-            return False
         host = self._host
         selected_video_id = video_id if video_id is not None else getattr(host, "_selected_video_id", None)
         video = video_store.get_video(selected_video_id) if selected_video_id else None
         files = dict((video.files if video else {}) or {})
         use_audio_separation = (
             bool(getattr(host, "_enable_audio_separation", False))
-            if enable_audio_separation is None else bool(enable_audio_separation)
+            if enable_audio_separation is None
+            else bool(enable_audio_separation)
         )
-        source_path = (
-            str(files.get("background_audio") or "")
-            if video and use_audio_separation and os.path.isfile(str(files.get("background_audio") or ""))
-            else str(files.get("video_input") or getattr(host, "_video_path", "") or "")
-        )
-        if not os.path.isfile(source_path):
+        video_input = str(files.get("video_input") or getattr(host, "_video_path", "") or "")
+        separated_background = str(files.get("background_audio") or "")
+        if use_audio_separation:
+            # Never fall back to the complete source track: that would put the
+            # original speaker back into a preview whose purpose is to assess
+            # the replacement voice. Before Demucs has produced no_vocals,
+            # preview TTS (and optional music) without an original track.
+            source_path = separated_background if os.path.isfile(separated_background) else ""
+        else:
+            source_path = video_input
+        if not os.path.isfile(video_input):
             host._status_message = "Choose an input video before previewing the audio mix."
             host.statusMessageChanged.emit()
             return False
@@ -121,16 +129,28 @@ class AudioPreviewController:
             ),
             "background_music_volume": int(
                 getattr(host, "_background_music_volume", 30)
-                if background_music_volume is None else background_music_volume
+                if background_music_volume is None
+                else background_music_volume
             ),
             "tts_volume": int(getattr(host, "_tts_volume", 100) if tts_volume is None else tts_volume),
             "voice": str(getattr(host, "_tts_voice", "") if voice is None else voice),
-            "provider": str(
-                getattr(host, "_tts_provider", "vieneu") if provider is None else provider
-            ),
+            "provider": str(getattr(host, "_tts_provider", "omnivoice") if provider is None else provider),
             "target_language": effective_target_language,
             "directory": video_store.get_video_dir(video.video_id) if video else str(RUNTIME_DATA_DIR),
+            "reference_path": str(files.get("voice_reference") or ""),
+            "reference_text": str(files.get("voice_reference_transcript") or ""),
         }
+        with self._state_lock:
+            if self._thread and self._thread.is_alive():
+                # Do not load two large local TTS models at once. Keep only the
+                # newest request and start it as soon as the active preview
+                # exits; its result is ignored because the token changed.
+                self._pending_snapshot = snapshot
+                return True
+            self._start_thread_unlocked(snapshot)
+        return True
+
+    def _start_thread_unlocked(self, snapshot: dict) -> None:
         self._thread = threading.Thread(
             target=self._build_preview,
             args=(snapshot,),
@@ -138,7 +158,6 @@ class AudioPreviewController:
             daemon=True,
         )
         self._thread.start()
-        return True
 
     def _build_preview(self, snapshot: dict) -> None:
         token = snapshot["token"]
@@ -149,17 +168,18 @@ class AudioPreviewController:
         music_output_path = preview_dir / f"music-{token}.m4a"
         try:
             preview_text = self._preview_text(snapshot["target_language"])
-            effective_provider = resolve_tts_provider(
-                snapshot["provider"], snapshot["target_language"]
-            )
-            if effective_provider == "vieneu":
-                from haizflow.pipeline.vieneu_tts import synthesize_to_mp3
+            effective_provider = resolve_tts_provider(snapshot["provider"], snapshot["target_language"])
+            if effective_provider == "omnivoice":
+                from haizflow.pipeline.omnivoice_tts import synthesize_to_mp3
 
                 synthesize_to_mp3(
                     preprocess_text_for_tts(preview_text),
                     snapshot["voice"],
                     str(voice_path),
                     f"audio-preview-{token}",
+                    language_id=snapshot["target_language"],
+                    reference_path=snapshot["reference_path"],
+                    reference_text=snapshot["reference_text"],
                 )
             else:
                 _run_coroutine(
@@ -170,25 +190,42 @@ class AudioPreviewController:
                         retries=2,
                     )
                 )
-            self._encode_track(snapshot["source_path"], source_output_path)
+            source_path = ""
+            if snapshot["source_path"] and os.path.isfile(snapshot["source_path"]):
+                self._encode_track(snapshot["source_path"], source_output_path)
+                source_path = str(source_output_path)
             music_path = ""
             if snapshot["background_music_path"] and os.path.isfile(snapshot["background_music_path"]):
                 self._encode_track(snapshot["background_music_path"], music_output_path, loop=True)
                 music_path = str(music_output_path)
             self._remove_stale_preview_files(preview_dir, {voice_path, source_output_path, music_output_path})
             self._host._audio_preview_events.put(
-                ("ready", token, {
-                    "source": str(source_output_path),
-                    "voice": str(voice_path),
-                    "music": music_path,
-                })
+                (
+                    "ready",
+                    token,
+                    {
+                        "source": source_path,
+                        "voice": str(voice_path),
+                        "music": music_path,
+                    },
+                )
             )
         except Exception as exc:
             self._host._audio_preview_events.put(("error", token, str(exc)))
+        finally:
+            with self._state_lock:
+                pending = self._pending_snapshot
+                self._pending_snapshot = None
+                if pending is None:
+                    self._thread = None
+                else:
+                    self._start_thread_unlocked(pending)
 
     @classmethod
     def _preview_text(cls, target_language: str) -> str:
-        return cls._PREVIEW_TEXT_BY_LANGUAGE.get(str(target_language or "").lower(), cls._PREVIEW_TEXT_BY_LANGUAGE["en"])
+        return cls._PREVIEW_TEXT_BY_LANGUAGE.get(
+            str(target_language or "").lower(), cls._PREVIEW_TEXT_BY_LANGUAGE["en"]
+        )
 
     @staticmethod
     def _remove_stale_preview_files(preview_dir: Path, keep_paths: set[Path]) -> None:
@@ -207,12 +244,24 @@ class AudioPreviewController:
         command = [_binary("ffmpeg"), "-y", "-v", "error"]
         if loop:
             command.extend(["-stream_loop", "-1"])
-        command.extend([
-            "-i", input_path,
-            "-t", str(self._DURATION_SECONDS),
-            "-vn", "-map", "0:a:0?",
-            "-ac", "2", "-ar", "44100", "-c:a", "aac", str(output_path),
-        ])
+        command.extend(
+            [
+                "-i",
+                input_path,
+                "-t",
+                str(self._DURATION_SECONDS),
+                "-vn",
+                "-map",
+                "0:a:0?",
+                "-ac",
+                "2",
+                "-ar",
+                "44100",
+                "-c:a",
+                "aac",
+                str(output_path),
+            ]
+        )
         result = subprocess.run(
             command,
             capture_output=True,
@@ -235,7 +284,9 @@ class AudioPreviewController:
                 continue
             if kind == "ready":
                 host._audio_preview_source = Path(value["voice"]).resolve().as_uri()
-                host._audio_preview_original_source = Path(value["source"]).resolve().as_uri()
+                host._audio_preview_original_source = (
+                    Path(value["source"]).resolve().as_uri() if value["source"] else ""
+                )
                 host._audio_preview_background_music_source = (
                     Path(value["music"]).resolve().as_uri() if value["music"] else ""
                 )

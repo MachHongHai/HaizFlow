@@ -2,11 +2,12 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 12
+VIDEO_METADATA_SCHEMA_VERSION = 13
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
-TTSProvider = Literal["auto", "vieneu", "edge"]
+TTSProvider = Literal["omnivoice", "edge"]
+SpeechRecognitionModel = Literal["small", "large-v3-turbo"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
 ProjectType = Literal["single", "batch"]
 OriginalSubtitleRemovalMode = Literal["blur", "patch"]
@@ -51,15 +52,16 @@ class VideoConfig(BaseModel):
     source_language: str = "auto"  # Automatic detection is performed for every speech segment.
     target_language: str = "vi"
     translator_provider: TranslatorProvider = "hymt2"
-    tts_provider: TTSProvider = "vieneu"
-    tts_voice: str = "Trúc Ly"
+    speech_recognition_model: SpeechRecognitionModel = "small"
+    tts_provider: TTSProvider = "omnivoice"
+    tts_voice: str = "omnivoice:female"
     subtitle_style: SubtitleStyle = Field(default_factory=SubtitleStyle)
     subtitle_layout_override: bool = False
     remove_original_subtitles: bool = True
-    original_subtitle_removal_mode: OriginalSubtitleRemovalMode = "blur"
+    original_subtitle_removal_mode: OriginalSubtitleRemovalMode = "patch"
     output_format: OutputFormat = "keep_ratio"  # The desktop workflow preserves the original aspect ratio.
     crop: CropSettings = Field(default_factory=CropSettings)
-    enable_audio_separation: bool = False
+    enable_audio_separation: bool = True
     original_video_volume: int = Field(default=60, ge=0, le=100)
     background_music_volume: int = Field(default=30, ge=0, le=100)
     tts_volume: int = Field(default=100, ge=0, le=100)
@@ -83,15 +85,16 @@ class VideoInfo(BaseModel):
     source_language: str
     target_language: str
     translator_provider: TranslatorProvider = "hymt2"
-    tts_provider: TTSProvider = "vieneu"
+    speech_recognition_model: SpeechRecognitionModel = "small"
+    tts_provider: TTSProvider = "omnivoice"
     tts_voice: str
     subtitle_style: SubtitleStyle
     subtitle_layout_override: bool = False
     remove_original_subtitles: bool = True
-    original_subtitle_removal_mode: OriginalSubtitleRemovalMode = "blur"
+    original_subtitle_removal_mode: OriginalSubtitleRemovalMode = "patch"
     output_format: OutputFormat
     crop: CropSettings = Field(default_factory=CropSettings)
-    enable_audio_separation: bool = False
+    enable_audio_separation: bool = True
     original_video_volume: int = Field(default=60, ge=0, le=100)
     background_music_volume: int = Field(default=30, ge=0, le=100)
     tts_volume: int = Field(default=100, ge=0, le=100)

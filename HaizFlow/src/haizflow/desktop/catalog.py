@@ -62,19 +62,13 @@ EDGE_TTS_VOICES_BY_LANGUAGE = {
 }
 
 
-VIENEU_TTS_VOICES = [
-    ("Trúc Ly", "Trúc Ly - Female"),
-    ("Ngọc Linh", "Ngọc Linh - Female"),
-    ("Đoan Trang", "Đoan Trang - Female"),
-    ("Mai Anh", "Mai Anh - Female"),
-    ("Thục Đoan", "Thục Đoan - Female"),
-    ("Thùy Dung", "Thùy Dung - Female"),
-    ("Ngọc Trân", "Ngọc Trân - Female"),
-    ("Minh Đức", "Minh Đức - Male"),
-    ("Phạm Tuyên", "Phạm Tuyên - Male"),
-    ("Thái Sơn", "Thái Sơn - Male"),
-    ("Xuân Vĩnh", "Xuân Vĩnh - Male"),
-    ("Thanh Bình", "Thanh Bình - Male"),
-    ("Minh Triết", "Minh Triết - Male"),
-    ("Quang Sơn", "Quang Sơn - Male"),
+OMNIVOICE_TTS_VOICES = [
+    ("omnivoice:clone", "My cloned voice", "clone"),
+    ("omnivoice:female", "Natural female", "language"),
+    ("omnivoice:male", "Natural male", "language"),
+    ("omnivoice:deep", "Deep narrator", "meme"),
+    ("omnivoice:bright", "Bright presenter", "meme"),
+    ("omnivoice:whisper", "Whisper narrator", "meme"),
+    ("omnivoice:storyteller", "Elder storyteller", "meme"),
+    ("omnivoice:cartoon", "Cartoon voice", "meme"),
 ]

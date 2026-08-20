@@ -12,6 +12,7 @@ from haizflow.desktop.social_publish_controller import (
     ZERNIO_SIGN_UP_URL,
     ZERNIO_POSTING_DOCS_URL,
     SocialPublishController,
+    _create_post_idempotently,
 )
 
 
@@ -183,9 +184,14 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.assertTrue(self.controller.account_ready)
 
     def test_published_item_content_cannot_be_edited(self):
-        self.host.tiktok_publish_items.items = [{
-            "id": "post-1", "status": "published", "caption": "Original", "hashtags": "#tag",
-        }]
+        self.host.tiktok_publish_items.items = [
+            {
+                "id": "post-1",
+                "status": "published",
+                "caption": "Original",
+                "hashtags": "#tag",
+            }
+        ]
 
         with patch.object(self.controller, "_ensure_publish_project", return_value=True):
             self.assertFalse(self.controller.update_item(0, "Changed", "#new"))
@@ -213,10 +219,12 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._project_root = "D:/HaizFlowData/publish-project"
         self.host._project_type = "publish"
         self.controller._accounts = [{"id": "youtube-1", "platform": "youtube"}]
-        self.controller._state.update({
-            "selected_account_id": "youtube-1",
-            "selected_platform": "youtube",
-        })
+        self.controller._state.update(
+            {
+                "selected_account_id": "youtube-1",
+                "selected_platform": "youtube",
+            }
+        )
         self.controller._creator_info_loaded = True
 
         with (
@@ -235,11 +243,13 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._project_root = "D:/HaizFlowData/publish-project"
         self.host._project_type = "publish"
         self.controller._accounts = [{"id": "tiktok-1", "platform": "tiktok"}]
-        self.controller._state.update({
-            "selected_account_id": "youtube-1",
-            "selected_platform": "youtube",
-            "privacy_level": "public",
-        })
+        self.controller._state.update(
+            {
+                "selected_account_id": "youtube-1",
+                "selected_platform": "youtube",
+                "privacy_level": "public",
+            }
+        )
         self.controller._creator_cache["tiktok-1"] = (
             0.0,
             {
@@ -277,13 +287,15 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.assertEqual(self.controller._model_item(item)["target_platform"], "youtube")
 
     def test_selected_batch_project_adds_every_rendered_video_once(self):
-        self.controller._project_sources = [{
-            "selected": True,
-            "output_paths": [
-                {"output_path": "D:/out/one.mp4", "display_name": "Batch — one.mp4"},
-                {"output_path": "D:/out/two.mp4", "display_name": "Batch — two.mp4"},
-            ],
-        }]
+        self.controller._project_sources = [
+            {
+                "selected": True,
+                "output_paths": [
+                    {"output_path": "D:/out/one.mp4", "display_name": "Batch — one.mp4"},
+                    {"output_path": "D:/out/two.mp4", "display_name": "Batch — two.mp4"},
+                ],
+            }
+        ]
 
         with patch.object(self.controller, "add_videos", return_value=True) as add:
             self.assertTrue(self.controller.add_selected_project_videos())
@@ -300,21 +312,25 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._state["selected_platform"] = "youtube"
         self.assertIn(
             "3 minutes",
-            self.controller._platform_video_error({
-                "file_path": "clip.mp4",
-                "duration_seconds": 181,
-                "video_width": 1080,
-                "video_height": 1920,
-            }),
+            self.controller._platform_video_error(
+                {
+                    "file_path": "clip.mp4",
+                    "duration_seconds": 181,
+                    "video_width": 1080,
+                    "video_height": 1920,
+                }
+            ),
         )
         self.assertIn(
             "vertical",
-            self.controller._platform_video_error({
-                "file_path": "clip.mp4",
-                "duration_seconds": 60,
-                "video_width": 1920,
-                "video_height": 1080,
-            }),
+            self.controller._platform_video_error(
+                {
+                    "file_path": "clip.mp4",
+                    "duration_seconds": 60,
+                    "video_width": 1920,
+                    "video_height": 1080,
+                }
+            ),
         )
 
     def test_meta_reels_reject_webm_and_platform_duration_limits(self):
@@ -388,12 +404,8 @@ class SocialPublishControllerTests(unittest.TestCase):
             patch.object(self.controller, "_reload"),
             patch.object(self.controller, "_api_key", return_value="sk_" + "a" * 64),
             patch.object(self.controller, "reconcile_accounts", return_value=True) as refresh,
-            patch(
-                "haizflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"
-            ),
-            patch(
-                "haizflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"
-            ),
+            patch("haizflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"),
+            patch("haizflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"),
         ):
             self.controller.attach_project("publish-project", "D:/HaizFlowData/publish-project")
 
@@ -404,19 +416,17 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._project_root = "D:/HaizFlowData/old-project"
         self.controller._privacy_levels = ["PUBLIC_TO_EVERYONE"]
         self.controller._interaction_settings = {
-            "comment": True, "duet": True, "stitch": True,
+            "comment": True,
+            "duet": True,
+            "stitch": True,
         }
         self.controller._creator_info_loaded = True
 
         with (
             patch.object(self.controller, "_reload"),
             patch.object(self.controller, "_api_key", return_value=""),
-            patch(
-                "haizflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"
-            ),
-            patch(
-                "haizflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"
-            ),
+            patch("haizflow.desktop.social_publish_controller.tiktok_publish.migrate_project_layout"),
+            patch("haizflow.desktop.social_publish_controller.tiktok_publish.cleanup_orphaned_media"),
         ):
             self.controller.attach_project("new-project", "D:/HaizFlowData/new-project")
 
@@ -531,14 +541,16 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._project_root = "D:/HaizFlowData/publish-project"
         self.controller._accounts = [{"_id": "removed", "platform": "tiktok"}]
         self.controller._state["selected_account_id"] = "removed"
-        self.controller._events.put({
-            "type": "accounts",
-            "project_key": "publish-project",
-            "profile_id": "profile-default",
-            "profile_name": "Default",
-            "profiles": [{"_id": "profile-default", "name": "Default"}],
-            "accounts": [],
-        })
+        self.controller._events.put(
+            {
+                "type": "accounts",
+                "project_key": "publish-project",
+                "profile_id": "profile-default",
+                "profile_name": "Default",
+                "profiles": [{"_id": "profile-default", "name": "Default"}],
+                "accounts": [],
+            }
+        )
 
         with (
             patch(
@@ -559,16 +571,18 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._account_generation = 2
         self.controller._background_account_refreshing = True
         self.controller._accounts = []
-        self.controller._events.put({
-            "type": "accounts",
-            "project_key": "publish-project",
-            "profile_id": "profile-default",
-            "profile_name": "Default",
-            "profiles": [{"_id": "profile-default", "name": "Default"}],
-            "accounts": [{"_id": "disconnected", "platform": "youtube"}],
-            "generation": 1,
-            "silent": True,
-        })
+        self.controller._events.put(
+            {
+                "type": "accounts",
+                "project_key": "publish-project",
+                "profile_id": "profile-default",
+                "profile_name": "Default",
+                "profiles": [{"_id": "profile-default", "name": "Default"}],
+                "accounts": [{"_id": "disconnected", "platform": "youtube"}],
+                "generation": 1,
+                "silent": True,
+            }
+        )
 
         with (
             patch.object(self.controller, "_poll_connected_accounts"),
@@ -582,32 +596,40 @@ class SocialPublishControllerTests(unittest.TestCase):
     def test_silent_refresh_ignores_volatile_api_fields_without_rebuilding_the_ui(self):
         self.controller._project_key = "publish-project"
         self.controller._project_root = "D:/HaizFlowData/publish-project"
-        self.controller._accounts = [{
-            "_id": "youtube-account",
-            "platform": "youtube",
-            "displayName": "Channel",
-            "updatedAt": "old",
-        }]
-        self.controller._state.update({
-            "selected_account_id": "youtube-account",
-            "selected_platform": "youtube",
-        })
-        self.controller._creator_info_loaded = True
-        self.controller._events.put({
-            "type": "accounts",
-            "project_key": "publish-project",
-            "profile_id": "profile-default",
-            "profile_name": "Default",
-            "profiles": [{"_id": "profile-default", "name": "Default"}],
-            "accounts": [{
+        self.controller._accounts = [
+            {
                 "_id": "youtube-account",
                 "platform": "youtube",
                 "displayName": "Channel",
-                "updatedAt": "new",
-            }],
-            "generation": 0,
-            "silent": True,
-        })
+                "updatedAt": "old",
+            }
+        ]
+        self.controller._state.update(
+            {
+                "selected_account_id": "youtube-account",
+                "selected_platform": "youtube",
+            }
+        )
+        self.controller._creator_info_loaded = True
+        self.controller._events.put(
+            {
+                "type": "accounts",
+                "project_key": "publish-project",
+                "profile_id": "profile-default",
+                "profile_name": "Default",
+                "profiles": [{"_id": "profile-default", "name": "Default"}],
+                "accounts": [
+                    {
+                        "_id": "youtube-account",
+                        "platform": "youtube",
+                        "displayName": "Channel",
+                        "updatedAt": "new",
+                    }
+                ],
+                "generation": 0,
+                "silent": True,
+            }
+        )
         emissions_before = self.host.tiktokPublishChanged.emissions
 
         with (
@@ -625,15 +647,17 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.controller._state["selected_account_id"] = "youtube-account"
         self.controller._creator_generation = 2
         self.controller._privacy_levels = ["public", "private"]
-        self.controller._events.put({
-            "type": "creator",
-            "project_key": "publish-project",
-            "account_id": "old-tiktok-account",
-            "generation": 1,
-            "levels": ["PUBLIC_TO_EVERYONE"],
-            "interactions": {"comment": True, "duet": True, "stitch": True},
-            "can_post_more": True,
-        })
+        self.controller._events.put(
+            {
+                "type": "creator",
+                "project_key": "publish-project",
+                "account_id": "old-tiktok-account",
+                "generation": 1,
+                "levels": ["PUBLIC_TO_EVERYONE"],
+                "interactions": {"comment": True, "duet": True, "stitch": True},
+                "can_post_more": True,
+            }
+        )
 
         with (
             patch.object(self.controller, "_poll_connected_accounts"),
@@ -644,31 +668,37 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.assertEqual(self.controller._privacy_levels, ["public", "private"])
 
     def test_account_labels_include_the_zernio_profile_when_available(self):
-        label = self.controller._account_label({
-            "_id": "account-1",
-            "displayName": "Creator",
-            "username": "@creator",
-            "profileId": {"_id": "profile-1", "name": "Main brand"},
-        })
+        label = self.controller._account_label(
+            {
+                "_id": "account-1",
+                "displayName": "Creator",
+                "username": "@creator",
+                "profileId": {"_id": "profile-1", "name": "Main brand"},
+            }
+        )
 
         self.assertEqual(label, "TikTok — Creator · Main brand")
 
     def test_account_event_updates_the_ui_visible_account_list(self):
         self.controller._project_key = "publish-project"
         self.controller._project_root = "D:/HaizFlowData/publish-project"
-        self.controller._events.put({
-            "type": "accounts",
-            "project_key": "publish-project",
-            "profile_id": "profile-default",
-            "profile_name": "Default",
-            "profiles": [{"_id": "profile-default", "name": "Default"}],
-            "accounts": [{
-                "_id": "account-1",
-                "platform": "tiktok",
-                "displayName": "Creator",
-                "profileId": {"_id": "profile-default", "name": "Default"},
-            }],
-        })
+        self.controller._events.put(
+            {
+                "type": "accounts",
+                "project_key": "publish-project",
+                "profile_id": "profile-default",
+                "profile_name": "Default",
+                "profiles": [{"_id": "profile-default", "name": "Default"}],
+                "accounts": [
+                    {
+                        "_id": "account-1",
+                        "platform": "tiktok",
+                        "displayName": "Creator",
+                        "profileId": {"_id": "profile-default", "name": "Default"},
+                    }
+                ],
+            }
+        )
 
         with (
             patch(
@@ -707,13 +737,15 @@ class SocialPublishControllerTests(unittest.TestCase):
             self.controller.drain_events()
         self.assertTrue(self.controller.oauth_sync_pending)
 
-        self.controller._events.put({
-            **stale_event,
-            "accounts": [
-                {"_id": "existing", "platform": "tiktok"},
-                {"_id": "new-account", "platform": "youtube"},
-            ],
-        })
+        self.controller._events.put(
+            {
+                **stale_event,
+                "accounts": [
+                    {"_id": "existing", "platform": "tiktok"},
+                    {"_id": "new-account", "platform": "youtube"},
+                ],
+            }
+        )
         with (
             patch.object(self.controller, "_start_creator_info_worker", return_value=True),
             patch.object(self.controller, "_poll_oauth_accounts"),
@@ -734,10 +766,12 @@ class SocialPublishControllerTests(unittest.TestCase):
         refresh.assert_called_once_with("refresh", silent=True)
 
     def test_connection_prefers_the_existing_haizflow_profile(self):
-        profile = self.controller._connection_profile([
-            {"_id": "default", "name": "Default", "isDefault": True},
-            {"_id": "haizflow", "name": "HaizFlow"},
-        ])
+        profile = self.controller._connection_profile(
+            [
+                {"_id": "default", "name": "Default", "isDefault": True},
+                {"_id": "haizflow", "name": "HaizFlow"},
+            ]
+        )
 
         self.assertEqual(profile["_id"], "haizflow")
 
@@ -850,20 +884,22 @@ class SocialPublishControllerTests(unittest.TestCase):
             self.controller._project_root = project_root
             self.controller._reload()
             self.controller._post_status_refreshing = True
-            self.controller._events.put({
-                "type": "statuses",
-                "project_key": "publish-project",
-                "updates": [{
-                    "item_id": item["id"],
-                    "status": "published",
-                    "url": "https://www.tiktok.com/@creator/video/123",
-                    "error": "",
-                }],
-            })
+            self.controller._events.put(
+                {
+                    "type": "statuses",
+                    "project_key": "publish-project",
+                    "updates": [
+                        {
+                            "item_id": item["id"],
+                            "status": "published",
+                            "url": "https://www.tiktok.com/@creator/video/123",
+                            "error": "",
+                        }
+                    ],
+                }
+            )
 
-            with patch(
-                "haizflow.desktop.social_publish_controller.project_store.touch_project_by_key"
-            ):
+            with patch("haizflow.desktop.social_publish_controller.project_store.touch_project_by_key"):
                 self.controller.drain_events()
 
             restored = tiktok_publish.load_state(project_root)["items"][0]
@@ -871,6 +907,120 @@ class SocialPublishControllerTests(unittest.TestCase):
             self.assertEqual(self.controller.posted_count, 1)
             self.assertFalse(self.controller._post_status_refreshing)
             self.assertEqual(self.host.tiktok_publish_items.items[0]["status"], "published")
+
+    def test_create_post_retry_keeps_request_id_and_recovers_original_post(self):
+        client = MagicMock()
+        client.create_video_post.side_effect = [
+            zernio.ZernioError("response lost", status=0),
+            {"existingPost": {"id": "post-accepted", "status": "publishing"}},
+        ]
+        arguments = {
+            "platform": "tiktok",
+            "account_id": "account-1",
+            "content": "Caption #tag",
+            "media_url": "https://media.example/video.mp4",
+            "privacy_level": "PUBLIC_TO_EVERYONE",
+            "publish_now": True,
+            "request_id": "stable-request-id",
+        }
+
+        with patch("haizflow.desktop.social_publish_controller.time.sleep"):
+            result = _create_post_idempotently(client, arguments)
+
+        self.assertEqual(result["existingPost"]["id"], "post-accepted")
+        self.assertEqual(client.create_video_post.call_count, 2)
+        for call in client.create_video_post.call_args_list:
+            self.assertEqual(call.kwargs["request_id"], "stable-request-id")
+
+    def test_create_post_recovers_from_recent_posts_after_all_responses_are_lost(self):
+        client = MagicMock()
+        client.create_video_post.side_effect = zernio.ZernioError("response lost", status=0)
+        client.list_posts.return_value = [
+            {"id": "post-accepted", "requestId": "stable-request-id", "status": "publishing"}
+        ]
+        arguments = {
+            "platform": "youtube",
+            "account_id": "account-1",
+            "content": "Caption",
+            "media_url": "https://media.example/video.mp4",
+            "privacy_level": "private",
+            "publish_now": True,
+            "request_id": "stable-request-id",
+        }
+
+        with patch("haizflow.desktop.social_publish_controller.time.sleep"):
+            result = _create_post_idempotently(client, arguments)
+
+        self.assertEqual(result["existingPost"]["id"], "post-accepted")
+        self.assertEqual(client.create_video_post.call_count, 3)
+
+    def test_create_post_recovers_when_list_omits_request_id(self):
+        client = MagicMock()
+        client.create_video_post.side_effect = zernio.ZernioError("response lost", status=0)
+        client.list_posts.return_value = [
+            {
+                "id": "post-accepted",
+                "content": "Caption #tag",
+                "status": "publishing",
+                "mediaItems": [{"type": "video", "url": "https://media.example/video.mp4"}],
+                "platforms": [
+                    {
+                        "platform": "tiktok",
+                        "accountId": {"_id": "account-1"},
+                        "status": "publishing",
+                    }
+                ],
+            }
+        ]
+        arguments = {
+            "platform": "tiktok",
+            "account_id": "account-1",
+            "content": "Caption #tag",
+            "media_url": "https://media.example/video.mp4",
+            "privacy_level": "PUBLIC_TO_EVERYONE",
+            "publish_now": True,
+            "request_id": "stable-request-id",
+        }
+
+        with patch("haizflow.desktop.social_publish_controller.time.sleep"):
+            result = _create_post_idempotently(client, arguments)
+
+        self.assertEqual(result["existingPost"]["id"], "post-accepted")
+        self.assertEqual(client.create_video_post.call_count, 3)
+
+    def test_status_worker_uses_recent_post_when_detail_endpoint_lacks_permalink(self):
+        client = MagicMock()
+        client.get_post.return_value = {"id": "post-1", "status": "published"}
+        client.list_posts.return_value = [
+            {
+                "id": "post-1",
+                "status": "published",
+                "platforms": [
+                    {
+                        "platform": "tiktok",
+                        "status": "published",
+                        "platformPostUrl": "https://www.tiktok.com/@creator/video/123",
+                    }
+                ],
+            }
+        ]
+
+        with patch(
+            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            return_value=client,
+        ):
+            self.controller._status_worker(
+                "sk_" + "a" * 64,
+                "publish-project",
+                [("item-1", "post-1", "tiktok")],
+            )
+
+        event = self.controller._events.get_nowait()
+        self.assertEqual(event["type"], "statuses")
+        self.assertEqual(
+            event["updates"][0]["url"],
+            "https://www.tiktok.com/@creator/video/123",
+        )
 
 
 if __name__ == "__main__":

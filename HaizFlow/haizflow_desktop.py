@@ -67,6 +67,7 @@ _INTERNAL_STREAM_MODES = {
     "--douyin-channel-worker",
     "--demucs-separate",
     "--hymt2-worker",
+    "--omnivoice-worker",
     "--runtime-probe",
     "--release-smoke",
 }
@@ -78,6 +79,13 @@ if "--hymt2-worker" in sys.argv:
 
     worker_args = [argument for argument in sys.argv[1:] if argument != "--hymt2-worker"]
     raise SystemExit(run_hymt2_worker(worker_args))
+
+if "--omnivoice-worker" in sys.argv:
+    from haizflow.pipeline.omnivoice_tts import main as run_omnivoice_worker
+
+    worker_index = sys.argv.index("--omnivoice-worker")
+    worker_args = sys.argv[worker_index : worker_index + 2]
+    raise SystemExit(run_omnivoice_worker(worker_args))
 
 if "--douyin-channel-worker" in sys.argv:
     from haizflow.services.douyin_channel_worker import main as run_douyin_channel_worker

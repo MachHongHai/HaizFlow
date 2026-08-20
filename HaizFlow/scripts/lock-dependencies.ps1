@@ -5,6 +5,24 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $LockFile = Join-Path $Root "requirements-lock-py313-win64.txt"
 $UvVersion = "0.11.19"
+$EnvFile = Join-Path $Root ".env"
+
+function Get-DotEnvValue([string]$Name) {
+  if (!(Test-Path -LiteralPath $EnvFile)) { return "" }
+  $match = Select-String -LiteralPath $EnvFile -Pattern ("^" + [regex]::Escape($Name) + "=(.*)$") | Select-Object -First 1
+  if (!$match) { return "" }
+  return $match.Matches[0].Groups[1].Value.Trim().Trim('"')
+}
+
+# uv runs before Python imports haizflow.config, so it cannot inherit the
+# application's runtime containment automatically. Keep its resolver cache in
+# the same user-selected data root instead of creating .uv-cache beside source.
+$RuntimeData = Get-DotEnvValue "RUNTIME_DATA_DIR"
+if (!$RuntimeData) { $RuntimeData = Join-Path $Root "data" }
+$UvCache = Get-DotEnvValue "UV_CACHE_DIR"
+if (!$UvCache) { $UvCache = Join-Path $RuntimeData "cache\uv" }
+New-Item -ItemType Directory -Force -Path $UvCache | Out-Null
+$env:UV_CACHE_DIR = $UvCache
 
 if (!(Test-Path -LiteralPath $Python -PathType Leaf)) {
   throw "Project environment is missing. Run scripts\install-desktop-env.ps1 first."

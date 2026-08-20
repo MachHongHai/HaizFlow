@@ -52,7 +52,6 @@ BIN_DIR = str(bin_dir())
 if os.path.exists(BIN_DIR):
     os.environ["PATH"] = BIN_DIR + os.path.pathsep + os.environ["PATH"]
 
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 WHISPER_MODEL_REPO = WHISPER_REPO
 WHISPER_MODEL_REVISION = WHISPER_REVISION
 WHISPER_MODELS_DIR = os.path.join(MODELS_DIR, "whisper")

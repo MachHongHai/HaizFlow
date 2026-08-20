@@ -28,16 +28,17 @@ download_ffmpeg = load_script("download_ffmpeg.py")
 
 class ReleaseToolingTests(unittest.TestCase):
     def test_ffmpeg_downloader_rejects_unapproved_or_non_https_sources(self):
-        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
-            download_ffmpeg.urllib.request, "urlopen"
-        ) as urlopen:
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(download_ffmpeg.urllib.request, "urlopen") as urlopen,
+        ):
             destination = Path(temp_dir) / "ffmpeg.zip"
             for source in ("file:///tmp/ffmpeg.zip", "http://ffmpeg.org/ffmpeg.zip", "https://example.test/a.zip"):
                 with self.subTest(source=source), self.assertRaisesRegex(RuntimeError, "unapproved download source"):
                     download_ffmpeg._download(source, destination, "0" * 64)
             urlopen.assert_not_called()
 
-    def test_upgrade_space_is_two_artifact_copies_plus_headroom(self):
+    def test_upgrade_space_includes_two_artifacts_first_run_models_and_headroom(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             artifact = Path(temp_dir) / "HaizFlow"
             artifact.mkdir()
@@ -46,7 +47,20 @@ class ReleaseToolingTests(unittest.TestCase):
             requirements = release_preflight.requirements(artifact, upgrade=True)
 
         self.assertEqual(requirements["artifact_bytes"], 3072)
-        self.assertEqual(requirements["required_free_bytes"], 3072 * 2 + release_preflight.WORKING_HEADROOM_BYTES)
+        self.assertEqual(
+            requirements["required_free_bytes"],
+            3072 * 2
+            + release_preflight.FIRST_RUN_MODEL_BYTES
+            + release_preflight.DOWNLOAD_HEADROOM_BYTES
+            + release_preflight.WORKING_HEADROOM_BYTES,
+        )
+        self.assertEqual(
+            requirements["first_run_model_bytes"],
+            max(
+                release_preflight.required_download_bytes("cpu"),
+                release_preflight.required_download_bytes("gpu"),
+            ),
+        )
 
     def test_generated_icon_and_version_resource_are_valid_build_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -67,7 +81,7 @@ class ReleaseToolingTests(unittest.TestCase):
 
         self.assertIn('parent / "assets" / "branding"', main_source)
         self.assertNotIn('parent / "qml" / "assets" / "branding"', main_source)
-        self.assertIn('$BrandingAssetsPath', build_script)
+        self.assertIn("$BrandingAssetsPath", build_script)
         self.assertIn('"haizflow-mark.png", "haizflow.ico"', build_script)
         self.assertIn('"assets/branding/haizflow.ico"', pyproject)
 
@@ -76,7 +90,9 @@ class ReleaseToolingTests(unittest.TestCase):
             artifact = Path(temp_dir) / "HaizFlow"
             artifact.mkdir()
             (artifact / "HaizFlow.exe").write_bytes(b"release")
-            (artifact / "INSTALL-REQUIREMENTS.json").write_text(json.dumps({"required_free_bytes": 1}), encoding="utf-8")
+            (artifact / "INSTALL-REQUIREMENTS.json").write_text(
+                json.dumps({"required_free_bytes": 1}), encoding="utf-8"
+            )
             finalize_release.finalize(artifact)
             finalize_release.verify_manifest(artifact)
             (artifact / "after-checksum.txt").write_text("late mutation", encoding="utf-8")
@@ -87,8 +103,7 @@ class ReleaseToolingTests(unittest.TestCase):
         installer = (ROOT / "installer" / "HaizFlow.iss").read_text(encoding="utf-8")
         self.assertNotIn('Excludes: "runtime\\*"', installer)
         self.assertIn(
-            'Source: "{#SourceDir}\\*"; DestDir: "{app}"; '
-            "Flags: ignoreversion recursesubdirs createallsubdirs",
+            'Source: "{#SourceDir}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs',
             installer,
         )
         self.assertIn("DefaultDirName={localappdata}\\Programs\\{#AppName}", installer)
@@ -142,7 +157,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('"$WhisperxMelFilters;whisperx\\assets"', build_script)
         self.assertNotIn('@("--collect-data", "whisperx")', build_script)
         self.assertIn('@("--collect-all", "demucs")', build_script)
-        self.assertNotIn("--add-data\", \"$ModelPath;models", build_script)
+        self.assertNotIn('--add-data", "$ModelPath;models', build_script)
         self.assertNotIn("--demucs-model", build_script)
         self.assertNotIn("--alignment-models", build_script)
         self.assertIn("PreFinalize = $true", build_script)

@@ -7,7 +7,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from haizflow.config import HF_HOME, MODELS_DIR, WHISPER_MODEL
+from haizflow.config import HF_HOME, MODELS_DIR
 
 import torch
 import torchaudio
@@ -22,6 +22,7 @@ from haizflow.core.model_integrity import (
     WHISPERX_VAD_SIZE,
     verify_alignment_model,
     verify_whisper_model,
+    verify_whisper_turbo_model,
     verify_whisperx_vad_model,
 )
 from haizflow.pipeline.process_registry import check_cancellation, is_cancelled
@@ -37,6 +38,7 @@ _MODEL_LOCK = threading.Lock()
 _ALIGNMENT_PATCH_LOCK = threading.RLock()
 _WARM_ASR_MODEL = None
 _WARM_DEVICE = None
+_WARM_MODEL_NAME = None
 _AUDIO_SAMPLE_RATE = 16000
 _SEGMENT_LANGUAGE_CONFIDENCE = 0.55
 _ALIGNMENT_MIN_COVERAGE_RATIO = 0.55
@@ -58,24 +60,24 @@ _WHISPERX_VAD_SHA256 = WHISPERX_VAD_SHA256
 _VERIFIED_ALIGNMENT_MODELS = ALIGNMENT_MODELS
 
 
-def _whisper_model_source() -> tuple[str, bool]:
+def _whisper_model_source(model_name: str = "small") -> tuple[str, bool]:
     """Resolve only the checksum-verified model installed by first-run setup."""
-    if os.path.isdir(WHISPER_MODEL):
-        return os.path.abspath(WHISPER_MODEL), True
-    if WHISPER_MODEL != "small":
-        return WHISPER_MODEL, False
-    candidate = Path(MODELS_DIR) / "whisper" / "small"
+    normalized = str(model_name or "small").strip().lower()
+    if normalized not in {"small", "large-v3-turbo"}:
+        raise RuntimeError(f"Unsupported Whisper model: {model_name}")
+    candidate = Path(MODELS_DIR) / "whisper" / normalized
     try:
-        return str(verify_whisper_model(candidate)), True
+        verifier = verify_whisper_turbo_model if normalized == "large-v3-turbo" else verify_whisper_model
+        return str(verifier(candidate)), True
     except ModelIntegrityError as exc:
         raise RuntimeError(
             "Whisper is missing or corrupted. Return to the model setup screen and retry the download."
         ) from exc
 
 
-def _load_whisper_model(device: str, compute_type: str, threads: int):
+def _load_whisper_model(device: str, compute_type: str, threads: int, model_name: str = "small"):
     vad_model_path = _verify_whisperx_vad_asset()
-    source, local_only = _whisper_model_source()
+    source, local_only = _whisper_model_source(model_name)
     return whisperx.load_model(
         source,
         device,
@@ -87,36 +89,45 @@ def _load_whisper_model(device: str, compute_type: str, threads: int):
     )
 
 
-def warm_whisperx_model():
+def warm_whisperx_model(model_name: str = "small"):
     """Load the ASR model once in the background so the first video starts promptly."""
-    global _WARM_ASR_MODEL, _WARM_DEVICE
+    global _WARM_ASR_MODEL, _WARM_DEVICE, _WARM_MODEL_NAME
+    model_name = str(model_name or "small").strip().lower()
+    if model_name not in {"small", "large-v3-turbo"}:
+        raise RuntimeError(f"Unsupported Whisper model: {model_name}")
     with _MODEL_LOCK:
-        if _WARM_ASR_MODEL is not None:
+        if _WARM_ASR_MODEL is not None and _WARM_MODEL_NAME == model_name:
             return True
+        if _WARM_ASR_MODEL is not None:
+            del _WARM_ASR_MODEL
+            _WARM_ASR_MODEL = None
         profile = runtime_profile()
         device = "cuda" if profile.cuda_available else "cpu"
         compute_type = "float16" if device == "cuda" else "int8"
         try:
-            model = _load_whisper_model(device, compute_type, profile.cpu_threads)
+            model = _load_whisper_model(device, compute_type, profile.cpu_threads, model_name)
         except Exception:
             _WARM_ASR_MODEL = None
             _WARM_DEVICE = None
+            _WARM_MODEL_NAME = None
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             raise
         _WARM_ASR_MODEL = model
         _WARM_DEVICE = device
+        _WARM_MODEL_NAME = model_name
         return True
 
 
 def release_warm_whisperx_model():
-    global _WARM_ASR_MODEL, _WARM_DEVICE
+    global _WARM_ASR_MODEL, _WARM_DEVICE, _WARM_MODEL_NAME
     with _MODEL_LOCK:
         if _WARM_ASR_MODEL is not None:
             del _WARM_ASR_MODEL
         _WARM_ASR_MODEL = None
         _WARM_DEVICE = None
+        _WARM_MODEL_NAME = None
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -167,7 +178,7 @@ def _detect_segment_languages(asr_model, audio, segments, fallback_language: str
         confidence = 0.0
 
         if end > start:
-            clip = audio[int(start * _AUDIO_SAMPLE_RATE): int(end * _AUDIO_SAMPLE_RATE)]
+            clip = audio[int(start * _AUDIO_SAMPLE_RATE) : int(end * _AUDIO_SAMPLE_RATE)]
             try:
                 detected, confidence, _all_probabilities = asr_model.model.detect_language(
                     audio=clip,
@@ -181,7 +192,9 @@ def _detect_segment_languages(asr_model, audio, segments, fallback_language: str
                         f"Sentence {index} language confidence {confidence:.2f} is low; using '{fallback_language}'.",
                     )
             except Exception as exc:
-                log_to_video(video_id, f"Sentence {index} language detection failed; using '{fallback_language}': {exc}")
+                log_to_video(
+                    video_id, f"Sentence {index} language detection failed; using '{fallback_language}': {exc}"
+                )
 
         segment_with_language = dict(segment)
         segment_with_language["language"] = language
@@ -242,7 +255,7 @@ def _retranscribe_mixed_language_segments(asr_model, audio, segments, primary_la
             if correction_reason:
                 log_to_video(video_id, f"Sentence {index}: {correction_reason}.")
             log_to_video(video_id, f"Re-transcribing sentence {index} with language '{language}'.")
-            clip = audio[int(start * _AUDIO_SAMPLE_RATE): int(end * _AUDIO_SAMPLE_RATE)]
+            clip = audio[int(start * _AUDIO_SAMPLE_RATE) : int(end * _AUDIO_SAMPLE_RATE)]
             local_result = asr_model.transcribe(clip, batch_size=1, language=language)
             corrected_text = ""
             for local_segment in local_result.get("segments", []):
@@ -277,9 +290,7 @@ def _language_for_aligned_segment(segment, source_segments, fallback_language: s
             best_source = source
         elif overlap == best_overlap and best_source is not None:
             source_midpoint = (source_start + source_end) / 2
-            best_midpoint = (
-                float(best_source.get("start", 0.0)) + float(best_source.get("end", 0.0))
-            ) / 2
+            best_midpoint = (float(best_source.get("start", 0.0)) + float(best_source.get("end", 0.0))) / 2
             if abs(midpoint - source_midpoint) < abs(midpoint - best_midpoint):
                 best_source = source
 
@@ -317,8 +328,7 @@ def _split_sentence_text(text: str) -> list[str]:
 
         sentence_end = index + 1
         while sentence_end < len(normalized) and (
-            normalized[sentence_end] in _SENTENCE_END_CHARS
-            or normalized[sentence_end] in _SENTENCE_CLOSERS
+            normalized[sentence_end] in _SENTENCE_END_CHARS or normalized[sentence_end] in _SENTENCE_CLOSERS
         ):
             sentence_end += 1
 
@@ -359,8 +369,7 @@ def _coalesce_short_sentence_segments(segments: list[dict]) -> list[dict]:
             if gap <= 0.15:
                 previous["end"] = max(float(previous.get("end", 0.0)), float(current.get("end", 0.0)))
                 previous["text"] = (
-                    f'{str(previous.get("text") or "").rstrip()} '
-                    f'{str(current.get("text") or "").lstrip()}'
+                    f"{str(previous.get('text') or '').rstrip()} {str(current.get('text') or '').lstrip()}"
                 ).strip()
                 previous.pop("words", None)
                 continue
@@ -374,8 +383,7 @@ def _coalesce_short_sentence_segments(segments: list[dict]) -> list[dict]:
             first = coalesced.pop(0)
             coalesced[0]["start"] = min(float(first.get("start", 0.0)), float(coalesced[0].get("start", 0.0)))
             coalesced[0]["text"] = (
-                f'{str(first.get("text") or "").rstrip()} '
-                f'{str(coalesced[0].get("text") or "").lstrip()}'
+                f"{str(first.get('text') or '').rstrip()} {str(coalesced[0].get('text') or '').lstrip()}"
             ).strip()
             coalesced[0].pop("words", None)
     return coalesced
@@ -422,10 +430,7 @@ def _alignment_groups(segments: list[dict]) -> list[list[dict]]:
             previous = current[-1]
             gap = float(segment.get("start", 0.0)) - float(previous.get("end", 0.0))
             group_span = float(segment.get("end", 0.0)) - float(current[0].get("start", 0.0))
-            language_changed = (
-                str(segment.get("language") or "en")
-                != str(current[0].get("language") or "en")
-            )
+            language_changed = str(segment.get("language") or "en") != str(current[0].get("language") or "en")
             if (
                 language_changed
                 or gap >= _ALIGNMENT_GROUP_SPLIT_GAP_SECONDS
@@ -476,15 +481,12 @@ def _split_context_alignment(
     if scores:
         median_score = statistics.median(scores)
         if median_score < _ALIGNMENT_MIN_MEDIAN_WORD_SCORE:
-            return None, (
-                f"median word score {median_score:.3f} is below "
-                f"{_ALIGNMENT_MIN_MEDIAN_WORD_SCORE:.3f}"
-            )
+            return None, (f"median word score {median_score:.3f} is below {_ALIGNMENT_MIN_MEDIAN_WORD_SCORE:.3f}")
 
     aligned = []
     offset = 0
     for source, count in zip(source_segments, expected_word_counts):
-        sentence_words = words[offset: offset + count]
+        sentence_words = words[offset : offset + count]
         offset += count
         sentence = dict(source)
         sentence.update(
@@ -563,10 +565,7 @@ def _alignment_quality(source_segment: dict, aligned_segments: list[dict]) -> tu
     if word_scores:
         median_score = statistics.median(word_scores)
         if median_score < _ALIGNMENT_MIN_MEDIAN_WORD_SCORE:
-            return False, (
-                f"median word score {median_score:.3f} is below "
-                f"{_ALIGNMENT_MIN_MEDIAN_WORD_SCORE:.3f}"
-            )
+            return False, (f"median word score {median_score:.3f} is below {_ALIGNMENT_MIN_MEDIAN_WORD_SCORE:.3f}")
     return True, f"coverage={coverage_ratio:.2f}"
 
 
@@ -576,8 +575,7 @@ def _verify_whisperx_vad_asset() -> Path:
         return verify_whisperx_vad_model(Path(MODELS_DIR) / "whisperx-vad")
     except ModelIntegrityError as exc:
         raise RuntimeError(
-            "WhisperX VAD is missing or corrupted. "
-            "Return to the model setup screen and retry the download."
+            "WhisperX VAD is missing or corrupted. Return to the model setup screen and retry the download."
         ) from exc
 
 
@@ -633,11 +631,9 @@ def _verified_alignment_asset(language: str, video_id: str) -> tuple[object, dic
 
 def _align_segments_by_language(audio, segments, device: str, video_id: str, progress_callback=None):
     """Align ordered sentence groups with enough context to correct ASR drift."""
-    sentence_segments = _coalesce_short_sentence_segments([
-        sentence
-        for source_segment in segments
-        for sentence in _split_segment_proportionally(source_segment)
-    ])
+    sentence_segments = _coalesce_short_sentence_segments(
+        [sentence for source_segment in segments for sentence in _split_segment_proportionally(source_segment)]
+    )
     context_groups = _alignment_groups(sentence_segments)
     grouped_segments = {}
     ordered_languages = []
@@ -809,9 +805,7 @@ def _normalize_sentence_timestamps(segments: list[dict], audio_duration: float) 
 def _validate_timestamp_invariants(segments: list[dict], audio_duration: float) -> None:
     """Reject timestamp corruption before translation, subtitles or TTS can use it."""
     if not segments:
-        raise RuntimeError(
-            "WhisperX found no speech segments. The video cannot be dubbed without spoken content."
-        )
+        raise RuntimeError("WhisperX found no speech segments. The video cannot be dubbed without spoken content.")
     previous_start = -1.0
     previous_end = -1.0
     for index, segment in enumerate(segments, start=1):
@@ -829,11 +823,26 @@ def _validate_timestamp_invariants(segments: list[dict], audio_duration: float) 
         previous_end = end
 
 
-def transcribe(audio_path: str, output_json_path: str, source_language: str, video_id: str, progress_callback=None):
+def transcribe(
+    audio_path: str,
+    output_json_path: str,
+    source_language: str,
+    video_id: str,
+    progress_callback=None,
+    *,
+    model_name: str = "small",
+):
     """Transcribe through WhisperX and align sentence timestamps per language."""
-    log_to_video(video_id, f"Initializing WhisperX with model '{WHISPER_MODEL}'.")
+    global _WARM_ASR_MODEL, _WARM_DEVICE, _WARM_MODEL_NAME
+    model_name = str(model_name or "small").strip().lower()
+    log_to_video(video_id, f"Initializing WhisperX with model '{model_name}'.")
     profile = runtime_profile()
     device = "cuda" if profile.cuda_available else "cpu"
+    if model_name == "large-v3-turbo" and device != "cuda":
+        raise RuntimeError(
+            "Whisper large-v3-turbo requires an available NVIDIA GPU. "
+            "Choose WhisperX small for CPU or low-VRAM processing."
+        )
     compute_type = "float16" if device == "cuda" else "int8"
     log_to_video(
         video_id,
@@ -849,12 +858,28 @@ def transcribe(audio_path: str, output_json_path: str, source_language: str, vid
         if progress_callback:
             progress_callback("loading_model", "Loading WhisperX speech model")
         with _MODEL_LOCK:
-            if _WARM_ASR_MODEL is not None and _WARM_DEVICE == device:
+            if _WARM_ASR_MODEL is not None and _WARM_DEVICE == device and _WARM_MODEL_NAME == model_name:
                 asr_model = _WARM_ASR_MODEL
                 using_warm_model = True
                 log_to_video(video_id, "Reusing warmed WhisperX speech model.")
             else:
-                asr_model = _load_whisper_model(device, compute_type, profile.cpu_threads)
+                # Startup warms the lightweight model so the common path is
+                # responsive.  A project can subsequently select turbo.  Do
+                # not keep both models resident: on an 8 GB GPU that can make
+                # the turbo load fail even though turbo fits on its own.
+                if _WARM_ASR_MODEL is not None:
+                    del _WARM_ASR_MODEL
+                    _WARM_ASR_MODEL = None
+                    _WARM_DEVICE = None
+                    _WARM_MODEL_NAME = None
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    log_to_video(
+                        video_id,
+                        "Released the warmed WhisperX model before switching ASR models.",
+                    )
+                asr_model = _load_whisper_model(device, compute_type, profile.cpu_threads, model_name)
         audio = whisperx.load_audio(audio_path)
         if source_language != "auto":
             log_to_video(video_id, f"Ignoring legacy source language '{source_language}'; using automatic detection.")

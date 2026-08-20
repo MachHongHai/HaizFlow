@@ -55,6 +55,9 @@ class SettingsController:
         else:
             host._status_message = "Settings applied"
         host.settingsChanged.emit()
+        options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
+        if options_changed:
+            options_changed.emit()
         host.languageOptionsChanged.emit()
         voice_options_changed = getattr(host, "ttsVoiceOptionsChanged", None)
         if voice_options_changed:
@@ -88,6 +91,9 @@ class SettingsController:
         else:
             host._status_message = "Settings reset to defaults"
         host.settingsChanged.emit()
+        options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
+        if options_changed:
+            options_changed.emit()
         host.languageOptionsChanged.emit()
         voice_options_changed = getattr(host, "ttsVoiceOptionsChanged", None)
         if voice_options_changed:

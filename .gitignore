@@ -9,3 +9,4 @@ HaizFlow/build/
 HaizFlow/out/
 HaizFlow/__pycache__/
 HaizFlow/**/*.pyc
+/.uv-cache/

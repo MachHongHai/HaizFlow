@@ -71,12 +71,8 @@ class RestartCheckpointTests(unittest.TestCase):
                     "haizflow.desktop.project_commands_controller.video_store.get_video",
                     return_value=video,
                 ),
-                mock.patch(
-                    "haizflow.desktop.project_commands_controller.video_store.update_video"
-                ) as update_video,
-                mock.patch(
-                    "haizflow.desktop.project_commands_controller.video_store.log_to_video"
-                ),
+                mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
             ):
                 controller.approve_translation_review(payload)
 
@@ -165,7 +161,7 @@ class RestartCheckpointTests(unittest.TestCase):
                 "edge",
                 "vi",
                 "same-voice",
-                "vieneu-v3-turbo-onnx-int8-r1",
+                "omnivoice-c5fdb5c-r1",
             )
             video = SimpleNamespace(
                 video_id="video-1",
@@ -256,7 +252,9 @@ class RestartCheckpointTests(unittest.TestCase):
                 mock.patch.object(process_video, "update_video") as update_video,
                 mock.patch.object(process_video, "log_to_video"),
                 mock.patch.object(process_video, "runtime_profile", return_value=profile),
-                mock.patch.object(process_video, "extract_audio", side_effect=RuntimeError("stop after resume decision")) as extract_audio,
+                mock.patch.object(
+                    process_video, "extract_audio", side_effect=RuntimeError("stop after resume decision")
+                ) as extract_audio,
             ):
                 process_video.process_video_sync(video.video_id, _reporter=reporter)
 

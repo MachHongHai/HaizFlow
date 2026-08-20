@@ -28,15 +28,13 @@ dependencies = [
   "Pillow==12.3.0",
   "audioop-lts==0.2.2; python_version >= '3.13'",
   "edge-tts==7.2.8",
-  # VieNeu's verified SDK wheel is a first-launch runtime component. Declare
-  # only its inference dependencies here, excluding the unused Gradio demo.
-  "sea-g2p==0.8.4",
+  # OmniVoice's verified SDK wheel is a first-launch runtime component. Only
+  # inference dependencies are frozen; its Gradio demo is intentionally absent.
   "soxr==1.1.0",
   "soundfile==0.14.0",
   # Pin the native ABI used by the tested Windows environment. Newer CFFI
   # releases are not required by SoundFile and needlessly churn the lock.
   "cffi==2.0.0",
-  "onnxruntime==1.27.0",
   "tokenizers==0.22.2",
   # Keep model clients on the release supported by WhisperX/Transformers.
   "huggingface-hub==0.36.2",

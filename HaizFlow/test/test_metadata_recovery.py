@@ -307,6 +307,17 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
         self.assertEqual(migrated.original_subtitle_removal_mode, "blur")
 
+    def test_invalid_current_removal_mode_falls_back_to_nearby_patch(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        current = json.loads(path.read_text(encoding="utf-8"))
+        current["original_subtitle_removal_mode"] = "unknown"
+        path.write_text(json.dumps(current), encoding="utf-8")
+
+        recovered = video_store.get_video(video.video_id)
+
+        self.assertEqual(recovered.original_subtitle_removal_mode, "patch")
+
     def test_v11_metadata_keeps_existing_projects_on_edge_tts(self):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))

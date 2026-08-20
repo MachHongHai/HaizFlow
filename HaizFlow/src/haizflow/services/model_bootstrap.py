@@ -34,19 +34,27 @@ from haizflow.core.model_integrity import (
     HYMT2_GPU_REVISION,
     SUBTITLE_OCR_BASE_URL,
     SUBTITLE_OCR_FILES,
-    VIENEU_CODEC_FILES,
-    VIENEU_CODEC_REPO,
-    VIENEU_CODEC_REVISION,
-    VIENEU_MODEL_FILES,
-    VIENEU_MODEL_REPO,
-    VIENEU_MODEL_REVISION,
-    VIENEU_SDK_FILE,
-    VIENEU_SDK_SHA256,
-    VIENEU_SDK_SIZE,
-    VIENEU_SDK_URL,
+    OMNIVOICE_FILES,
+    OMNIVOICE_HUB_FILE,
+    OMNIVOICE_HUB_SHA256,
+    OMNIVOICE_HUB_SIZE,
+    OMNIVOICE_HUB_URL,
+    OMNIVOICE_REPO,
+    OMNIVOICE_REVISION,
+    OMNIVOICE_SDK_FILE,
+    OMNIVOICE_SDK_SHA256,
+    OMNIVOICE_SDK_SIZE,
+    OMNIVOICE_SDK_URL,
+    OMNIVOICE_TRANSFORMERS_FILE,
+    OMNIVOICE_TRANSFORMERS_SHA256,
+    OMNIVOICE_TRANSFORMERS_SIZE,
+    OMNIVOICE_TRANSFORMERS_URL,
     WHISPER_FILES,
     WHISPER_REPO,
     WHISPER_REVISION,
+    WHISPER_TURBO_FILES,
+    WHISPER_TURBO_REPO,
+    WHISPER_TURBO_REVISION,
     WHISPERX_VAD_FILE,
     WHISPERX_VAD_SHA256,
     WHISPERX_VAD_SIZE,
@@ -56,9 +64,10 @@ from haizflow.core.model_integrity import (
     verify_demucs_model,
     verify_gpu_model,
     verify_subtitle_ocr_models,
-    verify_vieneu_models,
-    verify_vieneu_sdk,
+    verify_omnivoice_model,
+    verify_omnivoice_sdk,
     verify_whisper_model,
+    verify_whisper_turbo_model,
     verify_whisperx_vad_model,
 )
 
@@ -137,6 +146,17 @@ def required_assets(device: str) -> tuple[ModelAsset, ...]:
     if normalized_device == "gpu":
         assets.extend(
             ModelAsset(
+                "whisper-turbo",
+                "Whisper large-v3-turbo speech recognition",
+                _hub_url(WHISPER_TURBO_REPO, WHISPER_TURBO_REVISION, filename),
+                f"whisper/large-v3-turbo/{filename}",
+                size,
+                digest,
+            )
+            for filename, (size, digest) in WHISPER_TURBO_FILES.items()
+        )
+        assets.extend(
+            ModelAsset(
                 "hymt2-gpu",
                 "HY-MT2 GPU translation",
                 _hub_url(HYMT2_GPU_REPO, HYMT2_GPU_REVISION, filename),
@@ -178,16 +198,6 @@ def required_assets(device: str) -> tuple[ModelAsset, ...]:
         )
         for _language, (_bundle, filename, size, digest) in ALIGNMENT_MODELS.items()
     )
-    assets.append(
-        ModelAsset(
-            "vieneu-sdk",
-            "VieNeu local voice runtime",
-            VIENEU_SDK_URL,
-            f"vieneu/sdk/{VIENEU_SDK_FILE}",
-            VIENEU_SDK_SIZE,
-            VIENEU_SDK_SHA256,
-        )
-    )
     ocr_paths = {
         "subtitle-det.onnx": "det/ch_PP-OCRv5_det_mobile.onnx",
         "subtitle-rec.onnx": "rec/ch_PP-OCRv5_rec_mobile.onnx",
@@ -206,25 +216,44 @@ def required_assets(device: str) -> tuple[ModelAsset, ...]:
     )
     assets.extend(
         ModelAsset(
-            "vieneu",
-            "VieNeu local Vietnamese voice",
-            _hub_url(VIENEU_MODEL_REPO, VIENEU_MODEL_REVISION, f"onnx_int8/{filename}"),
-            f"vieneu/v3-turbo/onnx_int8/{filename}",
+            "omnivoice",
+            "OmniVoice multilingual local speech",
+            _hub_url(OMNIVOICE_REPO, OMNIVOICE_REVISION, filename),
+            f"omnivoice/{filename}",
             size,
             digest,
         )
-        for filename, (size, digest) in VIENEU_MODEL_FILES.items()
+        for filename, (size, digest) in OMNIVOICE_FILES.items()
+    )
+    assets.append(
+        ModelAsset(
+            "omnivoice-sdk",
+            "OmniVoice local inference runtime",
+            OMNIVOICE_SDK_URL,
+            f"omnivoice/sdk/{OMNIVOICE_SDK_FILE}",
+            OMNIVOICE_SDK_SIZE,
+            OMNIVOICE_SDK_SHA256,
+        )
     )
     assets.extend(
-        ModelAsset(
-            "vieneu-codec",
-            "VieNeu audio codec",
-            _hub_url(VIENEU_CODEC_REPO, VIENEU_CODEC_REVISION, filename),
-            f"vieneu/codec/{filename}",
-            size,
-            digest,
+        (
+            ModelAsset(
+                "omnivoice-runtime",
+                "OmniVoice isolated Transformers runtime",
+                OMNIVOICE_TRANSFORMERS_URL,
+                f"omnivoice/sdk/{OMNIVOICE_TRANSFORMERS_FILE}",
+                OMNIVOICE_TRANSFORMERS_SIZE,
+                OMNIVOICE_TRANSFORMERS_SHA256,
+            ),
+            ModelAsset(
+                "omnivoice-runtime",
+                "OmniVoice isolated model hub runtime",
+                OMNIVOICE_HUB_URL,
+                f"omnivoice/sdk/{OMNIVOICE_HUB_FILE}",
+                OMNIVOICE_HUB_SIZE,
+                OMNIVOICE_HUB_SHA256,
+            ),
         )
-        for filename, (size, digest) in VIENEU_CODEC_FILES.items()
     )
     return tuple(assets)
 
@@ -243,11 +272,7 @@ def _sha256(path: Path) -> str:
 
 def _asset_is_valid(path: Path, asset: ModelAsset) -> bool:
     try:
-        return (
-            path.is_file()
-            and path.stat().st_size == asset.size
-            and _sha256(path) == asset.sha256
-        )
+        return path.is_file() and path.stat().st_size == asset.size and _sha256(path) == asset.sha256
     except OSError:
         return False
 
@@ -363,9 +388,7 @@ def _download_asset(
                 advertised = response.headers.get("Content-Length")
                 expected_response_size = asset.size - offset
                 if advertised is not None and int(advertised) != expected_response_size:
-                    raise ModelBootstrapError(
-                        f"{asset.label} returned an unexpected download size."
-                    )
+                    raise ModelBootstrapError(f"{asset.label} returned an unexpected download size.")
                 written = offset
                 with partial.open(mode) as output:
                     while True:
@@ -375,9 +398,7 @@ def _download_asset(
                             break
                         written += len(chunk)
                         if written > asset.size:
-                            raise ModelBootstrapError(
-                                f"{asset.label} exceeded its pinned size."
-                            )
+                            raise ModelBootstrapError(f"{asset.label} exceeded its pinned size.")
                         output.write(chunk)
                         progress(
                             ModelProgress(
@@ -391,9 +412,7 @@ def _download_asset(
                     output.flush()
                     os.fsync(output.fileno())
             if partial.stat().st_size != asset.size:
-                raise ModelBootstrapError(
-                    f"{asset.label} download ended before the expected size."
-                )
+                raise ModelBootstrapError(f"{asset.label} download ended before the expected size.")
             progress(
                 ModelProgress(
                     "verifying",
@@ -425,6 +444,8 @@ def _download_asset(
 
 def _verify_installed_components(root: Path, device: str) -> None:
     verify_whisper_model(root / "whisper" / "small")
+    if device == "gpu":
+        verify_whisper_turbo_model(root / "whisper" / "large-v3-turbo")
     verify_whisperx_vad_model(root / "whisperx-vad")
     if device == "gpu":
         verify_gpu_model(root / "hymt2-transformers")
@@ -433,8 +454,8 @@ def _verify_installed_components(root: Path, device: str) -> None:
     verify_demucs_model(root / "demucs")
     verify_alignment_models(root / "alignment")
     verify_subtitle_ocr_models(root / "subtitle-ocr")
-    verify_vieneu_models(root / "vieneu")
-    verify_vieneu_sdk(root / "vieneu")
+    verify_omnivoice_model(root / "omnivoice")
+    verify_omnivoice_sdk(root / "omnivoice")
 
 
 def models_ready(root: Path, device: str) -> bool:

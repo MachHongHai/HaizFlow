@@ -145,12 +145,15 @@ class ZernioClientTests(unittest.TestCase):
 
         target = captured["body"]["platforms"][0]
         self.assertEqual(target["platform"], "instagram")
-        self.assertEqual(target["platformSpecificData"], {
-            "contentType": "reels",
-            "shareToFeed": False,
-            "isAiGenerated": True,
-            "firstComment": "More details",
-        })
+        self.assertEqual(
+            target["platformSpecificData"],
+            {
+                "contentType": "reels",
+                "shareToFeed": False,
+                "isAiGenerated": True,
+                "firstComment": "More details",
+            },
+        )
 
     def test_facebook_reel_supports_title_and_first_comment(self):
         captured = {}
@@ -172,11 +175,14 @@ class ZernioClientTests(unittest.TestCase):
             )
 
         data = captured["body"]["platforms"][0]["platformSpecificData"]
-        self.assertEqual(data, {
-            "contentType": "reel",
-            "title": "Reel title",
-            "firstComment": "First comment",
-        })
+        self.assertEqual(
+            data,
+            {
+                "contentType": "reel",
+                "title": "Reel title",
+                "firstComment": "First comment",
+            },
+        )
 
     def test_youtube_video_uses_title_and_visibility(self):
         captured = {}
@@ -202,11 +208,13 @@ class ZernioClientTests(unittest.TestCase):
         self.assertEqual(target["platformSpecificData"], {"title": "My Short", "visibility": "unlisted"})
 
     def test_list_supported_accounts_keeps_all_requested_platforms(self):
-        payload = {"accounts": [
-            {"id": "tik-1", "platform": "tiktok"},
-            {"id": "yt-1", "platform": "youtube"},
-            {"id": "ignored", "platform": "linkedin"},
-        ]}
+        payload = {
+            "accounts": [
+                {"id": "tik-1", "platform": "tiktok"},
+                {"id": "yt-1", "platform": "youtube"},
+                {"id": "ignored", "platform": "linkedin"},
+            ]
+        }
         with patch("haizflow.services.zernio.urlopen", return_value=_Response(payload)):
             accounts = zernio.ZernioClient(self.key).list_accounts(platforms=("tiktok", "youtube"))
 
@@ -292,9 +300,7 @@ class ZernioClientTests(unittest.TestCase):
                     {"value": "PUBLIC_TO_EVERYONE", "label": "Public"},
                     {"value": "SELF_ONLY", "label": "Only me"},
                 ],
-                "postingLimits": {
-                    "interactionSettings": {"comment": True, "duet": False, "stitch": True}
-                },
+                "postingLimits": {"interactionSettings": {"comment": True, "duet": False, "stitch": True}},
             }
         }
         with patch("haizflow.services.zernio.urlopen", return_value=_Response(payload)):
@@ -305,14 +311,18 @@ class ZernioClientTests(unittest.TestCase):
         self.assertFalse(info["canPostMore"])
 
     def test_tiktok_post_result_prefers_platform_status_over_stale_root_status(self):
-        result = zernio.tiktok_post_result({
-            "status": "publishing",
-            "platforms": [{
-                "platform": "tiktok",
-                "status": "published",
-                "platformPostUrl": "https://www.tiktok.com/@creator/video/123",
-            }],
-        })
+        result = zernio.tiktok_post_result(
+            {
+                "status": "publishing",
+                "platforms": [
+                    {
+                        "platform": "tiktok",
+                        "status": "published",
+                        "platformPostUrl": "https://www.tiktok.com/@creator/video/123",
+                    }
+                ],
+            }
+        )
 
         self.assertEqual(result["status"], "published")
         self.assertEqual(result["url"], "https://www.tiktok.com/@creator/video/123")
@@ -328,9 +338,7 @@ class ZernioClientTests(unittest.TestCase):
                             "youtube": {
                                 "platform": "youtube",
                                 "status": "published",
-                                "result": {
-                                    "platformPostUrl": "https://www.youtube.com/shorts/abc123"
-                                },
+                                "result": {"platformPostUrl": "https://www.youtube.com/shorts/abc123"},
                             }
                         },
                     }
@@ -343,16 +351,20 @@ class ZernioClientTests(unittest.TestCase):
         self.assertEqual(result["url"], "https://www.youtube.com/shorts/abc123")
 
     def test_tiktok_post_result_does_not_guess_url_from_temporary_publish_id(self):
-        result = zernio.tiktok_post_result({
-            "status": "published",
-            "platforms": [{
-                "platform": "tiktok",
+        result = zernio.tiktok_post_result(
+            {
                 "status": "published",
-                "platformPostId": "v_pub_url~v2-1.7672661563752450049",
-                "platformPostUrl": "",
-                "accountId": {"username": "@creator"},
-            }],
-        })
+                "platforms": [
+                    {
+                        "platform": "tiktok",
+                        "status": "published",
+                        "platformPostId": "v_pub_url~v2-1.7672661563752450049",
+                        "platformPostUrl": "",
+                        "accountId": {"username": "@creator"},
+                    }
+                ],
+            }
+        )
 
         self.assertEqual(result["url"], "")
 
@@ -363,15 +375,19 @@ class ZernioClientTests(unittest.TestCase):
             "https://www.tiktok.com/tiktokstudio/upload",
         ):
             with self.subTest(url=invalid_url):
-                result = zernio.tiktok_post_result({
-                    "status": "published",
-                    "url": invalid_url,
-                    "platforms": [{
-                        "platform": "tiktok",
+                result = zernio.tiktok_post_result(
+                    {
                         "status": "published",
                         "url": invalid_url,
-                    }],
-                })
+                        "platforms": [
+                            {
+                                "platform": "tiktok",
+                                "status": "published",
+                                "url": invalid_url,
+                            }
+                        ],
+                    }
+                )
                 self.assertEqual(result["url"], "")
 
     def test_public_post_url_accepts_supported_platform_permalinks(self):
@@ -399,6 +415,24 @@ class ZernioClientTests(unittest.TestCase):
         self.assertIn("HTTP 401", str(raised.exception))
         self.assertIn("Invalid API key", str(raised.exception))
         self.assertNotIn(self.key, str(raised.exception))
+
+    def test_duplicate_post_id_is_read_from_zernio_details_payload(self):
+        error = zernio.ZernioError(
+            "Duplicate post",
+            status=409,
+            payload={"details": {"existingPostId": "post-existing"}},
+        )
+
+        self.assertEqual(error.existing_post_id, "post-existing")
+
+    def test_list_posts_accepts_wrapped_post_collection(self):
+        with patch(
+            "haizflow.services.zernio.urlopen",
+            return_value=_Response({"data": {"posts": [{"id": "post-1"}]}}),
+        ):
+            posts = zernio.ZernioClient(self.key).list_posts()
+
+        self.assertEqual(posts, [{"id": "post-1"}])
 
 
 if __name__ == "__main__":

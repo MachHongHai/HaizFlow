@@ -1,6 +1,7 @@
 import os
 import shutil
 import uuid
+from pathlib import Path
 
 from haizflow.schemas.video import VideoConfig, MediaSource
 from haizflow.services import video_store, project_store
@@ -100,6 +101,50 @@ def set_desktop_background_music(video_info, source_path: str) -> str:
     return destination
 
 
+def set_desktop_voice_reference(video_info, source_path: str, transcript: str = "") -> str:
+    """Store an authorised voice-cloning sample inside the video workspace."""
+    source_path = os.path.abspath(str(source_path or "").strip()) if source_path else ""
+    files = dict(video_info.files or {})
+    workspace = os.path.abspath(video_store.get_video_dir(video_info.video_id))
+    input_directory = os.path.join(workspace, "input")
+    previous_path = str(files.get("voice_reference") or "")
+
+    if not source_path:
+        files.pop("voice_reference", None)
+        files.pop("voice_reference_transcript", None)
+        video_info.files = files
+        video_store.save_video(video_info)
+        for entry in Path(input_directory).glob("voice_reference.*"):
+            if entry.is_file():
+                entry.unlink(missing_ok=True)
+        return ""
+
+    if not os.path.isfile(source_path) or os.path.getsize(source_path) <= 0:
+        raise ValueError("Choose an available, non-empty voice sample.")
+    normalized_transcript = " ".join(str(transcript or "").split())
+    if not normalized_transcript:
+        raise ValueError("Enter the exact words spoken in the voice sample.")
+
+    extension = os.path.splitext(source_path)[1].lower() or ".media"
+    destination = os.path.join(input_directory, f"voice_reference{extension}")
+    _copy_file_atomically(source_path, destination)
+    files["voice_reference"] = destination
+    files["voice_reference_transcript"] = normalized_transcript
+    video_info.files = files
+    video_store.save_video(video_info)
+    for entry in Path(input_directory).glob("voice_reference.*"):
+        if entry.is_file() and not _same_path(str(entry), destination):
+            entry.unlink(missing_ok=True)
+    if previous_path and not _same_path(previous_path, destination):
+        try:
+            if os.path.commonpath([os.path.abspath(previous_path), workspace]) == workspace:
+                os.remove(previous_path)
+        except (FileNotFoundError, OSError, ValueError):
+            pass
+    video_store.log_to_video(video_info.video_id, "Imported an authorised OmniVoice cloning sample.")
+    return destination
+
+
 def migrate_legacy_single_export(video_info) -> bool:
     """Move a legacy single-project export out of the project root once."""
     if (
@@ -123,7 +168,9 @@ def migrate_legacy_single_export(video_info) -> bool:
     export_directory = (
         project_store.project_exports_dir_for_key(video_info.project_key)
         if video_info.project_key
-        else project_store.project_exports_dir(video_info.project_name, video_info.project_directory, video_info.project_type)
+        else project_store.project_exports_dir(
+            video_info.project_name, video_info.project_directory, video_info.project_type
+        )
     )
     migrated_export = os.path.join(export_directory, "dubbed_video.mp4")
     os.makedirs(export_directory, exist_ok=True)

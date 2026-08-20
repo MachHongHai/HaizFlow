@@ -25,7 +25,9 @@ class ProjectWorkspaceController:
             and video.status != "processing"
             and (video.source_language != "auto" or video.output_format != "keep_ratio")
         ):
-            video = video_store.update_video(video.video_id, source_language="auto", output_format="keep_ratio") or video
+            video = (
+                video_store.update_video(video.video_id, source_language="auto", output_format="keep_ratio") or video
+            )
         if migrate_legacy_single_export(video):
             video = video_store.get_video(video.video_id) or video
         host._workflow_mode = video.mode
@@ -37,14 +39,16 @@ class ProjectWorkspaceController:
             host._target_language, video.tts_voice, host._tts_provider
         )
         if (
-            host._tts_voice != video.tts_voice
-            or host._tts_provider != getattr(video, "tts_provider", "edge")
+            host._tts_voice != video.tts_voice or host._tts_provider != getattr(video, "tts_provider", "edge")
         ) and video.status != "processing":
-            video = video_store.update_video(
-                video.video_id,
-                tts_provider=host._tts_provider,
-                tts_voice=host._tts_voice,
-            ) or video
+            video = (
+                video_store.update_video(
+                    video.video_id,
+                    tts_provider=host._tts_provider,
+                    tts_voice=host._tts_voice,
+                )
+                or video
+            )
             video_store.log_to_video(
                 video.video_id,
                 "Updated incompatible saved TTS settings for the target language.",
@@ -55,9 +59,7 @@ class ProjectWorkspaceController:
         host._tts_volume = getattr(video, "tts_volume", 100)
         host._watermark_text = str(getattr(video, "watermark_text", "") or "")
         host._remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
-        host._original_subtitle_removal_mode = str(
-            getattr(video, "original_subtitle_removal_mode", "blur") or "blur"
-        )
+        host._original_subtitle_removal_mode = str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch")
         host._subtitle_style = video.subtitle_style
         host._subtitle_layout_override = bool(getattr(video, "subtitle_layout_override", False))
         host._background_music_path = str((video.files or {}).get("background_music") or "")
@@ -141,10 +143,7 @@ class ProjectWorkspaceController:
         # Probe every catalog entry in the background before building project
         # cards.  Previously only the open batch queue requested dimensions,
         # leaving single-project cards permanently labelled as unknown.
-        all_videos = [
-            host._ensure_video_dimensions(video)
-            for video in video_store.list_videos()
-        ]
+        all_videos = [host._ensure_video_dimensions(video) for video in video_store.list_videos()]
         host._catalog_videos = {video.video_id: video for video in all_videos}
         host.videos.set_videos(all_videos[:40])
         summaries = host._build_project_summaries(all_videos, project_store.list_projects())
@@ -168,7 +167,9 @@ class ProjectWorkspaceController:
         host.download_projects.set_projects([project for project in summaries if project["project_type"] == "download"])
         host.publish_projects.set_projects([project for project in summaries if project["project_type"] == "publish"])
         host._refresh_batch_model()
-        host._selected_video_snapshot = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        host._selected_video_snapshot = (
+            video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        )
         host.selectedVideoChanged.emit()
         missing_thumbnails = host._missing_thumbnail_ids(all_videos)
         if missing_thumbnails and not host._thumbnail_refresh_running:
@@ -207,8 +208,7 @@ class ProjectWorkspaceController:
             if previous_summary is None:
                 return False
             project_videos = [
-                video for video in host._catalog_videos.values()
-                if host._video_project_key(video) == project_key
+                video for video in host._catalog_videos.values() if host._video_project_key(video) == project_key
             ]
             summaries = host._build_project_summaries(project_videos, [previous_summary])
             if len(summaries) != 1:

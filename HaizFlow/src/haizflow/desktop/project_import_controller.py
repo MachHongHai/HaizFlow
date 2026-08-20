@@ -18,7 +18,11 @@ from haizflow.core.paths import app_data_dir
 from haizflow.schemas.video import SubtitleStyle, VideoConfig
 from haizflow.services import project_store, social_publish, video_store
 from haizflow.services.channel_import import normalize_remote_url
-from haizflow.services.desktop_videos import create_desktop_video, set_desktop_background_music
+from haizflow.services.desktop_videos import (
+    create_desktop_video,
+    set_desktop_background_music,
+    set_desktop_voice_reference,
+)
 from haizflow.services.video_download import DownloadCancelled, _load_yt_dlp, _youtube_dl_options, validate_video_url
 
 
@@ -81,24 +85,27 @@ class ProjectImportController:
         style_payload = dict(values.get("subtitleStyle") or {})
         manual_layout = bool(style_payload.pop("manual", False))
         remove_original_subtitles = bool(values.get("removeOriginalSubtitles", True))
-        removal_mode = str(values.get("originalSubtitleRemovalMode") or "blur")
-        return config.model_copy(update={
-            "mode": "review" if values.get("workflowMode") == "review" else "A",
-            "target_language": str(values.get("targetLanguage") or "vi"),
-            "tts_provider": str(values.get("ttsProvider") or "vieneu"),
-            "tts_voice": str(values.get("ttsVoice") or ""),
-            "enable_audio_separation": bool(values.get("enableAudioSeparation", False)),
-            "original_video_volume": int(values.get("originalVolume", 60)),
-            "background_music_volume": int(values.get("backgroundMusicVolume", 30)),
-            "tts_volume": int(values.get("ttsVolume", 100)),
-            "watermark_text": str(values.get("watermarkText") or ""),
-            "remove_original_subtitles": remove_original_subtitles,
-            "original_subtitle_removal_mode": removal_mode,
-            "subtitle_style": SubtitleStyle(**style_payload),
-            "subtitle_layout_override": manual_layout and not remove_original_subtitles,
-            "background_music_path": str(values.get("backgroundMusicPath") or ""),
-            "project_type": "batch",
-        })
+        removal_mode = str(values.get("originalSubtitleRemovalMode") or "patch")
+        return config.model_copy(
+            update={
+                "mode": "review" if values.get("workflowMode") == "review" else "A",
+                "target_language": str(values.get("targetLanguage") or "vi"),
+                "speech_recognition_model": str(values.get("speechRecognitionModel") or "small"),
+                "tts_provider": str(values.get("ttsProvider") or "omnivoice"),
+                "tts_voice": str(values.get("ttsVoice") or ""),
+                "enable_audio_separation": bool(values.get("enableAudioSeparation", True)),
+                "original_video_volume": int(values.get("originalVolume", 60)),
+                "background_music_volume": int(values.get("backgroundMusicVolume", 30)),
+                "tts_volume": int(values.get("ttsVolume", 100)),
+                "watermark_text": str(values.get("watermarkText") or ""),
+                "remove_original_subtitles": remove_original_subtitles,
+                "original_subtitle_removal_mode": removal_mode,
+                "subtitle_style": SubtitleStyle(**style_payload),
+                "subtitle_layout_override": manual_layout and not remove_original_subtitles,
+                "background_music_path": str(values.get("backgroundMusicPath") or ""),
+                "project_type": "batch",
+            }
+        )
 
     def _queue_import(self, jobs: list[dict], context: dict) -> bool:
         """Run disk/FFmpeg work outside the QML thread and marshal results back."""
@@ -148,12 +155,21 @@ class ProjectImportController:
             except Exception as exc:  # The GUI reports the individual file after the batch finishes.
                 errors.append(f"{os.path.basename(job['path'])}: {exc}")
             finally:
-                self._host._media_import_events.put({
-                    "type": "progress", "task_id": task_id, "completed": 1,
-                })
-        self._host._media_import_events.put({
-            "type": "finished", "task_id": task_id, "created_ids": created_ids, "errors": errors,
-        })
+                self._host._media_import_events.put(
+                    {
+                        "type": "progress",
+                        "task_id": task_id,
+                        "completed": 1,
+                    }
+                )
+        self._host._media_import_events.put(
+            {
+                "type": "finished",
+                "task_id": task_id,
+                "created_ids": created_ids,
+                "errors": errors,
+            }
+        )
 
     def _assign_thumbnail_in_worker(self, video) -> None:
         input_path = (video.files or {}).get("video_input")
@@ -251,7 +267,9 @@ class ProjectImportController:
                 host._background_music_import_status = "The selected video is no longer available."
                 return
             if host._processing_queue.contains(selected.video_id):
-                host._background_music_import_status = "Pause or finish this video before changing its background music."
+                host._background_music_import_status = (
+                    "Pause or finish this video before changing its background music."
+                )
                 return
             source_path = str(event.get("path") or "")
             stored_path = set_desktop_background_music(selected, source_path)
@@ -383,14 +401,16 @@ class ProjectImportController:
                     raise DownloadCancelled("Background music download cancelled.")
 
             options = _youtube_dl_options()
-            options.update({
-                "outtmpl": str(Path(output_path).with_suffix(".%(ext)s")),
-                "format": "bestaudio/best",
-                "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
-                "progress_hooks": [progress_hook],
-                "nopart": True,
-                "overwrites": True,
-            })
+            options.update(
+                {
+                    "outtmpl": str(Path(output_path).with_suffix(".%(ext)s")),
+                    "format": "bestaudio/best",
+                    "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
+                    "progress_hooks": [progress_hook],
+                    "nopart": True,
+                    "overwrites": True,
+                }
+            )
             with yt_dlp.YoutubeDL(options) as downloader:
                 downloader.extract_info(task["url"], download=True)
             if cancel_event.is_set():
@@ -449,7 +469,9 @@ class ProjectImportController:
             host._url_importer.complete_import(bool(created_ids), message)
         if context.get("channel_import"):
             host._channel_importer.complete_video(
-                context["session_id"], context["remote_id"], bool(created_ids),
+                context["session_id"],
+                context["remote_id"],
+                bool(created_ids),
                 "" if created_ids else (errors[0] if errors else "The video could not be added to the project."),
             )
         if errors and not context.get("channel_import") and not context.get("url_import"):
@@ -473,9 +495,8 @@ class ProjectImportController:
             remaining = deadline - time.monotonic()
             if remaining > 0:
                 music_worker.join(timeout=remaining)
-        return (
-            not any(worker.is_alive() for worker in self._task_threads.values())
-            and not (music_worker and music_worker.is_alive())
+        return not any(worker.is_alive() for worker in self._task_threads.values()) and not (
+            music_worker and music_worker.is_alive()
         )
 
     def download_inspected_video(self) -> None:
@@ -531,16 +552,27 @@ class ProjectImportController:
         known_project_keys = {project.get("key") for project in project_store.list_projects()}
         if not isinstance(config, VideoConfig) or target.get("project_key") not in known_project_keys:
             return False
-        return self._queue_import([{
-            "operation": "create", "path": path, "config": config.model_copy(deep=True),
-            "create_kwargs": {
-                "project_name": str(target.get("project_name") or ""),
-                "project_directory": str(target.get("project_directory") or ""),
-                "project_key_value": str(target.get("project_key") or ""),
-                "media_source": target.get("media_source"),
+        return self._queue_import(
+            [
+                {
+                    "operation": "create",
+                    "path": path,
+                    "config": config.model_copy(deep=True),
+                    "create_kwargs": {
+                        "project_name": str(target.get("project_name") or ""),
+                        "project_directory": str(target.get("project_directory") or ""),
+                        "project_key_value": str(target.get("project_key") or ""),
+                        "media_source": target.get("media_source"),
+                    },
+                }
+            ],
+            {
+                "operation": "create",
+                "project_key": str(target.get("project_key") or ""),
+                "as_batch": mode == "batch",
+                "url_import": True,
             },
-        }], {"operation": "create", "project_key": str(target.get("project_key") or ""),
-             "as_batch": mode == "batch", "url_import": True})
+        )
 
     def import_downloaded_video(self, path: str, mode: str, target) -> bool:
         host = self._host
@@ -605,7 +637,9 @@ class ProjectImportController:
     def prepare_channel_import(self) -> bool:
         host = self._host
         if not host.hasOpenProject or host._project_type != "batch":
-            QMessageBox.information(None, "Channel import", "Open or create a batch project before importing a channel.")
+            QMessageBox.information(
+                None, "Channel import", "Open or create a batch project before importing a channel."
+            )
             return False
         host._channel_importer.attach_project(
             host._selected_project_key, host._selected_project_root(), self.current_project_media_keys()
@@ -657,39 +691,61 @@ class ProjectImportController:
         candidate = dict(candidate_payload or {})
         remote_id = str(candidate.get("remote_video_id") or "")
         if not target or target.get("project_key") != project_key:
-            host._channel_importer.complete_video(session_id, remote_id, False, "The destination project is no longer available.")
+            host._channel_importer.complete_video(
+                session_id, remote_id, False, "The destination project is no longer available."
+            )
             return
         if project_key not in {project.get("key") for project in project_store.list_projects()}:
             host._channel_importer.complete_video(session_id, remote_id, False, "The destination project was deleted.")
             return
         source = {
-            "type": "channel", "platform": str(candidate.get("platform") or ""),
-            "remote_video_id": remote_id, "source_url": str(candidate.get("source_url") or ""),
+            "type": "channel",
+            "platform": str(candidate.get("platform") or ""),
+            "remote_video_id": remote_id,
+            "source_url": str(candidate.get("source_url") or ""),
             "channel_url": str(target.get("channel_url") or ""),
             "channel_name": str(target.get("channel_name") or candidate.get("uploader") or ""),
             "import_session_id": session_id,
             "imported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         if self._can_import_in_background():
-            queued = self._queue_import([{
-                "operation": "create", "path": path, "config": target["config"].model_copy(deep=True),
-                "create_kwargs": {
-                    "project_name": str(target.get("project_name") or ""),
-                    "project_directory": str(target.get("project_directory") or ""),
-                    "media_source": source, "move_input": True, "project_key_value": project_key,
+            queued = self._queue_import(
+                [
+                    {
+                        "operation": "create",
+                        "path": path,
+                        "config": target["config"].model_copy(deep=True),
+                        "create_kwargs": {
+                            "project_name": str(target.get("project_name") or ""),
+                            "project_directory": str(target.get("project_directory") or ""),
+                            "media_source": source,
+                            "move_input": True,
+                            "project_key_value": project_key,
+                        },
+                    }
+                ],
+                {
+                    "operation": "create",
+                    "project_key": project_key,
+                    "as_batch": True,
+                    "channel_import": True,
+                    "session_id": session_id,
+                    "remote_id": remote_id,
                 },
-            }], {"operation": "create", "project_key": project_key, "as_batch": True,
-                 "channel_import": True, "session_id": session_id, "remote_id": remote_id})
+            )
             if queued:
                 return
             host._channel_importer.complete_video(session_id, remote_id, False, "Unable to queue the imported video.")
             return
         try:
             video = self._create_video(
-                path, target["config"].model_copy(deep=True),
+                path,
+                target["config"].model_copy(deep=True),
                 project_name=str(target.get("project_name") or ""),
                 project_directory=str(target.get("project_directory") or ""),
-                media_source=source, move_input=True, project_key_value=project_key,
+                media_source=source,
+                move_input=True,
+                project_key_value=project_key,
             )
             self._assign_thumbnail(video)
         except Exception as exc:
@@ -707,7 +763,9 @@ class ProjectImportController:
 
     def browse_video(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            None, "Choose input video", self._media_dialog_directory(),
+            None,
+            "Choose input video",
+            self._media_dialog_directory(),
             "Video files (*.mp4 *.mov *.mkv);;All files (*.*)",
         )
         if path:
@@ -722,6 +780,70 @@ class ProjectImportController:
         )
         if path:
             self.set_background_music(path)
+
+    def choose_voice_reference(self) -> str:
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Choose an authorised voice sample",
+            self._media_dialog_directory(),
+            "Audio or video files (*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.mp4 *.mov *.mkv *.webm);;All files (*.*)",
+        )
+        return os.path.abspath(path) if path else ""
+
+    def set_voice_reference(self, path: str, transcript: str) -> bool:
+        host = self._host
+        video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        if not video:
+            host._show_app_alert(
+                "Voice cloning",
+                "Import a source video before adding a voice sample.",
+                "warning",
+            )
+            return False
+        if host._processing_queue.contains(video.video_id):
+            host._show_app_alert(
+                "Voice cloning",
+                "Pause or finish this video before changing its voice sample.",
+                "warning",
+            )
+            return False
+        try:
+            set_desktop_voice_reference(video, path, transcript)
+        except (OSError, RuntimeError, ValueError) as exc:
+            host._show_app_alert("Voice cloning", str(exc), "warning")
+            return False
+        host._tts_provider = "omnivoice"
+        host._tts_voice = "omnivoice:clone"
+        host.ttsProviderChanged.emit()
+        host.ttsVoiceChanged.emit()
+        host.ttsVoiceOptionsChanged.emit()
+        # Persist provider/voice together with the copied sample. Otherwise a
+        # page reload can restore the previous voice while leaving an orphaned
+        # clone reference in the workspace.
+        host.persistSelectedVideoSettings()
+        host.selectedVideoChanged.emit()
+        preview = getattr(host, "_audio_preview", None)
+        if preview is not None:
+            preview.invalidate()
+        return True
+
+    def clear_voice_reference(self) -> bool:
+        host = self._host
+        video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        if not video:
+            return False
+        try:
+            set_desktop_voice_reference(video, "")
+        except OSError as exc:
+            host._show_app_alert("Voice cloning", str(exc), "warning")
+            return False
+        if host._tts_voice == "omnivoice:clone":
+            host._tts_voice = "omnivoice:female"
+            host.ttsVoiceChanged.emit()
+        host.persistSelectedVideoSettings()
+        host.ttsVoiceOptionsChanged.emit()
+        host.selectedVideoChanged.emit()
+        return True
 
     def choose_batch_background_music(self) -> str:
         """Choose a batch music source without mutating any video draft."""
@@ -748,7 +870,9 @@ class ProjectImportController:
         selected = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if selected:
             if host._processing_queue.contains(selected.video_id):
-                QMessageBox.information(None, "Background music", "Pause or finish this video before changing its background music.")
+                QMessageBox.information(
+                    None, "Background music", "Pause or finish this video before changing its background music."
+                )
                 return False
             try:
                 stored_path = set_desktop_background_music(selected, source_path)
@@ -785,15 +909,16 @@ class ProjectImportController:
         defaults = {
             "_workflow_mode": "A",
             "_target_language": "vi",
-            "_tts_provider": "vieneu",
-            "_tts_voice": "Trúc Ly",
-            "_enable_audio_separation": False,
+            "_speech_recognition_model": "small",
+            "_tts_provider": "omnivoice",
+            "_tts_voice": "omnivoice:female",
+            "_enable_audio_separation": True,
             "_original_volume": 60,
             "_background_music_volume": 30,
             "_tts_volume": 100,
             "_watermark_text": "",
             "_remove_original_subtitles": True,
-            "_original_subtitle_removal_mode": "blur",
+            "_original_subtitle_removal_mode": "patch",
             "_subtitle_style": SubtitleStyle(),
             "_subtitle_layout_override": False,
             "_background_music_path": "",
@@ -801,6 +926,7 @@ class ProjectImportController:
         changed_signals = {
             "_workflow_mode": "workflowModeChanged",
             "_target_language": "targetLanguageChanged",
+            "_speech_recognition_model": "speechRecognitionModelChanged",
             "_tts_provider": "ttsProviderChanged",
             "_tts_voice": "ttsVoiceChanged",
             "_enable_audio_separation": "enableAudioSeparationChanged",
@@ -850,10 +976,7 @@ class ProjectImportController:
             return False
         normalized_type = project_store.normalize_project_type(project_type)
         publisher = getattr(host, "_tiktok_publisher", None)
-        if (
-            normalized_type == "download"
-            and not host._media_downloader.can_switch_project("__new_download_project__")
-        ):
+        if normalized_type == "download" and not host._media_downloader.can_switch_project("__new_download_project__"):
             QMessageBox.information(
                 None,
                 "Download project",
@@ -919,8 +1042,11 @@ class ProjectImportController:
             return self._queue_project_video(normalized)
         try:
             video = self._create_video(
-                normalized, self._config_for_project_import(), project_name=host._project_name,
-                project_directory=host._project_directory, project_key_value=host._selected_project_key,
+                normalized,
+                self._config_for_project_import(),
+                project_name=host._project_name,
+                project_directory=host._project_directory,
+                project_key_value=host._selected_project_key,
             )
             host._assign_project_thumbnail(video)
         except Exception as exc:
@@ -934,12 +1060,8 @@ class ProjectImportController:
         self._host.download_project_sources.set_items(project_store.list_download_project_videos())
         self._host.downloadProjectSourcesChanged.emit()
 
-    def set_download_project_source_selected(
-        self, row: int, selected: bool, *, exclusive: bool = False
-    ) -> bool:
-        changed = self._host.download_project_sources.set_selected(
-            row, selected, exclusive=exclusive
-        )
+    def set_download_project_source_selected(self, row: int, selected: bool, *, exclusive: bool = False) -> bool:
+        changed = self._host.download_project_sources.set_selected(row, selected, exclusive=exclusive)
         if changed:
             self._host.downloadProjectSourcesChanged.emit()
         return changed
@@ -949,9 +1071,7 @@ class ProjectImportController:
         paths = [str(item.get("file_path") or "") for item in selected]
         paths = [path for path in paths if os.path.isfile(path)]
         if not paths:
-            QMessageBox.information(
-                None, "Import from downloads", "Choose an available downloaded video first."
-            )
+            QMessageBox.information(None, "Import from downloads", "Choose an available downloaded video first.")
             self.refresh_download_project_sources()
             return False
 
@@ -1012,7 +1132,9 @@ class ProjectImportController:
 
     def browse_batch_videos(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            None, "Choose videos for batch processing", self._media_dialog_directory(),
+            None,
+            "Choose videos for batch processing",
+            self._media_dialog_directory(),
             "Video files (*.mp4 *.mov *.mkv);;All files (*.*)",
         )
         if paths:
@@ -1020,7 +1142,9 @@ class ProjectImportController:
 
     def browse_batch_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
-            None, "Choose a folder of videos for batch processing", self._media_dialog_directory(),
+            None,
+            "Choose a folder of videos for batch processing",
+            self._media_dialog_directory(),
             QFileDialog.Option.ShowDirsOnly,
         )
         if folder:
@@ -1042,8 +1166,11 @@ class ProjectImportController:
         for path in valid_paths:
             try:
                 video = self._create_video(
-                    path, self._config_for_project_import(force_batch=True), project_name=host._project_name,
-                    project_directory=host._project_directory, project_key_value=host._selected_project_key,
+                    path,
+                    self._config_for_project_import(force_batch=True),
+                    project_name=host._project_name,
+                    project_directory=host._project_directory,
+                    project_key_value=host._selected_project_key,
                 )
                 self._assign_thumbnail(video)
                 created_ids.append(video.video_id)
@@ -1066,10 +1193,11 @@ class ProjectImportController:
         project-local and intentionally untouched by status/progress writes.
         """
         host = self._host
-        new_ids = list(dict.fromkeys(
-            str(video_id) for video_id in created_ids
-            if video_id and str(video_id) not in host._batch_video_ids
-        ))
+        new_ids = list(
+            dict.fromkeys(
+                str(video_id) for video_id in created_ids if video_id and str(video_id) not in host._batch_video_ids
+            )
+        )
         if not new_ids:
             return
 
@@ -1092,15 +1220,15 @@ class ProjectImportController:
             catalog_videos = []
         all_batch_videos = [video for video in catalog_videos if belongs_to_current_batch(video)]
         by_id = {video.video_id: video for video in all_batch_videos}
-        visible_order = {
-            video_id: index for index, video_id in enumerate(host._batch_video_ids)
-        }
+        visible_order = {video_id: index for index, video_id in enumerate(host._batch_video_ids)}
         existing = [video for video in all_batch_videos if video.video_id not in new_ids]
-        existing.sort(key=lambda video: (
-            0 if video.video_id in visible_order else 1,
-            visible_order.get(video.video_id, 0),
-            str(getattr(video, "created_at", "")),
-        ))
+        existing.sort(
+            key=lambda video: (
+                0 if video.video_id in visible_order else 1,
+                visible_order.get(video.video_id, 0),
+                str(getattr(video, "created_at", "")),
+            )
+        )
         for index, video in enumerate(existing, start=1):
             if int(getattr(video, "batch_import_order", 0) or 0) <= 0:
                 try:
@@ -1142,35 +1270,49 @@ class ProjectImportController:
 
         # Importing a later group places that group at the top.  Its internal
         # order remains the order in which the user selected the files.
-        host._batch_video_ids = new_ids + [
-            video_id for video_id in host._batch_video_ids if video_id not in new_ids
-        ]
+        host._batch_video_ids = new_ids + [video_id for video_id in host._batch_video_ids if video_id not in new_ids]
 
     def _queue_project_video(self, path: str, *, url_import: bool = False) -> bool:
         host = self._host
-        return self._queue_import([{
-            "operation": "create", "path": path, "config": self._config_for_project_import(),
-            "create_kwargs": {
-                "project_name": host._project_name, "project_directory": host._project_directory,
-                "project_key_value": host._selected_project_key,
-            },
-        }], {"operation": "create", "project_key": host._selected_project_key, "url_import": url_import})
+        return self._queue_import(
+            [
+                {
+                    "operation": "create",
+                    "path": path,
+                    "config": self._config_for_project_import(),
+                    "create_kwargs": {
+                        "project_name": host._project_name,
+                        "project_directory": host._project_directory,
+                        "project_key_value": host._selected_project_key,
+                    },
+                }
+            ],
+            {"operation": "create", "project_key": host._selected_project_key, "url_import": url_import},
+        )
 
     def _queue_batch_paths(self, paths, *, invalid_names=None, url_import: bool = False) -> bool:
         host = self._host
         valid_paths = list(paths)
         if not valid_paths:
             return False
-        jobs = [{
-            "operation": "create", "path": path, "config": self._config_for_project_import(force_batch=True),
-            "create_kwargs": {
-                "project_name": host._project_name, "project_directory": host._project_directory,
-                "project_key_value": host._selected_project_key,
-            },
-        } for path in valid_paths]
+        jobs = [
+            {
+                "operation": "create",
+                "path": path,
+                "config": self._config_for_project_import(force_batch=True),
+                "create_kwargs": {
+                    "project_name": host._project_name,
+                    "project_directory": host._project_directory,
+                    "project_key_value": host._selected_project_key,
+                },
+            }
+            for path in valid_paths
+        ]
         context = {
-            "operation": "batch", "project_key": host._selected_project_key,
-            "url_import": url_import, "invalid_names": list(invalid_names or []),
+            "operation": "batch",
+            "project_key": host._selected_project_key,
+            "url_import": url_import,
+            "invalid_names": list(invalid_names or []),
         }
         return self._queue_import(jobs, context)
 
@@ -1179,16 +1321,26 @@ class ProjectImportController:
         video = video_store.get_video(video_id)
         if not video:
             return False
-        return self._queue_import([{
-            "operation": "replace", "video_id": video_id, "path": path, "media_source": media_source,
-        }], {"operation": "replace", "project_key": host._selected_project_key, "url_import": url_import})
+        return self._queue_import(
+            [
+                {
+                    "operation": "replace",
+                    "video_id": video_id,
+                    "path": path,
+                    "media_source": media_source,
+                }
+            ],
+            {"operation": "replace", "project_key": host._selected_project_key, "url_import": url_import},
+        )
 
     def batch_rejection_message(self, rejected) -> str:
         host = self._host
         shown = [str(item) for item in rejected][:12]
         remaining = len(rejected) - len(shown)
         if remaining:
-            shown.append(f"... và {remaining} mục khác" if host._settings_language == "vi" else f"... and {remaining} more")
+            shown.append(
+                f"... và {remaining} mục khác" if host._settings_language == "vi" else f"... and {remaining} more"
+            )
         heading = (
             f"{len(rejected)} mục không được hỗ trợ hoặc không thể đọc:"
             if host._settings_language == "vi"

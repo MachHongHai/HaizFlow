@@ -5,11 +5,27 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE_ROOT = ROOT / "src"
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
+
+from haizflow.services.model_bootstrap import (  # noqa: E402
+    DOWNLOAD_HEADROOM_BYTES,
+    required_download_bytes,
+)
 
 
 GIB = 1024**3
 WORKING_HEADROOM_BYTES = 2 * GIB
+FIRST_RUN_MODEL_BYTES = max(
+    required_download_bytes("cpu"),
+    required_download_bytes("gpu"),
+)
 
 
 def directory_size(path: Path) -> int:
@@ -19,12 +35,20 @@ def directory_size(path: Path) -> int:
 def requirements(artifact: Path, *, upgrade: bool) -> dict[str, int | bool]:
     artifact_bytes = directory_size(artifact)
     # An upgrade can temporarily hold the previous installation and the staged
-    # replacement. Reserve both copies plus workspace/cache headroom.
+    # replacement. Models are fetched after first launch rather than embedded
+    # in the installer, but they still live on the selected installation drive
+    # and are required for a usable installation. Reserve the larger CPU/GPU
+    # first-run set plus the bootstrap's atomic-download headroom so setup
+    # cannot succeed only to run out of space during model installation.
     installation_copies = 2 if upgrade else 1
-    required_free_bytes = artifact_bytes * installation_copies + WORKING_HEADROOM_BYTES
+    required_free_bytes = (
+        artifact_bytes * installation_copies + FIRST_RUN_MODEL_BYTES + DOWNLOAD_HEADROOM_BYTES + WORKING_HEADROOM_BYTES
+    )
     return {
         "artifact_bytes": artifact_bytes,
         "installation_copies": installation_copies,
+        "first_run_model_bytes": FIRST_RUN_MODEL_BYTES,
+        "model_download_headroom_bytes": DOWNLOAD_HEADROOM_BYTES,
         "working_headroom_bytes": WORKING_HEADROOM_BYTES,
         "required_free_bytes": required_free_bytes,
         "upgrade": upgrade,

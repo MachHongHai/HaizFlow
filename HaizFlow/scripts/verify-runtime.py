@@ -82,12 +82,22 @@ def main() -> int:
             actual = importlib.metadata.version(distribution)
         except importlib.metadata.PackageNotFoundError:
             actual = "missing"
-        check(actual == expected or actual.startswith(expected + "+"), f"{distribution} {actual} (expected {expected})", failures)
+        check(
+            actual == expected or actual.startswith(expected + "+"),
+            f"{distribution} {actual} (expected {expected})",
+            failures,
+        )
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
     from haizflow.config import HYMT2_CPU_MODEL_REVISION, HYMT2_MODEL_REVISION, WHISPER_MODEL_REVISION
-    from haizflow.core.model_integrity import HYMT2_CPU_REVISION, HYMT2_GPU_REVISION, WHISPER_REVISION
+    from haizflow.core.model_integrity import (
+        HYMT2_CPU_REVISION,
+        HYMT2_GPU_REVISION,
+        OMNIVOICE_REVISION,
+        WHISPER_REVISION,
+        WHISPER_TURBO_REVISION,
+    )
 
     check(
         HYMT2_MODEL_REVISION == HYMT2_GPU_REVISION and len(HYMT2_GPU_REVISION) == 40,
@@ -102,6 +112,16 @@ def main() -> int:
     check(
         WHISPER_MODEL_REVISION == WHISPER_REVISION and len(WHISPER_REVISION) == 40,
         f"Pinned Whisper revision: {WHISPER_REVISION}",
+        failures,
+    )
+    check(
+        len(WHISPER_TURBO_REVISION) == 40,
+        f"Pinned Whisper large-v3-turbo revision: {WHISPER_TURBO_REVISION}",
+        failures,
+    )
+    check(
+        len(OMNIVOICE_REVISION) == 40,
+        f"Pinned OmniVoice revision: {OMNIVOICE_REVISION}",
         failures,
     )
     try:
@@ -201,7 +221,11 @@ def main() -> int:
     ):
         path = compliance_directory / filename
         expected_hash = ffmpeg_manifest.get(hash_key)
-        check(path.is_file() and bool(expected_hash) and sha256(path) == expected_hash, f"FFmpeg compliance file: {filename}", failures)
+        check(
+            path.is_file() and bool(expected_hash) and sha256(path) == expected_hash,
+            f"FFmpeg compliance file: {filename}",
+            failures,
+        )
 
     cpu_probe = probe_runtime("cpu")
     check(cpu_probe.ok, f"Isolated CPU model runtime: {cpu_probe.message}", failures)
@@ -247,10 +271,7 @@ def main() -> int:
         for device in ("cpu", "gpu"):
             check(
                 models_ready(Path(MODELS_DIR), device),
-                (
-                    f"First-run {device.upper()} model manifest "
-                    f"({required_download_bytes(device) / GIB:.1f} GiB)"
-                ),
+                (f"First-run {device.upper()} model manifest ({required_download_bytes(device) / GIB:.1f} GiB)"),
                 failures,
             )
         check((ROOT / "src" / "haizflow" / "desktop" / "qml" / "Main.qml").is_file(), "QML source tree", failures)

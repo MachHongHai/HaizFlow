@@ -1,9 +1,8 @@
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-Dialog {
+FloatingToolDialog {
     id: root
 
     signal subtitleLayoutEdited(int fontSize, int positionX, int positionY, int boxWidth, int boxHeight)
@@ -51,71 +50,19 @@ Dialog {
         subtitleLayoutEdited(draftFontSize, draftPositionX, draftPositionY, draftBoxWidth, draftBoxHeight)
     }
 
-    modal: true
-    focus: true
-    width: Math.min(920, parent ? parent.width - 48 : 920)
-    height: Math.min(760, parent ? parent.height - 48 : 760)
-    padding: 0
-    title: I18n.t("Subtitle preview")
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    parent: Overlay.overlay
-    x: Math.round((parent.width - width) / 2)
-    y: Math.round((parent.height - height) / 2)
-    header: null
-    footer: null
+    expandedWidth: 920
+    expandedHeight: 760
+    toolTitle: I18n.t("Preview new subtitles")
+    toolSubtitle: I18n.t("Drag the subtitle to move it; use the slider to adjust its size")
 
-    background: Rectangle {
-        radius: Theme.radius
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.outlineStrong
-    }
-
-    contentItem: ColumnLayout {
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: Theme.space16
         spacing: Theme.space16
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space16
-            Layout.topMargin: Theme.space16
-            spacing: Theme.space12
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-
-                Text {
-                    Layout.fillWidth: true
-                    text: I18n.t("Preview new subtitles")
-                    color: Theme.text
-                    font.pixelSize: Theme.h2
-                    font.weight: Font.DemiBold
-                    textFormat: Text.PlainText
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: I18n.t("Drag the subtitle to move it; use the slider to adjust its size")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.caption
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            IconButton {
-                glyph: "\uE711"
-                toolTipText: I18n.t("Close")
-                onClicked: root.close()
-            }
-        }
 
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space24
             Layout.minimumHeight: 360
             radius: Theme.radiusSmall
             color: Theme.video
@@ -198,8 +145,6 @@ Dialog {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space24
             spacing: Theme.space12
 
             Text {

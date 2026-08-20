@@ -183,11 +183,11 @@ $ArgsList += @("--collect-all", "llama_cpp")
 $ArgsList += @("--collect-all", "accelerate")
 $ArgsList += @("--collect-all", "demucs")
 $ArgsList += @("--collect-all", "yt_dlp")
-# VieNeu's checksum-pinned SDK is installed under the user-selected runtime
+# OmniVoice's checksum-pinned SDK is installed under the user-selected runtime
 # directory on first launch.  Its imports are therefore invisible to
 # PyInstaller analysis and must be collected explicitly here.
-$ArgsList += @("--hidden-import", "haizflow.pipeline.vieneu_tts")
-foreach ($Module in ("onnxruntime", "sea_g2p", "soxr", "tokenizers")) {
+$ArgsList += @("--hidden-import", "haizflow.pipeline.omnivoice_tts")
+foreach ($Module in ("onnxruntime", "soxr", "tokenizers")) {
   $ArgsList += @("--collect-all", $Module)
 }
 $RapidOcrPackagePath = & $Python -c "import pathlib, rapidocr; print(pathlib.Path(rapidocr.__file__).parent)"

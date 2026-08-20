@@ -99,4 +99,3 @@ def delete_secret(target: str) -> bool:
     if error == _ERROR_NOT_FOUND:
         return False
     raise ctypes.WinError(error)
-
