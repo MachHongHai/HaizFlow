@@ -169,9 +169,10 @@ Item {
 
             AppButton {
                 visible: AppController.isBatchRunning
-                text: I18n.t("Pause queue")
+                text: AppController.isBatchPausing ? I18n.t("Pausing") : I18n.t("Pause queue")
                 iconGlyph: "\uE71A"
                 tone: "danger"
+                enabled: !AppController.isBatchPausing
                 onClicked: AppController.stopBatch()
             }
         }
@@ -199,7 +200,7 @@ Item {
                 Text {
                     id: queueStateLabel
                     anchors.centerIn: parent
-                    text: I18n.t("Processing")
+                    text: I18n.t(AppController.isBatchPausing ? "Pausing" : "Processing")
                     color: Theme.warning
                     font.pixelSize: Theme.label
                     font.weight: Font.DemiBold

@@ -24,6 +24,7 @@ from haizflow.services.desktop_videos import (
     set_desktop_voice_reference,
 )
 from haizflow.services.video_download import DownloadCancelled, _load_yt_dlp, _youtube_dl_options, validate_video_url
+from haizflow.utils.ffmpeg import validate_video_integrity
 
 
 class ProjectImportController:
@@ -93,6 +94,7 @@ class ProjectImportController:
                 "speech_recognition_model": str(values.get("speechRecognitionModel") or "small"),
                 "tts_provider": str(values.get("ttsProvider") or "omnivoice"),
                 "tts_voice": str(values.get("ttsVoice") or ""),
+                "speaker_mode": str(values.get("speakerMode") or "single"),
                 "enable_audio_separation": bool(values.get("enableAudioSeparation", True)),
                 "original_video_volume": int(values.get("originalVolume", 60)),
                 "background_music_volume": int(values.get("backgroundMusicVolume", 30)),
@@ -137,6 +139,10 @@ class ProjectImportController:
                 errors.append(f"{os.path.basename(job['path'])}: import cancelled")
                 break
             try:
+                # Full packet validation is intentionally kept on this import worker,
+                # never on the QML thread. It catches truncated downloads before they
+                # enter a project while leaving storage helpers cheap and composable.
+                validate_video_integrity(job["path"])
                 with self._storage_lock:
                     if job["operation"] == "replace":
                         video = video_store.replace_video_input(
@@ -906,12 +912,14 @@ class ProjectImportController:
     def _reset_new_project_setup(self) -> None:
         """Restore project-local defaults before the first import of a project."""
         host = self._host
+        host._settings_owner_video_id = None
         defaults = {
             "_workflow_mode": "A",
             "_target_language": "vi",
             "_speech_recognition_model": "small",
             "_tts_provider": "omnivoice",
             "_tts_voice": "omnivoice:female",
+            "_speaker_mode": "single",
             "_enable_audio_separation": True,
             "_original_volume": 60,
             "_background_music_volume": 30,
@@ -929,6 +937,7 @@ class ProjectImportController:
             "_speech_recognition_model": "speechRecognitionModelChanged",
             "_tts_provider": "ttsProviderChanged",
             "_tts_voice": "ttsVoiceChanged",
+            "_speaker_mode": "speakerModeChanged",
             "_enable_audio_separation": "enableAudioSeparationChanged",
             "_original_volume": "originalVolumeChanged",
             "_background_music_volume": "backgroundMusicVolumeChanged",
@@ -990,6 +999,11 @@ class ProjectImportController:
                 "Wait for the current Zernio or publishing-project import task to finish before creating another project.",
             )
             return False
+        previous_video_id = str(getattr(host, "_selected_video_id", "") or "")
+        if previous_video_id and str(getattr(host, "_settings_owner_video_id", "") or "") == previous_video_id:
+            project_commands = getattr(host, "_project_commands", None)
+            if project_commands is not None:
+                project_commands.persist_selected_video_settings(previous_video_id)
         host._project_name, host._project_directory = project_name, os.path.abspath(project_directory)
         host._project_type = normalized_type
         try:
@@ -1035,6 +1049,7 @@ class ProjectImportController:
             return False
         if not host.hasOpenProject:
             host._selected_video_id = None
+            host._settings_owner_video_id = None
             host.videoPath = normalized
             host.selectedVideoChanged.emit()
             return True

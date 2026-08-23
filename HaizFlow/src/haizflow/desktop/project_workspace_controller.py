@@ -13,9 +13,28 @@ class ProjectWorkspaceController:
     def __init__(self, host):
         self._host = host
 
+    @staticmethod
+    def _persist_current_draft(host) -> None:
+        previous_video_id = str(getattr(host, "_selected_video_id", "") or "")
+        settings_owner = str(getattr(host, "_settings_owner_video_id", "") or "")
+        if not previous_video_id or settings_owner != previous_video_id:
+            return
+        project_commands = getattr(host, "_project_commands", None)
+        if project_commands is not None:
+            project_commands.persist_selected_video_settings(previous_video_id)
+
     def select_video(self, video) -> None:
         host = self._host
+        previous_video_id = str(getattr(host, "_selected_video_id", "") or "")
+        if previous_video_id and previous_video_id != video.video_id:
+            # Commit the old editor draft before replacing the shared facade
+            # fields with the next video's values.  The QML debounce can then
+            # be cancelled safely without losing the user's last quick edit.
+            self._persist_current_draft(host)
         host._selected_video_id = video.video_id
+        # Set only after selecting the source record.  Every field below is
+        # loaded from this exact video, so autosave may safely target it.
+        host._settings_owner_video_id = video.video_id
         host._project_name = video.project_name or os.path.splitext(video.original_filename)[0]
         host._project_directory = video.project_directory or host._project_directory
         host._project_type = "batch" if getattr(video, "project_type", "single") == "batch" else "single"
@@ -32,12 +51,14 @@ class ProjectWorkspaceController:
             video = video_store.get_video(video.video_id) or video
         host._workflow_mode = video.mode
         host._target_language = str(video.target_language or "vi")
+        host._speech_recognition_model = str(getattr(video, "speech_recognition_model", "small") or "small")
         host._tts_provider = host._normalized_tts_provider(
             host._target_language, getattr(video, "tts_provider", "edge")
         )
         host._tts_voice = host._normalized_voice_for_language(
             host._target_language, video.tts_voice, host._tts_provider
         )
+        host._speaker_mode = str(getattr(video, "speaker_mode", "single") or "single")
         if (
             host._tts_voice != video.tts_voice or host._tts_provider != getattr(video, "tts_provider", "edge")
         ) and video.status != "processing":
@@ -70,10 +91,12 @@ class ProjectWorkspaceController:
         host.videoPathChanged.emit()
         host.videoThumbnailChanged.emit()
         host.targetLanguageChanged.emit()
+        host.speechRecognitionModelChanged.emit()
         host.ttsProviderChanged.emit()
         host.ttsProviderOptionsChanged.emit()
         host.ttsVoiceChanged.emit()
         host.ttsVoiceOptionsChanged.emit()
+        host.speakerModeChanged.emit()
         host.enableAudioSeparationChanged.emit()
         host.originalVolumeChanged.emit()
         host.backgroundMusicVolumeChanged.emit()
@@ -89,6 +112,12 @@ class ProjectWorkspaceController:
 
     def open_project_summary(self, project) -> None:
         host = self._host
+        # Save before replacing project identity fields.  In particular,
+        # _apply_setup_to_video also snapshots project_type, so doing this
+        # after switching projects could assign the next project's type to
+        # the previous video.
+        self._persist_current_draft(host)
+        host._settings_owner_video_id = None
         if project["project_type"] == "batch":
             try:
                 removed = video_store.cleanup_batch_project_orphans(project["key"])
@@ -129,6 +158,7 @@ class ProjectWorkspaceController:
         else:
             host.videoPath = ""
             host._selected_video_id = None
+            host._settings_owner_video_id = None
             host._clear_logs()
             host.selectedVideoChanged.emit()
             host.logsChanged.emit()

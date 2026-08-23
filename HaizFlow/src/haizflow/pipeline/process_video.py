@@ -31,6 +31,7 @@ from haizflow.services.translation import (
     translate_segments,
     warm_hymt2_worker,
 )
+from haizflow.utils.ffmpeg import validate_video_integrity
 
 
 def _signature(*values):
@@ -344,6 +345,8 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         log_to_video(video_id, "Processing started | Mode: Full Auto | Translator: HY-MT2")
 
         video_input = _required_video_path(video, "video_input", must_exist=True)
+        reporter.update(4, "validating_source", "Checking source video integrity")
+        validate_video_integrity(video_input)
         transcript_json = _required_video_path(video, "transcript_json")
 
         video_dir = os.path.dirname(os.path.dirname(video_input))
@@ -352,7 +355,7 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         translation_signature = _signature(
             _file_state(video_input),
             TIMING_SOURCE,
-            "hymt2-tencent-structured-context-v17",
+            "hymt2-semantic-source-context-retry-v21",
             video.target_language,
             video.enable_audio_separation,
             getattr(video, "speech_recognition_model", "small"),
@@ -620,9 +623,13 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         effective_tts_provider,
         target_language,
         video.tts_voice,
+        getattr(video, "speaker_mode", "single"),
         _file_state(voice_reference),
         voice_reference_transcript,
-        "omnivoice-c5fdb5c-r2",
+        # Dedicated short narrator anchors are materially different from the
+        # old first-segment reference. Do not combine cached voice parts made
+        # by both strategies after a paused/failed run.
+        "omnivoice-dedicated-short-anchor-or-source-speaker-r5",
     )
     with open(transcript_json, "r", encoding="utf-8") as transcript_file:
         transcript_segments = json.load(transcript_file)
@@ -734,7 +741,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         crop_data,
         # Bump when changing the visual treatment so a previously rendered
         # luma-only result is never reused as a valid final export.
-        "static-largest-original-subtitle-ocr-v17-fixed-caption-presets",
+        "static-largest-original-subtitle-ocr-v18-exact-pixel-bounds",
         remove_original_subtitles,
         original_subtitle_removal_mode,
         original_subtitle_region,

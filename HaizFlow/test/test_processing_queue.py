@@ -153,6 +153,20 @@ class SerialProcessingQueueTests(unittest.TestCase):
         self.assertEqual(errors, [("broken-project", "pipeline failed")])
         self.assertFalse(queue.has_work)
 
+    def test_finished_callback_observes_released_active_video(self):
+        done = threading.Event()
+        observed = []
+        queue = None
+
+        def on_finished(video_id):
+            observed.append((video_id, queue.active_video_id, queue.contains(video_id)))
+
+        queue = SerialProcessingQueue(lambda _video_id: None, on_finished=on_finished, on_idle=done.set)
+        self.assertTrue(queue.enqueue("video-1"))
+        self.assertTrue(done.wait(2))
+
+        self.assertEqual(observed, [("video-1", None, False)])
+
     def test_start_callback_failure_is_reported_and_queue_continues(self):
         ran = []
         errors = []

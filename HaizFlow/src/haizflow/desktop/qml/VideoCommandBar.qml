@@ -10,12 +10,17 @@ Rectangle {
     readonly property bool hasOutput: AppController.hasSelectedOutput
     readonly property bool hasProject: AppController.hasOpenProject
     readonly property bool selectedProcessing: AppController.isSelectedVideoProcessing
+    readonly property bool selectedQueued: AppController.isSelectedVideoQueued
+    readonly property bool selectedActive: root.selectedProcessing || root.selectedQueued
+    readonly property bool pausePending: AppController.selectedStatus === "paused" && root.selectedQueued
     readonly property bool canStart: AppController.hasSelectedVideo && AppController.selectedStatus === "pending"
-        && !AppController.isSelectedVideoQueued
-    readonly property bool canRestart: AppController.hasSelectedVideo && !AppController.isSelectedVideoProcessing
-        && !AppController.isSelectedVideoQueued
-        && AppController.selectedStatus !== "pending"
-    readonly property string headline: root.selectedProcessing
+        && !root.selectedQueued
+    readonly property bool canRestart: AppController.hasSelectedVideo && !root.selectedActive
+        && ["paused", "awaiting_review", "done", "failed", "cancelled"].indexOf(AppController.selectedStatus) >= 0
+    readonly property bool canReview: AppController.selectedStatus === "awaiting_review"
+    readonly property bool canEditSubtitles: AppController.selectedStatus === "done"
+        && AppController.canEditSelectedSubtitles
+    readonly property string headline: root.selectedActive
         ? I18n.t(AppController.selectedStageLabel)
         : AppController.selectedProgress >= 100
             ? I18n.t("Last export ready")
@@ -40,7 +45,7 @@ Rectangle {
             radius: Theme.radiusSmall
             color: AppController.selectedStatus === "done" ? Theme.successMuted
                 : AppController.selectedStatus === "failed" ? Theme.dangerMuted
-                : root.selectedProcessing ? Theme.warningMuted
+                : root.selectedActive ? Theme.warningMuted
                 : Theme.surfaceElevated
 
             AppIcon {
@@ -49,11 +54,11 @@ Rectangle {
                 height: 20
                 glyph: AppController.selectedStatus === "done" ? "\uE73E"
                     : AppController.selectedStatus === "failed" ? "\uEA39"
-                    : root.selectedProcessing ? "\uE895"
+                    : root.selectedActive ? "\uE895"
                     : "\uE946"
                 iconColor: AppController.selectedStatus === "done" ? Theme.success
                     : AppController.selectedStatus === "failed" ? Theme.danger
-                    : root.selectedProcessing ? Theme.warning
+                    : root.selectedActive ? Theme.warning
                     : Theme.textMuted
                 iconSize: Theme.icon
             }
@@ -118,19 +123,19 @@ Rectangle {
             spacing: Theme.space8
 
             AppButton {
-                visible: AppController.selectedStatus === "paused"
+                visible: root.canReview || root.canEditSubtitles
+                text: root.canReview ? I18n.t("Review subtitles") : I18n.t("Edit subtitles")
+                iconGlyph: "\uE70F"
+                tone: root.canReview ? "primary" : "secondary"
+                onClicked: root.requestReviewTranslation()
+            }
+
+            AppButton {
+                visible: AppController.selectedStatus === "paused" && !root.selectedQueued
                 text: I18n.t("Resume")
                 iconGlyph: "\uE768"
                 tone: "primary"
                 onClicked: AppController.resumeSelectedVideo()
-            }
-
-            AppButton {
-                visible: AppController.selectedStatus === "awaiting_review"
-                text: I18n.t("Review translation")
-                iconGlyph: "\uE70F"
-                tone: "primary"
-                onClicked: root.requestReviewTranslation()
             }
 
             AppButton {
@@ -145,16 +150,33 @@ Rectangle {
                 visible: root.canRestart
                 text: I18n.t("Restart")
                 iconGlyph: "\uE72C"
-                tone: "primary"
+                tone: AppController.selectedStatus === "done" ? "secondary" : "primary"
                 onClicked: AppController.restartSelectedVideo()
             }
 
             AppButton {
-                visible: root.selectedProcessing
+                visible: root.selectedProcessing && !root.pausePending
                 text: I18n.t("Pause")
                 iconGlyph: "\uE769"
                 tone: "danger"
                 onClicked: AppController.stopVideo()
+            }
+
+            AppButton {
+                visible: root.selectedQueued && !root.selectedProcessing
+                    && AppController.selectedStatus !== "paused"
+                text: I18n.t("Queued")
+                iconGlyph: "\uE895"
+                tone: "secondary"
+                enabled: false
+            }
+
+            AppButton {
+                visible: root.pausePending
+                text: I18n.t("Pausing")
+                iconGlyph: "\uE895"
+                tone: "secondary"
+                enabled: false
             }
 
             AppButton {

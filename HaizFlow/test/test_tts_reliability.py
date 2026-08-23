@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -309,10 +310,12 @@ class TtsReliabilityTests(unittest.TestCase):
 
         calls = []
 
-        def synthesize_batch(items, video_id, *, language_id):
-            calls.append((items, video_id, language_id))
-            for item in items:
+        def synthesize_batch(items, video_id, *, language_id, speaker_mode="single", progress_callback=None):
+            calls.append((items, video_id, language_id, speaker_mode))
+            for completed, item in enumerate(items, 1):
                 _write_test_mp3(item["output_path"])
+                if progress_callback is not None:
+                    progress_callback(completed, len(items), "synthesizing")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             segments_path = Path(temp_dir) / "segments.json"
@@ -336,10 +339,76 @@ class TtsReliabilityTests(unittest.TestCase):
                 )
 
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][1:], ("video", "vi"))
+        self.assertEqual(calls[0][1:], ("video", "vi", "single"))
         self.assertEqual([item["text"] for item in calls[0][0]], ["Xin chào.", "Thế giới."])
 
+    def test_omnivoice_multiple_speakers_follow_source_timestamps_not_list_indexes(self):
+        from haizflow.pipeline import omnivoice_tts
+
+        calls = []
+
+        def synthesize_batch(items, video_id, *, language_id, speaker_mode="single", progress_callback=None):
+            calls.append((items, video_id, language_id, speaker_mode))
+            for item in items:
+                _write_test_mp3(item["output_path"])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_root = Path(temp_dir) / "video"
+            input_path = video_root / "input" / "video.mp4"
+            source_audio = video_root / "temp" / "speech.wav"
+            source_segments = video_root / "temp" / "source_segments.json"
+            input_path.parent.mkdir(parents=True)
+            source_audio.parent.mkdir(parents=True)
+            input_path.write_bytes(b"video")
+            source_audio.write_bytes(b"audio")
+            source_segments.write_text(
+                json.dumps(
+                    [
+                        {"start": 0.0, "end": 2.0, "text": "first source voice"},
+                        {"start": 4.0, "end": 7.0, "text": "second source voice"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            translated = video_root / "temp" / "translated.json"
+            translated.write_text(
+                json.dumps(
+                    [
+                        {"start": 5.0, "end": 6.0, "text": "Second translated line"},
+                        {"start": 0.5, "end": 1.5, "text": "First translated line"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            video = SimpleNamespace(
+                speaker_mode="multiple",
+                files={"video_input": str(input_path), "speech_audio": str(source_audio)},
+            )
+            with (
+                mock.patch.object(tts, "get_video", return_value=video),
+                mock.patch.object(omnivoice_tts, "synthesize_batch_to_mp3", side_effect=synthesize_batch),
+                mock.patch.object(omnivoice_tts, "runtime_description", return_value="cpu worker"),
+                mock.patch.object(tts, "log_to_video"),
+            ):
+                tts.generate_voice_parts(
+                    str(translated),
+                    str(video_root / "temp" / "voices"),
+                    "omnivoice:female",
+                    "video",
+                    provider="omnivoice",
+                    target_language="vi",
+                )
+
+        self.assertEqual(len(calls), 1)
+        items, _video_id, _language_id, speaker_mode = calls[0]
+        self.assertEqual(speaker_mode, "multiple")
+        self.assertEqual([item["source_text"] for item in items], [
+            "second source voice",
+            "first source voice",
+        ])
+
     def test_omnivoice_presets_use_the_sdk_instruction_vocabulary(self):
+        from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES
         from haizflow.pipeline.omnivoice_tts import OMNIVOICE_VOICE_INSTRUCTIONS
 
         valid_items = {
@@ -356,12 +425,89 @@ class TtsReliabilityTests(unittest.TestCase):
         }
         for instruction in OMNIVOICE_VOICE_INSTRUCTIONS.values():
             self.assertTrue(set(instruction.split(", ")).issubset(valid_items))
+        catalog_voices = {voice for voice, _label, _category in OMNIVOICE_TTS_VOICES}
+        self.assertEqual(
+            catalog_voices - {"omnivoice:clone"},
+            set(OMNIVOICE_VOICE_INSTRUCTIONS),
+        )
 
     def test_omnivoice_maps_standard_arabic_to_the_sdk_language_id(self):
         from haizflow.pipeline.omnivoice_tts import _omnivoice_language_id
 
         self.assertEqual(_omnivoice_language_id("ar"), "arb")
         self.assertEqual(_omnivoice_language_id("vi"), "vi")
+
+    def test_omnivoice_status_update_retries_transient_windows_lock(self):
+        from haizflow.pipeline import omnivoice_tts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            status_path = Path(temp_dir) / "status.json"
+            real_replace = omnivoice_tts.os.replace
+            attempts = []
+
+            def replace_after_unlock(source, destination):
+                attempts.append((source, destination))
+                if len(attempts) < 3:
+                    raise PermissionError(5, "Access is denied")
+                return real_replace(source, destination)
+
+            with (
+                mock.patch.object(omnivoice_tts.os, "replace", side_effect=replace_after_unlock),
+                mock.patch.object(omnivoice_tts.time, "sleep"),
+            ):
+                written = omnivoice_tts._write_status_file(
+                    status_path,
+                    {"completed": 6, "total": 8, "stage": "synthesizing", "current": 7},
+                )
+
+            self.assertTrue(written)
+            self.assertEqual(len(attempts), 3)
+            self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["completed"], 6)
+            self.assertEqual(list(Path(temp_dir).glob("*.part")), [])
+
+    def test_omnivoice_status_failure_never_stops_synthesis_worker(self):
+        from haizflow.pipeline import omnivoice_tts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            status_path = Path(temp_dir) / "status.json"
+            with (
+                mock.patch.object(omnivoice_tts.os, "replace", side_effect=PermissionError(5, "Access is denied")),
+                mock.patch.object(omnivoice_tts.time, "sleep"),
+            ):
+                written = omnivoice_tts._write_status_file(status_path, {"completed": 1})
+
+            self.assertFalse(written)
+            self.assertEqual(list(Path(temp_dir).glob("*.part")), [])
+
+    def test_omnivoice_anchor_is_informative_without_using_longest_paragraph(self):
+        from haizflow.pipeline.omnivoice_tts import _select_voice_anchor
+
+        short = {"text": "Ồ."}
+        suitable = {"text": "Một câu đủ rõ để giữ ổn định danh tính giọng đọc trong toàn bộ video."}
+        huge = {"text": "Đây là một đoạn rất dài. " * 40}
+
+        self.assertIs(_select_voice_anchor([short, huge, suitable]), suitable)
+
+    def test_omnivoice_anchor_excerpt_keeps_one_bounded_sentence(self):
+        from haizflow.pipeline.omnivoice_tts import _voice_anchor_excerpt
+
+        paragraph = (
+            "Đây là phần dẫn rất dài nhưng vẫn có dấu câu để nhận diện. "
+            "Câu này cung cấp một mẫu giọng vừa đủ rõ và ổn định cho toàn bộ video. "
+            "Phần còn lại không nên bị đưa vào mẫu giọng vì làm suy luận chậm hơn." * 4
+        )
+
+        excerpt = _voice_anchor_excerpt(paragraph)
+
+        self.assertGreaterEqual(len(excerpt), 24)
+        self.assertLessEqual(len(excerpt), 120)
+        self.assertNotEqual(excerpt, paragraph)
+
+    def test_omnivoice_anchor_excerpt_does_not_cut_short_text(self):
+        from haizflow.pipeline.omnivoice_tts import _voice_anchor_excerpt
+
+        text = "Một câu ngắn phù hợp để tạo mẫu giọng."
+        self.assertEqual(_voice_anchor_excerpt(text), text)
 
     def test_omnivoice_gpu_fallback_only_matches_runtime_resource_failures(self):
         from haizflow.pipeline.omnivoice_tts import _is_cuda_resource_failure

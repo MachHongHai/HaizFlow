@@ -9,6 +9,7 @@ Panel {
     signal requestDownloadProjectImport()
 
     property bool dropActive: false
+    property bool compact: false
 
     title: I18n.t("Source media")
     subtitle: I18n.t("Input video")
@@ -18,7 +19,9 @@ Panel {
         id: videoFrame
 
         Layout.fillWidth: true
-        Layout.preferredHeight: Math.max(230, Math.min(300, width * 9 / 16))
+        Layout.preferredHeight: root.compact
+            ? Math.max(124, Math.min(168, width * 9 / 16))
+            : Math.max(230, Math.min(300, width * 9 / 16))
         radius: Theme.radius
         color: root.dropActive ? Theme.interactiveMuted : Theme.video
         border.width: root.dropActive || AppController.videoPath.length > 0 ? 2 : 1
@@ -47,17 +50,17 @@ Panel {
 
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 46
-                height: 46
-                radius: 23
+                width: root.compact ? 38 : 46
+                height: width
+                radius: width / 2
                 color: root.dropActive ? Theme.interactive : Theme.surfaceElevated
                 border.width: root.dropActive ? 0 : 1
                 border.color: Theme.outlineStrong
 
                 AppIcon {
                     anchors.centerIn: parent
-                    width: 22
-                    height: 22
+                    width: root.compact ? 18 : 22
+                    height: width
                     glyph: root.dropActive ? "\uE898" : "\uE710"
                     iconColor: root.dropActive ? Theme.textOnAccent : Theme.interactive
                     iconSize: Theme.iconLarge

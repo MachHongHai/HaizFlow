@@ -39,7 +39,10 @@ try {
   # historical formatting debt, but undefined names and invalid Python
   # constructs must never reach PyInstaller just because compileall accepts
   # them.
-  & $Python -m ruff check (Join-Path $Root "src") (Join-Path $Root "scripts") --select F
+  # Ruff's cache has no value in the deterministic release gate and otherwise
+  # follows the caller's current directory, which can create .ruff_cache next
+  # to the repository instead of below HaizFlow's portable data root.
+  & $Python -m ruff check (Join-Path $Root "src") (Join-Path $Root "scripts") --select F --no-cache
   if ($LASTEXITCODE -ne 0) {
     throw "Python correctness lint failed."
   }

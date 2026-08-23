@@ -11,7 +11,7 @@ Item {
     signal requestDownloadProjectImport()
 
     readonly property bool editingBatchVideo: AppController.isSelectedBatchVideo
-    readonly property bool wideLayout: width >= 1120
+    readonly property bool wideLayout: width >= 980
 
     onWideLayoutChanged: {
         if (wideLayout)
@@ -70,7 +70,7 @@ Item {
             contentWidth: width
             contentHeight: root.wideLayout ? height : workspaceGrid.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
-            flickableDirection: root.wideLayout ? Flickable.HorizontalFlick : Flickable.VerticalFlick
+            flickableDirection: Flickable.VerticalFlick
             interactive: !root.wideLayout
 
             GridLayout {
@@ -78,46 +78,50 @@ Item {
 
                 width: workspaceScroll.width
                 height: root.wideLayout ? workspaceScroll.height : implicitHeight
-                columns: root.wideLayout ? 3 : 2
+                columns: 2
                 columnSpacing: Theme.space16
                 rowSpacing: Theme.space16
 
                 SourceMediaPanel {
-                    Layout.row: 0
+                    Layout.row: root.wideLayout ? 0 : 1
                     Layout.column: 0
+                    Layout.columnSpan: root.wideLayout ? 1 : 2
                     Layout.fillWidth: true
                     Layout.fillHeight: false
-                    Layout.minimumWidth: root.wideLayout ? 360 : 390
-                    Layout.preferredWidth: root.wideLayout ? 420 : 480
-                    Layout.maximumWidth: root.wideLayout ? 500 : 16777215
+                    Layout.minimumWidth: root.wideLayout ? 270 : 0
+                    Layout.preferredWidth: root.wideLayout ? 310 : 600
+                    Layout.maximumWidth: root.wideLayout ? 340 : 16777215
                     Layout.minimumHeight: implicitHeight
                     Layout.preferredHeight: implicitHeight
+                    compact: true
                     onRequestUrlImport: root.requestUrlImport()
                     onRequestDownloadProjectImport: root.requestDownloadProjectImport()
                 }
 
                 DubbingSetupPanel {
                     Layout.row: 0
-                    Layout.column: 1
+                    Layout.column: root.wideLayout ? 1 : 0
+                    Layout.columnSpan: root.wideLayout ? 1 : 2
+                    Layout.rowSpan: root.wideLayout ? 2 : 1
                     Layout.fillWidth: true
-                    Layout.fillHeight: root.wideLayout
-                    Layout.minimumWidth: root.wideLayout ? 460 : 330
-                    Layout.preferredWidth: root.wideLayout ? 620 : 440
-                    Layout.minimumHeight: 460
-                    Layout.preferredHeight: 660
+                    Layout.fillHeight: true
+                    Layout.minimumWidth: root.wideLayout ? 650 : 0
+                    Layout.preferredWidth: root.wideLayout ? 980 : 600
+                    Layout.minimumHeight: 440
+                    Layout.preferredHeight: root.wideLayout ? 650 : 620
                 }
 
                 ActivityLogPanel {
-                    Layout.row: root.wideLayout ? 0 : 1
-                    Layout.column: root.wideLayout ? 2 : 0
+                    Layout.row: root.wideLayout ? 1 : 2
+                    Layout.column: 0
                     Layout.columnSpan: root.wideLayout ? 1 : 2
                     Layout.fillWidth: true
                     Layout.fillHeight: root.wideLayout
-                    Layout.minimumWidth: root.wideLayout ? 260 : 0
-                    Layout.minimumHeight: root.wideLayout ? 460 : 220
-                    Layout.preferredWidth: root.wideLayout ? 300 : 540
+                    Layout.minimumWidth: root.wideLayout ? 270 : 0
+                    Layout.minimumHeight: root.wideLayout ? 132 : 180
+                    Layout.preferredWidth: root.wideLayout ? 310 : 600
                     Layout.maximumWidth: root.wideLayout ? 340 : 16777215
-                    Layout.preferredHeight: root.wideLayout ? 660 : 250
+                    Layout.preferredHeight: root.wideLayout ? 168 : 200
                 }
             }
 

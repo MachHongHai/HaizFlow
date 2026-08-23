@@ -1,6 +1,7 @@
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import tempfile
@@ -8,6 +9,7 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 
 from haizflow.config import HYMT2_REQUEST_TIMEOUT_SECONDS, HYMT2_WARM_TIMEOUT_SECONDS
@@ -103,16 +105,58 @@ def translate_segments(
         raise RuntimeError(
             "HY-MT2 must return exactly one translation for each timestamped source sentence."
         )
+    translations = [clean_translation(text) for text in translations]
+    suspect_indexes = _suspicious_translation_indexes(
+        source_texts,
+        translations,
+        target_language_name,
+    )
+    # HY-MT2 occasionally copies a labelled neighbouring sentence from the
+    # context block.  Retry only the affected sentences: first with the same
+    # useful context plus a stricter source boundary, then without context as
+    # a bounded final recovery.  Never rerun already-valid translations.
+    for retry_number, include_context in enumerate((True, False), start=1):
+        if not suspect_indexes:
+            break
+        retry_indexes = sorted(suspect_indexes)
+        labels = ", ".join(str(index + 1) for index in retry_indexes)
+        recovery_kind = "strict contextual" if include_context else "isolated"
+        log_to_video(
+            video_id,
+            f"HY-MT2 validation rejected segment(s) {labels}; running {recovery_kind} retry {retry_number}/2.",
+            level="WARNING",
+            component="TRANSLATE",
+        )
+        retry_results = _translate_with_hymt2_worker(
+            source_texts,
+            video_id=video_id,
+            source_languages=[language_name(code) for code in source_codes],
+            target_language_name=target_language_name,
+            progress_callback=None,
+            include_context=include_context,
+            strict_source_only=True,
+            translate_indices=retry_indexes,
+        )
+        for index in retry_indexes:
+            translations[index] = clean_translation(retry_results[index])
+        suspect_indexes = _suspicious_translation_indexes(
+            source_texts,
+            translations,
+            target_language_name,
+        )
+    if suspect_indexes:
+        labels = ", ".join(str(index + 1) for index in sorted(suspect_indexes))
+        raise RuntimeError(
+            "HY-MT2 returned invalid or duplicated translations after two bounded recovery attempts "
+            f"(segments: {labels}). The export was stopped to protect subtitle quality."
+        )
+
     translated_segments = []
     total = len(segments)
     for index, (segment, source_text, translated_text) in enumerate(
         zip(segments, source_texts, translations),
         start=1,
     ):
-        translated_text = clean_translation(translated_text)
-        if is_suspicious_translation(source_text, translated_text, target_language_name):
-            log_to_video(video_id, f"[{index}/{total}] HY-MT2 output failed validation. Keeping the source subtitle.")
-            translated_text = source_text
         log_to_video(video_id, f"[{index}/{total}] Segment translation: '{source_text}' -> '{translated_text}'")
         translated_segments.append(
             {
@@ -510,6 +554,10 @@ def _translate_with_hymt2_worker(
     source_languages: list[str],
     target_language_name: str,
     progress_callback=None,
+    *,
+    include_context: bool = True,
+    strict_source_only: bool = False,
+    translate_indices: list[int] | None = None,
 ) -> list[str]:
     global _WORKER_WARM
     if not texts:
@@ -525,6 +573,9 @@ def _translate_with_hymt2_worker(
                 "texts": texts,
                 "source_languages": source_languages,
                 "target_language_name": target_language_name,
+                "include_context": bool(include_context),
+                "strict_source_only": bool(strict_source_only),
+                "translate_indices": translate_indices,
             },
         }
         worker_output = []
@@ -633,6 +684,15 @@ def clean_translation(text: str) -> str:
 
 
 def is_suspicious_translation(source_text: str, translated_text: str, target_language_name: str) -> bool:
+    # Older prompts labelled neighbouring subtitles P1/N1. A rare model
+    # failure can copy that scaffolding into the answer (as happened in
+    # work4). Continue rejecting both historical and current prompt markers.
+    if re.search(r"(?:^|\s)[PN]\d+\s*\[[^\]]+\]\s*:", translated_text, re.IGNORECASE):
+        return True
+    if re.search(r"\[(?:source text|background context|translation)\]", translated_text, re.IGNORECASE):
+        return True
+    if re.search(r"\[(?:previous|following) subtitles?\]", translated_text, re.IGNORECASE):
+        return True
     source_content = "".join(character for character in source_text if character.isalnum())
     translated_content = "".join(character for character in translated_text if character.isalnum())
     if source_content and not translated_content:
@@ -647,7 +707,48 @@ def is_suspicious_translation(source_text: str, translated_text: str, target_lan
         "Thai": r"[\u0e00-\u0e7f]",
     }.get(target_language_name)
     if required_script and len(source_content) >= 12:
-        import re
-
         return re.search(required_script, translated_text) is None
     return False
+
+
+def _comparison_text(value: str) -> str:
+    return "".join(character.casefold() for character in str(value or "") if character.isalnum())
+
+
+def _text_similarity(first: str, second: str) -> float:
+    normalized_first = _comparison_text(first)
+    normalized_second = _comparison_text(second)
+    if not normalized_first or not normalized_second:
+        return 0.0
+    return SequenceMatcher(None, normalized_first, normalized_second, autojunk=False).ratio()
+
+
+def _suspicious_translation_indexes(
+    source_texts: list[str],
+    translated_texts: list[str],
+    target_language_name: str,
+) -> set[int]:
+    """Find invalid outputs and context-copy duplicates without rejecting repetition in the source."""
+    suspects = {
+        index
+        for index, (source, translated) in enumerate(zip(source_texts, translated_texts))
+        if is_suspicious_translation(source, translated, target_language_name)
+    }
+    for index, translated in enumerate(translated_texts):
+        if len(_comparison_text(translated)) < 12:
+            continue
+        for other_index in range(index):
+            other_translation = translated_texts[other_index]
+            if len(_comparison_text(other_translation)) < 12:
+                continue
+            if _text_similarity(translated, other_translation) < 0.88:
+                continue
+            # Repeated dialogue is legitimate. It is only suspicious when the
+            # source sentences themselves clearly describe different content.
+            if _text_similarity(source_texts[index], source_texts[other_index]) < 0.45:
+                # The earlier accepted result is context for the later one;
+                # retrying both can replace a correct translation.  Treat the
+                # later result as the copy unless it has its own validation
+                # failure, which was already recorded above.
+                suspects.add(index)
+    return suspects

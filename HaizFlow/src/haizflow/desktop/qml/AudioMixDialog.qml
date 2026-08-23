@@ -7,6 +7,8 @@ import "."
 Dialog {
     id: root
 
+    property string pendingSettingsVideoId: ""
+
     modal: true
     focus: true
     width: Math.min(520, parent ? parent.width - 48 : 520)
@@ -59,15 +61,18 @@ Dialog {
     }
 
     function scheduleVideoSettingsSave() {
-        if (AppController.hasSelectedVideo && !AppController.isSelectedVideoProcessing)
+        if (AppController.hasSelectedVideo && !AppController.isSelectedVideoQueued) {
+            pendingSettingsVideoId = AppController.selectedVideoId
             videoSettingsSaveTimer.restart()
+        }
     }
 
     function flushVideoSettingsSave() {
         if (!videoSettingsSaveTimer.running)
             return
         videoSettingsSaveTimer.stop()
-        AppController.persistSelectedVideoSettings()
+        AppController.persistVideoSettingsFor(root.pendingSettingsVideoId)
+        root.pendingSettingsVideoId = ""
     }
 
     onClosed: {
@@ -233,7 +238,10 @@ Dialog {
 
         interval: 250
         repeat: false
-        onTriggered: AppController.persistSelectedVideoSettings()
+        onTriggered: {
+            AppController.persistVideoSettingsFor(root.pendingSettingsVideoId)
+            root.pendingSettingsVideoId = ""
+        }
     }
 
     MediaPlayer {
@@ -262,6 +270,14 @@ Dialog {
 
     Connections {
         target: AppController
+
+        function onSelectedVideoChanged() {
+            if (videoSettingsSaveTimer.running
+                    && root.pendingSettingsVideoId !== AppController.selectedVideoId) {
+                videoSettingsSaveTimer.stop()
+                root.pendingSettingsVideoId = ""
+            }
+        }
 
         function onAudioPreviewChanged() {
             if (AppController.audioPreviewState === "preparing")

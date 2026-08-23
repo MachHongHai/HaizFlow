@@ -428,6 +428,13 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "isBatchPausing"
+            type: "bool"
+            read: "isBatchPausing"
+            notify: "batchChanged"
+            isReadonly: true
+        }
+        Property {
             name: "batchCount"
             type: "int"
             read: "batchCount"
@@ -570,6 +577,14 @@ Module {
             write: "ttsVoice"
             notify: "ttsVoiceChanged"
             index: 59
+        }
+        Property {
+            name: "speakerMode"
+            type: "QString"
+            read: "speakerMode"
+            write: "speakerMode"
+            notify: "speakerModeChanged"
+            index: 163
         }
         Property {
             name: "ttsVoiceOptions"
@@ -841,6 +856,20 @@ Module {
             read: "reviewSegments"
             notify: "selectedVideoChanged"
             index: 90
+            isReadonly: true
+        }
+        Property {
+            name: "selectedVideoId"
+            type: "QString"
+            read: "selectedVideoId"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "canEditSelectedSubtitles"
+            type: "bool"
+            read: "canEditSelectedSubtitles"
+            notify: "selectedVideoChanged"
             isReadonly: true
         }
         Property {
@@ -1245,6 +1274,7 @@ Module {
         Signal { name: "ttsVoiceOptionsChanged" }
         Signal { name: "ttsProviderChanged" }
         Signal { name: "ttsProviderOptionsChanged" }
+        Signal { name: "speakerModeChanged" }
         Signal { name: "enableAudioSeparationChanged" }
         Signal { name: "originalVolumeChanged" }
         Signal { name: "backgroundMusicVolumeChanged" }
@@ -1438,11 +1468,17 @@ Module {
             Parameter { name: "a12"; type: "bool" }
             Parameter { name: "a13"; type: "QVariantMap" }
             Parameter { name: "a14"; type: "QString" }
+            Parameter { name: "a15"; type: "QString" }
         }
         Method { name: "loadBatchSettings" }
         Method { name: "saveSelectedVideoSettings"; type: "bool" }
         Method { name: "persistSelectedBatchVideoSettings"; type: "bool" }
         Method { name: "persistSelectedVideoSettings"; type: "bool" }
+        Method {
+            name: "persistVideoSettingsFor"
+            type: "bool"
+            Parameter { name: "video_id"; type: "QString" }
+        }
         Method { name: "stopBatch" }
         Method { name: "clearBatch" }
         Method { name: "deleteCurrentBatch" }
@@ -1453,6 +1489,7 @@ Module {
         Method { name: "restartSelectedVideo" }
         Method {
             name: "approveTranslationReview"
+            type: "bool"
             Parameter { name: "a1"; type: "QString" }
         }
         Method {

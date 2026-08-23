@@ -92,6 +92,7 @@ class HaizFlowController(QObject):
     ttsProviderOptionsChanged = Signal()
     ttsVoiceChanged = Signal()
     ttsVoiceOptionsChanged = Signal()
+    speakerModeChanged = Signal()
     enableAudioSeparationChanged = Signal()
     originalVolumeChanged = Signal()
     backgroundMusicVolumeChanged = Signal()
@@ -150,6 +151,7 @@ class HaizFlowController(QObject):
         self._speech_recognition_model = "small"
         self._tts_provider = "omnivoice"
         self._tts_voice = "omnivoice:female"
+        self._speaker_mode = "single"
         self._enable_audio_separation = True
         self._original_volume = 60
         self._background_music_volume = 30
@@ -169,6 +171,10 @@ class HaizFlowController(QObject):
         self._audio_preview_state = "idle"
         self._workflow_mode = "A"
         self._selected_video_id = None
+        # Identifies the video whose settings are currently loaded into the
+        # shared QML editor fields.  It prevents a delayed autosave from a
+        # previously selected card from being written into the next video.
+        self._settings_owner_video_id = None
         self._selected_video_snapshot = None
         self.selectedVideoChanged.connect(self._refresh_selected_video_snapshot)
         self.selectedVideoChanged.connect(self.selectedElapsedChanged.emit)
@@ -720,6 +726,10 @@ class HaizFlowController(QObject):
     def isBatchRunning(self):
         return any(self._processing_queue.contains(video_id) for video_id in self._batch_video_ids)
 
+    @Property(bool, notify=batchChanged)
+    def isBatchPausing(self):
+        return bool(self._batch_stop_requested and self.isBatchRunning)
+
     @Property(int, notify=batchChanged)
     def batchCount(self):
         return len(self._batch_video_ids)
@@ -984,6 +994,17 @@ class HaizFlowController(QObject):
                 preview.invalidate()
             self.ttsVoiceChanged.emit()
             self.ttsVoiceOptionsChanged.emit()
+
+    @Property(str, notify=speakerModeChanged)
+    def speakerMode(self):
+        return self._speaker_mode
+
+    @speakerMode.setter
+    def speakerMode(self, value):
+        normalized = "multiple" if str(value or "").strip().lower() == "multiple" else "single"
+        if self._speaker_mode != normalized:
+            self._speaker_mode = normalized
+            self.speakerModeChanged.emit()
 
     @Property("QVariantList", notify=ttsVoiceOptionsChanged)
     def ttsVoiceOptions(self):
@@ -1257,6 +1278,10 @@ class HaizFlowController(QObject):
     def hasSelectedVideo(self):
         return self._selected_video() is not None
 
+    @Property(str, notify=selectedVideoChanged)
+    def selectedVideoId(self):
+        return str(self._selected_video_id or "")
+
     @Property(bool, notify=projectSetupChanged)
     def hasOpenProject(self):
         if not self._selected_project_key:
@@ -1288,7 +1313,7 @@ class HaizFlowController(QObject):
     @Property("QVariantList", notify=selectedVideoChanged)
     def reviewSegments(self):
         video = self._selected_video()
-        if not video or video.status != "awaiting_review":
+        if not video or video.status not in {"awaiting_review", "done"}:
             return []
         transcript_path = (video.files or {}).get("translation_review_draft") or (video.files or {}).get(
             "transcript_json"
@@ -1301,6 +1326,14 @@ class HaizFlowController(QObject):
             return segments if isinstance(segments, list) else []
         except (OSError, json.JSONDecodeError):
             return []
+
+    @Property(bool, notify=selectedVideoChanged)
+    def canEditSelectedSubtitles(self):
+        video = self._selected_video()
+        if not video or video.status not in {"awaiting_review", "done"}:
+            return False
+        transcript_path = str((video.files or {}).get("transcript_json") or "")
+        return bool(transcript_path and os.path.isfile(transcript_path))
 
     @Property(str, notify=selectedVideoChanged)
     def selectedFileName(self):
@@ -1869,6 +1902,7 @@ class HaizFlowController(QObject):
         remove_original_subtitles=None,
         subtitle_style=None,
         original_subtitle_removal_mode=None,
+        speaker_mode=None,
     ) -> bool:
         return HaizFlowController._project_commands_for(self).apply_batch_settings(
             workflow_mode,
@@ -1885,6 +1919,7 @@ class HaizFlowController(QObject):
             subtitle_style,
             original_subtitle_removal_mode,
             speech_recognition_model=speech_recognition_model,
+            speaker_mode=speaker_mode,
         )
 
     @Slot(result=bool)
@@ -1904,9 +1939,10 @@ class HaizFlowController(QObject):
             self._remove_original_subtitles,
             self._subtitle_style.model_dump(),
             self._original_subtitle_removal_mode,
+            self._speaker_mode,
         )
 
-    @Slot(str, str, str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, result=bool)
+    @Slot(str, str, str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, str, result=bool)
     def applyBatchSettingsDraft(
         self,
         workflow_mode: str,
@@ -1923,6 +1959,7 @@ class HaizFlowController(QObject):
         remove_original_subtitles: bool | None = None,
         subtitle_style=None,
         original_subtitle_removal_mode: str | None = None,
+        speaker_mode: str | None = None,
     ):
         # Keep direct Python callers from older integrations working while the
         # QML-facing signature carries the new ASR model field.
@@ -1957,6 +1994,7 @@ class HaizFlowController(QObject):
             remove_original_subtitles,
             subtitle_style,
             original_subtitle_removal_mode,
+            speaker_mode,
         )
 
     @Slot()
@@ -1976,6 +2014,17 @@ class HaizFlowController(QObject):
     def persistSelectedVideoSettings(self):
         """Persist setup edits for the selected single or batch video."""
         return HaizFlowController._project_commands_for(self).persist_selected_video_settings()
+
+    @Slot(str, result=bool)
+    def persistVideoSettingsFor(self, video_id):
+        """Persist only when the editor still belongs to ``video_id``.
+
+        QML settings use a short debounce.  Capturing the id at edit time and
+        validating it here makes a selection change an atomic draft boundary.
+        """
+        return HaizFlowController._project_commands_for(self).persist_selected_video_settings(
+            str(video_id or "")
+        )
 
     @Slot()
     def stopBatch(self):
@@ -2053,9 +2102,9 @@ class HaizFlowController(QObject):
     def restartSelectedVideo(self):
         HaizFlowController._project_commands_for(self).restart_selected_video()
 
-    @Slot(str)
+    @Slot(str, result=bool)
     def approveTranslationReview(self, payload):
-        HaizFlowController._project_commands_for(self).approve_translation_review(payload)
+        return HaizFlowController._project_commands_for(self).approve_translation_review(payload)
 
     @Slot(str, result=bool)
     def saveTranslationReviewDraft(self, payload):
@@ -2404,6 +2453,7 @@ class HaizFlowController(QObject):
             translator_provider="hymt2",
             tts_provider=self._tts_provider,
             tts_voice=self._tts_voice,
+            speaker_mode=self._speaker_mode,
             subtitle_style=self._subtitle_style,
             subtitle_layout_override=manual_subtitle_layout,
             remove_original_subtitles=self._remove_original_subtitles,
@@ -2432,6 +2482,7 @@ class HaizFlowController(QObject):
             "speech_recognition_model": config.speech_recognition_model,
             "tts_provider": config.tts_provider,
             "tts_voice": config.tts_voice,
+            "speaker_mode": config.speaker_mode,
             "subtitle_style": config.subtitle_style,
             "subtitle_layout_override": config.subtitle_layout_override,
             "remove_original_subtitles": config.remove_original_subtitles,

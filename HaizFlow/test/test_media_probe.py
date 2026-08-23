@@ -64,6 +64,30 @@ class MediaProbeTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["timeout"], 9.0)
         self.assertTrue(str(run.call_args.args[0][0]).lower().endswith("ffprobe.exe"))
 
+    def test_integrity_scan_rejects_a_truncated_source(self):
+        completed = type("Completed", (), {"returncode": 1, "stderr": "Invalid NAL unit"})()
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(ffmpeg.subprocess, "run", return_value=completed) as run,
+        ):
+            path = Path(temp_dir) / "clip.mp4"
+            path.write_bytes(b"not-empty")
+            with self.assertRaisesRegex(RuntimeError, "incomplete or corrupted"):
+                ffmpeg.validate_video_integrity(str(path), timeout_seconds=31)
+
+        command = run.call_args.args[0]
+        self.assertIn("-xerror", command)
+        self.assertEqual(run.call_args.kwargs["timeout"], 31.0)
+
+    def test_integrity_scan_accepts_a_complete_source(self):
+        completed = type("Completed", (), {"returncode": 0, "stderr": ""})()
+        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
+            ffmpeg.subprocess, "run", return_value=completed
+        ):
+            path = Path(temp_dir) / "clip.mp4"
+            path.write_bytes(b"complete")
+            ffmpeg.validate_video_integrity(str(path))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -114,6 +114,7 @@ class ProjectCommandsController:
                 "speechRecognitionModel": getattr(host, "_speech_recognition_model", "small"),
                 "ttsProvider": host._tts_provider,
                 "ttsVoice": host._tts_voice,
+                "speakerMode": getattr(host, "_speaker_mode", "single"),
                 "enableAudioSeparation": host._enable_audio_separation,
                 "originalVolume": host._original_volume,
                 "backgroundMusicVolume": host._background_music_volume,
@@ -136,6 +137,7 @@ class ProjectCommandsController:
                 getattr(video, "speech_recognition_model", "small"),
                 getattr(video, "tts_provider", "edge"),
                 video.tts_voice,
+                getattr(video, "speaker_mode", "single"),
                 video.enable_audio_separation,
                 video.original_video_volume,
                 getattr(video, "background_music_volume", 30),
@@ -153,6 +155,7 @@ class ProjectCommandsController:
             speech_recognition_model,
             tts_provider,
             tts_voice,
+            speaker_mode,
             audio_separation,
             original_volume,
             background_music_volume,
@@ -172,6 +175,7 @@ class ProjectCommandsController:
                     getattr(video, "speech_recognition_model", "small"),
                     getattr(video, "tts_provider", "edge"),
                     video.tts_voice,
+                    getattr(video, "speaker_mode", "single"),
                     video.enable_audio_separation,
                     video.original_video_volume,
                     getattr(video, "background_music_volume", 30),
@@ -196,6 +200,7 @@ class ProjectCommandsController:
             "speechRecognitionModel": str(speech_recognition_model or "small"),
             "ttsProvider": tts_provider,
             "ttsVoice": host._normalized_voice_for_language(target_language, tts_voice, tts_provider),
+            "speakerMode": "multiple" if speaker_mode == "multiple" else "single",
             "enableAudioSeparation": bool(audio_separation),
             "originalVolume": int(original_volume),
             "backgroundMusicVolume": int(background_music_volume),
@@ -232,6 +237,7 @@ class ProjectCommandsController:
                 str(getattr(video, "speech_recognition_model", "small") or "small"),
                 str(getattr(video, "tts_provider", "edge") or "edge"),
                 str(video.tts_voice or ""),
+                str(getattr(video, "speaker_mode", "single") or "single"),
                 bool(video.enable_audio_separation),
                 int(video.original_video_volume),
                 int(getattr(video, "background_music_volume", 30)),
@@ -249,6 +255,7 @@ class ProjectCommandsController:
             "speechRecognitionModel",
             "ttsProvider",
             "voice",
+            "speakers",
             "audioSource",
             "sourceVolume",
             "backgroundMusicVolume",
@@ -289,6 +296,7 @@ class ProjectCommandsController:
         subtitle_style=None,
         original_subtitle_removal_mode=None,
         speech_recognition_model=None,
+        speaker_mode=None,
     ) -> bool:
         host = self._host
         mode = "review" if workflow_mode == "review" else "A"
@@ -339,6 +347,11 @@ class ProjectCommandsController:
             voice = host._normalized_voice_for_language(language, tts_voice, provider)
         except TypeError:
             voice = host._normalized_voice_for_language(language, tts_voice)
+        normalized_speaker_mode = (
+            "multiple"
+            if str(speaker_mode or getattr(host, "_speaker_mode", "single")).strip().lower() == "multiple"
+            else "single"
+        )
         apply_mix_volumes = background_music_volume is not None or tts_volume is not None
         background_music_volume = (
             getattr(host, "_background_music_volume", 30)
@@ -392,6 +405,7 @@ class ProjectCommandsController:
                 "speech_recognition_model": asr_model,
                 "tts_provider": provider,
                 "tts_voice": voice,
+                "speaker_mode": normalized_speaker_mode,
                 "enable_audio_separation": bool(enable_audio_separation),
                 "original_video_volume": int(original_volume),
             }
@@ -445,6 +459,7 @@ class ProjectCommandsController:
         host._speech_recognition_model = values["speechRecognitionModel"]
         host._tts_provider = values["ttsProvider"]
         host._tts_voice = values["ttsVoice"]
+        host._speaker_mode = values["speakerMode"]
         host._enable_audio_separation = values["enableAudioSeparation"]
         host._original_volume = values["originalVolume"]
         host._background_music_volume = values["backgroundMusicVolume"]
@@ -463,6 +478,7 @@ class ProjectCommandsController:
         host.ttsProviderOptionsChanged.emit()
         host.ttsVoiceChanged.emit()
         host.ttsVoiceOptionsChanged.emit()
+        host.speakerModeChanged.emit()
         host.enableAudioSeparationChanged.emit()
         host.originalVolumeChanged.emit()
         host.backgroundMusicVolumeChanged.emit()
@@ -474,7 +490,7 @@ class ProjectCommandsController:
     def save_selected_video_settings(self) -> bool:
         return self._persist_selected_video_settings(log_change=True)
 
-    def persist_selected_video_settings(self) -> bool:
+    def persist_selected_video_settings(self, expected_video_id: str = "") -> bool:
         """Persist an edited selected video without adding a noisy log entry.
 
         The setup panel is shared by single projects and per-video batch
@@ -484,10 +500,19 @@ class ProjectCommandsController:
         Store the draft for both project types as soon as the editor settles;
         rendering remains an explicit action.
         """
-        return self._persist_selected_video_settings(log_change=False)
+        return self._persist_selected_video_settings(
+            log_change=False,
+            expected_video_id=str(expected_video_id or ""),
+        )
 
-    def _persist_selected_video_settings(self, *, log_change: bool) -> bool:
+    def _persist_selected_video_settings(self, *, log_change: bool, expected_video_id: str = "") -> bool:
         host = self._host
+        selected_video_id = str(host._selected_video_id or "")
+        if expected_video_id and expected_video_id != selected_video_id:
+            return False
+        settings_owner = getattr(host, "_settings_owner_video_id", None)
+        if settings_owner is not None and str(settings_owner or "") != selected_video_id:
+            return False
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if not video or host._processing_queue.contains(video.video_id):
             return False
@@ -612,6 +637,7 @@ class ProjectCommandsController:
         host._refresh_batch_model()
         host.batchChanged.emit()
         host._selected_video_id = None
+        host._settings_owner_video_id = None
         host._clear_logs()
         host.selectedVideoChanged.emit()
         host.logsChanged.emit()
@@ -646,6 +672,7 @@ class ProjectCommandsController:
             return
         host._assign_project_thumbnail(video)
         host._selected_video_id = video.video_id
+        host._settings_owner_video_id = video.video_id
         host._background_music_path = str((video.files or {}).get("background_music") or "")
         host._replace_logs(host._read_video_logs(video.video_id))
         host.selectedVideoChanged.emit()
@@ -692,6 +719,7 @@ class ProjectCommandsController:
             return False
         host._assign_project_thumbnail(video)
         host._selected_video_id = video.video_id
+        host._settings_owner_video_id = video.video_id
         host._background_music_path = str((video.files or {}).get("background_music") or "")
         host._replace_logs(host._read_video_logs(video.video_id))
         host.selectedVideoChanged.emit()
@@ -734,16 +762,24 @@ class ProjectCommandsController:
     def resume_selected_video(self) -> None:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        if not video or video.status != "paused":
+        if not video or video.status != "paused" or host._processing_queue.contains(video.video_id):
             return
-        video_store.update_video(video.video_id, status="pending", step="queued", step_detail="Queued to resume")
-        host._enqueue_video(video.video_id)
-        host.selectedVideoChanged.emit()
+        # enqueue_video owns the paused -> queued transition because it must
+        # first clear both process-registry pause and cancellation flags.
+        # Pre-writing "pending" here used to skip that cleanup and strand the
+        # resumed worker in a permanently cancelled state.
+        if host._enqueue_video(video.video_id):
+            video_store.log_to_video(video.video_id, "Resumed from the saved processing state.")
+            host.selectedVideoChanged.emit()
 
     def restart_selected_video(self) -> None:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        if not video or host._processing_queue.contains(video.video_id):
+        if (
+            not video
+            or video.status not in {"paused", "awaiting_review", "done", "failed", "cancelled"}
+            or host._processing_queue.contains(video.video_id)
+        ):
             return
         if host._device_switching:
             QMessageBox.information(
@@ -754,6 +790,14 @@ class ProjectCommandsController:
             QMessageBox.question(None, "Restart video", "Apply the current dubbing setup and restart this project?")
             != QMessageBox.StandardButton.Yes
         ):
+            return
+        settings_owner = getattr(host, "_settings_owner_video_id", None)
+        if settings_owner is not None and str(settings_owner or "") != video.video_id:
+            host._show_app_alert(
+                "Settings are still loading",
+                "Reopen this video before restarting so its own settings are used.",
+                "warning",
+            )
             return
         host._apply_setup_to_video(video, review_approved=False)
         restarted = video_store.prepare_video_restart(video.video_id)
@@ -766,11 +810,11 @@ class ProjectCommandsController:
         host._enqueue_video(restarted.video_id)
         host.selectedVideoChanged.emit()
 
-    def approve_translation_review(self, payload: str) -> None:
+    def approve_translation_review(self, payload: str) -> bool:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        if not video or video.status != "awaiting_review":
-            return
+        if not video or video.status not in {"awaiting_review", "done"}:
+            return False
         try:
             segments = _validated_review_segments(payload)
             transcript_path = (video.files or {}).get("transcript_json")
@@ -789,7 +833,7 @@ class ProjectCommandsController:
                 str(exc),
                 "warning",
             )
-            return
+            return False
         translation_checkpoint = video.checkpoints.get("translation")
         checkpoints = {"translation": translation_checkpoint} if translation_checkpoint else {}
         video_store.update_video(
@@ -808,11 +852,12 @@ class ProjectCommandsController:
         )
         host._enqueue_video(video.video_id)
         host.selectedVideoChanged.emit()
+        return True
 
     def save_translation_review_draft(self, payload: str) -> bool:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        if not video or video.status != "awaiting_review":
+        if not video or video.status not in {"awaiting_review", "done"}:
             return False
         try:
             segments = _validated_review_segments(payload)
@@ -871,6 +916,7 @@ class ProjectCommandsController:
             host._refresh_batch_model()
             host.batchChanged.emit()
         host._selected_video_id = None
+        host._settings_owner_video_id = None
         host._clear_logs()
         host.selectedVideoChanged.emit()
         host.logsChanged.emit()
@@ -942,6 +988,7 @@ class ProjectCommandsController:
             QMessageBox.critical(None, "Delete project", str(exc))
             return
         host._selected_video_id = None
+        host._settings_owner_video_id = None
         host._selected_project_key = ""
         if host._project_type == "download":
             host._media_downloader.attach_project("", "")

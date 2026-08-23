@@ -163,3 +163,57 @@ def get_media_stream_types(media_path: str, *, timeout_seconds: float = 15.0) ->
         }
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError, ValueError):
         return set()
+
+
+def validate_video_integrity(video_path: str, *, timeout_seconds: float = 900.0) -> None:
+    """Scan every input packet so truncated videos cannot produce frozen-tail exports.
+
+    Container metadata can advertise the original duration even when a file was
+    interrupted halfway through. FFprobe alone therefore accepted work5 as a
+    152-second video although its final valid video packet ended at 57 seconds.
+    Stream-copying to the null muxer is fast, does not re-encode, and still makes
+    FFmpeg validate the complete packet stream.
+    """
+    path = str(Path(video_path).resolve())
+    if not Path(path).is_file() or Path(path).stat().st_size <= 0:
+        raise RuntimeError(f"The source video is missing or empty: {path}")
+    try:
+        result = subprocess.run(
+            [
+                _binary("ffmpeg"),
+                "-hide_banner",
+                "-v",
+                "error",
+                "-xerror",
+                "-i",
+                path,
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-c",
+                "copy",
+                "-f",
+                "null",
+                "-",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(30.0, float(timeout_seconds)),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "The source video integrity scan timed out. Try copying or downloading the source again."
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"FFmpeg could not validate the source video: {exc}") from exc
+    if result.returncode != 0:
+        detail = " ".join((result.stderr or "").split())[-900:]
+        raise RuntimeError(
+            "The source video is incomplete or corrupted. Import or download it again before processing."
+            + (f" FFmpeg: {detail}" if detail else "")
+        )

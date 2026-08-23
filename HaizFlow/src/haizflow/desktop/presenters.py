@@ -179,27 +179,19 @@ def voice_options_for_language(language_code: str, ui_language: str, provider: s
     options = []
     for item in voices:
         voice, label = item[:2]
-        category = item[2] if len(item) > 2 else "language"
+        category = item[2] if len(item) > 2 else "natural"
         options.append(
             {
                 "voice": voice,
                 "label": localized_voice_label(label, ui_language)
                 if effective == "omnivoice"
                 else f"{localized_voice_label(label, ui_language)} ({voice})",
-                "category": category if effective == "omnivoice" else "language",
+                "category": category if effective == "omnivoice" else "natural",
                 "categoryLabel": (
-                    "Giọng của tôi"
-                    if ui_language == "vi" and category == "clone"
-                    else "Giọng meme & sáng tạo"
-                    if ui_language == "vi" and category == "meme"
-                    else "Giọng ngôn ngữ"
+                    {"natural": "Tự nhiên", "narration": "Kể chuyện", "style": "Phong cách"}
                     if ui_language == "vi"
-                    else "My voice"
-                    if category == "clone"
-                    else "Meme & creative voices"
-                    if category == "meme"
-                    else "Language voices"
-                ),
+                    else {"natural": "Natural", "narration": "Narration", "style": "Styles"}
+                ).get(category, category),
             }
         )
     return options
@@ -208,4 +200,30 @@ def voice_options_for_language(language_code: str, ui_language: str, provider: s
 def localized_voice_label(label: str, ui_language: str) -> str:
     if ui_language != "vi":
         return label
-    return label.replace("Female", "Nữ").replace("Male", "Nam")
+    translations = {
+        "Natural female": "Nữ tự nhiên",
+        "Natural male": "Nam tự nhiên",
+        "Warm female": "Nữ ấm",
+        "Deep male": "Nam trầm",
+        "Bright female": "Nữ sáng",
+        "Bright male": "Nam sáng",
+        "Mature female": "Nữ trưởng thành",
+        "Mature male": "Nam trưởng thành",
+        "Clear high female": "Nữ cao rõ",
+        "Clear high male": "Nam cao rõ",
+        "Female narrator": "Nữ kể chuyện",
+        "Male narrator": "Nam kể chuyện",
+        "Lively elder female": "Nữ lớn tuổi sinh động",
+        "Lively elder male": "Nam lớn tuổi sinh động",
+        "Elder narrator": "Giọng kể lớn tuổi",
+        "Deep storyteller": "Giọng kể trầm",
+        "Soft whisper": "Thì thầm nhẹ",
+        "Deep whisper": "Thì thầm trầm",
+        "Bright whisper": "Thì thầm sáng",
+        "Elder whisper": "Thì thầm lớn tuổi",
+        "Young voice": "Giọng trẻ",
+        "Cartoon voice": "Hoạt hình",
+        "Soft child": "Trẻ em nhẹ",
+        "Low child voice": "Trẻ em trầm",
+    }
+    return translations.get(label, label.replace("Female", "Nữ").replace("Male", "Nam"))

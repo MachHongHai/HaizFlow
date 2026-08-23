@@ -125,14 +125,18 @@ class SerialProcessingQueue:
             except Exception as exc:
                 self._report_error(video_id, exc)
             finally:
+                # Release the lifecycle state before notifying observers.  UI
+                # callbacks query ``contains()`` to decide whether Resume and
+                # Restart are available; notifying while this item was still
+                # active left those controls stuck in their queued state.
+                with self._lock:
+                    if self._active_video_id == video_id:
+                        self._active_video_id = None
                 if self._on_finished:
                     try:
                         self._on_finished(video_id)
                     except Exception as exc:
                         self._report_error(video_id, exc)
-                with self._lock:
-                    if self._active_video_id == video_id:
-                        self._active_video_id = None
         if self._on_idle:
             try:
                 self._on_idle()

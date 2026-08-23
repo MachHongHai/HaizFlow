@@ -178,6 +178,7 @@ def _build_prompt(
     target_language_name: str,
     *,
     include_context: bool = True,
+    strict_source_only: bool = False,
 ) -> str:
     source_text = texts[index].strip()
     if _is_standalone_label(source_text):
@@ -213,8 +214,14 @@ def _build_prompt(
         context_parts.append("[End Background Information]")
         context_block = "\n".join(context_parts) + "\n\n"
 
+    strict_instruction = (
+        "The response must begin directly with the translation of the source text. Any context marker, "
+        "language label, or wording copied from a neighbouring subtitle makes the response invalid. "
+        if strict_source_only
+        else ""
+    )
     return (
-        f"{context_block}Please accurately translate the [Source Text] into {target_language_name}, "
+        f"{context_block}{strict_instruction}Please accurately translate the [Source Text] into {target_language_name}, "
         "taking the provided background information into consideration. Translate only the [Source Text], "
         "not the background, and never copy a background sentence even when its wording is similar. Preserve its "
         "meaning, names, numbers, and percentages exactly; do not paraphrase, expand, or omit information. Use "
@@ -612,10 +619,19 @@ def translate(payload: dict) -> list[str]:
     if not isinstance(source_languages, list) or len(source_languages) != len(texts):
         source_languages = [payload.get("source_language") or "English"] * len(texts)
     target_language_name = payload["target_language_name"]
+    include_context = bool(payload.get("include_context", True))
+    strict_source_only = bool(payload.get("strict_source_only", False))
+    requested_indices = payload.get("translate_indices")
+    if requested_indices is None:
+        requested = set(range(len(texts)))
+    elif isinstance(requested_indices, list) and all(isinstance(index, int) for index in requested_indices):
+        requested = {index for index in requested_indices if 0 <= index < len(texts)}
+    else:
+        raise ValueError("translate_indices must be a list of valid integer indexes.")
     target_key = target_language_name.casefold().strip()
     requires_translation = [
-        source_language.casefold().strip() != target_key
-        for source_language in source_languages
+        index in requested and source_language.casefold().strip() != target_key
+        for index, source_language in enumerate(source_languages)
     ]
     if not any(requires_translation):
         _emit_event({"event": "progress", "current": len(texts), "total": len(texts)})
@@ -644,7 +660,14 @@ def translate(payload: dict) -> list[str]:
 
         if translated_indices:
             prompts = [
-                _build_prompt(texts, source_languages, index, target_language_name)
+                _build_prompt(
+                    texts,
+                    source_languages,
+                    index,
+                    target_language_name,
+                    include_context=include_context,
+                    strict_source_only=strict_source_only,
+                )
                 for index in translated_indices
             ]
             batch_translations = _translate_prompt_batch(

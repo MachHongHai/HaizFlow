@@ -47,7 +47,7 @@ _ALIGNMENT_GROUP_PADDING_SECONDS = 2.5
 _ALIGNMENT_GROUP_SPLIT_GAP_SECONDS = 3.0
 _ALIGNMENT_GROUP_MAX_SECONDS = 75.0
 _MIN_SENTENCE_SPAN_SECONDS = 0.45
-TIMING_SOURCE = "whisperx-context-aligned-sentences-v7"
+TIMING_SOURCE = "whisperx-context-aligned-sentences-v9-semantic-source"
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 _CJK_LANGUAGE_CODES = frozenset({"zh", "ja", "ko"})
 _SENTENCE_END_CHARS = frozenset(".!?\u2026\u3002\uff01\uff1f")
@@ -390,7 +390,13 @@ def _coalesce_short_sentence_segments(segments: list[dict]) -> list[dict]:
 
 
 def _split_segment_proportionally(segment: dict) -> list[dict]:
-    """Keep Whisper's trusted span while deriving sentence-level fallback timing."""
+    """Keep Whisper's semantic span and split only explicit sentence boundaries.
+
+    In particular, never cut unpunctuated CJK at an estimated character
+    position.  Without a verified word aligner such a cut can land inside a
+    phrase and remove the context HY-MT2 needs to disambiguate technical terms.
+    Long TTS network requests are bounded later by the TTS layer.
+    """
     sentences = _split_sentence_text(segment.get("text", ""))
     if len(sentences) <= 1:
         return [dict(segment)]

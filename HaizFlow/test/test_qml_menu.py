@@ -329,12 +329,27 @@ ApplicationWindow {{
         log_panel = (QML_DIR / "ActivityLogPanel.qml").read_text(encoding="utf-8")
         log_dialog = (QML_DIR / "ActivityLogDialog.qml").read_text(encoding="utf-8")
 
-        self.assertIn("Layout.preferredWidth: root.wideLayout ? 620 : 440", create_page)
-        self.assertIn("Layout.maximumWidth: root.wideLayout ? 340", create_page)
+        self.assertIn("Layout.preferredWidth: root.wideLayout ? 980 : 600", create_page)
+        self.assertIn("Layout.rowSpan: root.wideLayout ? 2 : 1", create_page)
+        self.assertGreaterEqual(create_page.count("Layout.maximumWidth: root.wideLayout ? 340"), 2)
         self.assertIn("active: false", log_panel)
         self.assertIn("ActivityLogDialog", log_panel)
         self.assertIn('I18n.t("Expand log")', log_panel)
         self.assertIn("LogViewer", log_dialog)
+
+    def test_translation_editor_auto_saves_and_tool_windows_have_no_minimize_control(self):
+        editor = (QML_DIR / "TranslationReviewDialog.qml").read_text(encoding="utf-8")
+        floating_tool = (QML_DIR / "FloatingToolDialog.qml").read_text(encoding="utf-8")
+
+        self.assertIn("modal: true", editor)
+        self.assertIn("function saveDraftOnClose()", editor)
+        self.assertIn("function selectSegment(index)", editor)
+        self.assertIn("StandardKey.Undo", editor)
+        self.assertIn("StandardKey.Redo", editor)
+        self.assertNotIn('I18n.t("Save draft")', editor)
+        self.assertIn("function toggleMaximized()", floating_tool)
+        self.assertNotIn("property bool collapsed", floating_tool)
+        self.assertNotIn('I18n.t("Minimize")', floating_tool)
 
     def test_batch_workspace_and_theme_use_distinct_semantic_tones(self):
         batch_page = (QML_DIR / "BatchPage.qml").read_text(encoding="utf-8")

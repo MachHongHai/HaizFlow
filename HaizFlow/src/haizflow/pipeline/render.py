@@ -534,12 +534,24 @@ def _source_subtitle_removal_region(
     if not region:
         return None
     try:
-        x = int(source_width * float(region["x_percent"]) / 100) // 2 * 2
-        y = int(source_height * float(region["y_percent"]) / 100) // 2 * 2
-        width = max(2, int(source_width * float(region["width_percent"]) / 100) // 2 * 2)
-        height = max(2, int(source_height * float(region["height_percent"]) / 100) // 2 * 2)
+        left = source_width * float(region["x_percent"]) / 100
+        top = source_height * float(region["y_percent"]) / 100
+        right = source_width * (float(region["x_percent"]) + float(region["width_percent"])) / 100
+        bottom = source_height * (float(region["y_percent"]) + float(region["height_percent"])) / 100
     except (KeyError, TypeError, ValueError):
         return None
+
+    # FFmpeg's 4:2:0 crop coordinates must be even. Quantize the two detected
+    # edges independently: flooring both the origin and size can discard the
+    # final 1–2 detected rows (work4: OCR bottom 671.9px became 670px). This is
+    # not visual padding; it is the smallest even-pixel box that contains the
+    # exact OCR interval.
+    x = max(0, math.floor(left / 2) * 2)
+    y = max(0, math.floor(top / 2) * 2)
+    right_edge = min(source_width, math.ceil(right / 2) * 2)
+    bottom_edge = min(source_height, math.ceil(bottom / 2) * 2)
+    width = max(2, right_edge - x)
+    height = max(2, bottom_edge - y)
     width = min(width, source_width - x)
     height = min(height, source_height - y)
     return (x, y, width, height) if width >= 2 and height >= 2 else None

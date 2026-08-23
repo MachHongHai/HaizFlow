@@ -216,6 +216,7 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         translator_provider=config.translator_provider,
         tts_provider=config.tts_provider,
         tts_voice=config.tts_voice,
+        speaker_mode=config.speaker_mode,
         subtitle_style=config.subtitle_style,
         subtitle_layout_override=config.subtitle_layout_override,
         remove_original_subtitles=config.remove_original_subtitles,
@@ -401,6 +402,14 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
                 data["tts_provider"] = "omnivoice"
             version = 13
             continue
+        if version == 13:
+            data["schema_version"] = 14
+            # Existing videos historically behaved as single-narrator jobs.
+            # Preserve that intent instead of unexpectedly cloning every
+            # source segment after an upgrade.
+            data.setdefault("speaker_mode", "single")
+            version = 14
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -415,6 +424,8 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
         data["tts_provider"] = "omnivoice"
     if data.get("speech_recognition_model") not in {"small", "large-v3-turbo"}:
         data["speech_recognition_model"] = "small"
+    if data.get("speaker_mode") not in {"single", "multiple"}:
+        data["speaker_mode"] = "single"
     data["output_format"] = (
         data.get("output_format")
         if data.get("output_format")

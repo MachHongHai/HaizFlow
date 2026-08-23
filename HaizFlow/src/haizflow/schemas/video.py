@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 13
+VIDEO_METADATA_SCHEMA_VERSION = 14
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
@@ -11,6 +11,7 @@ SpeechRecognitionModel = Literal["small", "large-v3-turbo"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
 ProjectType = Literal["single", "batch"]
 OriginalSubtitleRemovalMode = Literal["blur", "patch"]
+SpeakerMode = Literal["single", "multiple"]
 
 
 class MediaSource(BaseModel):
@@ -55,6 +56,7 @@ class VideoConfig(BaseModel):
     speech_recognition_model: SpeechRecognitionModel = "small"
     tts_provider: TTSProvider = "omnivoice"
     tts_voice: str = "omnivoice:female"
+    speaker_mode: SpeakerMode = "single"
     subtitle_style: SubtitleStyle = Field(default_factory=SubtitleStyle)
     subtitle_layout_override: bool = False
     remove_original_subtitles: bool = True
@@ -88,6 +90,7 @@ class VideoInfo(BaseModel):
     speech_recognition_model: SpeechRecognitionModel = "small"
     tts_provider: TTSProvider = "omnivoice"
     tts_voice: str
+    speaker_mode: SpeakerMode = "single"
     subtitle_style: SubtitleStyle
     subtitle_layout_override: bool = False
     remove_original_subtitles: bool = True

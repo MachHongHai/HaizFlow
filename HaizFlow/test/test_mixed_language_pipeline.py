@@ -276,6 +276,25 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual(split[0]["end"], 19.2)
         self.assertIn("Thank you very much.", split[0]["text"])
 
+    def test_unpunctuated_chinese_vad_block_keeps_its_semantic_context(self):
+        text = (
+            "为什么三级化粪池几十年不用挑粪牛马们有时会想城市里那么多人每天产生那么多排泄物"
+            "化粪池为什么不会满出来其实它是个生化反应器于是微生物会把固体分解成液体和气体"
+            "随后液体继续流向下一格所以池子里的固体增长速度会比想象中慢很多"
+        )
+        segment = {
+            "start": 0.0,
+            "end": 24.0,
+            "text": text,
+            "language": "zh",
+        }
+
+        split = transcribe._split_segment_proportionally(segment)
+
+        self.assertEqual(len(split), 1)
+        self.assertEqual(split[0]["text"], text)
+        self.assertEqual((split[0]["start"], split[0]["end"]), (0.0, 24.0))
+
     def test_short_first_sentence_is_coalesced_forward(self):
         segment = {
             "start": 10.0,
@@ -641,6 +660,59 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             [(0, 1), (1, 2)],
         )
         self.assertEqual([segment["timing_source"] for segment in translated], ["unknown", "unknown"])
+
+    def test_translation_retries_only_the_context_leak_and_keeps_context_first(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "source.json"
+            output_path = Path(temp_dir) / "translated.json"
+            input_path.write_text(
+                json.dumps(
+                    [
+                        {"start": 0, "end": 1, "text": "The farmer gathered grass.", "language": "en"},
+                        {"start": 1, "end": 2, "text": "The cattle waited nearby.", "language": "en"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(
+                    translation,
+                    "_translate_with_hymt2_worker",
+                    side_effect=[
+                        ["N1 [English]: The cattle waited nearby.", "Gia súc đang đợi ở gần đó."],
+                        ["Người nông dân gom cỏ.", "The cattle waited nearby."],
+                    ],
+                ) as worker,
+                mock.patch.object(translation, "log_to_video"),
+            ):
+                translated = translation.translate_segments(
+                    str(input_path), str(output_path), "test-video", target_language="vi", source_language="en"
+                )
+
+        self.assertEqual(worker.call_count, 2)
+        self.assertEqual([segment["text"] for segment in translated], [
+            "Người nông dân gom cỏ.",
+            "Gia súc đang đợi ở gần đó.",
+        ])
+        retry_kwargs = worker.call_args_list[1].kwargs
+        self.assertTrue(retry_kwargs["include_context"])
+        self.assertTrue(retry_kwargs["strict_source_only"])
+        self.assertEqual(retry_kwargs["translate_indices"], [0])
+
+    def test_translation_duplicate_detector_ignores_repeated_source_dialogue(self):
+        repeated = translation._suspicious_translation_indexes(
+            ["Thank you very much", "Thank you very much"],
+            ["Cảm ơn bạn rất nhiều", "Cảm ơn bạn rất nhiều"],
+            "Vietnamese",
+        )
+        leaked = translation._suspicious_translation_indexes(
+            ["The farmer gathered grass", "The cattle waited nearby"],
+            ["Người nông dân gom cỏ", "Người nông dân gom cỏ"],
+            "Vietnamese",
+        )
+
+        self.assertEqual(repeated, set())
+        self.assertEqual(leaked, {1})
 
     def test_subtitle_cues_keep_all_text_inside_the_source_timestamp(self):
         segment = {

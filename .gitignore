@@ -10,3 +10,5 @@ HaizFlow/out/
 HaizFlow/__pycache__/
 HaizFlow/**/*.pyc
 /.uv-cache/
+/.ruff_cache/
+/HaizFlow/.ruff_cache/

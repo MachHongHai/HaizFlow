@@ -15,6 +15,7 @@ if str(SRC) not in sys.path:
 
 from haizflow.pipeline import process_video
 from haizflow.pipeline.process_video import _checkpoint_valid
+from haizflow.desktop.localization import QMessageBox
 from haizflow.desktop.project_commands_controller import ProjectCommandsController
 from haizflow.schemas.video import VideoConfig
 from haizflow.services import video_store, project_store
@@ -74,11 +75,12 @@ class RestartCheckpointTests(unittest.TestCase):
                 mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
                 mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
             ):
-                controller.approve_translation_review(payload)
+                approved = controller.approve_translation_review(payload)
 
             saved = json.loads(transcript.read_text(encoding="utf-8"))
 
         self.assertEqual(saved[0]["text"], "edited")
+        self.assertTrue(approved)
         self.assertEqual(update_video.call_args.kwargs["resume_step"], "creating_subtitle")
         self.assertEqual(
             update_video.call_args.kwargs["checkpoints"],
@@ -161,7 +163,10 @@ class RestartCheckpointTests(unittest.TestCase):
                 "edge",
                 "vi",
                 "same-voice",
-                "omnivoice-c5fdb5c-r1",
+                "single",
+                process_video._file_state(""),
+                "",
+                "omnivoice-anchor-or-source-speaker-r4",
             )
             video = SimpleNamespace(
                 video_id="video-1",
@@ -252,6 +257,7 @@ class RestartCheckpointTests(unittest.TestCase):
                 mock.patch.object(process_video, "update_video") as update_video,
                 mock.patch.object(process_video, "log_to_video"),
                 mock.patch.object(process_video, "runtime_profile", return_value=profile),
+                mock.patch.object(process_video, "validate_video_integrity"),
                 mock.patch.object(
                     process_video, "extract_audio", side_effect=RuntimeError("stop after resume decision")
                 ) as extract_audio,
@@ -260,6 +266,86 @@ class RestartCheckpointTests(unittest.TestCase):
 
             extract_audio.assert_called_once()
             update_video.assert_any_call(video.video_id, review_approved=False)
+
+
+class ProjectCommandStateTests(unittest.TestCase):
+    def test_resume_keeps_paused_status_until_enqueue_clears_registry_flags(self):
+        video = SimpleNamespace(video_id="video-paused", status="paused")
+        queue = SimpleNamespace(contains=mock.Mock(return_value=False))
+        host = SimpleNamespace(
+            _selected_video_id=video.video_id,
+            _processing_queue=queue,
+            _enqueue_video=mock.Mock(return_value=True),
+            selectedVideoChanged=SimpleNamespace(emit=mock.Mock()),
+        )
+        controller = ProjectCommandsController(host)
+
+        with (
+            mock.patch(
+                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                return_value=video,
+            ),
+            mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+            mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+        ):
+            controller.resume_selected_video()
+
+        update_video.assert_not_called()
+        host._enqueue_video.assert_called_once_with(video.video_id)
+        host.selectedVideoChanged.emit.assert_called_once()
+
+    def test_restart_accepts_a_fully_paused_video_and_restarts_from_scratch(self):
+        video = SimpleNamespace(video_id="video-paused", status="paused")
+        restarted = SimpleNamespace(video_id=video.video_id)
+        host = SimpleNamespace(
+            _selected_video_id=video.video_id,
+            _settings_owner_video_id=video.video_id,
+            _processing_queue=SimpleNamespace(contains=mock.Mock(return_value=False)),
+            _device_switching=False,
+            _apply_setup_to_video=mock.Mock(),
+            _enqueue_video=mock.Mock(return_value=True),
+            selectedVideoChanged=SimpleNamespace(emit=mock.Mock()),
+        )
+        controller = ProjectCommandsController(host)
+
+        with (
+            mock.patch(
+                "haizflow.desktop.project_commands_controller.video_store.get_video",
+                return_value=video,
+            ),
+            mock.patch(
+                "haizflow.desktop.project_commands_controller.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            mock.patch(
+                "haizflow.desktop.project_commands_controller.video_store.prepare_video_restart",
+                return_value=restarted,
+            ) as prepare_restart,
+            mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+            mock.patch("haizflow.desktop.project_commands_controller.runtime_profile") as profile,
+        ):
+            profile.return_value.summary = "test runtime"
+            controller.restart_selected_video()
+
+        host._apply_setup_to_video.assert_called_once_with(video, review_approved=False)
+        prepare_restart.assert_called_once_with(video.video_id)
+        host._enqueue_video.assert_called_once_with(video.video_id)
+
+    def test_debounced_settings_save_cannot_cross_video_selection(self):
+        host = SimpleNamespace(
+            _selected_video_id="video-b",
+            _settings_owner_video_id="video-b",
+            _processing_queue=SimpleNamespace(contains=mock.Mock(return_value=False)),
+            _apply_setup_to_video=mock.Mock(),
+        )
+        controller = ProjectCommandsController(host)
+
+        with mock.patch("haizflow.desktop.project_commands_controller.video_store.get_video") as get_video:
+            saved = controller.persist_selected_video_settings("video-a")
+
+        self.assertFalse(saved)
+        get_video.assert_not_called()
+        host._apply_setup_to_video.assert_not_called()
 
 
 class InterruptedVideoRecoveryTests(unittest.TestCase):

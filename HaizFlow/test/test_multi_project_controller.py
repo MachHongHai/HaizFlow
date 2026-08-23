@@ -22,6 +22,7 @@ from haizflow.desktop.project_import_controller import ProjectImportController
 from haizflow.desktop.project_commands_controller import ProjectCommandsController
 from haizflow.desktop.localization import QMessageBox
 from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
 from haizflow.schemas.video import VideoConfig
 
 
@@ -47,6 +48,52 @@ class _DownloadSourceModel:
 
 
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_selecting_video_loads_its_own_speech_model(self):
+        host = Mock()
+        host._selected_video_id = None
+        host._settings_owner_video_id = None
+        host._project_directory = "D:/projects"
+        host._processing_queue = SimpleNamespace(active_video_id=None)
+        host._video_project_key.return_value = "project-a"
+        host._normalized_tts_provider.side_effect = lambda _language, provider: provider
+        host._normalized_voice_for_language.side_effect = lambda _language, voice, _provider: voice
+        host._resolve_video_file.return_value = "D:/projects/input/video.mp4"
+        host._read_video_logs.return_value = ""
+        video = SimpleNamespace(
+            video_id="video-turbo",
+            project_name="Turbo video",
+            original_filename="input.mp4",
+            project_directory="D:/projects",
+            project_type="single",
+            source_language="auto",
+            output_format="keep_ratio",
+            status="pending",
+            mode="A",
+            target_language="vi",
+            speech_recognition_model="turbo",
+            tts_provider="omnivoice",
+            tts_voice="omnivoice:female",
+            enable_audio_separation=True,
+            original_video_volume=60,
+            background_music_volume=30,
+            tts_volume=100,
+            watermark_text="",
+            remove_original_subtitles=True,
+            original_subtitle_removal_mode="patch",
+            subtitle_style=SimpleNamespace(),
+            subtitle_layout_override=False,
+            files={"thumbnail": ""},
+        )
+
+        with patch(
+            "haizflow.desktop.project_workspace_controller.migrate_legacy_single_export",
+            return_value=False,
+        ):
+            ProjectWorkspaceController(host).select_video(video)
+
+        self.assertEqual(host._speech_recognition_model, "turbo")
+        host.speechRecognitionModelChanged.emit.assert_called_once_with()
+
     def test_whisper_turbo_option_uses_verified_model_and_selected_gpu(self):
         host = SimpleNamespace(
             _hardware_capabilities=SimpleNamespace(cuda_available=False),
@@ -167,7 +214,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         HaizFlowController.originalSubtitleRemovalMode.fset(host, "unsupported")
 
         self.assertEqual(host._original_subtitle_removal_mode, "patch")
-        host.subtitleSettingsChanged.emit.assert_called_once_with()
+        host.subtitleSettingsChanged.emit.assert_not_called()
 
     def test_new_project_setup_resets_all_project_local_settings(self):
         changed = {
@@ -209,6 +256,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(host._target_language, "vi")
         self.assertEqual(host._tts_provider, "omnivoice")
         self.assertEqual(host._tts_voice, "omnivoice:female")
+        self.assertEqual(host._speaker_mode, "single")
         self.assertTrue(host._enable_audio_separation)
         self.assertEqual((host._original_volume, host._background_music_volume, host._tts_volume), (60, 30, 100))
         self.assertEqual(host._watermark_text, "")
@@ -579,6 +627,9 @@ class MultiProjectControllerTests(unittest.TestCase):
         settings = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
             encoding="utf-8"
         )
+        shared_settings = (
+            ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProcessingSettingsForm.qml"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('text: I18n.t("Batch settings")', batch_page)
         self.assertNotIn("setupVisible: true", batch_page)
@@ -595,8 +646,9 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("readonly property real cardHeight: Math.round(cardWidth * 0.56 + 64)", batch_page)
         self.assertIn("AppController.chooseBatchBackgroundMusic()", settings)
         self.assertIn("batchBackgroundMusicLinkDialog.open()", settings)
-        self.assertIn('text: I18n.t("Edit new subtitles")', settings)
-        self.assertIn("visible: !root.draftRemoveOriginalSubtitles", settings)
+        self.assertIn("ProcessingSettingsForm", settings)
+        self.assertIn('text: I18n.t("Edit new subtitles")', shared_settings)
+        self.assertIn("visible: !root.removeOriginalSubtitles", shared_settings)
         self.assertIn("BatchAudioMixDialog", settings)
         self.assertIn("batchAudioMixDialog.open()", settings)
         self.assertNotIn("AppSlider {", settings)
@@ -620,7 +672,8 @@ class MultiProjectControllerTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("videoSettingsSaveTimer.restart()", dubbing_setup)
-        self.assertIn("AppController.persistSelectedVideoSettings()", dubbing_setup)
+        self.assertIn("AppController.persistVideoSettingsFor(root.pendingSettingsVideoId)", dubbing_setup)
+        self.assertIn("pendingSettingsVideoId = AppController.selectedVideoId", dubbing_setup)
         self.assertNotIn("AppController.saveSelectedVideoSettings()", dubbing_setup)
 
     def test_batch_audio_preview_uses_draft_without_applying_settings(self):
@@ -731,6 +784,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             speech_recognition_model="small",
             tts_provider="edge",
             tts_voice="en-US-JennyNeural",
+            speaker_mode="single",
             enable_audio_separation=True,
             original_video_volume=35,
             background_music_volume=30,
@@ -748,6 +802,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("function loadDraft()", dialog_qml)
         self.assertIn("AppController.batchSettings()", dialog_qml)
         self.assertIn("AppController.applyBatchSettingsDraft(", dialog_qml)
+        self.assertIn('draftSpeakerMode: "single"', dialog_qml)
         self.assertIn("AppController.batchSettingOverrides()", dialog_qml)
         self.assertIn("onBatchChanged()", dialog_qml)
         self.assertNotIn("AppController.workflowMode =", dialog_qml)

@@ -19,6 +19,7 @@ data/
 .cache/
 **/.cache/
 .pytest_cache/
+.ruff_cache/
 .ipynb_checkpoints/
 
 # Large binaries

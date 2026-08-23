@@ -11,13 +11,17 @@ Dialog {
     property string toolSubtitle: ""
     property int expandedWidth: 900
     property int expandedHeight: 700
-    property bool collapsed: false
+    property bool maximized: false
+    property real restoreX: 0
+    property real restoreY: 0
 
     modal: false
     focus: true
     parent: Overlay.overlay
-    width: Math.min(expandedWidth, parent ? parent.width - 32 : expandedWidth)
-    height: collapsed ? 64 : Math.min(expandedHeight, parent ? parent.height - 32 : expandedHeight)
+    width: maximized && parent ? Math.max(320, parent.width - 16)
+                               : Math.min(expandedWidth, parent ? parent.width - 32 : expandedWidth)
+    height: maximized && parent ? Math.max(180, parent.height - 16)
+                                : Math.min(expandedHeight, parent ? parent.height - 32 : expandedHeight)
     padding: 0
     closePolicy: Popup.CloseOnEscape
     header: null
@@ -30,8 +34,28 @@ Dialog {
         y = Math.round((parent.height - height) / 2)
     }
 
+    function toggleMaximized() {
+        if (!parent)
+            return
+        if (!maximized) {
+            restoreX = x
+            restoreY = y
+            maximized = true
+            x = 8
+            y = 8
+        } else {
+            maximized = false
+            Qt.callLater(function() {
+                root.x = Math.max(0, Math.min(root.parent.width - root.width, root.restoreX))
+                root.y = Math.max(0, Math.min(root.parent.height - root.height, root.restoreY))
+            })
+        }
+    }
+
     onOpened: placeInCenter()
-    onClosed: collapsed = false
+    onClosed: {
+        maximized = false
+    }
 
     enter: Transition {
         ParallelAnimation {
@@ -68,13 +92,14 @@ Dialog {
                     previousY = mouse.y
                 }
                 onPositionChanged: function(mouse) {
-                    if (!pressed || !root.parent)
+                    if (!pressed || !root.parent || root.maximized)
                         return
                     root.x = Math.max(0, Math.min(root.parent.width - root.width,
                                                   root.x + mouse.x - previousX))
                     root.y = Math.max(0, Math.min(root.parent.height - root.height,
                                                   root.y + mouse.y - previousY))
                 }
+                onDoubleClicked: root.toggleMaximized()
             }
 
             RowLayout {
@@ -99,7 +124,7 @@ Dialog {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: !root.collapsed && root.toolSubtitle.length > 0
+                        visible: root.toolSubtitle.length > 0
                         text: root.toolSubtitle
                         color: Theme.textMuted
                         font.pixelSize: Theme.caption
@@ -109,9 +134,9 @@ Dialog {
                 }
 
                 IconButton {
-                    glyph: root.collapsed ? "\uE70E" : "\uE921"
-                    toolTipText: root.collapsed ? I18n.t("Restore") : I18n.t("Minimize")
-                    onClicked: root.collapsed = !root.collapsed
+                    glyph: root.maximized ? "\uE923" : "\uE922"
+                    toolTipText: root.maximized ? I18n.t("Restore") : I18n.t("Maximize")
+                    onClicked: root.toggleMaximized()
                 }
 
                 IconButton {
@@ -124,8 +149,7 @@ Dialog {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: root.collapsed ? 0 : 1
-            visible: !root.collapsed
+            Layout.preferredHeight: 1
             color: Theme.divider
         }
 
@@ -133,8 +157,6 @@ Dialog {
             id: body
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: !root.collapsed
-            opacity: visible ? 1 : 0
         }
     }
 }

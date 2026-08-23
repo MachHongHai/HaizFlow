@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -33,18 +35,39 @@ _SAMPLE_RATE = 24_000
 _RUNTIME_PREPARE_LOCK = threading.Lock()
 _GPU_STALL_TIMEOUT_SECONDS = 15 * 60
 _CPU_STALL_TIMEOUT_SECONDS = 40 * 60
-_HEARTBEAT_LOG_INTERVAL_SECONDS = 15
+_HEARTBEAT_LOG_INTERVAL_SECONDS = 30
+_STATUS_WRITE_ATTEMPTS = 9
+_VOICE_ANCHOR_TARGET_CHARS = 80
+_VOICE_ANCHOR_MIN_CHARS = 24
+_VOICE_ANCHOR_MAX_CHARS = 120
 
 OMNIVOICE_VOICE_INSTRUCTIONS = {
     # OmniVoice validates this vocabulary strictly. Keep every preset within
     # the model's published instruction set.
     "omnivoice:female": "female, young adult, moderate pitch",
     "omnivoice:male": "male, young adult, moderate pitch",
+    "omnivoice:female_low": "female, young adult, low pitch",
     "omnivoice:deep": "male, young adult, low pitch",
     "omnivoice:bright": "female, young adult, high pitch",
+    "omnivoice:male_high": "male, young adult, high pitch",
+    "omnivoice:female_mature": "female, elderly, moderate pitch",
+    "omnivoice:male_mature": "male, elderly, moderate pitch",
+    "omnivoice:female_soprano": "female, young adult, very high pitch",
+    "omnivoice:male_tenor": "male, young adult, very high pitch",
+    "omnivoice:female_narrator": "female, elderly, low pitch",
+    "omnivoice:male_narrator": "male, elderly, low pitch",
+    "omnivoice:female_elder_high": "female, elderly, high pitch",
+    "omnivoice:male_elder_high": "male, elderly, high pitch",
     "omnivoice:whisper": "whisper, young adult, moderate pitch",
+    "omnivoice:whisper_low": "whisper, young adult, low pitch",
+    "omnivoice:whisper_high": "whisper, young adult, high pitch",
+    "omnivoice:whisper_elder": "whisper, elderly, low pitch",
+    "omnivoice:elder": "elderly, moderate pitch",
     "omnivoice:storyteller": "elderly, low pitch",
+    "omnivoice:child": "child, high pitch",
     "omnivoice:cartoon": "child, very high pitch",
+    "omnivoice:child_soft": "child, moderate pitch",
+    "omnivoice:child_low": "child, low pitch",
 }
 
 # The desktop catalog uses ISO 639-1 identifiers. OmniVoice accepts most of
@@ -60,6 +83,103 @@ OMNIVOICE_LANGUAGE_IDS = {
 def _omnivoice_language_id(language_id: str) -> str:
     normalized = str(language_id or "").strip().lower()
     return OMNIVOICE_LANGUAGE_IDS.get(normalized, normalized)
+
+
+def _write_status_file(status_path: Path, payload: dict[str, Any]) -> bool:
+    """Publish worker progress without letting a transient Windows lock stop TTS.
+
+    Qt, antivirus software and the progress monitor can briefly hold the old
+    status file open. ``os.replace`` then raises WinError 5/32 on Windows even
+    though synthesis itself is healthy. Progress is advisory, so retry the
+    atomic replacement and continue the worker if every retry is exhausted.
+    """
+    if not status_path.name:
+        return False
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = status_path.with_name(
+        f".{status_path.name}.{os.getpid()}.{threading.get_ident()}.part"
+    )
+    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    delay = 0.01
+    try:
+        for attempt in range(_STATUS_WRITE_ATTEMPTS):
+            try:
+                temporary.write_text(serialized, encoding="utf-8")
+                os.replace(temporary, status_path)
+                return True
+            except OSError:
+                temporary.unlink(missing_ok=True)
+                if attempt + 1 < _STATUS_WRITE_ATTEMPTS:
+                    time.sleep(delay)
+                    delay = min(0.25, delay * 2)
+        return False
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _select_voice_anchor(items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Pick an informative but short narrator sample for stable fast cloning."""
+    candidates = [
+        item
+        for item in items
+        if str(item.get("text") or "").strip()
+        and not str(item.get("reference_path") or "").strip()
+    ]
+    if not candidates:
+        return None
+
+    def score(item: dict[str, Any]) -> tuple[bool, int, int]:
+        length = len(str(item.get("text") or "").strip())
+        return (
+            length < _VOICE_ANCHOR_MIN_CHARS,
+            abs(length - _VOICE_ANCHOR_TARGET_CHARS),
+            length,
+        )
+
+    return min(candidates, key=score)
+
+
+def _voice_anchor_excerpt(text: str) -> str:
+    """Return one useful, bounded sentence for the narrator voice prompt.
+
+    Whisper can produce a 20-40 second source segment for unpunctuated CJK
+    speech.  Reusing the full translated paragraph as a clone reference makes
+    every later OmniVoice call encode an unnecessarily long waveform.  Keep
+    translation segmentation intact and derive only a short voice-identity
+    prompt after translation.
+    """
+    normalized = " ".join(str(text or "").split()).strip()
+    if len(normalized) <= _VOICE_ANCHOR_MAX_CHARS:
+        return normalized
+
+    sentences = [
+        value.strip()
+        for value in re.split(r"(?<=[.!?\u3002\uff01\uff1f;:])\s*", normalized)
+        if value.strip()
+    ]
+    suitable = [value for value in sentences if len(value) >= _VOICE_ANCHOR_MIN_CHARS]
+    if suitable:
+        return min(
+            suitable,
+            key=lambda value: (
+                len(value) > _VOICE_ANCHOR_MAX_CHARS,
+                abs(len(value) - _VOICE_ANCHOR_TARGET_CHARS),
+            ),
+        )[:_VOICE_ANCHOR_MAX_CHARS].rstrip()
+
+    words = normalized.split()
+    if len(words) > 1:
+        excerpt: list[str] = []
+        length = 0
+        for word in words:
+            added = len(word) + (1 if excerpt else 0)
+            if excerpt and length + added > _VOICE_ANCHOR_MAX_CHARS:
+                break
+            excerpt.append(word)
+            length += added
+        if excerpt:
+            return " ".join(excerpt)
+    return normalized[:_VOICE_ANCHOR_MAX_CHARS].rstrip()
 
 
 def _sdk_root() -> Path:
@@ -176,7 +296,10 @@ def _run_worker_process(
             if str(request.get("device") or "").startswith("cuda")
             else _CPU_STALL_TIMEOUT_SECONDS
         )
-        while not stop_progress.wait(0.35):
+        # Status changes only at model/segment boundaries. A sub-second poll is
+        # responsive enough without repeatedly opening the same file while the
+        # worker is publishing it on Windows.
+        while not stop_progress.wait(0.75):
             now = time.monotonic()
             try:
                 status = json.loads(status_path.read_text(encoding="utf-8"))
@@ -301,6 +424,7 @@ def synthesize_batch_to_mp3(
     video_id: str,
     *,
     language_id: str,
+    speaker_mode: str = "single",
     progress_callback=None,
 ) -> None:
     """Load OmniVoice once and synthesize all missing segments in one worker."""
@@ -324,13 +448,40 @@ def synthesize_batch_to_mp3(
             output = Path(str(item["output_path"])).resolve()
             output.parent.mkdir(parents=True, exist_ok=True)
             wav = temp_root / f"voice-{index:04d}.wav"
+            reference_path = str(item.get("reference_path") or "")
+            reference_text = str(item.get("reference_text") or "")
+            source_audio = str(item.get("source_audio_path") or "")
+            if speaker_mode == "multiple" and not reference_path and source_audio:
+                reference_wav = temp_root / f"source-speaker-{index:04d}.wav"
+                start = max(0.0, float(item.get("source_start") or 0.0))
+                end = max(start + 0.1, float(item.get("source_end") or start + 0.1))
+                process = subprocess.Popen(
+                    [
+                        _binary("ffmpeg"), "-y", "-v", "error", "-ss", f"{start:.3f}",
+                        "-to", f"{end:.3f}", "-i", source_audio, "-vn", "-ac", "1",
+                        "-ar", str(_SAMPLE_RATE), "-c:a", "pcm_s16le", str(reference_wav),
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                _stdout, stderr = communicate_process(
+                    video_id,
+                    process,
+                    label=f"OmniVoice speaker reference {index}",
+                    timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+                )
+                if process.returncode != 0 or not reference_wav.is_file() or reference_wav.stat().st_size <= 44:
+                    raise RuntimeError((stderr or "Could not prepare a source-speaker reference.").strip()[:500])
+                reference_path = str(reference_wav)
+                reference_text = str(item.get("source_text") or "").strip()
             request_items.append(
                 {
                     "text": str(item.get("text") or "").strip(),
                     "voice": str(item.get("voice") or "omnivoice:female"),
                     "wav_path": str(wav),
-                    "reference_path": str(item.get("reference_path") or ""),
-                    "reference_text": str(item.get("reference_text") or ""),
+                    "reference_path": reference_path,
+                    "reference_text": reference_text,
                 }
             )
             output_pairs.append((wav, output))
@@ -340,7 +491,14 @@ def synthesize_batch_to_mp3(
             "device": "cuda:0" if processing_device_preference() == "gpu" else "cpu",
             "language": _omnivoice_language_id(language_id),
             "items": request_items,
+            "speaker_mode": "multiple" if speaker_mode == "multiple" else "single",
             "status_path": str(temp_root / "status.json"),
+            # One stable latent seed per voice keeps a single narrator's
+            # identity consistent across every subtitle segment in the video.
+            "voice_seed": int.from_bytes(
+                hashlib.sha256(str(request_items[0].get("voice") or "omnivoice:female").encode("utf-8")).digest()[:4],
+                "big",
+            ),
         }
         request_path = temp_root / "request.json"
         request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
@@ -430,21 +588,15 @@ def _worker_main(request_path: str) -> int:
     status_path = Path(str(request.get("status_path") or ""))
 
     def write_status(completed: int, stage: str, *, current: int = 0) -> None:
-        if not status_path.name:
-            return
-        temporary = status_path.with_suffix(".part")
-        temporary.write_text(
-            json.dumps(
-                {
-                    "completed": completed,
-                    "total": len(items),
-                    "stage": stage,
-                    "current": current,
-                }
-            ),
-            encoding="utf-8",
+        _write_status_file(
+            status_path,
+            {
+                "completed": completed,
+                "total": len(items),
+                "stage": stage,
+                "current": current,
+            },
         )
-        os.replace(temporary, status_path)
 
     device = str(request.get("device") or "cpu")
     if device.startswith("cuda") and not torch.cuda.is_available():
@@ -468,8 +620,68 @@ def _worker_main(request_path: str) -> int:
         dtype=dtype,
         low_cpu_mem_usage=True,
     )
+    voice_seed = int(request.get("voice_seed") or 0) & 0x7FFFFFFF
+    speaker_mode = str(request.get("speaker_mode") or "single")
+    synthesis_items = list(items)
+    anchor_prompt: Any = None
+    prompt_cache: dict[tuple[str, str], Any] = {}
+
+    def reset_seed() -> None:
+        torch.manual_seed(voice_seed)
+        np.random.seed(voice_seed % (2**32 - 1))
+        if device.startswith("cuda"):
+            torch.cuda.manual_seed_all(voice_seed)
+
+    # A dedicated short prompt avoids turning one 20-40 second translated
+    # paragraph into the reference for the whole video. It is useful only for
+    # multi-segment preset narration; previews and explicit clone references
+    # do not need this extra generation.
+    if speaker_mode == "single" and len(synthesis_items) > 1:
+        anchor_candidate = _select_voice_anchor(synthesis_items)
+        if anchor_candidate is not None:
+            anchor_text = _voice_anchor_excerpt(str(anchor_candidate.get("text") or ""))
+            if anchor_text:
+                anchor_instruction = OMNIVOICE_VOICE_INSTRUCTIONS.get(
+                    str(anchor_candidate.get("voice") or "").strip().lower(),
+                    OMNIVOICE_VOICE_INSTRUCTIONS["omnivoice:female"],
+                )
+                write_status(0, "creating_voice_anchor")
+                reset_seed()
+                generated_anchor: Any = None
+                anchor_waveform: Any = None
+                try:
+                    with torch.inference_mode():
+                        generated_anchor = model.generate(
+                            text=anchor_text,
+                            language=str(request.get("language") or "") or None,
+                            instruct=anchor_instruction,
+                            num_step=32,
+                            normalize_text=True,
+                            audio_chunk_duration=10.0,
+                            audio_chunk_threshold=8.0,
+                        )
+                    anchor_waveform = (
+                        generated_anchor[0]
+                        if isinstance(generated_anchor, (list, tuple))
+                        else generated_anchor
+                    )
+                    if isinstance(anchor_waveform, torch.Tensor):
+                        anchor_waveform = anchor_waveform.detach().float().cpu().numpy()
+                    anchor_waveform = np.asarray(anchor_waveform, dtype=np.float32).reshape(-1)
+                    if anchor_waveform.size < 240 or not np.isfinite(anchor_waveform).all():
+                        raise RuntimeError("OmniVoice returned an invalid narrator anchor.")
+                    anchor_path = status_path.parent / "narrator-anchor.wav"
+                    sample_rate = int(getattr(model, "sampling_rate", None) or _SAMPLE_RATE)
+                    sf.write(str(anchor_path), anchor_waveform, sample_rate, subtype="PCM_16")
+                    anchor_prompt = model.create_voice_clone_prompt(
+                        ref_audio=str(anchor_path),
+                        ref_text=anchor_text,
+                    )
+                finally:
+                    del generated_anchor, anchor_waveform
+
     write_status(0, "synthesizing")
-    for completed, item in enumerate(items, 1):
+    for completed, item in enumerate(synthesis_items, 1):
         write_status(completed - 1, "synthesizing", current=completed)
         text = str(item.get("text") or "").strip()
         if not text:
@@ -480,16 +692,31 @@ def _worker_main(request_path: str) -> int:
         )
         reference_path = str(item.get("reference_path") or "").strip()
         reference_text = str(item.get("reference_text") or "").strip()
+        voice_clone_prompt: Any = None
+        if reference_path:
+            prompt_key = (reference_path, reference_text)
+            voice_clone_prompt = prompt_cache.get(prompt_key)
+            if voice_clone_prompt is None:
+                voice_clone_prompt = model.create_voice_clone_prompt(
+                    ref_audio=reference_path,
+                    ref_text=reference_text or None,
+                )
+                prompt_cache[prompt_key] = voice_clone_prompt
+        elif speaker_mode == "single" and anchor_prompt is not None:
+            voice_clone_prompt = anchor_prompt
         generated: Any = None
         waveform: Any = None
         try:
+            # OmniVoice is generative. Resetting the same voice-specific seed
+            # before each utterance prevents random speaker-identity drift
+            # while text and prosody remain segment-specific.
+            reset_seed()
             with torch.inference_mode():
                 generated = model.generate(
                     text=text,
                     language=str(request.get("language") or "") or None,
-                    instruct=None if reference_path else instruction,
-                    ref_audio=reference_path or None,
-                    ref_text=reference_text or None,
+                    instruct=None if voice_clone_prompt is not None else instruction,
+                    voice_clone_prompt=voice_clone_prompt,
                     num_step=32,
                     normalize_text=True,
                     audio_chunk_duration=10.0,
@@ -509,8 +736,11 @@ def _worker_main(request_path: str) -> int:
             # model resident, but release per-utterance tensors immediately so
             # an 8 GB GPU does not accumulate allocator pressure until OOM.
             del generated, waveform
-            if device.startswith("cuda"):
-                torch.cuda.empty_cache()
+    if device.startswith("cuda"):
+        # Emptying the CUDA allocator after every sentence forces a device
+        # synchronization and defeats buffer reuse. Release cached blocks once
+        # after the complete batch instead.
+        torch.cuda.empty_cache()
     write_status(len(items), "completed")
     return 0
 

@@ -29,16 +29,16 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.space12
-        spacing: Theme.space8
+        anchors.margins: Theme.space8
+        spacing: Theme.space4
 
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.space8
 
             Rectangle {
-                Layout.preferredWidth: 30
-                Layout.preferredHeight: 30
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
                 radius: Theme.radiusSmall
                 color: Theme.blueMuted
 

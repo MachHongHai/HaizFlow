@@ -213,14 +213,15 @@ class TimelineRenderTests(unittest.TestCase):
                     str(root / "output.mp4"), "keep_ratio", SubtitleStyle(), CropSettings(), "video-id",
                     {"x_percent": 20, "y_percent": 78, "width_percent": 60, "height_percent": 7},
                     "HaizFlow",
+                    original_subtitle_removal_mode="blur",
                 )
             ass_text = (root / "positioned_subtitles.ass").read_text(encoding="utf-8-sig")
 
         command = captured["command"]
         self.assertIn("-filter_complex", command)
         filter_graph = command[command.index("-filter_complex") + 1]
-        self.assertIn("crop=1152:74:384:842[original_region]", filter_graph)
-        self.assertIn("gblur=sigma=13:steps=4,crop=1152:74:42:42", filter_graph)
+        self.assertIn("crop=1152:76:384:842[original_region]", filter_graph)
+        self.assertIn("gblur=sigma=14:steps=4,crop=1152:76:42:42", filter_graph)
         self.assertIn("0.94+0.06*min(1", filter_graph)
         self.assertIn("overlay=384:842", command[command.index("-filter_complex") + 1])
         self.assertNotIn("between(t", command[command.index("-filter_complex") + 1])
@@ -267,11 +268,12 @@ class TimelineRenderTests(unittest.TestCase):
                     str(root / "output.mp4"), "keep_ratio", style, CropSettings(), "video-id",
                     {"x_percent": 20, "y_percent": 78, "width_percent": 60, "height_percent": 7},
                     subtitle_layout_override=True,
+                    original_subtitle_removal_mode="blur",
                 )
 
         command = captured["command"]
         filter_graph = command[command.index("-filter_complex") + 1]
-        self.assertIn("crop=1152:74:384:842", filter_graph)
+        self.assertIn("crop=1152:76:384:842", filter_graph)
         self.assertIn("overlay=384:842", filter_graph)
 
     def test_ocr_cover_mode_ignores_a_stale_manual_subtitle_layout(self):
@@ -347,6 +349,20 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("0.94+0.06*min(1", filter_prefix)
         self.assertNotIn("between(t", filter_prefix)
         self.assertNotIn("drawbox", filter_prefix)
+
+    def test_removal_region_preserves_the_detected_bottom_edge_when_even_aligned(self):
+        region = {
+            "x_percent": 9.44,
+            "y_percent": 84.9,
+            "width_percent": 79.31,
+            "height_percent": 8.42,
+        }
+
+        result = render._source_subtitle_removal_region(region, 1280, 720)
+
+        # work4's OCR interval ends at 671.904px. The old origin+height
+        # flooring ended at 670px; exact edge quantization reaches 672px.
+        self.assertEqual(result, (120, 610, 1016, 62))
 
     def test_subtitle_patch_copies_real_pixels_from_an_adjacent_strip(self):
         filter_prefix = render._subtitle_patch_prefix(

@@ -1,109 +1,51 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-Dialog {
+FloatingToolDialog {
     id: root
 
     property string logText: ""
     property string detailText: ""
 
-    modal: true
-    focus: true
-    parent: Overlay.overlay
-    width: Math.min(1080, parent ? parent.width - 72 : 1080)
-    height: Math.min(760, parent ? parent.height - 72 : 760)
-    padding: 0
-    closePolicy: Popup.CloseOnEscape
-    x: Math.round((parent.width - width) / 2)
-    y: Math.round((parent.height - height) / 2)
-    header: null
-    footer: null
+    expandedWidth: 1080
+    expandedHeight: 760
+    toolTitle: I18n.t("Activity log")
+    toolSubtitle: root.detailText
 
-    background: Rectangle {
-        color: Theme.surface
-        radius: Theme.radius
-        border.width: 1
-        border.color: Theme.outlineStrong
-    }
-
-    contentItem: ColumnLayout {
-        spacing: 0
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: Theme.space16
+        spacing: Theme.space8
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 68
-            Layout.leftMargin: Theme.space20
-            Layout.rightMargin: Theme.space12
-            spacing: Theme.space12
+            spacing: Theme.space8
 
-            Rectangle {
-                Layout.preferredWidth: 34
-                Layout.preferredHeight: 34
-                radius: Theme.radiusSmall
-                color: Theme.blueMuted
-
-                AppIcon {
-                    anchors.centerIn: parent
-                    width: 20
-                    height: 20
-                    glyph: "\uE756"
-                    iconColor: Theme.blue
-                    iconSize: Theme.icon
-                }
-            }
-
-            ColumnLayout {
+            Text {
                 Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: 2
-
-                Text {
-                    Layout.fillWidth: true
-                    text: I18n.t("Activity log")
-                    color: Theme.text
-                    font.pixelSize: Theme.h3
-                    font.weight: Font.DemiBold
-                    textFormat: Text.PlainText
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: root.detailText
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.caption
-                    textFormat: Text.PlainText
-                    elide: Text.ElideMiddle
-                }
+                text: I18n.t("Processing diagnostics")
+                color: Theme.textMuted
+                font.pixelSize: Theme.caption
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
             }
 
-            IconButton {
-                glyph: "\uE8C8"
-                toolTipText: I18n.t("Copy")
+            AppButton {
+                text: I18n.t("Copy")
+                iconGlyph: "\uE8C8"
+                compact: true
+                tone: "secondary"
                 onClicked: activityLog.copyAll()
             }
-
-            IconButton {
-                glyph: "\uE711"
-                toolTipText: I18n.t("Close")
-                onClicked: root.close()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
         }
 
         LogViewer {
             id: activityLog
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.margins: Theme.space16
             text: root.logText
             emptyText: I18n.t("No logs loaded.")
         }

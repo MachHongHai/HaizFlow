@@ -553,12 +553,49 @@ def generate_voice_parts(
     pending = []
     current_video = get_video(video_id)
     current_files = dict((current_video.files if current_video else {}) or {})
+    speaker_mode = str(getattr(current_video, "speaker_mode", "single") or "single")
     clone_reference = str(current_files.get("voice_reference") or "")
     clone_transcript = str(current_files.get("voice_reference_transcript") or "")
+    source_segments = []
+    source_audio_path = ""
+    if speaker_mode == "multiple" and current_video is not None:
+        video_input = str(current_files.get("video_input") or "")
+        video_root = os.path.dirname(os.path.dirname(video_input)) if video_input else ""
+        source_segments_path = os.path.join(video_root, "temp", "source_segments.json") if video_root else ""
+        source_audio_path = str(current_files.get("speech_audio") or "")
+        if not source_audio_path and video_root:
+            source_audio_path = os.path.join(video_root, "temp", "audio.wav")
+        if source_segments_path and os.path.isfile(source_segments_path):
+            with open(source_segments_path, "r", encoding="utf-8") as source_file:
+                loaded_source_segments = json.load(source_file)
+            if isinstance(loaded_source_segments, list):
+                source_segments = loaded_source_segments
+        if not source_segments or not os.path.isfile(source_audio_path):
+            raise RuntimeError(
+                "Multiple-speaker OmniVoice mode requires the current source speech and timestamped source transcript."
+            )
     if voice == "omnivoice:clone" and (
         not clone_reference or not os.path.isfile(clone_reference) or not clone_transcript.strip()
     ):
         raise RuntimeError("OmniVoice voice cloning requires an authorised sample and its exact transcript.")
+
+    def source_reference_for(segment: dict) -> dict:
+        """Match edited subtitles to source speech by time, never by list position."""
+        if speaker_mode != "multiple" or not source_segments:
+            return {}
+        start = float(segment.get("start") or 0.0)
+        end = max(start, float(segment.get("end") or start))
+        midpoint = (start + end) / 2.0
+
+        def match_score(source: dict) -> tuple[float, float]:
+            source_start = float((source or {}).get("start") or 0.0)
+            source_end = max(source_start, float((source or {}).get("end") or source_start))
+            overlap = max(0.0, min(end, source_end) - max(start, source_start))
+            distance = abs(midpoint - ((source_start + source_end) / 2.0))
+            return overlap, -distance
+
+        return max((item for item in source_segments if isinstance(item, dict)), key=match_score, default={})
+
     for index, segment in enumerate(segments, 1):
         text = str((segment or {}).get("text") or "").strip() if isinstance(segment, dict) else ""
         if not text:
@@ -567,6 +604,7 @@ def generate_voice_parts(
         if not _is_valid_mp3(part_path):
             _remove_file(part_path)
             log_to_video(video_id, f"[TTS][QUEUED] provider=omnivoice segment={index}/{total} voice={voice}")
+            source_reference = source_reference_for(segment)
             pending.append(
                 {
                     "text": preprocess_text_for_tts(text),
@@ -575,6 +613,10 @@ def generate_voice_parts(
                     "index": str(index),
                     "reference_path": clone_reference if voice == "omnivoice:clone" else "",
                     "reference_text": clone_transcript if voice == "omnivoice:clone" else "",
+                    "source_audio_path": source_audio_path if speaker_mode == "multiple" else "",
+                    "source_start": str(source_reference.get("start", "")),
+                    "source_end": str(source_reference.get("end", "")),
+                    "source_text": str(source_reference.get("text", "")),
                 }
             )
     completed_before_worker = total - len(pending)
@@ -595,6 +637,7 @@ def generate_voice_parts(
             pending,
             video_id,
             language_id=target_language,
+            speaker_mode=speaker_mode,
             progress_callback=report_omnivoice_progress,
         )
     for index in range(1, total + 1):
