@@ -4,7 +4,7 @@
   "generator": "uv==0.11.19",
   "inputs": {
     "pyproject.toml": "f0cf5df73063d3fc597af9ebc257b88b96cf263ac3402b301b888bede248cc6d",
-    "requirements-build.in": "d93b98f9f85fc1de2af7e13e84230934c2b4de215f3932f032876bb0c0f1d7b0"
+    "requirements-build.in": "101d37625666182baf195b2fdd4a2d9ca8107fdebafcd1d9bee0ab5f2a10276a"
   },
   "lock_file": "requirements-lock-py313-win64.txt",
   "lock_sha256": "597ade4656ecded363fd545cf03ad2392a324331229ed78904beee92c332e88e"

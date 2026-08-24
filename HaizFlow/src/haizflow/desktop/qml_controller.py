@@ -31,6 +31,7 @@ from haizflow.desktop.models import (
     VideoListModel,
 )
 from haizflow.desktop.preview_media_controller import PreviewMediaController
+from haizflow.desktop.editor_preview_controller import EditorPreviewController
 from haizflow.desktop.audio_preview_controller import AudioPreviewController
 from haizflow.desktop.media_download_controller import MediaDownloadController
 from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
@@ -131,6 +132,7 @@ class HaizFlowController(QObject):
     # invalidate every Zernio binding on the page.
     tiktokPublishChanged = Signal()
     appAlertRequested = Signal(str, str, str)
+    editorPreviewChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -221,6 +223,7 @@ class HaizFlowController(QObject):
         self._status_message = "Ready"
         self._runtime_state = "ready" if os.getenv("HAIZFLOW_SMOKE_TEST") == "1" else "warming"
         self._preview_media = PreviewMediaController(self)
+        self._editor_preview = EditorPreviewController(self)
         self._audio_preview = AudioPreviewController(self)
         self._media_downloader = MediaDownloadController(self)
         self._tiktok_publisher = SocialPublishController(self)
@@ -434,6 +437,9 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        editor_preview = getattr(self, "_editor_preview", None)
+        if editor_preview is not None:
+            editor_preview.release()
         publisher = getattr(self, "_tiktok_publisher", None)
         if publisher is not None:
             publisher.shutdown()
@@ -1011,7 +1017,7 @@ class HaizFlowController(QObject):
         options = self._voice_options_for_language(self._target_language, self._tts_provider)
         # Selecting the clone entry opens its setup dialog.  Do not disable the
         # entry before a sample exists, otherwise the user has no path to add
-        # the authorised sample and exact transcript.
+        # an authorised reference recording.
         return [{**item, "available": True} for item in options]
 
     @Property(str, notify=selectedVideoChanged)
@@ -1041,8 +1047,8 @@ class HaizFlowController(QObject):
         )
         # This method supplies the project-wide and batch editors. Voice
         # cloning is deliberately per-video because every source needs its own
-        # authorised sample and exact transcript. The selected-video property
-        # above enables it only when those files actually exist.
+        # authorised reference recording. The selected-video property above
+        # enables it only when that file actually exists.
         return [{**item, "available": item.get("voice") != "omnivoice:clone"} for item in options]
 
     @Property(int, notify=ttsVoiceOptionsChanged)
@@ -1326,6 +1332,145 @@ class HaizFlowController(QObject):
             return segments if isinstance(segments, list) else []
         except (OSError, json.JSONDecodeError):
             return []
+
+    @Property("QVariantMap", notify=selectedVideoChanged)
+    def reviewPreviewMedia(self):
+        """Describe the real media layers used by the subtitle editor preview.
+
+        Keeping this mapping in Python avoids duplicating workspace discovery
+        rules in QML.  A completed run uses its already-mixed final audio.  A
+        pre-TTS review instead previews the source/Demucs bed and optional
+        background music with the same persisted volume settings as render.
+        """
+        video = self._selected_video()
+        if not video:
+            return {}
+
+        files = dict(getattr(video, "files", {}) or {})
+
+        def existing_url(*candidates: str) -> str:
+            for candidate in candidates:
+                path = str(candidate or "").strip()
+                if path and os.path.isfile(path) and os.path.getsize(path) > 0:
+                    return QUrl.fromLocalFile(os.path.abspath(path)).toString()
+            return ""
+
+        video_dir = video_store.get_video_dir(video.video_id)
+        rendered_video_source = existing_url(files.get("final_video") or "")
+        voice_source = existing_url(
+            files.get("voice_output") or "",
+            os.path.join(video_dir, "temp", "voice_final.wav"),
+        )
+        separated_background_source = existing_url(files.get("background_audio") or "")
+        background_music_source = existing_url(files.get("background_music") or "")
+
+        ocr_region = {}
+        ocr_cache = os.path.join(video_dir, "temp", "original_subtitle_region.json")
+        try:
+            with open(ocr_cache, "r", encoding="utf-8") as cache_file:
+                payload = json.load(cache_file)
+            candidate = payload.get("region", {}) if isinstance(payload, dict) else {}
+            if isinstance(candidate, dict):
+                required = {"x_percent", "y_percent", "width_percent", "height_percent"}
+                if required.issubset(candidate):
+                    ocr_region = candidate
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+
+        separation_enabled = bool(getattr(video, "enable_audio_separation", False))
+        subtitle_style = getattr(video, "subtitle_style", None)
+        crop = getattr(video, "crop", None)
+
+        def serializable_settings(value) -> dict:
+            """Return an immutable QML-friendly snapshot of a Pydantic setting."""
+            if value is None:
+                return {}
+            if isinstance(value, dict):
+                return dict(value)
+            model_dump = getattr(value, "model_dump", None)
+            if callable(model_dump):
+                payload = model_dump()
+                return dict(payload) if isinstance(payload, dict) else {}
+            legacy_dict = getattr(value, "dict", None)
+            if callable(legacy_dict):
+                payload = legacy_dict()
+                return dict(payload) if isinstance(payload, dict) else {}
+            return {}
+
+        # A completed output is the only authoritative final mix: voice_final
+        # is the timeline WAV and may not reflect the newest editor draft.
+        # QML initially opens this published output for instant, exact video
+        # and audio while a new visual proxy is prepared in the background.
+        final_mix_source = rendered_video_source
+        use_final_mix = bool(final_mix_source)
+        use_separated_background = bool(not use_final_mix and separation_enabled and separated_background_source)
+        return {
+            "renderedVideoSource": rendered_video_source,
+            "finalMixSource": final_mix_source,
+            "voiceSource": voice_source if not use_final_mix else "",
+            "backgroundSource": separated_background_source if use_separated_background else "",
+            "musicSource": background_music_source if not use_final_mix else "",
+            "useVideoAudio": not use_final_mix and not use_separated_background,
+            "videoVolume": max(0.0, min(1.0, float(getattr(video, "original_video_volume", 60)) / 100.0)),
+            "backgroundVolume": max(
+                0.0, min(1.0, float(getattr(video, "original_video_volume", 60)) / 100.0)
+            ),
+            "musicVolume": max(
+                0.0, min(1.0, float(getattr(video, "background_music_volume", 30)) / 100.0)
+            ),
+            "ttsVolume": max(0.0, min(1.0, float(getattr(video, "tts_volume", 100)) / 100.0)),
+            # Visual settings are copied from the selected video rather than
+            # read from the controller's current draft.  This prevents an
+            # editor opened for video B from inheriting video A's subtitle
+            # position, size or crop while navigation/settings signals race.
+            "subtitleStyle": serializable_settings(subtitle_style),
+            "subtitleLayoutOverride": bool(getattr(video, "subtitle_layout_override", False)),
+            "outputFormat": str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
+            "crop": serializable_settings(crop),
+            "audioSeparationEnabled": separation_enabled,
+            "speakerMode": str(getattr(video, "speaker_mode", "single") or "single"),
+            "ttsProvider": str(getattr(video, "tts_provider", "edge") or "edge"),
+            "ttsVoice": str(getattr(video, "tts_voice", "") or ""),
+            "removeOriginalSubtitles": bool(getattr(video, "remove_original_subtitles", True)),
+            "removalMode": str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
+            "watermarkText": str(getattr(video, "watermark_text", "") or ""),
+            "ocrRegion": ocr_region,
+            "videoWidth": max(0, int(getattr(video, "video_width", 0) or 0)),
+            "videoHeight": max(0, int(getattr(video, "video_height", 0) or 0)),
+        }
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewSource(self):
+        return self._editor_preview.source
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewAudioSource(self):
+        """Return the atomically published editor mix for the current draft."""
+        return self._editor_preview.audio_source
+
+    @Property(bool, notify=editorPreviewChanged)
+    def editorPreviewBusy(self):
+        return self._editor_preview.busy
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewError(self):
+        return self._editor_preview.error
+
+    @Property(float, notify=editorPreviewChanged)
+    def editorPreviewStart(self):
+        return self._editor_preview.start_seconds
+
+    @Property(float, notify=editorPreviewChanged)
+    def editorPreviewDuration(self):
+        return self._editor_preview.duration_seconds
+
+    @Property(float, notify=editorPreviewChanged)
+    def editorPreviewProgress(self):
+        return self._editor_preview.progress
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewStage(self):
+        return self._editor_preview.stage
 
     @Property(bool, notify=selectedVideoChanged)
     def canEditSelectedSubtitles(self):
@@ -1699,6 +1844,23 @@ class HaizFlowController(QObject):
     @Slot(str, str, result=bool)
     def setVoiceCloneReference(self, path, transcript):
         return HaizFlowController._project_import_for(self).set_voice_reference(path, transcript)
+
+    @Slot(str, int, result="QVariantMap")
+    def voiceCloneReferenceAnalysis(self, path, bucket_count):
+        return HaizFlowController._project_import_for(self).analyze_voice_reference(path, bucket_count)
+
+    @Slot(result=QUrl)
+    def prepareVoiceCloneRecording(self):
+        path = HaizFlowController._project_import_for(self).prepare_voice_reference_recording()
+        return QUrl.fromLocalFile(path) if path else QUrl()
+
+    @Slot(str, result=bool)
+    def saveRecordedVoiceCloneReference(self, path):
+        return HaizFlowController._project_import_for(self).save_recorded_voice_reference(path)
+
+    @Slot(str)
+    def discardVoiceCloneRecording(self, path):
+        HaizFlowController._project_import_for(self).discard_voice_reference_recording(path)
 
     @Slot(result=bool)
     def clearVoiceCloneReference(self):
@@ -2109,6 +2271,14 @@ class HaizFlowController(QObject):
     @Slot(str, result=bool)
     def saveTranslationReviewDraft(self, payload):
         return HaizFlowController._project_commands_for(self).save_translation_review_draft(payload)
+
+    @Slot(str, float, result=bool)
+    def requestEditorPreview(self, payload, playhead_seconds):
+        return self._editor_preview.request(payload, playhead_seconds)
+
+    @Slot()
+    def releaseEditorPreview(self):
+        self._editor_preview.release()
 
     @Slot(int)
     def selectVideo(self, row: int):

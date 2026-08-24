@@ -108,6 +108,17 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "exceeding its 1000ms slot by 100ms"):
             audio_timeline._trim_tempo_rounding(audio, 1000)
 
+    def test_atomic_audio_replace_retries_a_transient_windows_media_lock(self):
+        locked = PermissionError(5, "Access is denied")
+        with (
+            mock.patch.object(audio_timeline.os, "replace", side_effect=[locked, locked, None]) as replace,
+            mock.patch.object(audio_timeline.time, "sleep") as sleep,
+        ):
+            audio_timeline._replace_exported_audio("new.wav", "voice_final.wav")
+
+        self.assertEqual(replace.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

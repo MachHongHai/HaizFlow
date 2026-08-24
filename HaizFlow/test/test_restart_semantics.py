@@ -88,6 +88,52 @@ class RestartCheckpointTests(unittest.TestCase):
         )
         host._enqueue_video.assert_called_once_with(video.video_id)
 
+    def test_completed_video_subtitle_edit_regenerates_only_downstream_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            transcript = Path(temp_dir) / "translated.json"
+            transcript.write_text(
+                '[{"start": 0, "end": 1, "text": "old"}]',
+                encoding="utf-8",
+            )
+            video = SimpleNamespace(
+                video_id="video-done",
+                status="done",
+                files={"transcript_json": str(transcript)},
+                checkpoints={"translation": "translation-signature", "voice": "old", "render": "old"},
+            )
+            host = SimpleNamespace(
+                _selected_video_id=video.video_id,
+                _enqueue_video=mock.Mock(return_value=True),
+                selectedVideoChanged=SimpleNamespace(emit=mock.Mock()),
+            )
+            controller = ProjectCommandsController(host)
+
+            with (
+                mock.patch(
+                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    return_value=video,
+                ),
+                mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+            ):
+                approved = controller.approve_translation_review(
+                    '[{"start": 0, "end": 1, "text": "edited after auto"}]'
+                )
+
+            saved = json.loads(transcript.read_text(encoding="utf-8"))
+
+        self.assertTrue(approved)
+        self.assertEqual(saved[0]["text"], "edited after auto")
+        self.assertEqual(update_video.call_args.kwargs["status"], "pending")
+        self.assertEqual(update_video.call_args.kwargs["resume_step"], "creating_subtitle")
+        self.assertEqual(update_video.call_args.kwargs["processing_elapsed_seconds"], 0.0)
+        self.assertIsNone(update_video.call_args.kwargs["started_at"])
+        self.assertEqual(
+            update_video.call_args.kwargs["checkpoints"],
+            {"translation": "translation-signature"},
+        )
+        host._enqueue_video.assert_called_once_with(video.video_id)
+
     def test_changed_voice_signature_discards_all_old_voice_parts_before_tts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -166,7 +212,7 @@ class RestartCheckpointTests(unittest.TestCase):
                 "single",
                 process_video._file_state(""),
                 "",
-                "omnivoice-anchor-or-source-speaker-r4",
+                "omnivoice-dedicated-short-anchor-or-source-speaker-r5",
             )
             video = SimpleNamespace(
                 video_id="video-1",

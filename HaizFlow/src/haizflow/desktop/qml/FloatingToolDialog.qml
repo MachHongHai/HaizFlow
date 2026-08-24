@@ -11,6 +11,7 @@ Dialog {
     property string toolSubtitle: ""
     property int expandedWidth: 900
     property int expandedHeight: 700
+    property bool openMaximized: false
     property bool maximized: false
     property real restoreX: 0
     property real restoreY: 0
@@ -52,9 +53,29 @@ Dialog {
         }
     }
 
-    onOpened: placeInCenter()
-    onClosed: {
-        maximized = false
+    function maximize() {
+        if (!parent || maximized)
+            return
+        restoreX = x
+        restoreY = y
+        maximized = true
+        x = 8
+        y = 8
+    }
+
+    Connections {
+        target: root
+
+        function onOpened() {
+            if (root.openMaximized)
+                Qt.callLater(root.maximize)
+            else
+                root.placeInCenter()
+        }
+
+        function onClosed() {
+            root.maximized = false
+        }
     }
 
     enter: Transition {

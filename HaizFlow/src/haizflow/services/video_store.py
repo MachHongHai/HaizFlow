@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -106,7 +107,22 @@ def _legacy_video_dir(video_id: str) -> str:
     return os.path.join(LEGACY_VIDEO_WORKSPACES_DIR, video_id)
 
 
-def _project_video_dir(video_id: str, config: VideoConfig) -> str:
+def _workspace_label(original_filename: str) -> str:
+    stem = os.path.splitext(os.path.basename(original_filename))[0]
+    cleaned = "".join(
+        character if character.isalnum() or character in {"-", "_", " "} else "_"
+        for character in stem
+    ).strip(" .")
+    return (cleaned or "video")[:48].rstrip(" .") or "video"
+
+
+def _compact_video_workspace_name(video_id: str, original_filename: str) -> str:
+    """Keep workspaces recognizable without exposing a full UUID in the path."""
+    compact_id = hashlib.sha256(video_id.encode("utf-8")).hexdigest()[:10]
+    return f"{_workspace_label(original_filename)}--{compact_id}"
+
+
+def _project_video_dir(video_id: str, config: VideoConfig, original_filename: str = "") -> str:
     if config.project_name.strip() and config.project_directory.strip():
         videos_dir = (
             project_store.project_videos_dir_for_key(config.project_key)
@@ -115,9 +131,25 @@ def _project_video_dir(video_id: str, config: VideoConfig) -> str:
         )
         return os.path.join(
             videos_dir,
-            video_id,
+            _compact_video_workspace_name(video_id, original_filename),
         )
     return _legacy_video_dir(video_id)
+
+
+def _workspace_video_id(workspace: str) -> str:
+    """Read the stable ID from a workspace, regardless of its folder name."""
+    for metadata_name in ("video.json", _LEGACY_METADATA_NAME):
+        metadata_path = os.path.join(workspace, metadata_name)
+        if not os.path.isfile(metadata_path):
+            continue
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as file:
+                value = str(json.load(file).get("video_id") or "").strip()
+            if value:
+                return value
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+            return ""
+    return ""
 
 
 def _find_video_dir(video_id: str) -> str:
@@ -132,13 +164,22 @@ def _find_video_dir(video_id: str) -> str:
         return legacy
 
     for project in project_store.list_projects():
-        candidate = os.path.join(
-            project_store.project_videos_dir_for_key(project["key"]),
-            video_id,
-        )
+        videos_dir = project_store.project_videos_dir_for_key(project["key"])
+        candidate = os.path.join(videos_dir, video_id)
         if os.path.isdir(candidate):
             _VIDEO_DIR_CACHE[video_id] = candidate
             return candidate
+        if not os.path.isdir(videos_dir):
+            continue
+        for name in os.listdir(videos_dir):
+            candidate = os.path.join(videos_dir, name)
+            if not os.path.isdir(candidate) or name.startswith("."):
+                continue
+            discovered_id = _workspace_video_id(candidate)
+            if discovered_id:
+                _VIDEO_DIR_CACHE.setdefault(discovered_id, candidate)
+            if discovered_id == video_id:
+                return candidate
     return legacy
 
 
@@ -171,7 +212,7 @@ def get_video_logs_path(video_id: str) -> str:
 
 
 def create_video(video_id: str, original_filename: str, config: VideoConfig, video_ext: str = ".mp4") -> VideoInfo:
-    video_dir = _project_video_dir(video_id, config)
+    video_dir = _project_video_dir(video_id, config, original_filename)
     _VIDEO_DIR_CACHE[video_id] = video_dir
     os.makedirs(video_dir, exist_ok=True)
     os.makedirs(os.path.join(video_dir, "input"), exist_ok=True)
@@ -195,7 +236,7 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
                 character if character.isalnum() or character in {"-", "_", " "} else "_"
                 for character in os.path.splitext(original_filename)[0]
             ).strip()
-            export_dir = os.path.join(export_dir, f"{safe_stem or 'video'}-{video_id[:8]}")
+            export_dir = os.path.join(export_dir, f"{safe_stem or 'video'}--{video_id[:8]}")
         os.makedirs(export_dir, exist_ok=True)
         final_video = os.path.join(export_dir, "dubbed_video.mp4")
     else:
@@ -841,8 +882,14 @@ def _project_video_ids() -> list[str]:
         if not os.path.isdir(videos_dir):
             continue
         for name in os.listdir(videos_dir):
-            if os.path.isdir(os.path.join(videos_dir, name)):
-                video_ids.append(name)
+            workspace = os.path.join(videos_dir, name)
+            if not os.path.isdir(workspace) or name.startswith("."):
+                continue
+            video_id = _workspace_video_id(workspace)
+            if not video_id:
+                continue
+            _VIDEO_DIR_CACHE[video_id] = workspace
+            video_ids.append(video_id)
     return video_ids
 
 
@@ -990,7 +1037,7 @@ def _remove_tree_verified(path: str) -> None:
 
 _BATCH_EXPORT_DIRECTORY_PATTERN = re.compile(r".+-[0-9a-f]{8}$", re.IGNORECASE)
 _VIDEO_WORKSPACE_PATTERN = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    r"(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|.+--[0-9a-f]{10})",
     re.IGNORECASE,
 )
 
@@ -1046,8 +1093,9 @@ def cleanup_batch_project_orphans(project_key_value: str) -> list[str]:
 
     Batch exports live outside each video workspace so deleting only
     ``videos/<id>`` used to leave a second output folder behind.  Restrict the
-    sweep to UUID workspaces and HaizFlow's ``<label>-<short-id>`` export
-    folders; arbitrary user folders in the project root are never touched.
+    sweep to UUID workspaces and HaizFlow-owned export folders (legacy
+    ``<label>-<short-id>`` or compact ``<label>--<short-id>``); arbitrary user
+    folders in the project root are never touched.
     """
     project = project_store.get_project(project_key_value)
     if not project or project_store.normalize_project_type(project.get("project_type")) != "batch":
@@ -1063,7 +1111,8 @@ def cleanup_batch_project_orphans(project_key_value: str) -> list[str]:
             workspace = os.path.abspath(os.path.join(videos_root, name))
             if not os.path.isdir(workspace) or name.startswith("."):
                 continue
-            video = get_video(name)
+            workspace_video_id = _workspace_video_id(workspace)
+            video = get_video(workspace_video_id) if workspace_video_id else None
             belongs_to_project = bool(
                 video
                 and video.project_type == "batch"
@@ -1087,9 +1136,10 @@ def cleanup_batch_project_orphans(project_key_value: str) -> list[str]:
             if not _VIDEO_WORKSPACE_PATTERN.fullmatch(name):
                 continue
             _remove_tree_verified(workspace)
-            _VIDEO_DIR_CACHE.pop(name, None)
-            _VIDEO_METADATA_CACHE.pop(name, None)
-            _mark_metadata_changed(name)
+            if workspace_video_id:
+                _VIDEO_DIR_CACHE.pop(workspace_video_id, None)
+                _VIDEO_METADATA_CACHE.pop(workspace_video_id, None)
+                _mark_metadata_changed(workspace_video_id)
             removed.append(workspace)
 
     if os.path.isdir(exports_root):

@@ -77,7 +77,13 @@ def safe_project_name(project_name: str) -> str:
 
 def _storage_label(project_name: str) -> str:
     """Keep UUID-backed folder names readable without risking long Windows paths."""
-    return safe_project_name(project_name)[:64].rstrip(" .") or "project"
+    return safe_project_name(project_name)[:48].rstrip(" .") or "project"
+
+
+def _compact_storage_name(project_name: str, project_id: str) -> str:
+    """Return a readable folder name while keeping the UUID in metadata only."""
+    compact_id = project_id.replace("-", "")[:10].lower()
+    return f"{_storage_label(project_name)}--{compact_id}"
 
 
 def validate_new_project_name(project_name: str) -> str:
@@ -631,7 +637,7 @@ def create_project(project_name: str, project_directory: str, project_type: str)
         while True:
             project_id = str(uuid.uuid4())
             key = project_identity_key(project_id)
-            storage_name = f"{_storage_label(name)}--{project_id}"
+            storage_name = _compact_storage_name(name, project_id)
             root = _validate_project_root(os.path.join(directory, storage_name), directory)
             if not os.path.exists(root) and not any(item.get("key") == key for item in records):
                 break
@@ -645,7 +651,7 @@ def create_project(project_name: str, project_directory: str, project_type: str)
             "project_directory": directory,
             "project_root": root,
             "storage_name": storage_name,
-            "storage_layout": "uuid",
+            "storage_layout": "compact-v1",
             "project_type": kind,
             "created_at": now,
             "updated_at": now,

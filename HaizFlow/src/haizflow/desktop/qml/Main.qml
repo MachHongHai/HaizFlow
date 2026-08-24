@@ -39,6 +39,15 @@ ApplicationWindow {
     readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
+    readonly property bool globalNavigationBlocked: projectSetupDialog.visible
+        || urlImportDialog.visible
+        || downloadProjectSourceDialog.visible
+        || aboutDialog.visible
+        || settingsDialog.visible
+        || batchSettingsDialog.visible
+        || translationReviewDialog.visible
+        || appAlertDialog.visible
+        || modelSetupOverlayLoader.active
     // Loader.item is a QObject to qmllint, but its source component is DownloadsPage.
     // qmllint disable missing-property
     readonly property bool downloadCanGoBack: currentRoute === routeDownloadWorkspace
@@ -50,8 +59,8 @@ ApplicationWindow {
         && downloadWorkspaceLoader.item !== null
         && downloadWorkspaceLoader.item.canGoForward
     // qmllint enable missing-property
-    readonly property bool canNavigateBack: downloadCanGoBack || routeCanGoBack
-    readonly property bool canNavigateForward: downloadCanGoForward || routeCanGoForward
+    readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
+    readonly property bool canNavigateForward: !globalNavigationBlocked && (downloadCanGoForward || routeCanGoForward)
 
     // Reconcile in the background whenever the user returns from a browser.
     // This catches dashboard disconnects immediately without disabling the UI.
@@ -167,6 +176,8 @@ ApplicationWindow {
     }
 
     function navigateBack() {
+        if (globalNavigationBlocked)
+            return
         if (downloadCanGoBack) {
             // qmllint disable missing-property
             downloadWorkspaceLoader.item.navigateBack()
@@ -183,6 +194,8 @@ ApplicationWindow {
     }
 
     function navigateForward() {
+        if (globalNavigationBlocked)
+            return
         if (downloadCanGoForward) {
             // qmllint disable missing-property
             downloadWorkspaceLoader.item.navigateForward()
@@ -212,6 +225,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "Ctrl+,"
+        enabled: !root.globalNavigationBlocked
         onActivated: settingsDialog.open()
     }
 

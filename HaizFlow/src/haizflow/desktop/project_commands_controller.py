@@ -836,6 +836,15 @@ class ProjectCommandsController:
             return False
         translation_checkpoint = video.checkpoints.get("translation")
         checkpoints = {"translation": translation_checkpoint} if translation_checkpoint else {}
+        elapsed_updates = {}
+        if video.status == "done":
+            # A post-processing subtitle correction is a new downstream pass,
+            # not a continuation of the original full pipeline duration.
+            elapsed_updates = {
+                "processing_elapsed_seconds": 0.0,
+                "started_at": None,
+                "estimated_remaining_seconds": None,
+            }
         video_store.update_video(
             video.video_id,
             review_approved=True,
@@ -845,6 +854,7 @@ class ProjectCommandsController:
             runtime_recovery_step="",
             checkpoints=checkpoints,
             step_detail="Queued to create dub",
+            **elapsed_updates,
         )
         video_store.log_to_video(
             video.video_id,

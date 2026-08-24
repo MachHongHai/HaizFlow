@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
-from PySide6.QtQuick import QQuickItem
+from PySide6.QtQuick import QQuickItem, QQuickView
 from PySide6.QtTest import QTest
 
 
@@ -339,6 +339,7 @@ ApplicationWindow {{
 
     def test_translation_editor_auto_saves_and_tool_windows_have_no_minimize_control(self):
         editor = (QML_DIR / "TranslationReviewDialog.qml").read_text(encoding="utf-8")
+        timeline = (QML_DIR / "SubtitleTimeline.qml").read_text(encoding="utf-8")
         floating_tool = (QML_DIR / "FloatingToolDialog.qml").read_text(encoding="utf-8")
 
         self.assertIn("modal: true", editor)
@@ -346,10 +347,136 @@ ApplicationWindow {{
         self.assertIn("function selectSegment(index)", editor)
         self.assertIn("StandardKey.Undo", editor)
         self.assertIn("StandardKey.Redo", editor)
+        self.assertIn("openMaximized: true", editor)
+        self.assertIn("id: reviewVideoOutput", editor)
+        self.assertIn("VideoOutput.PreserveAspectFit", editor)
+        self.assertIn("AppController.requestEditorPreview", editor)
+        self.assertIn("AppController.editorPreviewSource", editor)
+        self.assertNotIn("seekPreviewRenderTimer", editor)
+        self.assertIn("Seeking never invalidates the visual cache", editor)
+        self.assertNotIn("videoPlayer.source = AppController.selectedInputSource;\n            resumeAfterPreview", editor)
+        self.assertIn("AppController.releaseEditorPreview();", editor)
+        self.assertIn("AppController.reviewPreviewMedia", editor)
+        self.assertNotIn("previewMedia.subtitleStyle", editor)
+        self.assertNotIn("AppController.subtitleFontSize", editor)
+        self.assertNotIn("AppController.subtitlePositionXPercent", editor)
+        self.assertNotIn("AppController.subtitlePositionYPercent", editor)
+        self.assertNotIn("id: watermarkPreview", editor)
+        self.assertIn("id: finalMixPlayer", editor)
+        self.assertIn("id: backgroundPlayer", editor)
+        self.assertIn("id: musicPlayer", editor)
+        self.assertIn("function reloadPreviewAudio()", editor)
+        self.assertIn("root.reloadPreviewAudio();", editor)
+        self.assertNotIn("OCR region", editor)
+        self.assertNotIn("Vùng OCR", editor)
+        self.assertIn("SplitView", editor)
+        self.assertIn("property bool videoFullscreen", editor)
+        self.assertIn("root.postProcessingEdit", editor)
+        self.assertIn("SubtitleTimeline", editor)
+        self.assertIn("function commitSegmentTiming", editor)
+        self.assertNotIn("function addSubtitleAtPlayhead", editor)
+        self.assertNotIn("function mergeSelectedWithNext", editor)
+        self.assertNotIn("function deleteSelected", editor)
+        self.assertNotIn("function splitSelected", editor)
+        self.assertNotIn("SpinBox", editor)
+        self.assertIn("WheelHandler", timeline)
+        self.assertIn("target: null", timeline)
+        self.assertIn("interactive: !root.editingClip", timeline)
+        self.assertIn("preventStealing: true", timeline)
+        self.assertIn("function zoomAt", timeline)
+        self.assertIn("function resetZoom", timeline)
+        self.assertIn("timingCommitted", timeline)
+        self.assertIn("id: leftHandle", timeline)
+        self.assertIn("id: rightHandle", timeline)
+        self.assertIn("property real zoomFactor: 1", timeline)
+        self.assertNotIn('I18n.t("Snap")', timeline)
         self.assertNotIn('I18n.t("Save draft")', editor)
         self.assertIn("function toggleMaximized()", floating_tool)
         self.assertNotIn("property bool collapsed", floating_tool)
         self.assertNotIn('I18n.t("Minimize")', floating_tool)
+
+    def test_subtitle_timeline_component_loads_with_editable_segments(self):
+        engine = QQmlEngine()
+        component = QQmlComponent(
+            engine, QUrl.fromLocalFile(str(QML_DIR / "SubtitleTimeline.qml"))
+        )
+        self.assertTrue(
+            component.isReady(),
+            "\n".join(error.toString() for error in component.errors()),
+        )
+        timeline = component.createWithInitialProperties(
+            {
+                "width": 960.0,
+                "height": 250.0,
+                "duration": 18.0,
+                "segments": [
+                    {"start": 0.5, "end": 2.4, "text": "First subtitle"},
+                    {"start": 3.0, "end": 5.2, "text": "Second subtitle"},
+                ],
+            }
+        )
+        self.assertIsNotNone(
+            timeline, "\n".join(error.toString() for error in component.errors())
+        )
+        try:
+            self.app.processEvents()
+            self.assertEqual(timeline.property("zoomFactor"), 1.0)
+            self.assertGreater(timeline.property("pixelsPerSecond"), 0)
+        finally:
+            timeline.deleteLater()
+            engine.deleteLater()
+            self.app.processEvents()
+
+    def test_subtitle_timeline_wheel_zoom_keeps_clip_dragging_available(self):
+        view = QQuickView()
+        view.setResizeMode(QQuickView.SizeRootObjectToView)
+        view.setSource(QUrl.fromLocalFile(str(QML_DIR / "SubtitleTimeline.qml")))
+        self.assertEqual(view.status(), QQuickView.Ready)
+        view.resize(960, 250)
+        timeline = view.rootObject()
+        timeline.setProperty("duration", 18.0)
+        timeline.setProperty(
+            "segments",
+            [
+                {"start": 0.5, "end": 2.4, "text": "First subtitle"},
+                {"start": 3.0, "end": 5.2, "text": "Second subtitle"},
+            ],
+        )
+        commits = []
+        timeline.timingCommitted.connect(
+            lambda index, start, end: commits.append((index, start, end))
+        )
+        try:
+            view.show()
+            QTest.qWaitForWindowExposed(view)
+            QTest.qWait(30)
+
+            QTest.wheelEvent(
+                view,
+                QPoint(180, 150),
+                QPoint(0, 120),
+                QPoint(),
+                Qt.NoModifier,
+                Qt.ScrollUpdate,
+            )
+            QTest.qWait(30)
+            self.assertGreater(timeline.property("zoomFactor"), 1.0)
+
+            # Drag the body of the first subtitle after zooming. A transparent
+            # wheel overlay used to steal this gesture and made clips appear
+            # editable only at the initial zoom level.
+            QTest.mousePress(view, Qt.LeftButton, Qt.NoModifier, QPoint(145, 155))
+            QTest.mouseMove(view, QPoint(205, 155), 20)
+            QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, QPoint(205, 155))
+            QTest.qWait(30)
+            self.assertEqual(len(commits), 1)
+            self.assertEqual(commits[0][0], 0)
+            self.assertGreater(commits[0][1], 0.5)
+            self.assertFalse(timeline.property("editingClip"))
+        finally:
+            view.close()
+            view.deleteLater()
+            self.app.processEvents()
 
     def test_batch_workspace_and_theme_use_distinct_semantic_tones(self):
         batch_page = (QML_DIR / "BatchPage.qml").read_text(encoding="utf-8")
@@ -567,6 +694,38 @@ ApplicationWindow {{
         self.assertIn("id: modelSetupOverlayLoader", main)
         self.assertIn("active: AppController.modelSetupVisible", main)
         self.assertIn("sourceComponent: Component", main)
+
+    def test_voice_clone_uses_an_audio_sample_and_supports_in_app_recording(self):
+        dialog = (QML_DIR / "VoiceCloneDialog.qml").read_text(encoding="utf-8")
+        controller = (ROOT / "src" / "haizflow" / "desktop" / "qml_controller.py").read_text(encoding="utf-8")
+
+        self.assertIn("CaptureSession", dialog)
+        self.assertIn("MediaRecorder", dialog)
+        self.assertIn("prepareVoiceCloneRecording", dialog)
+        self.assertIn("saveRecordedVoiceCloneReference", dialog)
+        self.assertIn("voiceCloneReferenceAnalysis", dialog)
+        self.assertIn("samplePlayer.position / playableDurationMs", dialog)
+        self.assertIn("root.waveformPeaks[index]", dialog)
+        self.assertIn("samplePlayer", dialog)
+        self.assertIn("Record again", dialog)
+        self.assertNotIn("Math.sin", dialog)
+        self.assertNotIn("TextArea", dialog)
+        self.assertNotIn("Save voice", dialog)
+        self.assertNotIn("Remove sample", dialog)
+        self.assertIn("def prepareVoiceCloneRecording", controller)
+        self.assertIn("def saveRecordedVoiceCloneReference", controller)
+
+    def test_processing_settings_use_one_multiple_speaker_option_and_close_only_help(self):
+        settings = (QML_DIR / "ProcessingSettingsForm.qml").read_text(encoding="utf-8")
+        help_label = (QML_DIR / "SettingLabel.qml").read_text(encoding="utf-8")
+
+        self.assertIn('I18n.t("Detect multiple speakers")', settings)
+        self.assertIn('speakerModeEdited(checked ? "multiple" : "single")', settings)
+        self.assertNotIn('I18n.t("One voice")', settings)
+        self.assertNotIn('I18n.t("Multiple speakers")', settings)
+        self.assertIn("Popup.CloseOnEscape | Popup.CloseOnPressOutside", help_label)
+        self.assertIn('I18n.t("Close")', help_label)
+        self.assertNotIn("Maximize", help_label)
 
 
 if __name__ == "__main__":

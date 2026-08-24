@@ -407,6 +407,15 @@ class TtsReliabilityTests(unittest.TestCase):
             "first source voice",
         ])
 
+    def test_omnivoice_cuda_engine_failure_triggers_cpu_fallback(self):
+        from haizflow.pipeline.omnivoice_tts import _is_cuda_resource_failure
+
+        self.assertTrue(
+            _is_cuda_resource_failure(
+                "RuntimeError: GET was unable to find an engine to execute this computation"
+            )
+        )
+
     def test_omnivoice_presets_use_the_sdk_instruction_vocabulary(self):
         from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES
         from haizflow.pipeline.omnivoice_tts import OMNIVOICE_VOICE_INSTRUCTIONS

@@ -683,7 +683,13 @@ def _original_subtitle_removal_prefix(
     return _subtitle_blur_prefix(region, source_width, source_height)
 
 
-def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
+def _watermark_filter(
+    text: str,
+    output_width: int,
+    output_height: int,
+    *,
+    time_offset_seconds: float = 0.0,
+) -> str:
     """Return a polished, continuously moving creator watermark filter."""
     normalized = " ".join(str(text or "").split())[:80]
     if not normalized:
@@ -714,8 +720,9 @@ def _watermark_filter(text: str, output_width: int, output_height: int) -> str:
     )
     # Two unequal periods keep the mark drifting through the whole frame
     # instead of settling on a predictable diagonal or covering one subject.
-    x = "(W-text_w)*(0.08+0.84*(0.5+0.5*sin(2*PI*t/31)))"
-    y = "(H-text_h)*(0.10+0.80*(0.5+0.5*sin(2*PI*t/43+1.2)))"
+    timeline = "t" if abs(time_offset_seconds) < 0.0005 else f"(t+{time_offset_seconds:.6f})"
+    x = f"(W-text_w)*(0.08+0.84*(0.5+0.5*sin(2*PI*{timeline}/31)))"
+    y = f"(H-text_h)*(0.10+0.80*(0.5+0.5*sin(2*PI*{timeline}/43+1.2)))"
     return (
         f"drawtext=fontfile='{escaped_font_path}':text='{escaped}':"
         f"fontsize={font_size}:fontcolor=white@0.46:borderw={border_width}:"
@@ -764,8 +771,13 @@ def render_video(
     subtitle_layout_override: bool = False,
     progress_callback: Callable[[float], None] | None = None,
     original_subtitle_removal_mode: str = "patch",
+    source_start_seconds: float = 0.0,
+    source_duration_seconds: float | None = None,
+    process_registry_id: str | None = None,
+    compatibility_preview: bool = False,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
+    process_key = str(process_registry_id or video_id)
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
     supported_formats = {"keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"}
     if output_format not in supported_formats:
@@ -844,14 +856,28 @@ def render_video(
     ass_filter_path = rel_ass.replace(":", "\\:").replace("'", "'\\\\''")
     font_filter_path = rel_font_directory.replace(":", "\\:").replace("'", "'\\\\''")
     ass_filter = f"ass='{ass_filter_path}':fontsdir='{font_filter_path}'"
-    watermark_filter = _watermark_filter(watermark_text, subtitle_width, subtitle_height)
+    source_start_seconds = max(0.0, float(source_start_seconds or 0.0))
+    watermark_filter = _watermark_filter(
+        watermark_text,
+        subtitle_width,
+        subtitle_height,
+        time_offset_seconds=source_start_seconds,
+    )
     filters = []
     crop_filter = _crop_filter(crop)
     if crop_filter:
         filters.append(crop_filter)
-    source_duration = get_video_duration(video_path)
-    if source_duration <= 0:
+    complete_source_duration = get_video_duration(video_path)
+    if complete_source_duration <= 0:
         raise RuntimeError("Unable to determine the source video duration before rendering.")
+    available_duration = max(0.0, complete_source_duration - source_start_seconds)
+    source_duration = (
+        available_duration
+        if source_duration_seconds is None
+        else min(available_duration, max(0.05, float(source_duration_seconds)))
+    )
+    if source_duration <= 0:
+        raise RuntimeError("The requested preview range is outside the source video.")
     removal_region = _source_subtitle_removal_region(
         original_subtitle_region,
         source_width,
@@ -909,8 +935,50 @@ def render_video(
         else:
             vf_filter = ",".join(filters)
 
-    video_encoder, video_encoder_args = preferred_video_encoder()
-    cmd_prefix = ["ffmpeg", "-y", "-i", rel_video, "-i", rel_voice]
+    if compatibility_preview:
+        # Qt Multimedia on Windows can decode some AMF preview outputs with an
+        # incorrect channel/range interpretation.  Editor proxies prioritize
+        # deterministic SDR colour over hardware-encoder throughput.
+        # Preview proxies cover the complete timeline. Render the production
+        # filter graph first, then reduce it to a decoder-friendly working
+        # resolution.  This is the same proxy principle used by desktop NLEs:
+        # visual fidelity is preserved while scrubbing no longer decodes and
+        # filters full-resolution frames.
+        preview_tail = (
+            "scale=864:864:force_original_aspect_ratio=decrease:"
+            "force_divisible_by=2,format=yuv420p"
+        )
+        if vf_filter.endswith("[outv]"):
+            vf_filter = f"{vf_filter[:-6]},{preview_tail}[outv]"
+        else:
+            vf_filter = f"{vf_filter},{preview_tail}"
+        video_encoder = "libx264"
+        video_encoder_args = [
+            "-preset",
+            "superfast",
+            "-crf",
+            "25",
+            "-tune",
+            "fastdecode",
+            "-pix_fmt",
+            "yuv420p",
+            "-color_range",
+            "tv",
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-movflags",
+            "+faststart",
+        ]
+    else:
+        video_encoder, video_encoder_args = preferred_video_encoder()
+    cmd_prefix = ["ffmpeg", "-y"]
+    if source_start_seconds > 0:
+        cmd_prefix.extend(["-ss", f"{source_start_seconds:.6f}"])
+    cmd_prefix.extend(["-i", rel_video, "-i", rel_voice])
     if removal_region or output_format == "blur_background_9_16":
         cmd_prefix.extend(["-filter_complex", vf_filter, "-map", "[outv]"])
     else:
@@ -938,7 +1006,7 @@ def render_video(
             *audio_args,
         ]
         log_to_video(video_id, f"Running FFmpeg render with {encoder} in Cwd: {video_temp_dir}")
-        check_cancellation(video_id)
+        check_cancellation(process_key)
         stop_monitor = Event()
 
         def monitor_progress() -> None:
@@ -954,7 +1022,7 @@ def render_video(
                     if progress_callback:
                         progress_callback(fraction)
 
-        monitor = Thread(target=monitor_progress, name=f"ffmpeg-progress-{video_id}", daemon=True)
+        monitor = Thread(target=monitor_progress, name=f"ffmpeg-progress-{process_key}", daemon=True)
         if progress_callback:
             monitor.start()
         try:
@@ -962,12 +1030,12 @@ def render_video(
                 command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir
             )
             _stdout, process_stderr = communicate_process(
-                video_id,
+                process_key,
                 process,
                 label="FFmpeg video render",
                 timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
             )
-            check_cancellation(video_id)
+            check_cancellation(process_key)
             if process.returncode == 0 and progress_callback:
                 progress_callback(1.0)
             return process.returncode, process_stderr

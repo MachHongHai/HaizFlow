@@ -11,10 +11,12 @@ FloatingToolDialog {
     // Keep the project/video selection stable while an auto-saved draft is open.
     // The editor is still movable and maximizable, but navigation behind it is blocked.
     modal: true
-    expandedWidth: 1180
-    expandedHeight: 800
-    toolTitle: I18n.t("Review subtitles")
-    toolSubtitle: qsTr("%1 %2").arg(segments.length).arg(I18n.t("segments"))
+    closePolicy: root.videoFullscreen ? Popup.NoAutoClose : Popup.CloseOnEscape
+    openMaximized: true
+    expandedWidth: 1480
+    expandedHeight: 900
+    toolTitle: root.postProcessingEdit ? I18n.t("Edit subtitles") : I18n.t("Review subtitles")
+    toolSubtitle: qsTr("%1 %2  ·  %3").arg(segments.length).arg(I18n.t("segments")).arg(AppController.selectedFileName)
 
     property var segments: []
     property var undoStack: []
@@ -22,211 +24,487 @@ FloatingToolDialog {
     property string openedSnapshot: "[]"
     property bool approvalInProgress: false
     property bool previewStarted: false
+    property bool previewReady: false
+    property bool previewQueued: false
     property int selectedIndex: -1
-    property real pixelsPerSecond: 90
-    readonly property var selectedSegment: selectedIndex >= 0 && selectedIndex < segments.length
-                                                   ? segments[selectedIndex] : null
+    property var previewMedia: ({})
+    property real timelinePosition: 0
+    property real sourceDuration: 0
+    property string loadedPreviewSource: ""
+    property string loadedPreviewAudioSource: ""
+    property real pendingPreviewPosition: 0
+    property bool resumeAfterPreview: false
+    property bool previewFramePriming: false
+    property bool videoFullscreen: false
+    property string pendingApprovalPayload: ""
+    readonly property var selectedSegment: selectedIndex >= 0 && selectedIndex < segments.length ? segments[selectedIndex] : null
     readonly property real contentDuration: {
-        let result = Math.max(1, Number(videoPlayer.duration || 0) / 1000)
+        let result = Math.max(1, sourceDuration);
         for (let i = 0; i < segments.length; ++i)
-            result = Math.max(result, Number(segments[i].end || 0))
-        return result
+            result = Math.max(result, Number(segments[i].end || 0));
+        return result;
     }
-    readonly property real playheadSeconds: Number(videoPlayer.position || 0) / 1000
-    readonly property var previewSegment: segmentAt(playheadSeconds) || selectedSegment
+    readonly property real playheadSeconds: timelinePosition
+    readonly property bool usingRenderedPreview: loadedPreviewSource.length > 0
+    readonly property bool usingPublishedOutput: !usingRenderedPreview && String(previewMedia.renderedVideoSource || "").length > 0
+    readonly property bool usesExternalAudio: usingRenderedPreview || (!usingPublishedOutput && previewMedia.useVideoAudio === false)
+    readonly property string previewMixSource: String(AppController.editorPreviewAudioSource || "").length > 0
+                                                ? String(AppController.editorPreviewAudioSource)
+                                                : String(previewMedia.finalMixSource || "")
+    readonly property bool usingPreparedMix: previewMixSource.length > 0
+    property bool postProcessingEdit: false
 
-    function cloneSegments(value) { return JSON.parse(JSON.stringify(value || [])) }
+    function cloneSegments(value) {
+        return JSON.parse(JSON.stringify(value || []));
+    }
 
     function segmentAt(secondsValue) {
-        const position = Number(secondsValue || 0)
+        const position = Number(secondsValue || 0);
         for (let index = 0; index < segments.length; ++index) {
-            if (position >= Number(segments[index].start || 0)
-                    && position < Number(segments[index].end || 0))
-                return segments[index]
+            if (position >= Number(segments[index].start || 0) && position < Number(segments[index].end || 0))
+                return segments[index];
         }
-        return null
+        return null;
+    }
+
+    function setExternalAudioPosition(positionMs, force) {
+        const players = [finalMixPlayer, voicePlayer, backgroundPlayer, musicPlayer];
+        for (let index = 0; index < players.length; ++index) {
+            const player = players[index];
+            const requested = player === musicPlayer && Number(player.duration || 0) > 0 ? positionMs % Number(player.duration) : positionMs;
+            if (player.source && (force || Math.abs(Number(player.position || 0) - requested) > 140))
+                player.setPosition(requested);
+        }
+    }
+
+    function syncPreviewAudio(force) {
+        setExternalAudioPosition(root.playheadSeconds * 1000, force);
+        const playing = videoPlayer.playbackState === MediaPlayer.PlayingState && !previewFramePriming;
+        const players = [finalMixPlayer, voicePlayer, backgroundPlayer, musicPlayer];
+        for (let index = 0; index < players.length; ++index) {
+            const player = players[index];
+            if (!player.source)
+                continue;
+            const activeLayer = root.usingPreparedMix ? player === finalMixPlayer : player !== finalMixPlayer;
+            if (root.usesExternalAudio && activeLayer && playing && player.playbackState !== MediaPlayer.PlayingState)
+                player.play();
+            else if ((!root.usesExternalAudio || !activeLayer || !playing)
+                     && player.playbackState === MediaPlayer.PlayingState)
+                player.pause();
+        }
+    }
+
+    function stopPreviewAudio() {
+        finalMixPlayer.stop();
+        voicePlayer.stop();
+        backgroundPlayer.stop();
+        musicPlayer.stop();
+    }
+
+    function reloadPreviewAudio() {
+        // TTS regeneration replaces voice_final.wav in place. A QML binding
+        // whose URL string did not change leaves QMediaPlayer on the old file,
+        // so explicitly detach and reattach every audio layer.
+        const requestedPosition = playheadSeconds;
+        const shouldResume = videoPlayer.playbackState === MediaPlayer.PlayingState;
+        stopPreviewAudio();
+        previewMedia = ({});
+        Qt.callLater(function () {
+            if (!root.visible || root.approvalInProgress)
+                return;
+            root.previewMedia = AppController.reviewPreviewMedia || ({});
+            root.setExternalAudioPosition(requestedPosition * 1000, true);
+            if (shouldResume)
+                root.syncPreviewAudio(true);
+        });
+    }
+
+    function releasePreviewMedia() {
+        previewRevealTimer.stop();
+        previewPrimeTimer.stop();
+        previewRenderTimer.stop();
+        previewReady = false;
+        previewQueued = false;
+        previewFramePriming = false;
+        videoPlayer.playbackRate = 1.0;
+        videoPlayer.stop();
+        stopPreviewAudio();
+        videoPlayer.source = "";
+        previewMedia = ({});
+        loadedPreviewSource = "";
+        loadedPreviewAudioSource = "";
+    }
+
+    function beginApproval() {
+        commitPendingText();
+        pendingApprovalPayload = JSON.stringify(segments);
+        approvalInProgress = true;
+        draftSaveTimer.stop();
+        previewRenderTimer.stop();
+        releasePreviewMedia();
+        AppController.releaseEditorPreview();
+        approvalTimer.restart();
     }
 
     function markChanged() {
-        if (visible && !approvalInProgress)
-            draftSaveTimer.restart()
+        if (visible && !approvalInProgress) {
+            draftSaveTimer.restart();
+            // Keep the current preview usable while the replacement is built.
+            // The new proxy is swapped in at the current playhead only after
+            // FFmpeg has atomically published a complete media file.
+            previewQueued = true;
+            previewRenderTimer.restart();
+        }
+    }
+
+    function requestRenderedPreview() {
+        if (!visible || approvalInProgress)
+            return;
+        previewMedia = AppController.reviewPreviewMedia || ({});
+        pendingPreviewPosition = playheadSeconds;
+        previewQueued = false;
+        AppController.requestEditorPreview(JSON.stringify(segments), pendingPreviewPosition);
+    }
+
+    function applyRenderedPreview() {
+        if (approvalInProgress)
+            return;
+        const nextSource = String(AppController.editorPreviewSource || "");
+        const nextAudioSource = String(AppController.editorPreviewAudioSource || "");
+        const audioChanged = nextAudioSource.length > 0 && nextAudioSource !== loadedPreviewAudioSource;
+        if (audioChanged) {
+            const requestedPosition = playheadSeconds;
+            const shouldResume = videoPlayer.playbackState === MediaPlayer.PlayingState;
+            finalMixPlayer.stop();
+            loadedPreviewAudioSource = nextAudioSource;
+            Qt.callLater(function () {
+                if (!root.visible || root.approvalInProgress)
+                    return;
+                root.setExternalAudioPosition(requestedPosition * 1000, true);
+                if (shouldResume)
+                    root.syncPreviewAudio(true);
+            });
+        }
+        if (!nextSource || nextSource === loadedPreviewSource)
+            return;
+        // A full-timeline render may finish after the user has scrubbed. Keep
+        // the current playhead instead of jumping back to the request point.
+        const requestedPosition = playheadSeconds;
+        const shouldResume = videoPlayer.playbackState === MediaPlayer.PlayingState;
+        loadedPreviewSource = nextSource;
+        previewReady = false;
+        previewFramePriming = false;
+        previewRevealTimer.stop();
+        previewPrimeTimer.stop();
+        resumeAfterPreview = shouldResume;
+        videoPlayer.stop();
+        videoPlayer.source = nextSource;
+        pendingPreviewPosition = requestedPosition;
+        sourceDuration = Math.max(sourceDuration, Number(AppController.editorPreviewDuration || 0));
     }
 
     function formatTime(secondsValue) {
-        const totalMs = Math.max(0, Math.round((Number(secondsValue) || 0) * 1000))
-        const minutes = Math.floor(totalMs / 60000)
-        const seconds = Math.floor((totalMs % 60000) / 1000)
-        const millis = totalMs % 1000
-        return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0")
-            + "." + String(millis).padStart(3, "0")
+        const totalMs = Math.max(0, Math.round((Number(secondsValue) || 0) * 1000));
+        const minutes = Math.floor(totalMs / 60000);
+        const seconds = Math.floor((totalMs % 60000) / 1000);
+        const millis = totalMs % 1000;
+        return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0") + "." + String(millis).padStart(3, "0");
+    }
+
+    function previewStatusText() {
+        if (previewQueued)
+            return I18n.t("Preparing preview");
+        const stage = String(AppController.editorPreviewStage || "");
+        if (stage === "voice")
+            return I18n.t("Updating preview voice");
+        if (stage === "mixing")
+            return I18n.t("Mixing preview audio");
+        if (stage === "loading")
+            return I18n.t("Loading preview");
+        return I18n.t("Rendering preview");
     }
 
     function remember() {
-        const history = undoStack.slice()
-        history.push(cloneSegments(segments))
+        const history = undoStack.slice();
+        history.push(cloneSegments(segments));
         if (history.length > 40)
-            history.shift()
-        undoStack = history
-        redoStack = []
+            history.shift();
+        undoStack = history;
+        redoStack = [];
     }
 
     function replaceSegment(index, replacement) {
         if (index < 0 || index >= segments.length)
-            return
-        const next = cloneSegments(segments)
-        replacement.start = Math.max(0, Number(replacement.start || 0))
-        replacement.end = Math.max(replacement.start + 0.05, Number(replacement.end || 0))
-        next[index] = replacement
-        next.sort(function(a, b) { return Number(a.start || 0) - Number(b.start || 0) })
-        segments = next
-        selectedIndex = next.indexOf(replacement)
-        loadSelectedText()
-        markChanged()
+            return;
+        const next = cloneSegments(segments);
+        replacement.start = Math.max(0, Number(replacement.start || 0));
+        replacement.end = Math.max(replacement.start + 0.05, Number(replacement.end || 0));
+        next[index] = replacement;
+        next.sort(function (a, b) {
+            return Number(a.start || 0) - Number(b.start || 0);
+        });
+        segments = next;
+        selectedIndex = next.indexOf(replacement);
+        loadSelectedText();
+        markChanged();
     }
 
     function editSelected(field, value) {
         if (!selectedSegment)
-            return
-        remember()
-        const updated = cloneSegments(selectedSegment)
-        updated[field] = value
-        replaceSegment(selectedIndex, updated)
+            return;
+        remember();
+        const updated = cloneSegments(selectedSegment);
+        updated[field] = value;
+        replaceSegment(selectedIndex, updated);
     }
 
-    function moveSegment(index, newStart) {
+    function commitSegmentTiming(index, newStart, newEnd) {
         if (index < 0 || index >= segments.length)
-            return
-        remember()
-        const updated = cloneSegments(segments[index])
-        const duration = Math.max(0.05, Number(updated.end) - Number(updated.start))
-        updated.start = Math.max(0, Number(newStart))
-        updated.end = updated.start + duration
-        replaceSegment(index, updated)
+            return;
+        const start = Math.max(0, Number(newStart || 0));
+        const end = Math.max(start + 0.12, Number(newEnd || 0));
+        const current = segments[index];
+        if (Math.abs(start - Number(current.start || 0)) < 0.0005 && Math.abs(end - Number(current.end || 0)) < 0.0005)
+            return;
+        remember();
+        const next = cloneSegments(segments);
+        next[index].start = Math.round(start * 1000) / 1000;
+        next[index].end = Math.round(end * 1000) / 1000;
+        segments = next;
+        selectedIndex = index;
+        loadSelectedText();
+        markChanged();
     }
 
-    function splitSelected() {
+    function nudgeSelected(delta) {
         if (!selectedSegment)
-            return
-        const splitAt = playheadSeconds
-        const start = Number(selectedSegment.start || 0)
-        const end = Number(selectedSegment.end || 0)
-        if (splitAt <= start + 0.08 || splitAt >= end - 0.08)
-            return
-        remember()
-        const words = String(selectedSegment.text || "").trim().split(/\s+/)
-        const midpoint = Math.max(1, Math.ceil(words.length / 2))
-        const first = cloneSegments(selectedSegment)
-        const second = cloneSegments(selectedSegment)
-        first.end = splitAt
-        second.start = splitAt
-        first.text = words.slice(0, midpoint).join(" ")
-        second.text = words.slice(midpoint).join(" ") || first.text
-        const next = cloneSegments(segments)
-        next.splice(selectedIndex, 1, first, second)
-        segments = next
-        loadSelectedText()
-        markChanged()
-    }
-
-    function deleteSelected() {
-        if (!selectedSegment)
-            return
-        remember()
-        const next = cloneSegments(segments)
-        next.splice(selectedIndex, 1)
-        segments = next
-        selectedIndex = Math.min(selectedIndex, next.length - 1)
-        loadSelectedText()
-        markChanged()
+            return;
+        const duration = Number(selectedSegment.end || 0) - Number(selectedSegment.start || 0);
+        const lower = selectedIndex > 0 ? Number(segments[selectedIndex - 1].end || 0) : 0;
+        const upper = selectedIndex + 1 < segments.length ? Number(segments[selectedIndex + 1].start || contentDuration) - duration : contentDuration - duration;
+        const start = Math.max(lower, Math.min(Math.max(lower, upper), Number(selectedSegment.start || 0) + Number(delta || 0)));
+        commitSegmentTiming(selectedIndex, start, start + duration);
+        seekTo(start);
     }
 
     function undo() {
         if (undoStack.length === 0)
-            return
-        const history = undoStack.slice()
-        const future = redoStack.slice()
-        future.push(cloneSegments(segments))
-        segments = history.pop()
-        undoStack = history
-        redoStack = future
-        selectedIndex = Math.min(selectedIndex, segments.length - 1)
-        loadSelectedText()
-        markChanged()
+            return;
+        const history = undoStack.slice();
+        const future = redoStack.slice();
+        future.push(cloneSegments(segments));
+        segments = history.pop();
+        undoStack = history;
+        redoStack = future;
+        selectedIndex = Math.min(selectedIndex, segments.length - 1);
+        loadSelectedText();
+        markChanged();
     }
 
     function redo() {
         if (redoStack.length === 0)
-            return
-        const future = redoStack.slice()
-        const history = undoStack.slice()
-        history.push(cloneSegments(segments))
-        segments = future.pop()
-        undoStack = history
-        redoStack = future
-        selectedIndex = Math.min(selectedIndex, segments.length - 1)
-        loadSelectedText()
-        markChanged()
+            return;
+        const future = redoStack.slice();
+        const history = undoStack.slice();
+        history.push(cloneSegments(segments));
+        segments = future.pop();
+        undoStack = history;
+        redoStack = future;
+        selectedIndex = Math.min(selectedIndex, segments.length - 1);
+        loadSelectedText();
+        markChanged();
     }
 
     function commitPendingText() {
         if (selectedSegment && subtitleText.text !== String(selectedSegment.text || ""))
-            editSelected("text", subtitleText.text)
+            editSelected("text", subtitleText.text);
     }
 
     function loadSelectedText() {
-        subtitleText.text = selectedSegment ? String(selectedSegment.text || "") : ""
+        subtitleText.text = selectedSegment ? String(selectedSegment.text || "") : "";
     }
 
     function selectSegment(index) {
-        if (index === selectedIndex)
-            return
-        commitPendingText()
-        selectedIndex = index
-        loadSelectedText()
+        if (index < 0 || index >= segments.length)
+            return;
+        if (index !== selectedIndex) {
+            commitPendingText();
+            selectedIndex = index;
+            loadSelectedText();
+        }
+        seekTo(Math.max(0, Number(segments[index].start || 0)));
+    }
+
+    function selectAdjacent(delta) {
+        if (segments.length === 0)
+            return;
+        const nextIndex = Math.max(0, Math.min(segments.length - 1, selectedIndex + delta));
+        selectSegment(nextIndex);
     }
 
     function saveDraftOnClose() {
-        commitPendingText()
+        commitPendingText();
         if (approvalInProgress || segments.length === 0)
-            return
-        const currentSnapshot = JSON.stringify(segments)
+            return;
+        const currentSnapshot = JSON.stringify(segments);
         if (currentSnapshot !== openedSnapshot) {
-            AppController.saveTranslationReviewDraft(currentSnapshot)
-            openedSnapshot = currentSnapshot
+            AppController.saveTranslationReviewDraft(currentSnapshot);
+            openedSnapshot = currentSnapshot;
         }
     }
 
     function seekTo(secondsValue) {
-        videoPlayer.setPosition(Math.max(0, Number(secondsValue || 0) * 1000))
+        const seconds = Math.max(0, Math.min(contentDuration, Number(secondsValue || 0)));
+        timelinePosition = seconds;
+        // Both the source and the rendered proxy now span the full timeline.
+        // Seeking never invalidates the visual cache and never changes source.
+        videoPlayer.setPosition(seconds * 1000);
+        setExternalAudioPosition(seconds * 1000, true);
+        const segment = segmentAt(seconds);
+        if (!segment)
+            return;
+        const index = segments.indexOf(segment);
+        if (index >= 0 && index !== selectedIndex) {
+            commitPendingText();
+            selectedIndex = index;
+            loadSelectedText();
+        }
     }
 
     onOpened: {
-        segments = cloneSegments(AppController.reviewSegments)
-        undoStack = []
-        redoStack = []
-        approvalInProgress = false
-        openedSnapshot = JSON.stringify(segments)
-        selectedIndex = segments.length > 0 ? 0 : -1
-        loadSelectedText()
-        previewStarted = false
-        videoPlayer.source = AppController.selectedInputSource
-        videoPlayer.setPosition(0)
+        postProcessingEdit = AppController.selectedStatus === "done";
+        segments = cloneSegments(AppController.reviewSegments);
+        undoStack = [];
+        redoStack = [];
+        approvalInProgress = false;
+        openedSnapshot = JSON.stringify(segments);
+        selectedIndex = segments.length > 0 ? 0 : -1;
+        loadSelectedText();
+        previewStarted = false;
+        previewReady = false;
+        previewQueued = false;
+        previewMedia = AppController.reviewPreviewMedia || ({});
+        timelinePosition = 0;
+        sourceDuration = 0;
+        loadedPreviewSource = "";
+        loadedPreviewAudioSource = "";
+        pendingPreviewPosition = 0;
+        resumeAfterPreview = false;
+        videoFullscreen = false;
+        pendingApprovalPayload = "";
+        const publishedSource = String(previewMedia.renderedVideoSource || "");
+        videoPlayer.source = publishedSource.length > 0 ? publishedSource : AppController.selectedInputSource;
+        videoPlayer.setPosition(0);
+        setExternalAudioPosition(0, true);
+        // Do not add the edit debounce to initial opening. Cached previews are
+        // published immediately; uncached work starts in the background while
+        // the source/output frame remains visible.
+        Qt.callLater(root.requestRenderedPreview);
     }
     onClosed: {
-        videoPlayer.pause()
-        saveDraftOnClose()
+        saveDraftOnClose();
+        releasePreviewMedia();
+        videoFullscreen = false;
+        AppController.releaseEditorPreview();
     }
 
     Shortcut {
         sequence: StandardKey.Undo
-        enabled: root.visible && root.undoStack.length > 0
-        onActivated: root.undo()
+        enabled: root.visible && !subtitleText.activeFocus && root.undoStack.length > 0
+        onActivated: {
+            root.commitPendingText();
+            root.undo();
+        }
     }
 
     Shortcut {
         sequence: StandardKey.Redo
-        enabled: root.visible && root.redoStack.length > 0
-        onActivated: root.redo()
+        enabled: root.visible && !subtitleText.activeFocus && root.redoStack.length > 0
+        onActivated: {
+            root.commitPendingText();
+            root.redo();
+        }
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+Z"
+        enabled: root.visible && !subtitleText.activeFocus && root.redoStack.length > 0
+        onActivated: {
+            root.commitPendingText();
+            root.redo();
+        }
+    }
+
+    Shortcut {
+        sequence: "Space"
+        enabled: root.visible && !subtitleText.activeFocus
+        onActivated: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
+    }
+
+    Shortcut {
+        sequence: "Alt+Left"
+        enabled: root.visible && !subtitleText.activeFocus && root.selectedSegment !== null
+        onActivated: root.nudgeSelected(-0.05)
+    }
+
+    Shortcut {
+        sequence: "Alt+Right"
+        enabled: root.visible && !subtitleText.activeFocus && root.selectedSegment !== null
+        onActivated: root.nudgeSelected(0.05)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+0"
+        enabled: root.visible && !subtitleText.activeFocus
+        onActivated: subtitleTimeline.resetZoom()
+    }
+
+    Shortcut {
+        sequence: "Ctrl++"
+        enabled: root.visible && !subtitleText.activeFocus
+        onActivated: subtitleTimeline.zoomAt(subtitleTimeline.width / 2, subtitleTimeline.zoomFactor * 1.25)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+-"
+        enabled: root.visible && !subtitleText.activeFocus
+        onActivated: subtitleTimeline.zoomAt(subtitleTimeline.width / 2, subtitleTimeline.zoomFactor / 1.25)
+    }
+
+    Shortcut {
+        sequence: "Left"
+        enabled: root.visible && !subtitleText.activeFocus
+        onActivated: root.seekTo(Math.max(0, root.playheadSeconds - 0.04))
+    }
+
+    Shortcut {
+        sequence: "Right"
+        enabled: root.visible && !subtitleText.activeFocus
+        onActivated: root.seekTo(Math.min(root.contentDuration, root.playheadSeconds + 0.04))
+    }
+
+    Shortcut {
+        sequence: "Shift+Left"
+        enabled: root.visible && !subtitleText.activeFocus
+        onActivated: root.selectAdjacent(-1)
+    }
+
+    Shortcut {
+        sequence: "Shift+Right"
+        enabled: root.visible && !subtitleText.activeFocus
+        onActivated: root.selectAdjacent(1)
+    }
+
+    Shortcut {
+        sequence: "F11"
+        enabled: root.visible
+        onActivated: root.videoFullscreen = !root.videoFullscreen
+    }
+
+    Shortcut {
+        sequence: "Escape"
+        enabled: root.visible && root.videoFullscreen
+        onActivated: root.videoFullscreen = false
     }
 
     ColumnLayout {
@@ -234,286 +512,319 @@ FloatingToolDialog {
         anchors.margins: Theme.space12
         spacing: Theme.space8
 
-        RowLayout {
+        SplitView {
+            id: editorWorkspaceSplit
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: Theme.space8
+            orientation: Qt.Vertical
 
-            Rectangle {
-                Layout.preferredWidth: Math.min(560, root.width * 0.52)
-                Layout.fillHeight: true
-                color: Theme.video
-                radius: Theme.radiusSmall
-                border.width: 1
-                border.color: Theme.outline
-                clip: true
+            handle: Rectangle {
+                implicitHeight: 8
+                color: SplitHandle.hovered || SplitHandle.pressed ? Theme.interactiveMuted : "transparent"
 
-                Image {
-                    anchors.fill: parent
-                    anchors.margins: 1
-                    source: AppController.videoThumbnailSource
-                    sourceSize.width: 960
-                    sourceSize.height: 540
-                    fillMode: Image.PreserveAspectFit
-                    asynchronous: true
-                    visible: !root.previewStarted && status === Image.Ready
-                    z: 1
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 52
+                    height: 3
+                    radius: 2
+                    color: parent.SplitHandle.hovered || parent.SplitHandle.pressed ? Theme.focus : Theme.outlineStrong
                 }
+            }
 
-                VideoOutput {
-                    id: reviewVideoOutput
-                    anchors.fill: parent
-                    anchors.margins: 1
-                    fillMode: VideoOutput.PreserveAspectFit
-                }
+            SplitView {
+                id: editorUpperSplit
+                SplitView.fillWidth: true
+                SplitView.fillHeight: true
+                SplitView.minimumHeight: 280
+                orientation: Qt.Horizontal
 
-                Text {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.leftMargin: Theme.space20
-                    anchors.rightMargin: Theme.space20
-                    anchors.bottomMargin: 72
-                    visible: root.previewSegment !== null
-                    text: root.previewSegment ? String(root.previewSegment.text || "") : ""
-                    color: Theme.textOnDark
-                    font.pixelSize: Math.max(22, Math.min(38, parent.width / 16))
-                    font.weight: Font.Bold
-                    style: Text.Outline
-                    styleColor: "#CC000000"
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
-                    z: 3
+                handle: Rectangle {
+                    implicitWidth: 8
+                    color: SplitHandle.hovered || SplitHandle.pressed ? Theme.interactiveMuted : "transparent"
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 3
+                        height: 52
+                        radius: 2
+                        color: parent.SplitHandle.hovered || parent.SplitHandle.pressed ? Theme.focus : Theme.outlineStrong
+                    }
                 }
 
                 Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 54
-                    color: Theme.scrim
-                    z: 4
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: Theme.space8
-                        spacing: Theme.space8
-                        IconButton {
-                            glyph: videoPlayer.playbackState === MediaPlayer.PlayingState ? "\uE769" : "\uE768"
-                            toolTipText: videoPlayer.playbackState === MediaPlayer.PlayingState ? I18n.t("Pause") : I18n.t("Play")
-                            onClicked: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
-                        }
-                        Text {
-                            Layout.preferredWidth: 78
-                            text: root.formatTime(root.playheadSeconds)
-                            color: Theme.textOnDark
-                            font.pixelSize: Theme.caption
-                            font.family: "Consolas"
-                        }
-                        Slider {
-                            Layout.fillWidth: true
-                            from: 0
-                            to: Math.max(1, root.contentDuration)
-                            value: root.playheadSeconds
-                            onMoved: root.seekTo(value)
-                        }
-                    }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: Theme.surfaceElevated
-                radius: Theme.radiusSmall
-                border.width: 1
-                border.color: Theme.outline
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: Theme.space12
-                    spacing: Theme.space8
-                    Text {
-                        text: root.selectedSegment ? I18n.t("Segment") + " " + String(root.selectedIndex + 1)
-                                                   : I18n.t("No subtitle selected")
-                        color: Theme.text
-                        font.pixelSize: Theme.h3
-                        font.weight: Font.DemiBold
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        enabled: root.selectedSegment !== null
-                        spacing: Theme.space8
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text { text: I18n.t("Start"); color: Theme.textMuted; font.pixelSize: Theme.caption }
-                            SpinBox {
-                                Layout.fillWidth: true
-                                from: 0; to: 86400000; stepSize: 10
-                                value: root.selectedSegment ? Math.round(Number(root.selectedSegment.start) * 1000) : 0
-                                textFromValue: function(value) { return root.formatTime(value / 1000) }
-                                valueFromText: function(text) { return Math.round(parseFloat(text) * 1000) || 0 }
-                                onValueModified: root.editSelected("start", value / 1000)
-                            }
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text { text: I18n.t("End"); color: Theme.textMuted; font.pixelSize: Theme.caption }
-                            SpinBox {
-                                Layout.fillWidth: true
-                                from: 50; to: 86400000; stepSize: 10
-                                value: root.selectedSegment ? Math.round(Number(root.selectedSegment.end) * 1000) : 50
-                                textFromValue: function(value) { return root.formatTime(value / 1000) }
-                                valueFromText: function(text) { return Math.round(parseFloat(text) * 1000) || 50 }
-                                onValueModified: root.editSelected("end", value / 1000)
-                            }
-                        }
-                    }
-                    TextArea {
-                        id: subtitleText
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        enabled: root.selectedSegment !== null
-                        text: ""
-                        placeholderText: I18n.t("Subtitle text")
-                        wrapMode: TextEdit.Wrap
-                        selectByMouse: true
-                        color: Theme.text
-                        font.pixelSize: Theme.bodyLarge
-                        background: Rectangle {
-                            color: Theme.input
-                            radius: Theme.radiusSmall
-                            border.width: subtitleText.activeFocus ? 2 : 1
-                            border.color: subtitleText.activeFocus ? Theme.focus : Theme.outline
-                        }
-                        onEditingFinished: {
-                            if (root.selectedSegment && text !== String(root.selectedSegment.text || ""))
-                                root.editSelected("text", text)
-                        }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Item { Layout.fillWidth: true }
-                        AppButton { text: I18n.t("Split at playhead"); compact: true; enabled: root.selectedSegment !== null; onClicked: root.splitSelected() }
-                        AppButton { text: I18n.t("Delete segment"); compact: true; tone: "danger"; enabled: root.selectedSegment !== null; onClicked: root.deleteSelected() }
-                    }
-                }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 272
-            color: Theme.codeSurface
-            radius: Theme.radiusSmall
-            border.width: 1
-            border.color: Theme.outline
-            clip: true
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: Theme.space8
-                spacing: Theme.space4
-                RowLayout {
-                    Layout.fillWidth: true
-                    Text { text: I18n.t("Video timeline"); color: Theme.text; font.pixelSize: Theme.body; font.weight: Font.DemiBold }
-                    Item { Layout.fillWidth: true }
-                    Text { text: I18n.t("Zoom"); color: Theme.textMuted; font.pixelSize: Theme.caption }
-                    Slider { Layout.preferredWidth: 150; from: 45; to: 220; value: root.pixelsPerSecond; onMoved: root.pixelsPerSecond = value }
-                }
-                Flickable {
-                    id: timelineFlick
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    contentWidth: Math.max(width, root.contentDuration * root.pixelsPerSecond + 80)
-                    contentHeight: height
+                    SplitView.fillWidth: true
+                    SplitView.preferredWidth: root.width * 0.72
+                    SplitView.minimumWidth: 420
+                    SplitView.fillHeight: true
+                    color: Theme.video
+                    radius: Theme.radiusSmall
+                    border.width: 1
+                    border.color: Theme.outline
                     clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    Item {
-                        width: timelineFlick.contentWidth
-                        height: timelineFlick.height
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: function(mouse) { root.seekTo((mouse.x - 68) / root.pixelsPerSecond) }
-                        }
-                        Row {
-                            x: 68; y: 4; spacing: 0
-                            Repeater {
-                                model: Math.ceil(root.contentDuration) + 1
-                                delegate: Item {
-                                    required property int index
-                                    width: root.pixelsPerSecond
-                                    height: 28
-                                    Rectangle { x: 0; y: 18; width: 1; height: 10; color: Theme.textSubtle }
-                                    Text { x: 4; text: parent.index + "s"; color: Theme.textSubtle; font.pixelSize: Theme.label }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        spacing: 0
+
+                        Item {
+                            id: mediaViewport
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+
+                            Rectangle {
+                                anchors.fill: parent
+                                color: Theme.surfaceMuted
+                                visible: !root.previewReady
+
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: Theme.space8
+
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: "\uE714"
+                                        color: Theme.textSubtle
+                                        font.family: "Segoe Fluent Icons"
+                                        font.pixelSize: 28
+                                    }
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: I18n.t("Preparing preview")
+                                        color: Theme.textMuted
+                                        font.pixelSize: Theme.caption
+                                    }
                                 }
                             }
-                        }
-                        Text { x: 4; y: 49; text: I18n.t("Video"); color: Theme.textMuted; font.pixelSize: Theme.label }
-                        Rectangle {
-                            x: 68; y: 36; width: parent.width - 68; height: 52
-                            color: Theme.video; border.width: 1; border.color: Theme.divider; clip: true
-                            Row {
+
+                            Image {
+                                id: thumbnailPreview
                                 anchors.fill: parent
-                                Repeater {
-                                    model: Math.max(1, Math.ceil((timelineFlick.contentWidth - 68) / 120))
-                                    delegate: Image {
-                                        required property int index
-                                        width: 120; height: 52
-                                        source: AppController.videoThumbnailSource
-                                        sourceSize.width: 240; sourceSize.height: 104
-                                        fillMode: Image.PreserveAspectCrop
-                                        asynchronous: true
-                                        opacity: 0.72
+                                source: AppController.videoThumbnailSource
+                                sourceSize.width: 1280
+                                sourceSize.height: 720
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                visible: !root.previewReady && status === Image.Ready
+                                z: 1
+                            }
+
+                            VideoOutput {
+                                id: reviewVideoOutput
+                                anchors.fill: parent
+                                fillMode: VideoOutput.PreserveAspectFit
+                            }
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: 30
+                                color: "#D0161A20"
+                                visible: !root.previewReady || root.previewQueued || AppController.editorPreviewBusy
+                                z: 4
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Theme.space12
+                                    anchors.rightMargin: Theme.space12
+                                    spacing: Theme.space8
+
+                                    BusyIndicator {
+                                        Layout.preferredWidth: 14
+                                        Layout.preferredHeight: 14
+                                        running: root.visible && (!root.previewReady || root.previewQueued || AppController.editorPreviewBusy)
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.previewStatusText()
+                                        color: Theme.text
+                                        font.pixelSize: Theme.caption
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        visible: AppController.editorPreviewBusy && Number(AppController.editorPreviewProgress || 0) > 0
+                                        text: Math.round(Number(AppController.editorPreviewProgress || 0) * 100) + "%"
+                                        color: Theme.textMuted
+                                        font.pixelSize: Theme.caption
+                                        font.family: "Cascadia Mono"
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 2
+                                    color: Theme.outline
+
+                                    Rectangle {
+                                        width: parent.width * Math.max(0.02, Math.min(1, Number(AppController.editorPreviewProgress || 0)))
+                                        height: parent.height
+                                        color: Theme.focus
                                     }
                                 }
                             }
                         }
-                        Text { x: 4; y: 126; text: I18n.t("Subtitles"); color: Theme.textMuted; font.pixelSize: Theme.label }
-                        Rectangle { x: 68; y: 96; width: parent.width - 68; height: 100; color: Theme.surface; border.width: 1; border.color: Theme.divider }
-                        Repeater {
-                            model: root.segments
-                            delegate: Rectangle {
-                                id: clip
-                                required property int index
-                                required property var modelData
-                                x: 68 + Number(modelData.start || 0) * root.pixelsPerSecond
-                                y: 104
-                                width: Math.max(24, (Number(modelData.end || 0) - Number(modelData.start || 0)) * root.pixelsPerSecond)
-                                height: 78
-                                radius: Theme.radiusTiny
-                                color: index === root.selectedIndex ? Theme.interactiveMuted : Theme.blueMuted
-                                border.width: index === root.selectedIndex ? 2 : 1
-                                border.color: index === root.selectedIndex ? Theme.focus : Theme.blueOutline
-                                z: 2
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 52
+                            color: Theme.codeSurface
+                            border.width: 0
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.space12
+                                anchors.rightMargin: Theme.space12
+                                spacing: Theme.space8
+
+                                IconButton {
+                                    glyph: videoPlayer.playbackState === MediaPlayer.PlayingState ? "\uE769" : "\uE768"
+                                    toolTipText: videoPlayer.playbackState === MediaPlayer.PlayingState ? I18n.t("Pause") : I18n.t("Play")
+                                    onClicked: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
+                                }
                                 Text {
-                                    anchors.fill: parent
-                                    anchors.margins: 7
-                                    text: String(clip.modelData.text || "")
+                                    Layout.preferredWidth: 82
+                                    text: root.formatTime(root.playheadSeconds)
                                     color: Theme.text
                                     font.pixelSize: Theme.caption
-                                    wrapMode: Text.Wrap
-                                    elide: Text.ElideRight
-                                    maximumLineCount: 3
+                                    font.family: "Cascadia Mono"
                                 }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.SizeAllCursor
-                                    drag.target: clip
-                                    drag.axis: Drag.XAxis
-                                drag.minimumX: 68
-                                    drag.maximumX: timelineFlick.contentWidth - clip.width
-                                    onPressed: root.selectSegment(clip.index)
-                                    onDoubleClicked: root.seekTo(Number(clip.modelData.start || 0))
-                                    onReleased: root.moveSegment(clip.index, (clip.x - 68) / root.pixelsPerSecond)
+                                Slider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: Math.max(1, root.contentDuration)
+                                    value: root.playheadSeconds
+                                    onMoved: root.seekTo(value)
+                                }
+                                Text {
+                                    Layout.preferredWidth: 82
+                                    text: root.formatTime(root.contentDuration)
+                                    color: Theme.textMuted
+                                    font.pixelSize: Theme.caption
+                                    font.family: "Cascadia Mono"
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                                IconButton {
+                                    glyph: "\uE740"
+                                    toolTipText: I18n.t("Full screen preview") + " (F11)"
+                                    onClicked: root.videoFullscreen = true
                                 }
                             }
                         }
-                        Rectangle { x: 68 + root.playheadSeconds * root.pixelsPerSecond; y: 22; width: 2; height: 180; color: Theme.danger; z: 4 }
                     }
-                    ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                }
+
+                Rectangle {
+                    SplitView.preferredWidth: Math.max(320, Math.min(440, root.width * 0.28))
+                    SplitView.minimumWidth: 300
+                    SplitView.fillHeight: true
+                    color: Theme.surfaceElevated
+                    radius: Theme.radiusSmall
+                    border.width: 1
+                    border.color: Theme.outline
+                    clip: true
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.space12
+                        spacing: Theme.space8
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.space4
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 1
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.selectedSegment ? I18n.t("Segment") + " " + String(root.selectedIndex + 1) + " / " + String(root.segments.length) : I18n.t("No subtitle selected")
+                                    color: Theme.text
+                                    font.pixelSize: Theme.h3
+                                    font.weight: Font.DemiBold
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.selectedSegment ? root.formatTime(root.selectedSegment.start) + "  —  " + root.formatTime(root.selectedSegment.end) : ""
+                                    color: Theme.textMuted
+                                    font.pixelSize: Theme.caption
+                                    font.family: "Cascadia Mono"
+                                }
+                            }
+
+                            IconButton {
+                                glyph: "\uE72B"
+                                toolTipText: I18n.t("Previous subtitle")
+                                enabled: root.selectedIndex > 0
+                                onClicked: root.selectAdjacent(-1)
+                            }
+
+                            IconButton {
+                                glyph: "\uE72A"
+                                toolTipText: I18n.t("Next subtitle")
+                                enabled: root.selectedIndex >= 0 && root.selectedIndex < root.segments.length - 1
+                                onClicked: root.selectAdjacent(1)
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: I18n.t("Subtitle text")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                        }
+
+                        TextArea {
+                            id: subtitleText
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            enabled: root.selectedSegment !== null
+                            text: ""
+                            placeholderText: I18n.t("Subtitle text")
+                            wrapMode: TextEdit.Wrap
+                            selectByMouse: true
+                            color: Theme.text
+                            font.pixelSize: Theme.bodyLarge
+                            background: Rectangle {
+                                color: Theme.input
+                                radius: Theme.radiusSmall
+                                border.width: subtitleText.activeFocus ? 2 : 1
+                                border.color: subtitleText.activeFocus ? Theme.focus : Theme.outline
+                            }
+                            onEditingFinished: {
+                                textCommitTimer.stop();
+                                if (root.selectedSegment && text !== String(root.selectedSegment.text || ""))
+                                    root.editSelected("text", text);
+                            }
+                            onTextChanged: {
+                                if (activeFocus && root.selectedSegment && text !== String(root.selectedSegment.text || ""))
+                                    textCommitTimer.restart();
+                            }
+                        }
+                    }
+                }
+            }
+
+            SubtitleTimeline {
+                id: subtitleTimeline
+                SplitView.fillWidth: true
+                SplitView.preferredHeight: 250
+                SplitView.minimumHeight: 170
+                segments: root.segments
+                selectedIndex: root.selectedIndex
+                duration: root.contentDuration
+                position: root.playheadSeconds
+                thumbnailSource: AppController.videoThumbnailSource
+                onSegmentSelected: function (index) {
+                    root.selectSegment(index);
+                }
+                onSeekRequested: function (seconds) {
+                    root.seekTo(seconds);
+                }
+                onTimingCommitted: function (index, start, end) {
+                    root.commitSegmentTiming(index, start, end);
                 }
             }
         }
@@ -521,34 +832,237 @@ FloatingToolDialog {
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.space8
-            AppButton { text: I18n.t("Undo"); compact: true; enabled: root.undoStack.length > 0; onClicked: root.undo() }
-            AppButton { text: I18n.t("Redo"); compact: true; enabled: root.redoStack.length > 0; onClicked: root.redo() }
-            Item { Layout.fillWidth: true }
+            Text {
+                Layout.fillWidth: true
+                text: I18n.t("Changes are saved automatically") + "  ·  " + I18n.t("Wheel to zoom · Shift+wheel to pan")
+                color: Theme.textMuted
+                font.pixelSize: Theme.caption
+                elide: Text.ElideRight
+            }
             AppButton {
-                text: AppController.selectedStatus === "done"
-                    ? I18n.t("Save and regenerate voice")
-                    : I18n.t("Approve and continue")
-                tone: "primary"
-                enabled: root.segments.length > 0
+                text: I18n.t("Undo")
+                compact: true
+                enabled: root.undoStack.length > 0
                 onClicked: {
                     root.commitPendingText()
-                    if (AppController.approveTranslationReview(JSON.stringify(root.segments))) {
-                        root.approvalInProgress = true
-                        root.close()
-                    }
+                    root.undo()
                 }
             }
+            AppButton {
+                text: I18n.t("Redo")
+                compact: true
+                enabled: root.redoStack.length > 0
+                onClicked: {
+                    root.commitPendingText()
+                    root.redo()
+                }
+            }
+            AppButton {
+                text: root.postProcessingEdit ? I18n.t("Save and regenerate voice") : I18n.t("Approve and continue")
+                tone: "primary"
+                enabled: root.segments.length > 0 && !root.approvalInProgress
+                onClicked: root.beginApproval()
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        visible: root.videoFullscreen
+        color: "#FF050608"
+        z: 100
+
+        VideoOutput {
+            id: fullscreenVideoOutput
+            anchors.fill: parent
+            anchors.margins: Theme.space12
+            fillMode: VideoOutput.PreserveAspectFit
+        }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 64
+            color: "#DC101318"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.space20
+                anchors.rightMargin: Theme.space20
+                spacing: Theme.space8
+
+                IconButton {
+                    glyph: videoPlayer.playbackState === MediaPlayer.PlayingState ? "\uE769" : "\uE768"
+                    toolTipText: videoPlayer.playbackState === MediaPlayer.PlayingState ? I18n.t("Pause") : I18n.t("Play")
+                    onClicked: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
+                }
+                Text {
+                    Layout.preferredWidth: 90
+                    text: root.formatTime(root.playheadSeconds)
+                    color: Theme.text
+                    font.family: "Cascadia Mono"
+                    font.pixelSize: Theme.caption
+                }
+                Slider {
+                    Layout.fillWidth: true
+                    from: 0
+                    to: Math.max(1, root.contentDuration)
+                    value: root.playheadSeconds
+                    onMoved: root.seekTo(value)
+                }
+                IconButton {
+                    glyph: "\uE73F"
+                    toolTipText: I18n.t("Exit full screen") + " (F11)"
+                    onClicked: root.videoFullscreen = false
+                }
+            }
+        }
+
+        IconButton {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: Theme.space20
+            glyph: "\uE711"
+            toolTipText: I18n.t("Exit full screen")
+            onClicked: root.videoFullscreen = false
+        }
+    }
+
+    Connections {
+        target: AppController
+
+        function onEditorPreviewChanged() {
+            if (root.visible)
+                root.applyRenderedPreview();
+        }
+
+        function onSelectedVideoChanged() {
+            if (root.visible)
+                root.reloadPreviewAudio();
         }
     }
 
     MediaPlayer {
         id: videoPlayer
-        videoOutput: reviewVideoOutput
-        audioOutput: AudioOutput { volume: 0.75 }
-        onPlaybackStateChanged: {
-            if (playbackState === MediaPlayer.PlayingState)
-                root.previewStarted = true
+        videoOutput: root.videoFullscreen ? fullscreenVideoOutput : reviewVideoOutput
+        audioOutput: AudioOutput {
+            volume: root.usesExternalAudio ? 0 : (root.usingPublishedOutput ? 1 : Number(root.previewMedia.videoVolume || 0.6))
         }
+        onDurationChanged: {
+            if (!root.usingRenderedPreview)
+                root.sourceDuration = Math.max(root.sourceDuration, Number(duration || 0) / 1000);
+        }
+        onPositionChanged: {
+            if (!root.previewFramePriming)
+                root.timelinePosition = root.usingRenderedPreview ? Number(AppController.editorPreviewStart || 0) + Number(position || 0) / 1000 : Number(position || 0) / 1000;
+        }
+        onMediaStatusChanged: {
+            if (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia) {
+                const offset = root.usingRenderedPreview ? root.pendingPreviewPosition - Number(AppController.editorPreviewStart || 0) : root.pendingPreviewPosition;
+                setPosition(Math.max(0, offset * 1000));
+                root.timelinePosition = root.pendingPreviewPosition;
+                root.setExternalAudioPosition(root.pendingPreviewPosition * 1000, true);
+                if (root.resumeAfterPreview) {
+                    root.resumeAfterPreview = false;
+                    playbackRate = 1.0;
+                    previewRevealTimer.restart();
+                    play();
+                } else if (!root.previewFramePriming) {
+                    // Windows Media Foundation does not always decode a frame
+                    // after a paused seek. Prime the decoder silently, then
+                    // pause back on the requested frame before revealing it.
+                    root.previewFramePriming = true;
+                    playbackRate = 0.25;
+                    play();
+                    previewPrimeTimer.restart();
+                }
+            }
+            else if (mediaStatus === MediaPlayer.LoadingMedia) {
+                previewRevealTimer.stop();
+                previewPrimeTimer.stop();
+                root.previewFramePriming = false;
+                root.previewReady = false;
+            }
+        }
+        onPlaybackStateChanged: {
+            if (playbackState === MediaPlayer.PlayingState && !root.previewFramePriming)
+                root.previewStarted = true;
+            root.syncPreviewAudio(true);
+        }
+    }
+
+    MediaPlayer {
+        id: finalMixPlayer
+        source: root.previewMixSource
+        audioOutput: AudioOutput {
+            volume: 1
+        }
+        onMediaStatusChanged: {
+            if (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia) {
+                root.setExternalAudioPosition(root.playheadSeconds * 1000, true);
+                root.syncPreviewAudio(true);
+            }
+        }
+    }
+
+    MediaPlayer {
+        id: voicePlayer
+        source: String(root.previewMedia.voiceSource || "")
+        audioOutput: AudioOutput {
+            volume: Number(root.previewMedia.ttsVolume || 1)
+        }
+    }
+
+    MediaPlayer {
+        id: backgroundPlayer
+        source: String(root.previewMedia.backgroundSource || "")
+        audioOutput: AudioOutput {
+            volume: Number(root.previewMedia.backgroundVolume || 0.6)
+        }
+    }
+
+    MediaPlayer {
+        id: musicPlayer
+        source: String(root.previewMedia.musicSource || "")
+        loops: MediaPlayer.Infinite
+        audioOutput: AudioOutput {
+            volume: Number(root.previewMedia.musicVolume || 0.3)
+        }
+    }
+
+    Timer {
+        id: previewRevealTimer
+        interval: 120
+        repeat: false
+        onTriggered: root.previewReady = true
+    }
+
+    Timer {
+        id: previewPrimeTimer
+        interval: 110
+        repeat: false
+        onTriggered: {
+            if (!root.previewFramePriming)
+                return
+            videoPlayer.pause()
+            videoPlayer.playbackRate = 1.0
+            // Do not seek again after pausing: on Windows that second paused
+            // seek is exactly what replaces the decoded frame with black.
+            // Priming at 0.25x advances only a few milliseconds.
+            root.timelinePosition = Number(AppController.editorPreviewStart || 0)
+                + Number(videoPlayer.position || 0) / 1000
+            root.previewFramePriming = false
+            root.previewReady = true
+            root.syncPreviewAudio(true)
+        }
+    }
+
+    Timer {
+        interval: 160
+        running: root.visible && videoPlayer.playbackState === MediaPlayer.PlayingState
+        repeat: true
+        onTriggered: root.syncPreviewAudio(false)
     }
 
     Timer {
@@ -556,5 +1070,39 @@ FloatingToolDialog {
         interval: 500
         repeat: false
         onTriggered: root.saveDraftOnClose()
+    }
+
+    Timer {
+        id: previewRenderTimer
+        // Content and timing edits render only after the user pauses. This
+        // avoids starting and cancelling FFmpeg for every drag/text event.
+        interval: 480
+        repeat: false
+        onTriggered: root.requestRenderedPreview()
+    }
+
+    Timer {
+        id: approvalTimer
+        // Qt Multimedia releases Windows file handles asynchronously. Give it
+        // one event-loop window before the pipeline replaces voice_final.wav.
+        interval: 240
+        repeat: false
+        onTriggered: {
+            if (AppController.approveTranslationReview(root.pendingApprovalPayload)) {
+                root.close();
+                return;
+            }
+            root.approvalInProgress = false;
+            root.previewMedia = AppController.reviewPreviewMedia || ({});
+            root.loadedPreviewSource = "";
+            videoPlayer.source = AppController.selectedInputSource;
+        }
+    }
+
+    Timer {
+        id: textCommitTimer
+        interval: 420
+        repeat: false
+        onTriggered: root.commitPendingText()
     }
 }

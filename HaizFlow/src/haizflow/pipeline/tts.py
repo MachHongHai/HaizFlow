@@ -575,9 +575,9 @@ def generate_voice_parts(
                 "Multiple-speaker OmniVoice mode requires the current source speech and timestamped source transcript."
             )
     if voice == "omnivoice:clone" and (
-        not clone_reference or not os.path.isfile(clone_reference) or not clone_transcript.strip()
+        not clone_reference or not os.path.isfile(clone_reference)
     ):
-        raise RuntimeError("OmniVoice voice cloning requires an authorised sample and its exact transcript.")
+        raise RuntimeError("OmniVoice voice cloning requires an authorised reference sample.")
 
     def source_reference_for(segment: dict) -> dict:
         """Match edited subtitles to source speech by time, never by list position."""
@@ -670,9 +670,9 @@ def generate_single_voice(
         reference_path = str(current_files.get("voice_reference") or "")
         reference_text = str(current_files.get("voice_reference_transcript") or "")
         if voice == "omnivoice:clone" and (
-            not reference_path or not os.path.isfile(reference_path) or not reference_text.strip()
+            not reference_path or not os.path.isfile(reference_path)
         ):
-            raise RuntimeError("OmniVoice voice cloning requires an authorised sample and its exact transcript.")
+            raise RuntimeError("OmniVoice voice cloning requires an authorised reference sample.")
         synthesize_to_mp3(
             preprocess_text_for_tts(text),
             voice,

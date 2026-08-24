@@ -1,14 +1,90 @@
+import array
+import math
 import os
 import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 
 from haizflow.schemas.video import VideoConfig, MediaSource
 from haizflow.services import video_store, project_store
-from haizflow.utils.ffmpeg import get_video_dimensions
+from haizflow.utils.ffmpeg import _binary, get_video_dimensions
 
 
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv"}
+
+
+def analyze_voice_reference(source_path: str, bucket_count: int = 48) -> dict[str, object]:
+    """Return a compact waveform and duration decoded from the real sample.
+
+    Qt Multimedia does not expose recorder amplitude levels. Decoding the
+    stored sample once also works for imported video/audio containers and
+    makes the waveform stable after the dialog is reopened.
+    """
+    path = os.path.abspath(str(source_path or "").strip()) if source_path else ""
+    buckets = max(24, min(96, int(bucket_count or 48)))
+    empty = {"durationMs": 0, "peaks": [0.08] * buckets}
+    if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
+        return empty
+
+    sample_rate = 8_000
+    try:
+        completed = subprocess.run(
+            [
+                _binary("ffmpeg"),
+                "-v",
+                "error",
+                "-i",
+                path,
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                str(sample_rate),
+                "-t",
+                "120",
+                "-f",
+                "s16le",
+                "pipe:1",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return empty
+    if completed.returncode != 0 or len(completed.stdout) < 2:
+        return empty
+
+    usable_bytes = len(completed.stdout) - (len(completed.stdout) % 2)
+    samples = array.array("h")
+    samples.frombytes(completed.stdout[:usable_bytes])
+    if sys.byteorder != "little":
+        samples.byteswap()
+    if not samples:
+        return empty
+
+    bucket_size = max(1, math.ceil(len(samples) / buckets))
+    raw_peaks: list[float] = []
+    for index in range(buckets):
+        start = index * bucket_size
+        chunk = samples[start:min(len(samples), start + bucket_size)]
+        if not chunk:
+            raw_peaks.append(0.0)
+            continue
+        # RMS follows perceived loudness better than one isolated sample and
+        # still preserves the shape of speech pauses and stressed syllables.
+        rms = math.sqrt(sum(float(value) * float(value) for value in chunk) / len(chunk))
+        raw_peaks.append(rms / 32768.0)
+    ceiling = max(raw_peaks) or 1.0
+    peaks = [round(max(0.08, min(1.0, value / ceiling)), 4) for value in raw_peaks]
+    return {
+        "durationMs": max(1, round(len(samples) * 1000 / sample_rate)),
+        "peaks": peaks,
+    }
 
 
 def _same_path(first: str, second: str) -> bool:
@@ -101,8 +177,42 @@ def set_desktop_background_music(video_info, source_path: str) -> str:
     return destination
 
 
+def prepare_desktop_voice_recording(video_info) -> str:
+    """Reserve a project-owned location for an in-app voice-clone recording."""
+    workspace = os.path.abspath(video_store.get_video_dir(video_info.video_id))
+    recording_directory = os.path.join(workspace, "temp", "voice_cloning")
+    os.makedirs(recording_directory, exist_ok=True)
+    return os.path.join(recording_directory, f"recording-{uuid.uuid4().hex}.m4a")
+
+
+def _remove_stale_voice_reference_files(input_directory: str, keep_path: str = "") -> list[str]:
+    """Best-effort cleanup for HaizFlow-owned voice samples.
+
+    QtMultimedia can retain a Windows read handle for a short time after
+    playback stops. A locked superseded sample must not make importing the
+    replacement fail.
+    """
+    retained = os.path.abspath(keep_path) if keep_path else ""
+    errors: list[str] = []
+    for entry in Path(input_directory).glob("voice_reference*"):
+        if not entry.is_file():
+            continue
+        if retained and _same_path(str(entry), retained):
+            continue
+        try:
+            entry.unlink(missing_ok=True)
+        except OSError as exc:
+            errors.append(f"{entry.name}: {exc}")
+    return errors
+
+
 def set_desktop_voice_reference(video_info, source_path: str, transcript: str = "") -> str:
-    """Store an authorised voice-cloning sample inside the video workspace."""
+    """Store an authorised voice-cloning sample inside the video workspace.
+
+    OmniVoice can derive a cloning prompt directly from the reference audio.
+    A transcript is accepted only to preserve older projects; new samples do
+    not need one.
+    """
     source_path = os.path.abspath(str(source_path or "").strip()) if source_path else ""
     files = dict(video_info.files or {})
     workspace = os.path.abspath(video_store.get_video_dir(video_info.video_id))
@@ -114,27 +224,37 @@ def set_desktop_voice_reference(video_info, source_path: str, transcript: str = 
         files.pop("voice_reference_transcript", None)
         video_info.files = files
         video_store.save_video(video_info)
-        for entry in Path(input_directory).glob("voice_reference.*"):
-            if entry.is_file():
-                entry.unlink(missing_ok=True)
+        cleanup_errors = _remove_stale_voice_reference_files(input_directory)
+        for error in cleanup_errors:
+            video_store.log_to_video(video_info.video_id, f"Deferred stale voice-sample cleanup: {error}")
         return ""
 
     if not os.path.isfile(source_path) or os.path.getsize(source_path) <= 0:
         raise ValueError("Choose an available, non-empty voice sample.")
     normalized_transcript = " ".join(str(transcript or "").split())
-    if not normalized_transcript:
-        raise ValueError("Enter the exact words spoken in the voice sample.")
 
     extension = os.path.splitext(source_path)[1].lower() or ".media"
     destination = os.path.join(input_directory, f"voice_reference{extension}")
-    _copy_file_atomically(source_path, destination)
+    if not _same_path(source_path, destination):
+        try:
+            _copy_file_atomically(source_path, destination)
+        except PermissionError:
+            # A preview player may still own the stable filename on Windows.
+            # Publish the new sample under a managed unique name instead of
+            # failing or exposing a partial file.
+            destination = os.path.join(
+                input_directory,
+                f"voice_reference-{uuid.uuid4().hex}{extension}",
+            )
+            _copy_file_atomically(source_path, destination)
     files["voice_reference"] = destination
-    files["voice_reference_transcript"] = normalized_transcript
+    if normalized_transcript:
+        files["voice_reference_transcript"] = normalized_transcript
+    else:
+        files.pop("voice_reference_transcript", None)
     video_info.files = files
     video_store.save_video(video_info)
-    for entry in Path(input_directory).glob("voice_reference.*"):
-        if entry.is_file() and not _same_path(str(entry), destination):
-            entry.unlink(missing_ok=True)
+    cleanup_errors = _remove_stale_voice_reference_files(input_directory, destination)
     if previous_path and not _same_path(previous_path, destination):
         try:
             if os.path.commonpath([os.path.abspath(previous_path), workspace]) == workspace:
@@ -142,6 +262,8 @@ def set_desktop_voice_reference(video_info, source_path: str, transcript: str = 
         except (FileNotFoundError, OSError, ValueError):
             pass
     video_store.log_to_video(video_info.video_id, "Imported an authorised OmniVoice cloning sample.")
+    for error in cleanup_errors:
+        video_store.log_to_video(video_info.video_id, f"Deferred stale voice-sample cleanup: {error}")
     return destination
 
 

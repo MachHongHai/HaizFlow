@@ -1330,6 +1330,70 @@ class MultiProjectControllerTests(unittest.TestCase):
             self.assertEqual(restored[0]["text"], "Draft translation")
             self.assertFalse(any(path.name.endswith(".tmp") for path in Path(temporary).iterdir()))
 
+    def test_translation_editor_preview_uses_persisted_visual_and_audio_layers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            background = workspace / "no_vocals.wav"
+            music = workspace / "music.mp3"
+            background.write_bytes(b"background")
+            music.write_bytes(b"music")
+            region_path = workspace / "temp" / "original_subtitle_region.json"
+            region_path.parent.mkdir(parents=True)
+            region_path.write_text(
+                '{"region":{"x_percent":12,"y_percent":64,'
+                '"width_percent":76,"height_percent":8}}',
+                encoding="utf-8",
+            )
+            video = SimpleNamespace(
+                files={
+                    "background_audio": str(background),
+                    "background_music": str(music),
+                },
+                enable_audio_separation=True,
+                original_video_volume=55,
+                background_music_volume=25,
+                tts_volume=92,
+                subtitle_style={
+                    "font_size": 72,
+                    "position_x_percent": 47,
+                    "position_y_percent": 81,
+                    "box_width_percent": 68,
+                    "box_height_percent": 7,
+                    "outline": 3,
+                },
+                subtitle_layout_override=True,
+                output_format="keep_ratio",
+                crop={"zoom_percent": 115, "pan_x_percent": 8, "pan_y_percent": -3},
+                speaker_mode="single",
+                tts_provider="omnivoice",
+                tts_voice="omnivoice:male",
+                remove_original_subtitles=True,
+                original_subtitle_removal_mode="patch",
+                watermark_text="@creator",
+                video_width=1080,
+                video_height=1920,
+                video_id="preview-video",
+            )
+            host = SimpleNamespace(_selected_video=lambda: video)
+
+            with patch.object(qml_controller.video_store, "get_video_dir", return_value=temporary):
+                preview = HaizFlowController.reviewPreviewMedia.fget(host)
+
+            self.assertFalse(preview["useVideoAudio"])
+            self.assertTrue(preview["backgroundSource"].startswith("file:"))
+            self.assertTrue(preview["musicSource"].startswith("file:"))
+            self.assertEqual(preview["backgroundVolume"], 0.55)
+            self.assertEqual(preview["musicVolume"], 0.25)
+            self.assertEqual(preview["ttsVolume"], 0.92)
+            self.assertEqual(preview["subtitleStyle"]["font_size"], 72)
+            self.assertEqual(preview["subtitleStyle"]["position_y_percent"], 81)
+            self.assertTrue(preview["subtitleLayoutOverride"])
+            self.assertEqual(preview["crop"]["zoom_percent"], 115)
+            self.assertEqual(preview["speakerMode"], "single")
+            self.assertEqual(preview["ttsProvider"], "omnivoice")
+            self.assertEqual(preview["watermarkText"], "@creator")
+            self.assertEqual(preview["ocrRegion"]["height_percent"], 8)
+
 
 if __name__ == "__main__":
     unittest.main()

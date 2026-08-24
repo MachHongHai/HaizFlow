@@ -379,6 +379,7 @@ def _is_cuda_resource_failure(detail: str) -> bool:
             "cudnn",
             "not enough memory",
             "cuda is unavailable",
+            "unable to find an engine to execute this computation",
         )
     )
 
@@ -695,13 +696,18 @@ def _worker_main(request_path: str) -> int:
         voice_clone_prompt: Any = None
         if reference_path:
             prompt_key = (reference_path, reference_text)
-            voice_clone_prompt = prompt_cache.get(prompt_key)
+            # Multiple-speaker mode creates a different reference for nearly
+            # every subtitle. Retaining all of those GPU prompts caused DAC
+            # convolution failures after several segments on 8 GB cards.
+            cache_prompt = speaker_mode != "multiple"
+            voice_clone_prompt = prompt_cache.get(prompt_key) if cache_prompt else None
             if voice_clone_prompt is None:
                 voice_clone_prompt = model.create_voice_clone_prompt(
                     ref_audio=reference_path,
                     ref_text=reference_text or None,
                 )
-                prompt_cache[prompt_key] = voice_clone_prompt
+                if cache_prompt:
+                    prompt_cache[prompt_key] = voice_clone_prompt
         elif speaker_mode == "single" and anchor_prompt is not None:
             voice_clone_prompt = anchor_prompt
         generated: Any = None
@@ -735,7 +741,12 @@ def _worker_main(request_path: str) -> int:
             # A video can contain hundreds of calls to generate().  Keep the
             # model resident, but release per-utterance tensors immediately so
             # an 8 GB GPU does not accumulate allocator pressure until OOM.
-            del generated, waveform
+            del generated, waveform, voice_clone_prompt
+            if device.startswith("cuda") and speaker_mode == "multiple":
+                # Per-segment clone prompts are intentionally short-lived.
+                # Return their blocks to the allocator before the next DAC
+                # decode instead of accumulating unique speaker references.
+                torch.cuda.empty_cache()
     if device.startswith("cuda"):
         # Emptying the CUDA allocator after every sentence forces a device
         # synchronization and defeats buffer reuse. Release cached blocks once

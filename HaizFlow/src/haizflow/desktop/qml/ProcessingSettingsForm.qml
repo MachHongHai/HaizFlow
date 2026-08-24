@@ -75,7 +75,11 @@ GridLayout {
                 textFormat: Text.PlainText
             }
 
-            Text { text: I18n.t("Workflow"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("Workflow")
+                helpText: I18n.t("Choose automatic processing or pause to review subtitles before voice generation.")
+            }
             SegmentedControl {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 38
@@ -88,7 +92,11 @@ GridLayout {
                 onActivated: function(value) { root.workflowEdited(value) }
             }
 
-            Text { text: I18n.t("Speech recognition"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("Speech recognition")
+                helpText: I18n.t("Turbo provides higher GPU quality. Small uses less memory and also supports CPU processing.")
+            }
             AppComboBox {
                 Layout.fillWidth: true
                 enabled: root.editable
@@ -99,7 +107,11 @@ GridLayout {
                 onActivated: root.speechRecognitionEdited(currentValue)
             }
 
-            Text { text: I18n.t("Translate to"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("Translate to")
+                helpText: I18n.t("The selected language is used for both translated subtitles and generated speech.")
+            }
             SearchableLanguageCombo {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 42
@@ -109,7 +121,11 @@ GridLayout {
                 onSelected: function(code) { root.targetLanguageEdited(code) }
             }
 
-            Text { text: I18n.t("TTS engine"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("TTS engine")
+                helpText: I18n.t("OmniVoice runs locally. Edge TTS requires a stable internet connection.")
+            }
             AppComboBox {
                 Layout.fillWidth: true
                 enabled: root.editable
@@ -120,7 +136,11 @@ GridLayout {
                 onActivated: root.ttsProviderEdited(currentValue)
             }
 
-            Text { text: I18n.t("Voice"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("Voice")
+                helpText: I18n.t("Choose a preset narrator or an authorised cloned voice sample.")
+            }
             VoicePicker {
                 Layout.fillWidth: true
                 enabled: root.editable
@@ -140,17 +160,20 @@ GridLayout {
                 onClicked: root.cloneVoiceRequested()
             }
 
-            Text { text: I18n.t("Speakers"); color: Theme.textMuted; font.pixelSize: Theme.caption }
-            SegmentedControl {
+            RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 38
-                enabled: root.editable && root.ttsProvider === "omnivoice"
-                currentValue: root.speakerMode
-                options: [
-                    { "label": I18n.t("One voice"), "value": "single" },
-                    { "label": I18n.t("Multiple speakers"), "value": "multiple" }
-                ]
-                onActivated: function(value) { root.speakerModeEdited(value) }
+                AppCheckBox {
+                    Layout.fillWidth: true
+                    enabled: root.editable && root.ttsProvider === "omnivoice"
+                    text: I18n.t("Detect multiple speakers")
+                    checked: root.speakerMode === "multiple"
+                    onToggled: root.speakerModeEdited(checked ? "multiple" : "single")
+                }
+                SettingLabel {
+                    labelVisible: false
+                    text: I18n.t("Detect multiple speakers")
+                    helpText: I18n.t("Enable this only when the source contains multiple speakers. Each detected speaker receives a separate voice identity.")
+                }
             }
         }
     }
@@ -181,7 +204,11 @@ GridLayout {
                 textFormat: Text.PlainText
             }
 
-            Text { text: I18n.t("Original subtitles"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("Original subtitles")
+                helpText: I18n.t("Cover burned-in source subtitles or keep the original picture unchanged.")
+            }
             SegmentedControl {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 38
@@ -194,11 +221,11 @@ GridLayout {
                 onActivated: function(value) { root.removeOriginalSubtitlesEdited(value === "remove") }
             }
 
-            Text {
+            SettingLabel {
+                Layout.fillWidth: true
                 visible: root.removeOriginalSubtitles
                 text: I18n.t("Removal method")
-                color: Theme.textMuted
-                font.pixelSize: Theme.caption
+                helpText: I18n.t("Blur softens detected text. Nearby patch fills it with clean pixels from the surrounding image.")
             }
             SegmentedControl {
                 Layout.fillWidth: true
@@ -238,7 +265,11 @@ GridLayout {
 
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
-            Text { text: I18n.t("Audio source"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("Audio source")
+                helpText: I18n.t("Keep source audio or separate vocals from background sound before mixing.")
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8
@@ -270,7 +301,11 @@ GridLayout {
                 wrapMode: Text.WordWrap
             }
 
-            Text { text: I18n.t("Background music"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("Background music")
+                helpText: I18n.t("Optional music is mixed after source-audio processing.")
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8
@@ -292,7 +327,11 @@ GridLayout {
                 }
             }
 
-            Text { text: I18n.t("Watermark"); color: Theme.textMuted; font.pixelSize: Theme.caption }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: I18n.t("Watermark")
+                helpText: I18n.t("Add subtle moving text to the exported video.")
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8

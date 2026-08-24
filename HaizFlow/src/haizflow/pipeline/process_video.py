@@ -308,6 +308,7 @@ def _finish_recovered_translation(
     )
     _mark_checkpoint(video, "translation", translation_signature)
     if video.mode == "review" and not video.review_approved:
+        _original_subtitle_region_for_render(video, reporter, video_dir, pipeline_progress=61)
         update_video(
             video.video_id,
             status="awaiting_review",
@@ -369,6 +370,7 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
                 "Checkpoint hit: reusing translated segments; skipping audio extraction, transcription and translation.",
             )
             if video.mode == "review" and not video.review_approved:
+                _original_subtitle_region_for_render(video, reporter, video_dir, pipeline_progress=61)
                 update_video(
                     video_id,
                     status="awaiting_review",
@@ -504,6 +506,7 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
             update_video(video_id, files=files)
 
         if video.mode == "review" and not video.review_approved:
+            _original_subtitle_region_for_render(video, reporter, video_dir, pipeline_progress=61)
             update_video(
                 video_id,
                 status="awaiting_review",
@@ -549,21 +552,21 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         clean_video(video_id)
 
 
-def _original_subtitle_region_for_render(video, reporter, video_dir):
+def _original_subtitle_region_for_render(video, reporter, video_dir, *, pipeline_progress: int = 87):
     """Return the OCR region, or bypass OCR when the user keeps source pixels."""
     video_id = video.video_id
     if not bool(getattr(video, "remove_original_subtitles", True)):
-        reporter.update(87, "detecting_original_subtitles", "Keeping original video subtitles unchanged")
+        reporter.update(pipeline_progress, "detecting_original_subtitles", "Keeping original video subtitles unchanged")
         log_to_video(video_id, "Original subtitle detection and removal disabled; preserving the source picture.")
         return None
 
-    reporter.update(87, "detecting_original_subtitles", "Preparing original subtitle scan")
+    reporter.update(pipeline_progress, "detecting_original_subtitles", "Preparing original subtitle scan")
 
     def report_ocr_progress(current: int, total: int) -> None:
         detail = "Scanning the full frame for original subtitles"
         if total:
             detail = f"Scanning original subtitles ({current}/{total})"
-        reporter.update(87, "detecting_original_subtitles", detail, current, total)
+        reporter.update(pipeline_progress, "detecting_original_subtitles", detail, current, total)
 
     region = detect_original_subtitle_region(
         _required_video_path(video, "video_input", must_exist=True),

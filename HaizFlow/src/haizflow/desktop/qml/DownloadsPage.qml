@@ -17,6 +17,17 @@ Item {
     readonly property bool canGoBack: pageHistoryIndex > 0
     readonly property bool canGoForward: pageHistoryIndex < pageHistory.length - 1
 
+    function resetNavigation() {
+        currentPage = 0
+        pageHistory = [0]
+        pageHistoryIndex = 0
+    }
+
+    // A Loader may keep this component alive while another download project
+    // becomes current. Nested Back/Forward history belongs to one project and
+    // must never leak into the next one.
+    onProjectRootChanged: resetNavigation()
+
     function navigateTo(page) {
         if (page === currentPage)
             return

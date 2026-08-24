@@ -135,6 +135,60 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertNotIn("-shortest", command)
         self.assertEqual(command[command.index("-t") + 1], "5.000000")
 
+    def test_editor_proxy_render_seeks_and_limits_the_source_range(self):
+        captured = {}
+
+        class FakeProcess:
+            returncode = 0
+
+            def __init__(self, command, **kwargs):
+                captured["command"] = command
+                (Path(kwargs["cwd"]) / command[-1]).resolve().write_bytes(b"rendered-video")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subtitle_path = root / "subtitles.srt"
+            subtitle_path.write_text(
+                "1\n00:00:00,000 --> 00:00:01,000\nHello\n",
+                encoding="utf-8",
+            )
+            (root / "input.mp4").write_bytes(b"source")
+            (root / "voice.wav").write_bytes(b"R" * 100)
+            with (
+                mock.patch.object(render, "get_video_dimensions", return_value=(1920, 1080)),
+                mock.patch.object(render, "get_video_duration", return_value=30.0),
+                mock.patch.object(render, "get_media_stream_types", return_value={"video", "audio"}),
+                mock.patch.object(render, "preferred_video_encoder", return_value=("libx264", [])),
+                mock.patch.object(render.subprocess, "Popen", FakeProcess),
+                mock.patch.object(render, "communicate_process", return_value=("", "")),
+                mock.patch.object(render, "check_cancellation"),
+                mock.patch.object(render, "log_to_video"),
+            ):
+                render.render_video(
+                    str(root / "input.mp4"),
+                    str(root / "voice.wav"),
+                    str(subtitle_path),
+                    str(root / "output.mp4"),
+                    "keep_ratio",
+                    SubtitleStyle(),
+                    CropSettings(),
+                    "editor-preview",
+                    watermark_text="HaizFlow",
+                    source_start_seconds=12.5,
+                    source_duration_seconds=3.25,
+                    compatibility_preview=True,
+                )
+
+        command = captured["command"]
+        self.assertEqual(command[command.index("-ss") + 1], "12.500000")
+        self.assertEqual(command[command.index("-t") + 1], "3.250000")
+        filter_graph = command[command.index("-vf") + 1]
+        self.assertIn("(t+12.500000)", filter_graph)
+        self.assertIn("format=yuv420p", filter_graph)
+        self.assertIn("libx264", command)
+        self.assertEqual(command[command.index("-color_range") + 1], "tv")
+        self.assertEqual(command[command.index("-colorspace") + 1], "bt709")
+
     def test_render_does_not_replace_a_previous_export_when_output_is_invalid(self):
         class FakeProcess:
             returncode = 0

@@ -110,7 +110,9 @@ Run `scripts/test.ps1` before merging. It compiles application, script, and test
 
 ## Video State Model
 
-`VideoInfo` is persisted as `video.json` inside the owning project's `videos/<video-id>` workspace. Its important states are:
+`VideoInfo` is persisted as `video.json` inside the owning project's readable
+`videos/<source-label>--<short-id>` workspace. The complete immutable video ID
+remains in metadata and is never inferred from the folder name. Its important states are:
 
 | State | Meaning |
 | --- | --- |
@@ -194,20 +196,41 @@ The frozen runtime layout is deliberately stable: `{app}\runtime\models` contain
 
 `project_store` owns project registration and manifests. `video_store` separately owns the metadata, checkpoints, logs, and workspace of each video inside a project. These responsibilities are related but not duplicates, and user-facing/domain code uses only project/video terminology.
 
+Every new project uses `<display-name>--<short-project-id>/`; only the folders
+owned by that project type are created:
+
 ```text
-<display-name>--<project-uuid>/
+single-or-batch--a1b2c3d4e5/
   .haizflow-project.json
-  .downloads/                      Temporary URL downloads; removed after import
-  imports/channel/<session-id>/    Resumable channel import state and partials
   exports/                         Final rendered videos
-  publishing/                      Social publishing media and thumbnails
-  .haizflow-tiktok-publish.json    Legacy-compatible atomic Zernio publishing queue
-  videos/<video-id>/
+  videos/source-name--91fd53e728/
     video.json, logs.txt
-    input/, temp/, output/          Imported media and resumable workspace
+    input/                         Stable managed source
+    temp/                          Checkpoints, editor proxies and intermediates
+
+downloads--b2c3d4e5f6/
+  .haizflow-project.json
+  downloads/
+    channel/                       Channel/profile downloads
+    video/                         Individual video downloads
+    audio/                         Audio downloads and extracted audio
+
+publishing--c3d4e5f6a7/
+  .haizflow-project.json
+  .haizflow-tiktok-publish.json    Legacy-compatible atomic Zernio queue
+  publishing/
+    media/                         Project-owned upload copies
+    thumbnails/                    Generated queue thumbnails
 ```
 
-There is no active global workspace outside projects. On startup, the legacy `RUNTIME_DATA_DIR/jobs/<video-id>/job.json` layout is migrated to the registered project as `videos/<video-id>/video.json`; the original metadata is retained as a migration backup.
+The full project and video UUIDs remain authoritative inside their manifests;
+short IDs exist only to keep Explorer and Windows paths readable. Readers
+discover a workspace from `video.json`, so older UUID-named folders remain
+fully compatible and are not renamed underneath active or resumable projects.
+There is no active global workspace outside projects. On startup, the legacy
+`RUNTIME_DATA_DIR/jobs/<video-id>/job.json` layout is migrated into the
+registered project's `videos/` directory; the original metadata is retained
+as a migration backup.
 
 The build uses PyInstaller `--onedir` because Qt, Torch, WhisperX, and FFmpeg require adjacent native files. The executable is not designed to be relocated independently from its distribution directory.
 
@@ -219,7 +242,7 @@ Dependency vulnerability policy is defined in `docs/dependency-security.md`. The
 
 ## Observability
 
-`services.video_store.log_to_video` is the authoritative pipeline log path. It writes a timestamped line to the selected video's `<project>/videos/<video-id>/logs.txt` and emits an in-process event. The desktop controller subscribes to the event stream, appends live lines to the selected project's log, and polls persisted video metadata for state changes. The separate app log is diagnostic-only and never contains project media or pipeline state.
+`services.video_store.log_to_video` is the authoritative pipeline log path. It writes a timestamped line to the selected video's project-owned workspace `logs.txt` and emits an in-process event. The desktop controller subscribes to the event stream, appends live lines to the selected project's log, and polls persisted video metadata for state changes. The separate app log is diagnostic-only and never contains project media or pipeline state.
 
 Each HY-MT2 process also writes a bounded diagnostic log under `<runtime-data>/logs/hymt2-workers`. It records the model/backend, Python and Torch/CUDA versions, RAM/commit/VRAM snapshots at tokenizer load, weight load, CUDA transfer, model readiness, and first generation, plus Python tracebacks and Windows native exit codes. The parent retains the newest 25 worker logs and includes the exact file path in translation failures.
 

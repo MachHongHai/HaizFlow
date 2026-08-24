@@ -118,6 +118,9 @@ class ProjectGroupingTests(unittest.TestCase):
                 )
                 first_workspace = Path(video_store.get_video_dir(first_video.video_id))
                 second_workspace = Path(video_store.get_video_dir(second_video.video_id))
+                video_store._VIDEO_DIR_CACHE.clear()
+                rediscovered = video_store.get_video(first_video.video_id)
+                catalog_ids = {item.video_id for item in video_store.list_videos()}
             finally:
                 video_store.LEGACY_VIDEO_WORKSPACES_DIR = original_videos_dir
                 project_store.PROJECT_INDEX_PATH = original_index
@@ -127,6 +130,11 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(second_video.project_key, second["key"])
         self.assertTrue(first_workspace.is_relative_to(Path(first["project_root"])))
         self.assertTrue(second_workspace.is_relative_to(Path(second["project_root"])))
+        self.assertNotEqual(first_workspace.name, first_video.video_id)
+        self.assertNotIn(first_video.video_id, first_workspace.name)
+        self.assertTrue(first_workspace.name.startswith("clip--"))
+        self.assertEqual(rediscovered.video_id, first_video.video_id)
+        self.assertIn(first_video.video_id, catalog_ids)
 
     def test_batch_videos_share_one_project_card(self):
         summaries = HaizFlowController._build_project_summaries(
@@ -571,7 +579,8 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(projects[0]["key"], project["key"])
         self.assertEqual(projects[0]["project_type"], "batch")
         self.assertEqual(projects[0]["schema_version"], project_store.PROJECT_SCHEMA_VERSION)
-        self.assertEqual(projects[0]["storage_layout"], "uuid")
+        self.assertEqual(projects[0]["storage_layout"], "compact-v1")
+        self.assertNotIn(projects[0]["project_id"], Path(projects[0]["project_root"]).name)
 
     def test_single_and_batch_projects_with_the_same_name_use_distinct_roots(self):
         with tempfile.TemporaryDirectory() as temp_dir:

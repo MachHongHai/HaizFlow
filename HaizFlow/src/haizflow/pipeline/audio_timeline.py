@@ -4,6 +4,7 @@ from pydub import AudioSegment
 import subprocess
 import tempfile
 import math
+import time
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
@@ -11,6 +12,23 @@ from haizflow.utils.ffmpeg import get_video_duration
 
 
 _FINAL_AUDIO_TAIL_MARGIN_MS = 120
+_ATOMIC_REPLACE_ATTEMPTS = 8
+
+
+def _replace_exported_audio(temporary_path: str, output_path: str) -> None:
+    """Replace a generated WAV after transient Windows media-handle locks clear."""
+    last_error: OSError | None = None
+    for attempt in range(_ATOMIC_REPLACE_ATTEMPTS):
+        try:
+            os.replace(temporary_path, output_path)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            if attempt + 1 >= _ATOMIC_REPLACE_ATTEMPTS:
+                break
+            time.sleep(0.08 * (attempt + 1))
+    if last_error is not None:
+        raise last_error
 
 
 def _apply_volume(audio: AudioSegment, volume: int, label: str, video_id: str) -> AudioSegment:
@@ -297,7 +315,7 @@ def build_audio_timeline(
         check_cancellation(video_id)
         if os.path.getsize(temporary_path) <= 44:
             raise RuntimeError("Audio timeline export produced an empty WAV file.")
-        os.replace(temporary_path, output_wav_path)
+        _replace_exported_audio(temporary_path, output_wav_path)
         temporary_path = ""
     finally:
         if temporary_path:

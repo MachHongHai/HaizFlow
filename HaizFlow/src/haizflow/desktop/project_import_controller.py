@@ -20,6 +20,7 @@ from haizflow.services import project_store, social_publish, video_store
 from haizflow.services.channel_import import normalize_remote_url
 from haizflow.services.desktop_videos import (
     create_desktop_video,
+    prepare_desktop_voice_recording,
     set_desktop_background_music,
     set_desktop_voice_reference,
 )
@@ -796,6 +797,12 @@ class ProjectImportController:
         )
         return os.path.abspath(path) if path else ""
 
+    def analyze_voice_reference(self, path: str, bucket_count: int = 48) -> dict[str, object]:
+        """Read waveform metadata for the voice-cloning recorder UI."""
+        from haizflow.services.desktop_videos import analyze_voice_reference
+
+        return analyze_voice_reference(path, bucket_count)
+
     def set_voice_reference(self, path: str, transcript: str) -> bool:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
@@ -832,6 +839,59 @@ class ProjectImportController:
         if preview is not None:
             preview.invalidate()
         return True
+
+    def prepare_voice_reference_recording(self) -> str:
+        """Reserve a managed location before Qt starts microphone capture."""
+        host = self._host
+        video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        if not video:
+            host._show_app_alert(
+                "Voice cloning",
+                "Import a source video before recording a voice sample.",
+                "warning",
+            )
+            return ""
+        if host._processing_queue.contains(video.video_id):
+            host._show_app_alert(
+                "Voice cloning",
+                "Pause or finish this video before recording a voice sample.",
+                "warning",
+            )
+            return ""
+        try:
+            return prepare_desktop_voice_recording(video)
+        except OSError as exc:
+            host._show_app_alert("Voice cloning", str(exc), "warning")
+            return ""
+
+    def save_recorded_voice_reference(self, path: str) -> bool:
+        """Promote a completed microphone capture to the managed reference."""
+        saved = self.set_voice_reference(path, "")
+        if saved:
+            self.discard_voice_reference_recording(path)
+        return saved
+
+    def discard_voice_reference_recording(self, path: str) -> None:
+        """Remove only the uncommitted capture owned by the selected video."""
+        host = self._host
+        video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        candidate = os.path.abspath(str(path or "").strip()) if path else ""
+        if not video or not candidate:
+            return
+        recording_directory = os.path.abspath(
+            os.path.join(video_store.get_video_dir(video.video_id), "temp", "voice_cloning")
+        )
+        try:
+            if os.path.commonpath([candidate, recording_directory]) != recording_directory:
+                return
+        except ValueError:
+            return
+        try:
+            os.remove(candidate)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            video_store.log_to_video(video.video_id, f"Deferred temporary voice-recording cleanup: {exc}")
 
     def clear_voice_reference(self) -> bool:
         host = self._host

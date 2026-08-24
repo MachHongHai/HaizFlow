@@ -859,6 +859,69 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "reviewPreviewMedia"
+            type: "QVariantMap"
+            read: "reviewPreviewMedia"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "editorPreviewSource"
+            type: "QString"
+            read: "editorPreviewSource"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "editorPreviewAudioSource"
+            type: "QString"
+            read: "editorPreviewAudioSource"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "editorPreviewBusy"
+            type: "bool"
+            read: "editorPreviewBusy"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "editorPreviewError"
+            type: "QString"
+            read: "editorPreviewError"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "editorPreviewStart"
+            type: "double"
+            read: "editorPreviewStart"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "editorPreviewDuration"
+            type: "double"
+            read: "editorPreviewDuration"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "editorPreviewProgress"
+            type: "double"
+            read: "editorPreviewProgress"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "editorPreviewStage"
+            type: "QString"
+            read: "editorPreviewStage"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
             name: "selectedVideoId"
             type: "QString"
             read: "selectedVideoId"
@@ -1288,6 +1351,7 @@ Module {
             Parameter { name: "a1"; type: "QString" }
         }
         Signal { name: "audioPreviewChanged" }
+        Signal { name: "editorPreviewChanged" }
         Signal { name: "workflowModeChanged" }
         Signal { name: "selectedVideoChanged" }
         Signal { name: "selectedElapsedChanged" }
@@ -1503,6 +1567,29 @@ Module {
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
             Parameter { name: "a2"; type: "QString" }
+        }
+        Method {
+            name: "voiceCloneReferenceAnalysis"
+            type: "QVariantMap"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "int" }
+        }
+        Method { name: "prepareVoiceCloneRecording"; type: "QUrl" }
+        Method {
+            name: "saveRecordedVoiceCloneReference"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method {
+            name: "requestEditorPreview"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "double" }
+        }
+        Method { name: "releaseEditorPreview" }
+        Method {
+            name: "discardVoiceCloneRecording"
+            Parameter { name: "a1"; type: "QString" }
         }
         Method { name: "clearVoiceCloneReference"; type: "bool" }
         Method {
