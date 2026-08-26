@@ -406,6 +406,12 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         ):
             return
 
+        # A previous editor session may intentionally keep OmniVoice warm.
+        # A fresh transcription needs that VRAM first; reviewed/checkpointed
+        # downstream passes returned above and can still reuse the warm worker.
+        from haizflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice_runtime
+
+        clear_omnivoice_runtime()
         profile = runtime_profile()
         if profile.warm_hymt2_on_startup and not is_hymt2_worker_warm():
             _ensure_gpu_available("translation model warm-up")
@@ -676,15 +682,26 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             detail = f"Verified voice audio {current} of {total}"
             reporter.update(65 + round(17 * current / max(1, total)), "creating_voice", detail, current, total)
 
-        generate_voice_parts(
-            transcript_json,
-            voice_parts_dir,
-            video.tts_voice,
-            video_id,
-            progress_callback=report_voice_progress,
-            provider=configured_tts_provider,
-            target_language=target_language,
-        )
+        try:
+            generate_voice_parts(
+                transcript_json,
+                voice_parts_dir,
+                video.tts_voice,
+                video_id,
+                progress_callback=report_voice_progress,
+                provider=configured_tts_provider,
+                target_language=target_language,
+                keep_worker_warm=effective_tts_provider == "omnivoice",
+            )
+        finally:
+            if effective_tts_provider == "omnivoice":
+                # Subtitle-editor preview and downstream regeneration share
+                # one warm model, then release it before FFmpeg/rendering needs
+                # the accelerator. This avoids both a second checkpoint load
+                # and a long-lived VRAM reservation.
+                from haizflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice_runtime
+
+                clear_omnivoice_runtime()
         _mark_checkpoint(video, "voice", voice_signature)
 
     check_cancellation(video_id)

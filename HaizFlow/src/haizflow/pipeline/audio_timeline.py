@@ -180,8 +180,11 @@ def build_audio_timeline(
     background_music_path: str | None = None,
     background_music_volume: int = 30,
     tts_volume: int = 100,
+    prepared_base_audio_path: str | None = None,
+    process_registry_id: str | None = None,
 ):
     """Overlays generated voice MP3 parts on top of the original/background audio track based on timestamps."""
+    cancellation_id = process_registry_id or video_id
     log_to_video(video_id, "Starting build of the audio timeline...")
     
     # Retrieve duration to build the baseline silence track
@@ -197,8 +200,18 @@ def build_audio_timeline(
     if not isinstance(segments, list) or not segments:
         raise RuntimeError("Audio timeline requires at least one translated voice segment.")
         
-    # Create silent background audio or load original/background audio.
-    if background_audio_path:
+    # Editor previews reuse this decoded/volume-adjusted base. Reopening a
+    # timeline or changing one sentence no longer decodes the full source and
+    # background music before every TTS overlay.
+    base_cache_hit = bool(
+        prepared_base_audio_path
+        and os.path.isfile(prepared_base_audio_path)
+        and os.path.getsize(prepared_base_audio_path) > 44
+    )
+    if base_cache_hit:
+        base_audio = AudioSegment.from_file(prepared_base_audio_path)
+        log_to_video(video_id, f"Reusing prepared preview audio base: {prepared_base_audio_path}")
+    elif background_audio_path:
         if not os.path.exists(background_audio_path) or os.path.getsize(background_audio_path) <= 0:
             raise FileNotFoundError(f"Required original/background audio track is missing: {background_audio_path}")
         log_to_video(video_id, f"Loading background/original audio track: {background_audio_path}")
@@ -225,7 +238,7 @@ def build_audio_timeline(
     # The user-selected track never enters Demucs.  AudioSegment decodes both
     # audio and video containers through FFmpeg, so MP3, MP4 and other
     # FFmpeg-supported formats follow the same safe final-mix path.
-    if background_music_path:
+    if background_music_path and not base_cache_hit:
         if not os.path.isfile(background_music_path) or os.path.getsize(background_music_path) <= 0:
             raise FileNotFoundError(f"Required background music track is missing: {background_music_path}")
         try:
@@ -236,6 +249,33 @@ def build_audio_timeline(
             log_to_video(video_id, f"Mixed background music: {background_music_path}")
         except Exception as exc:
             raise RuntimeError(f"Could not load background music: {exc}") from exc
+
+    if prepared_base_audio_path and not base_cache_hit:
+        cache_directory = os.path.dirname(os.path.abspath(prepared_base_audio_path))
+        os.makedirs(cache_directory, exist_ok=True)
+        cache_handle, staged_cache = tempfile.mkstemp(
+            prefix=".audio-base-",
+            suffix=".wav",
+            dir=cache_directory,
+        )
+        os.close(cache_handle)
+        try:
+            base_audio[:video_dur_ms].export(
+                staged_cache,
+                format="wav",
+                parameters=["-ac", "1", "-ar", "16000"],
+            )
+            check_cancellation(cancellation_id)
+            if os.path.getsize(staged_cache) <= 44:
+                raise RuntimeError("Prepared audio-base cache is empty.")
+            _replace_exported_audio(staged_cache, prepared_base_audio_path)
+            staged_cache = ""
+        finally:
+            if staged_cache:
+                try:
+                    os.remove(staged_cache)
+                except FileNotFoundError:
+                    pass
     
     total = len(segments)
     for idx, seg in enumerate(segments, 1):
@@ -274,7 +314,7 @@ def build_audio_timeline(
             continue
         
         try:
-            check_cancellation(video_id)
+            check_cancellation(cancellation_id)
             tts_segment = AudioSegment.from_file(part_path)
             # Trim leading/trailing silence from the generated TTS audio to remove delay/gaps
             tts_segment = trim_silence(tts_segment)
@@ -290,14 +330,14 @@ def build_audio_timeline(
                     f"[{idx}/{total}] TTS overran its {available_dur}ms source-speech window. "
                     f"Applying pitch-preserving tempo {speed_factor:.2f}x without trimming.",
                 )
-                tts_segment = compress_to_fit(tts_segment, available_dur, voice_parts_dir, video_id)
+                tts_segment = compress_to_fit(tts_segment, available_dur, voice_parts_dir, cancellation_id)
 
             base_audio = base_audio.overlay(tts_segment, position=start_ms)
         except Exception as exc:
             raise RuntimeError(f"Failed to overlay required voice segment {idx} ({part_filename}): {exc}") from exc
 
     # Export mono 16kHz WAV file atomically so resume never sees a partial file.
-    check_cancellation(video_id)
+    check_cancellation(cancellation_id)
     output_directory = os.path.dirname(os.path.abspath(output_wav_path))
     os.makedirs(output_directory, exist_ok=True)
     handle, temporary_path = tempfile.mkstemp(
@@ -312,7 +352,7 @@ def build_audio_timeline(
             format="wav",
             parameters=["-ac", "1", "-ar", "16000"],
         )
-        check_cancellation(video_id)
+        check_cancellation(cancellation_id)
         if os.path.getsize(temporary_path) <= 44:
             raise RuntimeError("Audio timeline export produced an empty WAV file.")
         _replace_exported_audio(temporary_path, output_wav_path)

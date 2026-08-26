@@ -33,8 +33,12 @@ FloatingToolDialog {
     property string loadedPreviewSource: ""
     property string loadedPreviewAudioSource: ""
     property real pendingPreviewPosition: 0
+    property real pendingScrubPosition: 0
+    property double positionGuardUntil: 0
     property bool resumeAfterPreview: false
     property bool previewFramePriming: false
+    property bool previewScrubbing: false
+    property bool previewStatusVisible: false
     property bool videoFullscreen: false
     property string pendingApprovalPayload: ""
     readonly property var selectedSegment: selectedIndex >= 0 && selectedIndex < segments.length ? segments[selectedIndex] : null
@@ -52,6 +56,13 @@ FloatingToolDialog {
                                                 ? String(AppController.editorPreviewAudioSource)
                                                 : String(previewMedia.finalMixSource || "")
     readonly property bool usingPreparedMix: previewMixSource.length > 0
+    readonly property string previewStage: String(AppController.editorPreviewStage || "")
+    readonly property bool previewUpdateBusy: AppController.editorPreviewBusy
+        && previewStage !== "ready" && previewStage !== "error"
+    readonly property real previewUpdateProgress: Math.max(
+        0,
+        Math.min(1, Number(AppController.editorPreviewProgress || 0))
+    )
     property bool postProcessingEdit: false
 
     function cloneSegments(value) {
@@ -120,12 +131,16 @@ FloatingToolDialog {
     }
 
     function releasePreviewMedia() {
+        previewStatusDelayTimer.stop();
+        previewScrubTimer.stop();
         previewRevealTimer.stop();
         previewPrimeTimer.stop();
         previewRenderTimer.stop();
         previewReady = false;
         previewQueued = false;
         previewFramePriming = false;
+        previewScrubbing = false;
+        previewStatusVisible = false;
         videoPlayer.playbackRate = 1.0;
         videoPlayer.stop();
         stopPreviewAudio();
@@ -164,6 +179,16 @@ FloatingToolDialog {
         pendingPreviewPosition = playheadSeconds;
         previewQueued = false;
         AppController.requestEditorPreview(JSON.stringify(segments), pendingPreviewPosition);
+    }
+
+    function updatePreviewStatus() {
+        if (previewUpdateBusy) {
+            if (!previewStatusVisible && !previewStatusDelayTimer.running)
+                previewStatusDelayTimer.start();
+        } else {
+            previewStatusDelayTimer.stop();
+            previewStatusVisible = false;
+        }
     }
 
     function applyRenderedPreview() {
@@ -212,16 +237,8 @@ FloatingToolDialog {
     }
 
     function previewStatusText() {
-        if (previewQueued)
-            return I18n.t("Preparing preview");
-        const stage = String(AppController.editorPreviewStage || "");
-        if (stage === "voice")
-            return I18n.t("Updating preview voice");
-        if (stage === "mixing")
-            return I18n.t("Mixing preview audio");
-        if (stage === "loading")
-            return I18n.t("Loading preview");
-        return I18n.t("Rendering preview");
+        const stage = previewStage;
+        return stage === "preparing" ? I18n.t("Preparing preview") : I18n.t("Updating preview");
     }
 
     function remember() {
@@ -356,6 +373,8 @@ FloatingToolDialog {
     function seekTo(secondsValue) {
         const seconds = Math.max(0, Math.min(contentDuration, Number(secondsValue || 0)));
         timelinePosition = seconds;
+        pendingPreviewPosition = seconds;
+        positionGuardUntil = Date.now() + 220;
         // Both the source and the rendered proxy now span the full timeline.
         // Seeking never invalidates the visual cache and never changes source.
         videoPlayer.setPosition(seconds * 1000);
@@ -369,6 +388,25 @@ FloatingToolDialog {
             selectedIndex = index;
             loadSelectedText();
         }
+    }
+
+    function beginPreviewScrub(secondsValue) {
+        previewScrubbing = true;
+        scrubPreview(secondsValue);
+        previewScrubTimer.start();
+    }
+
+    function scrubPreview(secondsValue) {
+        const seconds = Math.max(0, Math.min(contentDuration, Number(secondsValue || 0)));
+        pendingScrubPosition = seconds;
+        pendingPreviewPosition = seconds;
+        timelinePosition = seconds;
+    }
+
+    function endPreviewScrub(secondsValue) {
+        previewScrubTimer.stop();
+        previewScrubbing = false;
+        seekTo(secondsValue);
     }
 
     onOpened: {
@@ -389,7 +427,11 @@ FloatingToolDialog {
         loadedPreviewSource = "";
         loadedPreviewAudioSource = "";
         pendingPreviewPosition = 0;
+        pendingScrubPosition = 0;
+        positionGuardUntil = 0;
         resumeAfterPreview = false;
+        previewScrubbing = false;
+        previewStatusVisible = false;
         videoFullscreen = false;
         pendingApprovalPayload = "";
         const publishedSource = String(previewMedia.renderedVideoSource || "");
@@ -406,105 +448,6 @@ FloatingToolDialog {
         releasePreviewMedia();
         videoFullscreen = false;
         AppController.releaseEditorPreview();
-    }
-
-    Shortcut {
-        sequence: StandardKey.Undo
-        enabled: root.visible && !subtitleText.activeFocus && root.undoStack.length > 0
-        onActivated: {
-            root.commitPendingText();
-            root.undo();
-        }
-    }
-
-    Shortcut {
-        sequence: StandardKey.Redo
-        enabled: root.visible && !subtitleText.activeFocus && root.redoStack.length > 0
-        onActivated: {
-            root.commitPendingText();
-            root.redo();
-        }
-    }
-
-    Shortcut {
-        sequence: "Ctrl+Shift+Z"
-        enabled: root.visible && !subtitleText.activeFocus && root.redoStack.length > 0
-        onActivated: {
-            root.commitPendingText();
-            root.redo();
-        }
-    }
-
-    Shortcut {
-        sequence: "Space"
-        enabled: root.visible && !subtitleText.activeFocus
-        onActivated: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
-    }
-
-    Shortcut {
-        sequence: "Alt+Left"
-        enabled: root.visible && !subtitleText.activeFocus && root.selectedSegment !== null
-        onActivated: root.nudgeSelected(-0.05)
-    }
-
-    Shortcut {
-        sequence: "Alt+Right"
-        enabled: root.visible && !subtitleText.activeFocus && root.selectedSegment !== null
-        onActivated: root.nudgeSelected(0.05)
-    }
-
-    Shortcut {
-        sequence: "Ctrl+0"
-        enabled: root.visible && !subtitleText.activeFocus
-        onActivated: subtitleTimeline.resetZoom()
-    }
-
-    Shortcut {
-        sequence: "Ctrl++"
-        enabled: root.visible && !subtitleText.activeFocus
-        onActivated: subtitleTimeline.zoomAt(subtitleTimeline.width / 2, subtitleTimeline.zoomFactor * 1.25)
-    }
-
-    Shortcut {
-        sequence: "Ctrl+-"
-        enabled: root.visible && !subtitleText.activeFocus
-        onActivated: subtitleTimeline.zoomAt(subtitleTimeline.width / 2, subtitleTimeline.zoomFactor / 1.25)
-    }
-
-    Shortcut {
-        sequence: "Left"
-        enabled: root.visible && !subtitleText.activeFocus
-        onActivated: root.seekTo(Math.max(0, root.playheadSeconds - 0.04))
-    }
-
-    Shortcut {
-        sequence: "Right"
-        enabled: root.visible && !subtitleText.activeFocus
-        onActivated: root.seekTo(Math.min(root.contentDuration, root.playheadSeconds + 0.04))
-    }
-
-    Shortcut {
-        sequence: "Shift+Left"
-        enabled: root.visible && !subtitleText.activeFocus
-        onActivated: root.selectAdjacent(-1)
-    }
-
-    Shortcut {
-        sequence: "Shift+Right"
-        enabled: root.visible && !subtitleText.activeFocus
-        onActivated: root.selectAdjacent(1)
-    }
-
-    Shortcut {
-        sequence: "F11"
-        enabled: root.visible
-        onActivated: root.videoFullscreen = !root.videoFullscreen
-    }
-
-    Shortcut {
-        sequence: "Escape"
-        enabled: root.visible && root.videoFullscreen
-        onActivated: root.videoFullscreen = false
     }
 
     ColumnLayout {
@@ -622,7 +565,7 @@ FloatingToolDialog {
                                 anchors.bottom: parent.bottom
                                 height: 30
                                 color: "#D0161A20"
-                                visible: !root.previewReady || root.previewQueued || AppController.editorPreviewBusy
+                                visible: root.previewStatusVisible && root.previewUpdateBusy
                                 z: 4
 
                                 RowLayout {
@@ -631,11 +574,6 @@ FloatingToolDialog {
                                     anchors.rightMargin: Theme.space12
                                     spacing: Theme.space8
 
-                                    BusyIndicator {
-                                        Layout.preferredWidth: 14
-                                        Layout.preferredHeight: 14
-                                        running: root.visible && (!root.previewReady || root.previewQueued || AppController.editorPreviewBusy)
-                                    }
                                     Text {
                                         Layout.fillWidth: true
                                         text: root.previewStatusText()
@@ -644,8 +582,8 @@ FloatingToolDialog {
                                         elide: Text.ElideRight
                                     }
                                     Text {
-                                        visible: AppController.editorPreviewBusy && Number(AppController.editorPreviewProgress || 0) > 0
-                                        text: Math.round(Number(AppController.editorPreviewProgress || 0) * 100) + "%"
+                                        visible: root.previewUpdateProgress > 0
+                                        text: Math.round(root.previewUpdateProgress * 100) + "%"
                                         color: Theme.textMuted
                                         font.pixelSize: Theme.caption
                                         font.family: "Cascadia Mono"
@@ -660,12 +598,13 @@ FloatingToolDialog {
                                     color: Theme.outline
 
                                     Rectangle {
-                                        width: parent.width * Math.max(0.02, Math.min(1, Number(AppController.editorPreviewProgress || 0)))
+                                        width: parent.width * root.previewUpdateProgress
                                         height: parent.height
                                         color: Theme.focus
                                     }
                                 }
                             }
+
                         }
 
                         Rectangle {
@@ -693,11 +632,18 @@ FloatingToolDialog {
                                     font.family: "Cascadia Mono"
                                 }
                                 Slider {
+                                    id: previewSeekSlider
                                     Layout.fillWidth: true
                                     from: 0
                                     to: Math.max(1, root.contentDuration)
                                     value: root.playheadSeconds
-                                    onMoved: root.seekTo(value)
+                                    onMoved: root.scrubPreview(value)
+                                    onPressedChanged: {
+                                        if (pressed)
+                                            root.beginPreviewScrub(value)
+                                        else
+                                            root.endPreviewScrub(value)
+                                    }
                                 }
                                 Text {
                                     Layout.preferredWidth: 82
@@ -709,7 +655,7 @@ FloatingToolDialog {
                                 }
                                 IconButton {
                                     glyph: "\uE740"
-                                    toolTipText: I18n.t("Full screen preview") + " (F11)"
+                                    toolTipText: I18n.t("Full screen preview")
                                     onClicked: root.videoFullscreen = true
                                 }
                             }
@@ -787,6 +733,14 @@ FloatingToolDialog {
                             selectByMouse: true
                             color: Theme.text
                             font.pixelSize: Theme.bodyLarge
+                            // Undo/Redo belongs to the editor snapshot history,
+                            // not to whichever child control currently has focus.
+                            Keys.priority: Keys.BeforeItem
+                            Keys.onPressed: function (event) {
+                                const controlHeld = (event.modifiers & Qt.ControlModifier) !== 0;
+                                if (controlHeld && (event.key === Qt.Key_Z || event.key === Qt.Key_Y))
+                                    event.accepted = true;
+                            }
                             background: Rectangle {
                                 color: Theme.input
                                 radius: Theme.radiusSmall
@@ -905,15 +859,22 @@ FloatingToolDialog {
                     font.pixelSize: Theme.caption
                 }
                 Slider {
+                    id: fullscreenSeekSlider
                     Layout.fillWidth: true
                     from: 0
                     to: Math.max(1, root.contentDuration)
                     value: root.playheadSeconds
-                    onMoved: root.seekTo(value)
+                    onMoved: root.scrubPreview(value)
+                    onPressedChanged: {
+                        if (pressed)
+                            root.beginPreviewScrub(value)
+                        else
+                            root.endPreviewScrub(value)
+                    }
                 }
                 IconButton {
                     glyph: "\uE73F"
-                    toolTipText: I18n.t("Exit full screen") + " (F11)"
+                    toolTipText: I18n.t("Exit full screen")
                     onClicked: root.videoFullscreen = false
                 }
             }
@@ -933,8 +894,10 @@ FloatingToolDialog {
         target: AppController
 
         function onEditorPreviewChanged() {
-            if (root.visible)
+            if (root.visible) {
                 root.applyRenderedPreview();
+                root.updatePreviewStatus();
+            }
         }
 
         function onSelectedVideoChanged() {
@@ -954,7 +917,7 @@ FloatingToolDialog {
                 root.sourceDuration = Math.max(root.sourceDuration, Number(duration || 0) / 1000);
         }
         onPositionChanged: {
-            if (!root.previewFramePriming)
+            if (!root.previewFramePriming && !root.previewScrubbing && Date.now() >= root.positionGuardUntil)
                 root.timelinePosition = root.usingRenderedPreview ? Number(AppController.editorPreviewStart || 0) + Number(position || 0) / 1000 : Number(position || 0) / 1000;
         }
         onMediaStatusChanged: {
@@ -1032,6 +995,25 @@ FloatingToolDialog {
     }
 
     Timer {
+        id: previewStatusDelayTimer
+        interval: 240
+        repeat: false
+        onTriggered: root.previewStatusVisible = root.visible && root.previewUpdateBusy
+    }
+
+    Timer {
+        id: previewScrubTimer
+        interval: 80
+        repeat: true
+        onTriggered: {
+            const seconds = root.pendingScrubPosition;
+            root.positionGuardUntil = Date.now() + 220;
+            videoPlayer.setPosition(seconds * 1000);
+            root.setExternalAudioPosition(seconds * 1000, true);
+        }
+    }
+
+    Timer {
         id: previewRevealTimer
         interval: 120
         repeat: false
@@ -1076,7 +1058,7 @@ FloatingToolDialog {
         id: previewRenderTimer
         // Content and timing edits render only after the user pauses. This
         // avoids starting and cancelling FFmpeg for every drag/text event.
-        interval: 480
+        interval: 360
         repeat: false
         onTriggered: root.requestRenderedPreview()
     }
@@ -1101,7 +1083,7 @@ FloatingToolDialog {
 
     Timer {
         id: textCommitTimer
-        interval: 420
+        interval: 300
         repeat: false
         onTriggered: root.commitPendingText()
     }

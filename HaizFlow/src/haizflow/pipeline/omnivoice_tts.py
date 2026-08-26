@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -26,13 +27,21 @@ from haizflow.core.model_integrity import (
     verify_omnivoice_model,
     verify_omnivoice_sdk,
 )
-from haizflow.pipeline.process_registry import check_cancellation, communicate_process
+from haizflow.pipeline.process_registry import (
+    check_cancellation,
+    communicate_process,
+    register_process,
+    unregister_process,
+)
 from haizflow.services.video_store import log_to_video
 from haizflow.utils.ffmpeg import _binary
 
 _RUNTIME_MARKER_VERSION = "omnivoice-0.2.1-transformers-5.3.0-hub-1.3.0"
 _SAMPLE_RATE = 24_000
 _RUNTIME_PREPARE_LOCK = threading.Lock()
+_PERSISTENT_WORKER_LOCK = threading.RLock()
+_PERSISTENT_WORKER_PROCESS: subprocess.Popen[str] | None = None
+_PERSISTENT_WORKER_REGISTRY_ID = "omnivoice-warm-runtime"
 _GPU_STALL_TIMEOUT_SECONDS = 15 * 60
 _CPU_STALL_TIMEOUT_SECONDS = 40 * 60
 _HEARTBEAT_LOG_INTERVAL_SECONDS = 30
@@ -257,6 +266,72 @@ def _worker_command(request_path: Path) -> list[str]:
     ]
 
 
+def _worker_server_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--omnivoice-server"]
+    return [
+        sys.executable,
+        "-m",
+        "haizflow.pipeline.omnivoice_tts",
+        "--server",
+    ]
+
+
+def _worker_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["PYTHONUTF8"] = "1"
+    environment["HF_HUB_OFFLINE"] = "1"
+    environment["TRANSFORMERS_OFFLINE"] = "1"
+    return environment
+
+
+def _stop_persistent_worker_unlocked() -> None:
+    global _PERSISTENT_WORKER_PROCESS
+    process = _PERSISTENT_WORKER_PROCESS
+    _PERSISTENT_WORKER_PROCESS = None
+    if process is None:
+        return
+    try:
+        if process.stdin is not None:
+            process.stdin.write("__quit__\n")
+            process.stdin.flush()
+    except (OSError, ValueError):
+        pass
+    try:
+        process.wait(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        try:
+            process.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            pass
+    unregister_process(_PERSISTENT_WORKER_REGISTRY_ID, process, force=True)
+
+
+def _persistent_worker_unlocked() -> subprocess.Popen[str]:
+    global _PERSISTENT_WORKER_PROCESS
+    process = _PERSISTENT_WORKER_PROCESS
+    if process is not None and process.poll() is None and process.stdin is not None:
+        return process
+    _stop_persistent_worker_unlocked()
+    process = subprocess.Popen(
+        _worker_server_command(),
+        cwd=str(Path(__file__).resolve().parents[3]),
+        env=_worker_environment(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    register_process(_PERSISTENT_WORKER_REGISTRY_ID, process)
+    _PERSISTENT_WORKER_PROCESS = process
+    return process
+
+
 def _run_worker_process(
     request_path: Path,
     request: dict[str, Any],
@@ -368,6 +443,109 @@ def _run_worker_process(
     return int(process.returncode or 0), detail
 
 
+def _run_persistent_worker_process(
+    request_path: Path,
+    request: dict[str, Any],
+    video_id: str,
+    progress_callback=None,
+    *,
+    cancellation_id: str | None = None,
+) -> tuple[int, str]:
+    """Run inference in a long-lived isolated process that keeps the model warm."""
+    response_path = request_path.with_name("response.json")
+    response_path.unlink(missing_ok=True)
+    request["response_path"] = str(response_path)
+    request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+    status_path = Path(str(request["status_path"]))
+    stall_timeout = (
+        _GPU_STALL_TIMEOUT_SECONDS
+        if str(request.get("device") or "").startswith("cuda")
+        else _CPU_STALL_TIMEOUT_SECONDS
+    )
+
+    with _PERSISTENT_WORKER_LOCK:
+        process = _persistent_worker_unlocked()
+        try:
+            assert process.stdin is not None
+            process.stdin.write(f"{request_path}\n")
+            process.stdin.flush()
+        except (OSError, ValueError) as exc:
+            _stop_persistent_worker_unlocked()
+            return 1, f"Could not start the warm OmniVoice request: {exc}"
+
+        last_completed = -1
+        last_stage = ""
+        last_current = -1
+        last_activity = time.monotonic()
+        last_heartbeat = last_activity
+        started = last_activity
+        try:
+            while True:
+                check_cancellation(cancellation_id or video_id)
+                if response_path.is_file():
+                    try:
+                        response = json.loads(response_path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                        time.sleep(0.05)
+                        continue
+                    return int(response.get("return_code", 1)), str(response.get("error") or "")
+                if process.poll() is not None:
+                    detail = f"Warm OmniVoice worker exited unexpectedly ({process.returncode})."
+                    _stop_persistent_worker_unlocked()
+                    return int(process.returncode or 1), detail
+
+                now = time.monotonic()
+                try:
+                    status = json.loads(status_path.read_text(encoding="utf-8"))
+                    completed = int(status.get("completed", 0))
+                    total = int(status.get("total", len(request.get("items") or [])))
+                    stage = str(status.get("stage") or "synthesizing")
+                    current = int(status.get("current", 0))
+                except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                    status = None
+                if status is not None and (
+                    completed != last_completed or stage != last_stage or current != last_current
+                ):
+                    last_completed = completed
+                    last_stage = stage
+                    last_current = current
+                    last_activity = now
+                    last_heartbeat = now
+                    log_to_video(
+                        video_id,
+                        f"[TTS][PROGRESS] provider=omnivoice stage={stage} "
+                        f"completed={completed}/{total} current={current or '-'}",
+                    )
+                    if progress_callback is not None:
+                        progress_callback(completed, total, stage)
+                elif now - last_activity >= stall_timeout:
+                    detail = (
+                        "OmniVoice stopped making progress for "
+                        f"{stall_timeout // 60} minutes while running on "
+                        f"{request.get('device') or 'cpu'}."
+                    )
+                    log_to_video(video_id, f"[TTS][ERROR] {detail}")
+                    _stop_persistent_worker_unlocked()
+                    return 1, detail
+                elif now - last_heartbeat >= _HEARTBEAT_LOG_INTERVAL_SECONDS:
+                    last_heartbeat = now
+                    log_to_video(
+                        video_id,
+                        "[TTS][WAIT] OmniVoice is still working "
+                        f"(stage={last_stage or 'starting'}, item={last_current or '-'}).",
+                    )
+                if now - started >= MEDIA_PROCESS_TIMEOUT_SECONDS:
+                    detail = "OmniVoice synthesis exceeded the configured processing timeout."
+                    _stop_persistent_worker_unlocked()
+                    return 1, detail
+                time.sleep(0.15)
+        except BaseException:
+            # A cancelled editor generation must not leave an old request
+            # consuming the GPU while the replacement waits behind it.
+            _stop_persistent_worker_unlocked()
+            raise
+
+
 def _is_cuda_resource_failure(detail: str) -> bool:
     normalized = str(detail or "").lower()
     return any(
@@ -427,11 +605,14 @@ def synthesize_batch_to_mp3(
     language_id: str,
     speaker_mode: str = "single",
     progress_callback=None,
+    keep_worker_warm: bool = False,
+    process_registry_id: str | None = None,
 ) -> None:
-    """Load OmniVoice once and synthesize all missing segments in one worker."""
+    """Synthesize missing segments, normally reusing one warm isolated model."""
     if not items:
         return
-    check_cancellation(video_id)
+    cancellation_id = process_registry_id or video_id
+    check_cancellation(cancellation_id)
     log_to_video(
         video_id,
         "[TTS][PREPARE] provider=omnivoice stage=verifying_runtime "
@@ -467,7 +648,7 @@ def synthesize_batch_to_mp3(
                     text=True,
                 )
                 _stdout, stderr = communicate_process(
-                    video_id,
+                    cancellation_id,
                     process,
                     label=f"OmniVoice speaker reference {index}",
                     timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
@@ -508,11 +689,14 @@ def synthesize_batch_to_mp3(
             f"[TTS][PREPARE] provider=omnivoice stage=launching_worker "
             f"device={request['device']} segments={len(request_items)}",
         )
-        return_code, stderr = _run_worker_process(
-            request_path,
-            request,
-            video_id,
-            progress_callback,
+        worker_runner = _run_persistent_worker_process if keep_worker_warm else _run_worker_process
+        worker_kwargs = (
+            {"cancellation_id": cancellation_id}
+            if worker_runner is _run_persistent_worker_process
+            else {}
+        )
+        return_code, stderr = worker_runner(
+            request_path, request, video_id, progress_callback, **worker_kwargs
         )
         if return_code != 0 and str(request["device"]).startswith("cuda") and _is_cuda_resource_failure(stderr):
             log_to_video(
@@ -524,20 +708,20 @@ def synthesize_batch_to_mp3(
             Path(str(request["status_path"])).unlink(missing_ok=True)
             request["device"] = "cpu"
             request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
-            return_code, stderr = _run_worker_process(
-                request_path,
-                request,
-                video_id,
-                progress_callback,
+            if keep_worker_warm:
+                with _PERSISTENT_WORKER_LOCK:
+                    _stop_persistent_worker_unlocked()
+            return_code, stderr = worker_runner(
+                request_path, request, video_id, progress_callback, **worker_kwargs
             )
         if return_code != 0:
             detail = (stderr or "OmniVoice worker stopped unexpectedly.").strip()
             raise RuntimeError(detail[-1200:])
         for wav, output in output_pairs:
-            check_cancellation(video_id)
+            check_cancellation(cancellation_id)
             if not wav.is_file() or wav.stat().st_size <= 44:
                 raise RuntimeError("OmniVoice did not produce a valid waveform.")
-            _encode_mp3(wav, output, video_id)
+            _encode_mp3(wav, output, cancellation_id)
 
 
 def synthesize_to_mp3(
@@ -549,6 +733,7 @@ def synthesize_to_mp3(
     language_id: str,
     reference_path: str = "",
     reference_text: str = "",
+    keep_worker_warm: bool = False,
 ) -> None:
     synthesize_batch_to_mp3(
         [
@@ -562,6 +747,7 @@ def synthesize_to_mp3(
         ],
         video_id,
         language_id=language_id,
+        keep_worker_warm=keep_worker_warm,
     )
 
 
@@ -570,20 +756,29 @@ def runtime_description() -> str:
 
 
 def clear_runtime() -> None:
-    """Workers are process-scoped, so no parent-process model can remain loaded."""
+    """Release the long-lived isolated model worker and its GPU allocation."""
+    with _PERSISTENT_WORKER_LOCK:
+        _stop_persistent_worker_unlocked()
 
 
-def _worker_main(request_path: str) -> int:
+def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> int:
     request = json.loads(Path(request_path).read_text(encoding="utf-8"))
     site_packages = str(request["site_packages"])
-    sys.path.insert(0, site_packages)
+    runtime = {} if runtime is None else runtime
+    modules = runtime.get("modules")
+    if modules is None:
+        sys.path.insert(0, site_packages)
 
-    # Imports intentionally happen only after the isolated Transformers 5 path
-    # is first.  The desktop process keeps its pinned Transformers 4 runtime.
-    import numpy as np  # noqa: PLC0415
-    import soundfile as sf  # noqa: PLC0415
-    import torch  # noqa: PLC0415
-    from omnivoice import OmniVoice  # noqa: PLC0415
+        # Imports intentionally happen only after the isolated Transformers 5
+        # path is first. The desktop keeps its pinned Transformers 4 runtime.
+        import numpy as np  # noqa: PLC0415
+        import soundfile as sf  # noqa: PLC0415
+        import torch  # noqa: PLC0415
+        from omnivoice import OmniVoice  # noqa: PLC0415
+
+        modules = (np, sf, torch, OmniVoice)
+        runtime["modules"] = modules
+    np, sf, torch, OmniVoice = modules
 
     items = request.get("items") or []
     status_path = Path(str(request.get("status_path") or ""))
@@ -613,14 +808,25 @@ def _worker_main(request_path: str) -> int:
             torch.set_num_interop_threads(1)
         except RuntimeError:
             pass
-    write_status(0, "loading_model")
     dtype = torch.float16 if device.startswith("cuda") else torch.float32
-    model = OmniVoice.from_pretrained(
-        str(request["model_root"]),
-        device_map=device,
-        dtype=dtype,
-        low_cpu_mem_usage=True,
-    )
+    model_key = (str(request["model_root"]), device)
+    model = runtime.get("model") if runtime.get("model_key") == model_key else None
+    write_status(0, "reusing_model" if model is not None else "loading_model")
+    if model is None:
+        previous_model = runtime.pop("model", None)
+        runtime.pop("model_key", None)
+        if previous_model is not None:
+            del previous_model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        model = OmniVoice.from_pretrained(
+            str(request["model_root"]),
+            device_map=device,
+            dtype=dtype,
+            low_cpu_mem_usage=True,
+        )
+        runtime["model"] = model
+        runtime["model_key"] = model_key
     voice_seed = int(request.get("voice_seed") or 0) & 0x7FFFFFFF
     speaker_mode = str(request.get("speaker_mode") or "single")
     synthesis_items = list(items)
@@ -756,10 +962,38 @@ def _worker_main(request_path: str) -> int:
     return 0
 
 
+def _worker_server_main() -> int:
+    """Serve request files over stdin while retaining the loaded SDK model."""
+    runtime: dict[str, Any] = {}
+    for raw_line in sys.stdin:
+        request_path = raw_line.strip()
+        if not request_path:
+            continue
+        if request_path == "__quit__":
+            return 0
+        response_path = Path(request_path).with_name("response.json")
+        try:
+            request = json.loads(Path(request_path).read_text(encoding="utf-8"))
+            configured_response = str(request.get("response_path") or "").strip()
+            if configured_response:
+                response_path = Path(configured_response)
+            return_code = _worker_main(request_path, runtime)
+            payload = {"return_code": return_code, "error": ""}
+        except BaseException as exc:  # The server must report model/runtime failures to its parent.
+            payload = {
+                "return_code": 1,
+                "error": f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
+            }
+        _write_status_file(response_path, payload)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if len(arguments) == 2 and arguments[0] in {"--worker", "--omnivoice-worker"}:
         return _worker_main(arguments[1])
+    if len(arguments) == 1 and arguments[0] in {"--server", "--omnivoice-server"}:
+        return _worker_server_main()
     raise SystemExit("OmniVoice worker requires a request file.")
 
 

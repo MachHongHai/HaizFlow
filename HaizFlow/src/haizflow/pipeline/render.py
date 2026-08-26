@@ -455,6 +455,49 @@ def _output_subtitle_region_layout(
     return SubtitleRegionLayout(left, top, right - left, bottom - top, line_height)
 
 
+def map_subtitle_region_to_output_percent(
+    region: dict | None,
+    source_width: int,
+    source_height: int,
+    output_format: str,
+    crop: CropSettings,
+) -> dict:
+    """Map a source OCR box to percentages in the transformed output frame.
+
+    Preview rendering applies crop/format/removal once in a reusable base
+    proxy, then burns translated captions into cached chunks. Percentages keep
+    the caption box stable across the proxy's uniform resolution reduction.
+    """
+    _crop_x, _crop_y, cropped_width, cropped_height = _crop_geometry(
+        source_width,
+        source_height,
+        crop,
+    )
+    if output_format in {"tiktok_9_16_crop", "blur_background_9_16"}:
+        output_width, output_height = 1080, 1920
+    else:
+        output_width = max(2, int(cropped_width) // 2 * 2)
+        output_height = max(2, int(cropped_height) // 2 * 2)
+    layout = _output_subtitle_region_layout(
+        region,
+        source_width,
+        source_height,
+        output_format,
+        crop,
+        output_width,
+        output_height,
+    )
+    if layout is None:
+        return {}
+    return {
+        "x_percent": layout.x * 100 / output_width,
+        "y_percent": layout.y * 100 / output_height,
+        "width_percent": layout.width * 100 / output_width,
+        "height_percent": layout.height * 100 / output_height,
+        "line_height_percent": (layout.line_height or layout.height) * 100 / output_height,
+    }
+
+
 def _style_for_original_subtitle_region(
     subtitle_style: SubtitleStyle,
     region_layout: SubtitleRegionLayout | None,
@@ -775,6 +818,7 @@ def render_video(
     source_duration_seconds: float | None = None,
     process_registry_id: str | None = None,
     compatibility_preview: bool = False,
+    subtitle_region_override: dict | None = None,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     process_key = str(process_registry_id or video_id)
@@ -799,7 +843,7 @@ def render_video(
 
     ass_path = os.path.join(video_temp_dir, "positioned_subtitles.ass")
     region_layout = _output_subtitle_region_layout(
-        original_subtitle_region,
+        subtitle_region_override if subtitle_region_override is not None else original_subtitle_region,
         source_width,
         source_height,
         output_format,

@@ -11,6 +11,31 @@ from haizflow.schemas.video import CropSettings, SubtitleStyle
 
 
 class TimelineRenderTests(unittest.TestCase):
+    def test_preview_subtitle_region_preserves_the_transformed_ocr_box(self):
+        mapped = render.map_subtitle_region_to_output_percent(
+            {
+                "x_percent": 20,
+                "y_percent": 60,
+                "width_percent": 60,
+                "height_percent": 10,
+                "line_height_percent": 8,
+            },
+            1000,
+            1000,
+            "keep_ratio",
+            CropSettings(
+                left_percent=10,
+                right_percent=10,
+                top_percent=20,
+            ),
+        )
+
+        self.assertAlmostEqual(mapped["x_percent"], 12.5)
+        self.assertAlmostEqual(mapped["y_percent"], 50.0)
+        self.assertAlmostEqual(mapped["width_percent"], 75.0)
+        self.assertAlmostEqual(mapped["height_percent"], 12.5)
+        self.assertAlmostEqual(mapped["line_height_percent"], 10.0)
+
     def test_ffmpeg_progress_uses_rendered_timestamp(self):
         self.assertAlmostEqual(
             render._ffmpeg_progress_fraction("out_time_us=2500000\nprogress=continue\n", 10.0),

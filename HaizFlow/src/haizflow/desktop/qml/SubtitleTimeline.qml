@@ -154,7 +154,7 @@ Rectangle {
                 compact: true
                 tone: "ghost"
                 enabled: root.zoomFactor > 1.001
-                toolTipText: I18n.t("Show the complete timeline") + " (Ctrl+0)"
+                toolTipText: I18n.t("Show the complete timeline")
                 onClicked: root.resetZoom()
             }
 

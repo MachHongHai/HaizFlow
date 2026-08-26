@@ -223,24 +223,6 @@ ApplicationWindow {
         AppController.enableInAppAlerts()
     }
 
-    Shortcut {
-        sequence: "Ctrl+,"
-        enabled: !root.globalNavigationBlocked
-        onActivated: settingsDialog.open()
-    }
-
-    Shortcut {
-        sequence: "Alt+Left"
-        enabled: root.canNavigateBack
-        onActivated: root.navigateBack()
-    }
-
-    Shortcut {
-        sequence: "Alt+Right"
-        enabled: root.canNavigateForward
-        onActivated: root.navigateForward()
-    }
-
     ProjectSetupDialog {
         id: projectSetupDialog
     }

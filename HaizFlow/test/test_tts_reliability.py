@@ -1,4 +1,5 @@
 import asyncio
+import io
 import json
 import sys
 import tempfile
@@ -6,7 +7,6 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -341,6 +341,39 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][1:], ("video", "vi", "single"))
         self.assertEqual([item["text"] for item in calls[0][0]], ["Xin chào.", "Thế giới."])
+
+    def test_omnivoice_server_reuses_one_runtime_across_requests(self):
+        from haizflow.pipeline import omnivoice_tts
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            requests = []
+            request_paths = []
+            for index in range(2):
+                request_path = root / f"request-{index}.json"
+                response_path = root / f"response-{index}.json"
+                request_path.write_text(
+                    json.dumps({"response_path": str(response_path)}),
+                    encoding="utf-8",
+                )
+                request_paths.append(request_path)
+
+            def fake_worker(request_path, runtime):
+                requests.append((request_path, runtime))
+                return 0
+
+            commands = "\n".join(str(path) for path in request_paths) + "\n__quit__\n"
+            with (
+                mock.patch.object(omnivoice_tts.sys, "stdin", io.StringIO(commands)),
+                mock.patch.object(omnivoice_tts, "_worker_main", side_effect=fake_worker),
+            ):
+                self.assertEqual(omnivoice_tts._worker_server_main(), 0)
+
+            self.assertEqual(len(requests), 2)
+            self.assertIs(requests[0][1], requests[1][1])
+            for index in range(2):
+                response = json.loads((root / f"response-{index}.json").read_text(encoding="utf-8"))
+                self.assertEqual(response, {"return_code": 0, "error": ""})
 
     def test_omnivoice_multiple_speakers_follow_source_timestamps_not_list_indexes(self):
         from haizflow.pipeline import omnivoice_tts

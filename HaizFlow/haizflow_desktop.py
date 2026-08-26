@@ -1,7 +1,7 @@
-from pathlib import Path
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
@@ -67,6 +67,7 @@ _INTERNAL_STREAM_MODES = {
     "--douyin-channel-worker",
     "--demucs-separate",
     "--hymt2-worker",
+    "--omnivoice-server",
     "--omnivoice-worker",
     "--runtime-probe",
     "--release-smoke",
@@ -86,6 +87,11 @@ if "--omnivoice-worker" in sys.argv:
     worker_index = sys.argv.index("--omnivoice-worker")
     worker_args = sys.argv[worker_index : worker_index + 2]
     raise SystemExit(run_omnivoice_worker(worker_args))
+
+if "--omnivoice-server" in sys.argv:
+    from haizflow.pipeline.omnivoice_tts import main as run_omnivoice_server
+
+    raise SystemExit(run_omnivoice_server(["--omnivoice-server"]))
 
 if "--douyin-channel-worker" in sys.argv:
     from haizflow.services.douyin_channel_worker import main as run_douyin_channel_worker
@@ -118,7 +124,7 @@ if "--ui-smoke-test" in sys.argv:
     run_desktop_smoke(smoke_test=True)
     raise SystemExit(0)
 
-from haizflow.desktop.main import main
+from haizflow.desktop.main import main  # noqa: E402,I001
 
 
 if __name__ == "__main__":

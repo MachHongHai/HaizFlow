@@ -440,6 +440,9 @@ class HaizFlowController(QObject):
         editor_preview = getattr(self, "_editor_preview", None)
         if editor_preview is not None:
             editor_preview.release()
+        from haizflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice_runtime
+
+        clear_omnivoice_runtime()
         publisher = getattr(self, "_tiktok_publisher", None)
         if publisher is not None:
             publisher.shutdown()

@@ -533,6 +533,8 @@ def generate_voice_parts(
     *,
     provider: str = "edge",
     target_language: str = "vi",
+    process_registry_id: str | None = None,
+    keep_worker_warm: bool = False,
 ):
     effective = resolve_tts_provider(provider, target_language)
     if effective == "edge":
@@ -633,12 +635,18 @@ def generate_voice_parts(
             verified = completed_before_worker + completed
             progress_callback(min(verified, total), total)
 
+        worker_options = {}
+        if process_registry_id:
+            worker_options["process_registry_id"] = process_registry_id
+        if keep_worker_warm:
+            worker_options["keep_worker_warm"] = True
         synthesize_batch_to_mp3(
             pending,
             video_id,
             language_id=target_language,
             speaker_mode=speaker_mode,
             progress_callback=report_omnivoice_progress,
+            **worker_options,
         )
     for index in range(1, total + 1):
         part_path = os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3")
