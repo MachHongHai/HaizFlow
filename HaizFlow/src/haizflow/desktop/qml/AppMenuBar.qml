@@ -9,6 +9,7 @@ Rectangle {
     id: root
 
     signal newSingleProjectRequested
+    signal manualProjectRequested
     signal newBatchProjectRequested
     signal newDownloadProjectRequested
     signal newPublishProjectRequested
@@ -16,6 +17,7 @@ Rectangle {
     signal aboutRequested
     signal backRequested
     signal forwardRequested
+    signal homeRequested
 
     property bool canGoBack: false
     property bool canGoForward: false
@@ -49,6 +51,12 @@ Rectangle {
             toolTipText: I18n.t("Forward")
             enabled: root.canGoForward
             onClicked: root.forwardRequested()
+        }
+
+        NavigationButton {
+            glyph: "\uE80F"
+            toolTipText: I18n.t("Home")
+            onClicked: root.homeRequested()
         }
 
         Item {
@@ -100,6 +108,7 @@ Rectangle {
         parent: Overlay.overlay
         menuContentWidth: Math.max(
             newSingleProjectItem.implicitWidth,
+            newManualProjectItem.implicitWidth,
             newBatchProjectItem.implicitWidth,
             newDownloadProjectItem.implicitWidth,
             newPublishProjectItem.implicitWidth
@@ -110,6 +119,13 @@ Rectangle {
 
             text: I18n.t("New single project")
             onTriggered: root.newSingleProjectRequested()
+        }
+
+        AppMenuItem {
+            id: newManualProjectItem
+
+            text: I18n.t("New manual project")
+            onTriggered: root.manualProjectRequested()
         }
 
         AppMenuItem {

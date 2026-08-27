@@ -14,6 +14,8 @@ Dialog {
     padding: 0
     title: root.projectType === "batch"
         ? I18n.t("Create batch project")
+        : root.projectType === "manual"
+            ? I18n.t("Create manual project")
         : root.projectType === "download"
             ? I18n.t("Create download project")
             : root.projectType === "publish"
@@ -29,6 +31,7 @@ Dialog {
 
     function openForType(type) {
         projectType = type === "batch" ? "batch"
+            : type === "manual" ? "manual"
             : type === "download" ? "download"
             : type === "publish" ? "publish"
             : "single"

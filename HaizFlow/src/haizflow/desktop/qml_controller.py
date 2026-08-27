@@ -140,6 +140,7 @@ class HaizFlowController(QObject):
         self.videos = VideoListModel()
         self.projects = ProjectListModel()
         self.single_projects = ProjectGridModel()
+        self.manual_projects = ProjectGridModel()
         self.batch_projects = ProjectGridModel()
         self.download_projects = ProjectGridModel()
         self.publish_projects = ProjectGridModel()
@@ -498,6 +499,10 @@ class HaizFlowController(QObject):
     @Property(QObject, constant=True)
     def singleProjectModel(self):
         return self.single_projects
+
+    @Property(QObject, constant=True)
+    def manualProjectModel(self):
+        return self.manual_projects
 
     @Property(QObject, constant=True)
     def batchProjectModel(self):
@@ -1124,11 +1129,14 @@ class HaizFlowController(QObject):
     def removeOriginalSubtitles(self, value):
         normalized = bool(value)
         changed = self._remove_original_subtitles != normalized
-        # A manually positioned subtitle is only meaningful when the original
-        # frame is kept.  Leaving this flag enabled lets a stale preview layout
-        # override the OCR region after the user switches back to covering the
-        # original subtitles.
-        layout_changed = normalized and self._subtitle_layout_override
+        # Manual exposes source cleanup and translated-caption placement as
+        # independent visual tools. Auto/Batch keep their established compact
+        # behaviour where OCR placement owns the replacement subtitle region.
+        layout_changed = (
+            normalized
+            and self._subtitle_layout_override
+            and getattr(self, "_project_type", "single") != "manual"
+        )
         if changed or layout_changed:
             self._remove_original_subtitles = normalized
             if layout_changed:
@@ -1308,7 +1316,7 @@ class HaizFlowController(QObject):
         return project_store.resolve_project_key(
             str(getattr(video, "project_name", "") or ""),
             str(getattr(video, "project_directory", "") or ""),
-            "batch" if getattr(video, "project_type", "single") == "batch" else "single",
+            project_store.normalize_project_type(getattr(video, "project_type", "single")),
         )
 
     def _selected_project_root(self) -> str:
@@ -1322,7 +1330,13 @@ class HaizFlowController(QObject):
     @Property("QVariantList", notify=selectedVideoChanged)
     def reviewSegments(self):
         video = self._selected_video()
-        if not video or video.status not in {"awaiting_review", "done"}:
+        if not video:
+            return []
+        if getattr(video, "project_type", "auto") != "manual" and video.status not in {
+            "awaiting_review",
+            "manual_ready",
+            "done",
+        }:
             return []
         transcript_path = (video.files or {}).get("translation_review_draft") or (video.files or {}).get(
             "transcript_json"
@@ -1478,7 +1492,7 @@ class HaizFlowController(QObject):
     @Property(bool, notify=selectedVideoChanged)
     def canEditSelectedSubtitles(self):
         video = self._selected_video()
-        if not video or video.status not in {"awaiting_review", "done"}:
+        if not video or video.status not in {"awaiting_review", "manual_ready", "done"}:
             return False
         transcript_path = str((video.files or {}).get("transcript_json") or "")
         return bool(transcript_path and os.path.isfile(transcript_path))
@@ -1521,8 +1535,27 @@ class HaizFlowController(QObject):
             "rendering": "Rendering video",
             "paused": "Paused",
             "done": "Export complete",
+            "manual_translation": "Translation ready",
+            "manual_subtitles": "Subtitles ready",
+            "manual_voice": "Voice ready",
+            "manual_timeline": "Audio mix ready",
         }
         return labels.get(video.step, video.step_detail or video.status)
+
+    @Property(str, notify=selectedVideoChanged)
+    def manualCompletedStage(self):
+        video = self._selected_video()
+        return str(getattr(video, "manual_completed_stage", "") or "") if video else ""
+
+    @Property("QVariantList", notify=selectedVideoChanged)
+    def manualCompletedStages(self):
+        video = self._selected_video()
+        return list(getattr(video, "manual_completed_stages", []) or []) if video else []
+
+    @Property(str, notify=selectedVideoChanged)
+    def manualTargetStage(self):
+        video = self._selected_video()
+        return str(getattr(video, "manual_target_stage", "") or "") if video else ""
 
     @Property(str, notify=selectedVideoChanged)
     def selectedProgressDetail(self):
@@ -1585,6 +1618,11 @@ class HaizFlowController(QObject):
     def selectedOutputPath(self):
         video = self._selected_video()
         return self._resolve_video_file(video, ("final_video", "output_video"), ("output", "final.mp4"))
+
+    @Property(QUrl, notify=selectedVideoChanged)
+    def selectedOutputSource(self):
+        path = self.selectedOutputPath
+        return QUrl.fromLocalFile(path) if path and os.path.isfile(path) else QUrl()
 
     @Property(bool, notify=selectedVideoChanged)
     def hasSelectedOutput(self):
@@ -2268,6 +2306,54 @@ class HaizFlowController(QObject):
         HaizFlowController._project_commands_for(self).restart_selected_video()
 
     @Slot(str, result=bool)
+    def runManualStage(self, stage):
+        allowed_stages = {"translation", "subtitles", "voice", "timeline", "render"}
+        stage = str(stage or "").strip().lower()
+        video = self._selected_video()
+        if not video or self._project_type != "manual" or video.project_type != "manual":
+            self.appAlertRequested.emit("Manual", "Import a video into a Manual project first.", "warning")
+            return False
+        if stage not in allowed_stages:
+            self.appAlertRequested.emit("Manual", "This processing stage is not available.", "warning")
+            return False
+        completed = set(getattr(video, "manual_completed_stages", []) or [])
+        required = {
+            "translation": set(),
+            "subtitles": {"translation"},
+            "voice": {"translation"},
+            "timeline": {"voice"},
+            # Audio is a live Manual tool rather than a linear build step.
+            # Export materialises the current mix after reusing the durable
+            # translation and voice checkpoints.
+            "render": {"translation", "voice"},
+        }[stage]
+        if not required.issubset(completed):
+            self.appAlertRequested.emit(
+                "Manual",
+                "Complete the required modules before running this one.",
+                "info",
+            )
+            return False
+        if self._processing_queue.contains(video.video_id):
+            self.appAlertRequested.emit("Manual", "Wait for the current stage to finish or pause it first.", "info")
+            return False
+        self._workflow_mode = "A"
+        self._apply_setup_to_video(video, review_approved=True)
+        video = video_store.get_video(video.video_id) or video
+        video_store.update_video(
+            video.video_id,
+            manual_target_stage=stage,
+            error=None,
+            status="manual_ready" if getattr(video, "manual_completed_stages", []) else "pending",
+        )
+        video_store.log_to_video(video.video_id, f"Manual stage queued: {stage}.")
+        queued = self._enqueue_video(video.video_id)
+        if queued:
+            self.selectedVideoChanged.emit()
+            self.refreshVideos()
+        return queued
+
+    @Slot(str, result=bool)
     def approveTranslationReview(self, payload):
         return HaizFlowController._project_commands_for(self).approve_translation_review(payload)
 
@@ -2300,18 +2386,20 @@ class HaizFlowController(QObject):
             return
         self._select_video(video)
 
-    @Slot(int)
+    @Slot(int, result=bool)
     def selectProject(self, row: int):
         project = self.projects.project_at(row)
         if not project:
-            return
-        self._open_project_summary(project)
+            return False
+        return self._select_project_summary(project)
 
     @Slot(int, str, result=bool)
     def selectProjectInMode(self, row: int, project_type: str):
         model = (
             self.batch_projects
             if project_type == "batch"
+            else self.manual_projects
+            if project_type == "manual"
             else self.download_projects
             if project_type == "download"
             else self.publish_projects
@@ -2321,18 +2409,21 @@ class HaizFlowController(QObject):
         project = model.project_at(row)
         if not project:
             return False
+        return self._select_project_summary(project)
+
+    def _select_project_summary(self, project) -> bool:
         if not self._tiktok_publisher.can_switch_project(project["key"]):
-            QMessageBox.information(
-                None,
+            self.appAlertRequested.emit(
                 "Social publishing",
                 "Wait for the active Zernio upload or request to finish before opening another project.",
+                "info",
             )
             return False
-        if project_type == "download" and not self._media_downloader.can_switch_project(project["key"]):
-            QMessageBox.information(
-                None,
+        if project["project_type"] == "download" and not self._media_downloader.can_switch_project(project["key"]):
+            self.appAlertRequested.emit(
                 "Download project",
                 "Wait for the current channel task to finish or cancel it before opening another download project.",
+                "info",
             )
             return False
         self._open_project_summary(project)
@@ -2617,9 +2708,17 @@ class HaizFlowController(QObject):
         self.batchChanged.emit()
 
     def _build_config(self):
-        manual_subtitle_layout = bool(self._subtitle_layout_override and not self._remove_original_subtitles)
+        manual_subtitle_layout = bool(
+            self._subtitle_layout_override
+            and (
+                self._project_type == "manual"
+                or not self._remove_original_subtitles
+            )
+        )
         return VideoConfig(
-            mode=self._workflow_mode,
+            # Auto and Batch no longer expose the legacy pre-TTS review mode.
+            # Manual projects provide the explicit, checkpointed editing flow.
+            mode="A",
             source_language="auto",
             target_language=self._target_language,
             speech_recognition_model=self._speech_recognition_model,
@@ -2669,6 +2768,66 @@ class HaizFlowController(QObject):
             "watermark_text": config.watermark_text,
             "project_type": config.project_type,
         }
+        if getattr(video, "project_type", "single") == "manual":
+            stage_order = ["translation", "subtitles", "voice", "timeline", "render"]
+            completed = set(getattr(video, "manual_completed_stages", []) or [])
+
+            def changed(name, value):
+                return getattr(video, name, None) != value
+
+            invalidated = set()
+            if any(
+                (
+                    changed("source_language", config.source_language),
+                    changed("target_language", config.target_language),
+                    changed("speech_recognition_model", config.speech_recognition_model),
+                    changed("enable_audio_separation", config.enable_audio_separation),
+                )
+            ):
+                invalidated.update(stage_order)
+            if any(
+                (
+                    changed("subtitle_style", config.subtitle_style),
+                    changed("remove_original_subtitles", config.remove_original_subtitles),
+                    changed("original_subtitle_removal_mode", config.original_subtitle_removal_mode),
+                    changed("subtitle_layout_override", config.subtitle_layout_override),
+                )
+            ):
+                # These are non-destructive preview/render settings. Keep the
+                # translated text and every audio artifact; export rebuilds
+                # only the visual proxy/SRT whose signature actually changed.
+                invalidated.add("render")
+            if any(
+                (
+                    changed("tts_provider", config.tts_provider),
+                    changed("tts_voice", config.tts_voice),
+                    changed("speaker_mode", config.speaker_mode),
+                )
+            ):
+                invalidated.update({"voice", "timeline", "render"})
+            if any(
+                (
+                    changed("original_video_volume", config.original_video_volume),
+                    changed("background_music_volume", config.background_music_volume),
+                    changed("tts_volume", config.tts_volume),
+                )
+            ):
+                invalidated.update({"timeline", "render"})
+            if any(
+                (
+                    changed("output_format", config.output_format),
+                    changed("crop", config.crop),
+                    changed("watermark_text", config.watermark_text),
+                )
+            ):
+                invalidated.add("render")
+            if completed.intersection(invalidated):
+                remaining = [stage for stage in stage_order if stage in completed and stage not in invalidated]
+                changes["manual_completed_stages"] = remaining
+                changes["manual_completed_stage"] = remaining[-1] if remaining else ""
+                changes["manual_target_stage"] = ""
+                changes["status"] = "manual_ready" if remaining else "pending"
+                changes["step"] = f"manual_{remaining[-1]}" if remaining else "pending"
         if review_approved is not None:
             changes["review_approved"] = review_approved
         video_store.update_video(video.video_id, **changes)

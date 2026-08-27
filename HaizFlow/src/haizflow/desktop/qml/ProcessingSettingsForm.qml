@@ -10,7 +10,6 @@ GridLayout {
     property bool hasSource: false
     property bool showCloneAction: false
     property bool cloneActive: false
-    property string workflowMode: "A"
     property string speechRecognitionModel: "small"
     property var speechRecognitionOptions: []
     property int speechRecognitionIndex: 0
@@ -28,7 +27,6 @@ GridLayout {
     property string backgroundMusicPath: ""
     property string watermarkText: ""
 
-    signal workflowEdited(string value)
     signal speechRecognitionEdited(string value)
     signal targetLanguageEdited(string value)
     signal ttsProviderEdited(string value)
@@ -73,23 +71,6 @@ GridLayout {
                 font.pixelSize: Theme.body
                 font.weight: Font.DemiBold
                 textFormat: Text.PlainText
-            }
-
-            SettingLabel {
-                Layout.fillWidth: true
-                text: I18n.t("Workflow")
-                helpText: I18n.t("Choose automatic processing or pause to review subtitles before voice generation.")
-            }
-            SegmentedControl {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 38
-                enabled: root.editable
-                currentValue: root.workflowMode
-                options: [
-                    { "label": I18n.t("Full auto"), "value": "A" },
-                    { "label": I18n.t("Review subtitles"), "value": "review" }
-                ]
-                onActivated: function(value) { root.workflowEdited(value) }
             }
 
             SettingLabel {

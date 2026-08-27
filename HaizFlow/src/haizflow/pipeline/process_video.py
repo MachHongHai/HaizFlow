@@ -73,10 +73,15 @@ def _timing_file_is_current(path):
 
 
 def _checkpoint_valid(video, name, signature, outputs):
-    # Checkpoints are exclusively a pause/resume optimization. A normal start
-    # or explicit restart must run every stage again, even if old files remain.
+    # Auto projects reuse checkpoints only for pause/resume. Manual projects
+    # deliberately execute downstream modules in separate runs, so their
+    # completed artifacts must remain reusable without pretending to resume.
+    manual_reuse = (
+        getattr(video, "project_type", "single") == "manual"
+        and name in set(getattr(video, "manual_completed_stages", []) or [])
+    )
     return (
-        bool(video.resume_step)
+        (bool(video.resume_step) or manual_reuse)
         and video.checkpoints.get(name) == signature
         and all(os.path.exists(path) and os.path.getsize(path) > 0 for path in outputs)
     )
@@ -202,11 +207,11 @@ def _resolve_audio_mix(video, fallback_audio_path: str) -> tuple[str, int]:
 
 
 def _manual_subtitle_layout_for_render(video) -> bool:
-    """Use a saved manual layout only when OCR covering is disabled."""
-    return bool(
-        getattr(video, "subtitle_layout_override", False)
-        and not bool(getattr(video, "remove_original_subtitles", True))
-    )
+    """Keep Manual caption placement independent from source cleanup."""
+    override = bool(getattr(video, "subtitle_layout_override", False))
+    if getattr(video, "project_type", "single") == "manual":
+        return override
+    return bool(override and not bool(getattr(video, "remove_original_subtitles", True)))
 
 
 def _prepare_audio_mix(video, reporter, video_dir: str, fallback_audio_path: str) -> tuple[str, int]:
@@ -270,7 +275,15 @@ class ProgressReporter:
 
 
 def _finish_recovered_translation(
-    video, reporter, video_dir, temp_audio_wav, source_segments_json, transcript_json, translation_signature
+    video,
+    reporter,
+    video_dir,
+    temp_audio_wav,
+    source_segments_json,
+    transcript_json,
+    translation_signature,
+    *,
+    stop_after=None,
 ):
     """Continue from a durable translation or post-translation artifact."""
     recovery_step = getattr(video, "runtime_recovery_step", "")
@@ -282,7 +295,7 @@ def _finish_recovered_translation(
         [transcript_json],
     ):
         log_to_video(video.video_id, f"CPU recovery: keeping translated subtitles and retrying from {recovery_step}.")
-        _finish_after_translation(video, reporter, video_dir, temp_audio_wav)
+        _finish_after_translation(video, reporter, video_dir, temp_audio_wav, stop_after=stop_after)
         return True
     if recovery_step != "translating" or not os.path.exists(source_segments_json):
         return False
@@ -307,6 +320,9 @@ def _finish_recovered_translation(
         progress_callback=report_translation_progress,
     )
     _mark_checkpoint(video, "translation", translation_signature)
+    if stop_after == "translation":
+        _finish_after_translation(video, reporter, video_dir, temp_audio_wav, stop_after="subtitles")
+        return True
     if video.mode == "review" and not video.review_approved:
         _original_subtitle_region_for_render(video, reporter, video_dir, pipeline_progress=61)
         update_video(
@@ -319,12 +335,50 @@ def _finish_recovered_translation(
             runtime_recovery_step="",
         )
         return True
-    _finish_after_translation(video, reporter, video_dir, temp_audio_wav)
+    _finish_after_translation(video, reporter, video_dir, temp_audio_wav, stop_after=stop_after)
     return True
 
 
-def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None):
-    """Run the full-auto desktop dubbing pipeline."""
+MANUAL_PIPELINE_STAGES = ("translation", "subtitles", "voice", "timeline", "render")
+
+
+def _complete_manual_stage(video_id: str, stage: str, progress: int) -> None:
+    """Leave a manual project idle with an independently reusable result."""
+    video = get_video(video_id)
+    completed = set(getattr(video, "manual_completed_stages", []) or []) if video else set()
+    completed.add(stage)
+    if stage == "subtitles":
+        completed.add("translation")
+    if stage == "render":
+        completed.update(MANUAL_PIPELINE_STAGES)
+    durable_stages = [item for item in MANUAL_PIPELINE_STAGES if item in completed]
+    durable_progress = max(int(getattr(video, "progress", 0) or 0), progress) if video else progress
+    final_ready = "render" in completed
+    update_video(
+        video_id,
+        status="done" if final_ready else "manual_ready",
+        progress=100 if final_ready else durable_progress,
+        step="done" if final_ready else f"manual_{stage}",
+        step_detail="Final video ready" if final_ready else f"Manual stage ready: {stage}",
+        estimated_remaining_seconds=0 if final_ready else None,
+        resume_step="",
+        runtime_recovery_step="",
+        manual_target_stage="",
+        manual_completed_stage=stage,
+        manual_completed_stages=durable_stages,
+    )
+    log_to_video(video_id, f"Manual stage completed: {stage}.")
+
+
+def process_video_sync(
+    video_id: str,
+    _reporter: ProgressReporter | None = None,
+    *,
+    stop_after: str | None = None,
+):
+    """Run the checkpointed dubbing pipeline, optionally stopping at one manual stage."""
+    if stop_after is not None and stop_after not in MANUAL_PIPELINE_STAGES:
+        raise ValueError(f"Unsupported manual pipeline stage: {stop_after}")
     # Keep this bound even when start_video() itself fails; the GPU recovery
     # branch must never mask the original exception with UnboundLocalError.
     reporter = _reporter
@@ -364,7 +418,11 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
             HYMT2_MODEL_REVISION,
         )
 
-        if _checkpoint_valid(video, "translation", translation_signature, [transcript_json]):
+        # Clicking Dịch is an explicit recomputation request. Downstream
+        # Manual modules reuse this checkpoint, but Dịch itself never does.
+        if stop_after != "translation" and _checkpoint_valid(
+            video, "translation", translation_signature, [transcript_json]
+        ):
             log_to_video(
                 video_id,
                 "Checkpoint hit: reusing translated segments; skipping audio extraction, transcription and translation.",
@@ -380,7 +438,7 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
                     step_detail="Translation ready for review",
                 )
                 return
-            _finish_after_translation(video, reporter, video_dir, temp_audio_wav)
+            _finish_after_translation(video, reporter, video_dir, temp_audio_wav, stop_after=stop_after)
             return
 
         if video.resume_step and os.path.exists(transcript_json):
@@ -403,6 +461,7 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
             source_segments_json,
             transcript_json,
             translation_signature,
+            stop_after=stop_after,
         ):
             return
 
@@ -503,6 +562,10 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         )
         _mark_checkpoint(video, "translation", translation_signature)
 
+        if stop_after == "translation":
+            _finish_after_translation(video, reporter, video_dir, original_audio_target, stop_after="subtitles")
+            return
+
         refreshed = get_video(video_id)
         draft_path = str(((refreshed.files if refreshed else {}) or {}).get("translation_review_draft") or "")
         if draft_path:
@@ -526,7 +589,7 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
             )
             return
 
-        _finish_after_translation(video, reporter, video_dir, original_audio_target)
+        _finish_after_translation(video, reporter, video_dir, original_audio_target, stop_after=stop_after)
 
     except Exception as exc:
         error_msg = str(exc)
@@ -550,7 +613,7 @@ def process_video_sync(video_id: str, _reporter: ProgressReporter | None = None)
         failed_stage = (failed_video.step if failed_video else "processing") or "processing"
         if _recover_gpu_to_cpu(video_id, failed_stage, exc):
             log_to_video(video_id, "Restarting the interrupted pipeline stage on CPU.")
-            return process_video_sync(video_id, _reporter=reporter)
+            return process_video_sync(video_id, _reporter=reporter, stop_after=stop_after)
         stack_trace = traceback.format_exc()
         log_to_video(video_id, f"Execution failed: {error_msg}\n{stack_trace}", level="ERROR", component="PIPELINE")
         update_video(video_id, status="failed", error=error_msg, step="failed")
@@ -599,7 +662,7 @@ def _original_subtitle_region_for_render(video, reporter, video_dir, *, pipeline
     return region
 
 
-def _finish_after_translation(video, reporter, video_dir, original_audio_target):
+def _finish_after_translation(video, reporter, video_dir, original_audio_target, *, stop_after=None):
     video_id = video.video_id
     video_input = _required_video_path(video, "video_input", must_exist=True)
     final_video = _required_video_path(video, "final_video")
@@ -610,15 +673,28 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
     transcript_state = _file_state(transcript_json)
     subtitle_style = getattr(video, "subtitle_style", None) or SubtitleStyle()
     subtitle_signature = _signature(transcript_state, subtitle_style.max_chars_per_line)
-    check_cancellation(video_id)
-    if _checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]) or _recovery_checkpoint_valid(
-        video, "subtitles", subtitle_signature, [srt_output]
-    ):
-        reporter.update(64, "creating_subtitle", "Reusing subtitles checkpoint")
-    else:
-        reporter.update(63, "creating_subtitle", "Formatting timed subtitles")
-        generate_srt(transcript_json, srt_output, subtitle_style.max_chars_per_line, video_id)
-        _mark_checkpoint(video, "subtitles", subtitle_signature)
+    # Subtitle rendering and voice generation are sibling branches. A visual
+    # adjustment must not regenerate speech, and a voice adjustment must not
+    # run OCR or subtitle formatting. Export/full-auto materialise both.
+    needs_subtitle_artifact = stop_after in {None, "subtitles", "render"}
+    if needs_subtitle_artifact:
+        check_cancellation(video_id)
+        if _checkpoint_valid(video, "subtitles", subtitle_signature, [srt_output]) or _recovery_checkpoint_valid(
+            video, "subtitles", subtitle_signature, [srt_output]
+        ):
+            reporter.update(64, "creating_subtitle", "Reusing subtitles checkpoint")
+        else:
+            reporter.update(63, "creating_subtitle", "Formatting timed subtitles")
+            generate_srt(transcript_json, srt_output, subtitle_style.max_chars_per_line, video_id)
+            _mark_checkpoint(video, "subtitles", subtitle_signature)
+
+    if stop_after == "subtitles":
+        # Manual projects treat source-subtitle cleanup as part of the
+        # subtitle step.  Detect it here so the editor preview can show the
+        # same region before the voice and final-render stages are run.
+        _original_subtitle_region_for_render(video, reporter, video_dir, pipeline_progress=64)
+        _complete_manual_stage(video_id, "subtitles", 64)
+        return
 
     check_cancellation(video_id)
     target_language = str(getattr(video, "target_language", "vi") or "vi")
@@ -704,6 +780,10 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
                 clear_omnivoice_runtime()
         _mark_checkpoint(video, "voice", voice_signature)
 
+    if stop_after == "voice":
+        _complete_manual_stage(video_id, "voice", 82)
+        return
+
     check_cancellation(video_id)
     mix_audio_path, mix_audio_volume = _prepare_audio_mix(
         video,
@@ -741,6 +821,10 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
             tts_volume=getattr(video, "tts_volume", 100),
         )
         _mark_checkpoint(video, "timeline", timeline_signature)
+
+    if stop_after == "timeline":
+        _complete_manual_stage(video_id, "timeline", 87)
+        return
 
     check_cancellation(video_id)
     style_data = subtitle_style.model_dump() if hasattr(subtitle_style, "model_dump") else subtitle_style.dict()
@@ -814,5 +898,14 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target)
         estimated_remaining_seconds=0,
         resume_step="",
         runtime_recovery_step="",
+        manual_target_stage="",
+        manual_completed_stage=(
+            "render" if stop_after == "render" else str(getattr(video, "manual_completed_stage", "") or "")
+        ),
+        manual_completed_stages=(
+            list(MANUAL_PIPELINE_STAGES)
+            if stop_after == "render"
+            else list(getattr(video, "manual_completed_stages", []) or [])
+        ),
     )
     log_to_video(video_id, "Pipeline run finished successfully.")

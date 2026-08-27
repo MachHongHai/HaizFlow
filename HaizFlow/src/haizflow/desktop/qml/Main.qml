@@ -21,8 +21,11 @@ ApplicationWindow {
     rightPadding: 0
     bottomPadding: 0
 
+    readonly property string routeHome: "home"
     readonly property string routeSingleProjects: "single-projects"
     readonly property string routeSingleWorkspace: "single-workspace"
+    readonly property string routeManualProjects: "manual-projects"
+    readonly property string routeManualWorkspace: "manual-workspace"
     readonly property string routeBatchProjects: "batch-projects"
     readonly property string routeBatchWorkspace: "batch-workspace"
     readonly property string routeBatchVideo: "batch-video"
@@ -30,15 +33,21 @@ ApplicationWindow {
     readonly property string routeDownloadWorkspace: "download-workspace"
     readonly property string routePublishProjects: "publish-projects"
     readonly property string routePublishWorkspace: "publish-workspace"
-    property string currentRoute: routeSingleProjects
-    property string workspaceReturnRoute: routeSingleProjects
-    property var routeHistory: [routeSingleProjects]
+    property string currentRoute: routeHome
+    property string workspaceReturnRoute: routeHome
+    property var routeHistory: [routeHome]
     property int routeHistoryIndex: 0
     readonly property bool compactNavigation: width < 1280
     readonly property bool modelStatusFailed: AppController.runtimeState === "failed"
     readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
+    readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace
+        || currentRoute === routeManualWorkspace
+        || currentRoute === routeBatchWorkspace
+        || currentRoute === routeBatchVideo
+        || currentRoute === routeDownloadWorkspace
+        || currentRoute === routePublishWorkspace
     readonly property bool globalNavigationBlocked: projectSetupDialog.visible
         || urlImportDialog.visible
         || downloadProjectSourceDialog.visible
@@ -72,35 +81,43 @@ ApplicationWindow {
 
     function routeIndex(route) {
         switch (route) {
+        case routeHome:
+            return 11
         case routeSingleWorkspace:
             return 1
         case routeBatchProjects:
-            return 2
-        case routeBatchWorkspace:
-            return 3
-        case routeBatchVideo:
             return 4
-        case routeDownloadProjects:
+        case routeBatchWorkspace:
             return 5
-        case routeDownloadWorkspace:
+        case routeBatchVideo:
             return 6
-        case routePublishProjects:
+        case routeDownloadProjects:
             return 7
-        case routePublishWorkspace:
+        case routeDownloadWorkspace:
             return 8
+        case routePublishProjects:
+            return 9
+        case routePublishWorkspace:
+            return 10
+        case routeManualProjects:
+            return 2
+        case routeManualWorkspace:
+            return 3
         default:
             return 0
         }
     }
 
     function routeIsAvailable(route) {
-        if (route === routeSingleProjects || route === routeBatchProjects
+        if (route === routeHome || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects
                 || route === routeDownloadProjects || route === routePublishProjects)
             return true
         if (!AppController.hasOpenProject)
             return false
         if (route === routeSingleWorkspace)
             return AppController.projectType === "single"
+        if (route === routeManualWorkspace)
+            return AppController.projectType === "manual"
         if (route === routeBatchWorkspace)
             return AppController.projectType === "batch"
         if (route === routeBatchVideo)
@@ -143,6 +160,19 @@ ApplicationWindow {
         workspaceReturnRoute = projectsRoute
         resetRouteHistory(projectsRoute)
         navigate(workspaceRoute)
+    }
+
+    function workspaceRouteForType(projectType) {
+        if (projectType === "manual") return routeManualWorkspace
+        if (projectType === "batch") return routeBatchWorkspace
+        if (projectType === "download") return routeDownloadWorkspace
+        if (projectType === "publish") return routePublishWorkspace
+        return routeSingleWorkspace
+    }
+
+    function newProjectFromHome(projectType) {
+        workspaceReturnRoute = routeHome
+        projectSetupDialog.openForType(projectType)
     }
 
     function replaceCurrentRoute(route) {
@@ -289,15 +319,19 @@ ApplicationWindow {
         }
 
         function onProjectPrepared() {
+            const returnRoute = root.workspaceReturnRoute === root.routeHome
+                ? root.routeHome : ""
             if (AppController.projectType === "batch") {
-                root.openProjectWorkspace(root.routeBatchProjects, root.routeBatchWorkspace)
+                root.openProjectWorkspace(returnRoute || root.routeBatchProjects, root.routeBatchWorkspace)
+            } else if (AppController.projectType === "manual") {
+                root.openProjectWorkspace(returnRoute || root.routeManualProjects, root.routeManualWorkspace)
             } else {
                 if (AppController.projectType === "download") {
-                    root.openProjectWorkspace(root.routeDownloadProjects, root.routeDownloadWorkspace)
+                    root.openProjectWorkspace(returnRoute || root.routeDownloadProjects, root.routeDownloadWorkspace)
                 } else if (AppController.projectType === "publish") {
-                    root.openProjectWorkspace(root.routePublishProjects, root.routePublishWorkspace)
+                    root.openProjectWorkspace(returnRoute || root.routePublishProjects, root.routePublishWorkspace)
                 } else {
-                    root.openProjectWorkspace(root.routeSingleProjects, root.routeSingleWorkspace)
+                    root.openProjectWorkspace(returnRoute || root.routeSingleProjects, root.routeSingleWorkspace)
                 }
             }
         }
@@ -323,9 +357,14 @@ ApplicationWindow {
             canGoForward: root.canNavigateForward
             onBackRequested: root.navigateBack()
             onForwardRequested: root.navigateForward()
+            onHomeRequested: root.navigate(root.routeHome)
             onNewSingleProjectRequested: {
                 root.workspaceReturnRoute = root.routeSingleProjects
                 projectSetupDialog.openForType("single")
+            }
+            onManualProjectRequested: {
+                root.workspaceReturnRoute = root.routeManualProjects
+                projectSetupDialog.openForType("manual")
             }
             onNewBatchProjectRequested: {
                 root.workspaceReturnRoute = root.routeBatchProjects
@@ -351,6 +390,7 @@ ApplicationWindow {
         Rectangle {
             id: navigation
 
+            visible: !root.projectWorkspaceVisible
             Layout.preferredWidth: root.compactNavigation ? Theme.navigationCompact : Theme.navigationExpanded
             Layout.fillHeight: true
             color: Theme.sidebar
@@ -412,6 +452,15 @@ ApplicationWindow {
                 SidebarButton {
                     Layout.fillWidth: true
                     compact: root.compactNavigation
+                    iconGlyph: "\uE80F"
+                    text: I18n.t("Home")
+                    selected: root.currentRoute === root.routeHome
+                    onClicked: root.navigate(root.routeHome)
+                }
+
+                SidebarButton {
+                    Layout.fillWidth: true
+                    compact: root.compactNavigation
                     iconGlyph: "\uE896"
                     text: I18n.t("Downloads")
                     selected: root.currentRoute === root.routeDownloadProjects
@@ -431,6 +480,19 @@ ApplicationWindow {
                     onClicked: {
                         AppController.refreshVideos()
                         root.navigate(root.routeSingleProjects)
+                    }
+                }
+
+                SidebarButton {
+                    Layout.fillWidth: true
+                    compact: root.compactNavigation
+                    iconGlyph: "\uE70F"
+                    text: I18n.t("Manual")
+                    selected: root.currentRoute === root.routeManualProjects
+                        || root.currentRoute === root.routeManualWorkspace
+                    onClicked: {
+                        AppController.refreshVideos()
+                        root.navigate(root.routeManualProjects)
                     }
                 }
 
@@ -545,7 +607,7 @@ ApplicationWindow {
                     // qmllint enable stale-property-read
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
+                    Layout.leftMargin: root.width < 1400 ? Theme.space20 + 2 : 30
                     Layout.rightMargin: root.width < 1400 ? 22 : 30
                     Layout.topMargin: 24
                     Layout.bottomMargin: 24
@@ -572,6 +634,41 @@ ApplicationWindow {
                             onRequestReviewTranslation: translationReviewDialog.open()
                             onRequestUrlImport: urlImportDialog.openForMode("single")
                             onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("single")
+                        }
+                    }
+                }
+
+                ProjectsPage {
+                    projectType: "manual"
+                    // qmllint disable missing-property
+                    projectModel: AppController.manualProjectModel
+                    // qmllint enable missing-property
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.leftMargin: root.width < 1400 ? 22 : 30
+                    Layout.rightMargin: root.width < 1400 ? 22 : 30
+                    Layout.topMargin: 24
+                    Layout.bottomMargin: 24
+                    onRequestNewProject: {
+                        root.workspaceReturnRoute = root.routeManualProjects
+                        projectSetupDialog.openForType("manual")
+                    }
+                    onOpenProject: root.openProjectWorkspace(root.routeManualProjects, root.routeManualWorkspace)
+                }
+
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.leftMargin: root.width < 1400 ? 14 : 20
+                    Layout.rightMargin: root.width < 1400 ? 14 : 20
+                    Layout.topMargin: 16
+                    Layout.bottomMargin: 16
+                    active: root.currentRoute === root.routeManualWorkspace
+                    asynchronous: true
+                    sourceComponent: Component {
+                        ManualWorkspace {
+                            onRequestUrlImport: urlImportDialog.openForMode("manual")
+                            onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("manual")
                         }
                     }
                 }
@@ -705,6 +802,25 @@ ApplicationWindow {
                     asynchronous: true
                     sourceComponent: Component {
                         SocialPublishPage {}
+                    }
+                }
+
+                HomePage {
+                    // qmllint disable stale-property-read
+                    projectModel: AppController.projectModel
+                    // qmllint enable stale-property-read
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.leftMargin: root.width < 1400 ? 28 : 42
+                    Layout.rightMargin: root.width < 1400 ? 28 : 42
+                    Layout.topMargin: 28
+                    Layout.bottomMargin: 28
+                    onNewProjectRequested: function(projectType) {
+                        root.newProjectFromHome(projectType)
+                    }
+                    onRecentProjectRequested: function(index, projectType) {
+                        if (AppController.selectProject(index))
+                            root.openProjectWorkspace(root.routeHome, root.workspaceRouteForType(projectType))
                     }
                 }
 

@@ -126,7 +126,16 @@ class ProcessingLifecycleController:
             )
             from haizflow.pipeline.process_video import process_video_sync
 
-            process_video_sync(video_id)
+            stop_after = None
+            if getattr(current_video, "project_type", "single") == "manual":
+                stop_after = str(getattr(current_video, "manual_target_stage", "") or "")
+                if not stop_after:
+                    raise RuntimeError("Choose a Manual stage before starting processing.")
+                video_store.log_to_video(video_id, f"Manual run requested through stage: {stop_after}.")
+            if stop_after:
+                process_video_sync(video_id, stop_after=stop_after)
+            else:
+                process_video_sync(video_id)
         except Exception as exc:
             if video_id not in host._deleted_video_ids:
                 message = f"Desktop worker failed before pipeline could start: {exc}"

@@ -69,6 +69,26 @@ class ProjectImportController:
         """Keep the small controller doubles used by unit tests synchronous."""
         return hasattr(self._host, "_media_import_events")
 
+    @staticmethod
+    def _invalidate_manual_audio_mix(video) -> None:
+        """Invalidate only the Manual stages that consume background music."""
+        if getattr(video, "project_type", "single") != "manual":
+            return
+        completed = set(getattr(video, "manual_completed_stages", []) or [])
+        if not completed.intersection({"timeline", "render"}):
+            return
+        completed.difference_update({"timeline", "render"})
+        order = ["translation", "subtitles", "voice", "timeline", "render"]
+        remaining = [stage for stage in order if stage in completed]
+        video_store.update_video(
+            video.video_id,
+            manual_completed_stage=remaining[-1] if remaining else "",
+            manual_completed_stages=remaining,
+            manual_target_stage="",
+            status="manual_ready" if remaining else "pending",
+            step=f"manual_{remaining[-1]}" if remaining else "pending",
+        )
+
     def _config_for_project_import(self, *, force_batch: bool = False) -> VideoConfig:
         """Build an import snapshot without leaking a per-video batch override.
 
@@ -90,7 +110,7 @@ class ProjectImportController:
         removal_mode = str(values.get("originalSubtitleRemovalMode") or "patch")
         return config.model_copy(
             update={
-                "mode": "review" if values.get("workflowMode") == "review" else "A",
+                "mode": "A",
                 "target_language": str(values.get("targetLanguage") or "vi"),
                 "speech_recognition_model": str(values.get("speechRecognitionModel") or "small"),
                 "tts_provider": str(values.get("ttsProvider") or "omnivoice"),
@@ -280,6 +300,7 @@ class ProjectImportController:
                 return
             source_path = str(event.get("path") or "")
             stored_path = set_desktop_background_music(selected, source_path)
+            self._invalidate_manual_audio_mix(selected)
             if host._selected_video_id == selected.video_id:
                 host._background_music_path = stored_path
                 host.selectedVideoChanged.emit()
@@ -511,7 +532,7 @@ class ProjectImportController:
         if not host.hasOpenProject:
             host._url_importer.complete_import(False, "Open or create a project before downloading a video.")
             return
-        if host._project_type == "single" and host.isSelectedVideoProcessing:
+        if host._project_type in {"single", "manual"} and host.isSelectedVideoProcessing:
             host._url_importer.complete_import(False, "Pause or finish the current video before replacing it.")
             return
         host._url_import_target = {
@@ -942,6 +963,7 @@ class ProjectImportController:
                 return False
             try:
                 stored_path = set_desktop_background_music(selected, source_path)
+                self._invalidate_manual_audio_mix(selected)
             except (OSError, RuntimeError, ValueError) as exc:
                 QMessageBox.warning(None, "Background music", str(exc))
                 return False

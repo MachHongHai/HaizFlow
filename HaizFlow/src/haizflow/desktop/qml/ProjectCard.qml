@@ -23,6 +23,7 @@ Rectangle {
     readonly property string statusLabel: status === "pending" ? I18n.t("Queued")
         : status === "empty" ? I18n.t("No source selected")
         : status === "ready" ? I18n.t("Ready")
+        : status === "manual_ready" ? I18n.t("Ready for next stage")
         : status === "processing" ? I18n.t("Processing")
         : status === "done" ? I18n.t("Complete")
         : status === "failed" ? I18n.t("Failed")
@@ -33,7 +34,7 @@ Rectangle {
     readonly property color statusColor: status === "done" ? Theme.success
         : status === "failed" || status === "cancelled" ? Theme.danger
         : status === "processing" ? Theme.warning
-        : status === "awaiting_review" ? Theme.blue
+        : status === "awaiting_review" || status === "manual_ready" ? Theme.blue
         : Theme.textMuted
 
     height: Math.round(width * 0.56 + 64)
@@ -182,7 +183,8 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.right: parent.right
                 anchors.margins: Theme.space8
-                visible: root.projectType === "single" && root.videoSize.length > 0
+                visible: (root.projectType === "single" || root.projectType === "manual")
+                    && root.videoSize.length > 0
                 implicitWidth: sizeLabel.implicitWidth + Theme.space12
                 implicitHeight: 26
                 radius: Theme.radiusSmall

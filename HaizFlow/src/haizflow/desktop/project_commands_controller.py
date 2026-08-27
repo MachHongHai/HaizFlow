@@ -109,7 +109,7 @@ class ProjectCommandsController:
         videos = [video for video_id in host._batch_video_ids if (video := video_store.get_video(video_id))]
         if not videos:
             return {
-                "workflowMode": host._workflow_mode,
+                "workflowMode": "A",
                 "targetLanguage": host._target_language,
                 "speechRecognitionModel": getattr(host, "_speech_recognition_model", "small"),
                 "ttsProvider": host._tts_provider,
@@ -195,7 +195,7 @@ class ProjectCommandsController:
         target_language = str(target_language or "vi")
         tts_provider = host._normalized_tts_provider(target_language, tts_provider)
         return {
-            "workflowMode": "review" if workflow_mode == "review" else "A",
+            "workflowMode": "A",
             "targetLanguage": target_language,
             "speechRecognitionModel": str(speech_recognition_model or "small"),
             "ttsProvider": tts_provider,
@@ -232,7 +232,7 @@ class ProjectCommandsController:
                 else ()
             )
             return (
-                "review" if video.mode == "review" else "A",
+                "A",
                 str(video.target_language or "vi"),
                 str(getattr(video, "speech_recognition_model", "small") or "small"),
                 str(getattr(video, "tts_provider", "edge") or "edge"),
@@ -299,7 +299,7 @@ class ProjectCommandsController:
         speaker_mode=None,
     ) -> bool:
         host = self._host
-        mode = "review" if workflow_mode == "review" else "A"
+        mode = "A"
         language = str(target_language or "vi")
         normalize_provider = getattr(host, "_normalized_tts_provider", None)
         provider = (
@@ -813,7 +813,7 @@ class ProjectCommandsController:
     def approve_translation_review(self, payload: str) -> bool:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        if not video or video.status not in {"awaiting_review", "done"}:
+        if not video or video.status not in {"awaiting_review", "manual_ready", "done"}:
             return False
         try:
             segments = _validated_review_segments(payload)
@@ -836,6 +836,28 @@ class ProjectCommandsController:
             return False
         translation_checkpoint = video.checkpoints.get("translation")
         checkpoints = {"translation": translation_checkpoint} if translation_checkpoint else {}
+        if getattr(video, "project_type", "single") == "manual":
+            video_store.update_video(
+                video.video_id,
+                review_approved=True,
+                status="manual_ready",
+                progress=62,
+                step="manual_translation",
+                resume_step="",
+                runtime_recovery_step="",
+                checkpoints=checkpoints,
+                step_detail="Edited subtitles saved",
+                manual_target_stage="",
+                manual_completed_stage="translation",
+                manual_completed_stages=["translation"],
+            )
+            video_store.log_to_video(
+                video.video_id,
+                f"Manual subtitles saved with {len(segments)} segments; downstream stages were invalidated.",
+            )
+            host.refreshVideos()
+            host.selectedVideoChanged.emit()
+            return True
         elapsed_updates = {}
         if video.status == "done":
             # A post-processing subtitle correction is a new downstream pass,
@@ -867,7 +889,7 @@ class ProjectCommandsController:
     def save_translation_review_draft(self, payload: str) -> bool:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
-        if not video or video.status not in {"awaiting_review", "done"}:
+        if not video or video.status not in {"awaiting_review", "manual_ready", "done"}:
             return False
         try:
             segments = _validated_review_segments(payload)

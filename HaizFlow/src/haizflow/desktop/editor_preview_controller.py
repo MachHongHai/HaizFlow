@@ -230,6 +230,34 @@ class EditorPreviewController:
             "preview_encoding": settings["preview_encoding"],
         }
 
+    @staticmethod
+    def _audio_cache_payload(settings: dict) -> dict:
+        """Fingerprint only data that can change the audible preview mix."""
+        return {
+            "video_id": settings["video_id"],
+            "source_identity": settings["source_identity"],
+            "segments": [
+                {
+                    "start": item.get("start", 0),
+                    "end": item.get("end", 0),
+                    "text": item.get("text", ""),
+                    "speaker": item.get("speaker", ""),
+                }
+                for item in settings["segments"]
+            ],
+            "tts_provider": settings["tts_provider"],
+            "tts_voice": settings["tts_voice"],
+            "target_language": settings["target_language"],
+            "speaker_mode": settings["speaker_mode"],
+            "original_video_volume": settings["original_video_volume"],
+            "background_music_volume": settings["background_music_volume"],
+            "tts_volume": settings["tts_volume"],
+            "audio_inputs": settings["audio_inputs"],
+            "voice_state": settings.get("voice_state", {}),
+            "duration": settings["duration"],
+            "audio_cache_version": "editor-audio-v3-manual-voice-state",
+        }
+
     @classmethod
     def _visual_chunk_cache_payload(
         cls,
@@ -327,6 +355,15 @@ class EditorPreviewController:
                     "transcript_json",
                 )
             },
+            # Voice parts are stored as a directory, so their durable
+            # checkpoint—not a file identity—is the correct invalidation
+            # source. Without it, completing Manual TTS looked identical to
+            # the earlier visual-only request and QML kept silent audio until
+            # the user opened the Audio tool.
+            "voice_state": {
+                "checkpoint": str((getattr(video, "checkpoints", {}) or {}).get("voice") or ""),
+                "ready": "voice" in set(getattr(video, "manual_completed_stages", []) or []),
+            },
             "ocr_region": ocr_region,
             # Version the proxy cache when its encoding contract changes.
             "preview_encoding": "layered-full-timeline-sdr-yuv420p-v5",
@@ -404,7 +441,7 @@ class EditorPreviewController:
             ).hexdigest()[:20]
             audio_signature = hashlib.sha256(
                 json.dumps(
-                    settings,
+                    self._audio_cache_payload(settings),
                     ensure_ascii=False,
                     sort_keys=True,
                     separators=(",", ":"),
@@ -842,7 +879,17 @@ class EditorPreviewController:
         a text edit therefore synthesizes only the affected line. Timing-only
         edits reuse every voice clip and only rebuild the inexpensive mix.
         """
-        if str(getattr(video, "status", "") or "") != "done":
+        status = str(getattr(video, "status", "") or "")
+        if status not in {"done", "manual_ready"}:
+            return None
+        if (
+            getattr(video, "project_type", "single") == "manual"
+            and "voice" not in set(getattr(video, "manual_completed_stages", []) or [])
+        ):
+            # Manual means manual: visual preview may be generated as soon as
+            # translated text exists, but TTS is never started implicitly.
+            # Once voice clips exist, level/music edits may rebuild only the
+            # cheap preview mix without requiring the Audio module first.
             return None
         files = dict(getattr(video, "files", {}) or {})
         current_mix = Path(str(files.get("voice_output") or ""))

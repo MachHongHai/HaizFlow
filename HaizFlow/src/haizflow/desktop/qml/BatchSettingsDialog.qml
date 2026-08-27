@@ -13,7 +13,6 @@ FloatingToolDialog {
     toolSubtitle: I18n.t("Defaults for every video in this batch")
 
     property var baselineSettings: ({})
-    property string draftWorkflowMode: "A"
     property string draftTargetLanguage: "vi"
     property string draftSpeechRecognitionModel: "small"
     property string draftTtsProvider: "omnivoice"
@@ -68,7 +67,6 @@ FloatingToolDialog {
     function loadDraft() {
         const settings = AppController.batchSettings()
         baselineSettings = settings
-        draftWorkflowMode = settings.workflowMode || "A"
         draftTargetLanguage = settings.targetLanguage || "vi"
         draftSpeechRecognitionModel = settings.speechRecognitionModel || "small"
         draftTtsProvider = settings.ttsProvider || "omnivoice"
@@ -98,7 +96,7 @@ FloatingToolDialog {
 
     function currentDraft() {
         return {
-            "workflowMode": draftWorkflowMode,
+            "workflowMode": "A",
             "targetLanguage": draftTargetLanguage,
             "speechRecognitionModel": draftSpeechRecognitionModel,
             "ttsProvider": draftTtsProvider,
@@ -132,7 +130,7 @@ FloatingToolDialog {
         if (!hasDraftChanges() || AppController.batchCount <= 0)
             return
         if (AppController.applyBatchSettingsDraft(
-                draftWorkflowMode, draftTargetLanguage, draftSpeechRecognitionModel,
+                "A", draftTargetLanguage, draftSpeechRecognitionModel,
                 draftTtsProvider, draftTtsVoice, draftEnableAudioSeparation,
                 draftOriginalVolume, draftBackgroundMusicVolume, draftTtsVolume,
                 draftWatermarkText, draftBackgroundMusicPath, draftRemoveOriginalSubtitles,
@@ -203,7 +201,6 @@ FloatingToolDialog {
                 cpuOnly: AppController.cpuOnly
                 hasSource: AppController.batchCount > 0 && AppController.videoPath.length > 0
                 showCloneAction: false
-                workflowMode: root.draftWorkflowMode
                 speechRecognitionModel: root.draftSpeechRecognitionModel
                 speechRecognitionOptions: AppController.speechRecognitionModelOptions
                 speechRecognitionIndex: root.draftSpeechRecognitionIndex
@@ -221,7 +218,6 @@ FloatingToolDialog {
                 backgroundMusicPath: root.draftBackgroundMusicPath
                 watermarkText: root.draftWatermarkText
 
-                onWorkflowEdited: function(value) { root.draftWorkflowMode = value }
                 onSpeechRecognitionEdited: function(value) { root.draftSpeechRecognitionModel = value }
                 onTargetLanguageEdited: function(value) {
                     root.draftTargetLanguage = value

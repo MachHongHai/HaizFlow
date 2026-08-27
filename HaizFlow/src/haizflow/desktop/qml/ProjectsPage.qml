@@ -15,6 +15,7 @@ Item {
 
     readonly property bool downloadMode: projectType === "download"
     readonly property bool publishMode: projectType === "publish"
+    readonly property bool manualMode: projectType === "manual"
 
     opacity: visible ? 1 : 0
     transform: Translate {
@@ -69,6 +70,8 @@ Item {
                     Accessible.role: Accessible.Button
                     Accessible.name: root.projectType === "batch"
                         ? I18n.t("New batch project")
+                        : root.manualMode
+                            ? I18n.t("New manual project")
                         : root.downloadMode
                             ? I18n.t("New download project")
                             : root.publishMode
@@ -117,6 +120,8 @@ Item {
                             width: parent.width
                             text: root.projectType === "batch"
                                 ? I18n.t("New batch project")
+                                : root.manualMode
+                                    ? I18n.t("New manual project")
                                 : root.downloadMode
                                     ? I18n.t("New download project")
                                     : root.publishMode
@@ -136,6 +141,8 @@ Item {
                             width: parent.width
                             text: root.projectType === "batch"
                                 ? I18n.t("Process videos in batch")
+                                : root.manualMode
+                                    ? I18n.t("Build one stage at a time")
                                 : root.downloadMode
                                     ? I18n.t("Channels, videos, and audio")
                                     : root.publishMode

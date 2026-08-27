@@ -32,7 +32,7 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{number}" for number in range(1, 10)),
     *(f"LPT{number}" for number in range(1, 10)),
 }
-PROJECT_TYPES = frozenset({"single", "batch", "download", "publish"})
+PROJECT_TYPES = frozenset({"single", "manual", "batch", "download", "publish"})
 DOWNLOAD_VIDEO_CATEGORIES = ("channel", "video")
 DOWNLOAD_VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".mkv"})
 
@@ -601,7 +601,7 @@ def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any])
     root = _record_root(record)
     project_type = normalize_project_type(record.get("project_type"))
     os.makedirs(root, exist_ok=True)
-    if project_type in {"single", "batch"}:
+    if project_type in {"single", "manual", "batch"}:
         os.makedirs(os.path.join(root, "exports"), exist_ok=True)
         os.makedirs(os.path.join(root, "videos"), exist_ok=True)
     if project_type == "download":

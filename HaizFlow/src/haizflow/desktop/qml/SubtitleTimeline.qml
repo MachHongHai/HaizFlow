@@ -86,26 +86,6 @@ Rectangle {
         });
     }
 
-    function resetZoom() {
-        zoomFactor = 1;
-        timelineFlick.contentX = 0;
-    }
-
-    function zoomToSelection() {
-        if (selectedIndex < 0 || selectedIndex >= segments.length)
-            return;
-        const segment = segments[selectedIndex];
-        const start = Number(segment.start || 0);
-        const end = Math.max(start + minimumSegmentDuration, Number(segment.end || 0));
-        const paddedDuration = Math.max(0.6, (end - start) * 2.4);
-        const requested = clamp(duration / paddedDuration, 1, 24);
-        zoomAt(timelineFlick.width / 2, requested);
-        Qt.callLater(function () {
-            const centre = (start + end) / 2;
-            timelineFlick.contentX = clamp(trackLeft + centre * pixelsPerSecond - timelineFlick.width / 2, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width));
-        });
-    }
-
     function panByPixels(delta) {
         timelineFlick.contentX = clamp(timelineFlick.contentX + delta, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width));
     }
@@ -147,24 +127,6 @@ Rectangle {
                 font.pixelSize: Theme.caption
                 elide: Text.ElideRight
                 Layout.fillWidth: true
-            }
-
-            AppButton {
-                text: I18n.t("Fit")
-                compact: true
-                tone: "ghost"
-                enabled: root.zoomFactor > 1.001
-                toolTipText: I18n.t("Show the complete timeline")
-                onClicked: root.resetZoom()
-            }
-
-            AppButton {
-                text: I18n.t("Selection")
-                compact: true
-                tone: "ghost"
-                enabled: root.selectedIndex >= 0
-                toolTipText: I18n.t("Zoom to the selected subtitle")
-                onClicked: root.zoomToSelection()
             }
 
             Text {

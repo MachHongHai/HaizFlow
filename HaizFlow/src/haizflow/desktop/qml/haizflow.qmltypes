@@ -922,6 +922,27 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "manualCompletedStage"
+            type: "QString"
+            read: "manualCompletedStage"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "manualCompletedStages"
+            type: "QVariantList"
+            read: "manualCompletedStages"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "manualTargetStage"
+            type: "QString"
+            read: "manualTargetStage"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
             name: "selectedVideoId"
             type: "QString"
             read: "selectedVideoId"
@@ -1552,6 +1573,11 @@ Module {
         Method { name: "resumeSelectedVideo" }
         Method { name: "restartSelectedVideo" }
         Method {
+            name: "runManualStage"
+            type: "bool"
+            Parameter { name: "stage"; type: "QString" }
+        }
+        Method {
             name: "approveTranslationReview"
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
@@ -1602,6 +1628,7 @@ Module {
         }
         Method {
             name: "selectProject"
+            type: "bool"
             Parameter { name: "a1"; type: "int" }
         }
         Method {

@@ -778,7 +778,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertTrue(applied)
         update_video.assert_called_once_with(
             video.video_id,
-            mode="review",
+            mode="A",
             source_language="auto",
             target_language="en",
             speech_recognition_model="small",

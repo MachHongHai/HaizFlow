@@ -451,6 +451,20 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("speaker_mode", "single")
             version = 14
             continue
+        if version == 14:
+            data["schema_version"] = 15
+            data.setdefault("manual_target_stage", "")
+            data.setdefault("manual_completed_stage", "")
+            version = 15
+            continue
+        if version == 15:
+            data["schema_version"] = 16
+            stage_order = ["translation", "subtitles", "voice", "timeline", "render"]
+            legacy_stage = str(data.get("manual_completed_stage") or "")
+            legacy_index = stage_order.index(legacy_stage) if legacy_stage in stage_order else -1
+            data["manual_completed_stages"] = stage_order[: legacy_index + 1]
+            version = 16
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -477,7 +491,19 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
         }
         else "keep_ratio"
     )
-    data["project_type"] = "batch" if data.get("project_type") == "batch" else "single"
+    data["project_type"] = (
+        data.get("project_type") if data.get("project_type") in {"single", "manual", "batch"} else "single"
+    )
+    data.setdefault("manual_target_stage", "")
+    data.setdefault("manual_completed_stage", "")
+    manual_stage_order = ["translation", "subtitles", "voice", "timeline", "render"]
+    completed_stages = data.get("manual_completed_stages")
+    if not isinstance(completed_stages, list):
+        legacy_stage = str(data.get("manual_completed_stage") or "")
+        legacy_index = manual_stage_order.index(legacy_stage) if legacy_stage in manual_stage_order else -1
+        completed_stages = manual_stage_order[: legacy_index + 1]
+    completed_set = {str(stage) for stage in completed_stages if str(stage) in manual_stage_order}
+    data["manual_completed_stages"] = [stage for stage in manual_stage_order if stage in completed_set]
     try:
         batch_import_order = int(data.get("batch_import_order", 0))
     except (TypeError, ValueError):

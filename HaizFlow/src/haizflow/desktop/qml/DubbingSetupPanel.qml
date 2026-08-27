@@ -39,7 +39,6 @@ Panel {
             hasSource: AppController.videoPath.length > 0
             showCloneAction: AppController.ttsProvider === "omnivoice"
             cloneActive: AppController.ttsVoice === "omnivoice:clone"
-            workflowMode: AppController.workflowMode
             speechRecognitionModel: AppController.speechRecognitionModel
             speechRecognitionOptions: AppController.speechRecognitionModelOptions
             speechRecognitionIndex: AppController.speechRecognitionModelIndex
@@ -57,7 +56,6 @@ Panel {
             backgroundMusicPath: AppController.backgroundMusicPath
             watermarkText: AppController.watermarkText
 
-            onWorkflowEdited: function(value) { AppController.workflowMode = value; root.scheduleVideoSettingsSave() }
             onSpeechRecognitionEdited: function(value) { AppController.speechRecognitionModel = value; root.scheduleVideoSettingsSave() }
             onTargetLanguageEdited: function(value) { AppController.targetLanguage = value; root.scheduleVideoSettingsSave() }
             onTtsProviderEdited: function(value) { AppController.ttsProvider = value; root.scheduleVideoSettingsSave() }

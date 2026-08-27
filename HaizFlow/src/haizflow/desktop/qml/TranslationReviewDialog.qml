@@ -64,6 +64,7 @@ FloatingToolDialog {
         Math.min(1, Number(AppController.editorPreviewProgress || 0))
     )
     property bool postProcessingEdit: false
+    readonly property bool manualEditing: AppController.projectType === "manual"
 
     function cloneSegments(value) {
         return JSON.parse(JSON.stringify(value || []));
@@ -365,7 +366,10 @@ FloatingToolDialog {
             return;
         const currentSnapshot = JSON.stringify(segments);
         if (currentSnapshot !== openedSnapshot) {
-            AppController.saveTranslationReviewDraft(currentSnapshot);
+            if (root.manualEditing)
+                AppController.approveTranslationReview(currentSnapshot);
+            else
+                AppController.saveTranslationReviewDraft(currentSnapshot);
             openedSnapshot = currentSnapshot;
         }
     }
@@ -410,7 +414,8 @@ FloatingToolDialog {
     }
 
     onOpened: {
-        postProcessingEdit = AppController.selectedStatus === "done";
+        postProcessingEdit = AppController.selectedStatus === "done"
+            || AppController.selectedStatus === "manual_ready";
         segments = cloneSegments(AppController.reviewSegments);
         undoStack = [];
         redoStack = [];
@@ -812,7 +817,8 @@ FloatingToolDialog {
                 }
             }
             AppButton {
-                text: root.postProcessingEdit ? I18n.t("Save and regenerate voice") : I18n.t("Approve and continue")
+                text: root.manualEditing ? I18n.t("Save subtitles")
+                    : root.postProcessingEdit ? I18n.t("Save and regenerate voice") : I18n.t("Approve and continue")
                 tone: "primary"
                 enabled: root.segments.length > 0 && !root.approvalInProgress
                 onClicked: root.beginApproval()

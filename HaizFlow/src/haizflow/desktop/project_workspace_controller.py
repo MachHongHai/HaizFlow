@@ -37,7 +37,12 @@ class ProjectWorkspaceController:
         host._settings_owner_video_id = video.video_id
         host._project_name = video.project_name or os.path.splitext(video.original_filename)[0]
         host._project_directory = video.project_directory or host._project_directory
-        host._project_type = "batch" if getattr(video, "project_type", "single") == "batch" else "single"
+        selected_project_type = project_store.normalize_project_type(
+            getattr(video, "project_type", "single")
+        )
+        host._project_type = (
+            selected_project_type if selected_project_type in {"single", "manual", "batch"} else "single"
+        )
         host._selected_project_key = host._video_project_key(video)
         if (
             host._processing_queue.active_video_id != video.video_id
@@ -193,6 +198,7 @@ class ProjectWorkspaceController:
         host._project_summaries_by_key = {project["key"]: project for project in summaries}
         host.projects.set_projects(summaries)
         host.single_projects.set_projects([project for project in summaries if project["project_type"] == "single"])
+        host.manual_projects.set_projects([project for project in summaries if project["project_type"] == "manual"])
         host.batch_projects.set_projects([project for project in summaries if project["project_type"] == "batch"])
         host.download_projects.set_projects([project for project in summaries if project["project_type"] == "download"])
         host.publish_projects.set_projects([project for project in summaries if project["project_type"] == "publish"])
@@ -245,14 +251,14 @@ class ProjectWorkspaceController:
                 return False
             summary = summaries[0]
             host._project_summaries_by_key[project_key] = summary
-            if not (
-                host.projects.update_project(summary)
-                and (
-                    host.batch_projects.update_project(summary)
-                    if summary["project_type"] == "batch"
-                    else host.single_projects.update_project(summary)
-                )
-            ):
+            typed_model = {
+                "single": host.single_projects,
+                "manual": host.manual_projects,
+                "batch": host.batch_projects,
+                "download": host.download_projects,
+                "publish": host.publish_projects,
+            }.get(summary["project_type"])
+            if not (host.projects.update_project(summary) and typed_model and typed_model.update_project(summary)):
                 return False
 
         if host._selected_video_id in video_ids:

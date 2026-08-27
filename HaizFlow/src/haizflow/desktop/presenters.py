@@ -47,7 +47,9 @@ def build_project_summaries(videos, persisted_projects=None):
             "activity_at": persisted.get("activity_at") or persisted.get("created_at", ""),
         }
     for video in videos:
-        project_type = "batch" if getattr(video, "project_type", "single") == "batch" else "single"
+        project_type = project_store.normalize_project_type(getattr(video, "project_type", "single"))
+        if project_type not in {"single", "manual", "batch"}:
+            project_type = "single"
         project_name = video.project_name or os.path.splitext(video.original_filename)[0]
         project_directory = video.project_directory or ""
         key = str(getattr(video, "project_key", "") or "")

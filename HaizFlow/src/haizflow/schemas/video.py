@@ -2,14 +2,14 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 14
+VIDEO_METADATA_SCHEMA_VERSION = 16
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
 TTSProvider = Literal["omnivoice", "edge"]
 SpeechRecognitionModel = Literal["small", "large-v3-turbo"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
-ProjectType = Literal["single", "batch"]
+ProjectType = Literal["single", "manual", "batch"]
 OriginalSubtitleRemovalMode = Literal["blur", "patch"]
 SpeakerMode = Literal["single", "multiple"]
 
@@ -107,6 +107,15 @@ class VideoInfo(BaseModel):
     project_type: ProjectType = "single"
     project_id: str = ""
     project_key: str = ""
+    # Manual projects run the same checkpointed pipeline one stage at a time.
+    # ``manual_target_stage`` is the stage currently requested by the UI;
+    # ``manual_completed_stage`` is retained as the most recent action for
+    # backwards compatibility; ``manual_completed_stages`` is authoritative.
+    manual_target_stage: str = ""
+    manual_completed_stage: str = ""
+    # Manual processing is a dependency graph rather than a linear wizard.
+    # Visual work and voice/audio work may therefore be complete independently.
+    manual_completed_stages: list[str] = Field(default_factory=list)
     # A stable, project-local position for batch cards.  Processing updates
     # must never affect this, otherwise the queue appears to shuffle.
     batch_import_order: int = 0

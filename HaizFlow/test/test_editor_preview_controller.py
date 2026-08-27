@@ -38,6 +38,56 @@ class EditorPreviewControllerTests(unittest.TestCase):
             editorPreviewChanged=_Signal(),
         )
 
+    def test_visual_only_changes_do_not_invalidate_preview_audio(self):
+        settings = {
+            "video_id": "video-1",
+            "source_identity": {"path": "input.mp4", "size": 1},
+            "segments": [{"start": 0, "end": 1, "text": "Xin chào"}],
+            "tts_provider": "omnivoice",
+            "tts_voice": "omnivoice:male",
+            "target_language": "vi",
+            "speaker_mode": "single",
+            "original_video_volume": 60,
+            "background_music_volume": 30,
+            "tts_volume": 100,
+            "audio_inputs": {},
+            "duration": 10.0,
+            "removal_mode": "patch",
+            "subtitle_style": {"font_size": 48},
+        }
+        changed = dict(settings, removal_mode="blur", subtitle_style={"font_size": 60})
+
+        self.assertEqual(
+            EditorPreviewController._audio_cache_payload(settings),
+            EditorPreviewController._audio_cache_payload(changed),
+        )
+
+    def test_completing_manual_voice_invalidates_a_silent_preview_request(self):
+        settings = {
+            "video_id": "video-1",
+            "source_identity": {"path": "input.mp4", "size": 1},
+            "segments": [{"start": 0, "end": 1, "text": "Xin chào"}],
+            "tts_provider": "omnivoice",
+            "tts_voice": "omnivoice:male",
+            "target_language": "vi",
+            "speaker_mode": "single",
+            "original_video_volume": 60,
+            "background_music_volume": 30,
+            "tts_volume": 100,
+            "audio_inputs": {},
+            "voice_state": {"checkpoint": "", "ready": False},
+            "duration": 10.0,
+        }
+        completed = {
+            **settings,
+            "voice_state": {"checkpoint": "voice-signature", "ready": True},
+        }
+
+        self.assertNotEqual(
+            EditorPreviewController._audio_cache_payload(settings),
+            EditorPreviewController._audio_cache_payload(completed),
+        )
+
     def test_full_timeline_proxy_is_rendered_off_thread(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
