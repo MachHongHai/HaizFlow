@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -74,6 +76,15 @@ class ReleaseToolingTests(unittest.TestCase):
             self.assertEqual(struct.unpack("<H", icon.read_bytes()[4:6])[0], 5)
             self.assertIn("VSVersionInfo(", version.read_text(encoding="utf-8"))
 
+    def test_desktop_brand_asset_uses_the_supplied_warm_mark(self):
+        mark_path = ROOT / "src" / "haizflow" / "desktop" / "assets" / "branding" / "haizflow-mark.png"
+        with Image.open(mark_path) as mark:
+            self.assertEqual(mark.size, (1254, 1254))
+            pixels = list(mark.convert("RGBA").get_flattened_data())
+        self.assertTrue(any(r > 210 and g > 110 and b < 150 and a > 0 for r, g, b, a in pixels))
+        self.assertTrue(any(20 < r < 100 and g < 55 and b < 55 and a > 0 for r, g, b, a in pixels))
+        self.assertGreaterEqual(generate_icon.ICON_CARD_CROP_INSET, 112)
+
     def test_desktop_branding_assets_are_packaged_from_the_runtime_location(self):
         main_source = (ROOT / "src" / "haizflow" / "desktop" / "main.py").read_text(encoding="utf-8")
         build_script = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
@@ -82,8 +93,22 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('parent / "assets" / "branding"', main_source)
         self.assertNotIn('parent / "qml" / "assets" / "branding"', main_source)
         self.assertIn("$BrandingAssetsPath", build_script)
+        self.assertNotIn("generate-brand-assets.py", build_script)
+        self.assertIn("generate-app-icon.py", build_script)
         self.assertIn('"haizflow-mark.png", "haizflow.ico"', build_script)
         self.assertIn('"assets/branding/haizflow.ico"', pyproject)
+
+    def test_qml_icons_and_translation_catalog_are_packaged(self):
+        build_script = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        catalog = ROOT / "src" / "haizflow" / "desktop" / "translations" / "haizflow_en.qm"
+
+        self.assertTrue(catalog.is_file())
+        self.assertIn("$QmlPath;haizflow\\desktop\\qml", build_script)
+        self.assertIn("$TranslationsPath;haizflow\\desktop\\translations", build_script)
+        self.assertIn('"qml/*.qml"', pyproject)
+        self.assertIn('"qml/icons/*.svg"', pyproject)
+        self.assertIn('"translations/*.qm"', pyproject)
 
     def test_manifest_verification_detects_the_final_artifact_set(self):
         with tempfile.TemporaryDirectory() as temp_dir:

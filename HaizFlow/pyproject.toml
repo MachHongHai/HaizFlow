@@ -57,7 +57,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "haizflow" = ["assets/fonts/Bangers-Regular.ttf"]
-"haizflow.desktop" = ["qml/*.qml", "qml/qmldir", "assets/branding/haizflow-mark.png", "assets/branding/haizflow.ico"]
+"haizflow.desktop" = ["qml/*.qml", "qml/qmldir", "qml/icons/*.svg", "translations/*.qm", "translations/*.ts", "assets/branding/haizflow-mark.png", "assets/branding/haizflow.ico"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }

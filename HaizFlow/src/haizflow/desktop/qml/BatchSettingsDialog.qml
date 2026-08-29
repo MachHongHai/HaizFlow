@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -9,8 +11,8 @@ FloatingToolDialog {
     modal: true
     expandedWidth: 1120
     expandedHeight: 760
-    toolTitle: I18n.t("Batch settings")
-    toolSubtitle: I18n.t("Defaults for every video in this batch")
+    toolTitle: qsTr("Cài đặt hàng loạt")
+    toolSubtitle: qsTr("Cài đặt mặc định cho mọi video trong dự án")
 
     property var baselineSettings: ({})
     property string draftTargetLanguage: "vi"
@@ -37,8 +39,10 @@ FloatingToolDialog {
     property int draftSubtitleMaxChars: 32
     property var settingOverrides: []
 
-    readonly property var draftProviderOptions: AppController.ttsProviderOptionsForLanguage(draftTargetLanguage)
-    readonly property var draftVoiceOptions: AppController.voiceOptionsForLanguageAndProvider(draftTargetLanguage, draftTtsProvider)
+    readonly property var draftProviderOptions: localizedProviderOptions(
+        draftTargetLanguage, AppController.settingsLanguage)
+    readonly property var draftVoiceOptions: localizedVoiceOptions(
+        draftTargetLanguage, draftTtsProvider, AppController.settingsLanguage)
     readonly property int draftTtsProviderIndex: findIndex(draftProviderOptions, "provider", draftTtsProvider)
     readonly property int draftSpeechRecognitionIndex: findIndex(
         AppController.speechRecognitionModelOptions, "value", draftSpeechRecognitionModel)
@@ -49,6 +53,14 @@ FloatingToolDialog {
                 return index
         }
         return 0
+    }
+
+    function localizedProviderOptions(languageCode, interfaceLanguage) {
+        return AppController.ttsProviderOptionsForLanguage(languageCode)
+    }
+
+    function localizedVoiceOptions(languageCode, provider, interfaceLanguage) {
+        return AppController.voiceOptionsForLanguageAndProvider(languageCode, provider)
     }
 
     function normalizedDraftVoice(languageCode, provider, preferredVoice) {
@@ -160,10 +172,10 @@ FloatingToolDialog {
             Layout.fillWidth: true
             visible: root.settingOverrides.length > 0
             implicitHeight: overrideRow.implicitHeight + Theme.space16
-            color: Theme.violetMuted
+            color: Theme.interactiveMuted
             radius: Theme.radiusSmall
             border.width: 1
-            border.color: Theme.violetOutline
+            border.color: Theme.interactiveOutline
 
             RowLayout {
                 id: overrideRow
@@ -172,14 +184,14 @@ FloatingToolDialog {
                 spacing: Theme.space8
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("%1 %2").arg(root.settingOverrides.length).arg(I18n.t("videos with custom settings"))
+                    text: qsTr("%1 %2").arg(root.settingOverrides.length).arg(qsTr("video có cài đặt riêng"))
                     color: Theme.text
                     font.pixelSize: Theme.caption
                     font.weight: Font.DemiBold
                 }
                 Text {
-                    text: I18n.t("Per-video settings are kept")
-                    color: Theme.violet
+                    text: qsTr("Cài đặt riêng của từng video được giữ nguyên")
+                    color: Theme.interactive
                     font.pixelSize: Theme.label
                 }
             }
@@ -231,61 +243,82 @@ FloatingToolDialog {
                 onSpeakerModeEdited: function(value) { root.draftSpeakerMode = value }
                 onRemoveOriginalSubtitlesEdited: function(value) { root.draftRemoveOriginalSubtitles = value }
                 onSubtitleRemovalModeEdited: function(value) { root.draftOriginalSubtitleRemovalMode = value }
-                onSubtitleLayoutRequested: batchSubtitlePreviewDialog.openWithLayout(
+                onSubtitleLayoutRequested: batchSubtitlePreviewDialogLoader.invoke("openWithLayout", [
                     root.draftSubtitleFontSize, root.draftSubtitlePositionX, root.draftSubtitlePositionY,
-                    root.draftSubtitleBoxWidth, root.draftSubtitleBoxHeight)
+                    root.draftSubtitleBoxWidth, root.draftSubtitleBoxHeight])
                 onAudioSeparationEdited: function(value) { root.draftEnableAudioSeparation = value }
-                onAudioMixRequested: {
-                    batchAudioMixDialog.audioSeparationEnabled = root.draftEnableAudioSeparation
-                    batchAudioMixDialog.originalVolume = root.draftOriginalVolume
-                    batchAudioMixDialog.ttsVolume = root.draftTtsVolume
-                    batchAudioMixDialog.backgroundMusicVolume = root.draftBackgroundMusicVolume
-                    batchAudioMixDialog.targetLanguage = root.draftTargetLanguage
-                    batchAudioMixDialog.ttsProvider = root.draftTtsProvider
-                    batchAudioMixDialog.ttsVoice = root.draftTtsVoice
-                    batchAudioMixDialog.backgroundMusicPath = root.draftBackgroundMusicPath
-                    batchAudioMixDialog.open()
-                }
+                onAudioMixRequested: batchAudioMixDialogLoader.invoke("open", [])
                 onBackgroundMusicFileRequested: {
                     const path = AppController.chooseBatchBackgroundMusic()
                     if (path.length > 0)
                         root.draftBackgroundMusicPath = path
                 }
-                onBackgroundMusicLinkRequested: batchBackgroundMusicLinkDialog.open()
+                onBackgroundMusicLinkRequested: batchBackgroundMusicLinkDialogLoader.invoke("open", [])
                 onBackgroundMusicClearRequested: root.draftBackgroundMusicPath = ""
-                onWatermarkRequested: batchWatermarkDialog.openWithText(root.draftWatermarkText)
+                onWatermarkRequested: batchWatermarkDialogLoader.invoke("openWithText", [root.draftWatermarkText])
             }
 
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         }
     }
 
-    WatermarkDialog {
-        id: batchWatermarkDialog
-        onWatermarkAccepted: function(text) { root.draftWatermarkText = text }
-    }
-    BatchAudioMixDialog {
-        id: batchAudioMixDialog
-        onAudioLevelsEdited: function(originalVolume, ttsVolume, backgroundMusicVolume) {
-            root.draftOriginalVolume = originalVolume
-            root.draftTtsVolume = ttsVolume
-            root.draftBackgroundMusicVolume = backgroundMusicVolume
+    LazyDialogLoader {
+        id: batchWatermarkDialogLoader
+        sourceComponent: Component {
+            WatermarkDialog {
+                onClosed: batchWatermarkDialogLoader.release()
+                onWatermarkAccepted: function(text) { root.draftWatermarkText = text }
+            }
         }
     }
-    BackgroundMusicLinkDialog {
-        id: batchBackgroundMusicLinkDialog
-        batchMode: true
-        onBatchMusicReady: function(path) { root.draftBackgroundMusicPath = path }
+
+    LazyDialogLoader {
+        id: batchAudioMixDialogLoader
+        sourceComponent: Component {
+            BatchAudioMixDialog {
+                audioSeparationEnabled: root.draftEnableAudioSeparation
+                originalVolume: root.draftOriginalVolume
+                ttsVolume: root.draftTtsVolume
+                backgroundMusicVolume: root.draftBackgroundMusicVolume
+                targetLanguage: root.draftTargetLanguage
+                ttsProvider: root.draftTtsProvider
+                ttsVoice: root.draftTtsVoice
+                backgroundMusicPath: root.draftBackgroundMusicPath
+                onClosed: batchAudioMixDialogLoader.release()
+                onAudioLevelsEdited: function(originalVolume, ttsVolume, backgroundMusicVolume) {
+                    root.draftOriginalVolume = originalVolume
+                    root.draftTtsVolume = ttsVolume
+                    root.draftBackgroundMusicVolume = backgroundMusicVolume
+                }
+            }
+        }
     }
-    SubtitlePreviewDialog {
-        id: batchSubtitlePreviewDialog
-        onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
-            root.draftSubtitleFontSize = fontSize
-            root.draftSubtitlePositionX = positionX
-            root.draftSubtitlePositionY = positionY
-            root.draftSubtitleBoxWidth = boxWidth
-            root.draftSubtitleBoxHeight = boxHeight
-            root.draftSubtitleManual = true
+
+    LazyDialogLoader {
+        id: batchBackgroundMusicLinkDialogLoader
+        sourceComponent: Component {
+            BackgroundMusicLinkDialog {
+                batchMode: true
+                onClosed: batchBackgroundMusicLinkDialogLoader.release()
+                onBatchMusicReady: function(path) { root.draftBackgroundMusicPath = path }
+            }
+        }
+    }
+
+    LazyDialogLoader {
+        id: batchSubtitlePreviewDialogLoader
+        sourceComponent: Component {
+            SubtitlePreviewDialog {
+                onClosed: batchSubtitlePreviewDialogLoader.release()
+                onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                    root.draftSubtitleFontSize = fontSize
+                    root.draftSubtitlePositionX = positionX
+                    root.draftSubtitlePositionY = positionY
+                    root.draftSubtitleBoxWidth = boxWidth
+                    root.draftSubtitleBoxHeight = boxHeight
+                    root.draftSubtitleManual = true
+                }
+            }
         }
     }
 }

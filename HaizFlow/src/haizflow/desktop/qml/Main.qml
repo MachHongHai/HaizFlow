@@ -22,6 +22,9 @@ ApplicationWindow {
     bottomPadding: 0
 
     readonly property string routeHome: "home"
+    readonly property string routeProjects: "projects"
+    readonly property string routeSettings: "settings"
+    readonly property string routeAbout: "about"
     readonly property string routeSingleProjects: "single-projects"
     readonly property string routeSingleWorkspace: "single-workspace"
     readonly property string routeManualProjects: "manual-projects"
@@ -42,247 +45,227 @@ ApplicationWindow {
     readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
-    readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace
-        || currentRoute === routeManualWorkspace
-        || currentRoute === routeBatchWorkspace
-        || currentRoute === routeBatchVideo
-        || currentRoute === routeDownloadWorkspace
-        || currentRoute === routePublishWorkspace
-    readonly property bool globalNavigationBlocked: projectSetupDialog.visible
-        || urlImportDialog.visible
-        || downloadProjectSourceDialog.visible
-        || aboutDialog.visible
-        || settingsDialog.visible
-        || batchSettingsDialog.visible
-        || translationReviewDialog.visible
-        || appAlertDialog.visible
-        || modelSetupOverlayLoader.active
-    // Loader.item is a QObject to qmllint, but its source component is DownloadsPage.
-    // qmllint disable missing-property
-    readonly property bool downloadCanGoBack: currentRoute === routeDownloadWorkspace
-        && downloadWorkspaceLoader.status === Loader.Ready
-        && downloadWorkspaceLoader.item !== null
-        && downloadWorkspaceLoader.item.canGoBack
-    readonly property bool downloadCanGoForward: currentRoute === routeDownloadWorkspace
-        && downloadWorkspaceLoader.status === Loader.Ready
-        && downloadWorkspaceLoader.item !== null
-        && downloadWorkspaceLoader.item.canGoForward
-    // qmllint enable missing-property
+    readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace || currentRoute === routeManualWorkspace || currentRoute === routeBatchWorkspace || currentRoute === routeBatchVideo || currentRoute === routeDownloadWorkspace || currentRoute === routePublishWorkspace
+    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
+    readonly property bool downloadCanGoBack: routeHost.downloadCanGoBack
+    readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
     readonly property bool canNavigateForward: !globalNavigationBlocked && (downloadCanGoForward || routeCanGoForward)
+
+    function navigationSection() {
+        if (currentRoute === routeProjects)
+            return "projects";
+        if (currentRoute === routeSettings)
+            return "settings";
+        if (currentRoute === routeAbout)
+            return "";
+        if (currentRoute === routeDownloadProjects)
+            return "downloads";
+        if (currentRoute === routePublishProjects)
+            return "social";
+        return "home";
+    }
+
+    function lazyDialogVisible(loader) {
+        return loader.status === Loader.Ready && loader.item !== null && loader.item.visible;
+    }
 
     // Reconcile in the background whenever the user returns from a browser.
     // This catches dashboard disconnects immediately without disabling the UI.
     onActiveChanged: {
-        if (active && currentRoute === routePublishWorkspace
-                && !AppController.tiktokPublishBusy)
-            AppController.reconcileZernioConnections()
-    }
-
-    function routeIndex(route) {
-        switch (route) {
-        case routeHome:
-            return 11
-        case routeSingleWorkspace:
-            return 1
-        case routeBatchProjects:
-            return 4
-        case routeBatchWorkspace:
-            return 5
-        case routeBatchVideo:
-            return 6
-        case routeDownloadProjects:
-            return 7
-        case routeDownloadWorkspace:
-            return 8
-        case routePublishProjects:
-            return 9
-        case routePublishWorkspace:
-            return 10
-        case routeManualProjects:
-            return 2
-        case routeManualWorkspace:
-            return 3
-        default:
-            return 0
-        }
+        if (active && currentRoute === routePublishWorkspace && !AppController.tiktokPublishBusy)
+            AppController.reconcileZernioConnections();
     }
 
     function routeIsAvailable(route) {
-        if (route === routeHome || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects
-                || route === routeDownloadProjects || route === routePublishProjects)
-            return true
+        if (route === routeHome || route === routeProjects || route === routeSettings || route === routeAbout || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
+            return true;
         if (!AppController.hasOpenProject)
-            return false
+            return false;
         if (route === routeSingleWorkspace)
-            return AppController.projectType === "single"
+            return AppController.projectType === "single";
         if (route === routeManualWorkspace)
-            return AppController.projectType === "manual"
+            return AppController.projectType === "manual";
         if (route === routeBatchWorkspace)
-            return AppController.projectType === "batch"
+            return AppController.projectType === "batch";
         if (route === routeBatchVideo)
-            return AppController.projectType === "batch" && AppController.isSelectedBatchVideo
+            return AppController.projectType === "batch" && AppController.isSelectedBatchVideo;
         if (route === routeDownloadWorkspace)
-            return AppController.projectType === "download"
+            return AppController.projectType === "download";
         if (route === routePublishWorkspace)
-            return AppController.projectType === "publish"
-        return false
+            return AppController.projectType === "publish";
+        return false;
     }
 
     function resetRouteHistory(route) {
-        routeHistory = [route]
-        routeHistoryIndex = 0
-        currentRoute = route
+        routeHistory = [route];
+        routeHistoryIndex = 0;
+        currentRoute = route;
     }
 
     function pruneRouteHistory() {
-        let filtered = []
-        let nextIndex = 0
+        let filtered = [];
+        let nextIndex = 0;
         for (let index = 0; index < routeHistory.length; ++index) {
-            const route = routeHistory[index]
+            const route = routeHistory[index];
             if (!routeIsAvailable(route))
-                continue
+                continue;
             if (index <= routeHistoryIndex)
-                nextIndex = filtered.length
-            filtered.push(route)
+                nextIndex = filtered.length;
+            filtered.push(route);
         }
         if (filtered.length === 0) {
-            resetRouteHistory(workspaceReturnRoute)
-            return
+            resetRouteHistory(workspaceReturnRoute);
+            return;
         }
-        routeHistory = filtered
-        routeHistoryIndex = Math.max(0, Math.min(nextIndex, filtered.length - 1))
+        routeHistory = filtered;
+        routeHistoryIndex = Math.max(0, Math.min(nextIndex, filtered.length - 1));
         if (!routeIsAvailable(currentRoute))
-            currentRoute = filtered[routeHistoryIndex]
+            currentRoute = filtered[routeHistoryIndex];
     }
 
     function openProjectWorkspace(projectsRoute, workspaceRoute) {
-        workspaceReturnRoute = projectsRoute
-        resetRouteHistory(projectsRoute)
-        navigate(workspaceRoute)
-    }
-
-    function workspaceRouteForType(projectType) {
-        if (projectType === "manual") return routeManualWorkspace
-        if (projectType === "batch") return routeBatchWorkspace
-        if (projectType === "download") return routeDownloadWorkspace
-        if (projectType === "publish") return routePublishWorkspace
-        return routeSingleWorkspace
-    }
-
-    function newProjectFromHome(projectType) {
-        workspaceReturnRoute = routeHome
-        projectSetupDialog.openForType(projectType)
+        workspaceReturnRoute = projectsRoute;
+        resetRouteHistory(projectsRoute);
+        navigate(workspaceRoute);
     }
 
     function replaceCurrentRoute(route) {
         if (route === currentRoute)
-            return
-        saveCurrentVideoSettings()
-        let nextHistory = routeHistory.slice()
-        nextHistory[routeHistoryIndex] = route
+            return;
+        saveCurrentVideoSettings();
+        let nextHistory = routeHistory.slice();
+        nextHistory[routeHistoryIndex] = route;
         if (routeHistoryIndex > 0 && nextHistory[routeHistoryIndex - 1] === route) {
-            nextHistory = nextHistory.slice(0, routeHistoryIndex)
-            routeHistoryIndex = nextHistory.length - 1
+            nextHistory = nextHistory.slice(0, routeHistoryIndex);
+            routeHistoryIndex = nextHistory.length - 1;
         }
-        routeHistory = nextHistory
-        currentRoute = route
+        routeHistory = nextHistory;
+        currentRoute = route;
     }
 
     function navigate(route) {
         if (route === currentRoute)
-            return
+            return;
         if (!routeIsAvailable(route)) {
-            pruneRouteHistory()
-            return
+            pruneRouteHistory();
+            return;
         }
 
-        saveCurrentVideoSettings()
-        let nextHistory = routeHistory.slice(0, routeHistoryIndex + 1)
-        nextHistory.push(route)
-        routeHistory = nextHistory
-        routeHistoryIndex = nextHistory.length - 1
-        currentRoute = route
+        saveCurrentVideoSettings();
+        let nextHistory = routeHistory.slice(0, routeHistoryIndex + 1);
+        nextHistory.push(route);
+        routeHistory = nextHistory;
+        routeHistoryIndex = nextHistory.length - 1;
+        currentRoute = route;
     }
 
     function navigateBack() {
         if (globalNavigationBlocked)
-            return
+            return;
         if (downloadCanGoBack) {
-            // qmllint disable missing-property
-            downloadWorkspaceLoader.item.navigateBack()
-            // qmllint enable missing-property
-            return
+            routeHost.navigateDownloadBack();
+            return;
         }
-        pruneRouteHistory()
+        pruneRouteHistory();
         if (!routeCanGoBack)
-            return
-
-        saveCurrentVideoSettings()
-        routeHistoryIndex -= 1
-        currentRoute = routeHistory[routeHistoryIndex]
+            return;
+        saveCurrentVideoSettings();
+        routeHistoryIndex -= 1;
+        currentRoute = routeHistory[routeHistoryIndex];
     }
 
     function navigateForward() {
         if (globalNavigationBlocked)
-            return
+            return;
         if (downloadCanGoForward) {
-            // qmllint disable missing-property
-            downloadWorkspaceLoader.item.navigateForward()
-            // qmllint enable missing-property
-            return
+            routeHost.navigateDownloadForward();
+            return;
         }
-        pruneRouteHistory()
+        pruneRouteHistory();
         if (!routeCanGoForward)
-            return
-
-        saveCurrentVideoSettings()
-        routeHistoryIndex += 1
-        currentRoute = routeHistory[routeHistoryIndex]
+            return;
+        saveCurrentVideoSettings();
+        routeHistoryIndex += 1;
+        currentRoute = routeHistory[routeHistoryIndex];
     }
 
     function saveCurrentVideoSettings() {
-        if (currentRoute === routeBatchVideo
-                && AppController.isSelectedBatchVideo
-                && !AppController.isSelectedVideoProcessing)
-            AppController.persistSelectedBatchVideoSettings()
+        if (currentRoute === routeBatchVideo && AppController.isSelectedBatchVideo && !AppController.isSelectedVideoProcessing)
+            AppController.persistSelectedBatchVideoSettings();
     }
 
     Component.onCompleted: {
-        I18n.language = AppController.settingsLanguage
-        AppController.enableInAppAlerts()
+        I18n.language = AppController.settingsLanguage;
+        AppController.enableInAppAlerts();
     }
 
-    ProjectSetupDialog {
-        id: projectSetupDialog
+    Binding {
+        target: UiMetrics
+        property: "viewportWidth"
+        value: root.width
     }
 
-    UrlImportDialog {
-        id: urlImportDialog
+    Binding {
+        target: UiMetrics
+        property: "viewportHeight"
+        value: root.height
     }
 
-    DownloadProjectSourceDialog {
-        id: downloadProjectSourceDialog
+    LazyDialogLoader {
+        id: projectSetupDialogLoader
+        sourceComponent: Component {
+            ProjectSetupDialog { onClosed: projectSetupDialogLoader.release() }
+        }
     }
 
-    AboutDialog {
-        id: aboutDialog
+    LazyDialogLoader {
+        id: urlImportDialogLoader
+        sourceComponent: Component {
+            UrlImportDialog { onClosed: urlImportDialogLoader.release() }
+        }
     }
 
-    SettingsDialog {
-        id: settingsDialog
+    LazyDialogLoader {
+        id: downloadProjectSourceDialogLoader
+        sourceComponent: Component {
+            DownloadProjectSourceDialog { onClosed: downloadProjectSourceDialogLoader.release() }
+        }
     }
 
-    BatchSettingsDialog {
-        id: batchSettingsDialog
+    LazyDialogLoader {
+        id: batchSettingsDialogLoader
+        sourceComponent: Component {
+            BatchSettingsDialog { onClosed: batchSettingsDialogLoader.release() }
+        }
     }
 
-    TranslationReviewDialog {
-        id: translationReviewDialog
+    LazyDialogLoader {
+        id: translationReviewDialogLoader
+        sourceComponent: Component {
+            TranslationReviewDialog { onClosed: translationReviewDialogLoader.release() }
+        }
     }
 
     AppAlertDialog {
         id: appAlertDialog
+    }
+
+    ConfirmDialog {
+        id: appConfirmationDialog
+        property bool responseSent: false
+        confirmText: qsTr("Xác nhận")
+        onOpened: responseSent = false
+        onConfirmed: {
+            responseSent = true;
+            AppController.respondToAppConfirmation(true);
+        }
+        onRejected: {
+            if (!responseSent) {
+                responseSent = true;
+                AppController.respondToAppConfirmation(false);
+            }
+        }
     }
 
     Connections {
@@ -290,48 +273,56 @@ ApplicationWindow {
 
         function onVideoDeleted() {
             if (!AppController.hasOpenProject) {
-                root.resetRouteHistory(root.workspaceReturnRoute)
-                return
+                root.resetRouteHistory(root.workspaceReturnRoute);
+                return;
             }
-            root.replaceCurrentRoute(root.workspaceReturnRoute)
-            root.pruneRouteHistory()
+            root.replaceCurrentRoute(root.workspaceReturnRoute);
+            root.pruneRouteHistory();
         }
 
         function onBatchDeleted() {
-            root.workspaceReturnRoute = root.routeBatchProjects
-            root.resetRouteHistory(root.routeBatchProjects)
+            root.workspaceReturnRoute = root.routeBatchProjects;
+            root.resetRouteHistory(root.routeBatchProjects);
         }
 
         function onProjectSetupChanged() {
-            root.pruneRouteHistory()
+            root.pruneRouteHistory();
         }
 
         function onSelectedVideoChanged() {
-            root.pruneRouteHistory()
+            root.pruneRouteHistory();
         }
 
         function onSettingsChanged() {
-            I18n.language = AppController.settingsLanguage
+            I18n.language = AppController.settingsLanguage;
         }
 
         function onAppAlertRequested(title, message, severity) {
-            appAlertDialog.showAlert(title, message, severity)
+            if (severity === "critical")
+                appAlertDialog.showAlert(title, message, severity);
+            else
+                toastStack.show(title, message, severity, severity === "warning" ? 6200 : 4200);
+        }
+
+        function onAppConfirmationRequested(title, message) {
+            appConfirmationDialog.title = title;
+            appConfirmationDialog.message = message;
+            appConfirmationDialog.open();
         }
 
         function onProjectPrepared() {
-            const returnRoute = root.workspaceReturnRoute === root.routeHome
-                ? root.routeHome : ""
+            const returnRoute = root.workspaceReturnRoute === root.routeHome || root.workspaceReturnRoute === root.routeProjects ? root.workspaceReturnRoute : "";
             if (AppController.projectType === "batch") {
-                root.openProjectWorkspace(returnRoute || root.routeBatchProjects, root.routeBatchWorkspace)
+                root.openProjectWorkspace(returnRoute || root.routeBatchProjects, root.routeBatchWorkspace);
             } else if (AppController.projectType === "manual") {
-                root.openProjectWorkspace(returnRoute || root.routeManualProjects, root.routeManualWorkspace)
+                root.openProjectWorkspace(returnRoute || root.routeManualProjects, root.routeManualWorkspace);
             } else {
                 if (AppController.projectType === "download") {
-                    root.openProjectWorkspace(returnRoute || root.routeDownloadProjects, root.routeDownloadWorkspace)
+                    root.openProjectWorkspace(returnRoute || root.routeDownloadProjects, root.routeDownloadWorkspace);
                 } else if (AppController.projectType === "publish") {
-                    root.openProjectWorkspace(returnRoute || root.routePublishProjects, root.routePublishWorkspace)
+                    root.openProjectWorkspace(returnRoute || root.routePublishProjects, root.routePublishWorkspace);
                 } else {
-                    root.openProjectWorkspace(returnRoute || root.routeSingleProjects, root.routeSingleWorkspace)
+                    root.openProjectWorkspace(returnRoute || root.routeSingleProjects, root.routeSingleWorkspace);
                 }
             }
         }
@@ -351,35 +342,47 @@ ApplicationWindow {
         spacing: 0
 
         AppMenuBar {
+            visible: !root.projectWorkspaceVisible
             Layout.fillWidth: true
-            Layout.preferredHeight: 40
+            Layout.preferredHeight: visible ? 40 : 0
             canGoBack: root.canNavigateBack
             canGoForward: root.canNavigateForward
             onBackRequested: root.navigateBack()
             onForwardRequested: root.navigateForward()
             onHomeRequested: root.navigate(root.routeHome)
             onNewSingleProjectRequested: {
-                root.workspaceReturnRoute = root.routeSingleProjects
-                projectSetupDialog.openForType("single")
+                root.workspaceReturnRoute = root.routeSingleProjects;
+                projectSetupDialogLoader.invoke("openForType", ["single"]);
             }
             onManualProjectRequested: {
-                root.workspaceReturnRoute = root.routeManualProjects
-                projectSetupDialog.openForType("manual")
+                root.workspaceReturnRoute = root.routeManualProjects;
+                projectSetupDialogLoader.invoke("openForType", ["manual"]);
             }
             onNewBatchProjectRequested: {
-                root.workspaceReturnRoute = root.routeBatchProjects
-                projectSetupDialog.openForType("batch")
+                root.workspaceReturnRoute = root.routeBatchProjects;
+                projectSetupDialogLoader.invoke("openForType", ["batch"]);
             }
             onNewDownloadProjectRequested: {
-                root.workspaceReturnRoute = root.routeDownloadProjects
-                projectSetupDialog.openForType("download")
+                root.workspaceReturnRoute = root.routeDownloadProjects;
+                projectSetupDialogLoader.invoke("openForType", ["download"]);
             }
             onNewPublishProjectRequested: {
-                root.workspaceReturnRoute = root.routePublishProjects
-                projectSetupDialog.openForType("publish")
+                root.workspaceReturnRoute = root.routePublishProjects;
+                projectSetupDialogLoader.invoke("openForType", ["publish"]);
             }
-            onSettingsRequested: settingsDialog.open()
-            onAboutRequested: aboutDialog.open()
+            onSettingsRequested: root.navigate(root.routeSettings)
+            onAboutRequested: root.navigate(root.routeAbout)
+        }
+
+        WorkspaceToolbar {
+            visible: root.projectWorkspaceVisible
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? UiMetrics.toolbarHeight : 0
+            title: AppController.projectName
+            statusText: I18n.taskStateLabel(AppController.selectedStatus)
+            canGoBack: root.canNavigateBack
+            onBackRequested: root.navigateBack()
+            onHomeRequested: root.navigate(root.routeHome)
         }
 
         RowLayout {
@@ -387,445 +390,67 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-        Rectangle {
-            id: navigation
-
-            visible: !root.projectWorkspaceVisible
-            Layout.preferredWidth: root.compactNavigation ? Theme.navigationCompact : Theme.navigationExpanded
-            Layout.fillHeight: true
-            color: Theme.sidebar
+            NavigationRail {
+                visible: !root.projectWorkspaceVisible
+                Layout.preferredWidth: root.compactNavigation ? Theme.navigationCompact : Theme.navigationExpanded
+                Layout.fillHeight: true
+                compact: root.compactNavigation
+                currentSection: root.navigationSection()
+                runtimeState: AppController.runtimeState
+                runtimeMessage: I18n.runtimeStatus(AppController.statusMessage)
+                onSectionRequested: function (section) {
+                    AppController.refreshVideos();
+                    if (section === "projects")
+                        root.navigate(root.routeProjects);
+                    else if (section === "downloads")
+                        root.navigate(root.routeDownloadProjects);
+                    else if (section === "social")
+                        root.navigate(root.routePublishProjects);
+                    else
+                        root.navigate(root.routeHome);
+                }
+            }
 
             ColumnLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                anchors.topMargin: 16
-                anchors.bottomMargin: 14
-                spacing: 8
-
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-
-                    RowLayout {
-                        anchors.fill: parent
-                        spacing: 11
-
-                        BrandMark {
-                            Layout.preferredWidth: 30
-                            Layout.preferredHeight: 30
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            visible: !root.compactNavigation
-                            text: I18n.t("HaizFlow")
-                            color: Theme.textOnDark
-                            font.pixelSize: Theme.bodyLarge
-                            font.weight: Font.DemiBold
-                            textFormat: Text.PlainText
-                        }
-
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    Layout.bottomMargin: 12
-                    color: Theme.divider
-                }
-
-                Text {
-                    visible: !root.compactNavigation
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 12
-                    Layout.bottomMargin: 2
-                    text: I18n.t("WORKSPACE")
-                    color: Theme.textSubtle
-                    font.pixelSize: Theme.label
-                    font.weight: Font.DemiBold
-                    font.capitalization: Font.AllUppercase
-                    textFormat: Text.PlainText
-                }
-
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    iconGlyph: "\uE80F"
-                    text: I18n.t("Home")
-                    selected: root.currentRoute === root.routeHome
-                    onClicked: root.navigate(root.routeHome)
-                }
-
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    iconGlyph: "\uE896"
-                    text: I18n.t("Downloads")
-                    selected: root.currentRoute === root.routeDownloadProjects
-                        || root.currentRoute === root.routeDownloadWorkspace
-                    onClicked: {
-                        AppController.refreshVideos()
-                        root.navigate(root.routeDownloadProjects)
-                    }
-                }
-
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    iconGlyph: "\uE714" // Used only by the compact navigation fallback.
-                    text: I18n.t("Single")
-                    selected: root.currentRoute === root.routeSingleProjects || root.currentRoute === root.routeSingleWorkspace
-                    onClicked: {
-                        AppController.refreshVideos()
-                        root.navigate(root.routeSingleProjects)
-                    }
-                }
-
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    iconGlyph: "\uE70F"
-                    text: I18n.t("Manual")
-                    selected: root.currentRoute === root.routeManualProjects
-                        || root.currentRoute === root.routeManualWorkspace
-                    onClicked: {
-                        AppController.refreshVideos()
-                        root.navigate(root.routeManualProjects)
-                    }
-                }
-
-
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    iconGlyph: "\uE8FD" // Used only by the compact navigation fallback.
-                    text: I18n.t("Batch")
-                    selected: root.currentRoute === root.routeBatchProjects || root.currentRoute === root.routeBatchWorkspace || root.currentRoute === root.routeBatchVideo
-                    onClicked: {
-                        AppController.refreshVideos()
-                        root.navigate(root.routeBatchProjects)
-                    }
-                }
-
-                SidebarButton {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    iconGlyph: "\uE789"
-                    text: I18n.t("Social publishing")
-                    selected: root.currentRoute === root.routePublishProjects
-                        || root.currentRoute === root.routePublishWorkspace
-                    onClicked: {
-                        AppController.refreshVideos()
-                        root.navigate(root.routePublishProjects)
-                    }
-                }
-
-                Item {
-                    Layout.fillHeight: true
-                }
-
-                RowLayout {
-                    visible: !root.compactNavigation && (root.modelStatusBusy || root.modelStatusFailed)
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 12
-                    Layout.rightMargin: 8
-                    Layout.bottomMargin: 8
-                    spacing: 9
-
-                    Rectangle {
-                        id: modelStatusIndicator
-                        Layout.preferredWidth: 7
-                        Layout.preferredHeight: 7
-                        radius: 4
-                        color: root.modelStatusFailed ? Theme.danger : root.modelStatusBusy ? Theme.warning : Theme.success
-
-                        SequentialAnimation on opacity {
-                            running: modelStatusIndicator.visible && root.modelStatusBusy && Theme.motionEnabled
-                            loops: Animation.Infinite
-                            NumberAnimation {
-                                to: 0.35
-                                duration: 750
-                                easing.type: Easing.InOutSine
-                            }
-                            NumberAnimation {
-                                to: 1
-                                duration: 750
-                                easing.type: Easing.InOutSine
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: I18n.runtimeStatus(AppController.statusMessage)
-                        color: Theme.textOnDarkMuted
-                        font.pixelSize: Theme.label
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    Layout.bottomMargin: 4
-                    color: Theme.divider
-                }
-
-                SidebarAboutLink {
-                    Layout.fillWidth: true
-                    compact: root.compactNavigation
-                    onClicked: aboutDialog.open()
-                }
-            }
-
-            Rectangle {
-                anchors.right: parent.right
-                height: parent.height
-                width: 1
-                color: Theme.divider
-            }
-        }
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: 0
-
-            StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: root.routeIndex(root.currentRoute)
+                spacing: 0
 
-                ProjectsPage {
-                    projectType: "single"
-                    // Python's generated qmltypes omit the constant flag; this model is stable.
-                    // qmllint disable stale-property-read
-                    projectModel: AppController.singleProjectModel
-                    // qmllint enable stale-property-read
+                RouteHost {
+                    id: routeHost
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? Theme.space20 + 2 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    onRequestNewProject: {
-                        root.workspaceReturnRoute = root.routeSingleProjects
-                        projectSetupDialog.openForType("single")
-                    }
-                    onOpenProject: {
-                        root.openProjectWorkspace(root.routeSingleProjects, root.routeSingleWorkspace)
-                    }
-                }
+                    currentRoute: root.currentRoute
 
-                Loader {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    active: root.currentRoute === root.routeSingleWorkspace
-                    asynchronous: true
-                    sourceComponent: Component {
-                        CreateVideoPage {
-                            onRequestReviewTranslation: translationReviewDialog.open()
-                            onRequestUrlImport: urlImportDialog.openForMode("single")
-                            onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("single")
-                        }
+                    onNewProjectRequested: function (projectType, returnRoute) {
+                        root.workspaceReturnRoute = returnRoute;
+                        projectSetupDialogLoader.invoke("openForType", [projectType]);
                     }
+                    onWorkspaceRequested: function (returnRoute, workspaceRoute) {
+                        root.openProjectWorkspace(returnRoute, workspaceRoute);
+                    }
+                    onNavigateRequested: function (route) {
+                        AppController.refreshVideos();
+                        root.navigate(route);
+                    }
+                    onReviewTranslationRequested: translationReviewDialogLoader.invoke("open", [])
+                    onUrlImportRequested: function (mode) {
+                        urlImportDialogLoader.invoke("openForMode", [mode]);
+                    }
+                    onDownloadProjectImportRequested: function (mode) {
+                        downloadProjectSourceDialogLoader.invoke("openForMode", [mode]);
+                    }
+                    onBatchSettingsRequested: batchSettingsDialogLoader.invoke("open", [])
                 }
-
-                ProjectsPage {
-                    projectType: "manual"
-                    // qmllint disable missing-property
-                    projectModel: AppController.manualProjectModel
-                    // qmllint enable missing-property
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    onRequestNewProject: {
-                        root.workspaceReturnRoute = root.routeManualProjects
-                        projectSetupDialog.openForType("manual")
-                    }
-                    onOpenProject: root.openProjectWorkspace(root.routeManualProjects, root.routeManualWorkspace)
-                }
-
-                Loader {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 14 : 20
-                    Layout.rightMargin: root.width < 1400 ? 14 : 20
-                    Layout.topMargin: 16
-                    Layout.bottomMargin: 16
-                    active: root.currentRoute === root.routeManualWorkspace
-                    asynchronous: true
-                    sourceComponent: Component {
-                        ManualWorkspace {
-                            onRequestUrlImport: urlImportDialog.openForMode("manual")
-                            onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("manual")
-                        }
-                    }
-                }
-
-                ProjectsPage {
-                    projectType: "batch"
-                    // Python's generated qmltypes omit the constant flag; this model is stable.
-                    // qmllint disable stale-property-read
-                    projectModel: AppController.batchProjectModel
-                    // qmllint enable stale-property-read
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    onRequestNewProject: {
-                        root.workspaceReturnRoute = root.routeBatchProjects
-                        projectSetupDialog.openForType("batch")
-                    }
-                    onOpenProject: {
-                        root.openProjectWorkspace(root.routeBatchProjects, root.routeBatchWorkspace)
-                    }
-                }
-
-                Loader {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    active: root.currentRoute === root.routeBatchWorkspace
-                    asynchronous: true
-                    sourceComponent: Component {
-                        BatchPage {
-                            onRequestBatchSettings: batchSettingsDialog.open()
-                            onRequestUrlImport: urlImportDialog.openForMode("batch")
-                            onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("batch")
-                            onOpenVideoDetail: {
-                                root.workspaceReturnRoute = root.routeBatchWorkspace
-                                root.navigate(root.routeBatchVideo)
-                            }
-                        }
-                    }
-                }
-
-                Loader {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    active: root.currentRoute === root.routeBatchVideo
-                    asynchronous: true
-                    sourceComponent: Component {
-                        CreateVideoPage {
-                            onRequestReviewTranslation: translationReviewDialog.open()
-                            onRequestUrlImport: urlImportDialog.openForMode("batch")
-                            onRequestDownloadProjectImport: downloadProjectSourceDialog.openForMode("single")
-                        }
-                    }
-                }
-
-                ProjectsPage {
-                    projectType: "download"
-                    // Python's generated qmltypes omit the constant flag; this model is stable.
-                    // qmllint disable stale-property-read
-                    projectModel: AppController.downloadProjectModel
-                    // qmllint enable stale-property-read
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    onRequestNewProject: {
-                        root.workspaceReturnRoute = root.routeDownloadProjects
-                        projectSetupDialog.openForType("download")
-                    }
-                    onOpenProject: {
-                        root.openProjectWorkspace(root.routeDownloadProjects, root.routeDownloadWorkspace)
-                    }
-                }
-
-                Loader {
-                    id: downloadWorkspaceLoader
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    active: root.currentRoute === root.routeDownloadWorkspace
-                    asynchronous: true
-                    sourceComponent: Component {
-                        DownloadsPage {
-                            projectName: AppController.projectName
-                            projectRoot: AppController.downloadOutputRoot
-                        }
-                    }
-                }
-
-                ProjectsPage {
-                    projectType: "publish"
-                    // qmllint disable stale-property-read
-                    projectModel: AppController.publishProjectModel
-                    // qmllint enable stale-property-read
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    onRequestNewProject: {
-                        root.workspaceReturnRoute = root.routePublishProjects
-                        projectSetupDialog.openForType("publish")
-                    }
-                    onOpenProject: root.openProjectWorkspace(root.routePublishProjects, root.routePublishWorkspace)
-                }
-
-                Loader {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 22 : 30
-                    Layout.rightMargin: root.width < 1400 ? 22 : 30
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
-                    active: root.currentRoute === root.routePublishWorkspace
-                    asynchronous: true
-                    sourceComponent: Component {
-                        SocialPublishPage {}
-                    }
-                }
-
-                HomePage {
-                    // qmllint disable stale-property-read
-                    projectModel: AppController.projectModel
-                    // qmllint enable stale-property-read
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.leftMargin: root.width < 1400 ? 28 : 42
-                    Layout.rightMargin: root.width < 1400 ? 28 : 42
-                    Layout.topMargin: 28
-                    Layout.bottomMargin: 28
-                    onNewProjectRequested: function(projectType) {
-                        root.newProjectFromHome(projectType)
-                    }
-                    onRecentProjectRequested: function(index, projectType) {
-                        if (AppController.selectProject(index))
-                            root.openProjectWorkspace(root.routeHome, root.workspaceRouteForType(projectType))
-                    }
-                }
-
             }
         }
+
+        ActivityTray {
+            Layout.fillWidth: true
+            showDetails: false
+            activityState: root.modelStatusFailed ? "failed" : root.modelStatusBusy || AppController.isProcessing ? "processing" : "ready"
+            message: root.modelStatusFailed || root.modelStatusBusy ? I18n.runtimeStatus(AppController.statusMessage) : AppController.isProcessing ? AppController.processingText : ""
+            progress: AppController.isSelectedVideoProcessing ? Math.max(0, Math.min(1, AppController.selectedProgress / 100)) : -1
         }
     }
 
@@ -836,5 +461,15 @@ ApplicationWindow {
         sourceComponent: Component {
             ModelSetupOverlay {}
         }
+    }
+
+    ToastStack {
+        id: toastStack
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: Theme.space16 + (root.projectWorkspaceVisible ? UiMetrics.toolbarHeight : 40)
+        anchors.rightMargin: Theme.space16
+        width: Math.min(380, root.width - Theme.space32)
+        z: 200
     }
 }

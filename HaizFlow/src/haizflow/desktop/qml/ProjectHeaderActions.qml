@@ -6,7 +6,7 @@ import "."
 RowLayout {
     id: root
 
-    property string projectFolderText: I18n.t("Open project folder")
+    property string projectFolderText: qsTr("Mở thư mục dự án")
     property bool projectFolderEnabled: true
     property bool showInputVideo: false
     property bool inputVideoEnabled: true
@@ -14,7 +14,7 @@ RowLayout {
     property bool outputFolderEnabled: true
     property bool setupVisible: false
     property bool setupEnabled: true
-    property string deleteText: I18n.t("Delete project")
+    property string deleteText: qsTr("Xóa dự án")
     property bool deleteEnabled: true
 
     signal projectFolderRequested()
@@ -34,7 +34,7 @@ RowLayout {
         glyph: "\uE712"
         // The ellipsis already communicates a menu.  Suppress the hover tooltip
         // so it cannot remain above the popup after the menu is opened.
-        Accessible.name: I18n.t("More actions")
+        Accessible.name: qsTr("Thao tác khác")
         onPressed: menuWasOpenOnPress = actionMenu.visible
         onClicked: {
             if (menuWasOpenOnPress || actionMenu.visible)
@@ -59,7 +59,7 @@ RowLayout {
             }
 
             AppMenuItem {
-                text: I18n.t("Open input video")
+                text: qsTr("Mở video nguồn")
                 iconGlyph: "\uE714"
                 collapsed: !root.showInputVideo
                 enabled: root.inputVideoEnabled
@@ -67,7 +67,7 @@ RowLayout {
             }
 
             AppMenuItem {
-                text: I18n.t("Open export folder")
+                text: qsTr("Mở thư mục video xuất")
                 iconGlyph: "\uE8B7"
                 collapsed: !root.showOutputFolder
                 enabled: root.outputFolderEnabled
@@ -82,7 +82,7 @@ RowLayout {
             }
 
             AppMenuItem {
-                text: I18n.t("Batch setup")
+                text: qsTr("Cài đặt hàng loạt")
                 iconGlyph: "\uE713"
                 collapsed: !root.setupVisible
                 enabled: root.setupEnabled

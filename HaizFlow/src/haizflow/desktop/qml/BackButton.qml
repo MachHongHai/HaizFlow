@@ -2,7 +2,7 @@ import QtQuick
 import "."
 
 AppButton {
-    text: I18n.t("Back")
+    text: qsTr("Quay lại")
     iconGlyph: "\uE72B"
     tone: "secondary"
 }

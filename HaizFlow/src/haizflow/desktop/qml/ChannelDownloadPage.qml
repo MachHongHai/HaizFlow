@@ -29,34 +29,28 @@ Item {
 
     function placeholder() {
         if (selectedPlatform === "tiktok")
-            return I18n.t("Paste a TikTok profile link")
+            return qsTr("Dán liên kết trang cá nhân TikTok")
         if (selectedPlatform === "douyin")
-            return I18n.t("Paste a Douyin profile link")
+            return qsTr("Dán liên kết trang cá nhân Douyin")
         if (selectedPlatform === "youtube")
-            return I18n.t("Paste a YouTube channel link")
-        return I18n.t("Paste a public profile or channel link")
+            return qsTr("Dán liên kết kênh YouTube")
+        return qsTr("Dán liên kết hồ sơ hoặc kênh công khai")
     }
 
     function contentOptions() {
         if (selectedPlatform === "youtube") {
             return [
-                { "label": I18n.t("All YouTube videos"), "value": "all" },
-                { "label": I18n.t("YouTube Shorts"), "value": "short" },
-                { "label": I18n.t("Regular YouTube videos"), "value": "long" }
+                { "label": qsTr("Tất cả video YouTube"), "value": "all" },
+                { "label": qsTr("YouTube Shorts"), "value": "short" },
+                { "label": qsTr("Video YouTube thường"), "value": "long" }
             ]
         }
-        return [{ "label": I18n.t("Public videos"), "value": "all" }]
+        return [{ "label": qsTr("Video công khai"), "value": "all" }]
     }
 
     ColumnLayout {
         anchors.fill: parent
         spacing: Theme.space16
-
-        PageHeader {
-            Layout.fillWidth: true
-            title: I18n.t("Download channel")
-            subtitle: I18n.t("Preview public videos from a channel or creator profile before saving")
-        }
 
         ScrollView {
             id: channelScroll
@@ -69,17 +63,21 @@ Item {
                 width: channelScroll.availableWidth
                 spacing: Theme.space16
 
-                Panel {
+                AppSurface {
                     Layout.fillWidth: true
-                    title: I18n.t("Channel source")
-                    subtitle: I18n.t("Choose a platform, apply filters, then preview available public videos")
+                    padding: Theme.space16
+
+                    SectionHeader {
+                        Layout.fillWidth: true
+                        title: qsTr("Nguồn kênh")
+                    }
 
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: Theme.space4
 
                         Text {
-                            text: I18n.t("Platform")
+                            text: qsTr("Nền tảng")
                             color: Theme.textMuted
                             font.pixelSize: Theme.label
                         }
@@ -94,7 +92,7 @@ Item {
                             logoModel: root.platformOptions
                             currentIndex: 0
                             enabled: !root.channelActive
-                            Accessible.name: I18n.t("Platform")
+                            Accessible.name: qsTr("Nền tảng")
                             onActivated: function(index) {
                                 root.selectedPlatform = String(platformSelector.model[index].value)
                                 contentFilter.currentIndex = 0
@@ -103,21 +101,13 @@ Item {
                         }
                     }
 
-                    TextField {
+                    AppTextField {
                         id: channelUrl
                         Layout.fillWidth: true
-                        implicitHeight: 44
                         placeholderText: root.placeholder()
                         selectByMouse: true
-                        activeFocusOnTab: true
                         enabled: !root.channelActive
-                        Accessible.name: I18n.t("Channel link")
-                        background: Rectangle {
-                            radius: Theme.radiusSmall
-                            color: Theme.input
-                            border.width: channelUrl.activeFocus ? 2 : 1
-                            border.color: channelUrl.activeFocus ? Theme.focus : Theme.outline
-                        }
+                        accessibleName: qsTr("Liên kết kênh")
                     }
 
                     GridLayout {
@@ -129,11 +119,11 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: Theme.space4
-                            Text { text: I18n.t("Order"); color: Theme.textMuted; font.pixelSize: Theme.label }
+                            Text { text: qsTr("Sắp xếp"); color: Theme.textMuted; font.pixelSize: Theme.label }
                             AppComboBox {
                                 id: ranking
                                 Layout.fillWidth: true
-                                model: [{ "label": I18n.t("Newest"), "value": "newest" }, { "label": I18n.t("Most viewed"), "value": "popular" }]
+                                model: [{ "label": qsTr("Mới nhất"), "value": "newest" }, { "label": qsTr("Nhiều lượt xem"), "value": "popular" }]
                                 textRole: "label"
                                 valueRole: "value"
                                 enabled: !root.channelActive
@@ -143,14 +133,14 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: Theme.space4
-                            Text { text: I18n.t("Download limit"); color: Theme.textMuted; font.pixelSize: Theme.label }
+                            Text { text: qsTr("Số lượng tải"); color: Theme.textMuted; font.pixelSize: Theme.label }
                             AppSpinBox { id: channelLimit; Layout.fillWidth: true; from: 1; to: 100; value: 20; enabled: !root.channelActive }
                         }
 
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: Theme.space4
-                            Text { text: I18n.t("Content type"); color: Theme.textMuted; font.pixelSize: Theme.label }
+                            Text { text: qsTr("Loại nội dung"); color: Theme.textMuted; font.pixelSize: Theme.label }
                             AppComboBox {
                                 id: contentFilter
                                 Layout.fillWidth: true
@@ -165,15 +155,15 @@ Item {
                             Layout.fillWidth: true
                             visible: ranking.currentValue === "popular"
                             spacing: Theme.space4
-                            Text { text: I18n.t("Scan range"); color: Theme.textMuted; font.pixelSize: Theme.label }
+                            Text { text: qsTr("Phạm vi quét"); color: Theme.textMuted; font.pixelSize: Theme.label }
                             AppComboBox {
                                 id: scanScope
                                 Layout.fillWidth: true
                                 model: [
-                                    { "label": I18n.t("100 videos"), "value": 100 },
-                                    { "label": I18n.t("300 videos"), "value": 300 },
-                                    { "label": I18n.t("1000 videos"), "value": 1000 },
-                                    { "label": I18n.t("All available"), "value": 0 }
+                                    { "label": qsTr("100 video"), "value": 100 },
+                                    { "label": qsTr("300 video"), "value": 300 },
+                                    { "label": qsTr("1000 video"), "value": 1000 },
+                                    { "label": qsTr("Toàn bộ"), "value": 0 }
                                 ]
                                 textRole: "label"
                                 valueRole: "value"
@@ -188,19 +178,20 @@ Item {
                         spacing: Theme.space12
                         Text {
                             Layout.fillWidth: true
-                            text: root.downloader.channelOutputDirectory.length > 0 ? root.downloader.channelOutputDirectory : I18n.t("No channel folder selected")
+                            text: root.downloader.channelOutputDirectory.length > 0 ? root.downloader.channelOutputDirectory : qsTr("Chưa chọn thư mục")
                             color: root.downloader.channelOutputDirectory.length > 0 ? Theme.text : Theme.textMuted
                             elide: Text.ElideMiddle
                             textFormat: Text.PlainText
                         }
                         AppButton {
                             visible: !root.downloader.outputManaged
-                            text: I18n.t("Choose folder")
+                            text: qsTr("Chọn thư mục")
+                            compact: true
                             enabled: !root.channelActive
                             onClicked: root.downloader.chooseChannelOutputDirectory()
                         }
                         AppButton {
-                            text: root.hasResults ? I18n.t("Scan again") : I18n.t("Preview videos")
+                            text: root.hasResults ? qsTr("Quét lại") : qsTr("Xem trước")
                             tone: "primary"
                             enabled: channelUrl.text.trim().length > 0 && !root.channelActive
                             onClicked: root.downloader.inspectChannel(channelUrl.text.trim(), root.selectedPlatform, ranking.currentValue, channelLimit.value, contentFilter.currentValue, ranking.currentValue === "popular" ? scanScope.currentValue : 0)
@@ -217,27 +208,32 @@ Item {
                             wrapMode: Text.WordWrap
                             textFormat: Text.PlainText
                         }
-                        AppButton { visible: root.channelActive; text: I18n.t("Cancel download"); tone: "danger"; onClicked: root.downloader.cancel() }
+                        AppButton { visible: root.channelActive; text: qsTr("Hủy tải"); compact: true; tone: "danger"; onClicked: root.downloader.cancel() }
                     }
                     AppProgressBar { Layout.fillWidth: true; visible: root.channelActive; value: root.downloader.channelProgress }
                 }
 
-                Panel {
+                AppSurface {
                     Layout.fillWidth: true
                     visible: root.hasResults
-                    title: root.downloader.channelName.length > 0 ? root.downloader.channelName : I18n.t("Channel videos")
+                    padding: Theme.space16
+
+                    SectionHeader {
+                        Layout.fillWidth: true
+                        title: root.downloader.channelName.length > 0 ? root.downloader.channelName : qsTr("Video trong kênh")
+                    }
 
                     RowLayout {
                         Layout.fillWidth: true
                         AppCheckBox {
-                            text: I18n.t("Select all")
+                            text: qsTr("Chọn tất cả")
                             checked: root.downloader.channelSelectedCount > 0 && root.downloader.channelSelectedCount === root.downloader.channelSelectableCount
                             enabled: !root.channelActive
                             onToggled: root.downloader.selectAllChannel(checked)
                         }
                         Item { Layout.fillWidth: true }
                         AppButton {
-                            text: qsTr("%1 (%2)").arg(I18n.t("Download selected")).arg(root.downloader.channelSelectedCount)
+                            text: qsTr("%1 (%2)").arg(qsTr("Tải video đã chọn")).arg(root.downloader.channelSelectedCount)
                             tone: "primary"
                             enabled: root.downloader.channelSelectedCount > 0
                                 && root.downloader.channelOutputDirectory.length > 0 && !root.channelActive
@@ -263,7 +259,6 @@ Item {
                     }
                 }
 
-                DownloadQueueStatus { Layout.fillWidth: true; downloader: root.downloader }
             }
         }
     }

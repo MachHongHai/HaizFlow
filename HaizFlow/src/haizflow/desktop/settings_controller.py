@@ -49,6 +49,9 @@ class SettingsController:
         host._settings_processing_device = settings["processing_device"]
         host._processing_device_origin = settings["processing_device_origin"]
         _set_ui_language(host._settings_language)
+        activity_events = getattr(host, "activity_events", None)
+        if activity_events is not None:
+            activity_events.set_language(host._settings_language)
         if device_changed and (pipeline_active or host._device_switching):
             host._pending_processing_device = host._settings_processing_device
             host._status_message = "Settings applied. The current video keeps its processing device."
@@ -82,6 +85,9 @@ class SettingsController:
         host._settings_theme = settings["theme"]
         host._settings_language = settings["language"]
         _set_ui_language(host._settings_language)
+        activity_events = getattr(host, "activity_events", None)
+        if activity_events is not None:
+            activity_events.set_language(host._settings_language)
         device_changed = settings["processing_device"] != host._settings_processing_device
         host._settings_processing_device = settings["processing_device"]
         host._processing_device_origin = settings["processing_device_origin"]

@@ -23,26 +23,30 @@ FocusScope {
         onClicked: root.forceActiveFocus()
     }
 
-    Panel {
+    AppSurface {
         anchors.centerIn: parent
-        width: Math.min(parent.width - 48, 620)
-        contentPadding: 28
-        contentSpacing: Theme.space20
-        title: AppController.modelSetupState === "failed"
-            ? I18n.t("Model setup needs attention")
-            : AppController.modelSetupState === "cancelled"
-                ? I18n.t("Model download paused")
-                : I18n.t("Preparing HaizFlow")
-        subtitle: I18n.t("Required AI models are downloaded once and stored beside the app in its runtime folder.")
+        width: Math.min(parent.width - 48, 540)
+        padding: Theme.space20
+        spacing: Theme.space16
+
+        SectionHeader {
+            Layout.fillWidth: true
+            title: AppController.modelSetupState === "failed"
+                ? qsTr("Không tải được model")
+                : AppController.modelSetupState === "cancelled"
+                    ? qsTr("Đã tạm dừng tải model")
+                    : qsTr("Đang tải model…")
+            subtitle: qsTr("Model được lưu trong thư mục dữ liệu của ứng dụng.")
+        }
 
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.space16
 
             Rectangle {
-                Layout.preferredWidth: 48
-                Layout.preferredHeight: 48
-                radius: 24
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                radius: Theme.radiusSmall
                 color: AppController.modelSetupState === "failed"
                     || AppController.modelSetupState === "cancelled"
                     ? Theme.dangerMuted : Theme.interactiveMuted
@@ -55,7 +59,7 @@ FocusScope {
                     iconColor: AppController.modelSetupState === "failed"
                         || AppController.modelSetupState === "cancelled"
                         ? Theme.danger : Theme.interactive
-                    iconSize: Theme.iconLarge
+                    iconSize: Theme.icon
                 }
             }
 
@@ -67,7 +71,7 @@ FocusScope {
                     Layout.fillWidth: true
                     text: AppController.modelSetupComponent.length > 0
                         ? AppController.modelSetupComponent
-                        : I18n.t("AI model package")
+                        : qsTr("Gói model")
                     color: Theme.text
                     font.pixelSize: Theme.bodyLarge
                     font.weight: Font.DemiBold
@@ -77,7 +81,7 @@ FocusScope {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t(AppController.modelSetupDetail)
+                    text: I18n.runtimeStatus(AppController.modelSetupDetail)
                     color: AppController.modelSetupState === "failed"
                         ? Theme.danger : Theme.textMuted
                     font.pixelSize: Theme.body
@@ -97,7 +101,7 @@ FocusScope {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Download progress")
+                    text: qsTr("Tiến trình tải")
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     textFormat: Text.PlainText
@@ -147,7 +151,7 @@ FocusScope {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Model storage location")
+                    text: qsTr("Vị trí lưu model")
                     color: Theme.textMuted
                     font.pixelSize: Theme.label
                     textFormat: Text.PlainText
@@ -167,7 +171,7 @@ FocusScope {
         Text {
             Layout.fillWidth: true
             visible: AppController.modelSetupBusy
-            text: I18n.t("Keep HaizFlow open and keep the internet connection active. Existing verified files will not be downloaded again.")
+            text: qsTr("Giữ ứng dụng đang mở trong khi tải.")
             color: Theme.textSubtle
             font.pixelSize: Theme.caption
             textFormat: Text.PlainText
@@ -184,14 +188,14 @@ FocusScope {
 
             AppButton {
                 visible: AppController.modelSetupCanCancel
-                text: I18n.t("Pause download")
+                text: qsTr("Tạm dừng tải")
                 tone: "secondary"
                 onClicked: AppController.cancelModelSetup()
             }
 
             AppButton {
                 visible: !AppController.modelSetupBusy
-                text: I18n.t("Retry model download")
+                text: qsTr("Tải lại model")
                 tone: "primary"
                 iconGlyph: "\uE72C"
                 onClicked: AppController.retryModelSetup()

@@ -22,11 +22,6 @@ Slider {
             height: parent.height
             radius: 2
             color: root.enabled ? Theme.interactive : Theme.textDisabled
-
-            Behavior on width {
-                enabled: root.animateValueChanges
-                NumberAnimation { duration: root.pressed ? 0 : Theme.motionFast; easing.type: Easing.OutCubic }
-            }
         }
     }
 
@@ -39,9 +34,5 @@ Slider {
         color: root.enabled ? Theme.text : Theme.textDisabled
         border.width: root.activeFocus ? 3 : 2
         border.color: root.activeFocus ? Theme.focus : Theme.interactive
-
-        Behavior on implicitWidth {
-            NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic }
-        }
     }
 }

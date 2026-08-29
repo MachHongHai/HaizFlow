@@ -11,7 +11,7 @@ FloatingToolDialog {
 
     expandedWidth: screen === "record" ? 480 : 410
     expandedHeight: screen === "record" ? (recordingError.length > 0 ? 304 : 264) : 178
-    toolTitle: I18n.t("Clone my voice")
+    toolTitle: qsTr("Nhân bản giọng của tôi")
     toolSubtitle: ""
 
     property string screen: "source"
@@ -27,162 +27,162 @@ FloatingToolDialog {
     readonly property bool samplePaused: samplePlayer.playbackState === MediaPlayer.PausedState
     readonly property bool hasSample: samplePath.length > 0
     readonly property int waveformBarCount: 48
-    readonly property int playableDurationMs: samplePlayer.duration > 0
-        ? samplePlayer.duration : sampleDurationMs
-    readonly property real playbackProgress: playableDurationMs > 0
-        ? Math.max(0, Math.min(1, samplePlayer.position / playableDurationMs)) : 0
+    readonly property int playableDurationMs: samplePlayer.duration > 0 ? samplePlayer.duration : sampleDurationMs
+    readonly property real playbackProgress: playableDurationMs > 0 ? Math.max(0, Math.min(1, samplePlayer.position / playableDurationMs)) : 0
 
     function localPath(location) {
-        const decoded = decodeURIComponent(String(location || "").replace(/^file:\/\//, ""))
-        return /^\/[A-Za-z]:\//.test(decoded) ? decoded.slice(1) : decoded
+        const decoded = decodeURIComponent(String(location || "").replace(/^file:\/\//, ""));
+        return /^\/[A-Za-z]:\//.test(decoded) ? decoded.slice(1) : decoded;
     }
 
     function localFileUrl(path) {
-        return path.length > 0 ? "file:///" + path.replace(/\\/g, "/") : ""
+        return path.length > 0 ? "file:///" + path.replace(/\\/g, "/") : "";
     }
 
     function formatTime(milliseconds) {
-        const seconds = Math.max(0, Math.floor(milliseconds / 1000))
-        return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
+        const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+        return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
     }
 
     function releaseSamplePlayer() {
-        samplePlayer.stop()
-        samplePlayer.source = ""
+        samplePlayer.stop();
+        samplePlayer.source = "";
     }
 
     function loadSample(path) {
-        samplePath = String(path || "")
-        waveformPeaks = []
-        sampleDurationMs = 0
+        samplePath = String(path || "");
+        waveformPeaks = [];
+        sampleDurationMs = 0;
         if (samplePath.length === 0)
-            return
-        const analysis = AppController.voiceCloneReferenceAnalysis(samplePath, waveformBarCount)
-        waveformPeaks = analysis.peaks || []
-        sampleDurationMs = Math.max(0, Number(analysis.durationMs || 0))
-        samplePlayer.source = localFileUrl(samplePath)
+            return;
+        const analysis = AppController.voiceCloneReferenceAnalysis(samplePath, waveformBarCount);
+        waveformPeaks = analysis.peaks || [];
+        sampleDurationMs = Math.max(0, Number(analysis.durationMs || 0));
+        samplePlayer.source = localFileUrl(samplePath);
     }
 
     function discardPendingRecording() {
-        finalizeTimer.stop()
+        finalizeTimer.stop();
         if (recording) {
-            discardRecordingWhenStopped = true
-            recorder.stop()
-            return
+            discardRecordingWhenStopped = true;
+            recorder.stop();
+            return;
         }
         if (pendingRecordingPath.length > 0)
-            AppController.discardVoiceCloneRecording(pendingRecordingPath)
-        pendingRecordingPath = ""
+            AppController.discardVoiceCloneRecording(pendingRecordingPath);
+        pendingRecordingPath = "";
     }
 
     function chooseReferenceFile() {
-        releaseSamplePlayer()
-        const selected = AppController.chooseVoiceCloneReference()
+        releaseSamplePlayer();
+        const selected = AppController.chooseVoiceCloneReference();
         if (selected.length > 0 && AppController.setVoiceCloneReference(selected, ""))
-            root.close()
+            root.close();
     }
 
     function beginRecording() {
-        releaseSamplePlayer()
-        discardPendingRecording()
-        recordingError = ""
-        recordingElapsedSeconds = 0
-        sampleDurationMs = 0
-        samplePath = ""
-        waveformPeaks = []
-        const location = AppController.prepareVoiceCloneRecording()
+        releaseSamplePlayer();
+        discardPendingRecording();
+        recordingError = "";
+        recordingElapsedSeconds = 0;
+        sampleDurationMs = 0;
+        samplePath = "";
+        waveformPeaks = [];
+        const location = AppController.prepareVoiceCloneRecording();
         if (!location || location.toString().length === 0)
-            return
-        pendingRecordingPath = localPath(location)
-        recorder.outputLocation = location
-        recorder.record()
+            return;
+        pendingRecordingPath = localPath(location);
+        recorder.outputLocation = location;
+        recorder.record();
     }
 
     function finishRecording() {
         if (recording)
-            recorder.stop()
+            recorder.stop();
     }
 
     function commitRecordedSample() {
         if (pendingRecordingPath.length === 0)
-            return
-        releaseSamplePlayer()
-        const actualPath = localPath(recorder.actualLocation)
-        const recordedPath = actualPath.length > 0 ? actualPath : pendingRecordingPath
+            return;
+        releaseSamplePlayer();
+        const actualPath = localPath(recorder.actualLocation);
+        const recordedPath = actualPath.length > 0 ? actualPath : pendingRecordingPath;
         if (AppController.saveRecordedVoiceCloneReference(recordedPath)) {
-            pendingRecordingPath = ""
-            loadSample(AppController.voiceCloneReferencePath)
-            recordingError = ""
+            pendingRecordingPath = "";
+            loadSample(AppController.voiceCloneReferencePath);
+            recordingError = "";
         }
     }
 
     function toggleSamplePlayback() {
         if (!hasSample)
-            return
+            return;
         if (samplePlaying) {
-            samplePlayer.pause()
-            return
+            samplePlayer.pause();
+            return;
         }
         if (!samplePaused || samplePlayer.source.toString().length === 0)
-            samplePlayer.source = localFileUrl(samplePath)
-        samplePlayer.play()
+            samplePlayer.source = localFileUrl(samplePath);
+        samplePlayer.play();
     }
 
     function openForSelectedVideo() {
-        discardPendingRecording()
-        releaseSamplePlayer()
-        screen = "source"
-        recordingElapsedSeconds = 0
-        recordingError = ""
-        loadSample(AppController.voiceCloneReferencePath)
-        open()
+        discardPendingRecording();
+        releaseSamplePlayer();
+        screen = "source";
+        recordingElapsedSeconds = 0;
+        recordingError = "";
+        loadSample(AppController.voiceCloneReferencePath);
+        open();
     }
 
     onClosed: {
-        releaseSamplePlayer()
-        discardPendingRecording()
-        screen = "source"
+        releaseSamplePlayer();
+        discardPendingRecording();
+        screen = "source";
     }
 
     CaptureSession {
-        audioInput: AudioInput { }
+        audioInput: AudioInput {}
         recorder: MediaRecorder {
             id: recorder
             audioBitRate: 128000
 
             onRecorderStateChanged: {
                 if (recorder.recorderState === MediaRecorder.RecordingState) {
-                    recordingTimer.start()
-                    return
+                    recordingTimer.start();
+                    return;
                 }
-                recordingTimer.stop()
+                recordingTimer.stop();
                 if (root.discardRecordingWhenStopped) {
-                    root.discardRecordingWhenStopped = false
-                    root.discardPendingRecording()
-                    return
+                    root.discardRecordingWhenStopped = false;
+                    root.discardPendingRecording();
+                    return;
                 }
                 if (root.pendingRecordingPath.length === 0)
-                    return
-                root.sampleDurationMs = Math.max(root.sampleDurationMs, recorder.duration)
+                    return;
+                root.sampleDurationMs = Math.max(root.sampleDurationMs, recorder.duration);
                 // QtMultimedia releases the Windows recording handle asynchronously.
-                finalizeTimer.restart()
+                finalizeTimer.restart();
             }
 
             onDurationChanged: root.sampleDurationMs = duration
 
-            onErrorOccurred: function(error, errorString) {
+            onErrorOccurred: function (error, errorString) {
                 if (error !== MediaRecorder.NoError)
-                    root.recordingError = errorString || I18n.t("Microphone recording could not be started")
+                    root.recordingError = errorString || qsTr("Không thể bắt đầu ghi âm bằng microphone");
             }
         }
     }
 
     MediaPlayer {
         id: samplePlayer
-        audioOutput: AudioOutput { volume: 1.0 }
+        audioOutput: AudioOutput {
+            volume: 1.0
+        }
         onDurationChanged: {
             if (duration > 0)
-                root.sampleDurationMs = duration
+                root.sampleDurationMs = duration;
         }
     }
 
@@ -210,7 +210,7 @@ FloatingToolDialog {
 
             AppButton {
                 Layout.preferredWidth: 142
-                text: I18n.t("Record audio")
+                text: qsTr("Ghi âm")
                 iconGlyph: "\uE720"
                 compact: true
                 tone: "primary"
@@ -219,7 +219,7 @@ FloatingToolDialog {
 
             AppButton {
                 Layout.preferredWidth: 126
-                text: I18n.t("Choose file")
+                text: qsTr("Chọn tệp")
                 iconGlyph: "\uE8B7"
                 compact: true
                 onClicked: root.chooseReferenceFile()
@@ -239,17 +239,17 @@ FloatingToolDialog {
                 IconButton {
                     glyph: "\uE72B"
                     controlSize: 32
-                    toolTipText: I18n.t("Back")
+                    toolTipText: qsTr("Quay lại")
                     enabled: !root.recording
                     onClicked: {
-                        root.releaseSamplePlayer()
-                        root.screen = "source"
+                        root.releaseSamplePlayer();
+                        root.screen = "source";
                     }
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Record a voice sample")
+                    text: qsTr("Ghi mẫu giọng")
                     color: Theme.text
                     font.pixelSize: Theme.body
                     font.weight: Font.DemiBold
@@ -264,9 +264,6 @@ FloatingToolDialog {
                 color: root.recording ? Theme.interactive : Theme.surfaceStrong
                 border.width: root.recording ? 0 : 1
                 border.color: Theme.outlineStrong
-
-                Behavior on color { ColorAnimation { duration: Theme.motionFast } }
-
                 RowLayout {
                     anchors.fill: parent
                     anchors.margins: 8
@@ -277,22 +274,18 @@ FloatingToolDialog {
                         Layout.preferredWidth: 40
                         Layout.preferredHeight: 40
                         focusPolicy: Qt.TabFocus
-                        Accessible.name: root.recording ? I18n.t("Stop recording")
-                            : (root.hasSample ? (root.samplePlaying ? I18n.t("Pause") : I18n.t("Listen"))
-                                              : I18n.t("Record"))
+                        Accessible.name: root.recording ? qsTr("Dừng ghi âm") : (root.hasSample ? (root.samplePlaying ? qsTr("Tạm dừng") : qsTr("Nghe lại")) : qsTr("Ghi âm"))
                         onClicked: {
                             if (root.recording)
-                                root.finishRecording()
+                                root.finishRecording();
                             else if (root.hasSample)
-                                root.toggleSamplePlayback()
+                                root.toggleSamplePlayback();
                             else
-                                root.beginRecording()
+                                root.beginRecording();
                         }
 
                         contentItem: AppIcon {
-                            glyph: root.recording ? "\uE71A"
-                                : (root.samplePlaying ? "\uE769"
-                                                      : (root.hasSample ? "\uE768" : "\uE720"))
+                            glyph: root.recording ? "\uE71A" : (root.samplePlaying ? "\uE769" : (root.hasSample ? "\uE768" : "\uE720"))
                             iconColor: root.recording ? Theme.interactive : Theme.surface
                             iconSize: 16
                         }
@@ -321,17 +314,11 @@ FloatingToolDialog {
 
                                 Rectangle {
                                     required property int index
-                                    readonly property real peak: root.recording ? 0.08
-                                        : (root.waveformPeaks.length > index
-                                           ? Number(root.waveformPeaks[index]) : 0.08)
-                                    width: Math.max(2, (waveformRow.width
-                                        - waveformRow.spacing * (root.waveformBarCount - 1))
-                                        / root.waveformBarCount)
+                                    readonly property real peak: root.recording ? 0.08 : (root.waveformPeaks.length > index ? Number(root.waveformPeaks[index]) : 0.08)
+                                    width: Math.max(2, (waveformRow.width - waveformRow.spacing * (root.waveformBarCount - 1)) / root.waveformBarCount)
                                     height: 4 + Math.max(0.08, Math.min(1, peak)) * 24
                                     radius: width / 2
-                                    color: root.recording || ((index + 1) / root.waveformBarCount <= root.playbackProgress)
-                                        ? (root.recording ? Theme.text : Theme.interactive)
-                                        : Theme.textMuted
+                                    color: root.recording || ((index + 1) / root.waveformBarCount <= root.playbackProgress) ? (root.recording ? Theme.text : Theme.interactive) : Theme.textMuted
                                     opacity: root.recording ? 0.52 : 0.82
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
@@ -342,9 +329,8 @@ FloatingToolDialog {
                             anchors.fill: parent
                             enabled: root.hasSample && !root.recording && root.playableDurationMs > 0
                             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onPressed: function(mouse) {
-                                samplePlayer.setPosition(Math.round(
-                                    root.playableDurationMs * mouse.x / Math.max(1, width)))
+                            onPressed: function (mouse) {
+                                samplePlayer.setPosition(Math.round(root.playableDurationMs * mouse.x / Math.max(1, width)));
                             }
                         }
                     }
@@ -357,10 +343,7 @@ FloatingToolDialog {
 
                         Text {
                             anchors.centerIn: parent
-                            text: root.recording
-                                ? root.formatTime(root.recordingElapsedSeconds * 1000)
-                                : root.formatTime(root.samplePlaying || root.samplePaused
-                                                  ? samplePlayer.position : root.playableDurationMs)
+                            text: root.recording ? root.formatTime(root.recordingElapsedSeconds * 1000) : root.formatTime(root.samplePlaying || root.samplePaused ? samplePlayer.position : root.playableDurationMs)
                             color: root.recording ? Theme.interactivePressed : Theme.text
                             font.pixelSize: Theme.caption
                             font.weight: Font.DemiBold
@@ -387,8 +370,7 @@ FloatingToolDialog {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.recording ? I18n.t("Recording voice sample")
-                        : (root.hasSample ? I18n.t("Voice sample ready") : I18n.t("Ready to record"))
+                    text: root.recording ? qsTr("Đang ghi âm mẫu giọng") : (root.hasSample ? qsTr("Mẫu giọng đã sẵn sàng") : qsTr("Sẵn sàng ghi âm"))
                     color: root.recording ? Theme.interactive : Theme.textMuted
                     font.pixelSize: Theme.caption
                     textFormat: Text.PlainText
@@ -396,7 +378,7 @@ FloatingToolDialog {
 
                 AppButton {
                     visible: root.hasSample && !root.recording
-                    text: I18n.t("Record again")
+                    text: qsTr("Ghi lại")
                     compact: true
                     tone: "ghost"
                     onClicked: root.beginRecording()

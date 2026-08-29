@@ -21,12 +21,12 @@ Rectangle {
     readonly property bool canEditSubtitles: AppController.selectedStatus === "done"
         && AppController.canEditSelectedSubtitles
     readonly property string headline: root.selectedActive
-        ? I18n.t(AppController.selectedStageLabel)
+        ? AppController.selectedStageLabel
         : AppController.selectedProgress >= 100
-            ? I18n.t("Last export ready")
+            ? qsTr("Video xuất đã sẵn sàng")
             : AppController.hasSelectedVideo
-                ? I18n.t(AppController.selectedStageLabel)
-                : I18n.t("Ready to process")
+                ? AppController.selectedStageLabel
+                : qsTr("Sẵn sàng xử lý")
 
     implicitHeight: 116
     radius: Theme.radius
@@ -94,8 +94,8 @@ Rectangle {
                 Text {
                     visible: AppController.selectedElapsed.length > 0
                     text: (AppController.selectedStatus === "processing"
-                        ? I18n.t("Time running")
-                        : I18n.t("Processing time")) + " " + AppController.selectedElapsed
+                        ? qsTr("Thời gian đã chạy")
+                        : qsTr("Thời gian xử lý")) + " " + AppController.selectedElapsed
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     textFormat: Text.PlainText
@@ -124,7 +124,7 @@ Rectangle {
 
             AppButton {
                 visible: root.canReview || root.canEditSubtitles
-                text: root.canReview ? I18n.t("Review subtitles") : I18n.t("Edit subtitles")
+                text: root.canReview ? qsTr("Duyệt phụ đề") : qsTr("Sửa lại phụ đề")
                 iconGlyph: "\uE70F"
                 tone: root.canReview ? "primary" : "secondary"
                 onClicked: root.requestReviewTranslation()
@@ -132,7 +132,7 @@ Rectangle {
 
             AppButton {
                 visible: AppController.selectedStatus === "paused" && !root.selectedQueued
-                text: I18n.t("Resume")
+                text: qsTr("Tiếp tục")
                 iconGlyph: "\uE768"
                 tone: "primary"
                 onClicked: AppController.resumeSelectedVideo()
@@ -140,7 +140,7 @@ Rectangle {
 
             AppButton {
                 visible: root.canStart
-                text: I18n.t("Process")
+                text: qsTr("Xử lý")
                 iconGlyph: "\uE768"
                 tone: "primary"
                 onClicked: AppController.startProjectVideo()
@@ -148,7 +148,7 @@ Rectangle {
 
             AppButton {
                 visible: root.canRestart
-                text: I18n.t("Restart")
+                text: qsTr("Chạy lại")
                 iconGlyph: "\uE72C"
                 tone: AppController.selectedStatus === "done" ? "secondary" : "primary"
                 onClicked: AppController.restartSelectedVideo()
@@ -156,7 +156,7 @@ Rectangle {
 
             AppButton {
                 visible: root.selectedProcessing && !root.pausePending
-                text: I18n.t("Pause")
+                text: qsTr("Tạm dừng")
                 iconGlyph: "\uE769"
                 tone: "danger"
                 onClicked: AppController.stopVideo()
@@ -165,7 +165,7 @@ Rectangle {
             AppButton {
                 visible: root.selectedQueued && !root.selectedProcessing
                     && AppController.selectedStatus !== "paused"
-                text: I18n.t("Queued")
+                text: qsTr("Đang chờ")
                 iconGlyph: "\uE895"
                 tone: "secondary"
                 enabled: false
@@ -173,7 +173,7 @@ Rectangle {
 
             AppButton {
                 visible: root.pausePending
-                text: I18n.t("Pausing")
+                text: qsTr("Đang tạm dừng")
                 iconGlyph: "\uE895"
                 tone: "secondary"
                 enabled: false
@@ -181,7 +181,7 @@ Rectangle {
 
             AppButton {
                 visible: AppController.hasSelectedVideo
-                text: I18n.t("Open output video")
+                text: qsTr("Mở video đầu ra")
                 iconGlyph: "\uE768"
                 tone: "primary"
                 enabled: root.hasOutput

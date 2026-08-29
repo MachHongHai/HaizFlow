@@ -12,6 +12,7 @@ Item {
 
     readonly property bool editingBatchVideo: AppController.isSelectedBatchVideo
     readonly property bool wideLayout: width >= 980
+    property bool activityExpanded: false
 
     onWideLayoutChanged: {
         if (wideLayout)
@@ -31,23 +32,32 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.space20
-        spacing: Theme.space16
+        anchors.margins: Theme.space12
+        spacing: Theme.space12
 
-        PageHeader {
+        RowLayout {
             Layout.fillWidth: true
-            title: AppController.projectName || AppController.selectedFileName || I18n.t("Create a new dub")
-            subtitle: AppController.projectDirectory || I18n.t("Turn one source video into a translated, voiced and captioned export.")
+            Layout.preferredHeight: 40
+            spacing: Theme.space12
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Xử lý video")
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.section
+                font.weight: Font.DemiBold
+                textFormat: Text.PlainText
+            }
 
             ProjectHeaderActions {
-                visible: AppController.hasOpenProject
                 projectFolderEnabled: AppController.hasOpenProject
                 showInputVideo: AppController.hasSelectedVideo
                 inputVideoEnabled: AppController.hasSelectedVideo
                 showOutputFolder: AppController.hasSelectedVideo
                 outputFolderEnabled: AppController.hasSelectedVideo
                 deleteEnabled: AppController.hasOpenProject
-                deleteText: root.editingBatchVideo ? I18n.t("Remove video") : I18n.t("Delete project")
+                deleteText: root.editingBatchVideo ? qsTr("Xóa video") : qsTr("Xóa dự án")
                 onProjectFolderRequested: AppController.openProjectFolder()
                 onInputVideoRequested: AppController.openInputFile()
                 onOutputFolderRequested: AppController.openOutputFolder()
@@ -79,8 +89,8 @@ Item {
                 width: workspaceScroll.width
                 height: root.wideLayout ? workspaceScroll.height : implicitHeight
                 columns: 2
-                columnSpacing: Theme.space16
-                rowSpacing: Theme.space16
+                columnSpacing: Theme.space12
+                rowSpacing: Theme.space12
 
                 SourceMediaPanel {
                     Layout.row: root.wideLayout ? 0 : 1
@@ -89,8 +99,8 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: false
                     Layout.minimumWidth: root.wideLayout ? 270 : 0
-                    Layout.preferredWidth: root.wideLayout ? 310 : 600
-                    Layout.maximumWidth: root.wideLayout ? 340 : 16777215
+                    Layout.preferredWidth: root.wideLayout ? 286 : 600
+                    Layout.maximumWidth: root.wideLayout ? 320 : 16777215
                     Layout.minimumHeight: implicitHeight
                     Layout.preferredHeight: implicitHeight
                     compact: true
@@ -106,22 +116,39 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumWidth: root.wideLayout ? 650 : 0
-                    Layout.preferredWidth: root.wideLayout ? 980 : 600
+                    Layout.preferredWidth: root.wideLayout ? 1040 : 600
                     Layout.minimumHeight: 440
                     Layout.preferredHeight: root.wideLayout ? 650 : 620
                 }
 
-                ActivityLogPanel {
+                ActivityFeed {
                     Layout.row: root.wideLayout ? 1 : 2
                     Layout.column: 0
                     Layout.columnSpan: root.wideLayout ? 1 : 2
                     Layout.fillWidth: true
-                    Layout.fillHeight: root.wideLayout
+                    visible: root.activityExpanded
+                    Layout.fillHeight: root.wideLayout && visible
                     Layout.minimumWidth: root.wideLayout ? 270 : 0
-                    Layout.minimumHeight: root.wideLayout ? 132 : 180
-                    Layout.preferredWidth: root.wideLayout ? 310 : 600
-                    Layout.maximumWidth: root.wideLayout ? 340 : 16777215
-                    Layout.preferredHeight: root.wideLayout ? 168 : 200
+                    Layout.minimumHeight: visible ? (root.wideLayout ? 132 : 180) : 0
+                    Layout.preferredWidth: root.wideLayout ? 286 : 600
+                    Layout.maximumWidth: root.wideLayout ? 320 : 16777215
+                    Layout.preferredHeight: visible ? (root.wideLayout ? 168 : 200) : 0
+                    // qmllint disable missing-property
+                    model: AppController.activityEventModel
+                    // qmllint enable missing-property
+                }
+
+                ActivityTray {
+                    Layout.row: root.wideLayout ? 2 : 3
+                    Layout.column: 0
+                    Layout.columnSpan: root.wideLayout ? 1 : 2
+                    Layout.fillWidth: true
+                    activityState: AppController.selectedStatus === "failed" ? "failed"
+                        : AppController.isProcessing ? "processing" : "ready"
+                    message: AppController.selectedStatus === "failed"
+                        ? AppController.selectedProgressDetail : I18n.runtimeStatus(AppController.statusMessage)
+                    progress: AppController.isProcessing ? AppController.selectedProgress / 100 : -1
+                    onDetailsRequested: root.activityExpanded = !root.activityExpanded
                 }
             }
 

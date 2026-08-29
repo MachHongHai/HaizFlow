@@ -12,7 +12,7 @@ Item {
     property var options: []
     property var filteredModel: []
     property string selectedCode: ""
-    property string placeholderText: I18n.t("Search language")
+    property string placeholderText: qsTr("Tìm ngôn ngữ")
     signal selected(string code)
 
     implicitHeight: 42
@@ -20,44 +20,44 @@ Item {
     function labelFor(code) {
         for (let i = 0; i < options.length; i++) {
             if (options[i].code === code)
-                return options[i].label
+                return options[i].label;
         }
-        return code
+        return code;
     }
 
     function indexFor(code, source) {
-        const model = source || options
+        const model = source || options;
         for (let i = 0; i < model.length; i++) {
             if (model[i].code === code)
-                return i
+                return i;
         }
-        return model.length > 0 ? 0 : -1
+        return model.length > 0 ? 0 : -1;
     }
 
     function filterOptions(queryText) {
-        const query = queryText.toLowerCase().trim()
+        const query = queryText.toLowerCase().trim();
         if (query.length === 0)
-            return options
+            return options;
 
-        const result = []
+        const result = [];
         for (let i = 0; i < options.length; i++) {
             if (options[i].search.indexOf(query) !== -1)
-                result.push(options[i])
+                result.push(options[i]);
         }
-        return result
+        return result;
     }
 
     function openPicker(focusSearch) {
         if (!root.enabled)
-            return
-        root.filteredModel = root.filterOptions(searchField.text)
+            return;
+        root.filteredModel = root.filterOptions(searchField.text);
         if (!languagePopup.opened)
-            languagePopup.open()
+            languagePopup.open();
         if (focusSearch) {
-            Qt.callLater(function() {
+            Qt.callLater(function () {
                 if (languagePopup.opened)
-                    searchField.forceActiveFocus()
-            })
+                    searchField.forceActiveFocus();
+            });
         }
     }
 
@@ -65,7 +65,7 @@ Item {
     onOptionsChanged: filteredModel = root.filterOptions(searchField.text)
     onVisibleChanged: {
         if (!visible)
-            languagePopup.close()
+            languagePopup.close();
     }
 
     Button {
@@ -77,7 +77,7 @@ Item {
         focusPolicy: Qt.TabFocus
         leftPadding: 12
         rightPadding: 40
-        Accessible.name: I18n.t("Translate to") + ": " + root.labelFor(root.selectedCode)
+        Accessible.name: qsTr("Dịch sang") + ": " + root.labelFor(root.selectedCode)
 
         contentItem: Text {
             text: root.labelFor(root.selectedCode)
@@ -93,10 +93,6 @@ Item {
             radius: Theme.radiusSmall
             border.width: displayButton.activeFocus || languagePopup.opened ? 2 : 1
             border.color: displayButton.activeFocus || languagePopup.opened ? Theme.focus : Theme.outline
-
-            Behavior on color {
-                ColorAnimation { duration: Theme.motionFast }
-            }
         }
 
         AppIcon {
@@ -110,10 +106,10 @@ Item {
             iconSize: Theme.iconSmall
         }
 
-        Keys.onDownPressed: function(event) {
-            root.openPicker(false)
-            languageList.forceActiveFocus()
-            event.accepted = true
+        Keys.onDownPressed: function (event) {
+            root.openPicker(false);
+            languageList.forceActiveFocus();
+            event.accepted = true;
         }
         onClicked: root.openPicker(true)
     }
@@ -132,19 +128,29 @@ Item {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
 
         onOpened: {
-            languageList.currentIndex = root.indexFor(root.selectedCode, root.filteredModel)
-            searchField.forceActiveFocus()
+            languageList.currentIndex = root.indexFor(root.selectedCode, root.filteredModel);
+            searchField.forceActiveFocus();
         }
         onClosed: {
-            searchField.text = ""
-            root.filteredModel = root.options
+            searchField.text = "";
+            root.filteredModel = root.options;
         }
 
         enter: Transition {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast }
+            NumberAnimation {
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: Theme.motionFast
+            }
         }
         exit: Transition {
-            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motionFast }
+            NumberAnimation {
+                property: "opacity"
+                from: 1
+                to: 0
+                duration: Theme.motionFast
+            }
         }
 
         background: Rectangle {
@@ -171,7 +177,7 @@ Item {
                 leftPadding: 12
                 rightPadding: 38
                 verticalAlignment: TextInput.AlignVCenter
-                Accessible.name: I18n.t("Search language")
+                Accessible.name: qsTr("Tìm ngôn ngữ")
 
                 background: Rectangle {
                     color: searchField.hovered ? Theme.surfaceMuted : Theme.input
@@ -192,24 +198,24 @@ Item {
                 }
 
                 onTextEdited: {
-                    root.filteredModel = root.filterOptions(text + (inputMethodComposing ? preeditText : ""))
-                    languageList.currentIndex = root.indexFor(root.selectedCode, root.filteredModel)
+                    root.filteredModel = root.filterOptions(text + (inputMethodComposing ? preeditText : ""));
+                    languageList.currentIndex = root.indexFor(root.selectedCode, root.filteredModel);
                 }
                 onPreeditTextChanged: root.filteredModel = root.filterOptions(text + preeditText)
 
-                Keys.onDownPressed: function(event) {
-                    languageList.forceActiveFocus()
-                    event.accepted = true
+                Keys.onDownPressed: function (event) {
+                    languageList.forceActiveFocus();
+                    event.accepted = true;
                 }
-                Keys.onReturnPressed: function(event) {
+                Keys.onReturnPressed: function (event) {
                     if (root.filteredModel.length === 1)
-                        root.selected(root.filteredModel[0].code)
-                    languagePopup.close()
-                    event.accepted = true
+                        root.selected(root.filteredModel[0].code);
+                    languagePopup.close();
+                    event.accepted = true;
                 }
-                Keys.onEscapePressed: function(event) {
-                    languagePopup.close()
-                    event.accepted = true
+                Keys.onEscapePressed: function (event) {
+                    languagePopup.close();
+                    event.accepted = true;
                 }
             }
 
@@ -238,9 +244,7 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         radius: Theme.radiusSmall
-                        color: row.selectedOption || rowHover.hovered || languageList.currentIndex === row.index
-                            ? Theme.interactiveMuted
-                            : "transparent"
+                        color: row.selectedOption || rowHover.hovered || languageList.currentIndex === row.index ? Theme.interactiveMuted : "transparent"
                     }
 
                     Text {
@@ -264,23 +268,23 @@ Item {
                     TapHandler {
                         onTapped: {
                             if (row.modelData)
-                                root.selected(row.modelData.code)
-                            languagePopup.close()
+                                root.selected(row.modelData.code);
+                            languagePopup.close();
                         }
                     }
                 }
 
-                Keys.onReturnPressed: function(event) {
-                    const option = root.filteredModel[currentIndex]
+                Keys.onReturnPressed: function (event) {
+                    const option = root.filteredModel[currentIndex];
                     if (option)
-                        root.selected(option.code)
-                    languagePopup.close()
-                    event.accepted = true
+                        root.selected(option.code);
+                    languagePopup.close();
+                    event.accepted = true;
                 }
 
-                Keys.onEscapePressed: function(event) {
-                    languagePopup.close()
-                    event.accepted = true
+                Keys.onEscapePressed: function (event) {
+                    languagePopup.close();
+                    event.accepted = true;
                 }
 
                 ScrollBar.vertical: ScrollBar {

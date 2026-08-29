@@ -1,18 +1,15 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-Panel {
+InspectorPanel {
     id: root
     property string pendingSettingsVideoId: ""
 
-    title: I18n.t("Settings")
-    subtitle: I18n.t("Language, voice, picture and audio")
-    tone: "violet"
-    contentPadding: Theme.space12
-    contentSpacing: Theme.space8
-    headerSpacing: Theme.space8
+    title: qsTr("Cài đặt xử lý")
 
     function scheduleVideoSettingsSave() {
         if (AppController.hasSelectedVideo && !AppController.isSelectedVideoQueued) {
@@ -60,22 +57,22 @@ Panel {
             onTargetLanguageEdited: function(value) { AppController.targetLanguage = value; root.scheduleVideoSettingsSave() }
             onTtsProviderEdited: function(value) { AppController.ttsProvider = value; root.scheduleVideoSettingsSave() }
             onTtsVoiceEdited: function(value) { AppController.ttsVoice = value; root.scheduleVideoSettingsSave() }
-            onCloneVoiceRequested: voiceCloneDialog.openForSelectedVideo()
+            onCloneVoiceRequested: voiceCloneDialogLoader.invoke("openForSelectedVideo", [])
             onSpeakerModeEdited: function(value) { AppController.speakerMode = value; root.scheduleVideoSettingsSave() }
             onRemoveOriginalSubtitlesEdited: function(value) { AppController.removeOriginalSubtitles = value; root.scheduleVideoSettingsSave() }
             onSubtitleRemovalModeEdited: function(value) { AppController.originalSubtitleRemovalMode = value; root.scheduleVideoSettingsSave() }
-            onSubtitleLayoutRequested: subtitlePreviewDialog.openWithLayout(
+            onSubtitleLayoutRequested: subtitlePreviewDialogLoader.invoke("openWithLayout", [
                 AppController.subtitleFontSize,
                 AppController.subtitlePositionXPercent,
                 AppController.subtitlePositionYPercent,
                 AppController.subtitleBoxWidthPercent,
-                AppController.subtitleBoxHeightPercent)
+                AppController.subtitleBoxHeightPercent])
             onAudioSeparationEdited: function(value) { AppController.enableAudioSeparation = value; root.scheduleVideoSettingsSave() }
-            onAudioMixRequested: audioMixDialog.open()
+            onAudioMixRequested: audioMixDialogLoader.invoke("open", [])
             onBackgroundMusicFileRequested: AppController.browseBackgroundMusic()
-            onBackgroundMusicLinkRequested: backgroundMusicLinkDialog.open()
+            onBackgroundMusicLinkRequested: backgroundMusicLinkDialogLoader.invoke("open", [])
             onBackgroundMusicClearRequested: AppController.clearBackgroundMusic()
-            onWatermarkRequested: watermarkDialog.openWithText(AppController.watermarkText)
+            onWatermarkRequested: watermarkDialogLoader.invoke("openWithText", [AppController.watermarkText])
         }
 
         ScrollBar.vertical: ScrollBar {
@@ -83,34 +80,61 @@ Panel {
         }
     }
 
-    AudioMixDialog { id: audioMixDialog }
-    BackgroundMusicLinkDialog { id: backgroundMusicLinkDialog }
-    VoiceCloneDialog { id: voiceCloneDialog }
-
-    WatermarkDialog {
-        id: watermarkDialog
-        onWatermarkAccepted: function(text) {
-            AppController.watermarkText = text
-            root.scheduleVideoSettingsSave()
+    LazyDialogLoader {
+        id: audioMixDialogLoader
+        sourceComponent: Component {
+            AudioMixDialog { onClosed: audioMixDialogLoader.release() }
         }
     }
 
-    SubtitlePreviewDialog {
-        id: subtitlePreviewDialog
-        onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
-            AppController.subtitleFontSize = fontSize
-            AppController.subtitlePositionXPercent = positionX
-            AppController.subtitlePositionYPercent = positionY
-            AppController.subtitleBoxWidthPercent = boxWidth
-            AppController.subtitleBoxHeightPercent = boxHeight
-            root.scheduleVideoSettingsSave()
+    LazyDialogLoader {
+        id: backgroundMusicLinkDialogLoader
+        sourceComponent: Component {
+            BackgroundMusicLinkDialog { onClosed: backgroundMusicLinkDialogLoader.release() }
+        }
+    }
+
+    LazyDialogLoader {
+        id: voiceCloneDialogLoader
+        sourceComponent: Component {
+            VoiceCloneDialog { onClosed: voiceCloneDialogLoader.release() }
+        }
+    }
+
+    LazyDialogLoader {
+        id: watermarkDialogLoader
+        sourceComponent: Component {
+            WatermarkDialog {
+                onClosed: watermarkDialogLoader.release()
+                onWatermarkAccepted: function(text) {
+                    AppController.watermarkText = text
+                    root.scheduleVideoSettingsSave()
+                }
+            }
+        }
+    }
+
+    LazyDialogLoader {
+        id: subtitlePreviewDialogLoader
+        sourceComponent: Component {
+            SubtitlePreviewDialog {
+                onClosed: subtitlePreviewDialogLoader.release()
+                onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                    AppController.subtitleFontSize = fontSize
+                    AppController.subtitlePositionXPercent = positionX
+                    AppController.subtitlePositionYPercent = positionY
+                    AppController.subtitleBoxWidthPercent = boxWidth
+                    AppController.subtitleBoxHeightPercent = boxHeight
+                    root.scheduleVideoSettingsSave()
+                }
+            }
         }
     }
 
     AppButton {
         Layout.fillWidth: true
         visible: !AppController.hasSelectedVideo
-        text: AppController.isProcessing ? I18n.t("Add to processing queue") : I18n.t("Create and process")
+        text: AppController.isProcessing ? qsTr("Đưa vào hàng đợi xử lý") : qsTr("Tạo và xử lý")
         iconGlyph: "\uE768"
         tone: "primary"
         enabled: AppController.canEditSelectedVideo && AppController.videoPath.length > 0

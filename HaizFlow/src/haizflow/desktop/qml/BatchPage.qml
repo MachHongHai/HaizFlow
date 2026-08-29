@@ -27,7 +27,9 @@ Item {
         }
     }
     Behavior on opacity {
-        NumberAnimation { duration: Theme.motionStandard }
+        NumberAnimation {
+            duration: Theme.motionStandard
+        }
     }
 
     ColumnLayout {
@@ -39,8 +41,8 @@ Item {
             Layout.fillWidth: true
             Layout.minimumHeight: root.compactHeight ? 52 : 58
             Layout.preferredHeight: root.compactHeight ? 52 : 58
-            title: AppController.projectName || I18n.t("Batch project")
-            subtitle: qsTr("%1 %2").arg(AppController.batchCount).arg(I18n.t("videos"))
+            title: AppController.projectName || qsTr("Dự án hàng loạt")
+            subtitle: qsTr("%1 %2").arg(AppController.batchCount).arg(qsTr("video"))
 
             ProjectHeaderActions {
                 projectFolderEnabled: AppController.hasOpenProject
@@ -65,9 +67,9 @@ Item {
                 Layout.maximumWidth: 640
                 Layout.fillHeight: true
                 radius: Theme.radiusSmall
-                color: root.dropActive ? Theme.interactiveMuted : Theme.violetSurface
+                color: root.dropActive ? Theme.interactiveMuted : Theme.interactiveMuted
                 border.width: root.dropActive ? 2 : 1
-                border.color: root.dropActive ? Theme.focus : Theme.violetOutline
+                border.color: root.dropActive ? Theme.focus : Theme.interactiveOutline
 
                 RowLayout {
                     anchors.fill: parent
@@ -79,14 +81,14 @@ Item {
                         Layout.preferredWidth: 24
                         Layout.preferredHeight: 24
                         radius: Theme.radiusSmall
-                        color: Theme.violetMuted
+                        color: Theme.interactiveMuted
 
                         AppIcon {
                             anchors.centerIn: parent
                             width: 14
                             height: 14
                             glyph: "\uE898"
-                            iconColor: Theme.violet
+                            iconColor: Theme.interactive
                             iconSize: Theme.iconSmall
                         }
                     }
@@ -94,9 +96,7 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        text: AppController.mediaImportBusy
-                            ? qsTr("Adding %1 / %2…").arg(AppController.mediaImportCompleted).arg(AppController.mediaImportTotal)
-                            : root.dropActive ? I18n.t("Release to add videos") : I18n.t("Add to queue")
+                        text: AppController.mediaImportBusy ? qsTr("Adding %1 / %2…").arg(AppController.mediaImportCompleted).arg(AppController.mediaImportTotal) : root.dropActive ? qsTr("Thả để thêm video") : qsTr("Thêm vào hàng đợi")
                         color: Theme.text
                         font.pixelSize: Theme.caption
                         font.weight: Font.DemiBold
@@ -106,7 +106,7 @@ Item {
 
                     MediaSourceImportButton {
                         Layout.preferredWidth: 132
-                        tone: "violet"
+                        tone: "primary"
                         onFileRequested: AppController.browseBatchVideos()
                         onLinkRequested: root.requestUrlImport()
                         onDownloadProjectRequested: root.requestDownloadProjectImport()
@@ -116,36 +116,31 @@ Item {
                 DropArea {
                     anchors.fill: parent
                     keys: ["text/uri-list"]
-                    onEntered: function(drag) {
+                    onEntered: function (drag) {
                         if (drag.hasUrls) {
-                            root.dropActive = true
-                            drag.accept()
+                            root.dropActive = true;
+                            drag.accept();
                         }
                     }
                     onExited: root.dropActive = false
-                    onDropped: function(drop) {
-                        root.dropActive = false
+                    onDropped: function (drop) {
+                        root.dropActive = false;
                         if (!drop.urls || drop.urls.length === 0)
-                            return
-                        const paths = []
+                            return;
+                        const paths = [];
                         for (let index = 0; index < drop.urls.length; ++index)
-                            paths.push(String(drop.urls[index]))
-                        AppController.importBatchVideos(paths)
+                            paths.push(String(drop.urls[index]));
+                        AppController.importBatchVideos(paths);
                     }
-                }
-
-                Behavior on color {
-                    ColorAnimation { duration: Theme.motionFast }
-                }
-                Behavior on border.color {
-                    ColorAnimation { duration: Theme.motionFast }
                 }
             }
 
-            Item { Layout.fillWidth: true }
+            Item {
+                Layout.fillWidth: true
+            }
 
             AppButton {
-                text: I18n.t("Batch settings")
+                text: qsTr("Cài đặt hàng loạt")
                 iconGlyph: "\uE713"
                 tone: "secondary"
                 enabled: AppController.batchCount > 0 && !AppController.isBatchRunning
@@ -154,22 +149,21 @@ Item {
 
             AppButton {
                 visible: !AppController.isBatchRunning
-                text: AppController.batchPausedCount > 0
-                    ? I18n.t("Resume queue") : I18n.t("Start queue")
+                text: AppController.batchPausedCount > 0 ? qsTr("Tiếp tục xử lý") : qsTr("Bắt đầu xử lý")
                 iconGlyph: "\uE768"
                 tone: "primary"
                 enabled: AppController.batchPendingCount > 0 || AppController.batchPausedCount > 0
                 onClicked: {
                     if (AppController.batchPausedCount > 0)
-                        AppController.resumeBatch()
+                        AppController.resumeBatch();
                     else
-                        AppController.startBatch()
+                        AppController.startBatch();
                 }
             }
 
             AppButton {
                 visible: AppController.isBatchRunning
-                text: AppController.isBatchPausing ? I18n.t("Pausing") : I18n.t("Pause queue")
+                text: AppController.isBatchPausing ? qsTr("Đang tạm dừng") : qsTr("Tạm dừng xử lý")
                 iconGlyph: "\uE71A"
                 tone: "danger"
                 enabled: !AppController.isBatchPausing
@@ -183,7 +177,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: I18n.t("Processing queue")
+                text: qsTr("Hàng đợi xử lý")
                 color: Theme.text
                 font.pixelSize: Theme.h2
                 font.weight: Font.DemiBold
@@ -200,7 +194,7 @@ Item {
                 Text {
                     id: queueStateLabel
                     anchors.centerIn: parent
-                    text: I18n.t(AppController.isBatchPausing ? "Pausing" : "Processing")
+                    text: AppController.isBatchPausing ? qsTr("Đang tạm dừng") : qsTr("Đang xử lý")
                     color: Theme.warning
                     font.pixelSize: Theme.label
                     font.weight: Font.DemiBold
@@ -210,7 +204,7 @@ Item {
 
             Text {
                 visible: AppController.batchCount > 0
-                text: qsTr("%1 %2").arg(AppController.batchCount).arg(I18n.t("items"))
+                text: qsTr("%1 %2").arg(AppController.batchCount).arg(qsTr("mục"))
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
                 textFormat: Text.PlainText
@@ -247,12 +241,14 @@ Item {
                     width: queueList.cardWidth
                     height: queueList.cardHeight
                     onActivated: {
-                        AppController.selectBatchVideo(index)
-                        root.openVideoDetail()
+                        AppController.selectBatchVideo(index);
+                        root.openVideoDetail();
                     }
                 }
 
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
             }
 
             Column {
@@ -266,21 +262,21 @@ Item {
                     width: 44
                     height: 44
                     radius: Theme.radius
-                    color: Theme.violetMuted
+                    color: Theme.interactiveMuted
 
                     AppIcon {
                         anchors.centerIn: parent
                         width: 26
                         height: 26
                         glyph: "\uE8FD"
-                        iconColor: Theme.violet
+                        iconColor: Theme.interactive
                         iconSize: Theme.iconLarge
                     }
                 }
 
                 Text {
                     width: parent.width
-                    text: I18n.t("Your queue is empty")
+                    text: qsTr("Hàng đợi đang trống")
                     color: Theme.text
                     font.pixelSize: Theme.h3
                     font.weight: Font.DemiBold
@@ -290,7 +286,7 @@ Item {
 
                 Text {
                     width: parent.width
-                    text: I18n.t("Add videos above to begin a batch")
+                    text: qsTr("Thêm video ở phía trên để bắt đầu xử lý")
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     horizontalAlignment: Text.AlignHCenter
@@ -307,9 +303,9 @@ Item {
             Layout.preferredHeight: 52
             Layout.maximumHeight: 52
             radius: Theme.radiusSmall
-            color: Theme.blueSurface
+            color: Theme.interactiveMuted
             border.width: 1
-            border.color: Theme.blueOutline
+            border.color: Theme.interactiveOutline
 
             RowLayout {
                 anchors.fill: parent
@@ -321,33 +317,33 @@ Item {
                     Layout.preferredWidth: 28
                     Layout.preferredHeight: 28
                     radius: Theme.radiusSmall
-                    color: Theme.blueMuted
+                    color: Theme.interactiveMuted
 
                     AppIcon {
                         anchors.centerIn: parent
                         width: 16
                         height: 16
                         glyph: "\uE9D2"
-                        iconColor: Theme.blue
+                        iconColor: Theme.interactive
                         iconSize: Theme.icon
                     }
                 }
 
                 InfoRow {
                     Layout.preferredWidth: 78
-                    label: I18n.t("Videos")
+                    label: qsTr("Video")
                     value: String(AppController.batchCount)
                 }
 
                 Rectangle {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 28
-                    color: Theme.blueOutline
+                    color: Theme.interactiveOutline
                 }
 
                 InfoRow {
                     Layout.preferredWidth: 112
-                    label: I18n.t("Completed")
+                    label: qsTr("Hoàn tất")
                     value: qsTr("%1 / %2").arg(AppController.batchCompletedCount).arg(AppController.batchCount)
                 }
 
@@ -358,7 +354,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: I18n.t("Target")
+                        text: qsTr("Ngôn ngữ đích")
                         color: Theme.textMuted
                         font.pixelSize: Theme.label
                         textFormat: Text.PlainText
@@ -366,7 +362,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: I18n.t(AppController.batchTargetLanguageLabel)
+                        text: AppController.batchTargetLanguageLabel
                         color: Theme.text
                         font.pixelSize: Theme.body
                         font.weight: Font.DemiBold
@@ -384,8 +380,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: AppController.isBatchRunning
-                                ? I18n.t("Queue processing") : I18n.t("Overall progress")
+                            text: AppController.isBatchRunning ? qsTr("Đang xử lý hàng đợi") : qsTr("Tiến độ tổng")
                             color: Theme.textMuted
                             font.pixelSize: Theme.caption
                             textFormat: Text.PlainText
@@ -393,7 +388,7 @@ Item {
 
                         Text {
                             text: qsTr("%1%").arg(AppController.batchProgress)
-                            color: AppController.batchProgress >= 100 ? Theme.success : Theme.blue
+                            color: AppController.batchProgress >= 100 ? Theme.success : Theme.interactive
                             font.pixelSize: Theme.h3
                             font.weight: Font.DemiBold
                             textFormat: Text.PlainText
@@ -403,7 +398,6 @@ Item {
                     AppProgressBar {
                         Layout.fillWidth: true
                         value: AppController.batchProgress
-                        tone: "blue"
                     }
                 }
             }

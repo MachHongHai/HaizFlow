@@ -156,13 +156,13 @@ Dialog {
 
                 IconButton {
                     glyph: root.maximized ? "\uE923" : "\uE922"
-                    toolTipText: root.maximized ? I18n.t("Restore") : I18n.t("Maximize")
+                    toolTipText: root.maximized ? qsTr("Khôi phục") : qsTr("Phóng to")
                     onClicked: root.toggleMaximized()
                 }
 
                 IconButton {
                     glyph: "\uE711"
-                    toolTipText: I18n.t("Close")
+                    toolTipText: qsTr("Đóng")
                     onClicked: root.close()
                 }
             }

@@ -156,6 +156,31 @@ def language_label(code: str, ui_language: str) -> str:
     return code
 
 
+def stage_label(stage: str, ui_language: str, fallback: str = "") -> str:
+    labels = {
+        "starting": ("Preparing project", "Đang chuẩn bị dự án"),
+        "extracting_audio": ("Extracting audio", "Đang tách âm thanh"),
+        "separating_audio": ("Separating vocals", "Đang tách giọng"),
+        "transcribing": ("Transcribing speech", "Đang nhận dạng giọng nói"),
+        "translating": ("Translating", "Đang dịch"),
+        "review_translation": ("Waiting for translation review", "Đang chờ duyệt phụ đề"),
+        "creating_subtitle": ("Creating subtitles", "Đang tạo phụ đề"),
+        "creating_voice": ("Generating voice", "Đang tạo giọng"),
+        "building_audio_timeline": ("Mixing audio", "Đang phối âm"),
+        "rendering": ("Rendering video", "Đang xuất video"),
+        "paused": ("Paused", "Đã tạm dừng"),
+        "done": ("Export complete", "Đã xuất video"),
+        "manual_translation": ("Translation ready", "Đã dịch xong"),
+        "manual_subtitles": ("Subtitles ready", "Phụ đề đã sẵn sàng"),
+        "manual_voice": ("Voice ready", "Giọng đọc đã sẵn sàng"),
+        "manual_timeline": ("Audio mix ready", "Âm thanh đã sẵn sàng"),
+    }
+    pair = labels.get(stage)
+    if pair is None:
+        return fallback or stage
+    return pair[1] if ui_language == "vi" else pair[0]
+
+
 def format_duration(seconds) -> str:
     seconds = max(0, round(seconds))
     minutes, seconds = divmod(seconds, 60)

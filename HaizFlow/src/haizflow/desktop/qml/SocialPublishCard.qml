@@ -22,45 +22,17 @@ Rectangle {
     required property bool platformPostUrlVerified
     required property string targetPlatform
 
-    signal editRequested()
-    signal publishRequested()
+    signal editRequested
+    signal publishRequested
 
     readonly property bool hasRemotePost: zernioPostId.length > 0
-    readonly property bool remoteInFlight: hasRemotePost && !published
-        && publishStatus !== "failed" && publishStatus !== "partial"
-        && publishStatus !== "cancelled" && publishStatus !== "deleted"
-        && publishStatus !== "draft" && publishStatus !== "scheduled"
-    readonly property bool working: publishStatus === "uploading" || publishStatus === "publishing"
-        || publishStatus === "pending" || publishStatus === "processing" || publishStatus === "queued"
-        || remoteInFlight
+    readonly property bool remoteInFlight: hasRemotePost && !published && publishStatus !== "failed" && publishStatus !== "partial" && publishStatus !== "cancelled" && publishStatus !== "deleted" && publishStatus !== "draft" && publishStatus !== "scheduled"
+    readonly property bool working: publishStatus === "uploading" || publishStatus === "publishing" || publishStatus === "pending" || publishStatus === "processing" || publishStatus === "queued" || remoteInFlight
     readonly property bool published: publishStatus === "published" || publishStatus === "posted"
-    readonly property bool awaitingPublicUrl: published && hasRemotePost
-        && (!platformPostUrlVerified || platformPostUrl.length === 0)
-    readonly property bool canPublish: !working && publishStatus !== "missing"
-        && publishStatus !== "scheduled" && (!hasRemotePost
-            || publishStatus === "failed" || publishStatus === "partial" || publishStatus === "draft")
-        && !AppController.tiktokPublishBusy
-        && !AppController.zernioAccountSyncing
-        && AppController.zernioApiKeyVerified
-        && AppController.zernioAccountReady
-    readonly property string statusLabel: publishStatus === "ready" ? I18n.t("Ready")
-        : publishStatus === "uploading" ? I18n.t("Uploading")
-        : publishStatus === "publishing" ? I18n.t("Publishing")
-        : publishStatus === "pending" || publishStatus === "processing" || publishStatus === "queued"
-            ? I18n.t("Publishing")
-        : publishStatus === "published" || publishStatus === "posted"
-            ? awaitingPublicUrl ? I18n.t("Finalizing video") : I18n.t("Published")
-        : publishStatus === "scheduled" ? I18n.t("Scheduled")
-        : publishStatus === "draft" ? I18n.t("Draft")
-        : publishStatus === "failed" || publishStatus === "partial" ? I18n.t("Failed")
-        : publishStatus === "missing" ? I18n.t("Missing file")
-        : publishStatus
-    readonly property color statusColor: awaitingPublicUrl ? Theme.warning
-        : published ? Theme.success
-        : publishStatus === "failed" || publishStatus === "partial" || publishStatus === "missing" ? Theme.danger
-        : working ? Theme.warning
-        : publishStatus === "scheduled" || publishStatus === "draft" ? Theme.violet
-        : Theme.textMuted
+    readonly property bool awaitingPublicUrl: published && hasRemotePost && (!platformPostUrlVerified || platformPostUrl.length === 0)
+    readonly property bool canPublish: !working && publishStatus !== "missing" && publishStatus !== "scheduled" && (!hasRemotePost || publishStatus === "failed" || publishStatus === "partial" || publishStatus === "draft") && !AppController.tiktokPublishBusy && !AppController.zernioAccountSyncing && AppController.zernioApiKeyVerified && AppController.zernioAccountReady
+    readonly property string statusLabel: publishStatus === "ready" ? qsTr("Sẵn sàng") : publishStatus === "uploading" ? qsTr("Đang tải lên") : publishStatus === "publishing" ? qsTr("Đang đăng") : publishStatus === "pending" || publishStatus === "processing" || publishStatus === "queued" ? qsTr("Đang đăng") : publishStatus === "published" || publishStatus === "posted" ? awaitingPublicUrl ? qsTr("Đang hoàn thiện video") : qsTr("Đã đăng") : publishStatus === "scheduled" ? qsTr("Đã lên lịch") : publishStatus === "draft" ? qsTr("Bản nháp") : publishStatus === "failed" || publishStatus === "partial" ? qsTr("Lỗi") : publishStatus === "missing" ? qsTr("Thiếu tệp") : publishStatus
+    readonly property color statusColor: awaitingPublicUrl ? Theme.warning : published ? Theme.success : publishStatus === "failed" || publishStatus === "partial" || publishStatus === "missing" ? Theme.danger : working ? Theme.warning : publishStatus === "scheduled" || publishStatus === "draft" ? Theme.interactive : Theme.textMuted
 
     width: 220
     height: 272
@@ -72,9 +44,9 @@ Rectangle {
     Accessible.name: fileName
 
     function resetReusableState() {
-        actionMenu.close()
-        moreButton.focus = false
-        root.focus = false
+        actionMenu.close();
+        moreButton.focus = false;
+        root.focus = false;
     }
 
     HoverHandler {
@@ -120,7 +92,6 @@ Rectangle {
                     width: parent.width * Math.max(0, Math.min(100, root.uploadProgress)) / 100
                     height: parent.height
                     color: Theme.warning
-                    Behavior on width { NumberAnimation { duration: Theme.motionStandard } }
                 }
             }
 
@@ -145,10 +116,7 @@ Rectangle {
                         platform: root.targetPlatform
                     }
                     Text {
-                        text: root.targetPlatform === "youtube" ? "YouTube"
-                            : root.targetPlatform === "facebook" ? "Facebook"
-                            : root.targetPlatform === "instagram" ? "Instagram"
-                            : "TikTok"
+                        text: root.targetPlatform === "youtube" ? "YouTube" : root.targetPlatform === "facebook" ? "Facebook" : root.targetPlatform === "instagram" ? "Instagram" : "TikTok"
                         color: Theme.text
                         font.pixelSize: Theme.label
                         font.weight: Font.DemiBold
@@ -206,7 +174,9 @@ Rectangle {
                 maximumLineCount: 2
             }
 
-            Item { Layout.fillHeight: true }
+            Item {
+                Layout.fillHeight: true
+            }
 
             RowLayout {
                 Layout.fillWidth: true
@@ -215,28 +185,15 @@ Rectangle {
                 AppButton {
                     Layout.fillWidth: true
                     compact: true
-                    text: root.published
-                        ? root.platformPostUrlVerified && root.platformPostUrl.length > 0
-                            ? I18n.t("Open post") : I18n.t("Finalizing video")
-                        : root.working || root.publishStatus === "scheduled"
-                            ? root.statusLabel
-                        : root.publishStatus === "failed" || root.publishStatus === "partial"
-                            ? I18n.t("Retry")
-                            : I18n.t("Publish")
-                    iconGlyph: root.published
-                        ? root.platformPostUrlVerified && root.platformPostUrl.length > 0 ? "\uE8A7" : ""
-                        : "\uE768"
+                    text: root.published ? root.platformPostUrlVerified && root.platformPostUrl.length > 0 ? qsTr("Mở bài đăng") : qsTr("Đang hoàn thiện video") : root.working || root.publishStatus === "scheduled" ? root.statusLabel : root.publishStatus === "failed" || root.publishStatus === "partial" ? qsTr("Thử lại") : qsTr("Đăng")
+                    iconGlyph: root.published ? root.platformPostUrlVerified && root.platformPostUrl.length > 0 ? "\uE8A7" : "" : "\uE768"
                     tone: root.published ? "secondary" : "primary"
-                    enabled: root.published
-                        ? root.platformPostUrlVerified && root.platformPostUrl.length > 0
-                            && !AppController.tiktokPublishBusy
-                        : root.canPublish
+                    enabled: root.published ? root.platformPostUrlVerified && root.platformPostUrl.length > 0 && !AppController.tiktokPublishBusy : root.canPublish
                     onClicked: {
-                        if (root.published && root.platformPostUrlVerified
-                                && root.platformPostUrl.length > 0)
-                            AppController.openTikTokPublishedPost(root.index)
+                        if (root.published && root.platformPostUrlVerified && root.platformPostUrl.length > 0)
+                            AppController.openTikTokPublishedPost(root.index);
                         else
-                            root.publishRequested()
+                            root.publishRequested();
                     }
                 }
 
@@ -244,15 +201,16 @@ Rectangle {
                     id: moreButton
                     property bool menuWasOpenOnPress: false
 
+                    visible: !root.published
                     controlSize: 34
                     glyph: "\uE712"
-                    Accessible.name: I18n.t("More actions")
+                    Accessible.name: qsTr("Thao tác khác")
                     onPressed: menuWasOpenOnPress = actionMenu.visible
                     onClicked: {
                         if (menuWasOpenOnPress || actionMenu.visible)
-                            actionMenu.close()
+                            actionMenu.close();
                         else
-                            actionMenu.open()
+                            actionMenu.open();
                     }
 
                     Menu {
@@ -271,7 +229,7 @@ Rectangle {
                         }
 
                         AppMenuItem {
-                            text: I18n.t("Edit caption")
+                            text: qsTr("Chỉnh nội dung")
                             iconGlyph: "\uE70F"
                             collapsed: root.published || root.publishStatus === "scheduled"
                             enabled: !root.working
@@ -279,13 +237,13 @@ Rectangle {
                         }
 
                         AppMenuItem {
-                            text: I18n.t("Copy caption")
+                            text: qsTr("Sao chép mô tả")
                             iconGlyph: "\uE8C8"
                             onTriggered: AppController.copyTikTokPublishCaption(root.index)
                         }
 
                         AppMenuItem {
-                            text: I18n.t("Remove")
+                            text: qsTr("Xóa")
                             iconGlyph: "\uE74D"
                             tone: "danger"
                             enabled: !root.working
@@ -296,7 +254,4 @@ Rectangle {
             }
         }
     }
-
-    Behavior on color { ColorAnimation { duration: Theme.motionFast } }
-    Behavior on border.color { ColorAnimation { duration: Theme.motionFast } }
 }

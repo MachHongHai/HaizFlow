@@ -4,68 +4,61 @@ import QtQuick
 QtObject {
     property bool motionEnabled: true
 
-    // One graphite palette keeps every workspace visually consistent.  Cool
-    // steel, violet and warm semantic accents add hierarchy without turning
-    // the application into a single-colour surface.
-    readonly property color window: "#0d1014"
-    readonly property color surface: "#15191f"
-    readonly property color surfaceElevated: "#1b2028"
-    readonly property color surfaceMuted: "#232a33"
-    readonly property color surfaceStrong: "#2d3540"
-    readonly property color input: "#11161c"
-    readonly property color sidebar: "#0a0d11"
-    readonly property color sidebarHover: "#171c23"
-    readonly property color sidebarSelected: "#20272f"
-    readonly property color topBar: "#12161c"
-    readonly property color windowCaptionHover: "#242a33"
-    readonly property color windowCaptionPressed: "#303844"
+    readonly property string fontFamily: "Segoe UI Variable"
+
+    // Warm Graphite Studio. Neutral surfaces carry hierarchy; copper is
+    // reserved for direct interaction, focus and progress.
+    readonly property color window: "#11100F"
+    readonly property color surface: "#1B1A18"
+    readonly property color surfaceElevated: "#211F1C"
+    readonly property color surfaceMuted: "#292620"
+    readonly property color surfaceStrong: "#302C27"
+    readonly property color input: "#171614"
+    readonly property color sidebar: "#161513"
+    readonly property color sidebarHover: "#211F1C"
+    readonly property color sidebarSelected: "#302820"
+    readonly property color topBar: "#161513"
+    readonly property color windowCaptionHover: "#292620"
+    readonly property color windowCaptionPressed: "#332F2A"
     readonly property color windowCloseHover: "#c42b1c"
     readonly property color windowClosePressed: "#a4262c"
-    readonly property color outline: "#303843"
-    readonly property color outlineStrong: "#4b5664"
-    readonly property color divider: "#272e37"
+    readonly property color outline: "#48423A"
+    readonly property color outlineStrong: "#665F55"
+    readonly property color divider: "#332F2A"
 
-    readonly property color text: "#f1f3f5"
-    readonly property color textMuted: "#abb3bd"
-    readonly property color textSubtle: "#7f8996"
-    readonly property color textDisabled: "#626b77"
-    readonly property color textOnAccent: "#0b1117"
-    readonly property color textOnDark: "#f6f7f8"
-    readonly property color textOnDarkMuted: "#aab1ba"
+    readonly property color text: "#F2EFE9"
+    readonly property color textMuted: "#B8B1A6"
+    readonly property color textSubtle: "#91897D"
+    readonly property color textDisabled: "#797268"
+    readonly property color textOnAccent: "#17120D"
+    readonly property color textOnDark: "#F2EFE9"
+    readonly property color textOnDarkMuted: "#B8B1A6"
 
-    readonly property color interactive: "#84b7c8"
-    readonly property color interactiveHover: "#9bc8d6"
-    readonly property color interactivePressed: "#689cab"
-    readonly property color interactiveMuted: "#20343b"
-    readonly property color interactiveOutline: "#426876"
-    readonly property color focus: "#a9d3df"
+    readonly property color interactive: "#C4915E"
+    readonly property color interactiveHover: "#D4A16B"
+    readonly property color interactivePressed: "#A9784A"
+    readonly property color interactiveMuted: "#33271D"
+    readonly property color interactiveOutline: "#7B5B3C"
+    readonly property color focus: "#E2B47F"
 
-    readonly property color blue: "#8eb6e8"
-    readonly property color blueMuted: "#213247"
-    readonly property color blueSurface: "#171f2b"
-    readonly property color blueOutline: "#3d5877"
-    readonly property color violet: "#b8a4df"
-    readonly property color violetMuted: "#332a46"
-    readonly property color violetSurface: "#211d2a"
-    readonly property color violetOutline: "#55486e"
-    readonly property color amber: "#d9ad67"
-    readonly property color amberMuted: "#49391f"
-    readonly property color warmSurface: "#241f19"
-    readonly property color danger: "#ef857d"
-    readonly property color dangerMuted: "#472724"
-    readonly property color success: "#70c99e"
-    readonly property color successMuted: "#1d392d"
-    readonly property color warning: "#d7b66c"
-    readonly property color warningMuted: "#403821"
+    readonly property color amber: "#C29A57"
+    readonly property color amberMuted: "#3B3020"
+    readonly property color warmSurface: "#211F1C"
+    readonly property color danger: "#C96F68"
+    readonly property color dangerMuted: "#3D2421"
+    readonly property color success: "#76A58A"
+    readonly property color successMuted: "#22352A"
+    readonly property color warning: "#C29A57"
+    readonly property color warningMuted: "#3B3020"
     readonly property color scrim: "#b8000000"
-    readonly property color video: "#050607"
-    readonly property color codeSurface: "#090c10"
-    readonly property color codeText: "#c5ccd5"
-    readonly property color captionOverlay: "#dc111419"
-    readonly property color captionText: "#ffffff"
+    readonly property color video: "#080706"
+    readonly property color codeSurface: "#0D0C0B"
+    readonly property color codeText: "#D0CAC1"
+    readonly property color captionOverlay: "#DC11100F"
+    readonly property color captionText: "#FFFFFF"
 
-    readonly property int radius: 8
-    readonly property int radiusSmall: 6
+    readonly property int radius: 6
+    readonly property int radiusSmall: 4
     readonly property int radiusTiny: 4
 
     readonly property int space4: 4
@@ -77,24 +70,24 @@ QtObject {
     readonly property int space32: 32
     readonly property int gap: space16
 
-    readonly property int label: 12
-    readonly property int caption: 13
-    readonly property int body: 15
-    readonly property int bodyLarge: 16
-    readonly property int h3: 18
-    readonly property int h2: 21
-    readonly property int h1: 28
-    readonly property int display: 34
+    readonly property int label: TypeScale.metadata
+    readonly property int caption: TypeScale.label
+    readonly property int body: TypeScale.control
+    readonly property int bodyLarge: TypeScale.body
+    readonly property int h3: TypeScale.section
+    readonly property int h2: TypeScale.title
+    readonly property int h1: TypeScale.pageTitle
+    readonly property int display: TypeScale.display
 
-    readonly property int iconSmall: 15
-    readonly property int icon: 18
-    readonly property int iconLarge: 22
+    readonly property int iconSmall: 14
+    readonly property int icon: 16
+    readonly property int iconLarge: 20
     readonly property string iconFont: "Segoe Fluent Icons"
 
-    readonly property int motionFast: motionEnabled ? 100 : 0
-    readonly property int motionStandard: motionEnabled ? 180 : 0
-    readonly property int motionSlow: motionEnabled ? 260 : 0
-    readonly property int navigationExpanded: 236
-    readonly property int navigationCompact: 84
-    readonly property int commandBarHeight: 62
+    readonly property int motionFast: motionEnabled ? Motion.fast : 0
+    readonly property int motionStandard: motionEnabled ? Motion.standard : 0
+    readonly property int motionSlow: motionEnabled ? Motion.slow : 0
+    readonly property int navigationExpanded: UiMetrics.navigationExpanded
+    readonly property int navigationCompact: UiMetrics.navigationCompact
+    readonly property int commandBarHeight: 48
 }

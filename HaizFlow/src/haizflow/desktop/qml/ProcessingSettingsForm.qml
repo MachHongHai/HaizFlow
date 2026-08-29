@@ -44,41 +44,40 @@ GridLayout {
     signal watermarkRequested()
 
     columns: width >= 760 ? 2 : 1
-    columnSpacing: Theme.space12
-    rowSpacing: Theme.space12
+    columnSpacing: Theme.space20
+    rowSpacing: Theme.space16
 
-    Rectangle {
+    Item {
         Layout.fillWidth: true
         Layout.fillHeight: root.columns === 2
         Layout.alignment: Qt.AlignTop
-        implicitHeight: voiceColumn.implicitHeight + Theme.space24
-        color: Theme.surfaceElevated
-        radius: Theme.radiusSmall
-        border.width: 1
-        border.color: Theme.outline
+        implicitHeight: voiceColumn.implicitHeight
 
         ColumnLayout {
             id: voiceColumn
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: Theme.space12
+            anchors.leftMargin: Theme.space4
+            anchors.rightMargin: Theme.space4
             spacing: Theme.space8
 
             Text {
-                text: I18n.t("Language and voice")
+                text: qsTr("Ngôn ngữ và giọng")
                 color: Theme.text
                 font.pixelSize: Theme.body
                 font.weight: Font.DemiBold
                 textFormat: Text.PlainText
             }
 
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
             SettingLabel {
                 Layout.fillWidth: true
-                text: I18n.t("Speech recognition")
-                helpText: I18n.t("Turbo provides higher GPU quality. Small uses less memory and also supports CPU processing.")
+                text: qsTr("Nhận dạng giọng nói")
+                helpText: qsTr("Turbo cho chất lượng cao hơn trên GPU. Small dùng ít bộ nhớ hơn và hỗ trợ cả CPU.")
             }
-            AppComboBox {
+            StudioComboBox {
                 Layout.fillWidth: true
                 enabled: root.editable
                 textRole: "label"
@@ -90,8 +89,8 @@ GridLayout {
 
             SettingLabel {
                 Layout.fillWidth: true
-                text: I18n.t("Translate to")
-                helpText: I18n.t("The selected language is used for both translated subtitles and generated speech.")
+                text: qsTr("Dịch sang")
+                helpText: qsTr("Ngôn ngữ đã chọn được dùng cho cả phụ đề dịch và giọng đọc.")
             }
             SearchableLanguageCombo {
                 Layout.fillWidth: true
@@ -104,10 +103,10 @@ GridLayout {
 
             SettingLabel {
                 Layout.fillWidth: true
-                text: I18n.t("TTS engine")
-                helpText: I18n.t("OmniVoice runs locally. Edge TTS requires a stable internet connection.")
+                text: qsTr("Công cụ giọng đọc")
+                helpText: qsTr("OmniVoice chạy cục bộ. Edge TTS cần kết nối Internet ổn định.")
             }
-            AppComboBox {
+            StudioComboBox {
                 Layout.fillWidth: true
                 enabled: root.editable
                 textRole: "label"
@@ -119,8 +118,8 @@ GridLayout {
 
             SettingLabel {
                 Layout.fillWidth: true
-                text: I18n.t("Voice")
-                helpText: I18n.t("Choose a preset narrator or an authorised cloned voice sample.")
+                text: qsTr("Giọng đọc")
+                helpText: qsTr("Chọn giọng có sẵn hoặc mẫu giọng nhân bản mà bạn được phép sử dụng.")
             }
             VoicePicker {
                 Layout.fillWidth: true
@@ -130,12 +129,12 @@ GridLayout {
                 allowVoiceClone: false
                 onSelected: function(voice) { root.ttsVoiceEdited(voice) }
             }
-            AppButton {
+            StudioButton {
                 Layout.fillWidth: true
                 visible: root.showCloneAction
-                text: root.cloneActive ? I18n.t("Cloned voice") : I18n.t("Clone voice")
+                text: root.cloneActive ? qsTr("Giọng đã nhân bản") : qsTr("Nhân bản giọng")
                 iconGlyph: "\uE77B"
-                tone: root.cloneActive ? "primary" : "secondary"
+                variant: root.cloneActive ? "primary" : "secondary"
                 compact: true
                 enabled: root.editable
                 onClicked: root.cloneVoiceRequested()
@@ -143,52 +142,51 @@ GridLayout {
 
             RowLayout {
                 Layout.fillWidth: true
-                AppCheckBox {
+                StudioCheckBox {
                     Layout.fillWidth: true
                     enabled: root.editable && root.ttsProvider === "omnivoice"
-                    text: I18n.t("Detect multiple speakers")
+                    text: qsTr("Nhận diện nhiều người nói")
                     checked: root.speakerMode === "multiple"
                     onToggled: root.speakerModeEdited(checked ? "multiple" : "single")
                 }
                 SettingLabel {
                     labelVisible: false
-                    text: I18n.t("Detect multiple speakers")
-                    helpText: I18n.t("Enable this only when the source contains multiple speakers. Each detected speaker receives a separate voice identity.")
+                    text: qsTr("Nhận diện nhiều người nói")
+                    helpText: qsTr("Chỉ bật khi video nguồn có nhiều người nói. Mỗi người được nhận diện sẽ dùng một giọng riêng.")
                 }
             }
         }
     }
 
-    Rectangle {
+    Item {
         Layout.fillWidth: true
         Layout.fillHeight: root.columns === 2
         Layout.alignment: Qt.AlignTop
-        implicitHeight: mediaColumn.implicitHeight + Theme.space24
-        color: Theme.surfaceElevated
-        radius: Theme.radiusSmall
-        border.width: 1
-        border.color: Theme.outline
+        implicitHeight: mediaColumn.implicitHeight
 
         ColumnLayout {
             id: mediaColumn
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: Theme.space12
+            anchors.leftMargin: Theme.space4
+            anchors.rightMargin: Theme.space4
             spacing: Theme.space8
 
             Text {
-                text: I18n.t("Picture and audio")
+                text: qsTr("Hình ảnh và âm thanh")
                 color: Theme.text
                 font.pixelSize: Theme.body
                 font.weight: Font.DemiBold
                 textFormat: Text.PlainText
             }
 
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+
             SettingLabel {
                 Layout.fillWidth: true
-                text: I18n.t("Original subtitles")
-                helpText: I18n.t("Cover burned-in source subtitles or keep the original picture unchanged.")
+                text: qsTr("Phụ đề gốc")
+                helpText: qsTr("Che phụ đề gốc đã dính vào hình hoặc giữ nguyên khung hình nguồn.")
             }
             SegmentedControl {
                 Layout.fillWidth: true
@@ -196,8 +194,8 @@ GridLayout {
                 enabled: root.editable
                 currentValue: root.removeOriginalSubtitles ? "remove" : "keep"
                 options: [
-                    { "label": I18n.t("Cover original subtitles"), "value": "remove" },
-                    { "label": I18n.t("Keep original video"), "value": "keep" }
+                    { "label": qsTr("Che phụ đề gốc"), "value": "remove" },
+                    { "label": qsTr("Giữ nguyên video gốc"), "value": "keep" }
                 ]
                 onActivated: function(value) { root.removeOriginalSubtitlesEdited(value === "remove") }
             }
@@ -205,8 +203,8 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 visible: root.removeOriginalSubtitles
-                text: I18n.t("Removal method")
-                helpText: I18n.t("Blur softens detected text. Nearby patch fills it with clean pixels from the surrounding image.")
+                text: qsTr("Cách xóa")
+                helpText: qsTr("Làm mờ làm nhòe chữ được nhận diện. Vá nền dùng vùng ảnh sạch lân cận để lấp chữ.")
             }
             SegmentedControl {
                 Layout.fillWidth: true
@@ -215,41 +213,27 @@ GridLayout {
                 enabled: root.editable
                 currentValue: root.subtitleRemovalMode
                 options: [
-                    { "label": I18n.t("Blur"), "value": "blur" },
-                    { "label": I18n.t("Nearby patch"), "value": "patch" }
+                    { "label": qsTr("Làm mờ"), "value": "blur" },
+                    { "label": qsTr("Vá nền lân cận"), "value": "patch" }
                 ]
                 onActivated: function(value) { root.subtitleRemovalModeEdited(value) }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                Text {
-                    Layout.fillWidth: true
-                    text: root.removeOriginalSubtitles
-                        ? root.subtitleRemovalMode === "patch"
-                            ? I18n.t("Use nearby clean pixels to cover burned-in text")
-                            : I18n.t("Detect and blur burned-in text")
-                        : I18n.t("Keep the source picture unchanged")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.label
-                    wrapMode: Text.WordWrap
-                }
-                AppButton {
-                    visible: !root.removeOriginalSubtitles
-                    text: I18n.t("Edit new subtitles")
-                    compact: true
-                    tone: "secondary"
-                    enabled: root.editable && root.hasSource
-                    onClicked: root.subtitleLayoutRequested()
-                }
+            StudioButton {
+                Layout.alignment: Qt.AlignRight
+                text: qsTr("Chỉnh phụ đề")
+                compact: true
+                variant: "secondary"
+                enabled: root.editable && root.hasSource
+                onClicked: root.subtitleLayoutRequested()
             }
 
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
             SettingLabel {
                 Layout.fillWidth: true
-                text: I18n.t("Audio source")
-                helpText: I18n.t("Keep source audio or separate vocals from background sound before mixing.")
+                text: qsTr("Nguồn âm thanh")
+                helpText: qsTr("Giữ âm thanh nguồn hoặc tách giọng khỏi âm nền trước khi phối.")
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -260,14 +244,14 @@ GridLayout {
                     enabled: root.editable
                     currentValue: root.enableAudioSeparation ? "separated" : "original"
                     options: [
-                        { "label": I18n.t("Keep original audio"), "value": "original" },
-                        { "label": I18n.t("Separate vocals"), "value": "separated" }
+                        { "label": qsTr("Giữ âm thanh gốc"), "value": "original" },
+                        { "label": qsTr("Tách giọng"), "value": "separated" }
                     ]
                     onActivated: function(value) { root.audioSeparationEdited(value === "separated") }
                 }
-                AppButton {
-                    text: I18n.t("Levels")
-                    tone: "secondary"
+                StudioButton {
+                    text: qsTr("Âm lượng")
+                    variant: "secondary"
                     compact: true
                     enabled: root.editable
                     onClicked: root.audioMixRequested()
@@ -276,7 +260,7 @@ GridLayout {
             Text {
                 Layout.fillWidth: true
                 visible: root.cpuOnly && root.enableAudioSeparation
-                text: I18n.t("Audio separation is slower in CPU mode")
+                text: qsTr("Tách âm sẽ chậm hơn khi chạy bằng CPU")
                 color: Theme.warning
                 font.pixelSize: Theme.label
                 wrapMode: Text.WordWrap
@@ -284,25 +268,25 @@ GridLayout {
 
             SettingLabel {
                 Layout.fillWidth: true
-                text: I18n.t("Background music")
-                helpText: I18n.t("Optional music is mixed after source-audio processing.")
+                text: qsTr("Nhạc nền")
+                helpText: qsTr("Nhạc tùy chọn được phối sau khi xử lý âm thanh nguồn.")
             }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8
                 Text {
                     Layout.fillWidth: true
-                    text: root.backgroundMusicPath.length > 0 ? root.backgroundMusicPath : I18n.t("No background music")
+                    text: root.backgroundMusicPath.length > 0 ? root.backgroundMusicPath : qsTr("Chưa có nhạc nền")
                     color: root.backgroundMusicPath.length > 0 ? Theme.text : Theme.textMuted
                     font.pixelSize: Theme.label
                     elide: Text.ElideMiddle
                 }
-                AppButton { text: I18n.t("File"); compact: true; enabled: root.editable; onClicked: root.backgroundMusicFileRequested() }
-                AppButton { text: I18n.t("Link"); compact: true; enabled: root.editable; onClicked: root.backgroundMusicLinkRequested() }
-                IconButton {
+                StudioButton { text: qsTr("Tệp"); enabled: root.editable; onClicked: root.backgroundMusicFileRequested() }
+                StudioButton { text: qsTr("Liên kết"); enabled: root.editable; onClicked: root.backgroundMusicLinkRequested() }
+                StudioIconButton {
                     visible: root.backgroundMusicPath.length > 0
-                    glyph: "\uE74D"
-                    toolTipText: I18n.t("Remove background music")
+                    iconName: "delete"
+                    toolTipText: qsTr("Bỏ nhạc nền")
                     enabled: root.editable
                     onClicked: root.backgroundMusicClearRequested()
                 }
@@ -310,21 +294,21 @@ GridLayout {
 
             SettingLabel {
                 Layout.fillWidth: true
-                text: I18n.t("Watermark")
-                helpText: I18n.t("Add subtle moving text to the exported video.")
+                text: qsTr("Watermark")
+                helpText: qsTr("Thêm chữ chuyển động nhẹ vào video xuất.")
             }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8
                 Text {
                     Layout.fillWidth: true
-                    text: root.watermarkText.length > 0 ? root.watermarkText : I18n.t("No watermark")
+                    text: root.watermarkText.length > 0 ? root.watermarkText : qsTr("Không có watermark")
                     color: root.watermarkText.length > 0 ? Theme.text : Theme.textMuted
                     font.pixelSize: Theme.label
                     elide: Text.ElideRight
                 }
-                AppButton {
-                    text: root.watermarkText.length > 0 ? I18n.t("Edit") : I18n.t("Add")
+                StudioButton {
+                    text: root.watermarkText.length > 0 ? qsTr("Chỉnh sửa") : qsTr("Thêm")
                     compact: true
                     enabled: root.editable
                     onClicked: root.watermarkRequested()

@@ -12,7 +12,7 @@ Button {
     leftPadding: compact ? 0 : 14
     rightPadding: compact ? 0 : 14
     focusPolicy: Qt.TabFocus
-    Accessible.name: I18n.t("About & contact")
+    Accessible.name: qsTr("Giới thiệu và liên hệ")
 
     contentItem: RowLayout {
         spacing: root.compact ? 0 : 8
@@ -30,7 +30,7 @@ Button {
         Text {
             Layout.fillWidth: true
             visible: !root.compact
-            text: I18n.t("About & contact")
+            text: qsTr("Giới thiệu và liên hệ")
             color: root.hovered || root.activeFocus ? Theme.text : Theme.textMuted
             font.pixelSize: Theme.label
             textFormat: Text.PlainText

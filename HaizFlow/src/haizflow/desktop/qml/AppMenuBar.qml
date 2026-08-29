@@ -39,23 +39,23 @@ Rectangle {
         anchors.rightMargin: Theme.space12
         spacing: 2
 
-        NavigationButton {
+        TopBarNavigationButton {
             glyph: "\uE72B"
-            toolTipText: I18n.t("Back")
+            toolTipText: qsTr("Quay lại")
             enabled: root.canGoBack
             onClicked: root.backRequested()
         }
 
-        NavigationButton {
+        TopBarNavigationButton {
             glyph: "\uE72A"
-            toolTipText: I18n.t("Forward")
+            toolTipText: qsTr("Tiến")
             enabled: root.canGoForward
             onClicked: root.forwardRequested()
         }
 
-        NavigationButton {
+        TopBarNavigationButton {
             glyph: "\uE80F"
-            toolTipText: I18n.t("Home")
+            toolTipText: qsTr("Trang chủ")
             onClicked: root.homeRequested()
         }
 
@@ -63,45 +63,59 @@ Rectangle {
             Layout.preferredWidth: Theme.space4
         }
 
-        AppMenuButton {
+        TopBarMenuButton {
             id: projectButton
 
             objectName: "projectMenuButton"
-            text: I18n.t("Project")
+            text: qsTr("Dự án")
             onPressed: menuWasOpenOnPress = projectMenu.visible
             onClicked: root.toggleMenu(projectMenu, projectButton, menuWasOpenOnPress)
-        }
-
-        AppMenuButton {
-            id: settingsButton
-
-            objectName: "settingsMenuButton"
-            text: I18n.t("Settings")
-            onPressed: menuWasOpenOnPress = settingsMenu.visible
-            onClicked: root.toggleMenu(settingsMenu, settingsButton, menuWasOpenOnPress)
         }
 
         Item {
             Layout.fillWidth: true
         }
+
+        TopBarNavigationButton {
+            id: settingsButton
+
+            objectName: "settingsButton"
+            glyph: "\uE713"
+            toolTipText: qsTr("Cài đặt")
+            onClicked: {
+                projectMenu.close();
+                helpMenu.close();
+                root.settingsRequested();
+            }
+        }
+
+        TopBarNavigationButton {
+            id: helpButton
+
+            objectName: "helpMenuButton"
+            glyph: "\uE897"
+            toolTipText: qsTr("Trợ giúp")
+            onPressed: menuWasOpenOnPress = helpMenu.visible
+            onClicked: root.toggleMenu(helpMenu, helpButton, menuWasOpenOnPress)
+        }
     }
 
     function toggleMenu(menu, anchorButton, wasOpenOnPress) {
         if (wasOpenOnPress || menu.visible) {
-            menu.close()
-            return
+            menu.close();
+            return;
         }
 
-        projectMenu.close()
-        settingsMenu.close()
-        const anchorPosition = anchorButton.mapToItem(Overlay.overlay, 0, 0)
-        const barBottom = root.mapToItem(Overlay.overlay, 0, root.height)
-        menu.x = Math.round(anchorPosition.x)
-        menu.y = Math.round(barBottom.y + Theme.space4)
-        menu.open()
+        projectMenu.close();
+        helpMenu.close();
+        const anchorPosition = anchorButton.mapToItem(Overlay.overlay, 0, 0);
+        const barBottom = root.mapToItem(Overlay.overlay, 0, root.height);
+        menu.x = Math.round(anchorPosition.x);
+        menu.y = Math.round(barBottom.y + Theme.space4);
+        menu.open();
     }
 
-    AppPopupMenu {
+    TopBarPopupMenu {
         id: projectMenu
 
         objectName: "projectMenuPopup"
@@ -111,148 +125,59 @@ Rectangle {
             newManualProjectItem.implicitWidth,
             newBatchProjectItem.implicitWidth,
             newDownloadProjectItem.implicitWidth,
-            newPublishProjectItem.implicitWidth
-        )
+            newPublishProjectItem.implicitWidth)
 
         AppMenuItem {
             id: newSingleProjectItem
 
-            text: I18n.t("New single project")
+            text: qsTr("Dự án Tự động mới")
             onTriggered: root.newSingleProjectRequested()
         }
 
         AppMenuItem {
             id: newManualProjectItem
 
-            text: I18n.t("New manual project")
+            text: qsTr("Dự án Thủ công mới")
             onTriggered: root.manualProjectRequested()
         }
 
         AppMenuItem {
             id: newBatchProjectItem
 
-            text: I18n.t("New batch project")
+            text: qsTr("Dự án Hàng loạt mới")
             onTriggered: root.newBatchProjectRequested()
         }
+
+        MenuSeparator {}
 
         AppMenuItem {
             id: newDownloadProjectItem
 
-            text: I18n.t("New download project")
+            text: qsTr("Dự án Tải xuống mới")
             onTriggered: root.newDownloadProjectRequested()
         }
 
         AppMenuItem {
             id: newPublishProjectItem
 
-            text: I18n.t("New social publishing project")
+            text: qsTr("Dự án Đăng mạng xã hội mới")
             onTriggered: root.newPublishProjectRequested()
         }
-
     }
 
-    AppPopupMenu {
-        id: settingsMenu
+    TopBarPopupMenu {
+        id: helpMenu
 
-        objectName: "settingsMenuPopup"
+        objectName: "helpMenuPopup"
         parent: Overlay.overlay
-        menuContentWidth: Math.max(settingsItem.implicitWidth, aboutItem.implicitWidth)
-
-        AppMenuItem {
-            id: settingsItem
-
-            text: I18n.t("Settings")
-            onTriggered: root.settingsRequested()
-        }
+        menuContentWidth: aboutItem.implicitWidth
 
         AppMenuItem {
             id: aboutItem
 
-            text: I18n.t("About & contact")
+            text: qsTr("Giới thiệu")
             onTriggered: root.aboutRequested()
         }
     }
 
-    component AppMenuButton: Button {
-        id: button
-
-        property bool menuWasOpenOnPress: false
-
-        implicitHeight: 28
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 0
-        bottomPadding: 0
-        focusPolicy: Qt.TabFocus
-        Accessible.name: text
-
-        contentItem: Text {
-            text: button.text
-            color: button.enabled
-                ? (button.hovered || button.down ? Theme.text : Theme.textMuted)
-                : Theme.textDisabled
-            font.pixelSize: Theme.caption
-            font.weight: Font.Normal
-            verticalAlignment: Text.AlignVCenter
-            textFormat: Text.PlainText
-        }
-
-        background: Rectangle {
-            radius: Theme.radiusSmall
-            color: button.down ? Theme.windowCaptionPressed
-                : button.hovered || button.activeFocus ? Theme.windowCaptionHover : "transparent"
-            border.width: 0
-        }
-    }
-
-    component NavigationButton: Button {
-        id: button
-
-        property string glyph: ""
-        property string toolTipText: ""
-
-        implicitWidth: 28
-        implicitHeight: 28
-        leftPadding: 0
-        rightPadding: 0
-        topPadding: 0
-        bottomPadding: 0
-        focusPolicy: Qt.TabFocus
-        Accessible.name: toolTipText
-        ToolTip.visible: hovered && toolTipText.length > 0
-        ToolTip.text: toolTipText
-        ToolTip.delay: 450
-
-        contentItem: AppIcon {
-            glyph: button.glyph
-            iconSize: 14
-            iconColor: button.enabled
-                ? (button.hovered || button.down ? Theme.text : Theme.textMuted)
-                : Theme.textDisabled
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-
-        background: Rectangle {
-            radius: Theme.radiusSmall
-            color: button.down ? Theme.windowCaptionPressed
-                : button.hovered || button.activeFocus ? Theme.windowCaptionHover : "transparent"
-            border.width: 0
-        }
-    }
-
-    component AppPopupMenu: Menu {
-        property real menuContentWidth: 0
-
-        width: Math.min(menuContentWidth + padding * 2, 210)
-        modal: false
-        padding: Theme.space4
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
-
-        background: Rectangle {
-            radius: Theme.radiusSmall
-            color: Theme.surface
-            border.width: 0
-        }
-    }
 }

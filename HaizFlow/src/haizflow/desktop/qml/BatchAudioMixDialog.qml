@@ -1,10 +1,9 @@
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtMultimedia
 import "."
 
-Dialog {
+AppDialog {
     id: root
 
     property bool audioSeparationEnabled: false
@@ -23,18 +22,12 @@ Dialog {
 
     signal audioLevelsEdited(int originalVolume, int ttsVolume, int backgroundMusicVolume)
 
-    modal: true
-    focus: true
-    width: Math.min(520, parent ? parent.width - 48 : 520)
-    height: Math.min(530, parent ? parent.height - 48 : 530)
-    padding: 0
-    title: I18n.t("Adjust audio levels")
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    parent: Overlay.overlay
-    x: Math.round((parent.width - width) / 2)
-    y: Math.round((parent.height - height) / 2)
-    header: null
-    footer: null
+    title: qsTr("Âm lượng hàng loạt")
+    subtitle: qsTr("Mức âm lượng mặc định cho các video trong dự án")
+    preferredWidth: 480
+    preferredHeight: 430
+    maximumWidth: 520
+    maximumHeight: 560
 
     function stopPreview() {
         previewStopTimer.stop()
@@ -89,142 +82,68 @@ Dialog {
             pausePreview()
     }
 
-    background: Rectangle {
-        radius: Theme.radius
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.outlineStrong
-    }
-
-    contentItem: ColumnLayout {
-        spacing: 0
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 70
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space16
-            spacing: Theme.space12
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-
-                Text {
-                    Layout.fillWidth: true
-                    text: I18n.t("Adjust audio levels")
-                    color: Theme.text
-                    font.pixelSize: Theme.h2
-                    font.weight: Font.DemiBold
-                    textFormat: Text.PlainText
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: I18n.t("Balance source audio, voice and background music")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.caption
-                    textFormat: Text.PlainText
-                }
-            }
-
-            IconButton {
-                glyph: "\uE711"
-                toolTipText: I18n.t("Close")
-                onClicked: root.close()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.margins: Theme.space24
-            spacing: Theme.space20
-
-            AudioLevelControl {
-                label: I18n.t("Source audio volume")
-                volume: root.originalVolume
-                adjustable: root.sourceAudioAdjustable
-                disabledHint: I18n.t("Source audio volume is unavailable while separating vocals")
-                onVolumeEdited: function(value) {
-                    root.updateLevels(value, root.ttsVolume, root.backgroundMusicVolume)
-                }
-            }
-
-            AudioLevelControl {
-                label: I18n.t("TTS volume")
-                volume: root.ttsVolume
-                onVolumeEdited: function(value) {
-                    root.updateLevels(root.originalVolume, value, root.backgroundMusicVolume)
-                }
-            }
-
-            AudioLevelControl {
-                label: I18n.t("Background music volume")
-                volume: root.backgroundMusicVolume
-                adjustable: root.backgroundMusicAdjustable
-                disabledHint: I18n.t("Choose background music to adjust its volume")
-                onVolumeEdited: function(value) {
-                    root.updateLevels(root.originalVolume, root.ttsVolume, value)
-                }
-            }
-
-            Item { Layout.fillHeight: true }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.space8
-
-                Text {
-                    Layout.fillWidth: true
-                    text: AppController.audioPreviewState === "preparing"
-                        ? I18n.t("Preparing audio preview") : I18n.t("Preview audio mix")
-                    color: Theme.text
-                    font.pixelSize: Theme.body
-                    textFormat: Text.PlainText
-                }
-
-                IconButton {
-                    glyph: root.previewPlaying ? "\uE769" : "\uE768"
-                    toolTipText: root.previewPlaying ? I18n.t("Pause") : I18n.t("Play")
-                    enabled: AppController.batchCount > 0 && AppController.audioPreviewState !== "preparing"
-                    onClicked: {
-                        if (root.previewPlaying)
-                            root.pausePreview()
-                        else
-                            root.requestPreview()
-                    }
-                }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 66
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space24
-
-            Item { Layout.fillWidth: true }
-
-            AppButton {
-                text: I18n.t("Close")
-                tone: "primary"
-                onClicked: root.close()
-            }
+    AudioLevelControl {
+        Layout.fillWidth: true
+        label: qsTr("Âm thanh gốc")
+        volume: root.originalVolume
+        adjustable: root.sourceAudioAdjustable
+        disabledHint: qsTr("Không chỉnh được khi đang tách giọng")
+        onVolumeEdited: function(value) {
+            root.updateLevels(value, root.ttsVolume, root.backgroundMusicVolume)
         }
     }
+
+    AudioLevelControl {
+        Layout.fillWidth: true
+        label: qsTr("Giọng đọc")
+        volume: root.ttsVolume
+        onVolumeEdited: function(value) {
+            root.updateLevels(root.originalVolume, value, root.backgroundMusicVolume)
+        }
+    }
+
+    AudioLevelControl {
+        Layout.fillWidth: true
+        label: qsTr("Nhạc nền")
+        volume: root.backgroundMusicVolume
+        adjustable: root.backgroundMusicAdjustable
+        disabledHint: qsTr("Chọn nhạc nền trước khi chỉnh âm lượng")
+        onVolumeEdited: function(value) {
+            root.updateLevels(root.originalVolume, root.ttsVolume, value)
+        }
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.topMargin: Theme.space4
+        spacing: Theme.space8
+
+        Text {
+            Layout.fillWidth: true
+            text: AppController.audioPreviewState === "preparing"
+                ? qsTr("Đang chuẩn bị bản nghe thử") : qsTr("Nghe thử bản phối")
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.control
+            textFormat: Text.PlainText
+        }
+
+        StudioIconButton {
+            iconName: root.previewPlaying ? "pause" : "play"
+            toolTipText: root.previewPlaying ? qsTr("Tạm dừng") : qsTr("Nghe thử")
+            enabled: AppController.batchCount > 0
+                && AppController.audioPreviewState !== "preparing"
+            onClicked: root.previewPlaying ? root.pausePreview() : root.requestPreview()
+        }
+    }
+
+    footerActions: [
+        StudioButton {
+            text: qsTr("Đóng")
+            variant: "primary"
+            onClicked: root.close()
+        }
+    ]
 
     Timer {
         id: previewStopTimer

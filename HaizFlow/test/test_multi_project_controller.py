@@ -350,7 +350,7 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertIn("AppController.selectBatchVideo(index)", batch_page)
         self.assertIn("root.openVideoDetail()", batch_page)
-        self.assertIn('I18n.t("Edit video settings")', card)
+        self.assertIn('qsTr("Chỉnh cài đặt video")', card)
         self.assertIn("required property string videoSize", card)
         self.assertIn("id: sizeLabel", card)
         self.assertIn('glyph: "\\uE76C"', card)
@@ -363,8 +363,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("root.videoSize.length > 0", project_card)
         self.assertIn("acceptedButtons: Qt.RightButton", project_card)
         self.assertIn("id: projectContextMenu", project_card)
-        self.assertIn('I18n.t("Open project folder")', project_card)
-        self.assertIn('I18n.t("Delete project")', project_card)
+        self.assertIn('qsTr("Mở thư mục dự án")', project_card)
+        self.assertIn('qsTr("Xóa dự án")', project_card)
 
         projects_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProjectsPage.qml").read_text(encoding="utf-8")
         self.assertIn("onProjectFolderRequested", projects_page)
@@ -631,26 +631,26 @@ class MultiProjectControllerTests(unittest.TestCase):
             ROOT / "src" / "haizflow" / "desktop" / "qml" / "ProcessingSettingsForm.qml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('text: I18n.t("Batch settings")', batch_page)
+        self.assertIn('text: qsTr("Cài đặt hàng loạt")', batch_page)
         self.assertNotIn("setupVisible: true", batch_page)
         self.assertIn("AppController.batchPausedCount > 0", batch_page)
         self.assertIn("AppController.resumeBatch()", batch_page)
         self.assertIn("id: importCard", batch_page)
         self.assertIn("id: batchProgressPanel", batch_page)
         self.assertIn("Layout.maximumWidth: 640", batch_page)
-        self.assertLess(batch_page.index("id: importCard"), batch_page.index('text: I18n.t("Batch settings")'))
-        self.assertLess(batch_page.index("id: importCard"), batch_page.index('I18n.t("Processing queue")'))
+        self.assertLess(batch_page.index("id: importCard"), batch_page.index('text: qsTr("Cài đặt hàng loạt")'))
+        self.assertLess(batch_page.index("id: importCard"), batch_page.index('qsTr("Hàng đợi xử lý")'))
         self.assertGreater(batch_page.index("id: batchProgressPanel"), batch_page.index("id: queueList"))
         self.assertIn('qsTr("Adding %1 / %2…")', batch_page)
         self.assertIn("readonly property real cardWidth: Math.min(220", batch_page)
         self.assertIn("readonly property real cardHeight: Math.round(cardWidth * 0.56 + 64)", batch_page)
         self.assertIn("AppController.chooseBatchBackgroundMusic()", settings)
-        self.assertIn("batchBackgroundMusicLinkDialog.open()", settings)
+        self.assertIn('batchBackgroundMusicLinkDialogLoader.invoke("open", [])', settings)
         self.assertIn("ProcessingSettingsForm", settings)
-        self.assertIn('text: I18n.t("Edit new subtitles")', shared_settings)
-        self.assertIn("visible: !root.removeOriginalSubtitles", shared_settings)
+        self.assertIn('text: qsTr("Chỉnh phụ đề")', shared_settings)
+        self.assertIn("enabled: root.editable && root.hasSource", shared_settings)
         self.assertIn("BatchAudioMixDialog", settings)
-        self.assertIn("batchAudioMixDialog.open()", settings)
+        self.assertIn('batchAudioMixDialogLoader.invoke("open", [])', settings)
         self.assertNotIn("AppSlider {", settings)
         self.assertIn("onClosed: saveDraft()", settings)
         self.assertNotIn('I18n.t("Apply to all videos")', settings)
@@ -666,7 +666,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("onClosed: pausePreview()", batch_audio_dialog)
         self.assertIn('root.visible && AppController.audioPreviewState === "ready"', batch_audio_dialog)
         self.assertIn("readonly property bool previewPlaying", batch_audio_dialog)
-        self.assertIn('root.previewPlaying ? "\\uE769" : "\\uE768"', batch_audio_dialog)
+        self.assertIn('iconName: root.previewPlaying ? "pause" : "play"', batch_audio_dialog)
 
         dubbing_setup = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "DubbingSetupPanel.qml").read_text(
             encoding="utf-8"
@@ -1393,6 +1393,59 @@ class MultiProjectControllerTests(unittest.TestCase):
             self.assertEqual(preview["ttsProvider"], "omnivoice")
             self.assertEqual(preview["watermarkText"], "@creator")
             self.assertEqual(preview["ocrRegion"]["height_percent"], 8)
+
+    def test_browser_context_delete_uses_stable_project_key_without_opening_row(self):
+        signal = lambda: SimpleNamespace(emit=Mock())
+        host = SimpleNamespace(
+            _media_downloader=SimpleNamespace(has_project_work=Mock(return_value=False)),
+            _tiktok_publisher=SimpleNamespace(has_project_work=Mock(return_value=False)),
+            _channel_importer=SimpleNamespace(cancel_project=Mock(return_value=True)),
+            _channel_import_targets={},
+            _processing_queue=SimpleNamespace(discard=Mock(), active_video_id=None),
+            _deleted_video_ids=set(),
+            _selected_project_key="another-project",
+            _video_project_key=Mock(),
+            appAlertRequested=signal(),
+            refreshVideos=Mock(),
+            videoDeleted=signal(),
+        )
+        project = {
+            "key": "project-from-proxy",
+            "project_name": "Project from proxy",
+            "project_type": "single",
+        }
+
+        with (
+            patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes),
+            patch("haizflow.desktop.project_commands_controller.video_store.list_videos", return_value=[]),
+            patch("haizflow.desktop.project_commands_controller.project_store.validate_project_deletion_by_key") as validate,
+            patch("haizflow.desktop.project_commands_controller.project_store.delete_project_by_key") as delete,
+        ):
+            deleted = ProjectCommandsController(host).delete_project_summary(project)
+
+        self.assertTrue(deleted)
+        validate.assert_called_once_with("project-from-proxy")
+        delete.assert_called_once_with("project-from-proxy")
+        self.assertEqual(host._selected_project_key, "another-project")
+        host.refreshVideos.assert_called_once()
+
+    def test_typed_grid_context_delete_resolves_row_without_opening_project(self):
+        project = {
+            "key": "download-project",
+            "project_name": "Download project",
+            "project_type": "download",
+        }
+        model = SimpleNamespace(project_at=Mock(return_value=project))
+        commands = SimpleNamespace(delete_project_summary=Mock(return_value=True))
+        host = SimpleNamespace(_project_model_for_type=Mock(return_value=model))
+
+        with patch.object(HaizFlowController, "_project_commands_for", return_value=commands):
+            deleted = HaizFlowController.deleteProjectInMode(host, 3, "download")
+
+        self.assertTrue(deleted)
+        host._project_model_for_type.assert_called_once_with("download")
+        model.project_at.assert_called_once_with(3)
+        commands.delete_project_summary.assert_called_once_with(project)
 
 
 if __name__ == "__main__":

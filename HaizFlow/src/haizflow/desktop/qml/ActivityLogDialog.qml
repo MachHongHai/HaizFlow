@@ -12,7 +12,7 @@ FloatingToolDialog {
 
     expandedWidth: 1080
     expandedHeight: 760
-    toolTitle: I18n.t("Activity log")
+    toolTitle: qsTr("Nhật ký kỹ thuật")
     toolSubtitle: root.detailText
 
     ColumnLayout {
@@ -26,15 +26,16 @@ FloatingToolDialog {
 
             Text {
                 Layout.fillWidth: true
-                text: I18n.t("Processing diagnostics")
+                text: qsTr("Chi tiết xử lý")
                 color: Theme.textMuted
-                font.pixelSize: Theme.caption
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.metadata
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
             }
 
             AppButton {
-                text: I18n.t("Copy")
+                text: qsTr("Sao chép")
                 iconGlyph: "\uE8C8"
                 compact: true
                 tone: "secondary"
@@ -47,7 +48,7 @@ FloatingToolDialog {
             Layout.fillWidth: true
             Layout.fillHeight: true
             text: root.logText
-            emptyText: I18n.t("No logs loaded.")
+            emptyText: qsTr("Chưa có dữ liệu.")
         }
     }
 }

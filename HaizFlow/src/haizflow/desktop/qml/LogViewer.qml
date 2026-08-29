@@ -6,7 +6,7 @@ Rectangle {
     id: root
 
     property string text: ""
-    property string emptyText: I18n.t("No logs loaded.")
+    property string emptyText: qsTr("Chưa có nhật ký.")
     property bool compact: false
     readonly property string renderedText: formatLogText(text)
 
@@ -52,7 +52,7 @@ Rectangle {
             rendered.push(
                 "<span style=\"font-family:'Cascadia Mono';font-size:" + fontSize + "px;color:" + Theme.textSubtle + ";\">" + timestamp + "</span>" +
                 " <span style=\"font-family:'Cascadia Mono';font-size:" + fontSize + "px;color:" + levelColor(level) + ";font-weight:600;\">[" + level + "]</span>" +
-                " <span style=\"font-family:'Cascadia Mono';font-size:" + fontSize + "px;color:" + Theme.blue + ";\">[" + component + "]</span>" +
+                " <span style=\"font-family:'Cascadia Mono';font-size:" + fontSize + "px;color:" + Theme.interactive + ";\">[" + component + "]</span>" +
                 " <span style=\"font-family:'Cascadia Mono';font-size:" + fontSize + "px;color:" + Theme.codeText + ";\">" + message + "</span>"
             )
         }

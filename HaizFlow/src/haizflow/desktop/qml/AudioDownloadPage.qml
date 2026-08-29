@@ -14,12 +14,6 @@ Item {
         anchors.fill: parent
         spacing: Theme.space16
 
-        PageHeader {
-            Layout.fillWidth: true
-            title: I18n.t("Download or extract audio")
-            subtitle: I18n.t("Save audio from a link or extract the audio track from a local media file")
-        }
-
         ScrollView {
             id: audioScroll
             Layout.fillWidth: true
@@ -31,36 +25,32 @@ Item {
                 width: audioScroll.availableWidth
                 spacing: Theme.space16
 
-                Panel {
+                AppSurface {
                     Layout.fillWidth: true
-                    title: I18n.t("Audio source")
-                    subtitle: I18n.t("Choose a source, then select the destination folder")
+                    padding: Theme.space16
+
+                    SectionHeader {
+                        Layout.fillWidth: true
+                        title: qsTr("Nguồn âm thanh")
+                    }
 
                     SegmentedControl {
                         id: audioSource
                         Layout.fillWidth: true
                         currentValue: root.sourceMode
-                        options: [{ "label": I18n.t("From link"), "value": "link" }, { "label": I18n.t("From file"), "value": "file" }]
+                        options: [{ "label": qsTr("Liên kết"), "value": "link" }, { "label": qsTr("Tệp"), "value": "file" }]
                         onActivated: function(value) {
                             root.sourceMode = value
                         }
                     }
 
-                    TextField {
+                    AppTextField {
                         id: audioLink
                         Layout.fillWidth: true
                         visible: root.fromLink
-                        implicitHeight: 44
-                        placeholderText: I18n.t("Paste a video link")
+                        placeholderText: qsTr("Dán liên kết video")
                         selectByMouse: true
-                        activeFocusOnTab: true
-                        Accessible.name: I18n.t("Video link")
-                        background: Rectangle {
-                            radius: Theme.radiusSmall
-                            color: Theme.input
-                            border.width: audioLink.activeFocus ? 2 : 1
-                            border.color: audioLink.activeFocus ? Theme.focus : Theme.outline
-                        }
+                        accessibleName: qsTr("Liên kết video")
                     }
 
                     RowLayout {
@@ -68,33 +58,34 @@ Item {
                         visible: !root.fromLink
                         Text {
                             Layout.fillWidth: true
-                            text: root.downloader.audioSource.length > 0 ? root.downloader.audioSource : I18n.t("No media file selected")
+                            text: root.downloader.audioSource.length > 0 ? root.downloader.audioSource : qsTr("Chưa chọn tệp")
                             color: root.downloader.audioSource.length > 0 ? Theme.text : Theme.textMuted
                             elide: Text.ElideMiddle
                             textFormat: Text.PlainText
                         }
-                        AppButton { text: I18n.t("Choose file"); onClicked: root.downloader.chooseAudioSource() }
+                        AppButton { text: qsTr("Chọn tệp"); compact: true; onClicked: root.downloader.chooseAudioSource() }
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: root.downloader.audioOutputDirectory.length > 0 ? root.downloader.audioOutputDirectory : I18n.t("No audio folder selected")
+                            text: root.downloader.audioOutputDirectory.length > 0 ? root.downloader.audioOutputDirectory : qsTr("Chưa chọn thư mục")
                             color: root.downloader.audioOutputDirectory.length > 0 ? Theme.text : Theme.textMuted
                             elide: Text.ElideMiddle
                             textFormat: Text.PlainText
                         }
                         AppButton {
                             visible: !root.downloader.outputManaged
-                            text: I18n.t("Choose folder")
+                            text: qsTr("Chọn thư mục")
+                            compact: true
                             onClicked: root.downloader.chooseAudioOutputDirectory()
                         }
                     }
 
                     AppButton {
                         Layout.fillWidth: true
-                        text: root.fromLink ? I18n.t("Download audio") : I18n.t("Extract audio")
+                        text: root.fromLink ? qsTr("Tải âm thanh") : qsTr("Tách âm thanh")
                         tone: "primary"
                         enabled: root.downloader.audioOutputDirectory.length > 0
                             && (root.fromLink ? audioLink.text.trim().length > 0 : root.downloader.audioSource.length > 0)
@@ -102,7 +93,6 @@ Item {
                     }
                 }
 
-                DownloadQueueStatus { Layout.fillWidth: true; downloader: root.downloader }
                 Item { Layout.fillHeight: true }
             }
         }

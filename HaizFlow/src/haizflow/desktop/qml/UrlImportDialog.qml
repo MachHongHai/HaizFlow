@@ -3,43 +3,33 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-Dialog {
+AppDialog {
     id: root
     objectName: "urlImportDialog"
 
     property string importMode: "single"
     property string inspectedText: ""
-    // Python's generated qmltypes omit the constant flag; the importer object is stable.
+    // Python's generated qmltypes omit the constant flag; the importer is stable.
     // qmllint disable stale-property-read
     readonly property var importer: AppController.urlImporter
     // qmllint enable stale-property-read
     readonly property bool hasMetadata: importer.title.length > 0
     readonly property bool hasStatus: importer.status.length > 0
-    readonly property bool showsProgress: importer.state === "downloading"
-        || importer.state === "importing"
     readonly property bool canDownload: importer.state === "ready" || importer.state === "retry"
+
+    title: qsTr("Nhập từ liên kết")
+    subtitle: qsTr("YouTube, TikTok hoặc Douyin")
+    preferredWidth: 620
+    preferredHeight: hasMetadata ? 460 : hasStatus ? 340 : 270
+    maximumWidth: 660
+    maximumHeight: 620
+    closePolicy: importer.busy ? Popup.NoAutoClose : Popup.CloseOnEscape
 
     function openForMode(mode) {
         importMode = mode === "batch" ? "batch" : "single"
-        root.importer.begin(importMode)
+        importer.begin(importMode)
         open()
     }
-
-    modal: true
-    focus: true
-    width: Math.min(680, parent ? parent.width - 48 : 680)
-    height: hasMetadata ? (showsProgress ? 500 : 470)
-        : hasStatus ? 340
-        : 300
-    padding: 0
-    title: I18n.t("Import from link")
-    closePolicy: root.importer.busy ? Popup.NoAutoClose
-        : Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    parent: Overlay.overlay
-    x: Math.round((parent.width - width) / 2)
-    y: Math.round((parent.height - height) / 2)
-    header: null
-    footer: null
 
     onOpened: {
         videoUrl.clear()
@@ -65,318 +55,150 @@ Dialog {
         }
     }
 
-    enter: Transition {
-        ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionStandard }
-            NumberAnimation {
-                property: "scale"
-                from: 0.98
-                to: 1
-                duration: Theme.motionStandard
-                easing.type: Easing.OutCubic
+    SettingLabel {
+        Layout.fillWidth: true
+        text: qsTr("Liên kết video")
+    }
+
+    StudioField {
+        id: videoUrl
+
+        Layout.fillWidth: true
+        enabled: !root.importer.busy
+        placeholderText: qsTr("Dán liên kết video")
+        accessibleName: qsTr("Liên kết video")
+        selectByMouse: true
+
+        onTextEdited: {
+            if (text.trim() !== root.inspectedText)
+                root.inspectedText = ""
+        }
+
+        Keys.onReturnPressed: {
+            if (!root.importer.busy && text.trim().length > 0) {
+                root.inspectedText = ""
+                root.importer.inspect(text.trim())
             }
         }
     }
-    exit: Transition {
-        ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motionFast }
-            NumberAnimation { property: "scale"; from: 1; to: 0.99; duration: Theme.motionFast }
-        }
-    }
 
-    background: Rectangle {
-        radius: Theme.radius
-        color: Theme.surface
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 108
+        visible: root.hasMetadata
+        radius: Theme.radiusSmall
+        color: Theme.surfaceElevated
         border.width: 1
-        border.color: Theme.outlineStrong
-    }
-
-    contentItem: ColumnLayout {
-        spacing: 0
+        border.color: Theme.outline
 
         RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 72
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space16
+            anchors.fill: parent
+            anchors.margins: Theme.space8
             spacing: Theme.space12
 
-            AppIcon {
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
-                glyph: "\uE71B"
-                iconColor: Theme.interactive
-                iconSize: Theme.iconLarge
+            MediaThumbnail {
+                Layout.preferredWidth: 150
+                Layout.fillHeight: true
+                source: root.importer.thumbnailSource
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 2
+                Layout.fillHeight: true
+                spacing: Theme.space4
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Import from link")
+                    text: root.importer.title
                     color: Theme.text
-                    font.pixelSize: Theme.h2
+                    font.family: Theme.fontFamily
+                    font.pixelSize: TypeScale.control
                     font.weight: Font.DemiBold
+                    maximumLineCount: 2
+                    wrapMode: Text.Wrap
+                    elide: Text.ElideRight
                     textFormat: Text.PlainText
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("YouTube, TikTok or Douyin")
+                    visible: root.importer.uploader.length > 0
+                    text: root.importer.uploader
                     color: Theme.textMuted
-                    font.pixelSize: Theme.caption
-                    textFormat: Text.PlainText
-                }
-            }
-
-            IconButton {
-                glyph: "\uE711"
-                toolTipText: root.importer.busy ? I18n.t("Cancel download first") : I18n.t("Close")
-                enabled: !root.importer.busy
-                onClicked: root.close()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.margins: Theme.space24
-            spacing: Theme.space16
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.space8
-
-                Text {
-                    text: I18n.t("Video link")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.caption
-                    font.weight: Font.Medium
+                    font.family: Theme.fontFamily
+                    font.pixelSize: TypeScale.metadata
+                    elide: Text.ElideRight
                     textFormat: Text.PlainText
                 }
 
-                TextField {
-                    id: videoUrl
-
-                    Layout.fillWidth: true
-                    implicitHeight: 46
-                    enabled: !root.importer.busy
-                    color: Theme.text
-                    font.pixelSize: Theme.body
-                    placeholderText: I18n.t("Paste a video link")
-                    selectByMouse: true
-                    activeFocusOnTab: true
-                    Accessible.name: I18n.t("Video link")
-                    leftPadding: 14
-                    rightPadding: 14
-
-                    onTextEdited: {
-                        if (text.trim() !== root.inspectedText)
-                            root.inspectedText = ""
-                    }
-
-                    Keys.onReturnPressed: {
-                        if (!root.importer.busy && text.trim().length > 0) {
-                            root.inspectedText = ""
-                            root.importer.inspect(text.trim())
-                        }
-                    }
-
-                    background: Rectangle {
-                        radius: Theme.radiusSmall
-                        color: Theme.input
-                        border.width: videoUrl.activeFocus ? 2 : 1
-                        border.color: videoUrl.activeFocus ? Theme.focus : Theme.outline
-                    }
-                }
-            }
-
-            Rectangle {
-                id: metadataPanel
-
-                Layout.fillWidth: true
-                Layout.preferredHeight: 132
-                visible: root.hasMetadata
-                radius: Theme.radiusSmall
-                color: Theme.surfaceElevated
-                border.width: 1
-                border.color: Theme.outline
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: Theme.space12
-                    spacing: Theme.space16
-
-                    Rectangle {
-                        Layout.preferredWidth: 176
-                        Layout.preferredHeight: 99
-                        radius: Theme.radiusTiny
-                        color: Theme.video
-                        clip: true
-
-                        Image {
-                            id: thumbnailImage
-                            anchors.fill: parent
-                            source: root.importer.thumbnailSource
-                            sourceSize.width: 352
-                            sourceSize.height: 198
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                            visible: status === Image.Ready
-                        }
-
-                        ThumbnailFallback {
-                            anchors.fill: parent
-                            visible: root.importer.thumbnailSource.length === 0
-                                || thumbnailImage.status === Image.Error
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        spacing: Theme.space8
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.importer.title
-                            color: Theme.text
-                            font.pixelSize: Theme.body
-                            font.weight: Font.DemiBold
-                            maximumLineCount: 2
-                            wrapMode: Text.Wrap
-                            elide: Text.ElideRight
-                            textFormat: Text.PlainText
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.importer.uploader
-                            visible: text.length > 0
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.caption
-                            elide: Text.ElideRight
-                            textFormat: Text.PlainText
-                        }
-
-                        Item { Layout.fillHeight: true }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Theme.space8
-
-                            StatusPill {
-                                label: root.importer.platform
-                                status: "awaiting_review"
-                            }
-
-                            Text {
-                                text: root.importer.duration
-                                visible: text.length > 0
-                                color: Theme.textMuted
-                                font.pixelSize: Theme.caption
-                                textFormat: Text.PlainText
-                            }
-                        }
-                    }
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                visible: root.importer.status.length > 0
-                spacing: Theme.space8
+                Item { Layout.fillHeight: true }
 
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Theme.space8
 
-                    AppIcon {
-                        Layout.preferredWidth: 18
-                        Layout.preferredHeight: 18
-                        glyph: root.importer.state === "error" || root.importer.state === "retry" ? "\uEA39"
-                            : root.importer.state === "ready" ? "\uE73E"
-                            : "\uE895"
-                        iconColor: root.importer.state === "error" || root.importer.state === "retry" ? Theme.danger
-                            : root.importer.state === "ready" ? Theme.success
-                            : Theme.interactive
-                        iconSize: Theme.iconSmall
+                    StatusBadge {
+                        label: root.importer.platform
+                        status: "ready"
                     }
 
                     Text {
-                        Layout.fillWidth: true
-                        text: I18n.t(root.importer.status)
-                        color: root.importer.state === "error" || root.importer.state === "retry"
-                            ? Theme.danger : Theme.textMuted
-                        font.pixelSize: Theme.caption
-                        wrapMode: Text.Wrap
+                        visible: root.importer.duration.length > 0
+                        text: root.importer.duration
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.metadata
                         textFormat: Text.PlainText
-                    }
-
-                    Text {
-                        visible: root.importer.state === "downloading"
-                        text: qsTr("%1%").arg(root.importer.progress)
-                        color: Theme.text
-                        font.pixelSize: Theme.caption
-                        font.weight: Font.DemiBold
-                        textFormat: Text.PlainText
-                    }
-                }
-
-                AppProgressBar {
-                    Layout.fillWidth: true
-                    visible: root.importer.state === "downloading"
-                        || root.importer.state === "importing"
-                    value: root.importer.progress
-                }
-            }
-
-            Item { Layout.fillHeight: true }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.space8
-
-                Item { Layout.fillWidth: true }
-
-                AppButton {
-                    text: root.importer.busy ? I18n.t("Cancel download") : I18n.t("Cancel")
-                    tone: root.importer.busy ? "danger" : "ghost"
-                    onClicked: {
-                        if (root.importer.busy)
-                            root.importer.cancel()
-                        else
-                            root.close()
-                    }
-                }
-
-                AppButton {
-                    text: root.canDownload && root.inspectedText.length > 0
-                        ? I18n.t(root.importer.state === "retry" ? "Retry download" : "Download and import")
-                        : I18n.t("Check link")
-                    iconGlyph: root.canDownload && root.inspectedText.length > 0
-                        ? "\uE896"
-                        : "\uE721"
-                    tone: "primary"
-                    enabled: !root.importer.busy && videoUrl.text.trim().length > 0
-                    onClicked: {
-                        if (root.canDownload && root.inspectedText.length > 0)
-                            AppController.downloadInspectedVideo()
-                        else {
-                            root.inspectedText = ""
-                            root.importer.inspect(videoUrl.text.trim())
-                        }
                     }
                 }
             }
         }
     }
+
+    InlineBanner {
+        Layout.fillWidth: true
+        visible: root.hasStatus
+        tone: root.importer.state === "error" || root.importer.state === "retry" ? "danger"
+            : root.importer.state === "ready" ? "success" : "info"
+        busy: root.importer.busy
+        title: root.importer.state === "ready" ? qsTr("Liên kết hợp lệ")
+            : root.importer.state === "retry" ? qsTr("Không tải được video")
+            : ""
+        message: I18n.runtimeStatus(root.importer.status)
+    }
+
+    AppProgressBar {
+        Layout.fillWidth: true
+        visible: root.importer.state === "downloading" || root.importer.state === "importing"
+        value: root.importer.progress
+    }
+
+    footerActions: [
+        StudioButton {
+            text: root.importer.busy ? qsTr("Dừng tải") : qsTr("Hủy")
+            variant: root.importer.busy ? "danger" : "secondary"
+            onClicked: {
+                if (root.importer.busy)
+                    root.importer.cancel()
+                else
+                    root.close()
+            }
+        },
+        StudioButton {
+            text: root.canDownload && root.inspectedText.length > 0
+                ? (root.importer.state === "retry" ? qsTr("Thử tải lại") : qsTr("Tải và nhập"))
+                : qsTr("Kiểm tra")
+            iconName: root.canDownload && root.inspectedText.length > 0 ? "download" : "search"
+            variant: "primary"
+            enabled: !root.importer.busy && videoUrl.text.trim().length > 0
+            onClicked: {
+                if (root.canDownload && root.inspectedText.length > 0)
+                    AppController.downloadInspectedVideo()
+                else {
+                    root.inspectedText = ""
+                    root.importer.inspect(videoUrl.text.trim())
+                }
+            }
+        }
+    ]
 }

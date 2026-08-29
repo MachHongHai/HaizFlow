@@ -25,37 +25,39 @@ Rectangle {
     property bool downloadsEnabled: true
 
     signal selectionChanged(bool selected)
-    signal retryRequested()
+    signal retryRequested
 
     function resetFocusState() {
-        selectionBox.focus = false
-        retryButton.focus = false
-        root.focus = false
+        selectionBox.focus = false;
+        retryButton.focus = false;
+        root.focus = false;
     }
 
     ListView.onPooled: {
-        root.visible = false
-        root.resetFocusState()
+        root.visible = false;
+        root.resetFocusState();
     }
     ListView.onReused: {
-        root.visible = true
-        root.resetFocusState()
+        root.visible = true;
+        root.resetFocusState();
     }
 
-    readonly property bool locked: duplicate
-        || candidateStatus === "downloading"
-        || candidateStatus === "importing"
-        || candidateStatus === "imported"
+    readonly property bool locked: duplicate || candidateStatus === "downloading" || candidateStatus === "importing" || candidateStatus === "imported"
 
     function statusLabel() {
         if (duplicate)
-            return I18n.t("Already in project")
+            return qsTr("Đã có trong dự án");
         switch (candidateStatus) {
-        case "downloading": return I18n.t("Downloading")
-        case "importing": return downloadedMode ? I18n.t("Saving to folder") : I18n.t("Adding to project")
-        case "imported": return downloadedMode ? I18n.t("Saved") : I18n.t("Imported")
-        case "failed": return I18n.t("Failed")
-        default: return I18n.t("Ready")
+        case "downloading":
+            return qsTr("Đang tải");
+        case "importing":
+            return downloadedMode ? qsTr("Đang lưu vào thư mục") : qsTr("Đang thêm vào dự án");
+        case "imported":
+            return downloadedMode ? qsTr("Đã lưu") : qsTr("Đã nhập");
+        case "failed":
+            return qsTr("Lỗi");
+        default:
+            return qsTr("Sẵn sàng");
         }
     }
 
@@ -82,7 +84,7 @@ Rectangle {
             checked: root.selected
             enabled: !root.locked
             text: ""
-            Accessible.name: I18n.t("Select video") + ": " + root.title
+            Accessible.name: qsTr("Chọn video") + ": " + root.title
             onToggled: root.selectionChanged(checked)
         }
 
@@ -142,8 +144,8 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: [root.uploader, root.publishedLabel].filter(function(value) {
-                    return value.length > 0
+                text: [root.uploader, root.publishedLabel].filter(function (value) {
+                    return value.length > 0;
                 }).join(" | ")
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
@@ -176,7 +178,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: I18n.t("Views")
+                text: qsTr("Lượt xem")
                 color: Theme.textSubtle
                 font.pixelSize: Theme.label
                 horizontalAlignment: Text.AlignRight
@@ -201,10 +203,7 @@ Rectangle {
             StatusPill {
                 anchors.centerIn: parent
                 visible: root.candidateStatus !== "failed"
-                status: root.candidateStatus === "imported" ? "done"
-                    : root.candidateStatus === "downloading" || root.candidateStatus === "importing" ? "processing"
-                    : root.duplicate ? "cancelled"
-                    : "pending"
+                status: root.candidateStatus === "imported" ? "done" : root.candidateStatus === "downloading" || root.candidateStatus === "importing" ? "processing" : root.duplicate ? "cancelled" : "pending"
                 label: root.statusLabel()
             }
 
@@ -212,7 +211,7 @@ Rectangle {
                 id: retryButton
                 anchors.fill: parent
                 visible: root.candidateStatus === "failed"
-                text: I18n.t("Retry")
+                text: qsTr("Thử lại")
                 iconGlyph: "\uE72C"
                 tone: "secondary"
                 enabled: root.downloadsEnabled
@@ -227,9 +226,5 @@ Rectangle {
         anchors.bottom: parent.bottom
         height: 1
         color: Theme.divider
-    }
-
-    Behavior on color {
-        ColorAnimation { duration: Theme.motionFast }
     }
 }

@@ -176,6 +176,7 @@ def generate(output_directory: Path, *, strict: bool) -> int:
         "| OmniVoice SDK 0.2.1 | First-run downloaded runtime | Apache-2.0 | https://github.com/k2-fsa/OmniVoice |",
         "| OmniVoice checkpoint, revision c5fdb5ccb189668d56333f77ba2629f4cd7535f4 | First-run downloaded model | CC-BY-NC-4.0 (non-commercial) | https://huggingface.co/k2-fsa/OmniVoice |",
         "| Douyin X-Bogus compatibility helper | Bundled adapted source | Apache-2.0 | https://github.com/jiji262/douyin-downloader |",
+        "| Microsoft Fluent System Icons (curated SVG subset) | Bundled | MIT | https://github.com/microsoft/fluentui-system-icons |",
         "",
         "The release bundles the signed upstream FFmpeg 8.1.2 source archive under `sources/ffmpeg`. The publisher must also satisfy corresponding-source obligations for covered statically linked libraries.",
         "",

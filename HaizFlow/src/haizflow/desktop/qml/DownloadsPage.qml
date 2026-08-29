@@ -5,132 +5,73 @@ import "."
 Item {
     id: root
 
-    // Python's generated qmltypes omit the constant flag; this controller is stable.
     // qmllint disable stale-property-read
     readonly property var downloader: AppController.mediaDownloader
     // qmllint enable stale-property-read
     required property string projectName
     required property string projectRoot
     property int currentPage: 0
-    property var pageHistory: [0]
-    property int pageHistoryIndex: 0
-    readonly property bool canGoBack: pageHistoryIndex > 0
-    readonly property bool canGoForward: pageHistoryIndex < pageHistory.length - 1
+    readonly property bool canGoBack: false
+    readonly property bool canGoForward: false
 
-    function resetNavigation() {
-        currentPage = 0
-        pageHistory = [0]
-        pageHistoryIndex = 0
-    }
-
-    // A Loader may keep this component alive while another download project
-    // becomes current. Nested Back/Forward history belongs to one project and
-    // must never leak into the next one.
+    function resetNavigation() { currentPage = 0 }
+    function navigateBack() {}
+    function navigateForward() {}
     onProjectRootChanged: resetNavigation()
 
-    function navigateTo(page) {
-        if (page === currentPage)
-            return
-
-        let nextHistory = pageHistory.slice(0, pageHistoryIndex + 1)
-        nextHistory.push(page)
-        pageHistory = nextHistory
-        pageHistoryIndex = nextHistory.length - 1
-        currentPage = page
-    }
-
-    function navigateBack() {
-        if (!canGoBack)
-            return
-
-        pageHistoryIndex -= 1
-        currentPage = pageHistory[pageHistoryIndex]
-    }
-
-    function navigateForward() {
-        if (!canGoForward)
-            return
-
-        pageHistoryIndex += 1
-        currentPage = pageHistory[pageHistoryIndex]
-    }
-
-    StackLayout {
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.space20
-        currentIndex: root.currentPage
+        spacing: Theme.space12
 
-        Item {
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: Theme.space16
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.space12
 
-                PageHeader {
-                    Layout.fillWidth: true
-                    title: root.projectName
-                    subtitle: root.projectRoot
+            SectionHeader {
+                Layout.fillWidth: true
+                title: qsTr("Tải xuống")
+            }
 
-                    ProjectHeaderActions {
-                        projectFolderText: I18n.t("Open output folder")
-                        deleteEnabled: !root.downloader.currentProjectHasWork
-                        onProjectFolderRequested: AppController.openDownloadOutputFolder()
-                        onDeleteRequested: AppController.deleteCurrentProject()
-                    }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: I18n.t("Choose a download type")
-                    color: Theme.text
-                    font.pixelSize: Theme.h2
-                    font.weight: Font.DemiBold
-                    textFormat: Text.PlainText
-                }
-
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: width >= 1000 ? 3 : width >= 640 ? 2 : 1
-                    columnSpacing: Theme.space16
-                    rowSpacing: Theme.space16
-
-                    DownloadActionCard {
-                        Layout.fillWidth: true
-                        text: I18n.t("Channel")
-                        subtitle: I18n.t("Browse public channel videos")
-                        onClicked: root.navigateTo(1)
-                    }
-                    DownloadActionCard {
-                        Layout.fillWidth: true
-                        text: I18n.t("Video")
-                        subtitle: I18n.t("Download one video from a link")
-                        onClicked: root.navigateTo(2)
-                    }
-                    DownloadActionCard {
-                        Layout.fillWidth: true
-                        text: I18n.t("Audio")
-                        subtitle: I18n.t("Download or extract audio")
-                        onClicked: root.navigateTo(3)
-                    }
-                }
-
-                DownloadQueueStatus {
-                    Layout.fillWidth: true
-                    downloader: root.downloader
-                }
-
-                Item { Layout.fillHeight: true }
+            ProjectHeaderActions {
+                projectFolderText: qsTr("Mở thư mục đầu ra")
+                deleteEnabled: !root.downloader.currentProjectHasWork
+                onProjectFolderRequested: AppController.openDownloadOutputFolder()
+                onDeleteRequested: AppController.deleteCurrentProject()
             }
         }
 
-        ChannelDownloadPage {
-            downloader: root.downloader
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.space12
+
+            AppTabBar {
+                Layout.preferredWidth: Math.min(520, root.width * 0.45)
+                currentIndex: root.currentPage
+                tabs: [qsTr("Video"), qsTr("Kênh"), qsTr("Âm thanh")]
+                onActivated: function(index) {
+                    root.currentPage = index
+                }
+            }
+            Item { Layout.fillWidth: true }
+            StatusBadge {
+                visible: root.downloader.currentProjectHasWork
+                status: "processing"
+                label: qsTr("Tác vụ nền đang chạy")
+            }
         }
 
-        VideoDownloadPage {
-            downloader: root.downloader
+        StackLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            currentIndex: root.currentPage
+
+            VideoDownloadPage { downloader: root.downloader }
+            ChannelDownloadPage { downloader: root.downloader }
+            AudioDownloadPage { downloader: root.downloader }
         }
 
-        AudioDownloadPage {
+        DownloadQueueStatus {
+            Layout.fillWidth: true
             downloader: root.downloader
         }
     }

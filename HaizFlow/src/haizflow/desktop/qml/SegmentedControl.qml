@@ -12,7 +12,7 @@ Rectangle {
     property string currentValue: ""
     signal activated(string value)
 
-    implicitHeight: 42
+    implicitHeight: UiMetrics.controlHeight
     implicitWidth: 240
     radius: Theme.radiusSmall
     color: Theme.input
@@ -45,7 +45,8 @@ Rectangle {
                 contentItem: Text {
                     text: optionButton.modelData.label
                     color: optionButton.selected ? Theme.text : Theme.textMuted
-                    font.pixelSize: Theme.caption
+                    font.family: Theme.fontFamily
+                    font.pixelSize: TypeScale.label
                     font.weight: optionButton.selected ? Font.DemiBold : Font.Medium
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -55,15 +56,9 @@ Rectangle {
 
                 background: Rectangle {
                     radius: Theme.radiusTiny
-                    color: optionButton.selected ? Theme.surfaceStrong
-                        : optionButton.hovered ? Theme.surfaceMuted
-                        : "transparent"
+                    color: optionButton.selected ? Theme.surfaceStrong : optionButton.hovered ? Theme.surfaceMuted : "transparent"
                     border.width: optionButton.activeFocus ? 2 : 0
                     border.color: Theme.focus
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.motionFast }
-                    }
                 }
 
                 onClicked: root.activated(optionButton.modelData.value)

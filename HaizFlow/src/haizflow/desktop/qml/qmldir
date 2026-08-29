@@ -1,4 +1,10 @@
 module HaizFlow
+LazyDialogLoader 1.0 LazyDialogLoader.qml
 typeinfo haizflow.qmltypes
 singleton Theme 1.0 Theme.qml
 singleton I18n 1.0 I18n.qml
+singleton TypeScale 1.0 TypeScale.qml
+singleton Motion 1.0 Motion.qml
+singleton UiMetrics 1.0 UiMetrics.qml
+singleton UiState 1.0 UiState.qml
+singleton IconCatalog 1.0 IconCatalog.qml

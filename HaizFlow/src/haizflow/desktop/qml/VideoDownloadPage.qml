@@ -12,12 +12,6 @@ Item {
         anchors.fill: parent
         spacing: Theme.space16
 
-        PageHeader {
-            Layout.fillWidth: true
-            title: I18n.t("Download video")
-            subtitle: I18n.t("Paste a public video link, preview it, then choose where to save it")
-        }
-
         ScrollView {
             id: videoScroll
             Layout.fillWidth: true
@@ -29,38 +23,34 @@ Item {
                 width: videoScroll.availableWidth
                 spacing: Theme.space16
 
-                Panel {
+                AppSurface {
                     Layout.fillWidth: true
-                    title: I18n.t("Video link")
-                    subtitle: I18n.t("Supports YouTube, TikTok, Douyin, Bilibili, and other popular public sources")
+                    padding: Theme.space16
 
-                    TextField {
+                    SectionHeader {
+                        Layout.fillWidth: true
+                        title: qsTr("Liên kết video")
+                    }
+
+                    AppTextField {
                         id: videoLink
                         Layout.fillWidth: true
-                        implicitHeight: 44
-                        placeholderText: I18n.t("Paste a video link")
+                        placeholderText: qsTr("Dán liên kết video")
                         selectByMouse: true
-                        activeFocusOnTab: true
-                        Accessible.name: I18n.t("Video link")
-                        background: Rectangle {
-                            radius: Theme.radiusSmall
-                            color: Theme.input
-                            border.width: videoLink.activeFocus ? 2 : 1
-                            border.color: videoLink.activeFocus ? Theme.focus : Theme.outline
-                        }
+                        accessibleName: qsTr("Liên kết video")
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
                         AppButton {
-                            text: I18n.t("Check link")
+                            text: qsTr("Kiểm tra")
                             tone: "secondary"
                             enabled: videoLink.text.trim().length > 0 && !root.downloader.videoPreviewBusy
                             onClicked: root.downloader.inspectVideo(videoLink.text.trim())
                         }
                         AppButton {
                             visible: root.downloader.videoPreviewBusy
-                            text: I18n.t("Cancel")
+                            text: qsTr("Hủy")
                             tone: "danger"
                             onClicked: root.downloader.cancelVideoPreview()
                         }
@@ -139,28 +129,28 @@ Item {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: root.downloader.videoOutputDirectory.length > 0 ? root.downloader.videoOutputDirectory : I18n.t("No video folder selected")
+                            text: root.downloader.videoOutputDirectory.length > 0 ? root.downloader.videoOutputDirectory : qsTr("Chưa chọn thư mục")
                             color: root.downloader.videoOutputDirectory.length > 0 ? Theme.text : Theme.textMuted
                             elide: Text.ElideMiddle
                             textFormat: Text.PlainText
                         }
                         AppButton {
                             visible: !root.downloader.outputManaged
-                            text: I18n.t("Choose folder")
+                            text: qsTr("Chọn thư mục")
+                            compact: true
                             onClicked: root.downloader.chooseVideoOutputDirectory()
                         }
                     }
 
                     AppButton {
                         Layout.fillWidth: true
-                        text: I18n.t("Download video")
+                        text: qsTr("Tải video")
                         tone: "primary"
                         enabled: root.downloader.videoPreviewReady && root.downloader.videoOutputDirectory.length > 0
                         onClicked: root.downloader.downloadVideo(root.downloader.videoPreviewUrl)
                     }
                 }
 
-                DownloadQueueStatus { Layout.fillWidth: true; downloader: root.downloader }
                 Item { Layout.fillHeight: true }
             }
         }

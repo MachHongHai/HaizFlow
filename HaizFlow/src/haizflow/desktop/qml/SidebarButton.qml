@@ -60,14 +60,6 @@ Button {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             color: Theme.interactive
-
-            Behavior on height {
-                NumberAnimation { duration: Theme.motionStandard; easing.type: Easing.OutCubic }
-            }
-        }
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.motionFast }
         }
     }
 

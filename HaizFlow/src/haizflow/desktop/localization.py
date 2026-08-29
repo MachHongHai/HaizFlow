@@ -319,10 +319,15 @@ class QMessageBox(QtMessageBox):
     """Localize messages and route non-interactive alerts into the QML shell."""
 
     _alert_handler = None
+    _question_handler = None
 
     @classmethod
     def set_alert_handler(cls, handler) -> None:
         cls._alert_handler = handler
+
+    @classmethod
+    def set_question_handler(cls, handler) -> None:
+        cls._question_handler = handler
 
     @classmethod
     def _show_alert(cls, severity, parent, title, text, *args):
@@ -348,6 +353,8 @@ class QMessageBox(QtMessageBox):
 
     @staticmethod
     def question(parent, title, text, *args):
+        if parent is None and QMessageBox._question_handler is not None:
+            return QMessageBox._question_handler(_ui_text(title), _ui_text(text), *args)
         return QtMessageBox.question(parent, _ui_text(title), _ui_text(text), *args)
 
 

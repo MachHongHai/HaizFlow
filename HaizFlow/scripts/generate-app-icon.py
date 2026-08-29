@@ -11,7 +11,7 @@ from PIL import Image
 ICON_SIZES = (16, 32, 48, 64, 256)
 # Windows reserves its own taskbar safe area.  Crop the decorative outer card
 # first so the HaizFlow glyph has the same visual weight as peer applications.
-ICON_CARD_CROP_INSET = 96
+ICON_CARD_CROP_INSET = 112
 ICON_CONTENT_SCALE = 1.0
 DEFAULT_SOURCE = (
     Path(__file__).resolve().parents[1]

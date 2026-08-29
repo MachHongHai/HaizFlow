@@ -15,27 +15,17 @@ Rectangle {
     required property string thumbnailSource
     required property string videoSize
 
-    signal activated()
-    signal openRequested()
-    signal projectFolderRequested()
-    signal deleteRequested()
+    signal activated
+    signal openRequested
+    signal projectFolderRequested
+    signal deleteRequested
 
-    readonly property string statusLabel: status === "pending" ? I18n.t("Queued")
-        : status === "empty" ? I18n.t("No source selected")
-        : status === "ready" ? I18n.t("Ready")
-        : status === "manual_ready" ? I18n.t("Ready for next stage")
-        : status === "processing" ? I18n.t("Processing")
-        : status === "done" ? I18n.t("Complete")
-        : status === "failed" ? I18n.t("Failed")
-        : status === "cancelled" ? I18n.t("Cancelled")
-        : status === "paused" ? I18n.t("Paused")
-        : status === "awaiting_review" ? I18n.t("Review needed")
-        : I18n.taskStateLabel(status)
-    readonly property color statusColor: status === "done" ? Theme.success
-        : status === "failed" || status === "cancelled" ? Theme.danger
-        : status === "processing" ? Theme.warning
-        : status === "awaiting_review" || status === "manual_ready" ? Theme.blue
-        : Theme.textMuted
+    readonly property string statusLabel: status === "pending" ? qsTr("Đang chờ") : status === "empty" ? qsTr("Chưa chọn video nguồn") : status === "ready" || status === "manual_ready" ? qsTr("Sẵn sàng") : status === "processing" ? qsTr("Đang xử lý") : status === "done" ? qsTr("Hoàn tất") : status === "failed" ? qsTr("Lỗi") : status === "cancelled" ? qsTr("Đã hủy") : status === "paused" ? qsTr("Đã tạm dừng") : status === "awaiting_review" ? qsTr("Cần duyệt") : I18n.taskStateLabel(status)
+    readonly property string typeLabel: projectType === "manual" ? qsTr("Thủ công")
+        : projectType === "batch" ? qsTr("Hàng loạt")
+        : projectType === "download" ? qsTr("Tải xuống")
+        : projectType === "publish" ? qsTr("Đăng mạng xã hội") : qsTr("Tự động")
+    readonly property color statusColor: status === "done" ? Theme.success : status === "failed" || status === "cancelled" ? Theme.danger : status === "processing" ? Theme.warning : status === "awaiting_review" || status === "manual_ready" ? Theme.interactive : Theme.textMuted
 
     height: Math.round(width * 0.56 + 64)
     radius: Theme.radius
@@ -48,8 +38,8 @@ Rectangle {
     scale: tapHandler.pressed ? 0.99 : 1
 
     function resetFocusState() {
-        root.focus = false
-        projectContextMenu.close()
+        root.focus = false;
+        projectContextMenu.close();
     }
 
     Keys.onReturnPressed: root.activated()
@@ -65,18 +55,18 @@ Rectangle {
 
         acceptedButtons: Qt.LeftButton
         onTapped: {
-            root.activated()
+            root.activated();
         }
     }
 
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: function(eventPoint) {
-            root.forceActiveFocus()
-            const position = root.mapToItem(Overlay.overlay, eventPoint.position.x, eventPoint.position.y)
-            projectContextMenu.x = Math.round(position.x)
-            projectContextMenu.y = Math.round(position.y)
-            projectContextMenu.open()
+        onTapped: function (eventPoint) {
+            root.forceActiveFocus();
+            const position = root.mapToItem(Overlay.overlay, eventPoint.position.x, eventPoint.position.y);
+            projectContextMenu.x = Math.round(position.x);
+            projectContextMenu.y = Math.round(position.y);
+            projectContextMenu.open();
         }
     }
 
@@ -96,13 +86,13 @@ Rectangle {
         }
 
         AppMenuItem {
-            text: I18n.t("Open project")
+            text: qsTr("Mở dự án")
             iconGlyph: "\uE8A7"
             onTriggered: root.openRequested()
         }
 
         AppMenuItem {
-            text: I18n.t("Open project folder")
+            text: qsTr("Mở thư mục dự án")
             iconGlyph: "\uE8B7"
             onTriggered: root.projectFolderRequested()
         }
@@ -110,7 +100,7 @@ Rectangle {
         MenuSeparator {}
 
         AppMenuItem {
-            text: I18n.t("Delete project")
+            text: qsTr("Xóa dự án")
             iconGlyph: "\uE74D"
             tone: "danger"
             onTriggered: root.deleteRequested()
@@ -137,13 +127,11 @@ Rectangle {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 visible: status === Image.Ready
-
             }
 
             ThumbnailFallback {
                 anchors.fill: parent
-                visible: root.projectType !== "download" && root.projectType !== "publish"
-                    && (root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error)
+                visible: root.projectType !== "download" && root.projectType !== "publish" && (root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error)
             }
 
             AppIcon {
@@ -160,7 +148,7 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.margins: Theme.space8
-                visible: root.projectType === "batch" || root.projectType === "publish"
+                visible: true
                 implicitWidth: batchLabel.implicitWidth + 16
                 implicitHeight: 24
                 radius: Theme.radiusTiny
@@ -169,9 +157,7 @@ Rectangle {
                 Text {
                     id: batchLabel
                     anchors.centerIn: parent
-                    text: root.projectType === "publish"
-                        ? qsTr("%1 %2").arg(root.videoCount).arg(I18n.t("posts"))
-                        : qsTr("%1 %2").arg(root.videoCount).arg(I18n.t("videos"))
+                    text: root.typeLabel
                     color: Theme.text
                     font.pixelSize: Theme.label
                     font.weight: Font.DemiBold
@@ -183,8 +169,7 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.right: parent.right
                 anchors.margins: Theme.space8
-                visible: (root.projectType === "single" || root.projectType === "manual")
-                    && root.videoSize.length > 0
+                visible: (root.projectType === "single" || root.projectType === "manual") && root.videoSize.length > 0
                 implicitWidth: sizeLabel.implicitWidth + Theme.space12
                 implicitHeight: 26
                 radius: Theme.radiusSmall
@@ -213,10 +198,6 @@ Rectangle {
                     width: parent.width * Math.max(0, Math.min(100, root.progress)) / 100
                     height: parent.height
                     color: root.progress >= 100 ? Theme.success : Theme.interactive
-
-                    Behavior on width {
-                        NumberAnimation { duration: Theme.motionStandard; easing.type: Easing.OutCubic }
-                    }
                 }
             }
         }
@@ -254,12 +235,10 @@ Rectangle {
                 Text {
                     Layout.fillWidth: true
                     text: root.projectType === "batch"
-                        ? qsTr("%1 - %2").arg(root.videoCount).arg(I18n.t("videos"))
-                        : root.projectType === "download"
-                            ? I18n.t("Download workspace")
+                        ? qsTr("%1 - %2").arg(root.videoCount).arg(qsTr("video"))
                         : root.projectType === "publish"
-                            ? qsTr("%1 - %2").arg(root.videoCount).arg(I18n.t("posts"))
-                        : root.statusLabel
+                            ? qsTr("%1 - %2").arg(root.videoCount).arg(qsTr("bài đăng"))
+                            : root.statusLabel
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     textFormat: Text.PlainText
@@ -289,16 +268,16 @@ Rectangle {
     transform: Translate {
         y: hoverHandler.hovered ? -2 : 0
         Behavior on y {
-            NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic }
+            NumberAnimation {
+                duration: Theme.motionFast
+                easing.type: Easing.OutCubic
+            }
         }
     }
-    Behavior on color {
-        ColorAnimation { duration: Theme.motionFast }
-    }
-    Behavior on border.color {
-        ColorAnimation { duration: Theme.motionFast }
-    }
     Behavior on scale {
-        NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic }
+        NumberAnimation {
+            duration: Theme.motionFast
+            easing.type: Easing.OutCubic
+        }
     }
 }

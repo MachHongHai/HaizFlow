@@ -10,22 +10,19 @@ Button {
     property string iconGlyph: ""
     property string toolTipText: ""
 
-    implicitHeight: compact ? 34 : 42
-    implicitWidth: Math.max(compact ? 72 : 92, buttonContent.implicitWidth + leftPadding + rightPadding)
-    leftPadding: compact ? 12 : 16
-    rightPadding: compact ? 12 : 16
-    font.pixelSize: compact ? Theme.caption : Theme.body
+    implicitHeight: compact ? UiMetrics.compactControlHeight : tone === "primary" ? UiMetrics.primaryControlHeight : UiMetrics.controlHeight
+    implicitWidth: Math.max(compact ? 64 : 80, buttonContent.implicitWidth + leftPadding + rightPadding)
+    leftPadding: compact ? 10 : 12
+    rightPadding: compact ? 10 : 12
+    font.family: Theme.fontFamily
+    font.pixelSize: TypeScale.control
     font.weight: Font.DemiBold
     focusPolicy: Qt.TabFocus
     Accessible.name: text
     Accessible.description: toolTipText
     scale: down ? 0.98 : 1
 
-    readonly property color foregroundColor: !enabled ? Theme.textDisabled
-        : tone === "primary" ? Theme.textOnAccent
-        : tone === "violet" ? Theme.textOnAccent
-        : tone === "danger" ? Theme.danger
-        : Theme.text
+    readonly property color foregroundColor: !enabled ? Theme.textDisabled : tone === "primary" ? Theme.textOnAccent : tone === "danger" ? Theme.danger : Theme.text
 
     contentItem: Item {
         implicitWidth: buttonContent.implicitWidth
@@ -60,29 +57,16 @@ Button {
     background: Rectangle {
         id: buttonBackground
         radius: Theme.radiusSmall
-        color: !root.enabled ? Theme.surfaceMuted
-            : root.tone === "primary" ? (root.down ? Theme.interactivePressed : root.hovered ? Theme.interactiveHover : Theme.interactive)
-            : root.tone === "violet" ? (root.down ? Theme.violetOutline : root.hovered ? Theme.violet : Theme.violet)
-            : root.tone === "ghost" ? (root.down ? Theme.surfaceStrong : root.hovered ? Theme.surfaceMuted : "transparent")
-            : root.tone === "danger" ? (root.down || root.hovered ? Theme.dangerMuted : "transparent")
-            : root.down ? Theme.surfaceStrong
-            : root.hovered ? Theme.surfaceMuted
-            : Theme.surfaceElevated
-        border.width: root.activeFocus ? 2 : root.tone === "primary" || root.tone === "violet" ? 0 : 1
-        border.color: root.activeFocus ? Theme.focus
-            : root.tone === "danger" ? Theme.danger
-            : Theme.outline
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.motionFast }
-        }
-        Behavior on border.color {
-            ColorAnimation { duration: Theme.motionFast }
-        }
+        color: !root.enabled ? Theme.surfaceMuted : root.tone === "primary" ? (root.down ? Theme.interactivePressed : root.hovered ? Theme.interactiveHover : Theme.interactive) : root.tone === "ghost" ? (root.down ? Theme.surfaceStrong : root.hovered ? Theme.surfaceMuted : "transparent") : root.tone === "danger" ? (root.down || root.hovered ? Theme.dangerMuted : "transparent") : root.down ? Theme.surfaceStrong : root.hovered ? Theme.surfaceMuted : Theme.surfaceElevated
+        border.width: root.activeFocus ? 2 : root.tone === "primary" ? 0 : 1
+        border.color: root.activeFocus ? Theme.focus : root.tone === "danger" ? Theme.danger : Theme.outline
     }
 
     Behavior on scale {
-        NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic }
+        NumberAnimation {
+            duration: Theme.motionFast
+            easing.type: Easing.OutCubic
+        }
     }
 
     ToolTip.visible: hovered && toolTipText.length > 0

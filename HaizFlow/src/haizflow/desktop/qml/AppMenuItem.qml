@@ -12,7 +12,7 @@ MenuItem {
 
     visible: !collapsed
     implicitWidth: collapsed ? 0 : menuContent.implicitWidth + leftPadding + rightPadding
-    implicitHeight: collapsed ? 0 : 40
+    implicitHeight: collapsed ? 0 : 34
     leftPadding: 11
     rightPadding: 11
     activeFocusOnTab: true
@@ -31,9 +31,7 @@ MenuItem {
             Layout.preferredWidth: visible ? Theme.icon : 0
             Layout.preferredHeight: 22
             glyph: root.iconGlyph
-            iconColor: !root.enabled ? Theme.textDisabled
-                : root.tone === "danger" ? Theme.danger
-                : Theme.textMuted
+            iconColor: !root.enabled ? Theme.textDisabled : root.tone === "danger" ? Theme.danger : Theme.textMuted
             iconSize: Theme.iconSmall
         }
 
@@ -43,9 +41,7 @@ MenuItem {
             Layout.fillWidth: true
             Layout.preferredHeight: 22
             text: root.text
-            color: !root.enabled ? Theme.textDisabled
-                : root.tone === "danger" ? Theme.danger
-                : Theme.text
+            color: !root.enabled ? Theme.textDisabled : root.tone === "danger" ? Theme.danger : Theme.text
             font.pixelSize: Theme.caption
             font.weight: Font.Medium
             verticalAlignment: Text.AlignVCenter
@@ -57,9 +53,5 @@ MenuItem {
     background: Rectangle {
         radius: Theme.radiusSmall
         color: root.highlighted ? (root.tone === "danger" ? Theme.dangerMuted : Theme.surfaceMuted) : "transparent"
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.motionFast }
-        }
     }
 }

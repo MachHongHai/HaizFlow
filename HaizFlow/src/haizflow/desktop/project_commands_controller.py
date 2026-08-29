@@ -1036,3 +1036,95 @@ class ProjectCommandsController:
         host.batchChanged.emit()
         host.refreshVideos()
         host.videoDeleted.emit()
+
+    def delete_project_summary(self, project: dict) -> bool:
+        """Delete the exact project represented by a browser row.
+
+        Context-menu deletion must not first open the row: opening updates its
+        activity timestamp and can re-sort the proxy model before the command
+        finishes. Resolve the project once, then operate on its stable key.
+        """
+        host = self._host
+        project = dict(project or {})
+        project_key = str(project.get("key") or "")
+        project_name = str(project.get("project_name") or "")
+        project_type = str(project.get("project_type") or "single")
+        if not project_key:
+            return False
+        if project_type == "download" and host._media_downloader.has_project_work(project_key):
+            host.appAlertRequested.emit(
+                "Không thể xóa dự án",
+                "Hãy hủy hoặc chờ các tác vụ tải xuống hoàn tất.",
+                "info",
+            )
+            return False
+        if project_type == "publish" and host._tiktok_publisher.has_project_work(project_key):
+            host.appAlertRequested.emit(
+                "Không thể xóa dự án",
+                "Hãy chờ tác vụ đăng hoặc nhập video hoàn tất.",
+                "info",
+            )
+            return False
+
+        project_videos = [
+            video
+            for video in video_store.list_videos()
+            if video.project_directory and host._video_project_key(video) == project_key
+        ]
+        suffix = "" if not project_videos else f"\n\nDự án có {len(project_videos)} video và các tệp đã tạo."
+        if (
+            QMessageBox.question(
+                None,
+                "Xóa dự án",
+                f"Xóa dự án '{project_name}'?{suffix}",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return False
+        try:
+            project_store.validate_project_deletion_by_key(project_key)
+        except Exception as exc:
+            host.appAlertRequested.emit("Không thể xóa dự án", str(exc), "error")
+            return False
+        if not host._channel_importer.cancel_project(project_key):
+            host.appAlertRequested.emit(
+                "Chưa thể xóa dự án",
+                "Tác vụ tải kênh đang dừng. Hãy thử lại sau ít giây.",
+                "info",
+            )
+            return False
+        for session_id, target in tuple(host._channel_import_targets.items()):
+            if target.get("project_key") == project_key:
+                host._channel_import_targets.pop(session_id, None)
+        try:
+            for video in project_videos:
+                host._processing_queue.discard(video.video_id)
+                if video.status == "processing" or host._processing_queue.active_video_id == video.video_id:
+                    cancel_video(video.video_id)
+                    video_store.update_video(video.video_id, status="cancelled", error=None, step="cancelled")
+                host._deleted_video_ids.add(video.video_id)
+                video_store.delete_video(video.video_id)
+            project_store.delete_project_by_key(project_key)
+        except Exception as exc:
+            host.appAlertRequested.emit("Xóa dự án thất bại", str(exc), "error")
+            return False
+
+        if host._selected_project_key == project_key:
+            host._selected_video_id = None
+            host._settings_owner_video_id = None
+            host._selected_project_key = ""
+            if project_type == "download":
+                host._media_downloader.attach_project("", "")
+            elif project_type == "publish":
+                host._tiktok_publisher.detach_project()
+            host._batch_video_ids = []
+            host._clear_logs()
+            host.videoPath = ""
+            host._refresh_batch_model()
+            host.selectedVideoChanged.emit()
+            host.projectSetupChanged.emit()
+            host.logsChanged.emit()
+            host.batchChanged.emit()
+        host.refreshVideos()
+        host.videoDeleted.emit()
+        return True

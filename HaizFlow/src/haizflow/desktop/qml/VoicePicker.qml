@@ -60,7 +60,7 @@ Control {
 
     function displayLabel() {
         if (currentValue === "omnivoice:clone")
-            return I18n.t("Cloned voice")
+            return qsTr("Giọng đã nhân bản")
         for (let i = 0; i < model.length; ++i) {
             if (String(model[i].voice || "") === currentValue)
                 return String(model[i].label || currentValue)
@@ -136,7 +136,7 @@ Control {
 
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.t("Voice")
+                    text: qsTr("Giọng đọc")
                     color: Theme.text
                     font.pixelSize: Theme.body
                     font.weight: Font.DemiBold

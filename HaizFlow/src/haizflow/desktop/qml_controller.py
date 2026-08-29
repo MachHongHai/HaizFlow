@@ -5,7 +5,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, Property, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QEvent, QEventLoop, QObject, Property, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
 
@@ -23,8 +23,10 @@ from haizflow.desktop.media import (
 )
 from haizflow.desktop.media_probe import VideoDimensionProbe
 from haizflow.desktop.models import (
+    ActivityEventModel,
     DownloadProjectSourceListModel,
     ProjectGridModel,
+    ProjectBrowserProxyModel,
     ProjectListModel,
     SocialProjectSourceListModel,
     SocialPublishListModel,
@@ -49,6 +51,7 @@ from haizflow.desktop.presenters import (
     format_duration,
     format_memory_size,
     language_label,
+    stage_label,
     voice_options_for_language,
 )
 from haizflow.desktop.url_import import VideoUrlImportCoordinator
@@ -132,13 +135,16 @@ class HaizFlowController(QObject):
     # invalidate every Zernio binding on the page.
     tiktokPublishChanged = Signal()
     appAlertRequested = Signal(str, str, str)
+    appConfirmationRequested = Signal(str, str)
     editorPreviewChanged = Signal()
 
     def __init__(self):
         super().__init__()
         type(self)._qml_instance = self
         self.videos = VideoListModel()
+        self.activity_events = ActivityEventModel()
         self.projects = ProjectListModel()
+        self.project_browser = ProjectBrowserProxyModel(self.projects)
         self.single_projects = ProjectGridModel()
         self.manual_projects = ProjectGridModel()
         self.batch_projects = ProjectGridModel()
@@ -188,6 +194,8 @@ class HaizFlowController(QObject):
         self._initial_model_warmup_done = threading.Event()
         self._runtime_probe_error = ""
         self._deleted_video_ids = set()
+        self._confirmation_loop = None
+        self._confirmation_accepted = False
         self._shutdown_started = False
         self._close_confirmed = False
         self._warmup_thread: threading.Thread | None = None
@@ -241,6 +249,7 @@ class HaizFlowController(QObject):
         self._settings_processing_device = settings["processing_device"]
         self._processing_device_origin = settings["processing_device_origin"]
         _set_ui_language(self._settings_language)
+        self.activity_events.set_language(self._settings_language)
         # Keep the first frame independent from Torch/CUDA initialization.  The
         # warm-up worker replaces this cheap snapshot with a full probe before
         # it selects or loads any model runtime.
@@ -495,6 +504,14 @@ class HaizFlowController(QObject):
     @Property(QObject, constant=True)
     def projectModel(self):
         return self.projects
+
+    @Property(QObject, constant=True)
+    def projectBrowserModel(self):
+        return self.project_browser
+
+    @Property(QObject, constant=True)
+    def activityEventModel(self):
+        return self.activity_events
 
     @Property(QObject, constant=True)
     def singleProjectModel(self):
@@ -791,7 +808,7 @@ class HaizFlowController(QObject):
         videos = self._batch_catalog_videos()
         languages = {video.target_language for video in videos if video}
         if len(languages) > 1:
-            return "Mixed settings"
+            return "Cài đặt khác nhau" if self._settings_language == "vi" else "Mixed settings"
         return self._language_label(next(iter(languages))) if languages else self._language_label(self._target_language)
 
     @Property(str, notify=videoPathChanged)
@@ -980,6 +997,13 @@ class HaizFlowController(QObject):
     @Slot()
     def enableInAppAlerts(self) -> None:
         QMessageBox.set_alert_handler(self._show_app_alert)
+        QMessageBox.set_question_handler(self._show_app_question)
+
+    @Slot(bool)
+    def respondToAppConfirmation(self, accepted: bool) -> None:
+        self._confirmation_accepted = bool(accepted)
+        if self._confirmation_loop is not None and self._confirmation_loop.isRunning():
+            self._confirmation_loop.quit()
 
     @Slot(str, str, str)
     def showAppAlert(self, title: str, message: str, severity: str = "information") -> None:
@@ -1521,26 +1545,8 @@ class HaizFlowController(QObject):
     def selectedStageLabel(self):
         video = self._selected_video()
         if not video:
-            return "Ready"
-        labels = {
-            "starting": "Preparing project",
-            "extracting_audio": "Extracting audio",
-            "separating_audio": "Separating vocals",
-            "transcribing": "Transcribing speech",
-            "translating": "Translating",
-            "review_translation": "Waiting for translation review",
-            "creating_subtitle": "Creating subtitles",
-            "creating_voice": "Generating voice",
-            "building_audio_timeline": "Mixing audio",
-            "rendering": "Rendering video",
-            "paused": "Paused",
-            "done": "Export complete",
-            "manual_translation": "Translation ready",
-            "manual_subtitles": "Subtitles ready",
-            "manual_voice": "Voice ready",
-            "manual_timeline": "Audio mix ready",
-        }
-        return labels.get(video.step, video.step_detail or video.status)
+            return "Sẵn sàng" if self._settings_language == "vi" else "Ready"
+        return stage_label(video.step, self._settings_language, video.step_detail or video.status)
 
     @Property(str, notify=selectedVideoChanged)
     def manualCompletedStage(self):
@@ -2393,9 +2399,38 @@ class HaizFlowController(QObject):
             return False
         return self._select_project_summary(project)
 
+    @Slot(int, result=bool)
+    def selectProjectFromBrowser(self, row: int):
+        project = self.project_browser.project_at(row)
+        if not project:
+            return False
+        return self._select_project_summary(project)
+
+    @Slot(int, result=bool)
+    def deleteProjectFromBrowser(self, row: int) -> bool:
+        project = self.project_browser.project_at(row)
+        if not project:
+            return False
+        return HaizFlowController._project_commands_for(self).delete_project_summary(project)
+
+    @Slot(int, str, result=bool)
+    def deleteProjectInMode(self, row: int, project_type: str) -> bool:
+        model = self._project_model_for_type(project_type)
+        project = model.project_at(row)
+        if not project:
+            return False
+        return HaizFlowController._project_commands_for(self).delete_project_summary(project)
+
     @Slot(int, str, result=bool)
     def selectProjectInMode(self, row: int, project_type: str):
-        model = (
+        model = self._project_model_for_type(project_type)
+        project = model.project_at(row)
+        if not project:
+            return False
+        return self._select_project_summary(project)
+
+    def _project_model_for_type(self, project_type: str):
+        return (
             self.batch_projects
             if project_type == "batch"
             else self.manual_projects
@@ -2406,10 +2441,6 @@ class HaizFlowController(QObject):
             if project_type == "publish"
             else self.single_projects
         )
-        project = model.project_at(row)
-        if not project:
-            return False
-        return self._select_project_summary(project)
 
     def _select_project_summary(self, project) -> bool:
         if not self._tiktok_publisher.can_switch_project(project["key"]):
@@ -2924,6 +2955,20 @@ class HaizFlowController(QObject):
         if level not in {"information", "warning", "critical"}:
             level = "information"
         self.appAlertRequested.emit(str(title or "HaizFlow"), str(message or ""), level)
+
+    def _show_app_question(self, title: str, message: str, *_args):
+        # QMessageBox callers are synchronous. A local event loop keeps their
+        # existing control flow while the visible confirmation is rendered by
+        # QML instead of a Windows system dialog.
+        if self._confirmation_loop is not None:
+            return QMessageBox.StandardButton.Cancel
+        self._confirmation_accepted = False
+        loop = QEventLoop(self)
+        self._confirmation_loop = loop
+        self.appConfirmationRequested.emit(str(title or "HaizFlow"), str(message or ""))
+        loop.exec()
+        self._confirmation_loop = None
+        return QMessageBox.StandardButton.Yes if self._confirmation_accepted else QMessageBox.StandardButton.Cancel
 
     def _voice_options_for_language(self, language_code, provider="omnivoice"):
         try:

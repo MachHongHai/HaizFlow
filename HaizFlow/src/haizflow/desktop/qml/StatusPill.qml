@@ -10,12 +10,12 @@ Rectangle {
     readonly property color statusColor: status === "done" ? Theme.success
         : status === "failed" || status === "cancelled" ? Theme.danger
         : status === "processing" || status === "active" ? Theme.warning
-        : status === "awaiting_review" ? Theme.blue
+        : status === "awaiting_review" ? Theme.interactive
         : Theme.textMuted
     readonly property color statusBackground: status === "done" ? Theme.successMuted
         : status === "failed" || status === "cancelled" ? Theme.dangerMuted
         : status === "processing" || status === "active" ? Theme.warningMuted
-        : status === "awaiting_review" ? Theme.blueMuted
+        : status === "awaiting_review" ? Theme.interactiveMuted
         : Theme.surfaceMuted
 
     implicitWidth: content.implicitWidth + 20

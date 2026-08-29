@@ -218,15 +218,19 @@ class ProcessingLifecycleController:
         host = self._host
         host._log_buffer.replace(text)
         host._logs = host._log_buffer.text
+        host.activity_events.replace_text(text)
 
     def clear_logs(self) -> None:
         host = self._host
         host._log_buffer.clear()
         host._logs = ""
+        host.activity_events.clear()
 
     def append_logs(self, lines) -> bool:
         host = self._host
-        if not host._log_buffer.append(lines):
+        normalized_lines = list(lines)
+        if not host._log_buffer.append(normalized_lines):
             return False
+        host.activity_events.append_lines(normalized_lines)
         host._logs = host._log_buffer.text
         return True

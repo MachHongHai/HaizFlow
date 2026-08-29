@@ -5,7 +5,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-Panel {
+InspectorPanel {
     id: root
 
     property int currentStage: 0
@@ -29,16 +29,13 @@ Panel {
         && selectedSubtitleIndex < subtitleSegments.length
         ? subtitleSegments[selectedSubtitleIndex] : null
     readonly property var toolTitles: [
-        I18n.t("Translate"), I18n.t("Visuals"), I18n.t("Voice"), I18n.t("Audio")
+        qsTr("Dịch"), qsTr("Hình ảnh"), qsTr("Giọng đọc"), qsTr("Âm thanh")
     ]
 
     signal subtitleSelected(int index)
     signal subtitleTextCommitted(int index, string text)
 
     title: toolTitles[currentStage]
-    tone: "violet"
-    contentPadding: Theme.space8
-    contentSpacing: Theme.space8
 
     function scheduleSave() {
         if (!AppController.hasSelectedVideo || AppController.isSelectedVideoQueued)
@@ -56,8 +53,8 @@ Panel {
 
     function runLabel() {
         if (toolId === "translation")
-            return toolComplete ? I18n.t("Translate again") : I18n.t("Translate video")
-        return toolComplete ? I18n.t("Regenerate voice") : I18n.t("Generate voice")
+            return toolComplete ? qsTr("Dịch lại") : qsTr("Dịch video")
+        return toolComplete ? qsTr("Tạo lại giọng đọc") : qsTr("Tạo giọng đọc")
     }
 
     Flickable {
@@ -80,8 +77,8 @@ Panel {
 
                 SettingLabel {
                     Layout.fillWidth: true
-                    text: I18n.t("Speech recognition")
-                    helpText: I18n.t("Turbo provides higher GPU quality. Small uses less memory and also supports CPU processing.")
+                    text: qsTr("Nhận dạng giọng nói")
+                    helpText: qsTr("Turbo cho chất lượng cao hơn trên GPU. Small dùng ít bộ nhớ hơn và hỗ trợ cả CPU.")
                 }
                 AppComboBox {
                     Layout.fillWidth: true
@@ -98,8 +95,8 @@ Panel {
 
                 SettingLabel {
                     Layout.fillWidth: true
-                    text: I18n.t("Translate to")
-                    helpText: I18n.t("The selected language is used for both translated subtitles and generated speech.")
+                    text: qsTr("Dịch sang")
+                    helpText: qsTr("Ngôn ngữ đã chọn được dùng cho cả phụ đề dịch và giọng đọc.")
                 }
                 SearchableLanguageCombo {
                     Layout.fillWidth: true
@@ -114,16 +111,16 @@ Panel {
 
                 SettingLabel {
                     Layout.fillWidth: true
-                    text: I18n.t("Recognition audio")
-                    helpText: I18n.t("Separate vocals before recognition when speech competes with music or effects.")
+                    text: qsTr("Âm thanh nhận diện")
+                    helpText: qsTr("Tách giọng trước khi nhận diện nếu lời nói bị lẫn với nhạc hoặc hiệu ứng.")
                 }
                 SegmentedControl {
                     Layout.fillWidth: true
                     enabled: root.editable
                     currentValue: AppController.enableAudioSeparation ? "separated" : "original"
                     options: [
-                        { "label": I18n.t("Original"), "value": "original" },
-                        { "label": I18n.t("Separate vocals"), "value": "separated" }
+                        { "label": qsTr("Nguyên bản"), "value": "original" },
+                        { "label": qsTr("Tách giọng"), "value": "separated" }
                     ]
                     onActivated: function(value) {
                         AppController.enableAudioSeparation = value === "separated"
@@ -137,16 +134,16 @@ Panel {
 
                 SettingLabel {
                     Layout.fillWidth: true
-                    text: I18n.t("Original subtitles")
-                    helpText: I18n.t("Cover burned-in source subtitles or leave the source image unchanged.")
+                    text: qsTr("Phụ đề gốc")
+                    helpText: qsTr("Che phụ đề có sẵn hoặc giữ nguyên hình ảnh nguồn.")
                 }
                 SegmentedControl {
                     Layout.fillWidth: true
                     enabled: root.editable && root.subtitleSegments.length > 0
                     currentValue: AppController.removeOriginalSubtitles ? "remove" : "keep"
                     options: [
-                        { "label": I18n.t("Cover"), "value": "remove" },
-                        { "label": I18n.t("Keep"), "value": "keep" }
+                        { "label": qsTr("Che"), "value": "remove" },
+                        { "label": qsTr("Giữ nguyên"), "value": "keep" }
                     ]
                     onActivated: function(value) {
                         AppController.removeOriginalSubtitles = value === "remove"
@@ -159,8 +156,8 @@ Panel {
                     enabled: root.editable && root.subtitleSegments.length > 0
                     currentValue: AppController.originalSubtitleRemovalMode
                     options: [
-                        { "label": I18n.t("Blur"), "value": "blur" },
-                        { "label": I18n.t("Nearby patch"), "value": "patch" }
+                        { "label": qsTr("Làm mờ"), "value": "blur" },
+                        { "label": qsTr("Vá nền lân cận"), "value": "patch" }
                     ]
                     onActivated: function(value) {
                         AppController.originalSubtitleRemovalMode = value
@@ -170,17 +167,17 @@ Panel {
 
                 AppButton {
                     Layout.fillWidth: true
-                    text: I18n.t("Subtitle size and position")
+                    text: qsTr("Kích thước và vị trí phụ đề")
                     iconGlyph: "\uE70F"
                     tone: "secondary"
                     compact: true
                     enabled: root.editable && root.subtitleSegments.length > 0
-                    onClicked: subtitlePreviewDialog.openWithLayout(
+                    onClicked: subtitlePreviewDialogLoader.invoke("openWithLayout", [
                         AppController.subtitleFontSize,
                         AppController.subtitlePositionXPercent,
                         AppController.subtitlePositionYPercent,
                         AppController.subtitleBoxWidthPercent,
-                        AppController.subtitleBoxHeightPercent)
+                        AppController.subtitleBoxHeightPercent])
                 }
 
                 Rectangle {
@@ -198,20 +195,20 @@ Panel {
                         Layout.fillWidth: true
                         text: root.selectedSubtitle
                             ? qsTr("%1/%2").arg(root.selectedSubtitleIndex + 1).arg(root.subtitleSegments.length)
-                            : I18n.t("Subtitle")
+                            : qsTr("Phụ đề")
                         color: Theme.textMuted
                         font.pixelSize: Theme.label
                         textFormat: Text.PlainText
                     }
                     IconButton {
                         glyph: "\uE72B"
-                        toolTipText: I18n.t("Previous subtitle")
+                        toolTipText: qsTr("Phụ đề trước")
                         enabled: root.selectedSubtitleIndex > 0
                         onClicked: root.subtitleSelected(root.selectedSubtitleIndex - 1)
                     }
                     IconButton {
                         glyph: "\uE72A"
-                        toolTipText: I18n.t("Next subtitle")
+                        toolTipText: qsTr("Phụ đề sau")
                         enabled: root.selectedSubtitleIndex >= 0
                             && root.selectedSubtitleIndex < root.subtitleSegments.length - 1
                         onClicked: root.subtitleSelected(root.selectedSubtitleIndex + 1)
@@ -224,7 +221,7 @@ Panel {
                     visible: root.subtitleSegments.length > 0
                     enabled: root.editable && root.selectedSubtitle !== null
                     text: root.selectedSubtitle ? String(root.selectedSubtitle.text || "") : ""
-                    placeholderText: I18n.t("Select a subtitle on the timeline")
+                    placeholderText: qsTr("Chọn một phụ đề trên timeline")
                     color: Theme.text
                     font.pixelSize: Theme.caption
                     wrapMode: TextEdit.Wrap
@@ -243,18 +240,18 @@ Panel {
 
                 SettingLabel {
                     Layout.fillWidth: true
-                    text: I18n.t("Watermark")
-                    helpText: I18n.t("A small text watermark is included in preview and export.")
+                    text: qsTr("Watermark")
+                    helpText: qsTr("Watermark chữ nhỏ được hiển thị trong bản xem trước và video xuất.")
                 }
                 AppButton {
                     Layout.fillWidth: true
                     text: AppController.watermarkText.length > 0
-                        ? AppController.watermarkText : I18n.t("Set watermark")
+                        ? AppController.watermarkText : qsTr("Đặt watermark")
                     iconGlyph: "\uE70F"
                     tone: "secondary"
                     compact: true
                     enabled: root.editable
-                    onClicked: watermarkDialog.openWithText(AppController.watermarkText)
+                    onClicked: watermarkDialogLoader.invoke("openWithText", [AppController.watermarkText])
                 }
             }
 
@@ -263,8 +260,8 @@ Panel {
 
                 SettingLabel {
                     Layout.fillWidth: true
-                    text: I18n.t("TTS engine")
-                    helpText: I18n.t("OmniVoice runs locally. Edge TTS requires a stable internet connection.")
+                    text: qsTr("Công cụ giọng đọc")
+                    helpText: qsTr("OmniVoice chạy cục bộ. Edge TTS cần kết nối Internet ổn định.")
                 }
                 AppComboBox {
                     Layout.fillWidth: true
@@ -281,8 +278,8 @@ Panel {
 
                 SettingLabel {
                     Layout.fillWidth: true
-                    text: I18n.t("Voice")
-                    helpText: I18n.t("Choose a preset narrator or an authorised cloned voice sample.")
+                    text: qsTr("Giọng đọc")
+                    helpText: qsTr("Chọn giọng có sẵn hoặc mẫu giọng nhân bản mà bạn được phép sử dụng.")
                 }
                 VoicePicker {
                     Layout.fillWidth: true
@@ -299,17 +296,17 @@ Panel {
                     Layout.fillWidth: true
                     visible: AppController.ttsProvider === "omnivoice"
                     text: AppController.ttsVoice === "omnivoice:clone"
-                        ? I18n.t("Cloned voice") : I18n.t("Clone voice")
+                        ? qsTr("Giọng đã nhân bản") : qsTr("Nhân bản giọng")
                     iconGlyph: "\uE77B"
                     tone: AppController.ttsVoice === "omnivoice:clone" ? "primary" : "secondary"
                     compact: true
                     enabled: root.editable
-                    onClicked: voiceCloneDialog.openForSelectedVideo()
+                    onClicked: voiceCloneDialogLoader.invoke("openForSelectedVideo", [])
                 }
                 AppCheckBox {
                     Layout.fillWidth: true
                     enabled: root.editable && AppController.ttsProvider === "omnivoice"
-                    text: I18n.t("Detect multiple speakers")
+                    text: qsTr("Nhận diện nhiều người nói")
                     checked: AppController.speakerMode === "multiple"
                     onToggled: {
                         AppController.speakerMode = checked ? "multiple" : "single"
@@ -323,22 +320,22 @@ Panel {
 
                 AppButton {
                     Layout.fillWidth: true
-                    text: I18n.t("Adjust audio levels")
+                    text: qsTr("Điều chỉnh âm lượng")
                     iconGlyph: "\uE767"
                     tone: "secondary"
                     compact: true
                     enabled: root.editable
-                    onClicked: audioMixDialog.open()
+                    onClicked: audioMixDialogLoader.invoke("open", [])
                 }
 
                 SettingLabel {
                     Layout.fillWidth: true
-                    text: I18n.t("Background music")
-                    helpText: I18n.t("Music and volume changes update only the preview mix.")
+                    text: qsTr("Nhạc nền")
+                    helpText: qsTr("Đổi nhạc hoặc âm lượng chỉ cập nhật bản phối xem trước.")
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: AppController.backgroundMusicPath || I18n.t("No background music")
+                    text: AppController.backgroundMusicPath || qsTr("Chưa có nhạc nền")
                     color: Theme.textMuted
                     font.pixelSize: Theme.label
                     textFormat: Text.PlainText
@@ -350,7 +347,7 @@ Panel {
 
                     AppButton {
                         Layout.fillWidth: true
-                        text: I18n.t("Choose file")
+                        text: qsTr("Chọn tệp")
                         tone: "secondary"
                         compact: true
                         enabled: root.editable
@@ -358,16 +355,16 @@ Panel {
                     }
                     AppButton {
                         Layout.fillWidth: true
-                        text: I18n.t("From link")
+                        text: qsTr("Từ liên kết")
                         tone: "secondary"
                         compact: true
                         enabled: root.editable
-                        onClicked: backgroundMusicLinkDialog.open()
+                        onClicked: backgroundMusicLinkDialogLoader.invoke("open", [])
                     }
                     IconButton {
                         visible: AppController.backgroundMusicPath.length > 0
                         glyph: "\uE74D"
-                        toolTipText: I18n.t("Clear")
+                        toolTipText: qsTr("Xóa danh sách")
                         enabled: root.editable
                         onClicked: AppController.clearBackgroundMusic()
                     }
@@ -418,16 +415,16 @@ Panel {
             Layout.fillWidth: true
             visible: root.runnableTool
             // qmllint disable missing-property
-            text: root.taskProcessing && root.taskBelongsToTool ? I18n.t("Pause")
-                : root.taskQueued && root.taskBelongsToTool ? I18n.t("Waiting in queue")
-                : root.taskPaused && root.taskBelongsToTool ? I18n.t("Continue") : root.runLabel()
+            text: root.taskProcessing && root.taskBelongsToTool ? qsTr("Tạm dừng")
+                : root.taskQueued && root.taskBelongsToTool ? qsTr("Đang chờ xử lý")
+                : root.taskPaused && root.taskBelongsToTool ? qsTr("Tiếp tục") : root.runLabel()
             iconGlyph: root.taskProcessing && root.taskBelongsToTool ? "\uE769"
                 : root.taskQueued && root.taskBelongsToTool ? "\uE895" : "\uE768"
             tone: root.taskProcessing && root.taskBelongsToTool ? "danger" : "primary"
             enabled: root.taskProcessing && root.taskBelongsToTool
                 || root.taskPaused && root.taskBelongsToTool
                 || (root.editable && !root.taskQueued && root.prerequisiteReady)
-            toolTipText: root.prerequisiteReady ? "" : I18n.t("Translate the video first")
+            toolTipText: root.prerequisiteReady ? "" : qsTr("Hãy dịch video trước")
             onClicked: {
                 if (root.taskProcessing && root.taskBelongsToTool)
                     AppController.stopVideo()
@@ -462,27 +459,54 @@ Panel {
         }
     }
 
-    AudioMixDialog { id: audioMixDialog }
-    BackgroundMusicLinkDialog { id: backgroundMusicLinkDialog }
-    VoiceCloneDialog { id: voiceCloneDialog }
-
-    WatermarkDialog {
-        id: watermarkDialog
-        onWatermarkAccepted: function(text) {
-            AppController.watermarkText = text
-            root.scheduleSave()
+    LazyDialogLoader {
+        id: audioMixDialogLoader
+        sourceComponent: Component {
+            AudioMixDialog { onClosed: audioMixDialogLoader.release() }
         }
     }
 
-    SubtitlePreviewDialog {
-        id: subtitlePreviewDialog
-        onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
-            AppController.subtitleFontSize = fontSize
-            AppController.subtitlePositionXPercent = positionX
-            AppController.subtitlePositionYPercent = positionY
-            AppController.subtitleBoxWidthPercent = boxWidth
-            AppController.subtitleBoxHeightPercent = boxHeight
-            root.scheduleSave()
+    LazyDialogLoader {
+        id: backgroundMusicLinkDialogLoader
+        sourceComponent: Component {
+            BackgroundMusicLinkDialog { onClosed: backgroundMusicLinkDialogLoader.release() }
+        }
+    }
+
+    LazyDialogLoader {
+        id: voiceCloneDialogLoader
+        sourceComponent: Component {
+            VoiceCloneDialog { onClosed: voiceCloneDialogLoader.release() }
+        }
+    }
+
+    LazyDialogLoader {
+        id: watermarkDialogLoader
+        sourceComponent: Component {
+            WatermarkDialog {
+                onClosed: watermarkDialogLoader.release()
+                onWatermarkAccepted: function(text) {
+                    AppController.watermarkText = text
+                    root.scheduleSave()
+                }
+            }
+        }
+    }
+
+    LazyDialogLoader {
+        id: subtitlePreviewDialogLoader
+        sourceComponent: Component {
+            SubtitlePreviewDialog {
+                onClosed: subtitlePreviewDialogLoader.release()
+                onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                    AppController.subtitleFontSize = fontSize
+                    AppController.subtitlePositionXPercent = positionX
+                    AppController.subtitlePositionYPercent = positionY
+                    AppController.subtitleBoxWidthPercent = boxWidth
+                    AppController.subtitleBoxHeightPercent = boxHeight
+                    root.scheduleSave()
+                }
+            }
         }
     }
 }

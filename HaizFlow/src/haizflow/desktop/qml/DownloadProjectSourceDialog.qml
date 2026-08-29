@@ -5,23 +5,20 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-Dialog {
+AppDialog {
     id: root
 
     property string importMode: "single"
     readonly property bool multipleSelection: importMode === "batch"
 
-    modal: true
-    focus: true
-    parent: Overlay.overlay
-    width: Math.min(760, parent ? parent.width - 48 : 760)
-    height: Math.min(620, parent ? parent.height - 48 : 620)
-    x: Math.round((parent.width - width) / 2)
-    y: Math.round((parent.height - height) / 2)
-    padding: 0
-    header: null
-    footer: null
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    title: qsTr("Nhập từ dự án tải xuống")
+    subtitle: multipleSelection
+        ? qsTr("Chọn các video cần thêm vào dự án hàng loạt")
+        : qsTr("Chọn một video đã tải")
+    preferredWidth: 680
+    preferredHeight: 540
+    maximumWidth: 720
+    maximumHeight: 680
 
     function openForMode(mode) {
         importMode = mode === "batch" ? "batch" : "single"
@@ -29,223 +26,144 @@ Dialog {
         open()
     }
 
-    background: Rectangle {
-        radius: Theme.radius
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.outlineStrong
-    }
+    ListView {
+        id: sourceList
 
-    contentItem: ColumnLayout {
-        spacing: 0
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        model: AppController.downloadProjectSourceModel
+        spacing: Theme.space4
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        reuseItems: true
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 68
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space16
-            spacing: Theme.space12
+        delegate: Rectangle {
+            id: sourceDelegate
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.space4
+            required property int index
+            required property string downloadItemId
+            required property string downloadProjectName
+            required property string downloadCategory
+            required property string downloadFileName
+            required property string downloadFilePath
+            required property real downloadFileSize
+            required property bool downloadSelected
 
-                Text {
+            width: ListView.view.width
+            height: 58
+            radius: Theme.radiusSmall
+            color: downloadSelected ? Theme.sidebarSelected : Theme.surfaceMuted
+            border.width: 1
+            border.color: downloadSelected ? Theme.focus : Theme.outline
+
+            ListView.onPooled: visible = false
+            ListView.onReused: visible = true
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: Theme.space8
+                spacing: Theme.space12
+
+                FluentIcon {
+                    Layout.preferredWidth: 20
+                    Layout.preferredHeight: 20
+                    name: "video"
+                    iconColor: sourceDelegate.downloadSelected ? Theme.interactive : Theme.textMuted
+                    iconSize: 18
+                }
+
+                ColumnLayout {
                     Layout.fillWidth: true
-                    text: I18n.t("Import from download projects")
-                    color: Theme.text
-                    font.pixelSize: Theme.h2
-                    font.weight: Font.DemiBold
-                    textFormat: Text.PlainText
-                }
+                    spacing: 1
 
-                Text {
-                    Layout.fillWidth: true
-                    text: root.multipleSelection
-                        ? I18n.t("Choose downloaded videos to add to this batch")
-                        : I18n.t("Choose one downloaded video")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.caption
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                }
-            }
-
-            IconButton {
-                glyph: "\uE711"
-                toolTipText: I18n.t("Close")
-                onClicked: root.close()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
-
-        ListView {
-            id: sourceList
-
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.margins: Theme.space16
-            model: AppController.downloadProjectSourceModel
-            spacing: Theme.space8
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            reuseItems: true
-
-            delegate: Rectangle {
-                id: sourceDelegate
-
-                required property int index
-                required property string downloadItemId
-                required property string downloadProjectName
-                required property string downloadCategory
-                required property string downloadFileName
-                required property string downloadFilePath
-                required property real downloadFileSize
-                required property bool downloadSelected
-
-                width: ListView.view.width
-                height: 70
-                radius: Theme.radiusSmall
-                color: downloadSelected ? Theme.interactiveMuted : Theme.surfaceMuted
-                border.width: 1
-                border.color: downloadSelected ? Theme.focus : Theme.outline
-
-                ListView.onPooled: {
-                    visible = false
-                    focus = false
-                }
-                ListView.onReused: {
-                    visible = true
-                    focus = false
-                }
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: Theme.space12
-                    spacing: Theme.space12
-
-                    Rectangle {
-                        Layout.preferredWidth: 38
-                        Layout.preferredHeight: 38
-                        radius: Theme.radiusSmall
-                        color: Theme.blueMuted
-
-                        AppIcon {
-                            anchors.centerIn: parent
-                            width: 18
-                            height: 18
-                            glyph: "\uE714"
-                            iconColor: Theme.blue
-                            iconSize: Theme.iconSmall
-                        }
-                    }
-
-                    ColumnLayout {
+                    Text {
                         Layout.fillWidth: true
-                        spacing: Theme.space4
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: sourceDelegate.downloadFileName
-                            color: Theme.text
-                            font.pixelSize: Theme.body
-                            font.weight: Font.DemiBold
-                            textFormat: Text.PlainText
-                            elide: Text.ElideMiddle
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: sourceDelegate.downloadProjectName + " · "
-                                + (sourceDelegate.downloadCategory === "channel"
-                                    ? I18n.t("Channel") : I18n.t("Video"))
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.caption
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                        }
+                        text: sourceDelegate.downloadFileName
+                        color: Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.control
+                        font.weight: Font.DemiBold
+                        textFormat: Text.PlainText
+                        elide: Text.ElideMiddle
                     }
 
                     Text {
-                        text: sourceDelegate.downloadFileSize > 0
-                            ? qsTr("%1 MB").arg((sourceDelegate.downloadFileSize / 1048576).toFixed(1))
-                            : ""
-                        color: Theme.textSubtle
-                        font.pixelSize: Theme.label
+                        Layout.fillWidth: true
+                        text: sourceDelegate.downloadProjectName
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.metadata
                         textFormat: Text.PlainText
-                    }
-
-                    AppCheckBox {
-                        checked: sourceDelegate.downloadSelected
-                        onToggled: AppController.setDownloadProjectSourceSelected(
-                            sourceDelegate.index,
-                            checked,
-                            !root.multipleSelection
-                        )
+                        elide: Text.ElideRight
                     }
                 }
-            }
 
-            Text {
-                anchors.centerIn: parent
-                visible: sourceList.count === 0
-                width: Math.min(420, sourceList.width - Theme.space32)
-                text: I18n.t("No downloaded videos are available")
-                color: Theme.textMuted
-                font.pixelSize: Theme.body
-                textFormat: Text.PlainText
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-            }
+                StatusBadge {
+                    status: "ready"
+                    label: sourceDelegate.downloadCategory === "channel"
+                        ? qsTr("Kênh") : qsTr("Video")
+                }
 
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-        }
+                Text {
+                    Layout.preferredWidth: 64
+                    text: sourceDelegate.downloadFileSize > 0
+                        ? qsTr("%1 MB").arg((sourceDelegate.downloadFileSize / 1048576).toFixed(1))
+                        : ""
+                    color: Theme.textMuted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: TypeScale.metadata
+                    horizontalAlignment: Text.AlignRight
+                    textFormat: Text.PlainText
+                }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 68
-            Layout.leftMargin: Theme.space24
-            Layout.rightMargin: Theme.space24
-            spacing: Theme.space8
-
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("%1 %2")
-                    .arg(AppController.downloadProjectSourceSelectedCount)
-                    .arg(I18n.t("selected"))
-                color: Theme.textMuted
-                font.pixelSize: Theme.caption
-                textFormat: Text.PlainText
-            }
-
-            AppButton {
-                text: I18n.t("Cancel")
-                tone: "ghost"
-                onClicked: root.close()
-            }
-
-            AppButton {
-                text: I18n.t("Import")
-                tone: "primary"
-                enabled: AppController.downloadProjectSourceSelectedCount > 0
-                    && (root.multipleSelection
-                        || AppController.downloadProjectSourceSelectedCount === 1)
-                onClicked: {
-                    if (AppController.importSelectedDownloadProjectVideos(root.importMode))
-                        root.close()
+                StudioCheckBox {
+                    checked: sourceDelegate.downloadSelected
+                    Accessible.name: qsTr("Chọn %1").arg(sourceDelegate.downloadFileName)
+                    onToggled: AppController.setDownloadProjectSourceSelected(
+                        sourceDelegate.index,
+                        checked,
+                        !root.multipleSelection
+                    )
                 }
             }
         }
+
+        EmptyState {
+            anchors.centerIn: parent
+            visible: sourceList.count === 0
+            width: Math.min(400, sourceList.width - Theme.space32)
+            iconName: "download"
+            title: qsTr("Chưa có video đã tải")
+            message: qsTr("Tải video trước, sau đó quay lại để nhập vào dự án.")
+        }
+
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
     }
+
+    footerActions: [
+        Text {
+            text: qsTr("Đã chọn: %1").arg(AppController.downloadProjectSourceSelectedCount)
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.metadata
+            verticalAlignment: Text.AlignVCenter
+        },
+        Item { Layout.preferredWidth: Theme.space8 },
+        StudioButton {
+            text: qsTr("Hủy")
+            tone: "secondary"
+            onClicked: root.close()
+        },
+        StudioButton {
+            text: qsTr("Nhập")
+            tone: "primary"
+            enabled: AppController.downloadProjectSourceSelectedCount > 0
+                && (root.multipleSelection
+                    || AppController.downloadProjectSourceSelectedCount === 1)
+            onClicked: {
+                if (AppController.importSelectedDownloadProjectVideos(root.importMode))
+                    root.close()
+            }
+        }
+    ]
 }

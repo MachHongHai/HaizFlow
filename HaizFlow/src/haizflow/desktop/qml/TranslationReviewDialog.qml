@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Layouts
 import QtMultimedia
 import "."
 
@@ -15,8 +14,8 @@ FloatingToolDialog {
     openMaximized: true
     expandedWidth: 1480
     expandedHeight: 900
-    toolTitle: root.postProcessingEdit ? I18n.t("Edit subtitles") : I18n.t("Review subtitles")
-    toolSubtitle: qsTr("%1 %2  ·  %3").arg(segments.length).arg(I18n.t("segments")).arg(AppController.selectedFileName)
+    toolTitle: root.postProcessingEdit ? qsTr("Sửa phụ đề") : qsTr("Duyệt phụ đề")
+    toolSubtitle: qsTr("%1 đoạn · %2").arg(segments.length).arg(AppController.selectedFileName)
 
     property var segments: []
     property var undoStack: []
@@ -239,7 +238,7 @@ FloatingToolDialog {
 
     function previewStatusText() {
         const stage = previewStage;
-        return stage === "preparing" ? I18n.t("Preparing preview") : I18n.t("Updating preview");
+        return stage === "preparing" ? qsTr("Đang chuẩn bị bản xem trước") : qsTr("Đang cập nhật bản xem trước");
     }
 
     function remember() {
@@ -334,12 +333,11 @@ FloatingToolDialog {
     }
 
     function commitPendingText() {
-        if (selectedSegment && subtitleText.text !== String(selectedSegment.text || ""))
-            editSelected("text", subtitleText.text);
+        editorWorkspace.commitPendingText();
     }
 
     function loadSelectedText() {
-        subtitleText.text = selectedSegment ? String(selectedSegment.text || "") : "";
+        editorWorkspace.setEditorText(selectedSegment ? String(selectedSegment.text || "") : "");
     }
 
     function selectSegment(index) {
@@ -455,445 +453,62 @@ FloatingToolDialog {
         AppController.releaseEditorPreview();
     }
 
-    ColumnLayout {
+    SubtitleEditorWorkspace {
+        id: editorWorkspace
         anchors.fill: parent
         anchors.margins: Theme.space12
-        spacing: Theme.space8
-
-        SplitView {
-            id: editorWorkspaceSplit
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            orientation: Qt.Vertical
-
-            handle: Rectangle {
-                implicitHeight: 8
-                color: SplitHandle.hovered || SplitHandle.pressed ? Theme.interactiveMuted : "transparent"
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 52
-                    height: 3
-                    radius: 2
-                    color: parent.SplitHandle.hovered || parent.SplitHandle.pressed ? Theme.focus : Theme.outlineStrong
-                }
-            }
-
-            SplitView {
-                id: editorUpperSplit
-                SplitView.fillWidth: true
-                SplitView.fillHeight: true
-                SplitView.minimumHeight: 280
-                orientation: Qt.Horizontal
-
-                handle: Rectangle {
-                    implicitWidth: 8
-                    color: SplitHandle.hovered || SplitHandle.pressed ? Theme.interactiveMuted : "transparent"
-
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 3
-                        height: 52
-                        radius: 2
-                        color: parent.SplitHandle.hovered || parent.SplitHandle.pressed ? Theme.focus : Theme.outlineStrong
-                    }
-                }
-
-                Rectangle {
-                    SplitView.fillWidth: true
-                    SplitView.preferredWidth: root.width * 0.72
-                    SplitView.minimumWidth: 420
-                    SplitView.fillHeight: true
-                    color: Theme.video
-                    radius: Theme.radiusSmall
-                    border.width: 1
-                    border.color: Theme.outline
-                    clip: true
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 1
-                        spacing: 0
-
-                        Item {
-                            id: mediaViewport
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            clip: true
-
-                            Rectangle {
-                                anchors.fill: parent
-                                color: Theme.surfaceMuted
-                                visible: !root.previewReady
-
-                                Column {
-                                    anchors.centerIn: parent
-                                    spacing: Theme.space8
-
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: "\uE714"
-                                        color: Theme.textSubtle
-                                        font.family: "Segoe Fluent Icons"
-                                        font.pixelSize: 28
-                                    }
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: I18n.t("Preparing preview")
-                                        color: Theme.textMuted
-                                        font.pixelSize: Theme.caption
-                                    }
-                                }
-                            }
-
-                            Image {
-                                id: thumbnailPreview
-                                anchors.fill: parent
-                                source: AppController.videoThumbnailSource
-                                sourceSize.width: 1280
-                                sourceSize.height: 720
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true
-                                visible: !root.previewReady && status === Image.Ready
-                                z: 1
-                            }
-
-                            VideoOutput {
-                                id: reviewVideoOutput
-                                anchors.fill: parent
-                                fillMode: VideoOutput.PreserveAspectFit
-                            }
-
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: 30
-                                color: "#D0161A20"
-                                visible: root.previewStatusVisible && root.previewUpdateBusy
-                                z: 4
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: Theme.space12
-                                    anchors.rightMargin: Theme.space12
-                                    spacing: Theme.space8
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.previewStatusText()
-                                        color: Theme.text
-                                        font.pixelSize: Theme.caption
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        visible: root.previewUpdateProgress > 0
-                                        text: Math.round(root.previewUpdateProgress * 100) + "%"
-                                        color: Theme.textMuted
-                                        font.pixelSize: Theme.caption
-                                        font.family: "Cascadia Mono"
-                                    }
-                                }
-
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.bottom: parent.bottom
-                                    height: 2
-                                    color: Theme.outline
-
-                                    Rectangle {
-                                        width: parent.width * root.previewUpdateProgress
-                                        height: parent.height
-                                        color: Theme.focus
-                                    }
-                                }
-                            }
-
-                        }
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 52
-                            color: Theme.codeSurface
-                            border.width: 0
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: Theme.space12
-                                anchors.rightMargin: Theme.space12
-                                spacing: Theme.space8
-
-                                IconButton {
-                                    glyph: videoPlayer.playbackState === MediaPlayer.PlayingState ? "\uE769" : "\uE768"
-                                    toolTipText: videoPlayer.playbackState === MediaPlayer.PlayingState ? I18n.t("Pause") : I18n.t("Play")
-                                    onClicked: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
-                                }
-                                Text {
-                                    Layout.preferredWidth: 82
-                                    text: root.formatTime(root.playheadSeconds)
-                                    color: Theme.text
-                                    font.pixelSize: Theme.caption
-                                    font.family: "Cascadia Mono"
-                                }
-                                Slider {
-                                    id: previewSeekSlider
-                                    Layout.fillWidth: true
-                                    from: 0
-                                    to: Math.max(1, root.contentDuration)
-                                    value: root.playheadSeconds
-                                    onMoved: root.scrubPreview(value)
-                                    onPressedChanged: {
-                                        if (pressed)
-                                            root.beginPreviewScrub(value)
-                                        else
-                                            root.endPreviewScrub(value)
-                                    }
-                                }
-                                Text {
-                                    Layout.preferredWidth: 82
-                                    text: root.formatTime(root.contentDuration)
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.caption
-                                    font.family: "Cascadia Mono"
-                                    horizontalAlignment: Text.AlignRight
-                                }
-                                IconButton {
-                                    glyph: "\uE740"
-                                    toolTipText: I18n.t("Full screen preview")
-                                    onClicked: root.videoFullscreen = true
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle {
-                    SplitView.preferredWidth: Math.max(320, Math.min(440, root.width * 0.28))
-                    SplitView.minimumWidth: 300
-                    SplitView.fillHeight: true
-                    color: Theme.surfaceElevated
-                    radius: Theme.radiusSmall
-                    border.width: 1
-                    border.color: Theme.outline
-                    clip: true
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: Theme.space12
-                        spacing: Theme.space8
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Theme.space4
-
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 1
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: root.selectedSegment ? I18n.t("Segment") + " " + String(root.selectedIndex + 1) + " / " + String(root.segments.length) : I18n.t("No subtitle selected")
-                                    color: Theme.text
-                                    font.pixelSize: Theme.h3
-                                    font.weight: Font.DemiBold
-                                }
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: root.selectedSegment ? root.formatTime(root.selectedSegment.start) + "  —  " + root.formatTime(root.selectedSegment.end) : ""
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.caption
-                                    font.family: "Cascadia Mono"
-                                }
-                            }
-
-                            IconButton {
-                                glyph: "\uE72B"
-                                toolTipText: I18n.t("Previous subtitle")
-                                enabled: root.selectedIndex > 0
-                                onClicked: root.selectAdjacent(-1)
-                            }
-
-                            IconButton {
-                                glyph: "\uE72A"
-                                toolTipText: I18n.t("Next subtitle")
-                                enabled: root.selectedIndex >= 0 && root.selectedIndex < root.segments.length - 1
-                                onClicked: root.selectAdjacent(1)
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: I18n.t("Subtitle text")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.caption
-                        }
-
-                        TextArea {
-                            id: subtitleText
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            enabled: root.selectedSegment !== null
-                            text: ""
-                            placeholderText: I18n.t("Subtitle text")
-                            wrapMode: TextEdit.Wrap
-                            selectByMouse: true
-                            color: Theme.text
-                            font.pixelSize: Theme.bodyLarge
-                            // Undo/Redo belongs to the editor snapshot history,
-                            // not to whichever child control currently has focus.
-                            Keys.priority: Keys.BeforeItem
-                            Keys.onPressed: function (event) {
-                                const controlHeld = (event.modifiers & Qt.ControlModifier) !== 0;
-                                if (controlHeld && (event.key === Qt.Key_Z || event.key === Qt.Key_Y))
-                                    event.accepted = true;
-                            }
-                            background: Rectangle {
-                                color: Theme.input
-                                radius: Theme.radiusSmall
-                                border.width: subtitleText.activeFocus ? 2 : 1
-                                border.color: subtitleText.activeFocus ? Theme.focus : Theme.outline
-                            }
-                            onEditingFinished: {
-                                textCommitTimer.stop();
-                                if (root.selectedSegment && text !== String(root.selectedSegment.text || ""))
-                                    root.editSelected("text", text);
-                            }
-                            onTextChanged: {
-                                if (activeFocus && root.selectedSegment && text !== String(root.selectedSegment.text || ""))
-                                    textCommitTimer.restart();
-                            }
-                        }
-                    }
-                }
-            }
-
-            SubtitleTimeline {
-                id: subtitleTimeline
-                SplitView.fillWidth: true
-                SplitView.preferredHeight: 250
-                SplitView.minimumHeight: 170
-                segments: root.segments
-                selectedIndex: root.selectedIndex
-                duration: root.contentDuration
-                position: root.playheadSeconds
-                thumbnailSource: AppController.videoThumbnailSource
-                onSegmentSelected: function (index) {
-                    root.selectSegment(index);
-                }
-                onSeekRequested: function (seconds) {
-                    root.seekTo(seconds);
-                }
-                onTimingCommitted: function (index, start, end) {
-                    root.commitSegmentTiming(index, start, end);
-                }
-            }
+        segments: root.segments
+        selectedSegment: root.selectedSegment
+        selectedIndex: root.selectedIndex
+        duration: root.contentDuration
+        position: root.playheadSeconds
+        thumbnailSource: AppController.videoThumbnailSource
+        previewReady: root.previewReady
+        statusVisible: root.previewStatusVisible
+        previewBusy: root.previewUpdateBusy
+        previewProgress: root.previewUpdateProgress
+        previewStatusText: root.previewStatusText()
+        playing: videoPlayer.playbackState === MediaPlayer.PlayingState
+        canUndo: root.undoStack.length > 0
+        canRedo: root.redoStack.length > 0
+        canCommit: root.segments.length > 0 && !root.approvalInProgress
+        primaryText: root.manualEditing ? qsTr("Lưu phụ đề")
+            : root.postProcessingEdit ? qsTr("Lưu và tạo lại giọng") : qsTr("Duyệt và tiếp tục")
+        onPlaybackToggled: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
+        onScrubStarted: function(position) { root.beginPreviewScrub(position) }
+        onScrubbed: function(position) { root.scrubPreview(position) }
+        onScrubFinished: function(position) { root.endPreviewScrub(position) }
+        onFullscreenRequested: root.videoFullscreen = true
+        onPreviousRequested: root.selectAdjacent(-1)
+        onNextRequested: root.selectAdjacent(1)
+        onTextCommitted: function(value) { root.editSelected("text", value) }
+        onSegmentSelected: function(index) { root.selectSegment(index) }
+        onSeekRequested: function(seconds) { root.seekTo(seconds) }
+        onTimingCommitted: function(index, start, end) { root.commitSegmentTiming(index, start, end) }
+        onUndoRequested: {
+            root.commitPendingText()
+            root.undo()
         }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.space8
-            Text {
-                Layout.fillWidth: true
-                text: I18n.t("Changes are saved automatically") + "  ·  " + I18n.t("Wheel to zoom · Shift+wheel to pan")
-                color: Theme.textMuted
-                font.pixelSize: Theme.caption
-                elide: Text.ElideRight
-            }
-            AppButton {
-                text: I18n.t("Undo")
-                compact: true
-                enabled: root.undoStack.length > 0
-                onClicked: {
-                    root.commitPendingText()
-                    root.undo()
-                }
-            }
-            AppButton {
-                text: I18n.t("Redo")
-                compact: true
-                enabled: root.redoStack.length > 0
-                onClicked: {
-                    root.commitPendingText()
-                    root.redo()
-                }
-            }
-            AppButton {
-                text: root.manualEditing ? I18n.t("Save subtitles")
-                    : root.postProcessingEdit ? I18n.t("Save and regenerate voice") : I18n.t("Approve and continue")
-                tone: "primary"
-                enabled: root.segments.length > 0 && !root.approvalInProgress
-                onClicked: root.beginApproval()
-            }
+        onRedoRequested: {
+            root.commitPendingText()
+            root.redo()
         }
+        onCommitRequested: root.beginApproval()
     }
 
-    Rectangle {
+    SubtitleEditorFullscreenPreview {
+        id: fullscreenPreview
         anchors.fill: parent
         visible: root.videoFullscreen
-        color: "#FF050608"
         z: 100
-
-        VideoOutput {
-            id: fullscreenVideoOutput
-            anchors.fill: parent
-            anchors.margins: Theme.space12
-            fillMode: VideoOutput.PreserveAspectFit
-        }
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: 64
-            color: "#DC101318"
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.space20
-                anchors.rightMargin: Theme.space20
-                spacing: Theme.space8
-
-                IconButton {
-                    glyph: videoPlayer.playbackState === MediaPlayer.PlayingState ? "\uE769" : "\uE768"
-                    toolTipText: videoPlayer.playbackState === MediaPlayer.PlayingState ? I18n.t("Pause") : I18n.t("Play")
-                    onClicked: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
-                }
-                Text {
-                    Layout.preferredWidth: 90
-                    text: root.formatTime(root.playheadSeconds)
-                    color: Theme.text
-                    font.family: "Cascadia Mono"
-                    font.pixelSize: Theme.caption
-                }
-                Slider {
-                    id: fullscreenSeekSlider
-                    Layout.fillWidth: true
-                    from: 0
-                    to: Math.max(1, root.contentDuration)
-                    value: root.playheadSeconds
-                    onMoved: root.scrubPreview(value)
-                    onPressedChanged: {
-                        if (pressed)
-                            root.beginPreviewScrub(value)
-                        else
-                            root.endPreviewScrub(value)
-                    }
-                }
-                IconButton {
-                    glyph: "\uE73F"
-                    toolTipText: I18n.t("Exit full screen")
-                    onClicked: root.videoFullscreen = false
-                }
-            }
-        }
-
-        IconButton {
-            anchors.top: parent.top
-            anchors.right: parent.right
-            anchors.margins: Theme.space20
-            glyph: "\uE711"
-            toolTipText: I18n.t("Exit full screen")
-            onClicked: root.videoFullscreen = false
-        }
+        position: root.playheadSeconds
+        duration: root.contentDuration
+        playing: videoPlayer.playbackState === MediaPlayer.PlayingState
+        onPlaybackToggled: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
+        onScrubStarted: function(position) { root.beginPreviewScrub(position) }
+        onScrubbed: function(position) { root.scrubPreview(position) }
+        onScrubFinished: function(position) { root.endPreviewScrub(position) }
+        onCloseRequested: root.videoFullscreen = false
     }
 
     Connections {
@@ -914,7 +529,7 @@ FloatingToolDialog {
 
     MediaPlayer {
         id: videoPlayer
-        videoOutput: root.videoFullscreen ? fullscreenVideoOutput : reviewVideoOutput
+        videoOutput: root.videoFullscreen ? fullscreenPreview.videoOutput : editorWorkspace.videoOutput
         audioOutput: AudioOutput {
             volume: root.usesExternalAudio ? 0 : (root.usingPublishedOutput ? 1 : Number(root.previewMedia.videoVolume || 0.6))
         }
@@ -1087,10 +702,4 @@ FloatingToolDialog {
         }
     }
 
-    Timer {
-        id: textCommitTimer
-        interval: 300
-        repeat: false
-        onTriggered: root.commitPendingText()
-    }
 }

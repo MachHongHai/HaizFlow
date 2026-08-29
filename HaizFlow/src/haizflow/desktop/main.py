@@ -11,6 +11,8 @@ from PySide6.QtWidgets import QApplication
 from haizflow.core.logging_config import configure_app_logging
 from haizflow.desktop.qml_controller import HaizFlowController
 from haizflow.desktop.single_instance import SingleInstanceCoordinator
+from haizflow.desktop.translations import install_ui_translator
+from haizflow.services import desktop_settings
 
 
 def _configure_windows_app_identity() -> None:
@@ -124,6 +126,7 @@ def main(*, smoke_test: bool = False) -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("HaizFlow")
     app.setApplicationDisplayName("\u200B")
+    install_ui_translator(desktop_settings.load_settings().get("language", "en"))
     app_icon_path = _app_icon_path()
     app_icon = QIcon(str(app_icon_path)) if app_icon_path is not None else QIcon()
     if not app_icon.isNull():
@@ -197,6 +200,12 @@ def main(*, smoke_test: bool = False) -> None:
         if controller is None:
             raise RuntimeError("QML did not create the AppController singleton")
         engine.rootObjects()[0].installEventFilter(controller)
+
+        def retranslate_ui() -> None:
+            if install_ui_translator(controller.settingsLanguage):
+                engine.retranslate()
+
+        controller.settingsChanged.connect(retranslate_ui)
         if activation_pending:
             QTimer.singleShot(0, activate_window)
         if smoke_test:

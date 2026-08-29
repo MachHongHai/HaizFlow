@@ -11,11 +11,11 @@ AppButton {
 
     property bool menuWasOpenOnPress: false
 
-    text: I18n.t("Import source")
+    text: qsTr("Nhập nguồn")
     iconGlyph: "\uE710"
     compact: true
     tone: "secondary"
-    toolTipText: I18n.t("Choose a file, link, or downloaded video")
+    toolTipText: qsTr("Chọn tệp, liên kết hoặc video từ dự án tải xuống")
 
     function openMenu() {
         if (!enabled)
@@ -47,19 +47,19 @@ AppButton {
         }
 
         AppMenuItem {
-            text: I18n.t("File")
+            text: qsTr("Tệp")
             iconGlyph: "\uE8B7"
             onTriggered: root.fileRequested()
         }
 
         AppMenuItem {
-            text: I18n.t("Link")
+            text: qsTr("Liên kết")
             iconGlyph: "\uE71B"
             onTriggered: root.linkRequested()
         }
 
         AppMenuItem {
-            text: I18n.t("Downloads")
+            text: qsTr("Tải xuống")
             iconGlyph: "\uE896"
             onTriggered: root.downloadProjectRequested()
         }

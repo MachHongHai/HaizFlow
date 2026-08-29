@@ -52,8 +52,8 @@ FloatingToolDialog {
 
     expandedWidth: 920
     expandedHeight: 760
-    toolTitle: I18n.t("Preview new subtitles")
-    toolSubtitle: I18n.t("Drag the subtitle to move it; use the slider to adjust its size")
+    toolTitle: qsTr("Xem trước phụ đề mới")
+    toolSubtitle: qsTr("Kéo phụ đề để di chuyển; dùng thanh trượt để đổi cỡ chữ")
 
     ColumnLayout {
         anchors.fill: parent
@@ -107,7 +107,7 @@ FloatingToolDialog {
                         spacing: 0
 
                         Text {
-                            text: I18n.t("Sample subtitle first half")
+                            text: qsTr("PHỤ ĐỀ ")
                             color: "white"
                             style: Text.Outline
                             styleColor: "black"
@@ -118,7 +118,7 @@ FloatingToolDialog {
                         }
 
                         Text {
-                            text: I18n.t("Sample subtitle second half")
+                            text: qsTr("MẪU")
                             color: "#FFF200"
                             style: Text.Outline
                             styleColor: "black"
@@ -148,7 +148,7 @@ FloatingToolDialog {
             spacing: Theme.space12
 
             Text {
-                text: I18n.t("Font size")
+                text: qsTr("Cỡ chữ")
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
                 textFormat: Text.PlainText
@@ -177,7 +177,7 @@ FloatingToolDialog {
             }
 
             AppButton {
-                text: I18n.t("Reset position")
+                text: qsTr("Đặt lại vị trí")
                 compact: true
                 onClicked: {
                     root.draftPositionX = 51

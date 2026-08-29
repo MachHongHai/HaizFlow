@@ -111,7 +111,7 @@ Rectangle {
                 Layout.fillHeight: true
                 Layout.preferredWidth: root.width * 0.20
                 Layout.minimumWidth: 170
-                paneTitle: I18n.t("Source")
+                paneTitle: qsTr("Nguồn")
                 player: inputPlayer
                 muted: root.inputMuted
                 thumbnailVisible: inputPlayer.mediaStatus === MediaPlayer.NoMedia
@@ -127,7 +127,7 @@ Rectangle {
                 Layout.fillHeight: true
                 Layout.preferredWidth: root.width * 0.80
                 Layout.minimumWidth: 420
-                paneTitle: I18n.t("Current result")
+                paneTitle: qsTr("Kết quả")
                 player: resultPlayer
                 muted: root.resultMuted
                 thumbnailVisible: resultPlayer.mediaStatus === MediaPlayer.NoMedia
@@ -151,11 +151,10 @@ Rectangle {
                 anchors.rightMargin: Theme.space12
                 spacing: Theme.space8
 
-                AppButton {
-                    text: root.bothPlaying ? I18n.t("Pause both") : I18n.t("Play both")
-                    iconGlyph: root.bothPlaying ? "\uE769" : "\uE768"
-                    compact: true
-                    tone: "secondary"
+                StudioButton {
+                    text: root.bothPlaying ? qsTr("Tạm dừng cả hai") : qsTr("Phát cả hai")
+                    iconName: root.bothPlaying ? "pause" : "play"
+                    variant: "secondary"
                     enabled: String(root.inputSource).length > 0 && String(root.resultSource).length > 0
                     onClicked: root.toggleSynchronizedPlayback()
                 }
@@ -169,14 +168,14 @@ Rectangle {
                     textFormat: Text.PlainText
                 }
 
-                Slider {
+                StudioSlider {
                     Layout.fillWidth: true
                     from: 0
                     to: Math.max(0.1, root.durationSeconds)
                     value: root.positionSeconds
                     enabled: root.durationSeconds > 0
                     onMoved: root.seekTo(value)
-                    Accessible.name: I18n.t("Preview position")
+                    Accessible.name: qsTr("Vị trí xem trước")
                 }
 
                 Text {
@@ -213,12 +212,12 @@ Rectangle {
                 fillMode: VideoOutput.PreserveAspectFit
             }
 
-            IconButton {
+            StudioIconButton {
                 anchors.top: parent.top
                 anchors.right: parent.right
                 anchors.margins: Theme.space16
-                glyph: "\uE711"
-                toolTipText: I18n.t("Close")
+                iconName: "close"
+                toolTipText: qsTr("Đóng")
                 onClicked: fullscreenLayer.close()
             }
         }
@@ -340,25 +339,25 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 0
 
-                IconButton {
-                    glyph: pane.player.playbackState === MediaPlayer.PlayingState ? "\uE769" : "\uE768"
+                StudioIconButton {
+                    iconName: pane.player.playbackState === MediaPlayer.PlayingState ? "pause" : "play"
                     toolTipText: pane.player.playbackState === MediaPlayer.PlayingState
-                        ? I18n.t("Pause") : I18n.t("Play")
+                        ? qsTr("Tạm dừng") : qsTr("Phát")
                     onClicked: pane.playRequested()
                 }
-                IconButton {
-                    glyph: "\uE71A"
-                    toolTipText: I18n.t("Stop")
+                StudioIconButton {
+                    iconName: "stop"
+                    toolTipText: qsTr("Dừng")
                     onClicked: pane.stopRequested()
                 }
-                IconButton {
-                    glyph: pane.muted ? "\uE74F" : "\uE767"
-                    toolTipText: pane.muted ? I18n.t("Unmute") : I18n.t("Mute")
+                StudioIconButton {
+                    iconName: pane.muted ? "muted" : "volume"
+                    toolTipText: pane.muted ? qsTr("Bật tiếng") : qsTr("Tắt tiếng")
                     onClicked: pane.muteRequested()
                 }
-                IconButton {
-                    glyph: "\uE740"
-                    toolTipText: I18n.t("Full screen preview")
+                StudioIconButton {
+                    iconName: "fullscreen"
+                    toolTipText: qsTr("Toàn màn hình")
                     onClicked: pane.fullscreenRequested()
                 }
             }

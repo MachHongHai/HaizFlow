@@ -2,12 +2,18 @@ import QtQuick
 import QtQuick.Layouts
 import "."
 
-Panel {
+AppSurface {
     id: root
 
     required property var downloader
     visible: downloader.queueStatus.length > 0 || downloader.status.length > 0
-    title: I18n.t("Download queue")
+    padding: Theme.space12
+    spacing: Theme.space8
+
+    SectionHeader {
+        Layout.fillWidth: true
+        title: qsTr("Hàng đợi tải xuống")
+    }
 
     RowLayout {
         Layout.fillWidth: true
@@ -22,7 +28,9 @@ Panel {
         }
         AppButton {
             visible: root.downloader.queueCount > 0
-            text: I18n.t("Clear queue")
+            text: qsTr("Xóa hàng đợi")
+            compact: true
+            tone: "secondary"
             onClicked: root.downloader.clearQueuedDownloads()
         }
     }
@@ -40,7 +48,8 @@ Panel {
         }
         AppButton {
             visible: root.downloader.busy
-            text: I18n.t("Cancel download")
+            text: qsTr("Hủy tải")
+            compact: true
             tone: "danger"
             onClicked: root.downloader.cancel()
         }

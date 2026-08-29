@@ -42,12 +42,12 @@ Rectangle {
                 Layout.preferredWidth: 24
                 Layout.preferredHeight: 24
                 radius: 12
-                color: Theme.violetMuted
+                color: Theme.interactiveMuted
 
                 Text {
                     anchors.centerIn: parent
                     text: String(root.stepNumber)
-                    color: Theme.violet
+                    color: Theme.interactive
                     font.pixelSize: Theme.caption
                     font.weight: Font.Bold
                     textFormat: Text.PlainText

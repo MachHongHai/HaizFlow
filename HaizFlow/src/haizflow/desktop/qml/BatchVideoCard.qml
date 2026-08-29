@@ -12,50 +12,33 @@ Rectangle {
     required property string thumbnailSource
     required property string videoSize
 
-    signal activated()
+    signal activated
 
-    readonly property string statusLabel: status === "pending" ? I18n.t("Queued")
-        : status === "processing" ? I18n.t("Processing")
-        : status === "done" ? I18n.t("Complete")
-        : status === "failed" ? I18n.t("Failed")
-        : status === "cancelled" ? I18n.t("Cancelled")
-        : status === "paused" ? I18n.t("Paused")
-        : status === "awaiting_review" ? I18n.t("Review needed")
-        : I18n.taskStateLabel(status)
-    readonly property color statusColor: status === "done" ? Theme.success
-        : status === "failed" || status === "cancelled" ? Theme.danger
-        : status === "processing" ? Theme.warning
-        : Theme.textMuted
-    readonly property color baseColor: status === "processing" ? Theme.warmSurface
-        : status === "awaiting_review" ? Theme.violetSurface
-        : status === "failed" || status === "cancelled" ? Theme.dangerMuted
-        : Theme.surface
-    readonly property color stateOutline: status === "processing" ? Theme.amberMuted
-        : status === "awaiting_review" ? Theme.violetOutline
-        : status === "failed" || status === "cancelled" ? Theme.danger
-        : Theme.outline
+    readonly property string statusLabel: status === "pending" ? qsTr("Đang chờ") : status === "processing" ? qsTr("Đang xử lý") : status === "done" ? qsTr("Hoàn tất") : status === "failed" ? qsTr("Lỗi") : status === "cancelled" ? qsTr("Đã hủy") : status === "paused" ? qsTr("Đã tạm dừng") : status === "awaiting_review" ? qsTr("Cần duyệt") : I18n.taskStateLabel(status)
+    readonly property color statusColor: status === "done" ? Theme.success : status === "failed" || status === "cancelled" ? Theme.danger : status === "processing" ? Theme.warning : Theme.textMuted
+    readonly property color baseColor: status === "processing" ? Theme.warmSurface : status === "awaiting_review" ? Theme.interactiveMuted : status === "failed" || status === "cancelled" ? Theme.dangerMuted : Theme.surface
+    readonly property color stateOutline: status === "processing" ? Theme.amberMuted : status === "awaiting_review" ? Theme.interactiveOutline : status === "failed" || status === "cancelled" ? Theme.danger : Theme.outline
 
     radius: Theme.radius
     color: hoverHandler.hovered ? Theme.surfaceMuted : root.baseColor
     border.width: activeFocus ? 2 : 1
-    border.color: activeFocus ? Theme.focus
-        : hoverHandler.hovered ? Theme.outlineStrong : root.stateOutline
+    border.color: activeFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : root.stateOutline
     focusPolicy: Qt.TabFocus
     Accessible.role: Accessible.Button
-    Accessible.name: qsTr("%1, %2").arg(fileName).arg(I18n.t("Edit video settings"))
+    Accessible.name: qsTr("%1, %2").arg(fileName).arg(qsTr("Chỉnh cài đặt video"))
     scale: tapHandler.pressed ? 0.99 : 1
 
     function resetFocusState() {
-        root.focus = false
+        root.focus = false;
     }
 
     GridView.onPooled: {
-        root.visible = false
-        root.resetFocusState()
+        root.visible = false;
+        root.resetFocusState();
     }
     GridView.onReused: {
-        root.visible = true
-        root.resetFocusState()
+        root.visible = true;
+        root.resetFocusState();
     }
 
     Keys.onReturnPressed: root.activated()
@@ -69,7 +52,7 @@ Rectangle {
     TapHandler {
         id: tapHandler
         onTapped: {
-            root.activated()
+            root.activated();
         }
     }
 
@@ -116,7 +99,7 @@ Rectangle {
                     Text {
                         id: sizeLabel
                         anchors.centerIn: parent
-                        text: I18n.t(root.videoSize)
+                        text: root.videoSize
                         color: Theme.textOnDark
                         font.pixelSize: Theme.label
                         font.weight: Font.DemiBold
@@ -136,13 +119,8 @@ Rectangle {
                     width: parent.width * Math.max(0, Math.min(100, root.progress)) / 100
                     height: parent.height
                     color: root.progress >= 100 ? Theme.success : Theme.interactive
-
-                    Behavior on width {
-                        NumberAnimation { duration: Theme.motionStandard; easing.type: Easing.OutCubic }
-                    }
                 }
             }
-
         }
 
         ColumnLayout {
@@ -207,16 +185,16 @@ Rectangle {
     transform: Translate {
         y: hoverHandler.hovered ? -2 : 0
         Behavior on y {
-            NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic }
+            NumberAnimation {
+                duration: Theme.motionFast
+                easing.type: Easing.OutCubic
+            }
         }
     }
-    Behavior on color {
-        ColorAnimation { duration: Theme.motionFast }
-    }
-    Behavior on border.color {
-        ColorAnimation { duration: Theme.motionFast }
-    }
     Behavior on scale {
-        NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic }
+        NumberAnimation {
+            duration: Theme.motionFast
+            easing.type: Easing.OutCubic
+        }
     }
 }

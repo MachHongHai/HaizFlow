@@ -11,6 +11,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from haizflow.desktop.activity_log import ActivityLogBuffer
+from haizflow.desktop.models import ActivityEventModel
 from haizflow.services import video_store
 
 
@@ -52,6 +53,44 @@ class ActivityLogBufferTests(unittest.TestCase):
 
         self.assertIn("latest line", tail)
         self.assertNotIn("old line\nold line\nold line\nold line\nold line\nold line\nold line\nold line\nold line\nold line", tail)
+
+
+class ActivityEventModelTests(unittest.TestCase):
+    def test_translates_technical_stage_into_compact_activity(self):
+        model = ActivityEventModel()
+        model.append_lines(["18:21:26 [INFO] [TRANSLATE] Translating subtitles 5-6 of 8"])
+
+        self.assertEqual(model.rowCount(), 1)
+        index = model.index(0, 0)
+        self.assertEqual(model.data(index, model.TitleRole), "Dịch phụ đề")
+        self.assertEqual(model.data(index, model.StageRole), "TRANSLATE")
+        self.assertEqual(model.data(index, model.ProgressRole), 75)
+
+    def test_coalesces_model_heartbeat_lines(self):
+        model = ActivityEventModel()
+        model.append_lines([
+            "18:21:26 [INFO] [OMNIVOICE] OmniVoice is still working",
+            "18:21:30 [INFO] [OMNIVOICE] OmniVoice is still working",
+        ])
+
+        self.assertEqual(model.rowCount(), 1)
+        index = model.index(0, 0)
+        self.assertEqual(model.data(index, model.TimestampRole), "18:21:30")
+
+    def test_activity_titles_follow_the_interface_language(self):
+        model = ActivityEventModel()
+        model.append_lines(["18:21:26 [INFO] [TTS] Generating voice 1/4"])
+        index = model.index(0, 0)
+        self.assertEqual(model.data(index, model.TitleRole), "Tạo giọng")
+
+        model.set_language("en")
+
+        self.assertEqual(model.data(index, model.TitleRole), "Voice generation")
+
+    def test_skips_debug_and_queue_control_lines(self):
+        model = ActivityEventModel()
+        model.append_lines(["__QUEUE_CHANGED__", "18:21:26 [DEBUG] [PIPELINE] internal state"])
+        self.assertEqual(model.rowCount(), 0)
 
 
 if __name__ == "__main__":

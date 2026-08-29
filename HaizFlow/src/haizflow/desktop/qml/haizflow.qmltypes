@@ -18,6 +18,9 @@ Module {
         exportMetaObjectRevisions: [256]
         Property { name: "videoModel"; type: "QObject"; read: "videoModel"; index: 0; isReadonly: true }
         Property { name: "projectModel"; type: "QObject"; read: "projectModel"; index: 1; isReadonly: true }
+        Property { name: "projectBrowserModel"; type: "QObject"; read: "projectBrowserModel"; index: 164; isReadonly: true }
+        Property { name: "activityEventModel"; type: "QObject"; read: "activityEventModel"; index: 165; isReadonly: true }
+        Property { name: "manualProjectModel"; type: "QObject"; read: "manualProjectModel"; index: 166; isReadonly: true }
         Property {
             name: "singleProjectModel"
             type: "QObject"
@@ -1403,6 +1406,11 @@ Module {
             Parameter { name: "a2"; type: "QString" }
             Parameter { name: "a3"; type: "QString" }
         }
+        Signal {
+            name: "appConfirmationRequested"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+        }
         Method {
             name: "setHardwareTelemetryActive"
             Parameter { name: "a1"; type: "bool" }
@@ -1420,6 +1428,10 @@ Module {
             Parameter { name: "a1"; type: "QString" }
         }
         Method { name: "enableInAppAlerts" }
+        Method {
+            name: "respondToAppConfirmation"
+            Parameter { name: "a1"; type: "bool" }
+        }
         Method {
             name: "showAppAlert"
             Parameter { name: "a1"; type: "QString" }
@@ -1632,7 +1644,23 @@ Module {
             Parameter { name: "a1"; type: "int" }
         }
         Method {
+            name: "selectProjectFromBrowser"
+            type: "bool"
+            Parameter { name: "a1"; type: "int" }
+        }
+        Method {
+            name: "deleteProjectFromBrowser"
+            type: "bool"
+            Parameter { name: "a1"; type: "int" }
+        }
+        Method {
             name: "selectProjectInMode"
+            type: "bool"
+            Parameter { name: "a1"; type: "int" }
+            Parameter { name: "a2"; type: "QString" }
+        }
+        Method {
+            name: "deleteProjectInMode"
             type: "bool"
             Parameter { name: "a1"; type: "int" }
             Parameter { name: "a2"; type: "QString" }

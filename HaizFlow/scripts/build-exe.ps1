@@ -163,6 +163,13 @@ if (Test-Path $QmlPath) {
   $ArgsList += @("--add-data", "$QmlPath;haizflow\desktop\qml")
 }
 
+$TranslationsPath = Join-Path $Root "src\haizflow\desktop\translations"
+$EnglishCatalogPath = Join-Path $TranslationsPath "haizflow_en.qm"
+if (!(Test-Path -LiteralPath $EnglishCatalogPath -PathType Leaf)) {
+  throw "Translation catalog is missing: $EnglishCatalogPath"
+}
+$ArgsList += @("--add-data", "$TranslationsPath;haizflow\desktop\translations")
+
 $BrandingAssetsPath = Join-Path $Root "src\haizflow\desktop\assets\branding"
 foreach ($BrandingAsset in ("haizflow-mark.png", "haizflow.ico")) {
   $BrandingAssetPath = Join-Path $BrandingAssetsPath $BrandingAsset

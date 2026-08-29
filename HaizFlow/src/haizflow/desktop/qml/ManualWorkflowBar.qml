@@ -4,7 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 import "."
 
-Panel {
+Rectangle {
     id: root
 
     property int selectedStage: 0
@@ -20,19 +20,22 @@ Panel {
 
     readonly property var stageIds: ["translation", "visual", "voice", "audio"]
     readonly property var stageLabels: [
-        I18n.t("Translate"),
-        I18n.t("Visuals"),
-        I18n.t("Voice"),
-        I18n.t("Audio")
+        qsTr("Dịch"),
+        qsTr("Hình ảnh"),
+        qsTr("Giọng đọc"),
+        qsTr("Âm thanh")
     ]
 
-    tone: "violet"
-    contentPadding: Theme.space8
-    contentSpacing: 0
+    implicitHeight: 44
+    color: Theme.surface
+    border.width: 1
+    border.color: Theme.divider
+    radius: Theme.radiusSmall
 
     RowLayout {
-        Layout.fillWidth: true
-        spacing: Theme.space8
+        anchors.fill: parent
+        anchors.margins: Theme.space4
+        spacing: Theme.space4
 
         Repeater {
             model: root.stageIds.length
@@ -45,14 +48,15 @@ Panel {
                 readonly property bool selected: root.selectedStage === index
                 readonly property bool running: root.runningStage === stageId
                     || (stageId === "audio" && root.runningStage === "timeline")
+                readonly property bool completed: root.completedStages.indexOf(stageId) >= 0
 
                 Layout.fillWidth: true
-                Layout.preferredHeight: 42
-                radius: Theme.radiusSmall
-                color: selected || running ? Theme.interactiveMuted
-                    : stageHover.hovered ? Theme.surfaceMuted : Theme.surfaceElevated
-                border.width: selected ? 2 : 1
-                border.color: selected || running ? Theme.focus : Theme.outline
+                Layout.preferredHeight: 34
+                radius: Theme.radiusTiny
+                color: selected ? Theme.sidebarSelected
+                    : stageHover.hovered ? Theme.surfaceMuted : "transparent"
+                border.width: activeFocus ? 2 : 0
+                border.color: Theme.focus
                 enabled: root.hasVideo
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
@@ -60,16 +64,26 @@ Panel {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: Theme.space12
-                    anchors.rightMargin: Theme.space12
+                    anchors.leftMargin: Theme.space8
+                    anchors.rightMargin: Theme.space8
                     spacing: Theme.space8
+
+                    Rectangle {
+                        Layout.preferredWidth: 3
+                        Layout.preferredHeight: 16
+                        radius: 1
+                        color: stageButton.running ? Theme.warning
+                            : stageButton.selected ? Theme.interactive
+                            : stageButton.completed ? Theme.success : "transparent"
+                    }
 
                     Text {
                         Layout.fillWidth: true
                         text: root.stageLabels[stageButton.index]
-                        color: Theme.text
-                        font.pixelSize: Theme.caption
-                        font.weight: Font.DemiBold
+                        color: stageButton.enabled ? Theme.text : Theme.textDisabled
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.control
+                        font.weight: stageButton.selected ? Font.DemiBold : Font.Normal
                         textFormat: Text.PlainText
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
@@ -89,13 +103,12 @@ Panel {
             }
         }
 
-        AppButton {
-            Layout.preferredWidth: 142
+        StudioButton {
+            Layout.preferredWidth: 124
             text: root.processing && root.runningStage === "render"
-                ? I18n.t("Pause") : I18n.t("Export video")
-            iconGlyph: root.processing && root.runningStage === "render" ? "\uE769" : "\uE74E"
-            tone: root.processing && root.runningStage === "render" ? "danger" : "primary"
-            compact: true
+                ? qsTr("Tạm dừng") : qsTr("Xuất video")
+            iconName: root.processing && root.runningStage === "render" ? "pause" : "publish"
+            variant: root.processing && root.runningStage === "render" ? "danger" : "primary"
             enabled: root.processing && root.runningStage === "render"
                 || (!root.queued && root.canExport)
             onClicked: {

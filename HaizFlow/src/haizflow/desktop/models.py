@@ -1,8 +1,201 @@
 """Qt list models used by the QML presentation layer."""
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
+from __future__ import annotations
+
+import re
+
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QModelIndex,
+    Property,
+    QSortFilterProxyModel,
+    Qt,
+    Signal,
+)
 
 from haizflow.desktop.media import thumbnail_source
+
+
+class ActivityEventModel(QAbstractListModel):
+    """Bounded, user-facing activity stream derived from technical logs.
+
+    Raw logs remain available for diagnostics.  This model deliberately keeps
+    only short, stable events suitable for the compact activity tray.
+    """
+
+    TimestampRole = Qt.ItemDataRole.UserRole + 1
+    SeverityRole = Qt.ItemDataRole.UserRole + 2
+    StageRole = Qt.ItemDataRole.UserRole + 3
+    TitleRole = Qt.ItemDataRole.UserRole + 4
+    DetailRole = Qt.ItemDataRole.UserRole + 5
+    ProgressRole = Qt.ItemDataRole.UserRole + 6
+    CodeRole = Qt.ItemDataRole.UserRole + 7
+
+    _LOG_PATTERN = re.compile(
+        r"^(?P<time>\d{1,2}:\d{2}:\d{2})?\s*"
+        r"(?:\[(?P<severity>INFO|WARNING|WARN|ERROR|DEBUG)\])?\s*"
+        r"(?:\[(?P<stage>[^\]]+)\])?\s*(?P<detail>.*)$",
+        re.IGNORECASE,
+    )
+    _PROGRESS_PATTERN = re.compile(r"(?P<done>\d+)\s*(?:/|of)\s*(?P<total>\d+)", re.IGNORECASE)
+    _STAGE_TITLES = {
+        "WHISPER": "Nhận dạng giọng nói",
+        "WHISPERX": "Nhận dạng giọng nói",
+        "TRANSCRIBE": "Nhận dạng giọng nói",
+        "TRANSLATE": "Dịch phụ đề",
+        "HYMT2": "Dịch phụ đề",
+        "TTS": "Tạo giọng",
+        "OMNIVOICE": "Tạo giọng",
+        "EDGE_TTS": "Tạo giọng",
+        "AUDIO": "Xử lý âm thanh",
+        "SEPARATE": "Tách giọng",
+        "OCR": "Nhận diện phụ đề gốc",
+        "RENDER": "Dựng video",
+        "FFMPEG": "Dựng video",
+        "PIPELINE": "Xử lý video",
+        "MODEL": "Tải model",
+    }
+    _STAGE_TITLES_EN = {
+        "Nhận dạng giọng nói": "Speech recognition",
+        "Dịch phụ đề": "Subtitle translation",
+        "Tạo giọng": "Voice generation",
+        "Xử lý âm thanh": "Audio processing",
+        "Tách giọng": "Voice separation",
+        "Nhận diện phụ đề gốc": "Original subtitle detection",
+        "Dựng video": "Video rendering",
+        "Xử lý video": "Video processing",
+        "Tải model": "Model download",
+    }
+
+    def __init__(self, *, max_events: int = 120):
+        super().__init__()
+        self._max_events = max(20, int(max_events))
+        self._events: list[dict] = []
+        self._language = "vi"
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self._events)
+
+    def roleNames(self):
+        return {
+            self.TimestampRole: b"timestamp",
+            self.SeverityRole: b"severity",
+            self.StageRole: b"stage",
+            self.TitleRole: b"title",
+            self.DetailRole: b"detail",
+            self.ProgressRole: b"progress",
+            self.CodeRole: b"code",
+        }
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or not 0 <= index.row() < len(self._events):
+            return None
+        event = self._events[index.row()]
+        role_key = {
+            self.TimestampRole: "timestamp",
+            self.SeverityRole: "severity",
+            self.StageRole: "stage",
+            self.TitleRole: "title",
+            self.DetailRole: "detail",
+            self.ProgressRole: "progress",
+            self.CodeRole: "code",
+        }.get(role)
+        value = event.get(role_key) if role_key else None
+        if role == self.TitleRole and self._language == "en":
+            return self._STAGE_TITLES_EN.get(str(value), str(value))
+        return value
+
+    def set_language(self, language: str) -> None:
+        normalized = "vi" if str(language or "").lower().startswith("vi") else "en"
+        if normalized == self._language:
+            return
+        self._language = normalized
+        if not self._events:
+            return
+        first = self.index(0, 0)
+        last = self.index(len(self._events) - 1, 0)
+        self.dataChanged.emit(first, last, [self.TitleRole])
+
+    def clear(self) -> None:
+        if not self._events:
+            return
+        self.beginResetModel()
+        self._events.clear()
+        self.endResetModel()
+
+    def replace_text(self, text: str) -> None:
+        events = [event for line in str(text or "").splitlines() if (event := self._parse_line(line))]
+        self.beginResetModel()
+        self._events = events[-self._max_events :]
+        self.endResetModel()
+
+    def append_lines(self, lines) -> None:
+        for raw_line in lines:
+            for line in str(raw_line or "").splitlines():
+                event = self._parse_line(line)
+                if event:
+                    self._append_event(event)
+
+    def _append_event(self, event: dict) -> None:
+        # Heartbeat lines should update one row instead of creating a noisy feed.
+        if self._events and event["code"] == self._events[-1]["code"] and event["code"].endswith(".working"):
+            self._events[-1] = event
+            row = len(self._events) - 1
+            index = self.index(row, 0)
+            self.dataChanged.emit(index, index, list(self.roleNames()))
+            return
+        if len(self._events) >= self._max_events:
+            remove_count = len(self._events) - self._max_events + 1
+            self.beginRemoveRows(QModelIndex(), 0, remove_count - 1)
+            del self._events[:remove_count]
+            self.endRemoveRows()
+        row = len(self._events)
+        self.beginInsertRows(QModelIndex(), row, row)
+        self._events.append(event)
+        self.endInsertRows()
+
+    @classmethod
+    def _parse_line(cls, line: str) -> dict | None:
+        text = str(line or "").strip()
+        if not text or text.startswith("__"):
+            return None
+        match = cls._LOG_PATTERN.match(text)
+        if not match:
+            return None
+        severity = (match.group("severity") or "INFO").lower()
+        if severity == "warn":
+            severity = "warning"
+        stage = (match.group("stage") or "PIPELINE").strip().upper().replace(" ", "_")
+        detail = match.group("detail").strip()
+        if severity == "debug" or not detail:
+            return None
+        title = cls._STAGE_TITLES.get(stage, cls._STAGE_TITLES.get(stage.split("_")[0], "Xử lý video"))
+        progress_match = cls._PROGRESS_PATTERN.search(detail)
+        progress = -1
+        if progress_match:
+            done = int(progress_match.group("done"))
+            total = max(1, int(progress_match.group("total")))
+            progress = max(0, min(100, round(done * 100 / total)))
+        lowered = detail.casefold()
+        suffix = ".working" if "still working" in lowered or "đang xử lý" in lowered else ".event"
+        return {
+            "timestamp": match.group("time") or "",
+            "severity": "error" if severity == "error" else "warning" if severity == "warning" else "info",
+            "stage": stage,
+            "title": title,
+            "detail": cls._friendly_detail(detail, severity),
+            "progress": progress,
+            "code": f"{stage.lower()}{suffix}",
+        }
+
+    @staticmethod
+    def _friendly_detail(detail: str, severity: str) -> str:
+        compact = " ".join(str(detail or "").split())
+        if len(compact) > 180:
+            compact = compact[:177].rstrip() + "…"
+        if severity == "error" and not compact.lower().startswith(("lỗi", "error")):
+            return f"Lỗi: {compact}"
+        return compact
 
 class VideoListModel(QAbstractListModel):
     VideoIdRole = Qt.ItemDataRole.UserRole + 1
@@ -120,6 +313,8 @@ class ProjectListModel(QAbstractListModel):
     ProgressRole = Qt.ItemDataRole.UserRole + 5
     ThumbnailRole = Qt.ItemDataRole.UserRole + 6
     VideoSizeRole = Qt.ItemDataRole.UserRole + 7
+    UpdatedAtRole = Qt.ItemDataRole.UserRole + 8
+    ActivityAtRole = Qt.ItemDataRole.UserRole + 9
 
     def __init__(self):
         super().__init__()
@@ -143,6 +338,8 @@ class ProjectListModel(QAbstractListModel):
             self.ProgressRole: project["progress"],
             self.ThumbnailRole: project["thumbnail_source"],
             self.VideoSizeRole: project.get("video_size", ""),
+            self.UpdatedAtRole: project.get("updated_at", ""),
+            self.ActivityAtRole: project.get("activity_at", project.get("updated_at", "")),
         }
 
     def roleNames(self):
@@ -154,6 +351,8 @@ class ProjectListModel(QAbstractListModel):
             self.ProgressRole: b"progress",
             self.ThumbnailRole: b"thumbnailSource",
             self.VideoSizeRole: b"videoSize",
+            self.UpdatedAtRole: b"updatedAt",
+            self.ActivityAtRole: b"activityAt",
         }
 
     def set_projects(self, projects):
@@ -206,7 +405,7 @@ class ProjectListModel(QAbstractListModel):
 class ProjectGridModel(ProjectListModel):
     """Project model with a synthetic first cell for creating a project."""
 
-    IsCreateCardRole = Qt.ItemDataRole.UserRole + 8
+    IsCreateCardRole = Qt.ItemDataRole.UserRole + 10
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._projects) + 1
@@ -229,6 +428,8 @@ class ProjectGridModel(ProjectListModel):
                 self.ProgressRole: 0,
                 self.ThumbnailRole: "",
                 self.VideoSizeRole: "",
+                self.UpdatedAtRole: "",
+                self.ActivityAtRole: "",
             }.get(role)
         return super().data(self.index(index.row() - 1, 0), role)
 
@@ -236,6 +437,121 @@ class ProjectGridModel(ProjectListModel):
         roles = super().roleNames()
         roles[self.IsCreateCardRole] = b"isCreateCard"
         return roles
+
+
+class ProjectBrowserProxyModel(QSortFilterProxyModel):
+    """Search, filter and activity-sort projects without copying QML data.
+
+    The source model remains the canonical aggregate project catalog.  Keeping
+    filtering here avoids transient QML ListModels and preserves stable source
+    rows for project selection.
+    """
+
+    queryChanged = Signal()
+    typeFilterChanged = Signal()
+    statusFilterChanged = Signal()
+    sortModeChanged = Signal()
+
+    def __init__(self, source_model: ProjectListModel):
+        super().__init__()
+        self._query = ""
+        self._type_filter = "all"
+        self._status_filter = "all"
+        self._sort_mode = "activity"
+        self.setSourceModel(source_model)
+        self.setDynamicSortFilter(True)
+        self.sort(0, Qt.SortOrder.DescendingOrder)
+
+    def _refilter(self) -> None:
+        self.beginFilterChange()
+        self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+
+    @Property(str, notify=queryChanged)
+    def query(self) -> str:
+        return self._query
+
+    @query.setter
+    def query(self, value: str) -> None:
+        normalized = str(value or "").strip().casefold()
+        if normalized == self._query:
+            return
+        self._query = normalized
+        self.queryChanged.emit()
+        self._refilter()
+
+    @Property(str, notify=typeFilterChanged)
+    def typeFilter(self) -> str:
+        return self._type_filter
+
+    @typeFilter.setter
+    def typeFilter(self, value: str) -> None:
+        normalized = str(value or "all").strip().lower()
+        if normalized == self._type_filter:
+            return
+        self._type_filter = normalized
+        self.typeFilterChanged.emit()
+        self._refilter()
+
+    @Property(str, notify=statusFilterChanged)
+    def statusFilter(self) -> str:
+        return self._status_filter
+
+    @statusFilter.setter
+    def statusFilter(self, value: str) -> None:
+        normalized = str(value or "all").strip().lower()
+        if normalized == self._status_filter:
+            return
+        self._status_filter = normalized
+        self.statusFilterChanged.emit()
+        self._refilter()
+
+    @Property(str, notify=sortModeChanged)
+    def sortMode(self) -> str:
+        return self._sort_mode
+
+    @sortMode.setter
+    def sortMode(self, value: str) -> None:
+        normalized = str(value or "activity").strip().lower()
+        if normalized == self._sort_mode:
+            return
+        self._sort_mode = normalized
+        self.sortModeChanged.emit()
+        self.invalidate()
+        self.sort(0, Qt.SortOrder.AscendingOrder if normalized == "name" else Qt.SortOrder.DescendingOrder)
+
+    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
+        model = self.sourceModel()
+        index = model.index(source_row, 0, source_parent)
+        project_name = str(model.data(index, ProjectListModel.ProjectNameRole) or "")
+        project_type = str(model.data(index, ProjectListModel.ProjectTypeRole) or "").lower()
+        status = str(model.data(index, ProjectListModel.StatusRole) or "").lower()
+        if project_type not in {"single", "manual", "batch", "download", "publish"}:
+            return False
+        if self._query and self._query not in project_name.casefold():
+            return False
+        if self._type_filter != "all" and project_type != self._type_filter:
+            return False
+        if self._status_filter != "all" and status != self._status_filter:
+            return False
+        return True
+
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
+        model = self.sourceModel()
+        if self._sort_mode == "name":
+            left_value = str(model.data(left, ProjectListModel.ProjectNameRole) or "").casefold()
+            right_value = str(model.data(right, ProjectListModel.ProjectNameRole) or "").casefold()
+        else:
+            left_value = str(model.data(left, ProjectListModel.ActivityAtRole) or "")
+            right_value = str(model.data(right, ProjectListModel.ActivityAtRole) or "")
+        return left_value < right_value
+
+    def project_at(self, row: int):
+        proxy_index = self.index(row, 0)
+        if not proxy_index.isValid():
+            return None
+        source_index = self.mapToSource(proxy_index)
+        source = self.sourceModel()
+        return source.project_at(source_index.row())
 
 
 class SocialPublishListModel(QAbstractListModel):

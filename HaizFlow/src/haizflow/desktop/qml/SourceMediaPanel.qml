@@ -2,32 +2,32 @@ import QtQuick
 import QtQuick.Layouts
 import "."
 
-Panel {
+AppSurface {
     id: root
 
-    signal requestUrlImport()
-    signal requestDownloadProjectImport()
+    signal requestUrlImport
+    signal requestDownloadProjectImport
 
     property bool dropActive: false
     property bool compact: false
 
-    title: I18n.t("Source media")
-    subtitle: I18n.t("Input video")
-    tone: "blue"
+    padding: Theme.space12
+    spacing: Theme.space12
+
+    SectionHeader {
+        Layout.fillWidth: true
+        title: qsTr("Video nguồn")
+    }
 
     Rectangle {
         id: videoFrame
 
         Layout.fillWidth: true
-        Layout.preferredHeight: root.compact
-            ? Math.max(124, Math.min(168, width * 9 / 16))
-            : Math.max(230, Math.min(300, width * 9 / 16))
+        Layout.preferredHeight: root.compact ? Math.max(124, Math.min(168, width * 9 / 16)) : Math.max(230, Math.min(300, width * 9 / 16))
         radius: Theme.radius
         color: root.dropActive ? Theme.interactiveMuted : Theme.video
         border.width: root.dropActive || AppController.videoPath.length > 0 ? 2 : 1
-        border.color: root.dropActive ? Theme.focus
-            : AppController.videoPath.length > 0 ? Theme.outlineStrong
-            : Theme.outline
+        border.color: root.dropActive ? Theme.focus : AppController.videoPath.length > 0 ? Theme.outlineStrong : Theme.outline
         clip: true
 
         Image {
@@ -69,7 +69,7 @@ Panel {
 
             Text {
                 width: parent.width
-                text: root.dropActive ? I18n.t("Drop video to import") : I18n.t("Select a source video")
+                text: root.dropActive ? qsTr("Thả video để nhập") : qsTr("Chọn video nguồn")
                 color: Theme.text
                 font.pixelSize: Theme.bodyLarge
                 font.weight: Font.DemiBold
@@ -79,7 +79,7 @@ Panel {
 
             Text {
                 width: parent.width
-                text: root.dropActive ? I18n.t("Release to add the source file") : qsTr("MP4, MOV or MKV")
+                text: root.dropActive ? qsTr("Thả để thêm video nguồn") : qsTr("MP4, MOV or MKV")
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
                 horizontalAlignment: Text.AlignHCenter
@@ -93,21 +93,21 @@ Panel {
             keys: ["text/uri-list"]
             enabled: AppController.canEditSelectedVideo
 
-            onEntered: function(drag) {
+            onEntered: function (drag) {
                 if (drag.hasUrls) {
-                    root.dropActive = true
-                    drag.accept()
+                    root.dropActive = true;
+                    drag.accept();
                 }
             }
             onExited: root.dropActive = false
-            onDropped: function(drop) {
-                root.dropActive = false
+            onDropped: function (drop) {
+                root.dropActive = false;
                 if (!drop.urls || drop.urls.length === 0)
-                    return
+                    return;
                 if (AppController.hasSelectedVideo)
-                    AppController.replaceSelectedVideoVideo(String(drop.urls[0]))
+                    AppController.replaceSelectedVideoVideo(String(drop.urls[0]));
                 else
-                    AppController.importVideo(String(drop.urls[0]))
+                    AppController.importVideo(String(drop.urls[0]));
             }
         }
 
@@ -118,13 +118,6 @@ Panel {
         TapHandler {
             enabled: AppController.videoPath.length === 0 && AppController.canEditSelectedVideo
             onTapped: sourceImportButton.openMenu()
-        }
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.motionFast }
-        }
-        Behavior on border.color {
-            ColorAnimation { duration: Theme.motionFast }
         }
     }
 
@@ -147,7 +140,7 @@ Panel {
 
             Text {
                 Layout.fillWidth: true
-                text: AppController.videoPath.length > 0 ? I18n.t("Source imported") : I18n.t("No source selected")
+                text: AppController.videoPath.length > 0 ? qsTr("Đã nhập video nguồn") : qsTr("Chưa chọn video nguồn")
                 color: Theme.text
                 font.pixelSize: Theme.caption
                 font.weight: Font.DemiBold
@@ -156,7 +149,7 @@ Panel {
 
             Text {
                 Layout.fillWidth: true
-                text: AppController.videoPath || I18n.t("Choose a file to begin")
+                text: AppController.videoPath || qsTr("Chọn một tệp để bắt đầu")
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
                 textFormat: Text.PlainText
@@ -177,7 +170,7 @@ Panel {
 
         MediaSourceImportButton {
             visible: AppController.videoPath.length > 0
-            text: I18n.t("Replace")
+            text: qsTr("Thay thế")
             iconGlyph: "\uE8B7"
             enabled: AppController.canEditSelectedVideo
             onFileRequested: AppController.browseVideo()
@@ -185,5 +178,4 @@ Panel {
             onDownloadProjectRequested: root.requestDownloadProjectImport()
         }
     }
-
 }

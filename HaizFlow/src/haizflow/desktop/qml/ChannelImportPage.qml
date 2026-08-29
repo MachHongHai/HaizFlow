@@ -21,22 +21,22 @@ Item {
 
     function platformPlaceholder() {
         if (selectedPlatform === "tiktok")
-            return I18n.t("Paste a TikTok profile link")
+            return qsTr("Dán liên kết trang cá nhân TikTok")
         if (selectedPlatform === "douyin")
-            return I18n.t("Paste a Douyin profile link")
-        return I18n.t("Paste a YouTube channel link")
+            return qsTr("Dán liên kết trang cá nhân Douyin")
+        return qsTr("Dán liên kết kênh YouTube")
     }
 
     function contentTypeOptions() {
         if (selectedPlatform === "youtube") {
             return [
-                { "label": I18n.t("All YouTube videos"), "value": "all" },
-                { "label": I18n.t("YouTube Shorts"), "value": "short" },
-                { "label": I18n.t("Regular YouTube videos"), "value": "long" }
+                { "label": qsTr("Tất cả video YouTube"), "value": "all" },
+                { "label": qsTr("YouTube Shorts"), "value": "short" },
+                { "label": qsTr("Video YouTube thường"), "value": "long" }
             ]
         }
         return [
-            { "label": I18n.t("Video posts"), "value": "all" }
+            { "label": qsTr("Video"), "value": "all" }
         ]
     }
 
@@ -100,29 +100,33 @@ Item {
 
         PageHeader {
             Layout.fillWidth: true
-            title: I18n.t("Import from channel")
+            title: qsTr("Nhập video từ kênh")
             subtitle: root.appController.projectName
 
             AppButton {
                 visible: root.importer.busy
-                text: I18n.t("Cancel import")
+                text: qsTr("Hủy nhập")
                 iconGlyph: "\uE711"
                 tone: "danger"
                 onClicked: root.importer.cancel()
             }
         }
 
-        Panel {
+        AppSurface {
             Layout.fillWidth: true
-            title: I18n.t("Channel source")
-            subtitle: I18n.t("Choose a platform, then paste its channel or profile link")
+            padding: Theme.space16
+
+            SectionHeader {
+                Layout.fillWidth: true
+                title: qsTr("Nguồn kênh")
+            }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space4
 
                 Text {
-                    text: I18n.t("Platform")
+                    text: qsTr("Nền tảng")
                     color: Theme.textMuted
                     font.pixelSize: Theme.label
                     textFormat: Text.PlainText
@@ -133,7 +137,7 @@ Item {
                     options: [
                         { "label": "YouTube", "value": "youtube" },
                         { "label": "TikTok", "value": "tiktok" },
-                        { "label": I18n.t("Douyin Beta"), "value": "douyin" }
+                        { "label": qsTr("Douyin Beta"), "value": "douyin" }
                     ]
                     currentValue: root.selectedPlatform
                     enabled: !root.importer.busy
@@ -149,24 +153,14 @@ Item {
                 Layout.fillWidth: true
                 spacing: Theme.space12
 
-                TextField {
+                AppTextField {
                     id: channelUrl
 
                     Layout.fillWidth: true
-                    implicitHeight: 44
                     placeholderText: root.platformPlaceholder()
-                    color: Theme.text
-                    font.pixelSize: Theme.body
                     selectByMouse: true
-                    activeFocusOnTab: true
                     enabled: !root.importer.busy
-                    Accessible.name: I18n.t("Channel link")
-                    background: Rectangle {
-                        radius: Theme.radiusSmall
-                        color: Theme.input
-                        border.width: channelUrl.activeFocus ? 2 : 1
-                        border.color: channelUrl.activeFocus ? Theme.focus : Theme.outline
-                    }
+                    accessibleName: qsTr("Liên kết kênh")
                     Keys.onReturnPressed: {
                         if (inspectButton.enabled)
                             inspectButton.clicked()
@@ -176,7 +170,7 @@ Item {
                 AppButton {
                     id: inspectButton
 
-                    text: root.hasResults ? I18n.t("Scan again") : I18n.t("Preview videos")
+                    text: root.hasResults ? qsTr("Quét lại") : qsTr("Xem trước video")
                     iconGlyph: "\uE721"
                     tone: "primary"
                     enabled: channelUrl.text.trim().length > 0 && !root.importer.busy
@@ -204,7 +198,7 @@ Item {
                     spacing: Theme.space4
 
                     Text {
-                        text: I18n.t("Order")
+                        text: qsTr("Sắp xếp")
                         color: Theme.textMuted
                         font.pixelSize: Theme.label
                         textFormat: Text.PlainText
@@ -214,8 +208,8 @@ Item {
                         id: ranking
                         Layout.fillWidth: true
                         model: [
-                            { "label": I18n.t("Newest"), "value": "newest" },
-                            { "label": I18n.t("Most viewed"), "value": "popular" }
+                            { "label": qsTr("Mới nhất"), "value": "newest" },
+                            { "label": qsTr("Nhiều lượt xem"), "value": "popular" }
                         ]
                         textRole: "label"
                         valueRole: "value"
@@ -228,7 +222,7 @@ Item {
                     spacing: Theme.space4
 
                     Text {
-                        text: I18n.t("Import limit")
+                        text: qsTr("Số lượng nhập")
                         color: Theme.textMuted
                         font.pixelSize: Theme.label
                         textFormat: Text.PlainText
@@ -241,7 +235,7 @@ Item {
                         to: 100
                         value: 20
                         enabled: !root.importer.busy
-                        Accessible.name: I18n.t("Import limit")
+                        Accessible.name: qsTr("Số lượng nhập")
                     }
                 }
 
@@ -250,7 +244,7 @@ Item {
                     spacing: Theme.space4
 
                     Text {
-                        text: I18n.t("Content type")
+                        text: qsTr("Loại nội dung")
                         color: Theme.textMuted
                         font.pixelSize: Theme.label
                         textFormat: Text.PlainText
@@ -273,7 +267,7 @@ Item {
                     spacing: Theme.space4
 
                     Text {
-                        text: I18n.t("Scan range")
+                        text: qsTr("Phạm vi quét")
                         color: Theme.textMuted
                         font.pixelSize: Theme.label
                         textFormat: Text.PlainText
@@ -283,10 +277,10 @@ Item {
                         id: scanScope
                         Layout.fillWidth: true
                         model: [
-                            { "label": I18n.t("100 videos"), "value": 100 },
-                            { "label": I18n.t("300 videos"), "value": 300 },
-                            { "label": I18n.t("1000 videos"), "value": 1000 },
-                            { "label": I18n.t("All available"), "value": 0 }
+                            { "label": qsTr("100 video"), "value": 100 },
+                            { "label": qsTr("300 video"), "value": 300 },
+                            { "label": qsTr("1000 video"), "value": 1000 },
+                            { "label": qsTr("Toàn bộ"), "value": 0 }
                         ]
                         textRole: "label"
                         valueRole: "value"
@@ -300,7 +294,7 @@ Item {
                     spacing: Theme.space4
 
                     Text {
-                        text: I18n.t("Access")
+                        text: qsTr("Quyền truy cập")
                         color: Theme.textMuted
                         font.pixelSize: Theme.label
                         textFormat: Text.PlainText
@@ -310,10 +304,10 @@ Item {
                         id: authentication
                         Layout.fillWidth: true
                         model: [
-                            I18n.t("Public videos"),
-                            I18n.t("Use Edge session"),
-                            I18n.t("Use Chrome session"),
-                            I18n.t("Choose cookies.txt")
+                            qsTr("Video công khai"),
+                            qsTr("Dùng phiên Edge"),
+                            qsTr("Dùng phiên Chrome"),
+                            qsTr("Chọn cookies.txt")
                         ]
                         enabled: !root.importer.busy
                         onActivated: function(index) {
@@ -354,7 +348,7 @@ Item {
 
                 Text {
                     visible: root.importer.platform === "Douyin"
-                    text: I18n.t("Beta")
+                    text: qsTr("Beta")
                     color: Theme.warning
                     font.pixelSize: Theme.label
                     font.weight: Font.DemiBold
@@ -390,7 +384,7 @@ Item {
                         Layout.fillWidth: true
                         text: root.importer.channelName.length > 0
                             ? root.importer.channelName
-                            : I18n.t("Channel videos")
+                            : qsTr("Video trong kênh")
                         color: Theme.text
                         font.pixelSize: Theme.h2
                         font.weight: Font.DemiBold
@@ -400,7 +394,7 @@ Item {
 
                     Text {
                         visible: root.hasResults
-                        text: qsTr("%1 %2").arg(root.importer.candidateCount).arg(I18n.t("videos"))
+                        text: qsTr("%1 %2").arg(root.importer.candidateCount).arg(qsTr("video"))
                         color: Theme.textMuted
                         font.pixelSize: Theme.caption
                         textFormat: Text.PlainText
@@ -408,7 +402,7 @@ Item {
 
                     AppCheckBox {
                         visible: root.hasResults
-                        text: I18n.t("Select all")
+                        text: qsTr("Chọn tất cả")
                         checked: root.importer.selectedCount > 0
                             && root.importer.selectedCount === root.importer.selectableCount
                         enabled: !root.importer.busy
@@ -417,7 +411,7 @@ Item {
 
                     AppButton {
                         visible: root.hasResults
-                        text: qsTr("%1 (%2)").arg(I18n.t("Download selected")).arg(root.importer.selectedCount)
+                        text: qsTr("%1 (%2)").arg(qsTr("Tải video đã chọn")).arg(root.importer.selectedCount)
                         iconGlyph: "\uE896"
                         tone: "primary"
                         enabled: root.importer.selectedCount > 0 && !root.importer.busy
@@ -475,7 +469,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: I18n.t("Preview a channel to choose videos")
+                        text: qsTr("Xem trước kênh để chọn video")
                         color: Theme.text
                         font.pixelSize: Theme.h3
                         font.weight: Font.DemiBold
@@ -485,7 +479,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: I18n.t("Downloaded videos are added to this batch without starting processing")
+                        text: qsTr("Video tải xong chỉ được thêm vào dự án và không tự chạy xử lý")
                         color: Theme.textMuted
                         font.pixelSize: Theme.caption
                         horizontalAlignment: Text.AlignHCenter

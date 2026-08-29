@@ -6,13 +6,14 @@ CheckBox {
     id: root
 
     spacing: 10
-    font.pixelSize: Theme.body
+    font.family: Theme.fontFamily
+    font.pixelSize: TypeScale.control
     activeFocusOnTab: true
     Accessible.name: text
 
     indicator: Rectangle {
-        implicitWidth: 20
-        implicitHeight: 20
+        implicitWidth: 18
+        implicitHeight: 18
         x: root.leftPadding
         y: parent.height / 2 - height / 2
         radius: Theme.radiusTiny
@@ -28,10 +29,6 @@ CheckBox {
             glyph: "\uE73E"
             iconColor: Theme.textOnAccent
             iconSize: 12
-        }
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.motionFast }
         }
     }
 

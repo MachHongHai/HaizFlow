@@ -115,14 +115,14 @@ Rectangle {
             spacing: Theme.space8
 
             Text {
-                text: I18n.t("Timeline")
+                text: qsTr("Dòng thời gian")
                 color: Theme.text
                 font.pixelSize: Theme.body
                 font.weight: Font.DemiBold
             }
 
             Text {
-                text: root.selectedIndex >= 0 && root.selectedIndex < root.segments.length ? I18n.t("Selected clip") + "  " + root.formatShortTime(Number(root.segments[root.selectedIndex].end || 0) - Number(root.segments[root.selectedIndex].start || 0)) : I18n.t("Drag a clip or its edges to adjust timing")
+                text: root.selectedIndex >= 0 && root.selectedIndex < root.segments.length ? qsTr("Đoạn đã chọn") + "  " + root.formatShortTime(Number(root.segments[root.selectedIndex].end || 0) - Number(root.segments[root.selectedIndex].start || 0)) : qsTr("Kéo đoạn hoặc hai mép để chỉnh thời gian")
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
                 elide: Text.ElideRight
@@ -144,7 +144,7 @@ Rectangle {
                 value: root.zoomFactor
                 stepSize: 0.1
                 onMoved: root.zoomAt(timelineFlick.width / 2, value)
-                Accessible.name: I18n.t("Timeline zoom")
+                Accessible.name: qsTr("Thu phóng timeline")
             }
         }
 
@@ -229,7 +229,7 @@ Rectangle {
                 Text {
                     x: 4
                     y: 50
-                    text: I18n.t("Video")
+                    text: qsTr("Video")
                     color: Theme.textMuted
                     font.pixelSize: Theme.label
                 }
@@ -271,7 +271,7 @@ Rectangle {
                 Text {
                     x: 4
                     y: 124
-                    text: I18n.t("Subtitles")
+                    text: qsTr("Phụ đề")
                     color: Theme.textMuted
                     font.pixelSize: Theme.label
                 }
@@ -306,13 +306,13 @@ Rectangle {
                         width: Math.max(8, (previewEnd - previewStart) * root.pixelsPerSecond)
                         height: 78
                         radius: Theme.radiusTiny
-                        color: index === root.selectedIndex ? Theme.interactiveMuted : Theme.blueMuted
+                        color: index === root.selectedIndex ? Theme.interactiveMuted : Theme.interactiveMuted
                         border.width: index === root.selectedIndex ? 2 : 1
-                        border.color: index === root.selectedIndex ? Theme.focus : Theme.blueOutline
+                        border.color: index === root.selectedIndex ? Theme.focus : Theme.interactiveOutline
                         z: editingTiming || index === root.selectedIndex ? 3 : 2
                         activeFocusOnTab: true
                         Accessible.role: Accessible.Button
-                        Accessible.name: I18n.t("Subtitle clip") + " " + String(index + 1)
+                        Accessible.name: qsTr("Đoạn phụ đề") + " " + String(index + 1)
 
                         onModelDataChanged: {
                             if (!editingTiming) {
@@ -427,7 +427,7 @@ Rectangle {
                             anchors.bottom: parent.bottom
                             width: 9
                             radius: Theme.radiusTiny
-                            color: clip.index === root.selectedIndex || leftResize.containsMouse ? Theme.interactive : Theme.blueOutline
+                            color: clip.index === root.selectedIndex || leftResize.containsMouse ? Theme.interactive : Theme.interactiveOutline
 
                             MouseArea {
                                 id: leftResize
@@ -459,7 +459,7 @@ Rectangle {
                             anchors.bottom: parent.bottom
                             width: 9
                             radius: Theme.radiusTiny
-                            color: clip.index === root.selectedIndex || rightResize.containsMouse ? Theme.interactive : Theme.blueOutline
+                            color: clip.index === root.selectedIndex || rightResize.containsMouse ? Theme.interactive : Theme.interactiveOutline
 
                             MouseArea {
                                 id: rightResize

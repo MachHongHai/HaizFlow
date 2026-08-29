@@ -10,22 +10,35 @@ Item {
 
     property string projectType: "single"
     property var projectModel: null
-    signal requestNewProject()
+    signal requestNewProject
     signal openProject(string projectType)
 
-    readonly property bool downloadMode: projectType === "download"
-    readonly property bool publishMode: projectType === "publish"
-    readonly property bool manualMode: projectType === "manual"
+    function newProjectLabel() {
+        if (projectType === "batch")
+            return qsTr("Tạo dự án Hàng loạt")
+        if (projectType === "manual")
+            return qsTr("Tạo dự án Thủ công")
+        if (projectType === "download")
+            return qsTr("Tạo dự án Tải xuống")
+        if (projectType === "publish")
+            return qsTr("Tạo dự án Đăng mạng xã hội")
+        return qsTr("Tạo dự án Tự động")
+    }
 
     opacity: visible ? 1 : 0
     transform: Translate {
         y: root.visible ? 0 : 8
         Behavior on y {
-            NumberAnimation { duration: Theme.motionStandard; easing.type: Easing.OutCubic }
+            NumberAnimation {
+                duration: Theme.motionStandard
+                easing.type: Easing.OutCubic
+            }
         }
     }
     Behavior on opacity {
-        NumberAnimation { duration: Theme.motionStandard }
+        NumberAnimation {
+            duration: Theme.motionStandard
+        }
     }
 
     ColumnLayout {
@@ -68,15 +81,7 @@ Item {
                     border.color: activeFocus || newProjectHover.hovered ? Theme.focus : Theme.outline
                     focusPolicy: Qt.TabFocus
                     Accessible.role: Accessible.Button
-                    Accessible.name: root.projectType === "batch"
-                        ? I18n.t("New batch project")
-                        : root.manualMode
-                            ? I18n.t("New manual project")
-                        : root.downloadMode
-                            ? I18n.t("New download project")
-                            : root.publishMode
-                                ? I18n.t("New social publishing project")
-                                : I18n.t("New single project")
+                    Accessible.name: root.newProjectLabel()
                     scale: newProjectTap.pressed ? 0.99 : 1
 
                     Keys.onReturnPressed: root.requestNewProject()
@@ -90,7 +95,7 @@ Item {
                     TapHandler {
                         id: newProjectTap
                         onTapped: {
-                            root.requestNewProject()
+                            root.requestNewProject();
                         }
                     }
 
@@ -118,15 +123,7 @@ Item {
 
                         Text {
                             width: parent.width
-                            text: root.projectType === "batch"
-                                ? I18n.t("New batch project")
-                                : root.manualMode
-                                    ? I18n.t("New manual project")
-                                : root.downloadMode
-                                    ? I18n.t("New download project")
-                                    : root.publishMode
-                                        ? I18n.t("New social publishing project")
-                                        : I18n.t("New single project")
+                            text: root.newProjectLabel()
                             color: Theme.text
                             font.pixelSize: Theme.bodyLarge
                             font.weight: Font.DemiBold
@@ -137,32 +134,12 @@ Item {
                             wrapMode: Text.NoWrap
                         }
 
-                        Text {
-                            width: parent.width
-                            text: root.projectType === "batch"
-                                ? I18n.t("Process videos in batch")
-                                : root.manualMode
-                                    ? I18n.t("Build one stage at a time")
-                                : root.downloadMode
-                                    ? I18n.t("Channels, videos, and audio")
-                                    : root.publishMode
-                                        ? I18n.t("Publish videos through Zernio")
-                                        : I18n.t("Process one video")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.caption
-                            horizontalAlignment: Text.AlignHCenter
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                            maximumLineCount: 1
-                            wrapMode: Text.NoWrap
-                        }
-                    }
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.motionFast }
                     }
                     Behavior on scale {
-                        NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic }
+                        NumberAnimation {
+                            duration: Theme.motionFast
+                            easing.type: Easing.OutCubic
+                        }
                     }
                 }
             }
@@ -184,19 +161,19 @@ Item {
                 height: projectGrid.cardHeight
 
                 function resetFocusState() {
-                    projectGridDelegate.focus = false
-                    projectCard.resetFocusState()
+                    projectGridDelegate.focus = false;
+                    projectCard.resetFocusState();
                     if (newProjectCardLoader.item)
-                        newProjectCardLoader.item.focus = false
+                        newProjectCardLoader.item.focus = false;
                 }
 
                 GridView.onPooled: {
-                    visible = false
-                    resetFocusState()
+                    visible = false;
+                    resetFocusState();
                 }
                 GridView.onReused: {
-                    visible = true
-                    resetFocusState()
+                    visible = true;
+                    resetFocusState();
                 }
 
                 Loader {
@@ -221,19 +198,21 @@ Item {
                     videoSize: projectGridDelegate.videoSize
                     onActivated: {
                         if (AppController.selectProjectInMode(index, root.projectType))
-                            root.openProject(root.projectType)
+                            root.openProject(root.projectType);
                     }
                     onOpenRequested: {
                         if (AppController.selectProjectInMode(index, root.projectType))
-                            root.openProject(root.projectType)
+                            root.openProject(root.projectType);
                     }
                     onProjectFolderRequested: {
                         if (AppController.selectProjectInMode(index, root.projectType))
-                            AppController.openProjectFolder()
+                            AppController.openProjectFolder();
                     }
                     onDeleteRequested: {
-                        if (AppController.selectProjectInMode(index, root.projectType))
-                            AppController.deleteCurrentProject()
+                        // Resolve the persisted project before showing a
+                        // confirmation. Opening it first changes activity
+                        // order and can make this row point at another card.
+                        AppController.deleteProjectInMode(index, root.projectType)
                     }
                 }
             }

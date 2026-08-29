@@ -4,7 +4,7 @@ import "."
 Item {
     id: root
 
-    property string label: I18n.t("No preview")
+    property string label: qsTr("Chưa có hình xem trước")
     readonly property bool compact: Math.min(width, height) < 72
     clip: true
 
