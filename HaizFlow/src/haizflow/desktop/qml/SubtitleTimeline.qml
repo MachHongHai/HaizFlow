@@ -14,10 +14,14 @@ Rectangle {
     property url thumbnailSource: ""
     property real zoomFactor: 1
     property bool editingClip: false
+    property real pendingZoomAnchorTime: 0
+    property real pendingZoomAnchorX: 0
 
     signal segmentSelected(int index)
     signal seekRequested(real seconds)
+    signal interactionDismissed()
     signal timingCommitted(int index, real start, real end)
+    signal timingCommitResolution(int index, bool accepted)
 
     readonly property real trackLeft: 64
     readonly property real usableWidth: Math.max(1, timelineFlick.width - trackLeft - 8)
@@ -27,6 +31,7 @@ Rectangle {
     readonly property real snapDistanceSeconds: Math.min(0.16, 8 / Math.max(1, pixelsPerSecond))
     readonly property real tickStep: pixelsPerSecond >= 240 ? 0.25 : pixelsPerSecond >= 120 ? 0.5 : pixelsPerSecond >= 58 ? 1 : pixelsPerSecond >= 28 ? 2 : 5
     readonly property real minimumSegmentDuration: 0.12
+    readonly property real trackCanvasHeight: 194
 
     color: Theme.codeSurface
     radius: Theme.radiusSmall
@@ -79,11 +84,10 @@ Rectangle {
         const oldScale = Math.max(0.001, pixelsPerSecond);
         const anchorX = clamp(viewX, trackLeft, timelineFlick.width);
         const anchorTime = clamp((timelineFlick.contentX + anchorX - trackLeft) / oldScale, 0, duration);
+        pendingZoomAnchorX = anchorX;
+        pendingZoomAnchorTime = anchorTime;
         zoomFactor = clamp(requestedFactor, 1, 24);
-        Qt.callLater(function () {
-            const nextContentX = trackLeft + anchorTime * root.pixelsPerSecond - anchorX;
-            timelineFlick.contentX = root.clamp(nextContentX, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width));
-        });
+        zoomPositionTimer.restart();
     }
 
     function panByPixels(delta) {
@@ -91,7 +95,7 @@ Rectangle {
     }
 
     function ensurePositionVisible() {
-        if (zoomFactor <= 1 || timelineFlick.moving || timelineFlick.dragging)
+        if (editingClip || zoomFactor <= 1 || timelineFlick.moving || timelineFlick.dragging)
             return;
         const playheadX = trackLeft + position * pixelsPerSecond;
         const leftBoundary = timelineFlick.contentX + trackLeft + 24;
@@ -102,7 +106,29 @@ Rectangle {
             timelineFlick.contentX = clamp(playheadX - timelineFlick.width + 32, 0, Math.max(0, timelineFlick.contentWidth - timelineFlick.width));
     }
 
+    function resolveTimingCommit(sourceIndex, accepted) {
+        timingCommitResolution(sourceIndex, accepted);
+        editingClip = false;
+    }
+
     onPositionChanged: ensurePositionVisible()
+    onSegmentsChanged: editingClip = false
+
+    Timer {
+        id: zoomPositionTimer
+        interval: 0
+        repeat: false
+        onTriggered: {
+            const nextContentX = root.trackLeft
+                + root.pendingZoomAnchorTime * root.pixelsPerSecond
+                - root.pendingZoomAnchorX;
+            timelineFlick.contentX = root.clamp(
+                nextContentX,
+                0,
+                Math.max(0, timelineFlick.contentWidth - timelineFlick.width)
+            );
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -153,7 +179,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: root.trackLeft + root.trackWidth + 8
-            contentHeight: height
+            contentHeight: Math.max(height, root.trackCanvasHeight)
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             flickableDirection: Flickable.HorizontalFlick
@@ -186,7 +212,7 @@ Rectangle {
             Item {
                 id: timelineCanvas
                 width: timelineFlick.contentWidth
-                height: timelineFlick.height
+                height: Math.max(timelineFlick.height, root.trackCanvasHeight)
 
                 MouseArea {
                     anchors.fill: parent
@@ -194,6 +220,7 @@ Rectangle {
                     onClicked: function (mouse) {
                         if (mouse.x < root.trackLeft)
                             return;
+                        root.interactionDismissed();
                         root.seekRequested(root.clamp((mouse.x - root.trackLeft) / root.pixelsPerSecond, 0, root.duration));
                     }
                 }
@@ -287,12 +314,17 @@ Rectangle {
                 }
 
                 Repeater {
+                    id: clipRepeater
+                    // Keep delegate identity stable while the Flickable moves.
+                    // Rebuilding a filtered JS array for every contentX change
+                    // destroyed/recreated every interactive clip while panning.
                     model: root.segments
 
                     delegate: Rectangle {
                         id: clip
                         required property int index
                         required property var modelData
+                        readonly property int sourceIndex: index
 
                         property real previewStart: Number(modelData.start || 0)
                         property real previewEnd: Number(modelData.end || 0)
@@ -305,14 +337,23 @@ Rectangle {
                         y: 100
                         width: Math.max(8, (previewEnd - previewStart) * root.pixelsPerSecond)
                         height: 78
+                        visible: previewEnd >= Math.max(
+                            0,
+                            (timelineFlick.contentX - root.trackLeft)
+                                / Math.max(1, root.pixelsPerSecond) - 2
+                        ) && previewStart <= Math.min(
+                            root.duration,
+                            (timelineFlick.contentX + timelineFlick.width - root.trackLeft)
+                                / Math.max(1, root.pixelsPerSecond) + 2
+                        )
                         radius: Theme.radiusTiny
-                        color: index === root.selectedIndex ? Theme.interactiveMuted : Theme.interactiveMuted
-                        border.width: index === root.selectedIndex ? 2 : 1
-                        border.color: index === root.selectedIndex ? Theme.focus : Theme.interactiveOutline
-                        z: editingTiming || index === root.selectedIndex ? 3 : 2
+                        color: Theme.interactiveMuted
+                        border.width: sourceIndex === root.selectedIndex ? 2 : 1
+                        border.color: sourceIndex === root.selectedIndex ? Theme.focus : Theme.interactiveOutline
+                        z: editingTiming || sourceIndex === root.selectedIndex ? 3 : 2
                         activeFocusOnTab: true
                         Accessible.role: Accessible.Button
-                        Accessible.name: qsTr("Đoạn phụ đề") + " " + String(index + 1)
+                        Accessible.name: qsTr("Đoạn phụ đề") + " " + String(sourceIndex + 1)
 
                         onModelDataChanged: {
                             if (!editingTiming) {
@@ -321,14 +362,14 @@ Rectangle {
                             }
                         }
 
-                        Keys.onReturnPressed: root.segmentSelected(index)
+                        Keys.onReturnPressed: root.segmentSelected(sourceIndex)
 
                         function pointerInCanvas(area, mouse) {
                             return area.mapToItem(timelineCanvas, mouse.x, mouse.y).x;
                         }
 
                         function beginTiming(area, mouse) {
-                            root.segmentSelected(index);
+                            root.segmentSelected(sourceIndex);
                             gestureStart = Number(modelData.start || 0);
                             gestureEnd = Number(modelData.end || 0);
                             previewStart = gestureStart;
@@ -345,13 +386,31 @@ Rectangle {
                             root.editingClip = false;
                         }
 
+                        function resolveCommit(accepted) {
+                            if (!accepted) {
+                                previewStart = Number(modelData.start || 0);
+                                previewEnd = Number(modelData.end || 0);
+                            }
+                            editingTiming = false;
+                            root.editingClip = false;
+                        }
+
                         function commitTiming() {
                             editingTiming = false;
                             root.editingClip = false;
                             const oldStart = Number(modelData.start || 0);
                             const oldEnd = Number(modelData.end || 0);
                             if (Math.abs(previewStart - oldStart) > 0.0005 || Math.abs(previewEnd - oldEnd) > 0.0005)
-                                root.timingCommitted(index, previewStart, previewEnd);
+                                root.timingCommitted(sourceIndex, previewStart, previewEnd);
+                        }
+
+                        Connections {
+                            target: root
+
+                            function onTimingCommitResolution(resolvedIndex, accepted) {
+                                if (resolvedIndex === clip.sourceIndex)
+                                    clip.resolveCommit(accepted);
+                            }
                         }
 
                         Rectangle {
@@ -365,7 +424,7 @@ Rectangle {
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 10
                                 anchors.topMargin: 7
-                                anchors.bottomMargin: clip.index === root.selectedIndex && clip.width >= 78 ? 23 : 7
+                                anchors.bottomMargin: clip.sourceIndex === root.selectedIndex && clip.width >= 78 ? 23 : 7
                                 text: String(clip.modelData.text || "")
                                 color: Theme.text
                                 font.pixelSize: Theme.caption
@@ -382,7 +441,7 @@ Rectangle {
                                 text: root.formatShortTime(clip.previewEnd - clip.previewStart)
                                 color: Theme.textMuted
                                 font.pixelSize: Theme.label
-                                visible: clip.index === root.selectedIndex && clip.width >= 78
+                                visible: clip.sourceIndex === root.selectedIndex && clip.width >= 78
                             }
                         }
 
@@ -403,11 +462,11 @@ Rectangle {
                                     return;
                                 const delta = (clip.pointerInCanvas(moveArea, mouse) - clip.pointerStartX) / root.pixelsPerSecond;
                                 const duration = clip.gestureEnd - clip.gestureStart;
-                                const lower = root.previousEnd(clip.index);
-                                const upper = Math.max(lower, root.nextStart(clip.index) - duration);
+                                const lower = root.previousEnd(clip.sourceIndex);
+                                const upper = Math.max(lower, root.nextStart(clip.sourceIndex) - duration);
                                 let nextStart = root.clamp(clip.gestureStart + delta, lower, upper);
-                                const startSnapped = root.snapTime(nextStart, clip.index, true, false);
-                                const endSnapped = root.snapTime(nextStart + duration, clip.index, false, true);
+                                const startSnapped = root.snapTime(nextStart, clip.sourceIndex, true, false);
+                                const endSnapped = root.snapTime(nextStart + duration, clip.sourceIndex, false, true);
                                 if (Math.abs(startSnapped - nextStart) <= root.snapDistanceSeconds)
                                     nextStart = startSnapped;
                                 else if (Math.abs(endSnapped - (nextStart + duration)) <= root.snapDistanceSeconds)
@@ -427,7 +486,7 @@ Rectangle {
                             anchors.bottom: parent.bottom
                             width: 9
                             radius: Theme.radiusTiny
-                            color: clip.index === root.selectedIndex || leftResize.containsMouse ? Theme.interactive : Theme.interactiveOutline
+                            color: clip.sourceIndex === root.selectedIndex || leftResize.containsMouse ? Theme.interactive : Theme.interactiveOutline
 
                             MouseArea {
                                 id: leftResize
@@ -442,10 +501,10 @@ Rectangle {
                                     if (!pressed)
                                         return;
                                     const delta = (clip.pointerInCanvas(leftResize, mouse) - clip.pointerStartX) / root.pixelsPerSecond;
-                                    const lower = root.previousEnd(clip.index);
+                                    const lower = root.previousEnd(clip.sourceIndex);
                                     const upper = clip.gestureEnd - root.minimumSegmentDuration;
                                     const proposed = root.clamp(clip.gestureStart + delta, lower, upper);
-                                    clip.previewStart = root.clamp(root.snapTime(proposed, clip.index, true, false), lower, upper);
+                                    clip.previewStart = root.clamp(root.snapTime(proposed, clip.sourceIndex, true, false), lower, upper);
                                 }
                                 onReleased: clip.commitTiming()
                                 onCanceled: clip.cancelTiming()
@@ -459,7 +518,7 @@ Rectangle {
                             anchors.bottom: parent.bottom
                             width: 9
                             radius: Theme.radiusTiny
-                            color: clip.index === root.selectedIndex || rightResize.containsMouse ? Theme.interactive : Theme.interactiveOutline
+                            color: clip.sourceIndex === root.selectedIndex || rightResize.containsMouse ? Theme.interactive : Theme.interactiveOutline
 
                             MouseArea {
                                 id: rightResize
@@ -475,9 +534,9 @@ Rectangle {
                                         return;
                                     const delta = (clip.pointerInCanvas(rightResize, mouse) - clip.pointerStartX) / root.pixelsPerSecond;
                                     const lower = clip.gestureStart + root.minimumSegmentDuration;
-                                    const upper = root.nextStart(clip.index);
+                                    const upper = root.nextStart(clip.sourceIndex);
                                     const proposed = root.clamp(clip.gestureEnd + delta, lower, upper);
-                                    clip.previewEnd = root.clamp(root.snapTime(proposed, clip.index, false, true), lower, upper);
+                                    clip.previewEnd = root.clamp(root.snapTime(proposed, clip.sourceIndex, false, true), lower, upper);
                                 }
                                 onReleased: clip.commitTiming()
                                 onCanceled: clip.cancelTiming()

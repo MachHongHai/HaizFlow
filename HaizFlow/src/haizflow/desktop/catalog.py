@@ -87,4 +87,12 @@ OMNIVOICE_TTS_VOICES = [
     ("omnivoice:cartoon", "Cartoon voice", "style"),
     ("omnivoice:child_soft", "Soft child", "style"),
     ("omnivoice:child_low", "Low child voice", "style"),
+    ("omnivoice:animated_bright", "Bright animation", "entertainment"),
+    ("omnivoice:animated_soft", "Soft animation", "entertainment"),
+    ("omnivoice:comic_low", "Low comic", "entertainment"),
+    ("omnivoice:tech_presenter", "Tech presenter", "entertainment"),
+    ("omnivoice:show_host", "Show host", "entertainment"),
+    ("omnivoice:trailer_deep", "Deep trailer", "entertainment"),
+    ("omnivoice:radio_warm", "Warm radio", "entertainment"),
+    ("omnivoice:mystery_whisper", "Mystery whisper", "entertainment"),
 ]

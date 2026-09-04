@@ -75,6 +75,10 @@ ComboBox {
         height: Math.min(292, Math.max(52, voiceList.contentHeight + 12))
         padding: 6
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        onOpened: Qt.callLater(function() {
+            if (voiceList.currentIndex >= 0)
+                voiceList.positionViewAtIndex(voiceList.currentIndex, ListView.Contain);
+        })
 
         enter: Transition {
             NumberAnimation {
@@ -98,7 +102,9 @@ ComboBox {
 
             clip: true
             model: root.delegateModel
-            currentIndex: root.highlightedIndex
+            // Include count in the binding so replacing an async model also
+            // clamps/restores keyboard highlight and scroll position.
+            currentIndex: Math.max(-1, Math.min(root.highlightedIndex, count - 1))
             reuseItems: true
             ScrollIndicator.vertical: ScrollIndicator {}
         }

@@ -7,14 +7,19 @@ AppDialog {
     id: root
 
     property string pendingSettingsVideoId: ""
+    signal settingsCommitted()
 
     readonly property bool sourceAudioAdjustable: AppController.canEditSelectedVideo
-        && !AppController.enableAudioSeparation
     readonly property bool backgroundMusicAdjustable: AppController.canEditSelectedVideo
         && AppController.backgroundMusicPath.length > 0
     readonly property bool previewReady: AppController.audioPreviewState === "ready"
-        && AppController.audioPreviewSource.length > 0
-    readonly property bool previewPlaying: voicePreviewPlayer.playbackState === MediaPlayer.PlayingState
+        && (AppController.audioPreviewSource.length > 0
+            || AppController.audioPreviewOriginalSource.length > 0
+            || AppController.audioPreviewBackgroundMusicSource.length > 0)
+    readonly property bool previewPlaying:
+        voicePreviewPlayer.playbackState === MediaPlayer.PlayingState
+        || sourcePreviewPlayer.playbackState === MediaPlayer.PlayingState
+        || musicPreviewPlayer.playbackState === MediaPlayer.PlayingState
 
     title: qsTr("Âm lượng")
     subtitle: qsTr("Cân bằng âm thanh gốc, giọng đọc và nhạc nền")
@@ -32,10 +37,12 @@ AppDialog {
 
     function playPreview() {
         stopPreview()
-        sourcePreviewPlayer.play()
+        if (AppController.audioPreviewOriginalSource.length > 0)
+            sourcePreviewPlayer.play()
         if (AppController.audioPreviewBackgroundMusicSource.length > 0)
             musicPreviewPlayer.play()
-        voicePreviewPlayer.play()
+        if (AppController.audioPreviewSource.length > 0)
+            voicePreviewPlayer.play()
         previewStopTimer.start()
     }
 
@@ -47,10 +54,10 @@ AppDialog {
     }
 
     function requestPreview() {
-        if (root.previewReady)
-            root.playPreview()
-        else
-            AppController.previewAudioMix()
+        // The shared preview sources may currently belong to a voice-row or
+        // another project. Resolving the selected project's existing tracks
+        // is synchronous and model-free, so refresh them before every play.
+        AppController.previewAudioMix()
     }
 
     function scheduleVideoSettingsSave() {
@@ -66,6 +73,7 @@ AppDialog {
         videoSettingsSaveTimer.stop()
         AppController.persistVideoSettingsFor(root.pendingSettingsVideoId)
         root.pendingSettingsVideoId = ""
+        root.settingsCommitted()
     }
 
     onClosed: {
@@ -79,10 +87,9 @@ AppDialog {
 
     AudioLevelControl {
         Layout.fillWidth: true
-        label: qsTr("Âm thanh gốc")
+        label: AppController.enableAudioSeparation ? qsTr("Âm thanh nền") : qsTr("Âm thanh gốc")
         volume: AppController.originalVolume
         adjustable: root.sourceAudioAdjustable
-        disabledHint: qsTr("Không chỉnh được khi đang tách giọng")
         onVolumeEdited: function(value) {
             AppController.originalVolume = value
             root.scheduleVideoSettingsSave()
@@ -158,6 +165,7 @@ AppDialog {
         onTriggered: {
             AppController.persistVideoSettingsFor(root.pendingSettingsVideoId)
             root.pendingSettingsVideoId = ""
+            root.settingsCommitted()
         }
     }
 
@@ -193,8 +201,7 @@ AppDialog {
         function onAudioPreviewChanged() {
             if (AppController.audioPreviewState === "preparing")
                 root.stopPreview()
-            else if (root.visible && AppController.audioPreviewState === "ready"
-                     && AppController.audioPreviewSource.length > 0)
+            else if (root.visible && root.previewReady)
                 root.playPreview()
             else
                 root.stopPreview()

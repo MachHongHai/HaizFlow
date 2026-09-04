@@ -37,8 +37,7 @@ StackLayout {
             "publish-workspace": 10,
             "home": 11,
             "projects": 12,
-            "settings": 13,
-            "about": 14
+            "settings": 13
         };
         return routes[route] === undefined ? 0 : routes[route];
     }
@@ -265,12 +264,6 @@ StackLayout {
     }
 
     SettingsPage {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
-    }
-
-    AboutPage {
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.margins: UiMetrics.pageMargin

@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -10,6 +11,7 @@ from PySide6.QtCore import QUrl
 
 from haizflow.desktop.editor_preview_controller import EditorPreviewController
 from haizflow.schemas.video import CropSettings, SubtitleStyle
+from haizflow.services import manual_artifacts
 
 
 class _Signal:
@@ -87,6 +89,252 @@ class EditorPreviewControllerTests(unittest.TestCase):
             EditorPreviewController._audio_cache_payload(settings),
             EditorPreviewController._audio_cache_payload(completed),
         )
+
+    def test_manual_preview_accepts_only_the_voice_manifest_for_current_text(self):
+        video = SimpleNamespace(
+            video_id="manual-video",
+            project_type="manual",
+            tts_provider="omnivoice",
+            tts_voice="omnivoice:male",
+            speaker_mode="single",
+            active_artifacts={
+                "subtitle_document": "subtitle-current",
+                "tts_manifest": "voice-current",
+            },
+        )
+        record = {
+            "artifact_id": "tts_manifest:voice-current",
+            "signature": "voice-current",
+            "config_fingerprint": manual_artifacts.signature(
+                "omnivoice", "omnivoice:male", "single"
+            ),
+            "inputs": ["subtitle_document:subtitle-current"],
+        }
+
+        with mock.patch(
+            "haizflow.desktop.editor_preview_controller.manual_artifacts.peek",
+            return_value=record,
+        ) as peek:
+            self.assertEqual(EditorPreviewController._manual_voice_artifact(video), record)
+
+        peek.assert_called_once_with("manual-video", "tts_manifest", "voice-current")
+
+        stale_record = {**record, "config_fingerprint": "old-voice-settings"}
+        with mock.patch(
+            "haizflow.desktop.editor_preview_controller.manual_artifacts.peek",
+            return_value=stale_record,
+        ):
+            self.assertIsNone(EditorPreviewController._manual_voice_artifact(video))
+
+    def test_manual_visual_preview_is_published_into_the_artifact_cache(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            rendered = root / "editor" / "visual" / "preview.mp4"
+            base_rendered = root / "editor" / "base" / "preview.mp4"
+            cached = root / "cache" / "preview.mp4"
+            rendered.parent.mkdir(parents=True)
+            base_rendered.parent.mkdir(parents=True)
+            cached.parent.mkdir(parents=True)
+            rendered.write_bytes(b"rendered-preview")
+            base_rendered.write_bytes(b"subtitle-free-preview")
+            cached.write_bytes(b"cached-preview")
+            video = SimpleNamespace(
+                video_id="manual-video",
+                project_type="manual",
+                active_artifacts={"subtitle_document": "subtitle-signature"},
+            )
+            host = SimpleNamespace(editorPreviewChanged=_Signal())
+            controller = EditorPreviewController(host)
+            controller._generation = 1
+            controller._video_id = video.video_id
+            controller._request_fingerprint = "request-with-audio"
+
+            with (
+                mock.patch.object(controller, "_remove_stale_files"),
+                mock.patch.object(controller, "_remove_stale_audio_dirs"),
+                mock.patch(
+                    "haizflow.desktop.editor_preview_controller.video_store.get_video",
+                    return_value=video,
+                ),
+                mock.patch(
+                    "haizflow.desktop.editor_preview_controller.manual_artifacts.register_existing",
+                    return_value={"resolved_outputs": {"video": str(cached)}},
+                ) as register,
+            ):
+                controller._finish_success(
+                    1,
+                    rendered,
+                    0.0,
+                    5.0,
+                    request_fingerprint="request-with-audio",
+                    visual_signature="visual-only",
+                    base_playback_path=base_rendered,
+                )
+
+            # The artifact cache stores the visual-only proxy. Playback keeps
+            # the caller's media path, which may be a synchronized A/V mux.
+            self.assertEqual(Path(QUrl(controller.source).toLocalFile()), rendered)
+            self.assertEqual(Path(QUrl(controller.base_source).toLocalFile()), base_rendered)
+            self.assertEqual(controller.audio_source, "")
+            register.assert_called_once()
+            self.assertEqual(register.call_args.args[2], "visual-only")
+
+    def test_preview_mux_uses_one_audio_video_file_and_reuses_its_cache(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            visual = root / "visual.mp4"
+            audio = root / "audio.wav"
+            visual.write_bytes(b"video")
+            audio.write_bytes(b"RIFF" + b"audio" * 20)
+            controller = EditorPreviewController(SimpleNamespace(editorPreviewChanged=_Signal()))
+            controller._generation = 1
+            controller._active_process_id = "preview-mux"
+
+            def spawn(command, **_kwargs):
+                Path(command[-1]).write_bytes(b"muxed-media")
+                return SimpleNamespace(returncode=0)
+
+            with (
+                mock.patch(
+                    "haizflow.desktop.editor_preview_controller.subprocess.Popen",
+                    side_effect=spawn,
+                ) as popen,
+                mock.patch(
+                    "haizflow.desktop.editor_preview_controller.communicate_process",
+                    return_value=("", ""),
+                ),
+                mock.patch(
+                    "haizflow.desktop.editor_preview_controller.get_video_duration",
+                    return_value=5.0,
+                ),
+            ):
+                first = controller._mux_preview_media(
+                    1, "preview-mux", visual, audio, root / "preview", 5.0
+                )
+                second = controller._mux_preview_media(
+                    1, "preview-mux", visual, audio, root / "preview", 5.0
+                )
+
+            self.assertEqual(first, second)
+            self.assertTrue(first.is_file())
+            popen.assert_called_once()
+            command = popen.call_args.args[0]
+            self.assertIn("copy", command)
+            self.assertIn("aac", command)
+            self.assertEqual(command.count("-map"), 2)
+
+    def test_manual_preview_audio_remains_available_while_another_tool_runs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "input.mp4"
+            source.write_bytes(b"source")
+            video = SimpleNamespace(
+                video_id="manual-processing",
+                project_type="manual",
+                status="processing",
+                enable_audio_separation=False,
+                files={},
+            )
+            controller = EditorPreviewController(self._host(video, source))
+            controller._generation = 1
+            settings = {
+                "segments": [],
+                "tts_voice": "omnivoice:female",
+                "tts_provider": "omnivoice",
+                "target_language": "vi",
+                "speaker_mode": "single",
+                "source_path": str(source),
+                "original_video_volume": 60,
+                "background_music_volume": 0,
+                "tts_volume": 100,
+                "duration": 1.0,
+                "audio_inputs": {"voice_reference": {}},
+            }
+
+            def fake_mix(_segments, _parts, _source, output, *_args, **_kwargs):
+                Path(output).write_bytes(b"RIFF" + b"\x00" * 100)
+
+            with (
+                mock.patch.object(controller, "_manual_voice_artifact", return_value=None),
+                mock.patch(
+                    "haizflow.desktop.editor_preview_controller.build_audio_timeline",
+                    side_effect=fake_mix,
+                ),
+            ):
+                mixed = controller._prepare_preview_audio(
+                    1,
+                    "preview-processing",
+                    video,
+                    settings,
+                    root / "audio",
+                )
+
+            self.assertIsNotNone(mixed)
+            self.assertTrue(mixed.is_file())
+
+    def test_obsolete_worker_cannot_restart_its_cancelled_process(self):
+        host = SimpleNamespace(editorPreviewChanged=_Signal())
+        controller = EditorPreviewController(host)
+        controller._generation = 1
+        controller._active_process_id = "preview-old"
+        entered_probe = threading.Event()
+        release_probe = threading.Event()
+
+        def blocked_duration(_path):
+            entered_probe.set()
+            release_probe.wait(2.0)
+            return 10.0
+
+        worker = threading.Thread(
+            target=controller._render,
+            args=(
+                1,
+                "preview-old",
+                SimpleNamespace(video_id="video-old"),
+                {"source_path": "input.mp4"},
+                Path("preview"),
+            ),
+        )
+        with (
+            mock.patch.object(controller, "_source_duration", side_effect=blocked_duration),
+            mock.patch("haizflow.desktop.editor_preview_controller.start_video") as start,
+        ):
+            worker.start()
+            self.assertTrue(entered_probe.wait(1.0))
+            with controller._lock:
+                controller._generation = 2
+                controller._active_process_id = "preview-new"
+            release_probe.set()
+            worker.join(timeout=2.0)
+
+        self.assertFalse(worker.is_alive())
+        start.assert_not_called()
+
+    def test_clear_cache_keeps_media_currently_open_in_preview(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_dir = Path(temp_dir)
+            preview_root = video_dir / "temp" / "editor-preview"
+            current_dir = preview_root / "visual-current"
+            stale_dir = preview_root / "visual-stale"
+            current_dir.mkdir(parents=True)
+            stale_dir.mkdir(parents=True)
+            current = current_dir / "preview.mp4"
+            stale = stale_dir / "preview.mp4"
+            current.write_bytes(b"current")
+            stale.write_bytes(b"stale")
+            controller = EditorPreviewController(SimpleNamespace(editorPreviewChanged=_Signal()))
+            controller._video_id = "video-clear"
+            controller._source = QUrl.fromLocalFile(str(current)).toString()
+
+            with mock.patch(
+                "haizflow.desktop.editor_preview_controller.video_store.get_video_dir",
+                return_value=str(video_dir),
+            ):
+                removed = controller.clear_cache("video-clear")
+
+            self.assertEqual(removed, len(b"stale"))
+            self.assertTrue(current.is_file())
+            self.assertFalse(stale.exists())
 
     def test_full_timeline_proxy_is_rendered_off_thread(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -261,21 +509,23 @@ class EditorPreviewControllerTests(unittest.TestCase):
             source = root / "input.mp4"
             source.write_bytes(b"source")
             video_dir = root / "video-workspace"
+            workspace_temp = video_dir / "temp"
+            original_parts = workspace_temp / "voice_parts"
+            original_parts.mkdir(parents=True)
+            (original_parts / "voice_0001.mp3").write_bytes(b"voice" * 100)
+            transcript = workspace_temp / "segments.json"
+            transcript.write_text(
+                json.dumps([{"start": 0.0, "end": 1.0, "text": "Câu A"}]),
+                encoding="utf-8",
+            )
             video = SimpleNamespace(
                 video_id="video-audio-cache",
                 status="done",
-                files={},
+                files={"transcript_json": str(transcript)},
                 enable_audio_separation=False,
             )
             controller = EditorPreviewController(self._host(video, source))
             controller._generation = 1
-            missing_per_request = []
-
-            def fake_generate(_segments, voice_dir, *_args, **_kwargs):
-                voice_path = Path(voice_dir) / "voice_0001.mp3"
-                missing_per_request.append(not voice_path.exists())
-                if not voice_path.exists():
-                    voice_path.write_bytes(b"voice" * 100)
 
             def fake_mix(_segments, _parts, _source, output, *_args, **_kwargs):
                 Path(output).write_bytes(b"RIFF" + b"\x00" * 100)
@@ -299,20 +549,25 @@ class EditorPreviewControllerTests(unittest.TestCase):
                     return_value=str(video_dir),
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.generate_voice_parts",
-                    side_effect=fake_generate,
-                ),
-                mock.patch(
                     "haizflow.desktop.editor_preview_controller.build_audio_timeline",
                     side_effect=fake_mix,
                 ),
             ):
-                controller._prepare_preview_audio(1, "preview-1", video, base_settings, root / "audio-a")
+                first = controller._prepare_preview_audio(
+                    1, "preview-1", video, base_settings, root / "audio-a"
+                )
                 changed = {**base_settings, "segments": [{"start": 0.0, "end": 1.0, "text": "Câu B"}]}
-                controller._prepare_preview_audio(1, "preview-2", video, changed, root / "audio-b")
-                controller._prepare_preview_audio(1, "preview-3", video, base_settings, root / "audio-a-undo")
+                with self.assertRaisesRegex(RuntimeError, "tạo lại giọng"):
+                    controller._prepare_preview_audio(
+                        1, "preview-2", video, changed, root / "audio-b"
+                    )
+                (original_parts / "voice_0001.mp3").unlink()
+                undo = controller._prepare_preview_audio(
+                    1, "preview-3", video, base_settings, root / "audio-a-undo"
+                )
 
-            self.assertEqual(missing_per_request, [True, True, False])
+            self.assertEqual(first.read_bytes(), b"RIFF" + b"\x00" * 100)
+            self.assertEqual(undo.read_bytes(), b"RIFF" + b"\x00" * 100)
 
     def test_caption_chunk_reuses_the_transformed_ocr_region_without_removing_it_twice(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -681,7 +936,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
             # 0-12 second chunk intersecting the edit is encoded again.
             self.assertEqual(render_starts, [0.0, 0.0, 12.0, 24.0, 0.0])
 
-    def test_changed_subtitle_publishes_a_versioned_audio_mix(self):
+    def test_changed_subtitle_keeps_the_synchronized_pair_until_voice_is_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / "input.mp4"
@@ -726,23 +981,11 @@ class EditorPreviewControllerTests(unittest.TestCase):
                 editorPreviewChanged=_Signal(),
             )
             controller = EditorPreviewController(host)
-            voice_started = threading.Event()
-            release_voice = threading.Event()
+            controller._source = "file:///previous-preview.mp4"
+            controller._audio_source = "file:///previous-preview.wav"
 
             def fake_render(*args, **_kwargs):
                 Path(args[3]).write_bytes(b"preview")
-
-            def fake_voice_parts(segments_path, parts_dir, *_args, progress_callback=None, **_kwargs):
-                voice_started.set()
-                release_voice.wait(2)
-                payload = json.loads(Path(segments_path).read_text(encoding="utf-8"))
-                for index, _segment in enumerate(payload, 1):
-                    (Path(parts_dir) / f"voice_{index:04d}.mp3").write_bytes(b"mp3")
-                if progress_callback:
-                    progress_callback(len(payload), len(payload))
-
-            def fake_audio_timeline(_segments, _parts, _video, output, *_args, **_kwargs):
-                Path(output).write_bytes(b"new-wave")
 
             with (
                 mock.patch(
@@ -758,12 +1001,8 @@ class EditorPreviewControllerTests(unittest.TestCase):
                     side_effect=fake_render,
                 ),
                 mock.patch(
-                    "haizflow.desktop.editor_preview_controller.generate_voice_parts",
-                    side_effect=fake_voice_parts,
-                ),
-                mock.patch(
                     "haizflow.desktop.editor_preview_controller.build_audio_timeline",
-                    side_effect=fake_audio_timeline,
+                    side_effect=AssertionError("preview must not mix missing voice clips"),
                 ),
                 mock.patch("haizflow.desktop.editor_preview_controller.start_video"),
                 mock.patch("haizflow.desktop.editor_preview_controller.clean_video"),
@@ -774,18 +1013,47 @@ class EditorPreviewControllerTests(unittest.TestCase):
                         0.0,
                     )
                 )
-                self.assertTrue(voice_started.wait(1))
-                # Keep the old version on screen until both the new visual
-                # proxy and its regenerated voice are ready to swap together.
-                self.assertEqual(controller.source, "")
-                self.assertEqual(controller.audio_source, "")
-                release_voice.set()
                 self._wait_until_idle(controller)
 
-            audio_path = Path(QUrl(controller.audio_source).toLocalFile())
-            self.assertTrue(audio_path.is_file())
-            self.assertEqual(audio_path.read_bytes(), b"new-wave")
-            self.assertNotEqual(audio_path, current_mix)
+            self.assertEqual(controller.source, "file:///previous-preview.mp4")
+            self.assertEqual(controller.audio_source, "file:///previous-preview.wav")
+            self.assertIn("tạo lại giọng", controller.error)
+
+    def test_cache_cleanup_keeps_only_chunks_referenced_by_retained_visuals(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            preview_dir = Path(temp_dir) / "editor-preview"
+            preview_dir.mkdir()
+            chunk_names = ["chunk-current", "chunk-undo", "chunk-stale"]
+            for index, name in enumerate(chunk_names):
+                chunk_dir = preview_dir / name
+                chunk_dir.mkdir()
+                (chunk_dir / "preview.mp4").write_bytes(b"chunk")
+                os.utime(chunk_dir / "preview.mp4", (100 + index, 100 + index))
+
+            visual_paths = []
+            for index in range(5):
+                visual_dir = preview_dir / f"visual-{index}"
+                visual_dir.mkdir()
+                visual_path = visual_dir / "preview.mp4"
+                visual_path.write_bytes(b"visual")
+                os.utime(visual_path, (200 + index, 200 + index))
+                marker = {
+                    "version": 1,
+                    "duration": 10,
+                    "size": visual_path.stat().st_size,
+                    "chunk_directories": ["chunk-current"] if index == 4 else ["chunk-undo"],
+                }
+                (visual_dir / "preview.complete.json").write_text(
+                    json.dumps(marker), encoding="utf-8"
+                )
+                visual_paths.append(visual_path)
+
+            EditorPreviewController._remove_stale_files(visual_paths[-1])
+
+            self.assertTrue((preview_dir / "chunk-current").is_dir())
+            self.assertTrue((preview_dir / "chunk-undo").is_dir())
+            self.assertFalse((preview_dir / "chunk-stale").exists())
+            self.assertFalse((preview_dir / "visual-0").exists())
 
 
 if __name__ == "__main__":

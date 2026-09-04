@@ -32,7 +32,7 @@ class ActivityEventModel(QAbstractListModel):
     CodeRole = Qt.ItemDataRole.UserRole + 7
 
     _LOG_PATTERN = re.compile(
-        r"^(?P<time>\d{1,2}:\d{2}:\d{2})?\s*"
+        r"^(?:\[(?P<iso_time>[^\]]+)\]|(?P<time>\d{1,2}:\d{2}:\d{2}))?\s*"
         r"(?:\[(?P<severity>INFO|WARNING|WARN|ERROR|DEBUG)\])?\s*"
         r"(?:\[(?P<stage>[^\]]+)\])?\s*(?P<detail>.*)$",
         re.IGNORECASE,
@@ -54,6 +54,7 @@ class ActivityEventModel(QAbstractListModel):
         "FFMPEG": "Dựng video",
         "PIPELINE": "Xử lý video",
         "MODEL": "Tải model",
+        "MANUAL": "Công cụ Thủ công",
     }
     _STAGE_TITLES_EN = {
         "Nhận dạng giọng nói": "Speech recognition",
@@ -65,6 +66,7 @@ class ActivityEventModel(QAbstractListModel):
         "Dựng video": "Video rendering",
         "Xử lý video": "Video processing",
         "Tải model": "Model download",
+        "Công cụ Thủ công": "Manual tool",
     }
 
     def __init__(self, *, max_events: int = 120):
@@ -178,8 +180,11 @@ class ActivityEventModel(QAbstractListModel):
             progress = max(0, min(100, round(done * 100 / total)))
         lowered = detail.casefold()
         suffix = ".working" if "still working" in lowered or "đang xử lý" in lowered else ".event"
+        raw_timestamp = match.group("time") or match.group("iso_time") or ""
+        if "T" in raw_timestamp:
+            raw_timestamp = raw_timestamp.split("T", 1)[1][:8]
         return {
-            "timestamp": match.group("time") or "",
+            "timestamp": raw_timestamp,
             "severity": "error" if severity == "error" else "warning" if severity == "warning" else "info",
             "stage": stage,
             "title": title,

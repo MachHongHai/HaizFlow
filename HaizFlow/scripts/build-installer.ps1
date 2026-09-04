@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $BuildMetadataPath = Join-Path $Root "build\release-metadata"
-$SetupIconPath = Join-Path $BuildMetadataPath "HaizFlow-installer.ico"
+$SetupIconPath = Join-Path $Root "src\haizflow\desktop\assets\branding\haizflow.ico"
 if (!$ArtifactPath) {
   $ArtifactPath = Join-Path $Root "dist\HaizFlow"
 }
@@ -29,9 +29,8 @@ $FreshRequirementJson = & $Python (Join-Path $PSScriptRoot "release-preflight.py
 if ($LASTEXITCODE -ne 0) { throw "Fresh-install disk preflight calculation failed." }
 $FreshRequirements = $FreshRequirementJson | ConvertFrom-Json
 
-& $Python (Join-Path $PSScriptRoot "generate-app-icon.py") --output $SetupIconPath
-if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $SetupIconPath -PathType Leaf)) {
-  throw "Installer icon generation failed."
+if (!(Test-Path -LiteralPath $SetupIconPath -PathType Leaf)) {
+  throw "Installer icon is missing: $SetupIconPath"
 }
 
 $Version = (& $Python -c "import tomllib, pathlib; print(tomllib.loads((pathlib.Path(r'$Root') / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version'])").Trim()

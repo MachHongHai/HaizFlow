@@ -2,48 +2,56 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="vi_VN">
 <context>
-    <name>AboutPage</name>
+    <name>AboutDialog</name>
     <message>
-        <location filename="../qml/AboutPage.qml" line="17"/>
-        <source>Giới thiệu</source>
-        <translation>About</translation>
+        <location filename="../qml/AboutDialog.qml" line="10"/>
+        <source>Giới thiệu HaizFlow</source>
+        <translation>About HaizFlow</translation>
     </message>
     <message>
-        <location filename="../qml/AboutPage.qml" line="58"/>
-        <source>Xử lý, lồng tiếng và đăng video trên Windows.</source>
-        <translation>Process, dub, and publish video on Windows.</translation>
+        <location filename="../qml/AboutDialog.qml" line="27"/>
+        <source>Biểu tượng HaizFlow</source>
+        <translation>HaizFlow icon</translation>
     </message>
     <message>
-        <location filename="../qml/AboutPage.qml" line="76"/>
-        <source>Phát triển</source>
-        <translation>Developer</translation>
+        <location filename="../qml/AboutDialog.qml" line="11"/>
+        <source>Thông tin phiên bản và liên hệ</source>
+        <translation>Version and contact details</translation>
     </message>
     <message>
-        <location filename="../qml/AboutPage.qml" line="82"/>
+        <location filename="../qml/AboutDialog.qml" line="46"/>
+        <source>Công cụ xử lý và lồng tiếng video trên Windows.</source>
+        <translation>Video processing and dubbing for Windows.</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="64"/>
+        <source>HaizFlow là phần mềm nguồn mở, ưu tiên xử lý video ngay trên máy và không yêu cầu dịch vụ API trả phí cho quy trình cốt lõi.</source>
+        <translation>HaizFlow is open-source software designed to process video on your computer without requiring paid API services for its core workflow.</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="75"/>
         <source>Mã nguồn</source>
         <translation>Source code</translation>
     </message>
     <message>
-        <location filename="../qml/AboutPage.qml" line="90"/>
-        <location filename="../qml/AboutPage.qml" line="105"/>
-        <location filename="../qml/AboutPage.qml" line="125"/>
-        <source>Sao chép</source>
-        <translation>Copy</translation>
+        <location filename="../qml/AboutDialog.qml" line="83"/>
+        <source>Sao chép liên kết</source>
+        <translation>Copy link</translation>
     </message>
     <message>
-        <location filename="../qml/AboutPage.qml" line="97"/>
-        <source>GitHub</source>
-        <translation>GitHub</translation>
+        <location filename="../qml/AboutDialog.qml" line="90"/>
+        <source>Liên hệ</source>
+        <translation>Contact</translation>
     </message>
     <message>
-        <location filename="../qml/AboutPage.qml" line="112"/>
-        <source>Email</source>
-        <translation>Email</translation>
+        <location filename="../qml/AboutDialog.qml" line="103"/>
+        <source>Sao chép email</source>
+        <translation>Copy email</translation>
     </message>
     <message>
-        <location filename="../qml/AboutPage.qml" line="133"/>
-        <source>Dữ liệu được xử lý trên máy, trừ các dịch vụ trực tuyến bạn chọn.</source>
-        <translation>Data is processed locally except for online services you select.</translation>
+        <location filename="../qml/AboutDialog.qml" line="109"/>
+        <source>Đóng</source>
+        <translation>Close</translation>
     </message>
 </context>
 <context>
@@ -99,7 +107,7 @@
 <context>
     <name>ActivityTray</name>
     <message>
-        <location filename="../qml/ActivityTray.qml" line="51"/>
+        <location filename="../qml/ActivityTray.qml" line="55"/>
         <source>Chi tiết</source>
         <translation>Details</translation>
     </message>
@@ -123,62 +131,63 @@
 <context>
     <name>AppMenuBar</name>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="44"/>
+        <location filename="../qml/AppMenuBar.qml" line="61"/>
         <source>Quay lại</source>
         <translation>Back</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="51"/>
+        <location filename="../qml/AppMenuBar.qml" line="69"/>
         <source>Tiến</source>
         <translation>Forward</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="58"/>
+        <location filename="../qml/AppMenuBar.qml" line="46"/>
         <source>Trang chủ</source>
         <translation>Home</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="70"/>
+        <location filename="../qml/AppMenuBar.qml" line="82"/>
         <source>Dự án</source>
         <translation>Project</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="84"/>
+        <location filename="../qml/AppMenuBar.qml" line="91"/>
+        <location filename="../qml/AppMenuBar.qml" line="189"/>
         <source>Cài đặt</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="97"/>
+        <location filename="../qml/AppMenuBar.qml" line="105"/>
         <source>Trợ giúp</source>
         <translation>Help</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="133"/>
+        <location filename="../qml/AppMenuBar.qml" line="144"/>
         <source>Dự án Tự động mới</source>
         <translation>New automatic project</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="140"/>
+        <location filename="../qml/AppMenuBar.qml" line="151"/>
         <source>Dự án Thủ công mới</source>
         <translation>New manual project</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="147"/>
+        <location filename="../qml/AppMenuBar.qml" line="158"/>
         <source>Dự án Hàng loạt mới</source>
         <translation>New batch project</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="156"/>
+        <location filename="../qml/AppMenuBar.qml" line="167"/>
         <source>Dự án Tải xuống mới</source>
         <translation>New download project</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="163"/>
+        <location filename="../qml/AppMenuBar.qml" line="174"/>
         <source>Dự án Đăng mạng xã hội mới</source>
         <translation>New social publishing project</translation>
     </message>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="178"/>
+        <location filename="../qml/AppMenuBar.qml" line="196"/>
         <source>Giới thiệu</source>
         <translation>About</translation>
     </message>
@@ -252,72 +261,64 @@
 <context>
     <name>AudioMixDialog</name>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="19"/>
+        <location filename="../qml/AudioMixDialog.qml" line="24"/>
         <source>Âm lượng</source>
         <translation>Volume</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="20"/>
+        <location filename="../qml/AudioMixDialog.qml" line="25"/>
         <source>Cân bằng âm thanh gốc, giọng đọc và nhạc nền</source>
         <translation>Balance source audio, voice, and background music</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="82"/>
+        <location filename="../qml/AudioMixDialog.qml" line="90"/>
         <source>Âm thanh gốc</source>
         <translation>Source audio</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="85"/>
-        <source>Không chỉnh được khi đang tách giọng</source>
-        <translation>Unavailable while vocals are being separated</translation>
+        <location filename="../qml/AudioMixDialog.qml" line="90"/>
+        <source>Âm thanh nền</source>
+        <translation>Background audio</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="94"/>
+        <location filename="../qml/AudioMixDialog.qml" line="101"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="105"/>
+        <location filename="../qml/AudioMixDialog.qml" line="112"/>
         <source>Nhạc nền</source>
         <translation>Background music</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="108"/>
+        <location filename="../qml/AudioMixDialog.qml" line="115"/>
         <source>Chọn nhạc nền trước khi chỉnh âm lượng</source>
         <translation>Choose background music before adjusting its volume</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="123"/>
+        <location filename="../qml/AudioMixDialog.qml" line="130"/>
         <source>Đang chuẩn bị bản nghe thử</source>
         <translation>Preparing audio preview</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="123"/>
+        <location filename="../qml/AudioMixDialog.qml" line="130"/>
         <source>Nghe thử bản phối</source>
         <translation>Preview audio mix</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="132"/>
+        <location filename="../qml/AudioMixDialog.qml" line="139"/>
         <source>Tạm dừng</source>
         <translation>Pause</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="132"/>
+        <location filename="../qml/AudioMixDialog.qml" line="139"/>
         <source>Nghe thử</source>
         <translation>Preview</translation>
     </message>
     <message>
-        <location filename="../qml/AudioMixDialog.qml" line="141"/>
+        <location filename="../qml/AudioMixDialog.qml" line="148"/>
         <source>Đóng</source>
         <translation>Close</translation>
-    </message>
-</context>
-<context>
-    <name>BackButton</name>
-    <message>
-        <location filename="../qml/BackButton.qml" line="5"/>
-        <source>Quay lại</source>
-        <translation>Back</translation>
     </message>
 </context>
 <context>
@@ -357,62 +358,62 @@
 <context>
     <name>BatchAudioMixDialog</name>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="25"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="30"/>
         <source>Âm lượng hàng loạt</source>
         <translation>Batch volumes</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="26"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="31"/>
         <source>Mức âm lượng mặc định cho các video trong dự án</source>
         <translation>Default volume levels for videos in this project</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="87"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="92"/>
         <source>Âm thanh gốc</source>
         <translation>Source audio</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="90"/>
-        <source>Không chỉnh được khi đang tách giọng</source>
-        <translation>Unavailable while vocals are being separated</translation>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="92"/>
+        <source>Âm thanh nền</source>
+        <translation>Background audio</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="98"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="102"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="107"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="111"/>
         <source>Nhạc nền</source>
         <translation>Background music</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="110"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="114"/>
         <source>Chọn nhạc nền trước khi chỉnh âm lượng</source>
         <translation>Choose background music before adjusting its volume</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="124"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="128"/>
         <source>Đang chuẩn bị bản nghe thử</source>
         <translation>Preparing audio preview</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="124"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="128"/>
         <source>Nghe thử bản phối</source>
         <translation>Preview audio mix</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="133"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="137"/>
         <source>Tạm dừng</source>
         <translation>Pause</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="133"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="137"/>
         <source>Nghe thử</source>
         <translation>Preview</translation>
     </message>
     <message>
-        <location filename="../qml/BatchAudioMixDialog.qml" line="142"/>
+        <location filename="../qml/BatchAudioMixDialog.qml" line="146"/>
         <source>Đóng</source>
         <translation>Close</translation>
     </message>
@@ -550,17 +551,17 @@
         <translation>Defaults for every video in this batch</translation>
     </message>
     <message>
-        <location filename="../qml/BatchSettingsDialog.qml" line="187"/>
+        <location filename="../qml/BatchSettingsDialog.qml" line="188"/>
         <source>%1 %2</source>
         <translation>%1 %2</translation>
     </message>
     <message>
-        <location filename="../qml/BatchSettingsDialog.qml" line="187"/>
+        <location filename="../qml/BatchSettingsDialog.qml" line="188"/>
         <source>video có cài đặt riêng</source>
         <translation>videos with custom settings</translation>
     </message>
     <message>
-        <location filename="../qml/BatchSettingsDialog.qml" line="193"/>
+        <location filename="../qml/BatchSettingsDialog.qml" line="194"/>
         <source>Cài đặt riêng của từng video được giữ nguyên</source>
         <translation>Per-video settings are kept</translation>
     </message>
@@ -770,205 +771,6 @@
         <location filename="../qml/ChannelDownloadPage.qml" line="236"/>
         <source>Tải video đã chọn</source>
         <translation>Download selected</translation>
-    </message>
-</context>
-<context>
-    <name>ChannelImportPage</name>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="24"/>
-        <source>Dán liên kết trang cá nhân TikTok</source>
-        <translation>Paste a TikTok profile link</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="26"/>
-        <source>Dán liên kết trang cá nhân Douyin</source>
-        <translation>Paste a Douyin profile link</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="27"/>
-        <source>Dán liên kết kênh YouTube</source>
-        <translation>Paste a YouTube channel link</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="33"/>
-        <source>Tất cả video YouTube</source>
-        <translation>All YouTube videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="34"/>
-        <source>YouTube Shorts</source>
-        <translation>YouTube Shorts</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="35"/>
-        <source>Video YouTube thường</source>
-        <translation>Regular YouTube videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="39"/>
-        <source>Video</source>
-        <translation>Video</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="103"/>
-        <source>Nhập video từ kênh</source>
-        <translation>Import from channel</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="108"/>
-        <source>Hủy nhập</source>
-        <translation>Cancel import</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="121"/>
-        <source>Nguồn kênh</source>
-        <translation>Channel source</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="129"/>
-        <source>Nền tảng</source>
-        <translation>Platform</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="140"/>
-        <source>Douyin Beta</source>
-        <translation>Douyin Beta</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="163"/>
-        <source>Liên kết kênh</source>
-        <translation>Channel link</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="173"/>
-        <source>Quét lại</source>
-        <translation>Scan again</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="173"/>
-        <source>Xem trước video</source>
-        <translation>Preview videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="201"/>
-        <source>Sắp xếp</source>
-        <translation>Order</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="211"/>
-        <source>Mới nhất</source>
-        <translation>Newest</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="212"/>
-        <source>Nhiều lượt xem</source>
-        <translation>Most viewed</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="225"/>
-        <location filename="../qml/ChannelImportPage.qml" line="238"/>
-        <source>Số lượng nhập</source>
-        <translation>Import limit</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="247"/>
-        <source>Loại nội dung</source>
-        <translation>Content type</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="270"/>
-        <source>Phạm vi quét</source>
-        <translation>Scan range</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="280"/>
-        <source>100 video</source>
-        <translation>100 videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="281"/>
-        <source>300 video</source>
-        <translation>300 videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="282"/>
-        <source>1000 video</source>
-        <translation>1000 videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="283"/>
-        <source>Toàn bộ</source>
-        <translation>All available</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="297"/>
-        <source>Quyền truy cập</source>
-        <translation>Access</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="307"/>
-        <source>Video công khai</source>
-        <translation>Public videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="308"/>
-        <source>Dùng phiên Edge</source>
-        <translation>Use Edge session</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="309"/>
-        <source>Dùng phiên Chrome</source>
-        <translation>Use Chrome session</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="310"/>
-        <source>Chọn cookies.txt</source>
-        <translation>Choose cookies.txt</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="351"/>
-        <source>Beta</source>
-        <translation>Beta</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="387"/>
-        <source>Video trong kênh</source>
-        <translation>Channel videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="397"/>
-        <source>%1 %2</source>
-        <translation>%1 %2</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="397"/>
-        <source>video</source>
-        <translation>videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="405"/>
-        <source>Chọn tất cả</source>
-        <translation>Select all</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="414"/>
-        <source>%1 (%2)</source>
-        <translation>%1 (%2)</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="414"/>
-        <source>Tải video đã chọn</source>
-        <translation>Download selected</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="472"/>
-        <source>Xem trước kênh để chọn video</source>
-        <translation>Preview a channel to choose videos</translation>
-    </message>
-    <message>
-        <location filename="../qml/ChannelImportPage.qml" line="482"/>
-        <source>Video tải xong chỉ được thêm vào dự án và không tự chạy xử lý</source>
-        <translation>Downloaded videos are added to this batch without starting processing</translation>
     </message>
 </context>
 <context>
@@ -1182,12 +984,12 @@
         <translation>Processing settings</translation>
     </message>
     <message>
-        <location filename="../qml/DubbingSetupPanel.qml" line="137"/>
+        <location filename="../qml/DubbingSetupPanel.qml" line="142"/>
         <source>Đưa vào hàng đợi xử lý</source>
         <translation>Add to processing queue</translation>
     </message>
     <message>
-        <location filename="../qml/DubbingSetupPanel.qml" line="137"/>
+        <location filename="../qml/DubbingSetupPanel.qml" line="142"/>
         <source>Tạo và xử lý</source>
         <translation>Create and process</translation>
     </message>
@@ -1211,6 +1013,64 @@
     </message>
 </context>
 <context>
+    <name>HelpDialog</name>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="10"/>
+        <source>Trợ giúp</source>
+        <translation>Help</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="11"/>
+        <source>Các thao tác chính</source>
+        <translation>Main actions</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="17"/>
+        <source>Dự án mới</source>
+        <translation>New project</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="18"/>
+        <source>Mở menu Dự án và chọn loại dự án cần tạo.</source>
+        <translation>Open the Project menu and choose a project type.</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="23"/>
+        <source>Tự động</source>
+        <translation>Automatic</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="24"/>
+        <source>Chạy nhận dạng, dịch, tạo giọng và xuất video trong một lần.</source>
+        <translation>Recognize, translate, generate speech, and export in one run.</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="29"/>
+        <source>Thủ công</source>
+        <translation>Manual</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="30"/>
+        <source>Chạy riêng từng công cụ và chỉnh trực tiếp trên khung xem trước.</source>
+        <translation>Run each tool separately and edit directly in the preview.</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="44"/>
+        <source>Mở hướng dẫn trên GitHub</source>
+        <translation>Open the guide on GitHub</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="48"/>
+        <source>Báo lỗi</source>
+        <translation>Report an issue</translation>
+    </message>
+    <message>
+        <location filename="../qml/HelpDialog.qml" line="55"/>
+        <source>Đóng</source>
+        <translation>Close</translation>
+    </message>
+</context>
+<context>
     <name>HelpPopover</name>
     <message>
         <location filename="../qml/HelpPopover.qml" line="12"/>
@@ -1218,7 +1078,7 @@
         <translation>Help</translation>
     </message>
     <message>
-        <location filename="../qml/HelpPopover.qml" line="64"/>
+        <location filename="../qml/HelpPopover.qml" line="95"/>
         <source>Đóng</source>
         <translation>Close</translation>
     </message>
@@ -1335,7 +1195,7 @@
 <context>
     <name>Main</name>
     <message>
-        <location filename="../qml/Main.qml" line="257"/>
+        <location filename="../qml/Main.qml" line="268"/>
         <source>Xác nhận</source>
         <translation>Confirm</translation>
     </message>
@@ -1343,62 +1203,79 @@
 <context>
     <name>ManualComparePreview</name>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="114"/>
+        <location filename="../qml/ManualComparePreview.qml" line="284"/>
         <source>Nguồn</source>
         <translation>Source</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="130"/>
+        <location filename="../qml/ManualComparePreview.qml" line="307"/>
         <source>Kết quả</source>
         <translation>Result</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="155"/>
+        <location filename="../qml/ManualComparePreview.qml" line="340"/>
         <source>Tạm dừng cả hai</source>
         <translation>Pause both</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="155"/>
+        <location filename="../qml/ManualComparePreview.qml" line="340"/>
         <source>Phát cả hai</source>
         <translation>Play both</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="178"/>
+        <location filename="../qml/ManualComparePreview.qml" line="363"/>
+        <location filename="../qml/ManualComparePreview.qml" line="493"/>
         <source>Vị trí xem trước</source>
         <translation>Preview position</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="220"/>
+        <location filename="../qml/ManualComparePreview.qml" line="464"/>
+        <source>Phát hoặc tạm dừng</source>
+        <translation>Play or pause</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualComparePreview.qml" line="479"/>
+        <source>Bật hoặc tắt tiếng</source>
+        <translation>Mute or unmute</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualComparePreview.qml" line="503"/>
         <source>Đóng</source>
         <translation>Close</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="345"/>
+        <location filename="../qml/ManualComparePreview.qml" line="767"/>
+        <source>Đang chuẩn bị bản xem trước…</source>
+        <translation>Preparing preview…</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualComparePreview.qml" line="814"/>
         <source>Tạm dừng</source>
         <translation>Pause</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="345"/>
+        <location filename="../qml/ManualComparePreview.qml" line="814"/>
         <source>Phát</source>
         <translation>Play</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="350"/>
+        <location filename="../qml/ManualComparePreview.qml" line="471"/>
+        <location filename="../qml/ManualComparePreview.qml" line="819"/>
         <source>Dừng</source>
         <translation>Stop</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="355"/>
+        <location filename="../qml/ManualComparePreview.qml" line="824"/>
         <source>Bật tiếng</source>
         <translation>Unmute</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="355"/>
+        <location filename="../qml/ManualComparePreview.qml" line="824"/>
         <source>Tắt tiếng</source>
         <translation>Mute</translation>
     </message>
     <message>
-        <location filename="../qml/ManualComparePreview.qml" line="360"/>
+        <location filename="../qml/ManualComparePreview.qml" line="829"/>
         <source>Toàn màn hình</source>
         <translation>Full screen</translation>
     </message>
@@ -1406,283 +1283,308 @@
 <context>
     <name>ManualStageInspector</name>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="32"/>
-        <source>Dịch</source>
-        <translation>Translate</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="32"/>
-        <source>Hình ảnh</source>
-        <translation>Visuals</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="32"/>
-        <location filename="../qml/ManualStageInspector.qml" line="281"/>
+        <location filename="../qml/ManualStageInspector.qml" line="388"/>
+        <location filename="../qml/ManualStageInspector.qml" line="444"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="32"/>
+        <location filename="../qml/ManualStageInspector.qml" line="170"/>
         <source>Âm thanh</source>
         <translation>Audio</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="56"/>
-        <source>Dịch lại</source>
-        <translation>Translate again</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="56"/>
-        <source>Dịch video</source>
-        <translation>Translate video</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="57"/>
-        <source>Tạo lại giọng đọc</source>
-        <translation>Regenerate voice</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="57"/>
-        <source>Tạo giọng đọc</source>
-        <translation>Generate voice</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="80"/>
-        <source>Nhận dạng giọng nói</source>
-        <translation>Speech recognition</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="81"/>
-        <source>Turbo cho chất lượng cao hơn trên GPU. Small dùng ít bộ nhớ hơn và hỗ trợ cả CPU.</source>
-        <translation>Turbo provides higher GPU quality. Small uses less memory and also supports CPU processing.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="98"/>
+        <location filename="../qml/ManualStageInspector.qml" line="235"/>
         <source>Dịch sang</source>
         <translation>Translate to</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="99"/>
-        <source>Ngôn ngữ đã chọn được dùng cho cả phụ đề dịch và giọng đọc.</source>
-        <translation>The selected language is used for both translated subtitles and generated speech.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="114"/>
-        <source>Âm thanh nhận diện</source>
-        <translation>Recognition audio</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="115"/>
-        <source>Tách giọng trước khi nhận diện nếu lời nói bị lẫn với nhạc hoặc hiệu ứng.</source>
-        <translation>Separate vocals before recognition when speech competes with music or effects.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="122"/>
-        <source>Nguyên bản</source>
-        <translation>Original</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="123"/>
+        <location filename="../qml/ManualStageInspector.qml" line="178"/>
         <source>Tách giọng</source>
         <translation>Separate vocals</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="137"/>
+        <location filename="../qml/ManualStageInspector.qml" line="312"/>
+        <source>Kéo khung trên video để di chuyển. Kéo góc khung để đổi cỡ chữ.</source>
+        <translation>Drag the frame on the video to move it. Drag its corner to resize the text.</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="329"/>
         <source>Phụ đề gốc</source>
         <translation>Original subtitles</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="138"/>
-        <source>Che phụ đề có sẵn hoặc giữ nguyên hình ảnh nguồn.</source>
-        <translation>Cover burned-in source subtitles or leave the source image unchanged.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="145"/>
-        <source>Che</source>
-        <translation>Cover</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="146"/>
+        <location filename="../qml/ManualStageInspector.qml" line="337"/>
         <source>Giữ nguyên</source>
         <translation>Keep original</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="159"/>
-        <source>Làm mờ</source>
-        <translation>Blur</translation>
+        <location filename="../qml/ManualStageInspector.qml" line="63"/>
+        <source>Đã lưu</source>
+        <translation>Saved</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="160"/>
-        <source>Vá nền lân cận</source>
-        <translation>Nearby patch</translation>
+        <location filename="../qml/ManualStageInspector.qml" line="64"/>
+        <source>Sẵn sàng</source>
+        <translation>Ready</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="170"/>
-        <source>Kích thước và vị trí phụ đề</source>
-        <translation>Subtitle size and position</translation>
+        <location filename="../qml/ManualStageInspector.qml" line="69"/>
+        <source>Thiếu dữ liệu</source>
+        <translation>Missing input</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="197"/>
-        <source>%1/%2</source>
-        <translation>%1/%2</translation>
+        <location filename="../qml/ManualStageInspector.qml" line="73"/>
+        <source>Tạo lại phụ đề</source>
+        <translation>Regenerate subtitles</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="198"/>
-        <source>Phụ đề</source>
-        <translation>Subtitles</translation>
+        <location filename="../qml/ManualStageInspector.qml" line="73"/>
+        <source>Tạo phụ đề</source>
+        <translation>Generate subtitles</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="205"/>
+        <location filename="../qml/ManualStageInspector.qml" line="146"/>
+        <source>Video nguồn</source>
+        <translation>Source video</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="153"/>
+        <source>Từ tệp</source>
+        <translation>From file</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="177"/>
+        <source>Giữ âm thanh gốc</source>
+        <translation>Keep original audio</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="189"/>
+        <source>Chạy tách giọng</source>
+        <translation>Separate vocals</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="338"/>
+        <source>Che · Làm mờ</source>
+        <translation>Cover · Blur</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="339"/>
+        <source>Che · Vá nền</source>
+        <translation>Cover · Patch</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="520"/>
+        <source>Dọn dữ liệu tạm</source>
+        <translation>Clear temporary data</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="497"/>
+        <source>Xóa nhạc nền</source>
+        <translation>Remove background music</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="271"/>
         <source>Phụ đề trước</source>
         <translation>Previous subtitle</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="211"/>
+        <location filename="../qml/ManualStageInspector.qml" line="65"/>
+        <source>Đang chạy</source>
+        <translation>Running</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="66"/>
+        <location filename="../qml/ManualStageInspector.qml" line="592"/>
+        <source>Đang chờ</source>
+        <translation>Queued</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="67"/>
+        <source>Đã tạm dừng</source>
+        <translation>Paused</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="68"/>
+        <source>Có lỗi</source>
+        <translation>Error</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="74"/>
+        <source>Tạo lại giọng</source>
+        <translation>Regenerate voice</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="74"/>
+        <source>Tạo giọng</source>
+        <translation>Generate voice</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="75"/>
+        <source>Tạo lại bản phối</source>
+        <translation>Rebuild mix</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="75"/>
+        <source>Tạo bản phối</source>
+        <translation>Create mix</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="76"/>
+        <source>Xuất lại video</source>
+        <translation>Export again</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="76"/>
+        <source>Xuất video</source>
+        <translation>Export video</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="77"/>
+        <source>Chạy công cụ</source>
+        <translation>Run tool</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="189"/>
+        <source>Tách lại giọng</source>
+        <translation>Separate again</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="207"/>
+        <source>Model nhận dạng</source>
+        <translation>Recognition model</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="208"/>
+        <source>Turbo cần GPU. Small dùng ít bộ nhớ hơn và hỗ trợ CPU.</source>
+        <translation>Turbo requires a GPU. Small uses less memory and supports CPU processing.</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="225"/>
+        <source>Nguồn nhận dạng: track giọng đã tách</source>
+        <translation>Recognition source: separated vocals</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="226"/>
+        <source>Nguồn nhận dạng: âm thanh gốc</source>
+        <translation>Recognition source: original audio</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="262"/>
+        <source>Chọn một đoạn trên timeline</source>
+        <translation>Select a clip on the timeline</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="277"/>
         <source>Phụ đề sau</source>
         <translation>Next subtitle</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="224"/>
+        <location filename="../qml/ManualStageInspector.qml" line="293"/>
         <source>Chọn một phụ đề trên timeline</source>
         <translation>Select a subtitle on the timeline</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="243"/>
+        <location filename="../qml/ManualStageInspector.qml" line="434"/>
+        <source>Âm nền</source>
+        <translation>Background audio</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="434"/>
+        <source>Âm thanh gốc</source>
+        <translation>Original audio</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="447"/>
+        <source>Chưa tạo giọng đọc</source>
+        <translation>Voice has not been generated</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="458"/>
+        <source>Chưa chọn nhạc nền</source>
+        <translation>No background music selected</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="511"/>
+        <source>Xuất trạng thái hiện tại. Chỉ các lớp đã bật và có dữ liệu mới xuất hiện trong video.</source>
+        <translation>Export the current state. Only enabled layers with available data appear in the video.</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="351"/>
         <source>Watermark</source>
         <translation>Watermark</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="244"/>
-        <source>Watermark chữ nhỏ được hiển thị trong bản xem trước và video xuất.</source>
-        <translation>A small text watermark is included in preview and export.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="249"/>
+        <location filename="../qml/ManualStageInspector.qml" line="356"/>
         <source>Đặt watermark</source>
         <translation>Set watermark</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="263"/>
+        <location filename="../qml/ManualStageInspector.qml" line="372"/>
         <source>Công cụ giọng đọc</source>
         <translation>TTS engine</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="264"/>
-        <source>OmniVoice chạy cục bộ. Edge TTS cần kết nối Internet ổn định.</source>
-        <translation>OmniVoice runs locally. Edge TTS requires a stable internet connection.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="282"/>
-        <source>Chọn giọng có sẵn hoặc mẫu giọng nhân bản mà bạn được phép sử dụng.</source>
-        <translation>Choose a preset narrator or an authorised cloned voice sample.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="299"/>
+        <location filename="../qml/ManualStageInspector.qml" line="406"/>
         <source>Giọng đã nhân bản</source>
         <translation>Cloned voice</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="299"/>
+        <location filename="../qml/ManualStageInspector.qml" line="406"/>
         <source>Nhân bản giọng</source>
         <translation>Clone voice</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="309"/>
+        <location filename="../qml/ManualStageInspector.qml" line="416"/>
         <source>Nhận diện nhiều người nói</source>
         <translation>Detect multiple speakers</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="323"/>
-        <source>Điều chỉnh âm lượng</source>
-        <translation>Adjust audio levels</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="333"/>
+        <location filename="../qml/ManualStageInspector.qml" line="455"/>
+        <location filename="../qml/ManualStageInspector.qml" line="466"/>
         <source>Nhạc nền</source>
         <translation>Background music</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="334"/>
-        <source>Đổi nhạc hoặc âm lượng chỉ cập nhật bản phối xem trước.</source>
-        <translation>Music and volume changes update only the preview mix.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="338"/>
+        <location filename="../qml/ManualStageInspector.qml" line="470"/>
         <source>Chưa có nhạc nền</source>
         <translation>No background music</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="350"/>
+        <location filename="../qml/ManualStageInspector.qml" line="482"/>
         <source>Chọn tệp</source>
         <translation>Choose file</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="358"/>
+        <location filename="../qml/ManualStageInspector.qml" line="161"/>
+        <location filename="../qml/ManualStageInspector.qml" line="489"/>
         <source>Từ liên kết</source>
         <translation>From link</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="367"/>
-        <source>Xóa danh sách</source>
-        <translation>Clear</translation>
+        <location filename="../qml/ManualStageInspector.qml" line="261"/>
+        <source>Đoạn %1/%2</source>
+        <translation>Clip %1/%2</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="401"/>
+        <location filename="../qml/ManualStageInspector.qml" line="285"/>
+        <source>Nội dung</source>
+        <translation>Content</translation>
+    </message>
+    <message>
+        <location filename="../qml/ManualStageInspector.qml" line="562"/>
         <source>%1%</source>
         <translation>%1%</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="418"/>
+        <location filename="../qml/ManualStageInspector.qml" line="591"/>
         <source>Tạm dừng</source>
         <translation>Pause</translation>
     </message>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="419"/>
-        <source>Đang chờ xử lý</source>
-        <translation>Waiting in queue</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="420"/>
+        <location filename="../qml/ManualStageInspector.qml" line="593"/>
         <source>Tiếp tục</source>
         <translation>Resume</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="427"/>
-        <source>Hãy dịch video trước</source>
-        <translation>Translate the video first</translation>
-    </message>
-</context>
-<context>
-    <name>ManualWorkflowBar</name>
-    <message>
-        <location filename="../qml/ManualWorkflowBar.qml" line="23"/>
-        <source>Dịch</source>
-        <translation>Translate</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualWorkflowBar.qml" line="24"/>
-        <source>Hình ảnh</source>
-        <translation>Visuals</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualWorkflowBar.qml" line="25"/>
-        <source>Giọng đọc</source>
-        <translation>Voice</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualWorkflowBar.qml" line="26"/>
-        <source>Âm thanh</source>
-        <translation>Audio</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualWorkflowBar.qml" line="109"/>
-        <source>Tạm dừng</source>
-        <translation>Pause</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualWorkflowBar.qml" line="109"/>
-        <source>Xuất video</source>
-        <translation>Export video</translation>
     </message>
 </context>
 <context>
@@ -1769,22 +1671,22 @@
 <context>
     <name>NavigationRail</name>
     <message>
-        <location filename="../qml/NavigationRail.qml" line="46"/>
+        <location filename="../qml/NavigationRail.qml" line="44"/>
         <source>Trang chủ</source>
         <translation>Home</translation>
     </message>
     <message>
-        <location filename="../qml/NavigationRail.qml" line="47"/>
+        <location filename="../qml/NavigationRail.qml" line="45"/>
         <source>Dự án</source>
         <translation>Projects</translation>
     </message>
     <message>
-        <location filename="../qml/NavigationRail.qml" line="48"/>
+        <location filename="../qml/NavigationRail.qml" line="46"/>
         <source>Tải xuống</source>
         <translation>Downloads</translation>
     </message>
     <message>
-        <location filename="../qml/NavigationRail.qml" line="49"/>
+        <location filename="../qml/NavigationRail.qml" line="47"/>
         <source>Đăng mạng xã hội</source>
         <translation>Social publishing</translation>
     </message>
@@ -1820,203 +1722,173 @@
 <context>
     <name>ProcessingSettingsForm</name>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="66"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="69"/>
         <source>Ngôn ngữ và giọng</source>
         <translation>Language and voice</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="77"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="80"/>
         <source>Nhận dạng giọng nói</source>
         <translation>Speech recognition</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="78"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="81"/>
         <source>Turbo cho chất lượng cao hơn trên GPU. Small dùng ít bộ nhớ hơn và hỗ trợ cả CPU.</source>
         <translation>Turbo provides higher GPU quality. Small uses less memory and also supports CPU processing.</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="92"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="95"/>
         <source>Dịch sang</source>
         <translation>Translate to</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="93"/>
-        <source>Ngôn ngữ đã chọn được dùng cho cả phụ đề dịch và giọng đọc.</source>
-        <translation>The selected language is used for both translated subtitles and generated speech.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="106"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="108"/>
         <source>Công cụ giọng đọc</source>
         <translation>TTS engine</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="107"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="109"/>
         <source>OmniVoice chạy cục bộ. Edge TTS cần kết nối Internet ổn định.</source>
         <translation>OmniVoice runs locally. Edge TTS requires a stable internet connection.</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="121"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="123"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="122"/>
-        <source>Chọn giọng có sẵn hoặc mẫu giọng nhân bản mà bạn được phép sử dụng.</source>
-        <translation>Choose a preset narrator or an authorised cloned voice sample.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="135"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="139"/>
         <source>Giọng đã nhân bản</source>
         <translation>Cloned voice</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="135"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="139"/>
         <source>Nhân bản giọng</source>
         <translation>Clone voice</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="148"/>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="154"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="153"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="159"/>
         <source>Nhận diện nhiều người nói</source>
         <translation>Detect multiple speakers</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="155"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="160"/>
         <source>Chỉ bật khi video nguồn có nhiều người nói. Mỗi người được nhận diện sẽ dùng một giọng riêng.</source>
         <translation>Enable this only when the source contains multiple speakers. Each detected speaker receives a separate voice identity.</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="177"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="182"/>
         <source>Hình ảnh và âm thanh</source>
         <translation>Picture and audio</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="188"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="193"/>
         <source>Phụ đề gốc</source>
         <translation>Original subtitles</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="189"/>
-        <source>Che phụ đề gốc đã dính vào hình hoặc giữ nguyên khung hình nguồn.</source>
-        <translation>Cover burned-in source subtitles or keep the original picture unchanged.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="197"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="201"/>
         <source>Che phụ đề gốc</source>
         <translation>Cover original subtitles</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="198"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="202"/>
         <source>Giữ nguyên video gốc</source>
         <translation>Keep original video</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="206"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="210"/>
         <source>Cách xóa</source>
         <translation>Removal method</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="207"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="211"/>
         <source>Làm mờ làm nhòe chữ được nhận diện. Vá nền dùng vùng ảnh sạch lân cận để lấp chữ.</source>
         <translation>Blur softens detected text. Nearby patch fills it with clean pixels from the surrounding image.</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="216"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="220"/>
         <source>Làm mờ</source>
         <translation>Blur</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="217"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="221"/>
         <source>Vá nền lân cận</source>
         <translation>Nearby patch</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="224"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="228"/>
         <source>Chỉnh phụ đề</source>
         <translation>Edit subtitles</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="235"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="239"/>
         <source>Nguồn âm thanh</source>
         <translation>Audio source</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="236"/>
-        <source>Giữ âm thanh nguồn hoặc tách giọng khỏi âm nền trước khi phối.</source>
-        <translation>Keep source audio or separate vocals from background sound before mixing.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="247"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="250"/>
         <source>Giữ âm thanh gốc</source>
         <translation>Keep original audio</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="248"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="251"/>
         <source>Tách giọng</source>
         <translation>Separate vocals</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="253"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="256"/>
         <source>Âm lượng</source>
         <translation>Levels</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="263"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="266"/>
         <source>Tách âm sẽ chậm hơn khi chạy bằng CPU</source>
         <translation>Audio separation is slower in CPU mode</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="271"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="274"/>
         <source>Nhạc nền</source>
         <translation>Background music</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="272"/>
-        <source>Nhạc tùy chọn được phối sau khi xử lý âm thanh nguồn.</source>
-        <translation>Optional music is mixed after source-audio processing.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="279"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="281"/>
         <source>Chưa có nhạc nền</source>
         <translation>No background music</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="284"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="286"/>
         <source>Tệp</source>
         <translation>File</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="285"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="287"/>
         <source>Liên kết</source>
         <translation>Link</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="289"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="291"/>
         <source>Bỏ nhạc nền</source>
         <translation>Remove background music</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="297"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="299"/>
         <source>Watermark</source>
         <translation>Watermark</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="298"/>
-        <source>Thêm chữ chuyển động nhẹ vào video xuất.</source>
-        <translation>Add subtle moving text to the exported video.</translation>
-    </message>
-    <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="305"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="306"/>
         <source>Không có watermark</source>
         <translation>No watermark</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="311"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="312"/>
         <source>Chỉnh sửa</source>
         <translation>Edit</translation>
     </message>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="311"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="312"/>
         <source>Thêm</source>
         <translation>Add</translation>
     </message>
@@ -2426,110 +2298,96 @@
 <context>
     <name>SettingsPage</name>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="68"/>
+        <location filename="../qml/SettingsPage.qml" line="67"/>
         <source>Cài đặt</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="78"/>
-        <source>Chung</source>
-        <translation>General</translation>
-    </message>
-    <message>
-        <location filename="../qml/SettingsPage.qml" line="78"/>
-        <source>Hiệu năng</source>
-        <translation>Performance</translation>
-    </message>
-    <message>
-        <location filename="../qml/SettingsPage.qml" line="78"/>
-        <source>Lưu trữ</source>
-        <translation>Storage</translation>
-    </message>
-    <message>
-        <location filename="../qml/SettingsPage.qml" line="78"/>
-        <source>Quyền riêng tư</source>
-        <translation>Privacy</translation>
-    </message>
-    <message>
-        <location filename="../qml/SettingsPage.qml" line="109"/>
+        <location filename="../qml/SettingsPage.qml" line="93"/>
         <source>Ngôn ngữ giao diện</source>
         <translation>Interface language</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="110"/>
+        <location filename="../qml/SettingsPage.qml" line="94"/>
         <source>Áp dụng ngay, không cần khởi động lại.</source>
         <translation>Applied immediately without restarting.</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="116"/>
+        <location filename="../qml/SettingsPage.qml" line="100"/>
         <source>English</source>
         <translation>English</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="120"/>
+        <location filename="../qml/SettingsPage.qml" line="104"/>
         <source>Tiếng Việt</source>
         <translation>Vietnamese</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="137"/>
+        <location filename="../qml/SettingsPage.qml" line="126"/>
         <source>Thiết bị xử lý</source>
         <translation>Processing device</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="144"/>
-        <location filename="../qml/SettingsPage.qml" line="184"/>
+        <location filename="../qml/SettingsPage.qml" line="133"/>
+        <location filename="../qml/SettingsPage.qml" line="170"/>
         <source>GPU</source>
         <translation>GPU</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="148"/>
-        <location filename="../qml/SettingsPage.qml" line="192"/>
+        <location filename="../qml/SettingsPage.qml" line="137"/>
+        <location filename="../qml/SettingsPage.qml" line="177"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="172"/>
+        <location filename="../qml/SettingsPage.qml" line="159"/>
         <source>Cấu hình đang dùng</source>
         <translation>Active profile</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="185"/>
+        <location filename="../qml/SettingsPage.qml" line="171"/>
         <source>Không khả dụng</source>
         <translation>Not available</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="193"/>
+        <location filename="../qml/SettingsPage.qml" line="178"/>
         <source>Đang tải</source>
         <translation>Loading</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="201"/>
+        <location filename="../qml/SettingsPage.qml" line="191"/>
         <source>Thư mục model</source>
         <translation>Model storage</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="209"/>
+        <location filename="../qml/SettingsPage.qml" line="198"/>
         <source>Model và cache ứng dụng được lưu trong thư mục dữ liệu HaizFlow.</source>
         <translation>Models and application caches are stored in the HaizFlow data directory.</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="217"/>
+        <location filename="../qml/SettingsPage.qml" line="212"/>
         <source>Xử lý cục bộ</source>
         <translation>Local processing</translation>
     </message>
     <message>
-        <location filename="../qml/SettingsPage.qml" line="218"/>
+        <location filename="../qml/SettingsPage.qml" line="213"/>
         <source>Tệp video và kết quả model nằm trong thư mục dự án đã chọn.</source>
         <translation>Video files and model output remain in the selected project directory.</translation>
     </message>
-</context>
-<context>
-    <name>SidebarAboutLink</name>
     <message>
-        <location filename="../qml/SidebarAboutLink.qml" line="15"/>
-        <location filename="../qml/SidebarAboutLink.qml" line="33"/>
-        <source>Giới thiệu và liên hệ</source>
-        <translation>About &amp; contact</translation>
+        <location filename="../qml/SettingsPage.qml" line="226"/>
+        <source>Dữ liệu tạm của dự án thủ công</source>
+        <translation>Manual project temporary data</translation>
+    </message>
+    <message>
+        <location filename="../qml/SettingsPage.qml" line="227"/>
+        <source>Xóa các bản dựng cũ; dữ liệu đang dùng được giữ lại.</source>
+        <translation>Remove old renders while keeping data currently in use.</translation>
+    </message>
+    <message>
+        <location filename="../qml/SettingsPage.qml" line="229"/>
+        <source>Dọn dữ liệu tạm</source>
+        <translation>Clear temporary data</translation>
     </message>
 </context>
 <context>
@@ -2769,91 +2627,6 @@
         <location filename="../qml/SocialProjectSourceDialog.qml" line="152"/>
         <source>Thêm video</source>
         <translation>Add videos</translation>
-    </message>
-</context>
-<context>
-    <name>SocialPublishCard</name>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <source>Sẵn sàng</source>
-        <translation>Ready</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <source>Đang tải lên</source>
-        <translation>Uploading</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <source>Đang đăng</source>
-        <translation>Publishing</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <location filename="../qml/SocialPublishCard.qml" line="188"/>
-        <source>Đang hoàn thiện video</source>
-        <translation>Finalizing video</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <source>Đã đăng</source>
-        <translation>Published</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <source>Đã lên lịch</source>
-        <translation>Scheduled</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <source>Bản nháp</source>
-        <translation>Draft</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <source>Lỗi</source>
-        <translation>Failed</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="34"/>
-        <source>Thiếu tệp</source>
-        <translation>Missing file</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="188"/>
-        <source>Mở bài đăng</source>
-        <translation>Open post</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="188"/>
-        <source>Thử lại</source>
-        <translation>Retry</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="188"/>
-        <source>Đăng</source>
-        <translation>Publish</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="207"/>
-        <source>Thao tác khác</source>
-        <translation>More actions</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="232"/>
-        <source>Chỉnh nội dung</source>
-        <translation>Edit caption</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="240"/>
-        <source>Sao chép mô tả</source>
-        <translation>Copy caption</translation>
-    </message>
-    <message>
-        <location filename="../qml/SocialPublishCard.qml" line="246"/>
-        <source>Xóa</source>
-        <translation>Remove</translation>
     </message>
 </context>
 <context>
@@ -3206,39 +2979,52 @@
 <context>
     <name>SubtitleTimeline</name>
     <message>
-        <location filename="../qml/SubtitleTimeline.qml" line="118"/>
+        <location filename="../qml/SubtitleTimeline.qml" line="144"/>
         <source>Dòng thời gian</source>
         <translation>Timeline</translation>
     </message>
     <message>
-        <location filename="../qml/SubtitleTimeline.qml" line="125"/>
+        <location filename="../qml/SubtitleTimeline.qml" line="151"/>
         <source>Đoạn đã chọn</source>
         <translation>Selected clip</translation>
     </message>
     <message>
-        <location filename="../qml/SubtitleTimeline.qml" line="125"/>
+        <location filename="../qml/SubtitleTimeline.qml" line="151"/>
         <source>Kéo đoạn hoặc hai mép để chỉnh thời gian</source>
         <translation>Drag a clip or its edges to adjust timing</translation>
     </message>
     <message>
-        <location filename="../qml/SubtitleTimeline.qml" line="147"/>
+        <location filename="../qml/SubtitleTimeline.qml" line="173"/>
         <source>Thu phóng timeline</source>
         <translation>Timeline zoom</translation>
     </message>
     <message>
-        <location filename="../qml/SubtitleTimeline.qml" line="232"/>
+        <location filename="../qml/SubtitleTimeline.qml" line="259"/>
         <source>Video</source>
         <translation>Video</translation>
     </message>
     <message>
-        <location filename="../qml/SubtitleTimeline.qml" line="274"/>
+        <location filename="../qml/SubtitleTimeline.qml" line="301"/>
         <source>Phụ đề</source>
         <translation>Subtitles</translation>
     </message>
     <message>
-        <location filename="../qml/SubtitleTimeline.qml" line="315"/>
+        <location filename="../qml/SubtitleTimeline.qml" line="356"/>
         <source>Đoạn phụ đề</source>
         <translation>Subtitle clip</translation>
+    </message>
+</context>
+<context>
+    <name>SubtitleTransformOverlay</name>
+    <message>
+        <location filename="../qml/SubtitleTransformOverlay.qml" line="188"/>
+        <source>Vị trí và cỡ phụ đề</source>
+        <translation>Subtitle position and size</translation>
+    </message>
+    <message>
+        <location filename="../qml/SubtitleTransformOverlay.qml" line="335"/>
+        <source>%1 px · X %2% · Y %3%</source>
+        <translation>%1 px · X %2% · Y %3%</translation>
     </message>
 </context>
 <context>
@@ -3275,27 +3061,27 @@
         <translation>%1 clips · %2</translation>
     </message>
     <message>
-        <location filename="../qml/TranslationReviewDialog.qml" line="241"/>
+        <location filename="../qml/TranslationReviewDialog.qml" line="290"/>
         <source>Đang chuẩn bị bản xem trước</source>
         <translation>Preparing preview</translation>
     </message>
     <message>
-        <location filename="../qml/TranslationReviewDialog.qml" line="241"/>
+        <location filename="../qml/TranslationReviewDialog.qml" line="290"/>
         <source>Đang cập nhật bản xem trước</source>
         <translation>Updating preview</translation>
     </message>
     <message>
-        <location filename="../qml/TranslationReviewDialog.qml" line="475"/>
+        <location filename="../qml/TranslationReviewDialog.qml" line="526"/>
         <source>Lưu phụ đề</source>
         <translation>Save subtitles</translation>
     </message>
     <message>
-        <location filename="../qml/TranslationReviewDialog.qml" line="476"/>
+        <location filename="../qml/TranslationReviewDialog.qml" line="527"/>
         <source>Lưu và tạo lại giọng</source>
         <translation>Save and regenerate voice</translation>
     </message>
     <message>
-        <location filename="../qml/TranslationReviewDialog.qml" line="476"/>
+        <location filename="../qml/TranslationReviewDialog.qml" line="527"/>
         <source>Duyệt và tiếp tục</source>
         <translation>Approve and continue</translation>
     </message>
@@ -3543,14 +3329,34 @@
 <context>
     <name>VoicePicker</name>
     <message>
-        <location filename="../qml/VoicePicker.qml" line="63"/>
+        <location filename="../qml/VoicePicker.qml" line="69"/>
         <source>Giọng đã nhân bản</source>
         <translation>Cloned voice</translation>
     </message>
     <message>
-        <location filename="../qml/VoicePicker.qml" line="139"/>
+        <location filename="../qml/VoicePicker.qml" line="215"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoicePicker.qml" line="328"/>
+        <source>Chưa có bản nghe thử</source>
+        <translation>No preview available</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoicePicker.qml" line="331"/>
+        <source>Tạm dừng nghe thử</source>
+        <translation>Pause preview</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoicePicker.qml" line="331"/>
+        <source>Nghe thử giọng</source>
+        <translation>Preview voice</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoicePicker.qml" line="342"/>
+        <source>Đang tạo bản nghe thử</source>
+        <translation>Preparing voice preview</translation>
     </message>
 </context>
 <context>
@@ -3585,19 +3391,6 @@
         <location filename="../qml/WatermarkDialog.qml" line="65"/>
         <source>Áp dụng</source>
         <translation>Apply settings</translation>
-    </message>
-</context>
-<context>
-    <name>WorkspaceToolbar</name>
-    <message>
-        <location filename="../qml/WorkspaceToolbar.qml" line="25"/>
-        <source>Quay lại</source>
-        <translation>Back</translation>
-    </message>
-    <message>
-        <location filename="../qml/WorkspaceToolbar.qml" line="31"/>
-        <source>Trang chủ</source>
-        <translation>Home</translation>
     </message>
 </context>
 <context>

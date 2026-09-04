@@ -43,7 +43,11 @@ ColumnLayout {
         stepSize: 1
         value: root.volume
         Accessible.name: root.label
-        onMoved: root.volumeEdited(Math.round(value))
+        onValueChanged: {
+            const nextVolume = Math.round(value)
+            if (enabled && nextVolume !== root.volume)
+                root.volumeEdited(nextVolume)
+        }
     }
 
     Text {

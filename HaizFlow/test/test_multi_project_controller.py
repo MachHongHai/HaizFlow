@@ -23,7 +23,7 @@ from haizflow.desktop.project_commands_controller import ProjectCommandsControll
 from haizflow.desktop.localization import QMessageBox
 from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
 from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
-from haizflow.schemas.video import VideoConfig
+from haizflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig
 
 
 class _DownloadSourceModel:
@@ -48,6 +48,65 @@ class _DownloadSourceModel:
 
 
 class MultiProjectControllerTests(unittest.TestCase):
+    def test_adopting_rendered_subtitle_layout_is_atomic(self):
+        signal = SimpleNamespace(emit=Mock())
+        host = SimpleNamespace(
+            reviewPreviewMedia={
+                "subtitleRenderLayout": {
+                    "fontSize": 74,
+                    "outline": 7,
+                    "positionXPercent": 50,
+                    "positionYPercent": 76,
+                    "boxWidthPercent": 30,
+                    "boxHeightPercent": 8,
+                }
+            },
+            _subtitle_style=SubtitleStyle(),
+            _subtitle_layout_override=False,
+            subtitleSettingsChanged=signal,
+            saveSelectedVideoSettings=Mock(return_value=True),
+        )
+
+        self.assertTrue(HaizFlowController.adoptSubtitlePreviewLayout(host))
+
+        self.assertTrue(host._subtitle_layout_override)
+        self.assertEqual(host._subtitle_style.font_size, 74)
+        self.assertEqual(host._subtitle_style.position_y_percent, 76)
+        self.assertEqual(host._subtitle_style.box_width_percent, 30)
+        signal.emit.assert_called_once_with()
+        host.saveSelectedVideoSettings.assert_called_once_with()
+
+    def test_crop_draft_is_atomic_and_keeps_a_visible_region(self):
+        signal = SimpleNamespace(emit=Mock())
+        host = SimpleNamespace(
+            _crop_settings=CropSettings(zoom_percent=140, pan_x_percent=20),
+            cropSettingsChanged=signal,
+        )
+
+        HaizFlowController.setCropDraft(host, 70, 80, 70, 80)
+
+        self.assertEqual(host._crop_settings.zoom_percent, 100)
+        self.assertEqual(host._crop_settings.left_percent, 70)
+        self.assertEqual(host._crop_settings.right_percent, 22)
+        self.assertEqual(host._crop_settings.top_percent, 80)
+        self.assertEqual(host._crop_settings.bottom_percent, 12)
+        signal.emit.assert_called_once_with()
+
+    def test_crop_draft_preserves_sub_percent_precision(self):
+        signal = SimpleNamespace(emit=Mock())
+        host = SimpleNamespace(
+            _crop_settings=CropSettings(),
+            cropSettingsChanged=signal,
+        )
+
+        HaizFlowController.setCropDraft(host, 12.345, 4.125, 7.875, 3.625)
+
+        self.assertEqual(host._crop_settings.left_percent, 12.345)
+        self.assertEqual(host._crop_settings.top_percent, 4.125)
+        self.assertEqual(host._crop_settings.right_percent, 7.875)
+        self.assertEqual(host._crop_settings.bottom_percent, 3.625)
+        signal.emit.assert_called_once_with()
+
     def test_selecting_video_loads_its_own_speech_model(self):
         host = Mock()
         host._selected_video_id = None
@@ -215,6 +274,19 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertEqual(host._original_subtitle_removal_mode, "patch")
         host.subtitleSettingsChanged.emit.assert_not_called()
+
+    def test_multiple_speakers_are_rejected_outside_omnivoice(self):
+        signal = SimpleNamespace(emit=Mock())
+        host = SimpleNamespace(
+            _tts_provider="edge",
+            _speaker_mode="single",
+            speakerModeChanged=signal,
+        )
+
+        HaizFlowController.speakerMode.fset(host, "multiple")
+
+        self.assertEqual(host._speaker_mode, "single")
+        signal.emit.assert_not_called()
 
     def test_new_project_setup_resets_all_project_local_settings(self):
         changed = {
@@ -611,16 +683,18 @@ class MultiProjectControllerTests(unittest.TestCase):
                     "haizflow.desktop.project_commands_controller.video_store.get_video",
                     side_effect=lambda video_id: videos.get(video_id),
                 ),
-                patch("haizflow.desktop.project_commands_controller.video_store.update_video"),
+                patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
                 patch("haizflow.desktop.project_commands_controller.set_desktop_background_music") as set_music,
             ):
                 applied = ProjectCommandsController(host).apply_batch_settings(
-                    "A", "vi", "auto", "", False, 60, 25, 100, "", str(music)
+                    "A", "vi", "auto", "", False, 60, 25, 100, "", str(music),
+                    speaker_mode="multiple",
                 )
 
         self.assertTrue(applied)
         self.assertEqual(set_music.call_count, 2)
         self.assertEqual([call.args[1] for call in set_music.call_args_list], [str(music), str(music)])
+        self.assertTrue(all(call.kwargs["speaker_mode"] == "single" for call in update_video.call_args_list))
 
     def test_batch_page_exposes_settings_resume_and_bottom_progress(self):
         batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(encoding="utf-8")
@@ -664,7 +738,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("AppController.previewBatchAudioMix(", batch_audio_dialog)
         self.assertIn("function pausePreview()", batch_audio_dialog)
         self.assertIn("onClosed: pausePreview()", batch_audio_dialog)
-        self.assertIn('root.visible && AppController.audioPreviewState === "ready"', batch_audio_dialog)
+        self.assertIn("root.visible && root.previewReady", batch_audio_dialog)
+        self.assertIn("AppController.audioPreviewOriginalSource.length > 0", batch_audio_dialog)
         self.assertIn("readonly property bool previewPlaying", batch_audio_dialog)
         self.assertIn('iconName: root.previewPlaying ? "pause" : "play"', batch_audio_dialog)
 

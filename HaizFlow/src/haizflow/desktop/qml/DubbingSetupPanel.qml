@@ -46,6 +46,8 @@ InspectorPanel {
             ttsProviderIndex: AppController.ttsProviderIndex
             ttsVoice: AppController.ttsVoice
             ttsVoiceOptions: AppController.ttsVoiceOptions
+            voicePreviewSource: AppController.audioPreviewSource
+            voicePreviewState: AppController.audioPreviewState
             speakerMode: AppController.speakerMode
             removeOriginalSubtitles: AppController.removeOriginalSubtitles
             subtitleRemovalMode: AppController.originalSubtitleRemovalMode
@@ -57,6 +59,9 @@ InspectorPanel {
             onTargetLanguageEdited: function(value) { AppController.targetLanguage = value; root.scheduleVideoSettingsSave() }
             onTtsProviderEdited: function(value) { AppController.ttsProvider = value; root.scheduleVideoSettingsSave() }
             onTtsVoiceEdited: function(value) { AppController.ttsVoice = value; root.scheduleVideoSettingsSave() }
+            onTtsVoicePreviewRequested: function(value) {
+                AppController.previewVoiceSample(AppController.ttsProvider, value, AppController.targetLanguage)
+            }
             onCloneVoiceRequested: voiceCloneDialogLoader.invoke("openForSelectedVideo", [])
             onSpeakerModeEdited: function(value) { AppController.speakerMode = value; root.scheduleVideoSettingsSave() }
             onRemoveOriginalSubtitlesEdited: function(value) { AppController.removeOriginalSubtitles = value; root.scheduleVideoSettingsSave() }

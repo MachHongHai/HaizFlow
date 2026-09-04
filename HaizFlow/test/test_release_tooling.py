@@ -1,6 +1,5 @@
 import importlib.util
 import json
-import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,7 +22,6 @@ def load_script(name: str):
 
 release_preflight = load_script("release-preflight.py")
 finalize_release = load_script("finalize-release.py")
-generate_icon = load_script("generate-app-icon.py")
 generate_version = load_script("generate-version-resource.py")
 download_ffmpeg = load_script("download_ffmpeg.py")
 
@@ -64,16 +62,14 @@ class ReleaseToolingTests(unittest.TestCase):
             ),
         )
 
-    def test_generated_icon_and_version_resource_are_valid_build_inputs(self):
+    def test_brand_icon_and_generated_version_resource_are_valid_build_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            icon = root / "HaizFlow.ico"
             version = root / "version.txt"
-            self.assertEqual(generate_icon.main(["--output", str(icon)]), 0)
             self.assertEqual(generate_version.main(["--output", str(version)]), 0)
 
+            icon = ROOT / "src" / "haizflow" / "desktop" / "assets" / "branding" / "haizflow.ico"
             self.assertEqual(icon.read_bytes()[:4], b"\x00\x00\x01\x00")
-            self.assertEqual(struct.unpack("<H", icon.read_bytes()[4:6])[0], 5)
             self.assertIn("VSVersionInfo(", version.read_text(encoding="utf-8"))
 
     def test_desktop_brand_asset_uses_the_supplied_warm_mark(self):
@@ -83,7 +79,6 @@ class ReleaseToolingTests(unittest.TestCase):
             pixels = list(mark.convert("RGBA").get_flattened_data())
         self.assertTrue(any(r > 210 and g > 110 and b < 150 and a > 0 for r, g, b, a in pixels))
         self.assertTrue(any(20 < r < 100 and g < 55 and b < 55 and a > 0 for r, g, b, a in pixels))
-        self.assertGreaterEqual(generate_icon.ICON_CARD_CROP_INSET, 112)
 
     def test_desktop_branding_assets_are_packaged_from_the_runtime_location(self):
         main_source = (ROOT / "src" / "haizflow" / "desktop" / "main.py").read_text(encoding="utf-8")
@@ -94,7 +89,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertNotIn('parent / "qml" / "assets" / "branding"', main_source)
         self.assertIn("$BrandingAssetsPath", build_script)
         self.assertNotIn("generate-brand-assets.py", build_script)
-        self.assertIn("generate-app-icon.py", build_script)
+        self.assertNotIn("generate-app-icon.py", build_script)
         self.assertIn('"haizflow-mark.png", "haizflow.ico"', build_script)
         self.assertIn('"assets/branding/haizflow.ico"', pyproject)
 
@@ -162,7 +157,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("AllowUNCPath=no", installer)
         self.assertIn("AllowNetworkDrive=no", installer)
         self.assertIn("SetupIconFile={#SetupIconPath}", installer)
-        self.assertIn("generate-app-icon.py", build_script)
+        self.assertNotIn("generate-app-icon.py", build_script)
         self.assertIn('"/DSetupIconPath=$SetupIconPath"', build_script)
         self.assertIn('"/DRequiredFreshBytes=$($FreshRequirements.required_free_bytes)"', build_script)
         self.assertIn("function PrepareToInstall(var NeedsRestart: Boolean): String;", installer)

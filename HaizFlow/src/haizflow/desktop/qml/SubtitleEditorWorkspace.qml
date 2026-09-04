@@ -126,9 +126,10 @@ ColumnLayout {
         }
 
         SubtitleTimeline {
+            id: subtitleTimeline
             SplitView.fillWidth: true
-            SplitView.preferredHeight: 250
-            SplitView.minimumHeight: 170
+            SplitView.preferredHeight: 260
+            SplitView.minimumHeight: 248
             segments: root.segments
             selectedIndex: root.selectedIndex
             duration: root.duration
@@ -136,7 +137,10 @@ ColumnLayout {
             thumbnailSource: root.thumbnailSource
             onSegmentSelected: function(index) { root.segmentSelected(index) }
             onSeekRequested: function(seconds) { root.seekRequested(seconds) }
-            onTimingCommitted: function(index, start, end) { root.timingCommitted(index, start, end) }
+            onTimingCommitted: function(index, start, end) {
+                root.timingCommitted(index, start, end);
+                subtitleTimeline.resolveTimingCommit(index, true);
+            }
         }
     }
 

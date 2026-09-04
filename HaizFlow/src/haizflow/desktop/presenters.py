@@ -215,9 +215,19 @@ def voice_options_for_language(language_code: str, ui_language: str, provider: s
                 else f"{localized_voice_label(label, ui_language)} ({voice})",
                 "category": category if effective == "omnivoice" else "natural",
                 "categoryLabel": (
-                    {"natural": "Tự nhiên", "narration": "Kể chuyện", "style": "Phong cách"}
+                    {
+                        "natural": "Tự nhiên",
+                        "narration": "Kể chuyện",
+                        "style": "Phong cách",
+                        "entertainment": "Giải trí",
+                    }
                     if ui_language == "vi"
-                    else {"natural": "Natural", "narration": "Narration", "style": "Styles"}
+                    else {
+                        "natural": "Natural",
+                        "narration": "Narration",
+                        "style": "Styles",
+                        "entertainment": "Entertainment",
+                    }
                 ).get(category, category),
             }
         )
@@ -252,5 +262,13 @@ def localized_voice_label(label: str, ui_language: str) -> str:
         "Cartoon voice": "Hoạt hình",
         "Soft child": "Trẻ em nhẹ",
         "Low child voice": "Trẻ em trầm",
+        "Bright animation": "Hoạt hình sáng",
+        "Soft animation": "Hoạt hình nhẹ",
+        "Low comic": "Hài trầm",
+        "Tech presenter": "Thuyết trình công nghệ",
+        "Show host": "Dẫn chương trình",
+        "Deep trailer": "Trailer trầm",
+        "Warm radio": "Radio ấm",
+        "Mystery whisper": "Thì thầm bí ẩn",
     }
     return translations.get(label, label.replace("Female", "Nữ").replace("Male", "Nam"))

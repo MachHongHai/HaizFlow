@@ -1,69 +1,30 @@
-"""Asynchronous short audio-mix previews for the dubbing setup."""
+"""Model-free audio previews for voice selection and mix controls."""
 
 from __future__ import annotations
 
 import os
-import subprocess
-import threading
-import uuid
+import re
 from pathlib import Path
 
-from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, RUNTIME_DATA_DIR
-from haizflow.pipeline.tts import (
-    _run_coroutine,
-    preprocess_text_for_tts,
-    resolve_tts_provider,
-    tts_segment_with_retry,
-)
 from haizflow.services import video_store
-from haizflow.utils.ffmpeg import _binary
 
 
 class AudioPreviewController:
-    """Prepare synchronized, disposable preview tracks without changing checkpoints."""
+    """Expose existing media tracks without invoking translation or TTS.
 
-    _DURATION_SECONDS = 20
-    _PREVIEW_TEXT_BY_LANGUAGE = {
-        "vi": (
-            "Đây là bản nghe thử để bạn cảm nhận giọng đọc trong bản lồng tiếng hoàn chỉnh. "
-            "Hãy chú ý cách phát âm, nhịp nói, khoảng nghỉ và độ rõ của từng câu. "
-            "Trong lúc đó, âm thanh gốc và nhạc nền vẫn phát phía dưới để bạn điều chỉnh mức âm lượng "
-            "một cách tự nhiên, cân bằng và dễ nghe cho toàn bộ video."
-        ),
-        "zh": "这是一个配音试听，用来感受完整混音中的语音效果。请留意发音、语速、停顿和清晰度，同时原始声音和背景音乐会在下方播放。调整各个音量，直到声音自然、平衡、舒适，并且适合整段视频。",
-        "hi": "यह एक डबिंग पूर्वावलोकन है, जिससे आप पूरे मिश्रण में आवाज़ को सुन सकते हैं। उच्चारण, गति, विराम और स्पष्टता पर ध्यान दें, जबकि मूल ध्वनि और पृष्ठभूमि संगीत साथ में चलते रहें। सभी स्तरों को समायोजित करें ताकि आवाज़ स्वाभाविक, संतुलित और पूरे वीडियो के लिए सहज लगे।",
-        "es": "Esta es una vista previa del doblaje para escuchar la voz dentro de la mezcla completa. Presta atención a la pronunciación, el ritmo, las pausas y la claridad mientras el sonido original y la música de fondo siguen sonando. Ajusta cada nivel hasta que la voz resulte natural, equilibrada y cómoda durante todo el video.",
-        "fr": "Voici un aperçu du doublage pour entendre la voix dans le mixage complet. Écoutez la prononciation, le rythme, les pauses et la clarté pendant que le son d'origine et la musique de fond restent présents. Ajustez chaque niveau afin que la voix paraisse naturelle, équilibrée et agréable tout au long de la vidéo.",
-        "ar": "هذه معاينة للدبلجة للاستماع إلى الصوت داخل المزيج الكامل. انتبه إلى النطق والسرعة والتوقفات والوضوح بينما يستمر الصوت الأصلي والموسيقى الخلفية في التشغيل. اضبط المستويات حتى يبدو الصوت طبيعياً ومتوازناً ومريحاً طوال الفيديو.",
-        "pt": "Esta é uma prévia da dublagem para ouvir a voz dentro da mixagem completa. Observe a pronúncia, o ritmo, as pausas e a clareza enquanto o áudio original e a música de fundo continuam tocando. Ajuste cada nível até que a voz pareça natural, equilibrada e confortável durante todo o vídeo.",
-        "ru": "Это предварительное прослушивание дубляжа, чтобы оценить голос в полном миксе. Обратите внимание на произношение, темп, паузы и разборчивость, пока исходный звук и фоновая музыка продолжают играть. Настройте уровни так, чтобы голос звучал естественно, сбалансированно и комфортно на протяжении всего видео.",
-        "id": "Ini adalah pratinjau sulih suara untuk mendengarkan suara dalam campuran lengkap. Perhatikan pelafalan, tempo, jeda, dan kejernihan saat audio asli serta musik latar tetap diputar. Sesuaikan setiap tingkat agar suara terdengar alami, seimbang, dan nyaman sepanjang video.",
-        "de": "Dies ist eine Vorschau der Synchronisation, damit Sie die Stimme in der vollständigen Mischung hören können. Achten Sie auf Aussprache, Tempo, Pausen und Klarheit, während Originalton und Hintergrundmusik weiterlaufen. Passen Sie alle Pegel an, bis die Stimme über das gesamte Video natürlich, ausgewogen und angenehm klingt.",
-        "ja": "これは完成したミックスの中で吹き替え音声を確認するためのプレビューです。元の音声と背景音楽が流れる間に、発音、話す速さ、間の取り方、聞き取りやすさを確認してください。各音量を調整し、動画全体で自然でバランスのよい聞きやすい声に仕上げます。",
-        "ko": "이것은 완성된 믹스에서 더빙 음성을 들어 보기 위한 미리 보기입니다. 원본 소리와 배경 음악이 함께 재생되는 동안 발음, 말의 속도, 쉼과 선명도를 확인하세요. 각 음량을 조절하여 영상 전체에서 목소리가 자연스럽고 균형 잡히며 편안하게 들리도록 만드세요.",
-        "it": "Questa è un'anteprima del doppiaggio per ascoltare la voce nel mix completo. Presta attenzione alla pronuncia, al ritmo, alle pause e alla chiarezza mentre l'audio originale e la musica di sottofondo continuano a suonare. Regola ogni livello finché la voce non risulta naturale, equilibrata e piacevole per tutto il video.",
-        "th": "นี่คือตัวอย่างเสียงพากย์เพื่อฟังเสียงพูดในมิกซ์ที่สมบูรณ์ โปรดสังเกตการออกเสียง จังหวะ การเว้นวรรค และความชัดเจน ขณะที่เสียงต้นฉบับและเพลงพื้นหลังยังเล่นอยู่ ปรับระดับเสียงแต่ละส่วนจนเสียงพูดเป็นธรรมชาติ สมดุล และฟังสบายตลอดทั้งวิดีโอ",
-        "fil": "Ito ay preview ng dubbing upang marinig ang boses sa kumpletong mix. Pakinggan ang pagbigkas, bilis, paghinto at linaw habang tumutugtog ang orihinal na audio at background music. Ayusin ang bawat antas upang maging natural, balanse at komportable ang boses sa buong video.",
-        "en": (
-            "Use this extended preview to hear how the dubbed voice sounds in a complete mix. "
-            "Notice the pronunciation, pace, pauses, and clarity while the original audio and "
-            "background music play underneath. Adjust each level until the voice remains natural, "
-            "clear, balanced, and comfortable to hear from the beginning to the end of your finished video."
-        ),
-    }
+    Voice rows use only packaged, sentence-locked samples.  Mix preview may
+    reuse a verified voice part from the *selected* video so it represents the
+    current edit, but it never searches another project. No model is loaded by
+    this class.
+    """
+
+    _PACKAGED_SAMPLE_DIR = Path(__file__).resolve().parent / "assets" / "voice_samples"
 
     def __init__(self, host):
         self._host = host
-        self._thread: threading.Thread | None = None
-        self._token = ""
-        self._pending_snapshot: dict | None = None
-        self._state_lock = threading.Lock()
 
     def invalidate(self) -> None:
-        """Discard an unfinished preview when its project context changes."""
-        self._token = uuid.uuid4().hex
-        with self._state_lock:
-            self._pending_snapshot = None
+        """Clear the current player sources when project context changes."""
         host = self._host
         host._audio_preview_source = ""
         host._audio_preview_original_source = ""
@@ -83,12 +44,31 @@ class AudioPreviewController:
         voice: str | None = None,
         provider: str | None = None,
         target_language: str | None = None,
+        voice_only: bool = False,
     ) -> bool:
-        """Build a preview from persisted settings or an unsaved editor draft."""
+        """Publish existing sample/track URLs immediately, without synthesis."""
+        del original_volume, background_music_volume, tts_volume
         host = self._host
         selected_video_id = video_id if video_id is not None else getattr(host, "_selected_video_id", None)
         video = video_store.get_video(selected_video_id) if selected_video_id else None
         files = dict((video.files if video else {}) or {})
+        effective_voice = str(getattr(host, "_tts_voice", "") if voice is None else voice)
+        effective_provider = str(getattr(host, "_tts_provider", "omnivoice") if provider is None else provider)
+        effective_language = str(
+            getattr(host, "_target_language", "en") if target_language is None else target_language
+        )
+
+        packaged_voice_path = self.voice_sample_path(
+            effective_provider,
+            effective_voice,
+            effective_language,
+            selected_video_id=str(selected_video_id or ""),
+        )
+        if voice_only:
+            return self._publish_sources(voice_path=packaged_voice_path, voice_only=True)
+
+        voice_path = self._sample_from_video(video, effective_provider, effective_voice) or packaged_voice_path
+
         use_audio_separation = (
             bool(getattr(host, "_enable_audio_separation", False))
             if enable_audio_separation is None
@@ -97,203 +77,155 @@ class AudioPreviewController:
         video_input = str(files.get("video_input") or getattr(host, "_video_path", "") or "")
         separated_background = str(files.get("background_audio") or "")
         if use_audio_separation:
-            # Never fall back to the complete source track: that would put the
-            # original speaker back into a preview whose purpose is to assess
-            # the replacement voice. Before Demucs has produced no_vocals,
-            # preview TTS (and optional music) without an original track.
-            source_path = separated_background if os.path.isfile(separated_background) else ""
+            # Never use the complete source track here: it would reintroduce
+            # the original speaker while the replacement voice is previewed.
+            source_path = separated_background if self._valid_media(separated_background) else ""
         else:
-            source_path = video_input
-        if not os.path.isfile(video_input):
-            host._status_message = "Choose an input video before previewing the audio mix."
+            source_path = video_input if self._valid_media(video_input) else ""
+        requested_music = str(
+            getattr(host, "_background_music_path", "") if background_music_path is None else background_music_path
+        )
+        music_path = requested_music if self._valid_media(requested_music) else ""
+        return self._publish_sources(
+            voice_path=voice_path,
+            source_path=source_path,
+            music_path=music_path,
+            voice_only=False,
+        )
+
+    def has_voice_sample(
+        self,
+        provider: str,
+        voice: str,
+        target_language: str,
+        *,
+        selected_video_id: str = "",
+    ) -> bool:
+        return bool(
+            self.voice_sample_path(
+                provider,
+                voice,
+                target_language,
+                selected_video_id=selected_video_id,
+            )
+        )
+
+    def voice_sample_path(
+        self,
+        provider: str,
+        voice: str,
+        target_language: str,
+        *,
+        selected_video_id: str = "",
+    ) -> str:
+        """Resolve an exact prerecorded sample; never synthesize a fallback."""
+        provider = str(provider or "").strip().lower()
+        voice = str(voice or "").strip()
+        language = str(target_language or "").strip().lower()
+        if not voice:
+            return ""
+
+        packaged = self._packaged_sample_path(provider, voice, language)
+        if packaged:
+            return packaged
+
+        selected = video_store.get_video(selected_video_id) if selected_video_id else None
+        if voice == "omnivoice:clone":
+            reference = str(((selected.files if selected else {}) or {}).get("voice_reference") or "")
+            return reference if self._valid_media(reference) else ""
+
+        return ""
+
+    def _publish_sources(
+        self,
+        *,
+        voice_path: str = "",
+        source_path: str = "",
+        music_path: str = "",
+        voice_only: bool,
+    ) -> bool:
+        host = self._host
+        if not any(self._valid_media(path) for path in (voice_path, source_path, music_path)):
+            host._audio_preview_source = ""
+            host._audio_preview_original_source = ""
+            host._audio_preview_background_music_source = ""
+            host._audio_preview_state = "failed"
+            host._status_message = (
+                "No prerecorded sample is available for this voice."
+                if voice_only
+                else "No existing audio is available for this preview."
+            )
             host.statusMessageChanged.emit()
+            host.audioPreviewChanged.emit()
             return False
 
-        token = uuid.uuid4().hex
-        self._token = token
-        host._audio_preview_state = "preparing"
+        host._audio_preview_source = self._media_url(voice_path)
+        host._audio_preview_original_source = self._media_url(source_path)
+        host._audio_preview_background_music_source = self._media_url(music_path)
+        host._audio_preview_state = "ready"
+        host._status_message = "Voice preview is ready." if voice_only else "Audio mix preview is ready."
+        host.statusMessageChanged.emit()
         host.audioPreviewChanged.emit()
-        effective_target_language = (
-            str(target_language or "en")
-            if target_language is not None
-            else str(getattr(host, "_target_language", "en") or "en")
-        )
-        snapshot = {
-            "token": token,
-            "source_path": source_path,
-            "background_music_path": str(
-                getattr(host, "_background_music_path", "") if background_music_path is None else background_music_path
-            ),
-            "original_volume": int(
-                getattr(host, "_original_volume", 60) if original_volume is None else original_volume
-            ),
-            "background_music_volume": int(
-                getattr(host, "_background_music_volume", 30)
-                if background_music_volume is None
-                else background_music_volume
-            ),
-            "tts_volume": int(getattr(host, "_tts_volume", 100) if tts_volume is None else tts_volume),
-            "voice": str(getattr(host, "_tts_voice", "") if voice is None else voice),
-            "provider": str(getattr(host, "_tts_provider", "omnivoice") if provider is None else provider),
-            "target_language": effective_target_language,
-            "directory": video_store.get_video_dir(video.video_id) if video else str(RUNTIME_DATA_DIR),
-            "reference_path": str(files.get("voice_reference") or ""),
-            "reference_text": str(files.get("voice_reference_transcript") or ""),
-        }
-        with self._state_lock:
-            if self._thread and self._thread.is_alive():
-                # Do not load two large local TTS models at once. Keep only the
-                # newest request and start it as soon as the active preview
-                # exits; its result is ignored because the token changed.
-                self._pending_snapshot = snapshot
-                return True
-            self._start_thread_unlocked(snapshot)
         return True
 
-    def _start_thread_unlocked(self, snapshot: dict) -> None:
-        self._thread = threading.Thread(
-            target=self._build_preview,
-            args=(snapshot,),
-            name="haizflow-audio-preview",
-            daemon=True,
-        )
-        self._thread.start()
-
-    def _build_preview(self, snapshot: dict) -> None:
-        token = snapshot["token"]
-        preview_dir = Path(snapshot["directory"]) / "temp" / "audio_preview"
-        preview_dir.mkdir(parents=True, exist_ok=True)
-        voice_path = preview_dir / f"voice-{token}.mp3"
-        source_output_path = preview_dir / f"source-{token}.m4a"
-        music_output_path = preview_dir / f"music-{token}.m4a"
-        try:
-            preview_text = self._preview_text(snapshot["target_language"])
-            effective_provider = resolve_tts_provider(snapshot["provider"], snapshot["target_language"])
-            if effective_provider == "omnivoice":
-                from haizflow.pipeline.omnivoice_tts import synthesize_to_mp3
-
-                synthesize_to_mp3(
-                    preprocess_text_for_tts(preview_text),
-                    snapshot["voice"],
-                    str(voice_path),
-                    f"audio-preview-{token}",
-                    language_id=snapshot["target_language"],
-                    reference_path=snapshot["reference_path"],
-                    reference_text=snapshot["reference_text"],
-                )
-            else:
-                _run_coroutine(
-                    tts_segment_with_retry(
-                        preview_text,
-                        snapshot["voice"],
-                        str(voice_path),
-                        retries=2,
-                    )
-                )
-            source_path = ""
-            if snapshot["source_path"] and os.path.isfile(snapshot["source_path"]):
-                self._encode_track(snapshot["source_path"], source_output_path)
-                source_path = str(source_output_path)
-            music_path = ""
-            if snapshot["background_music_path"] and os.path.isfile(snapshot["background_music_path"]):
-                self._encode_track(snapshot["background_music_path"], music_output_path, loop=True)
-                music_path = str(music_output_path)
-            self._remove_stale_preview_files(preview_dir, {voice_path, source_output_path, music_output_path})
-            self._host._audio_preview_events.put(
-                (
-                    "ready",
-                    token,
-                    {
-                        "source": source_path,
-                        "voice": str(voice_path),
-                        "music": music_path,
-                    },
-                )
-            )
-        except Exception as exc:
-            self._host._audio_preview_events.put(("error", token, str(exc)))
-        finally:
-            with self._state_lock:
-                pending = self._pending_snapshot
-                self._pending_snapshot = None
-                if pending is None:
-                    self._thread = None
-                else:
-                    self._start_thread_unlocked(pending)
+    @classmethod
+    def _sample_from_video(cls, video, provider: str, voice: str) -> str:
+        if video is None:
+            return ""
+        if str(getattr(video, "tts_provider", "") or "").strip().lower() != provider:
+            return ""
+        if str(getattr(video, "tts_voice", "") or "").strip() != voice:
+            return ""
+        checkpoints = dict(getattr(video, "checkpoints", {}) or {})
+        if not checkpoints.get("voice"):
+            return ""
+        parts_dir = Path(video_store.get_video_dir(video.video_id)) / "temp" / "voice_parts"
+        for candidate in sorted(parts_dir.glob("voice_*.mp3")):
+            if cls._valid_media(str(candidate)):
+                return str(candidate)
+        return ""
 
     @classmethod
-    def _preview_text(cls, target_language: str) -> str:
-        return cls._PREVIEW_TEXT_BY_LANGUAGE.get(
-            str(target_language or "").lower(), cls._PREVIEW_TEXT_BY_LANGUAGE["en"]
+    def _packaged_sample_path(cls, provider: str, voice: str, language: str) -> str:
+        safe_voice = re.sub(r"[^a-zA-Z0-9._-]+", "_", voice).strip("_")
+        candidates = (
+            cls._PACKAGED_SAMPLE_DIR / provider / safe_voice / f"{language}.mp3",
+            cls._PACKAGED_SAMPLE_DIR / provider / safe_voice / "default.mp3",
+            cls._PACKAGED_SAMPLE_DIR / provider / f"{safe_voice}.mp3",
         )
+        for candidate in candidates:
+            if cls._valid_media(str(candidate)):
+                return str(candidate)
+        return ""
 
     @staticmethod
-    def _remove_stale_preview_files(preview_dir: Path, keep_paths: set[Path]) -> None:
-        """Keep one preview generation; all files here are controller-owned temporaries."""
-        retained = {path.resolve() for path in keep_paths}
-        for prefix in ("voice-", "source-", "music-"):
-            for candidate in preview_dir.glob(f"{prefix}*"):
-                if candidate.resolve() in retained or not candidate.is_file():
+    def _valid_media(path: str) -> bool:
+        return bool(path and os.path.isfile(path) and os.path.getsize(path) > 0)
+
+    @staticmethod
+    def _remove_stale_preview_files(preview_dir: Path, keep: set[Path]) -> None:
+        """Remove only legacy controller-owned preview tracks.
+
+        The current controller does not generate preview media.  This narrow
+        cleanup remains for projects upgraded from releases that wrote
+        ``voice-*`` and ``source-*`` files into their preview directory.
+        """
+        preview_dir = Path(preview_dir)
+        if not preview_dir.is_dir():
+            return
+        kept = {Path(path).resolve() for path in keep}
+        for pattern in ("voice-*", "source-*", "music-*", "background-*"):
+            for candidate in preview_dir.glob(pattern):
+                if not candidate.is_file() or candidate.resolve() in kept:
                     continue
                 try:
                     candidate.unlink()
                 except OSError:
-                    pass
+                    continue
 
-    def _encode_track(self, input_path: str, output_path: Path, *, loop: bool = False) -> None:
-        command = [_binary("ffmpeg"), "-y", "-v", "error"]
-        if loop:
-            command.extend(["-stream_loop", "-1"])
-        command.extend(
-            [
-                "-i",
-                input_path,
-                "-t",
-                str(self._DURATION_SECONDS),
-                "-vn",
-                "-map",
-                "0:a:0?",
-                "-ac",
-                "2",
-                "-ar",
-                "44100",
-                "-c:a",
-                "aac",
-                str(output_path),
-            ]
-        )
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=MEDIA_PROCESS_TIMEOUT_SECONDS,
-            check=False,
-        )
-        if result.returncode != 0 or not output_path.is_file() or output_path.stat().st_size <= 0:
-            detail = (result.stderr or "FFmpeg could not prepare an audio preview track.").strip()
-            raise RuntimeError(detail[:400])
+    @classmethod
+    def _media_url(cls, path: str) -> str:
+        return Path(path).resolve().as_uri() if cls._valid_media(path) else ""
 
     def drain_events(self) -> None:
-        host = self._host
-        while True:
-            try:
-                kind, token, value = host._audio_preview_events.get_nowait()
-            except Exception:
-                return
-            if token != self._token:
-                continue
-            if kind == "ready":
-                host._audio_preview_source = Path(value["voice"]).resolve().as_uri()
-                host._audio_preview_original_source = (
-                    Path(value["source"]).resolve().as_uri() if value["source"] else ""
-                )
-                host._audio_preview_background_music_source = (
-                    Path(value["music"]).resolve().as_uri() if value["music"] else ""
-                )
-                host._audio_preview_state = "ready"
-                host._status_message = "Audio mix preview is ready."
-            else:
-                host._audio_preview_state = "failed"
-                host._status_message = f"Could not prepare audio preview: {value}"
-            host.statusMessageChanged.emit()
-            host.audioPreviewChanged.emit()
+        """Compatibility no-op: model-free previews complete synchronously."""

@@ -9,8 +9,6 @@ Rectangle {
 
     property bool compact: false
     property string currentSection: "home"
-    property string runtimeMessage: ""
-    property string runtimeState: "ready"
     signal sectionRequested(string section)
 
     implicitWidth: compact ? UiMetrics.navigationCompact : UiMetrics.navigationExpanded
@@ -109,13 +107,6 @@ Rectangle {
         }
 
         Item { Layout.fillHeight: true }
-
-        InlineBanner {
-            visible: !root.compact && root.runtimeState !== "ready" && root.runtimeMessage.length > 0
-            Layout.fillWidth: true
-            tone: root.runtimeState === "failed" ? "danger" : "info"
-            message: root.runtimeMessage
-        }
 
     }
 

@@ -20,6 +20,8 @@ GridLayout {
     property int ttsProviderIndex: 0
     property string ttsVoice: ""
     property var ttsVoiceOptions: []
+    property string voicePreviewSource: ""
+    property string voicePreviewState: "idle"
     property string speakerMode: "single"
     property bool removeOriginalSubtitles: true
     property string subtitleRemovalMode: "patch"
@@ -31,6 +33,7 @@ GridLayout {
     signal targetLanguageEdited(string value)
     signal ttsProviderEdited(string value)
     signal ttsVoiceEdited(string value)
+    signal ttsVoicePreviewRequested(string value)
     signal cloneVoiceRequested()
     signal speakerModeEdited(string value)
     signal removeOriginalSubtitlesEdited(bool value)
@@ -90,7 +93,6 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Dịch sang")
-                helpText: qsTr("Ngôn ngữ đã chọn được dùng cho cả phụ đề dịch và giọng đọc.")
             }
             SearchableLanguageCombo {
                 Layout.fillWidth: true
@@ -119,7 +121,6 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Giọng đọc")
-                helpText: qsTr("Chọn giọng có sẵn hoặc mẫu giọng nhân bản mà bạn được phép sử dụng.")
             }
             VoicePicker {
                 Layout.fillWidth: true
@@ -127,7 +128,10 @@ GridLayout {
                 model: root.ttsVoiceOptions
                 currentValue: root.ttsVoice
                 allowVoiceClone: false
+                previewSource: root.voicePreviewSource
+                previewState: root.voicePreviewState
                 onSelected: function(voice) { root.ttsVoiceEdited(voice) }
+                onPreviewRequested: function(voice) { root.ttsVoicePreviewRequested(voice) }
             }
             StudioButton {
                 Layout.fillWidth: true
@@ -142,6 +146,7 @@ GridLayout {
 
             RowLayout {
                 Layout.fillWidth: true
+                visible: root.ttsProvider === "omnivoice"
                 StudioCheckBox {
                     Layout.fillWidth: true
                     enabled: root.editable && root.ttsProvider === "omnivoice"
@@ -186,7 +191,6 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Phụ đề gốc")
-                helpText: qsTr("Che phụ đề gốc đã dính vào hình hoặc giữ nguyên khung hình nguồn.")
             }
             SegmentedControl {
                 Layout.fillWidth: true
@@ -233,7 +237,6 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Nguồn âm thanh")
-                helpText: qsTr("Giữ âm thanh nguồn hoặc tách giọng khỏi âm nền trước khi phối.")
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -269,7 +272,6 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Nhạc nền")
-                helpText: qsTr("Nhạc tùy chọn được phối sau khi xử lý âm thanh nguồn.")
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -295,7 +297,6 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Watermark")
-                helpText: qsTr("Thêm chữ chuyển động nhẹ vào video xuất.")
             }
             RowLayout {
                 Layout.fillWidth: true

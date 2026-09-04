@@ -1,15 +1,16 @@
-import os
 import json
-from pydub import AudioSegment
+import math
+import os
 import subprocess
 import tempfile
-import math
 import time
+
+from pydub import AudioSegment
+
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
 from haizflow.utils.ffmpeg import get_video_duration
-
 
 _FINAL_AUDIO_TAIL_MARGIN_MS = 120
 _ATOMIC_REPLACE_ATTEMPTS = 8
@@ -106,11 +107,15 @@ def trim_silence(audio: AudioSegment, silence_threshold_db: float = -50.0) -> Au
 
 def _atempo_filters(speed_factor: float) -> str:
     """Build a quality-preserving FFmpeg tempo chain for any required speed."""
+    speed_factor = max(0.01, float(speed_factor))
     filters = []
+    while speed_factor < 0.5:
+        filters.append("atempo=0.5")
+        speed_factor /= 0.5
     while speed_factor > 2.0:
         filters.append("atempo=2.0")
         speed_factor /= 2.0
-    filters.append(f"atempo={max(speed_factor, 1.0):.6f}")
+    filters.append(f"atempo={max(0.5, min(2.0, speed_factor)):.6f}")
     return ",".join(filters)
 
 
@@ -128,19 +133,34 @@ def _trim_tempo_rounding(audio: AudioSegment, max_duration_ms: int) -> AudioSegm
     return audio[:max_duration_ms]
 
 
-def compress_to_fit(audio: AudioSegment, max_duration_ms: int, temp_dir: str, video_id: str) -> AudioSegment:
-    """Tempo-compress speech without deleting its ending or changing its pitch."""
-    target_duration_ms = max(1, max_duration_ms - 20)
+def fit_tempo_to_duration(
+    audio: AudioSegment,
+    target_duration_ms: int,
+    temp_dir: str,
+    video_id: str,
+    *,
+    allow_slowdown: bool = False,
+) -> AudioSegment:
+    """Fit speech to a timeline slot without changing pitch.
+
+    Automatic projects only compress overruns. A subtitle timing edit may also
+    lengthen a spoken window; in that case ``allow_slowdown`` keeps the audible
+    line aligned with both handles the user placed on the timeline.
+    """
+    target_duration_ms = max(1, int(target_duration_ms))
     speed_factor = len(audio) / target_duration_ms
-    if speed_factor <= 1.0:
+    if speed_factor <= 1.0 and not allow_slowdown:
         return audio
+    if abs(len(audio) - target_duration_ms) <= 12:
+        return audio[:target_duration_ms]
 
     input_handle, input_path = tempfile.mkstemp(prefix="tempo-input-", suffix=".wav", dir=temp_dir)
     os.close(input_handle)
     output_handle, output_path = tempfile.mkstemp(prefix="tempo-output-", suffix=".wav", dir=temp_dir)
     os.close(output_handle)
     try:
-        audio.export(input_path, format="wav")
+        exported_audio = audio.export(input_path, format="wav")
+        exported_audio.close()
         process = subprocess.Popen(
             [
                 "ffmpeg", "-y", "-v", "error", "-i", input_path,
@@ -161,13 +181,29 @@ def compress_to_fit(audio: AudioSegment, max_duration_ms: int, temp_dir: str, vi
             raise RuntimeError(f"FFmpeg speech tempo compression failed with exit code {process.returncode}: {stderr}")
         check_cancellation(video_id)
         fitted = AudioSegment.from_file(output_path)
-        return _trim_tempo_rounding(fitted, max_duration_ms)
+        fitted = _trim_tempo_rounding(fitted, target_duration_ms)
+        if allow_slowdown and len(fitted) < target_duration_ms:
+            fitted += AudioSegment.silent(
+                duration=target_duration_ms - len(fitted),
+                frame_rate=fitted.frame_rate,
+            )
+        return fitted
     finally:
         for path in (input_path, output_path):
             try:
                 os.remove(path)
             except FileNotFoundError:
                 pass
+
+
+def compress_to_fit(audio: AudioSegment, max_duration_ms: int, temp_dir: str, video_id: str) -> AudioSegment:
+    """Tempo-compress speech without deleting its ending or changing its pitch."""
+    return fit_tempo_to_duration(
+        audio,
+        max(1, max_duration_ms - 20),
+        temp_dir,
+        video_id,
+    )
 
 def build_audio_timeline(
     segments_json_path: str,
@@ -182,8 +218,15 @@ def build_audio_timeline(
     tts_volume: int = 100,
     prepared_base_audio_path: str | None = None,
     process_registry_id: str | None = None,
+    require_voice_parts: bool = True,
+    require_background_audio: bool = True,
 ):
-    """Overlays generated voice MP3 parts on top of the original/background audio track based on timestamps."""
+    """Compose cached audio layers without invoking a speech model.
+
+    ``require_voice_parts`` remains true for the automatic pipeline.  Manual
+    composition can set it to false to build an original/music-only mix, so
+    changing levels never becomes dependent on TTS.
+    """
     cancellation_id = process_registry_id or video_id
     log_to_video(video_id, "Starting build of the audio timeline...")
     
@@ -195,9 +238,11 @@ def build_audio_timeline(
     if video_dur_ms <= 0:
         raise RuntimeError("Unable to determine a positive source-video duration for the audio timeline.")
 
-    with open(segments_json_path, "r", encoding="utf-8") as f:
+    with open(segments_json_path, encoding="utf-8") as f:
         segments = json.load(f)
-    if not isinstance(segments, list) or not segments:
+    if not isinstance(segments, list):
+        raise RuntimeError("Audio timeline segments must be a JSON list.")
+    if require_voice_parts and not segments:
         raise RuntimeError("Audio timeline requires at least one translated voice segment.")
         
     # Editor previews reuse this decoded/volume-adjusted base. Reopening a
@@ -222,7 +267,10 @@ def build_audio_timeline(
             base_audio = bg_audio.set_frame_rate(16000).set_channels(1)
             log_to_video(video_id, f"Original/background audio loaded and pre-processed. Duration: {len(base_audio)}ms")
         except Exception as exc:
-            raise RuntimeError(f"Could not load required original/background audio track: {exc}") from exc
+            if require_background_audio:
+                raise RuntimeError(f"Could not load required original/background audio track: {exc}") from exc
+            base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=16000)
+            log_to_video(video_id, "Source has no decodable audio; using a silent base layer.")
     else:
         base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=16000)
 
@@ -260,11 +308,12 @@ def build_audio_timeline(
         )
         os.close(cache_handle)
         try:
-            base_audio[:video_dur_ms].export(
+            exported_cache = base_audio[:video_dur_ms].export(
                 staged_cache,
                 format="wav",
                 parameters=["-ac", "1", "-ar", "16000"],
             )
+            exported_cache.close()
             check_cancellation(cancellation_id)
             if os.path.getsize(staged_cache) <= 44:
                 raise RuntimeError("Prepared audio-base cache is empty.")
@@ -283,6 +332,8 @@ def build_audio_timeline(
         part_path = os.path.join(voice_parts_dir, part_filename)
         
         if not os.path.exists(part_path) or os.path.getsize(part_path) == 0:
+            if not require_voice_parts:
+                continue
             raise RuntimeError(f"Missing or empty generated voice segment {idx}: {part_filename}")
             
         start_ms = max(0, int(seg["start"] * 1000))
@@ -323,7 +374,20 @@ def build_audio_timeline(
             
             # Fit speech with FFmpeg's pitch-preserving atempo filter. Unlike
             # slicing an AudioSegment, this keeps the end of every spoken line.
-            if tts_dur > available_dur:
+            if bool(seg.get("fit_voice_to_timing")):
+                speed_factor = tts_dur / available_dur
+                log_to_video(
+                    video_id,
+                    f"[{idx}/{total}] Fitting edited speech timing at {speed_factor:.2f}x tempo.",
+                )
+                tts_segment = fit_tempo_to_duration(
+                    tts_segment,
+                    available_dur,
+                    voice_parts_dir,
+                    cancellation_id,
+                    allow_slowdown=True,
+                )
+            elif tts_dur > available_dur:
                 speed_factor = tts_dur / available_dur
                 log_to_video(
                     video_id,
@@ -347,11 +411,12 @@ def build_audio_timeline(
     )
     os.close(handle)
     try:
-        base_audio[:video_dur_ms].export(
+        exported_timeline = base_audio[:video_dur_ms].export(
             temporary_path,
             format="wav",
             parameters=["-ac", "1", "-ar", "16000"],
         )
+        exported_timeline.close()
         check_cancellation(cancellation_id)
         if os.path.getsize(temporary_path) <= 44:
             raise RuntimeError("Audio timeline export produced an empty WAV file.")

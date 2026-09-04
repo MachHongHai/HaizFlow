@@ -83,7 +83,8 @@ FloatingToolDialog {
         draftSpeechRecognitionModel = settings.speechRecognitionModel || "small"
         draftTtsProvider = settings.ttsProvider || "omnivoice"
         draftTtsVoice = normalizedDraftVoice(draftTargetLanguage, draftTtsProvider, settings.ttsVoice || "")
-        draftSpeakerMode = settings.speakerMode === "multiple" ? "multiple" : "single"
+        draftSpeakerMode = draftTtsProvider === "omnivoice" && settings.speakerMode === "multiple"
+            ? "multiple" : "single"
         draftEnableAudioSeparation = settings.enableAudioSeparation !== undefined ? Boolean(settings.enableAudioSeparation) : true
         draftOriginalVolume = Number(settings.originalVolume !== undefined ? settings.originalVolume : 60)
         draftBackgroundMusicVolume = Number(settings.backgroundMusicVolume !== undefined ? settings.backgroundMusicVolume : 30)
@@ -223,6 +224,8 @@ FloatingToolDialog {
                 ttsProviderIndex: root.draftTtsProviderIndex
                 ttsVoice: root.draftTtsVoice
                 ttsVoiceOptions: root.draftVoiceOptions
+                voicePreviewSource: AppController.audioPreviewSource
+                voicePreviewState: AppController.audioPreviewState
                 speakerMode: root.draftSpeakerMode
                 removeOriginalSubtitles: root.draftRemoveOriginalSubtitles
                 subtitleRemovalMode: root.draftOriginalSubtitleRemovalMode
@@ -237,9 +240,14 @@ FloatingToolDialog {
                 }
                 onTtsProviderEdited: function(value) {
                     root.draftTtsProvider = value
+                    if (value !== "omnivoice")
+                        root.draftSpeakerMode = "single"
                     root.draftTtsVoice = root.normalizedDraftVoice(root.draftTargetLanguage, value, root.draftTtsVoice)
                 }
                 onTtsVoiceEdited: function(value) { root.draftTtsVoice = value }
+                onTtsVoicePreviewRequested: function(value) {
+                    AppController.previewVoiceSample(root.draftTtsProvider, value, root.draftTargetLanguage)
+                }
                 onSpeakerModeEdited: function(value) { root.draftSpeakerMode = value }
                 onRemoveOriginalSubtitlesEdited: function(value) { root.draftRemoveOriginalSubtitles = value }
                 onSubtitleRemovalModeEdited: function(value) { root.draftOriginalSubtitleRemovalMode = value }

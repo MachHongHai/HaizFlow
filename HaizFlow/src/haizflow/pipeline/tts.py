@@ -563,7 +563,9 @@ def generate_voice_parts(
     if speaker_mode == "multiple" and current_video is not None:
         video_input = str(current_files.get("video_input") or "")
         video_root = os.path.dirname(os.path.dirname(video_input)) if video_input else ""
-        source_segments_path = os.path.join(video_root, "temp", "source_segments.json") if video_root else ""
+        source_segments_path = str(current_files.get("source_segments") or "")
+        if not source_segments_path and video_root:
+            source_segments_path = os.path.join(video_root, "temp", "source_segments.json")
         source_audio_path = str(current_files.get("speech_audio") or "")
         if not source_audio_path and video_root:
             source_audio_path = os.path.join(video_root, "temp", "audio.wav")

@@ -31,6 +31,15 @@ class UiLocalizationTests(unittest.TestCase):
             "Không thể lưu cài đặt: permission denied",
         )
 
+    def test_manual_retranslation_warning_is_natural_vietnamese(self):
+        _set_ui_language("vi")
+
+        self.assertEqual(_ui_text("Translate again"), "Dịch lại")
+        self.assertEqual(
+            _ui_text("Translating again will remove the current voice. You will need to create the voice again."),
+            "Dịch lại sẽ làm mất giọng đọc hiện tại, cần phải tạo giọng đọc mới",
+        )
+
     def test_non_interactive_alert_uses_the_in_app_handler(self):
         handler = Mock()
         QMessageBox.set_alert_handler(handler)

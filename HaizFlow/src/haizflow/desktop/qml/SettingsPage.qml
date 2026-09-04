@@ -11,7 +11,6 @@ Item {
     property string draftLanguage: ""
     property string draftDevice: ""
     property bool localEditsPending: false
-    property int sectionIndex: 0
     readonly property bool draftDirty: draftLanguage !== AppController.settingsLanguage || draftDevice !== AppController.processingDevice
     readonly property var hardwareInfo: AppController.hardwareInfo
 
@@ -68,20 +67,6 @@ Item {
             title: qsTr("Cài đặt")
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: UiMetrics.controlHeight
-
-            AppTabBar {
-                Layout.fillWidth: true
-                currentIndex: root.sectionIndex
-                tabs: [qsTr("Chung"), qsTr("Hiệu năng"), qsTr("Lưu trữ"), qsTr("Quyền riêng tư")]
-                onActivated: function (index) {
-                    root.sectionIndex = index;
-                }
-            }
-        }
-
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
@@ -102,7 +87,6 @@ Item {
                 spacing: 0
 
                 SettingRow {
-                    visible: root.sectionIndex === 0
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space16
@@ -129,8 +113,13 @@ Item {
                     }
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.divider
+                }
+
                 SettingRow {
-                    visible: root.sectionIndex === 1
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space16
@@ -158,14 +147,12 @@ Item {
                 }
 
                 Rectangle {
-                    visible: root.sectionIndex === 1
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1
                     color: Theme.divider
                 }
 
                 SettingRow {
-                    visible: root.sectionIndex === 1
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space12
@@ -178,7 +165,6 @@ Item {
                 }
 
                 SettingRow {
-                    visible: root.sectionIndex === 1
                     Layout.fillWidth: true
                     Layout.bottomMargin: Theme.space12
                     label: qsTr("GPU")
@@ -186,15 +172,19 @@ Item {
                 }
 
                 SettingRow {
-                    visible: root.sectionIndex === 1
                     Layout.fillWidth: true
                     Layout.bottomMargin: Theme.space16
                     label: qsTr("CPU")
                     description: root.hardwareInfo.cpuName || qsTr("Đang tải")
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.divider
+                }
+
                 SettingRow {
-                    visible: root.sectionIndex === 2
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space12
@@ -203,14 +193,19 @@ Item {
                 }
 
                 InlineBanner {
-                    visible: root.sectionIndex === 2
                     Layout.fillWidth: true
                     tone: "info"
                     message: qsTr("Model và cache ứng dụng được lưu trong thư mục dữ liệu HaizFlow.")
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    Layout.topMargin: Theme.space16
+                    color: Theme.divider
+                }
+
                 SettingRow {
-                    visible: root.sectionIndex === 3
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space16
@@ -218,9 +213,26 @@ Item {
                     description: qsTr("Tệp video và kết quả model nằm trong thư mục dự án đã chọn.")
                 }
 
-                Item {
-                    Layout.fillHeight: true
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.divider
                 }
+
+                SettingRow {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.space16
+                    Layout.bottomMargin: Theme.space16
+                    label: qsTr("Dữ liệu tạm của dự án thủ công")
+                    description: qsTr("Xóa các bản dựng cũ; dữ liệu đang dùng được giữ lại.")
+                    StudioButton {
+                        text: qsTr("Dọn dữ liệu tạm")
+                        iconName: "delete"
+                        variant: "secondary"
+                        onClicked: AppController.clearManualCache("all")
+                    }
+                }
+
             }
         }
     }

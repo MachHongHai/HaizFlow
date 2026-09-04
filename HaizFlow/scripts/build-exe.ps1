@@ -14,7 +14,7 @@ $PyInstallerRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "build\pyinsta
 $PyInstallerWorkPath = Join-Path $PyInstallerRoot "work"
 $PyInstallerSpecPath = Join-Path $PyInstallerRoot "spec"
 $BuildMetadataPath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-metadata"))
-$IconPath = Join-Path $BuildMetadataPath "HaizFlow.ico"
+$IconPath = Join-Path $Root "src\haizflow\desktop\assets\branding\haizflow.ico"
 $VersionResourcePath = Join-Path $BuildMetadataPath "HaizFlow-version.txt"
 $CompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-compliance"))
 $FfmpegCompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\compliance\ffmpeg"))
@@ -68,7 +68,6 @@ if ($GitStatus -and !$AllowDirtyBuild) {
   throw "Git worktree is dirty. Commit/stash changes before building a release, or use -AllowDirtyBuild for a non-installable development artifact."
 }
 
-Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "generate-app-icon.py"), "--output", $IconPath) -Label "Application icon generation"
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "generate-version-resource.py"), "--output", $VersionResourcePath) -Label "Windows version resource generation"
 
 & (Join-Path $PSScriptRoot "test.ps1")
@@ -177,6 +176,11 @@ foreach ($BrandingAsset in ("haizflow-mark.png", "haizflow.ico")) {
     throw "Branding asset is missing: $BrandingAssetPath"
   }
   $ArgsList += @("--add-data", "$BrandingAssetPath;haizflow\desktop\assets\branding")
+}
+
+$VoiceSamplesPath = Join-Path $Root "src\haizflow\desktop\assets\voice_samples"
+if (Test-Path -LiteralPath $VoiceSamplesPath -PathType Container) {
+  $ArgsList += @("--add-data", "$VoiceSamplesPath;haizflow\desktop\assets\voice_samples")
 }
 
 $SubtitleFontsPath = Join-Path $Root "src\haizflow\assets\fonts"

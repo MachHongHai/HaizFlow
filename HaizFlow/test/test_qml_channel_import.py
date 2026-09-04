@@ -9,9 +9,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, Property, QUrl, Slot
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlComponent, QQmlEngine
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,53 +24,10 @@ from haizflow.services.channel_import import new_session
 from haizflow.services.video_download import DownloadCancelled
 
 
-class _FakeController(QObject):
-    def __init__(self):
-        super().__init__()
-        self._importer = ChannelImportCoordinator(self)
-
-    @Property(QObject, constant=True)
-    def channelImporter(self):
-        return self._importer
-
-    @Property(str, constant=True)
-    def projectName(self):
-        return "Channel test"
-
-    @Slot(result=bool)
-    def prepareChannelImport(self):
-        return True
-
-    @Slot(result=bool)
-    def startChannelDownloads(self):
-        return False
-
-    @Slot(int, result=bool)
-    def retryChannelVideo(self, _row):
-        return False
-
-
 class ChannelImportQmlTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QGuiApplication.instance() or QGuiApplication([])
-
-    def test_channel_import_page_loads_with_an_empty_session(self):
-        engine = QQmlEngine()
-        engine.addImportPath(str(QML_DIR))
-        controller = _FakeController()
-        component = QQmlComponent(engine, QUrl.fromLocalFile(str(QML_DIR / "ChannelImportPage.qml")))
-        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
-        page = component.createWithInitialProperties({"appController": controller})
-        self.assertIsNotNone(page, "\n".join(error.toString() for error in component.errors()))
-        try:
-            self.app.processEvents()
-            self.assertEqual(page.property("hasResults"), False)
-        finally:
-            controller._importer.shutdown()
-            page.deleteLater()
-            engine.deleteLater()
-            self.app.processEvents()
 
     def test_channel_download_is_owned_by_downloads_page_not_batch(self):
         main_qml = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
@@ -87,16 +42,6 @@ class ChannelImportQmlTests(unittest.TestCase):
         self.assertIn("AppComboBox", channel_download_qml)
         self.assertIn('"Bilibili", "value": "bilibili"', channel_download_qml)
         self.assertNotIn("SegmentedControl", channel_download_qml)
-
-    def test_channel_import_form_resyncs_only_when_the_project_session_changes(self):
-        page_qml = (QML_DIR / "ChannelImportPage.qml").read_text(encoding="utf-8")
-        self.assertIn("property string syncedSessionId", page_qml)
-        self.assertIn("if (syncedSessionId === sessionId)", page_qml)
-        self.assertIn("function onSessionChanged()", page_qml)
-        self.assertIn("function onAuthenticationChanged()", page_qml)
-        self.assertNotIn("function onChanged()", page_qml)
-        self.assertIn("const request = importer.requestData", page_qml)
-        self.assertIn("channelUrl.text = String(request.url || importer.channelUrl || \"\")", page_qml)
 
     def test_progress_does_not_invalidate_session_authentication_or_counts(self):
         with tempfile.TemporaryDirectory() as temp_dir:

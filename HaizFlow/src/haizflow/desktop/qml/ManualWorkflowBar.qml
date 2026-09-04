@@ -7,24 +7,10 @@ import "."
 Rectangle {
     id: root
 
-    property int selectedStage: 0
-    property var completedStages: []
-    property string runningStage: ""
+    property int selectedTool: 0
+    property var toolModel: []
     property bool hasVideo: false
-    property bool processing: false
-    property bool queued: false
-    property bool canExport: false
-    signal stageSelected(int index)
-    signal exportRequested()
-    signal pauseRequested()
-
-    readonly property var stageIds: ["translation", "visual", "voice", "audio"]
-    readonly property var stageLabels: [
-        qsTr("Dịch"),
-        qsTr("Hình ảnh"),
-        qsTr("Giọng đọc"),
-        qsTr("Âm thanh")
-    ]
+    signal toolSelected(int index)
 
     implicitHeight: 44
     color: Theme.surface
@@ -38,29 +24,28 @@ Rectangle {
         spacing: Theme.space4
 
         Repeater {
-            model: root.stageIds.length
+            model: root.toolModel
 
             delegate: Rectangle {
-                id: stageButton
+                id: toolButton
                 required property int index
+                required property var modelData
 
-                readonly property string stageId: root.stageIds[index]
-                readonly property bool selected: root.selectedStage === index
-                readonly property bool running: root.runningStage === stageId
-                    || (stageId === "audio" && root.runningStage === "timeline")
-                readonly property bool completed: root.completedStages.indexOf(stageId) >= 0
+                readonly property bool selected: root.selectedTool === index
+                readonly property string toolState: String(modelData.state || "blocked")
 
                 Layout.fillWidth: true
+                Layout.minimumWidth: 86
                 Layout.preferredHeight: 34
                 radius: Theme.radiusTiny
                 color: selected ? Theme.sidebarSelected
-                    : stageHover.hovered ? Theme.surfaceMuted : "transparent"
+                    : toolHover.hovered ? Theme.surfaceMuted : "transparent"
                 border.width: activeFocus ? 2 : 0
                 border.color: Theme.focus
                 enabled: root.hasVideo
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
-                Accessible.name: root.stageLabels[index]
+                Accessible.name: String(modelData.label || "")
 
                 RowLayout {
                     anchors.fill: parent
@@ -69,21 +54,23 @@ Rectangle {
                     spacing: Theme.space8
 
                     Rectangle {
-                        Layout.preferredWidth: 3
-                        Layout.preferredHeight: 16
-                        radius: 1
-                        color: stageButton.running ? Theme.warning
-                            : stageButton.selected ? Theme.interactive
-                            : stageButton.completed ? Theme.success : "transparent"
+                        Layout.preferredWidth: 6
+                        Layout.preferredHeight: 6
+                        radius: 3
+                        color: toolButton.toolState === "running" ? Theme.warning
+                            : toolButton.toolState === "error" ? Theme.danger
+                            : toolButton.toolState === "cached" ? Theme.success
+                            : toolButton.toolState === "ready" ? Theme.interactive
+                            : Theme.textDisabled
                     }
 
                     Text {
                         Layout.fillWidth: true
-                        text: root.stageLabels[stageButton.index]
-                        color: stageButton.enabled ? Theme.text : Theme.textDisabled
+                        text: String(toolButton.modelData.label || "")
+                        color: toolButton.enabled ? Theme.text : Theme.textDisabled
                         font.family: Theme.fontFamily
                         font.pixelSize: TypeScale.control
-                        font.weight: stageButton.selected ? Font.DemiBold : Font.Normal
+                        font.weight: toolButton.selected ? Font.DemiBold : Font.Normal
                         textFormat: Text.PlainText
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
@@ -91,31 +78,15 @@ Rectangle {
                 }
 
                 HoverHandler {
-                    id: stageHover
-                    cursorShape: stageButton.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    id: toolHover
+                    cursorShape: toolButton.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                 }
                 TapHandler {
-                    enabled: stageButton.enabled
-                    onTapped: root.stageSelected(stageButton.index)
+                    enabled: toolButton.enabled
+                    onTapped: root.toolSelected(toolButton.index)
                 }
-                Keys.onReturnPressed: root.stageSelected(stageButton.index)
-                Keys.onSpacePressed: root.stageSelected(stageButton.index)
-            }
-        }
-
-        StudioButton {
-            Layout.preferredWidth: 124
-            text: root.processing && root.runningStage === "render"
-                ? qsTr("Tạm dừng") : qsTr("Xuất video")
-            iconName: root.processing && root.runningStage === "render" ? "pause" : "publish"
-            variant: root.processing && root.runningStage === "render" ? "danger" : "primary"
-            enabled: root.processing && root.runningStage === "render"
-                || (!root.queued && root.canExport)
-            onClicked: {
-                if (root.processing && root.runningStage === "render")
-                    root.pauseRequested()
-                else
-                    root.exportRequested()
+                Keys.onReturnPressed: root.toolSelected(toolButton.index)
+                Keys.onSpacePressed: root.toolSelected(toolButton.index)
             }
         }
     }

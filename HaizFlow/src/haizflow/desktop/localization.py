@@ -71,6 +71,10 @@ def _ui_text(value) -> str:
         "Pause video": "Tạm dừng video",
         "Restart video": "Chạy lại video",
         "Translation review": "Duyệt bản dịch",
+        "Translate again": "Dịch lại",
+        "Translating again will remove the current voice. You will need to create the voice again.": (
+            "Dịch lại sẽ làm mất giọng đọc hiện tại, cần phải tạo giọng đọc mới"
+        ),
         "No video selected": "Chưa chọn video",
         "Remove video": "Xóa video",
         "Delete failed": "Xóa không thành công",

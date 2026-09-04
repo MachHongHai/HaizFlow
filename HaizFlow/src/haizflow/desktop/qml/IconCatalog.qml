@@ -39,6 +39,7 @@ QtObject {
         case "refresh": return "\uE72C"
         case "delete": return "\uE74D"
         case "open": return "\uE8A7"
+        case "link": return "\uE71B"
         case "info": return "\uE946"
         case "warning": return "\uE7BA"
         case "error": return "\uEA39"

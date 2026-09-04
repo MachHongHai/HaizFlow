@@ -34,7 +34,7 @@ FloatingToolDialog {
     property real pendingPreviewPosition: 0
     property real pendingScrubPosition: 0
     property double positionGuardUntil: 0
-    property bool resumeAfterPreview: false
+    property bool playbackRequested: false
     property bool previewFramePriming: false
     property bool previewScrubbing: false
     property bool previewStatusVisible: false
@@ -50,10 +50,13 @@ FloatingToolDialog {
     readonly property real playheadSeconds: timelinePosition
     readonly property bool usingRenderedPreview: loadedPreviewSource.length > 0
     readonly property bool usingPublishedOutput: !usingRenderedPreview && String(previewMedia.renderedVideoSource || "").length > 0
-    readonly property bool usesExternalAudio: usingRenderedPreview || (!usingPublishedOutput && previewMedia.useVideoAudio === false)
-    readonly property string previewMixSource: String(AppController.editorPreviewAudioSource || "").length > 0
-                                                ? String(AppController.editorPreviewAudioSource)
+    readonly property string renderedPreviewMixSource: String(AppController.editorPreviewAudioSource || "")
+    readonly property string previewMixSource: usingRenderedPreview
+                                                ? renderedPreviewMixSource
                                                 : String(previewMedia.finalMixSource || "")
+    readonly property bool usesExternalAudio: usingRenderedPreview
+                                                ? renderedPreviewMixSource.length > 0
+                                                : (!usingPublishedOutput && previewMedia.useVideoAudio === false)
     readonly property bool usingPreparedMix: previewMixSource.length > 0
     readonly property string previewStage: String(AppController.editorPreviewStage || "")
     readonly property bool previewUpdateBusy: AppController.editorPreviewBusy
@@ -117,7 +120,7 @@ FloatingToolDialog {
         // whose URL string did not change leaves QMediaPlayer on the old file,
         // so explicitly detach and reattach every audio layer.
         const requestedPosition = playheadSeconds;
-        const shouldResume = videoPlayer.playbackState === MediaPlayer.PlayingState;
+        const shouldResume = playbackRequested;
         stopPreviewAudio();
         previewMedia = ({});
         Qt.callLater(function () {
@@ -130,15 +133,62 @@ FloatingToolDialog {
         });
     }
 
+    function togglePreviewPlayback() {
+        if (playbackRequested) {
+            playbackRequested = false;
+            videoPlayer.pause();
+            syncPreviewAudio(true);
+            return;
+        }
+        playbackRequested = true;
+        previewPrimeTimer.stop();
+        previewFramePriming = false;
+        videoPlayer.playbackRate = 1.0;
+        videoPlayer.play();
+    }
+
+    function acceptPreviewFrame(fullscreenFrame) {
+        if (fullscreenFrame !== videoFullscreen)
+            return;
+        previewReady = true;
+        if (previewFramePriming) {
+            previewPrimeTimer.stop();
+            videoPlayer.pause();
+            videoPlayer.playbackRate = 1.0;
+            timelinePosition = usingRenderedPreview
+                ? Number(AppController.editorPreviewStart || 0) + Number(videoPlayer.position || 0) / 1000
+                : Number(videoPlayer.position || 0) / 1000;
+            previewFramePriming = false;
+            syncPreviewAudio(true);
+        }
+    }
+
+    function refreshVideoSink() {
+        if (!visible || !videoPlayer.source)
+            return;
+        previewReady = false;
+        previewPrimeTimer.stop();
+        if (playbackRequested) {
+            videoPlayer.playbackRate = 1.0;
+            if (videoPlayer.playbackState !== MediaPlayer.PlayingState)
+                videoPlayer.play();
+            return;
+        }
+        previewFramePriming = true;
+        videoPlayer.playbackRate = 0.25;
+        videoPlayer.play();
+        previewPrimeTimer.restart();
+    }
+
     function releasePreviewMedia() {
         previewStatusDelayTimer.stop();
         previewScrubTimer.stop();
-        previewRevealTimer.stop();
         previewPrimeTimer.stop();
         previewRenderTimer.stop();
         previewReady = false;
         previewQueued = false;
         previewFramePriming = false;
+        playbackRequested = false;
         previewScrubbing = false;
         previewStatusVisible = false;
         videoPlayer.playbackRate = 1.0;
@@ -215,13 +265,12 @@ FloatingToolDialog {
         // A full-timeline render may finish after the user has scrubbed. Keep
         // the current playhead instead of jumping back to the request point.
         const requestedPosition = playheadSeconds;
-        const shouldResume = videoPlayer.playbackState === MediaPlayer.PlayingState;
+        const shouldResume = playbackRequested;
         loadedPreviewSource = nextSource;
         previewReady = false;
         previewFramePriming = false;
-        previewRevealTimer.stop();
         previewPrimeTimer.stop();
-        resumeAfterPreview = shouldResume;
+        playbackRequested = shouldResume;
         videoPlayer.stop();
         videoPlayer.source = nextSource;
         pendingPreviewPosition = requestedPosition;
@@ -432,7 +481,7 @@ FloatingToolDialog {
         pendingPreviewPosition = 0;
         pendingScrubPosition = 0;
         positionGuardUntil = 0;
-        resumeAfterPreview = false;
+        playbackRequested = false;
         previewScrubbing = false;
         previewStatusVisible = false;
         videoFullscreen = false;
@@ -452,6 +501,7 @@ FloatingToolDialog {
         videoFullscreen = false;
         AppController.releaseEditorPreview();
     }
+    onVideoFullscreenChanged: Qt.callLater(root.refreshVideoSink)
 
     SubtitleEditorWorkspace {
         id: editorWorkspace
@@ -468,13 +518,14 @@ FloatingToolDialog {
         previewBusy: root.previewUpdateBusy
         previewProgress: root.previewUpdateProgress
         previewStatusText: root.previewStatusText()
-        playing: videoPlayer.playbackState === MediaPlayer.PlayingState
+        playing: root.playbackRequested
+            && videoPlayer.playbackState === MediaPlayer.PlayingState
         canUndo: root.undoStack.length > 0
         canRedo: root.redoStack.length > 0
         canCommit: root.segments.length > 0 && !root.approvalInProgress
         primaryText: root.manualEditing ? qsTr("Lưu phụ đề")
             : root.postProcessingEdit ? qsTr("Lưu và tạo lại giọng") : qsTr("Duyệt và tiếp tục")
-        onPlaybackToggled: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
+        onPlaybackToggled: root.togglePreviewPlayback()
         onScrubStarted: function(position) { root.beginPreviewScrub(position) }
         onScrubbed: function(position) { root.scrubPreview(position) }
         onScrubFinished: function(position) { root.endPreviewScrub(position) }
@@ -501,10 +552,13 @@ FloatingToolDialog {
         anchors.fill: parent
         visible: root.videoFullscreen
         z: 100
+        thumbnailSource: AppController.videoThumbnailSource
+        previewReady: root.previewReady
         position: root.playheadSeconds
         duration: root.contentDuration
-        playing: videoPlayer.playbackState === MediaPlayer.PlayingState
-        onPlaybackToggled: videoPlayer.playbackState === MediaPlayer.PlayingState ? videoPlayer.pause() : videoPlayer.play()
+        playing: root.playbackRequested
+            && videoPlayer.playbackState === MediaPlayer.PlayingState
+        onPlaybackToggled: root.togglePreviewPlayback()
         onScrubStarted: function(position) { root.beginPreviewScrub(position) }
         onScrubbed: function(position) { root.scrubPreview(position) }
         onScrubFinished: function(position) { root.endPreviewScrub(position) }
@@ -527,11 +581,34 @@ FloatingToolDialog {
         }
     }
 
+    Connections {
+        target: editorWorkspace.videoOutput.videoSink
+        enabled: !root.videoFullscreen
+
+        function onVideoFrameChanged() {
+            if (editorWorkspace.videoOutput.videoSink.videoSize.width > 0
+                    && editorWorkspace.videoOutput.videoSink.videoSize.height > 0)
+                root.acceptPreviewFrame(false);
+        }
+    }
+
+    Connections {
+        target: fullscreenPreview.videoOutput.videoSink
+        enabled: root.videoFullscreen
+
+        function onVideoFrameChanged() {
+            if (fullscreenPreview.videoOutput.videoSink.videoSize.width > 0
+                    && fullscreenPreview.videoOutput.videoSink.videoSize.height > 0)
+                root.acceptPreviewFrame(true);
+        }
+    }
+
     MediaPlayer {
         id: videoPlayer
         videoOutput: root.videoFullscreen ? fullscreenPreview.videoOutput : editorWorkspace.videoOutput
         audioOutput: AudioOutput {
-            volume: root.usesExternalAudio ? 0 : (root.usingPublishedOutput ? 1 : Number(root.previewMedia.videoVolume || 0.6))
+            volume: root.previewFramePriming || root.usesExternalAudio
+                ? 0 : (root.usingPublishedOutput ? 1 : Number(root.previewMedia.videoVolume || 0.6))
         }
         onDurationChanged: {
             if (!root.usingRenderedPreview)
@@ -547,10 +624,8 @@ FloatingToolDialog {
                 setPosition(Math.max(0, offset * 1000));
                 root.timelinePosition = root.pendingPreviewPosition;
                 root.setExternalAudioPosition(root.pendingPreviewPosition * 1000, true);
-                if (root.resumeAfterPreview) {
-                    root.resumeAfterPreview = false;
+                if (root.playbackRequested) {
                     playbackRate = 1.0;
-                    previewRevealTimer.restart();
                     play();
                 } else if (!root.previewFramePriming) {
                     // Windows Media Foundation does not always decode a frame
@@ -563,16 +638,26 @@ FloatingToolDialog {
                 }
             }
             else if (mediaStatus === MediaPlayer.LoadingMedia) {
-                previewRevealTimer.stop();
                 previewPrimeTimer.stop();
                 root.previewFramePriming = false;
                 root.previewReady = false;
+            } else if (mediaStatus === MediaPlayer.InvalidMedia || mediaStatus === MediaPlayer.EndOfMedia) {
+                previewPrimeTimer.stop();
+                root.previewFramePriming = false;
+                if (mediaStatus === MediaPlayer.EndOfMedia)
+                    root.playbackRequested = false;
             }
         }
         onPlaybackStateChanged: {
-            if (playbackState === MediaPlayer.PlayingState && !root.previewFramePriming)
+            if (playbackState === MediaPlayer.PlayingState
+                    && root.playbackRequested && !root.previewFramePriming)
                 root.previewStarted = true;
             root.syncPreviewAudio(true);
+        }
+        onErrorOccurred: function() {
+            previewPrimeTimer.stop();
+            root.previewFramePriming = false;
+            root.playbackRequested = false;
         }
     }
 
@@ -635,28 +720,17 @@ FloatingToolDialog {
     }
 
     Timer {
-        id: previewRevealTimer
-        interval: 120
-        repeat: false
-        onTriggered: root.previewReady = true
-    }
-
-    Timer {
         id: previewPrimeTimer
-        interval: 110
+        interval: 800
         repeat: false
         onTriggered: {
             if (!root.previewFramePriming)
                 return
             videoPlayer.pause()
             videoPlayer.playbackRate = 1.0
-            // Do not seek again after pausing: on Windows that second paused
-            // seek is exactly what replaces the decoded frame with black.
-            // Priming at 0.25x advances only a few milliseconds.
-            root.timelinePosition = Number(AppController.editorPreviewStart || 0)
-                + Number(videoPlayer.position || 0) / 1000
             root.previewFramePriming = false
-            root.previewReady = true
+            // A timeout is cleanup, not proof that a frame exists. Keep the
+            // thumbnail over the sink instead of revealing a black surface.
             root.syncPreviewAudio(true)
         }
     }

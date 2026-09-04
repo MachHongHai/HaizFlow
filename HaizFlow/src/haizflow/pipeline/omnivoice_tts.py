@@ -77,6 +77,17 @@ OMNIVOICE_VOICE_INSTRUCTIONS = {
     "omnivoice:cartoon": "child, very high pitch",
     "omnivoice:child_soft": "child, moderate pitch",
     "omnivoice:child_low": "child, low pitch",
+    # Entertainment presets deliberately use only OmniVoice's documented
+    # instruction vocabulary. Distinct preset IDs provide stable latent seeds
+    # without claiming to reproduce a real person or protected character.
+    "omnivoice:animated_bright": "child, very high pitch",
+    "omnivoice:animated_soft": "child, moderate pitch",
+    "omnivoice:comic_low": "child, low pitch",
+    "omnivoice:tech_presenter": "male, young adult, moderate pitch",
+    "omnivoice:show_host": "female, young adult, high pitch",
+    "omnivoice:trailer_deep": "male, young adult, low pitch",
+    "omnivoice:radio_warm": "female, young adult, low pitch",
+    "omnivoice:mystery_whisper": "whisper, elderly, low pitch",
 }
 
 # The desktop catalog uses ISO 639-1 identifiers. OmniVoice accepts most of
@@ -105,9 +116,7 @@ def _write_status_file(status_path: Path, payload: dict[str, Any]) -> bool:
     if not status_path.name:
         return False
     status_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = status_path.with_name(
-        f".{status_path.name}.{os.getpid()}.{threading.get_ident()}.part"
-    )
+    temporary = status_path.with_name(f".{status_path.name}.{os.getpid()}.{threading.get_ident()}.part")
     serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     delay = 0.01
     try:
@@ -131,8 +140,7 @@ def _select_voice_anchor(items: list[dict[str, Any]]) -> dict[str, Any] | None:
     candidates = [
         item
         for item in items
-        if str(item.get("text") or "").strip()
-        and not str(item.get("reference_path") or "").strip()
+        if str(item.get("text") or "").strip() and not str(item.get("reference_path") or "").strip()
     ]
     if not candidates:
         return None
@@ -161,11 +169,7 @@ def _voice_anchor_excerpt(text: str) -> str:
     if len(normalized) <= _VOICE_ANCHOR_MAX_CHARS:
         return normalized
 
-    sentences = [
-        value.strip()
-        for value in re.split(r"(?<=[.!?\u3002\uff01\uff1f;:])\s*", normalized)
-        if value.strip()
-    ]
+    sentences = [value.strip() for value in re.split(r"(?<=[.!?\u3002\uff01\uff1f;:])\s*", normalized) if value.strip()]
     suitable = [value for value in sentences if len(value) >= _VOICE_ANCHOR_MIN_CHARS]
     if suitable:
         return min(
@@ -607,6 +611,7 @@ def synthesize_batch_to_mp3(
     progress_callback=None,
     keep_worker_warm: bool = False,
     process_registry_id: str | None = None,
+    inference_steps: int = 32,
 ) -> None:
     """Synthesize missing segments, normally reusing one warm isolated model."""
     if not items:
@@ -639,9 +644,24 @@ def synthesize_batch_to_mp3(
                 end = max(start + 0.1, float(item.get("source_end") or start + 0.1))
                 process = subprocess.Popen(
                     [
-                        _binary("ffmpeg"), "-y", "-v", "error", "-ss", f"{start:.3f}",
-                        "-to", f"{end:.3f}", "-i", source_audio, "-vn", "-ac", "1",
-                        "-ar", str(_SAMPLE_RATE), "-c:a", "pcm_s16le", str(reference_wav),
+                        _binary("ffmpeg"),
+                        "-y",
+                        "-v",
+                        "error",
+                        "-ss",
+                        f"{start:.3f}",
+                        "-to",
+                        f"{end:.3f}",
+                        "-i",
+                        source_audio,
+                        "-vn",
+                        "-ac",
+                        "1",
+                        "-ar",
+                        str(_SAMPLE_RATE),
+                        "-c:a",
+                        "pcm_s16le",
+                        str(reference_wav),
                     ],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -674,6 +694,7 @@ def synthesize_batch_to_mp3(
             "language": _omnivoice_language_id(language_id),
             "items": request_items,
             "speaker_mode": "multiple" if speaker_mode == "multiple" else "single",
+            "inference_steps": max(8, min(32, int(inference_steps))),
             "status_path": str(temp_root / "status.json"),
             # One stable latent seed per voice keeps a single narrator's
             # identity consistent across every subtitle segment in the video.
@@ -690,14 +711,8 @@ def synthesize_batch_to_mp3(
             f"device={request['device']} segments={len(request_items)}",
         )
         worker_runner = _run_persistent_worker_process if keep_worker_warm else _run_worker_process
-        worker_kwargs = (
-            {"cancellation_id": cancellation_id}
-            if worker_runner is _run_persistent_worker_process
-            else {}
-        )
-        return_code, stderr = worker_runner(
-            request_path, request, video_id, progress_callback, **worker_kwargs
-        )
+        worker_kwargs = {"cancellation_id": cancellation_id} if worker_runner is _run_persistent_worker_process else {}
+        return_code, stderr = worker_runner(request_path, request, video_id, progress_callback, **worker_kwargs)
         if return_code != 0 and str(request["device"]).startswith("cuda") and _is_cuda_resource_failure(stderr):
             log_to_video(
                 video_id,
@@ -711,9 +726,7 @@ def synthesize_batch_to_mp3(
             if keep_worker_warm:
                 with _PERSISTENT_WORKER_LOCK:
                     _stop_persistent_worker_unlocked()
-            return_code, stderr = worker_runner(
-                request_path, request, video_id, progress_callback, **worker_kwargs
-            )
+            return_code, stderr = worker_runner(request_path, request, video_id, progress_callback, **worker_kwargs)
         if return_code != 0:
             detail = (stderr or "OmniVoice worker stopped unexpectedly.").strip()
             raise RuntimeError(detail[-1200:])
@@ -734,6 +747,7 @@ def synthesize_to_mp3(
     reference_path: str = "",
     reference_text: str = "",
     keep_worker_warm: bool = False,
+    inference_steps: int = 32,
 ) -> None:
     synthesize_batch_to_mp3(
         [
@@ -748,6 +762,7 @@ def synthesize_to_mp3(
         video_id,
         language_id=language_id,
         keep_worker_warm=keep_worker_warm,
+        inference_steps=inference_steps,
     )
 
 
@@ -862,15 +877,13 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                             text=anchor_text,
                             language=str(request.get("language") or "") or None,
                             instruct=anchor_instruction,
-                            num_step=32,
+                            num_step=int(request.get("inference_steps") or 32),
                             normalize_text=True,
                             audio_chunk_duration=10.0,
                             audio_chunk_threshold=8.0,
                         )
                     anchor_waveform = (
-                        generated_anchor[0]
-                        if isinstance(generated_anchor, (list, tuple))
-                        else generated_anchor
+                        generated_anchor[0] if isinstance(generated_anchor, (list, tuple)) else generated_anchor
                     )
                     if isinstance(anchor_waveform, torch.Tensor):
                         anchor_waveform = anchor_waveform.detach().float().cpu().numpy()
@@ -929,7 +942,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                     language=str(request.get("language") or "") or None,
                     instruct=None if voice_clone_prompt is not None else instruction,
                     voice_clone_prompt=voice_clone_prompt,
-                    num_step=32,
+                    num_step=int(request.get("inference_steps") or 32),
                     normalize_text=True,
                     audio_chunk_duration=10.0,
                     audio_chunk_threshold=8.0,

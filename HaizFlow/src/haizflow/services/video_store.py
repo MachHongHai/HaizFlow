@@ -465,6 +465,13 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data["manual_completed_stages"] = stage_order[: legacy_index + 1]
             version = 16
             continue
+        if version == 16:
+            data["schema_version"] = 17
+            data.setdefault("manual_target_tool", "")
+            data.setdefault("active_artifacts", {})
+            data.setdefault("manual_artifact_migration_version", 0)
+            version = 17
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -495,6 +502,10 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
         data.get("project_type") if data.get("project_type") in {"single", "manual", "batch"} else "single"
     )
     data.setdefault("manual_target_stage", "")
+    data.setdefault("manual_target_tool", "")
+    if not isinstance(data.get("active_artifacts"), dict):
+        data["active_artifacts"] = {}
+    data.setdefault("manual_artifact_migration_version", 0)
     data.setdefault("manual_completed_stage", "")
     manual_stage_order = ["translation", "subtitles", "voice", "timeline", "render"]
     completed_stages = data.get("manual_completed_stages")
@@ -747,6 +758,15 @@ def replace_video_input(
             new_input_published = True
 
             now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            for generated_key in (
+                "source_audio",
+                "speech_audio",
+                "background_audio",
+                "source_segments",
+                "ocr_region",
+                "voice_parts_dir",
+            ):
+                video.files.pop(generated_key, None)
             video.files["video_input"] = input_path
             video.files["srt_output"] = os.path.join(video_dir, "temp", "vi.srt")
             video.files["voice_output"] = os.path.join(video_dir, "temp", "voice_final.wav")
@@ -764,6 +784,11 @@ def replace_video_input(
             video.runtime_recovery_step = ""
             video.gpu_recovery_attempted = False
             video.checkpoints = {}
+            video.active_artifacts = {}
+            video.manual_target_tool = ""
+            video.manual_target_stage = ""
+            video.manual_completed_stage = ""
+            video.manual_completed_stages = []
             video.started_at = None
             video.processing_elapsed_seconds = 0.0
             video.estimated_remaining_seconds = None

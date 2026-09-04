@@ -349,7 +349,9 @@ class ProjectCommandsController:
             voice = host._normalized_voice_for_language(language, tts_voice)
         normalized_speaker_mode = (
             "multiple"
-            if str(speaker_mode or getattr(host, "_speaker_mode", "single")).strip().lower() == "multiple"
+            if provider == "omnivoice"
+            and str(speaker_mode or getattr(host, "_speaker_mode", "single")).strip().lower()
+            == "multiple"
             else "single"
         )
         apply_mix_volumes = background_music_volume is not None or tts_volume is not None
@@ -815,12 +817,25 @@ class ProjectCommandsController:
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if not video or video.status not in {"awaiting_review", "manual_ready", "done"}:
             return False
+        previous_segments: list[dict] = []
         try:
             segments = _validated_review_segments(payload)
             transcript_path = (video.files or {}).get("transcript_json")
             if not isinstance(transcript_path, str) or not transcript_path.strip():
                 raise ValueError("Video metadata is missing its translation-review path.")
-            _write_json_atomic(transcript_path, segments)
+            try:
+                with open(transcript_path, encoding="utf-8") as transcript_file:
+                    previous_value = json.load(transcript_file)
+                if isinstance(previous_value, list):
+                    previous_segments = previous_value
+            except (OSError, json.JSONDecodeError):
+                previous_segments = []
+            if getattr(video, "project_type", "single") == "manual":
+                from haizflow.pipeline.manual_tools import publish_edited_subtitles
+
+                publish_edited_subtitles(video.video_id, segments)
+            else:
+                _write_json_atomic(transcript_path, segments)
             draft_path = str((video.files or {}).get("translation_review_draft") or "")
             if draft_path:
                 Path(draft_path).unlink(missing_ok=True)
@@ -834,30 +849,69 @@ class ProjectCommandsController:
                 "warning",
             )
             return False
-        translation_checkpoint = video.checkpoints.get("translation")
-        checkpoints = {"translation": translation_checkpoint} if translation_checkpoint else {}
+        def normalized_text(item: dict) -> str:
+            return " ".join(str(item.get("text", "") or "").split())
+        same_segment_count = len(previous_segments) == len(segments)
+        text_changed = not same_segment_count or any(
+            normalized_text(item) != normalized_text(previous_segments[index])
+            for index, item in enumerate(segments)
+        )
+        timing_changed = not same_segment_count or any(
+            abs(float(item.get("start", 0) or 0) - float(previous_segments[index].get("start", 0) or 0))
+            >= 0.001
+            or abs(float(item.get("end", 0) or 0) - float(previous_segments[index].get("end", 0) or 0))
+            >= 0.001
+            for index, item in enumerate(segments)
+        )
+        checkpoints = dict(getattr(video, "checkpoints", {}) or {})
         if getattr(video, "project_type", "single") == "manual":
+            stage_order = ["translation", "subtitles", "voice", "timeline", "render"]
+            completed = set(getattr(video, "manual_completed_stages", []) or [])
+            completed.add("translation")
+            invalidated = set()
+            if text_changed:
+                invalidated.update({"subtitles", "voice", "timeline", "render"})
+            elif timing_changed:
+                # Existing per-line voice files remain valid. Only their
+                # placement/tempo and the final render must be rebuilt.
+                invalidated.update({"timeline", "render"})
+            completed.difference_update(invalidated)
+            for stage in invalidated:
+                checkpoints.pop(stage, None)
+            durable_stages = [stage for stage in stage_order if stage in completed]
+            completed_stage = durable_stages[-1]
+            stage_progress = {
+                "translation": 62,
+                "subtitles": 64,
+                "voice": 82,
+                "timeline": 87,
+                "render": 100,
+            }
             video_store.update_video(
                 video.video_id,
                 review_approved=True,
                 status="manual_ready",
-                progress=62,
-                step="manual_translation",
+                progress=stage_progress[completed_stage],
+                step=f"manual_{completed_stage}",
                 resume_step="",
                 runtime_recovery_step="",
                 checkpoints=checkpoints,
                 step_detail="Edited subtitles saved",
                 manual_target_stage="",
-                manual_completed_stage="translation",
-                manual_completed_stages=["translation"],
+                manual_target_tool="",
+                manual_completed_stage=completed_stage,
+                manual_completed_stages=durable_stages,
             )
             video_store.log_to_video(
                 video.video_id,
-                f"Manual subtitles saved with {len(segments)} segments; downstream stages were invalidated.",
+                f"Manual subtitles saved with {len(segments)} segments; invalidated modules: "
+                f"{', '.join(stage for stage in stage_order if stage in invalidated) or 'none'}.",
             )
             host.refreshVideos()
             host.selectedVideoChanged.emit()
             return True
+        translation_checkpoint = checkpoints.get("translation")
+        checkpoints = {"translation": translation_checkpoint} if translation_checkpoint else {}
         elapsed_updates = {}
         if video.status == "done":
             # A post-processing subtitle correction is a new downstream pass,

@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 16
+VIDEO_METADATA_SCHEMA_VERSION = 17
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
@@ -42,10 +42,13 @@ class CropSettings(BaseModel):
     zoom_percent: int = Field(default=100, ge=1, le=400)
     pan_x_percent: int = Field(default=0, ge=-100, le=100)
     pan_y_percent: int = Field(default=0, ge=-100, le=100)
-    left_percent: int = Field(default=0, ge=0, le=84)
-    right_percent: int = Field(default=0, ge=0, le=84)
-    top_percent: int = Field(default=0, ge=0, le=84)
-    bottom_percent: int = Field(default=0, ge=0, le=84)
+    # Edge crop is stored with sub-percent precision. One whole percent is
+    # more than ten source pixels on a 1080p clip, which made the direct crop
+    # frame visibly jump away from the user's pointer.
+    left_percent: float = Field(default=0, ge=0, le=84)
+    right_percent: float = Field(default=0, ge=0, le=84)
+    top_percent: float = Field(default=0, ge=0, le=84)
+    bottom_percent: float = Field(default=0, ge=0, le=84)
 
 
 class VideoConfig(BaseModel):
@@ -107,15 +110,20 @@ class VideoInfo(BaseModel):
     project_type: ProjectType = "single"
     project_id: str = ""
     project_key: str = ""
-    # Manual projects run the same checkpointed pipeline one stage at a time.
-    # ``manual_target_stage`` is the stage currently requested by the UI;
-    # ``manual_completed_stage`` is retained as the most recent action for
-    # backwards compatibility; ``manual_completed_stages`` is authoritative.
+    # Linear Manual stage fields are retained for one compatibility cycle so
+    # schema-v16 projects and old resumable jobs can still be opened. New
+    # Manual UI/state never treats them as authoritative.
     manual_target_stage: str = ""
+    # Schema v17 Manual projects dispatch one isolated tool at a time.  The
+    # legacy stage fields remain readable for one migration cycle, but the UI
+    # and worker use this field plus ``active_artifacts`` exclusively.
+    manual_target_tool: str = ""
     manual_completed_stage: str = ""
     # Manual processing is a dependency graph rather than a linear wizard.
     # Visual work and voice/audio work may therefore be complete independently.
     manual_completed_stages: list[str] = Field(default_factory=list)
+    active_artifacts: Dict[str, str] = Field(default_factory=dict)
+    manual_artifact_migration_version: int = 0
     # A stable, project-local position for batch cards.  Processing updates
     # must never affect this, otherwise the queue appears to shuffle.
     batch_import_order: int = 0

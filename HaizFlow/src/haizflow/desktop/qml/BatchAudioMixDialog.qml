@@ -14,11 +14,16 @@ AppDialog {
     property string ttsProvider: "omnivoice"
     property string ttsVoice: ""
     property string backgroundMusicPath: ""
-    readonly property bool sourceAudioAdjustable: !audioSeparationEnabled
+    readonly property bool sourceAudioAdjustable: true
     readonly property bool backgroundMusicAdjustable: backgroundMusicPath.length > 0
     readonly property bool previewReady: AppController.audioPreviewState === "ready"
-        && AppController.audioPreviewSource.length > 0
-    readonly property bool previewPlaying: voicePreviewPlayer.playbackState === MediaPlayer.PlayingState
+        && (AppController.audioPreviewSource.length > 0
+            || AppController.audioPreviewOriginalSource.length > 0
+            || AppController.audioPreviewBackgroundMusicSource.length > 0)
+    readonly property bool previewPlaying:
+        voicePreviewPlayer.playbackState === MediaPlayer.PlayingState
+        || sourcePreviewPlayer.playbackState === MediaPlayer.PlayingState
+        || musicPreviewPlayer.playbackState === MediaPlayer.PlayingState
 
     signal audioLevelsEdited(int originalVolume, int ttsVolume, int backgroundMusicVolume)
 
@@ -38,10 +43,12 @@ AppDialog {
 
     function playPreview() {
         stopPreview()
-        sourcePreviewPlayer.play()
+        if (AppController.audioPreviewOriginalSource.length > 0)
+            sourcePreviewPlayer.play()
         if (AppController.audioPreviewBackgroundMusicSource.length > 0)
             musicPreviewPlayer.play()
-        voicePreviewPlayer.play()
+        if (AppController.audioPreviewSource.length > 0)
+            voicePreviewPlayer.play()
         previewStopTimer.start()
     }
 
@@ -53,10 +60,8 @@ AppDialog {
     }
 
     function requestPreview() {
-        if (root.previewReady) {
-            root.playPreview()
-            return
-        }
+        // Audio preview state is shared with single-video voice rows. Always
+        // resolve this batch's existing media before playback; no model runs.
         AppController.previewBatchAudioMix(
             root.targetLanguage,
             root.ttsProvider,
@@ -84,10 +89,9 @@ AppDialog {
 
     AudioLevelControl {
         Layout.fillWidth: true
-        label: qsTr("Âm thanh gốc")
+        label: root.audioSeparationEnabled ? qsTr("Âm thanh nền") : qsTr("Âm thanh gốc")
         volume: root.originalVolume
         adjustable: root.sourceAudioAdjustable
-        disabledHint: qsTr("Không chỉnh được khi đang tách giọng")
         onVolumeEdited: function(value) {
             root.updateLevels(value, root.ttsVolume, root.backgroundMusicVolume)
         }
@@ -176,8 +180,7 @@ AppDialog {
         function onAudioPreviewChanged() {
             if (AppController.audioPreviewState === "preparing")
                 root.stopPreview()
-            else if (root.visible && AppController.audioPreviewState === "ready"
-                     && AppController.audioPreviewSource.length > 0)
+            else if (root.visible && root.previewReady)
                 root.playPreview()
             else
                 root.stopPreview()

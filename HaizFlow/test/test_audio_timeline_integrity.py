@@ -4,8 +4,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from haizflow.pipeline import audio_timeline
 from pydub import AudioSegment
+
+from haizflow.pipeline import audio_timeline
 
 
 class AudioTimelineIntegrityTests(unittest.TestCase):
@@ -64,6 +65,29 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
                         "video-1",
                     )
 
+    def test_manual_compositor_can_create_a_mix_without_tts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            segments = root / "segments.json"
+            output = root / "output.wav"
+            segments.write_text("[]", encoding="utf-8")
+            with (
+                mock.patch.object(audio_timeline, "get_video_duration", return_value=0.25),
+                mock.patch.object(audio_timeline, "log_to_video"),
+                mock.patch.object(audio_timeline, "check_cancellation"),
+            ):
+                audio_timeline.build_audio_timeline(
+                    str(segments),
+                    str(root / "voices"),
+                    str(root / "input.mp4"),
+                    str(output),
+                    "video-1",
+                    require_voice_parts=False,
+                )
+
+            self.assertTrue(output.is_file())
+            self.assertGreater(output.stat().st_size, 44)
+
     def test_missing_required_background_track_fails_the_timeline(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -107,6 +131,12 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "exceeding its 1000ms slot by 100ms"):
             audio_timeline._trim_tempo_rounding(audio, 1000)
+
+    def test_tempo_chain_supports_slowing_an_edited_subtitle_slot(self):
+        self.assertEqual(
+            audio_timeline._atempo_filters(0.25),
+            "atempo=0.5,atempo=0.500000",
+        )
 
     def test_atomic_audio_replace_retries_a_transient_windows_media_lock(self):
         locked = PermissionError(5, "Access is denied")

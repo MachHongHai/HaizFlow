@@ -24,7 +24,6 @@ ApplicationWindow {
     readonly property string routeHome: "home"
     readonly property string routeProjects: "projects"
     readonly property string routeSettings: "settings"
-    readonly property string routeAbout: "about"
     readonly property string routeSingleProjects: "single-projects"
     readonly property string routeSingleWorkspace: "single-workspace"
     readonly property string routeManualProjects: "manual-projects"
@@ -46,7 +45,7 @@ ApplicationWindow {
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
     readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace || currentRoute === routeManualWorkspace || currentRoute === routeBatchWorkspace || currentRoute === routeBatchVideo || currentRoute === routeDownloadWorkspace || currentRoute === routePublishWorkspace
-    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
+    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(helpDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
     readonly property bool downloadCanGoBack: routeHost.downloadCanGoBack
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
@@ -57,8 +56,6 @@ ApplicationWindow {
             return "projects";
         if (currentRoute === routeSettings)
             return "settings";
-        if (currentRoute === routeAbout)
-            return "";
         if (currentRoute === routeDownloadProjects)
             return "downloads";
         if (currentRoute === routePublishProjects)
@@ -78,7 +75,7 @@ ApplicationWindow {
     }
 
     function routeIsAvailable(route) {
-        if (route === routeHome || route === routeProjects || route === routeSettings || route === routeAbout || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
+        if (route === routeHome || route === routeProjects || route === routeSettings || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
             return true;
         if (!AppController.hasOpenProject)
             return false;
@@ -247,6 +244,20 @@ ApplicationWindow {
         }
     }
 
+    LazyDialogLoader {
+        id: aboutDialogLoader
+        sourceComponent: Component {
+            AboutDialog { onClosed: aboutDialogLoader.release() }
+        }
+    }
+
+    LazyDialogLoader {
+        id: helpDialogLoader
+        sourceComponent: Component {
+            HelpDialog { onClosed: helpDialogLoader.release() }
+        }
+    }
+
     AppAlertDialog {
         id: appAlertDialog
     }
@@ -342,9 +353,8 @@ ApplicationWindow {
         spacing: 0
 
         AppMenuBar {
-            visible: !root.projectWorkspaceVisible
             Layout.fillWidth: true
-            Layout.preferredHeight: visible ? 40 : 0
+            Layout.preferredHeight: 40
             canGoBack: root.canNavigateBack
             canGoForward: root.canNavigateForward
             onBackRequested: root.navigateBack()
@@ -371,18 +381,8 @@ ApplicationWindow {
                 projectSetupDialogLoader.invoke("openForType", ["publish"]);
             }
             onSettingsRequested: root.navigate(root.routeSettings)
-            onAboutRequested: root.navigate(root.routeAbout)
-        }
-
-        WorkspaceToolbar {
-            visible: root.projectWorkspaceVisible
-            Layout.fillWidth: true
-            Layout.preferredHeight: visible ? UiMetrics.toolbarHeight : 0
-            title: AppController.projectName
-            statusText: I18n.taskStateLabel(AppController.selectedStatus)
-            canGoBack: root.canNavigateBack
-            onBackRequested: root.navigateBack()
-            onHomeRequested: root.navigate(root.routeHome)
+            onAboutRequested: aboutDialogLoader.invoke("open", [])
+            onHelpRequested: helpDialogLoader.invoke("open", [])
         }
 
         RowLayout {
@@ -396,8 +396,6 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 compact: root.compactNavigation
                 currentSection: root.navigationSection()
-                runtimeState: AppController.runtimeState
-                runtimeMessage: I18n.runtimeStatus(AppController.statusMessage)
                 onSectionRequested: function (section) {
                     AppController.refreshVideos();
                     if (section === "projects")

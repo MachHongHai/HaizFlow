@@ -97,6 +97,87 @@ ApplicationWindow {{
             engine.deleteLater()
             self.app.processEvents()
 
+    def test_edge_popovers_stay_inside_the_window_overlay(self):
+        engine = QQmlEngine()
+        component = QQmlComponent(engine)
+        qml_directory = QML_DIR.as_uri()
+        component.setData(
+            f'''import QtQuick
+import QtQuick.Controls.Basic
+import "{qml_directory}"
+
+ApplicationWindow {{
+    width: 420
+    height: 360
+    visible: true
+
+    HelpPopover {{
+        objectName: "edgeHelp"
+        anchors.right: parent.right
+        anchors.rightMargin: 2
+        anchors.top: parent.top
+        anchors.topMargin: 2
+        helpText: "Long edge help content used to verify overlay placement."
+    }}
+
+    VoicePicker {{
+        objectName: "edgeVoicePicker"
+        width: 280
+        anchors.right: parent.right
+        anchors.rightMargin: 2
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 2
+        currentValue: "omnivoice:male"
+        model: [{{
+            "voice": "omnivoice:male",
+            "label": "Natural male",
+            "category": "natural",
+            "categoryLabel": "Tự nhiên",
+            "available": true,
+            "previewAvailable": true
+        }}]
+    }}
+}}'''.encode("utf-8"),
+            QUrl(),
+        )
+        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+        window = component.create()
+        self.assertIsNotNone(window, "\n".join(error.toString() for error in component.errors()))
+        try:
+            self.app.processEvents()
+            for control_name, popup_name in (
+                ("edgeHelp", "helpPopoverPopup"),
+                ("edgeVoicePicker", "voicePickerPopup"),
+            ):
+                control = window.findChild(QQuickItem, control_name)
+                self.assertIsNotNone(control)
+                center = control.mapToScene(QPointF(control.width() / 2, control.height() / 2))
+                QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(round(center.x()), round(center.y())))
+                self.app.processEvents()
+                popup = window.findChild(QObject, popup_name)
+                self.assertIsNotNone(popup)
+                self.assertTrue(popup.property("visible"))
+                self.assertGreaterEqual(float(popup.property("x")), 0)
+                self.assertLessEqual(
+                    float(popup.property("x")) + float(popup.property("width")),
+                    float(window.width()),
+                )
+                self.assertGreaterEqual(float(popup.property("y")), 0)
+                self.assertLessEqual(
+                    float(popup.property("y")) + float(popup.property("height")),
+                    float(window.height()),
+                )
+                if control_name == "edgeHelp":
+                    control_right = control.mapToScene(QPointF(control.width(), 0)).x()
+                    popup_right = float(popup.property("x")) + float(popup.property("width"))
+                    self.assertAlmostEqual(popup_right, control_right, delta=12)
+                popup.setProperty("visible", False)
+        finally:
+            window.close()
+            window.deleteLater()
+            engine.deleteLater()
+            self.app.processEvents()
+
     def test_batch_video_menu_does_not_offer_project_deletion(self):
         command_bar = (QML_DIR / "VideoCommandBar.qml").read_text(encoding="utf-8")
         project_actions = (QML_DIR / "ProjectHeaderActions.qml").read_text(encoding="utf-8")
@@ -121,17 +202,15 @@ ApplicationWindow {{
 
     def test_navigation_settings_and_project_page_actions_stay_uncluttered(self):
         main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
-        route_host = (QML_DIR / "RouteHost.qml").read_text(encoding="utf-8")
         projects_page = (QML_DIR / "ProjectsPage.qml").read_text(encoding="utf-8")
         projects_hub = (QML_DIR / "ProjectsHubPage.qml").read_text(encoding="utf-8")
         navigation_rail = (QML_DIR / "NavigationRail.qml").read_text(encoding="utf-8")
-        sidebar_button = (QML_DIR / "SidebarButton.qml").read_text(encoding="utf-8")
-        about_link = (QML_DIR / "SidebarAboutLink.qml").read_text(encoding="utf-8")
+        navigation_button = (QML_DIR / "TopBarNavigationButton.qml").read_text(encoding="utf-8")
         title_bar = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
         top_bar_popup = (QML_DIR / "TopBarPopupMenu.qml").read_text(encoding="utf-8")
 
         self.assertIn('text: qsTr("Dự án")', title_bar)
-        self.assertIn('toolTipText: qsTr("Cài đặt")', title_bar)
+        self.assertIn('text: qsTr("Cài đặt")', title_bar)
         self.assertIn('toolTipText: qsTr("Trợ giúp")', title_bar)
         self.assertNotIn('text: I18n.t("Single projects")', title_bar)
         self.assertNotIn('text: I18n.t("Batch projects")', title_bar)
@@ -139,8 +218,11 @@ ApplicationWindow {{
         self.assertIn("newDownloadProjectRequested", title_bar)
         self.assertIn("newPublishProjectRequested", title_bar)
         self.assertIn("root.toggleMenu(projectMenu, projectButton, menuWasOpenOnPress)", title_bar)
+        self.assertIn("root.toggleMenu(settingsMenu, settingsButton, menuWasOpenOnPress)", title_bar)
         self.assertIn("root.settingsRequested()", title_bar)
-        self.assertIn("root.toggleMenu(helpMenu, helpButton, menuWasOpenOnPress)", title_bar)
+        self.assertIn("root.helpRequested()", title_bar)
+        self.assertNotIn("helpMenu", title_bar)
+        self.assertNotIn('glyph: "\\uE713"', title_bar)
         self.assertIn("parent: Overlay.overlay", title_bar)
         self.assertIn("TopBarPopupMenu {", title_bar)
         self.assertIn("border.width: 0", top_bar_popup)
@@ -178,13 +260,12 @@ ApplicationWindow {{
         self.assertNotIn('I18n.t("Process videos in batch")', projects_page)
         create_page = (QML_DIR / "CreateVideoPage.qml").read_text(encoding="utf-8")
         self.assertIn("anchors.margins: Theme.space12", create_page)
-        for filename in ("BatchPage.qml", "ChannelImportPage.qml"):
+        for filename in ("BatchPage.qml",):
             page = (QML_DIR / filename).read_text(encoding="utf-8")
             self.assertIn("anchors.margins: Theme.space20", page, filename)
         downloads = (QML_DIR / "DownloadsPage.qml").read_text(encoding="utf-8")
         self.assertIn("AppTabBar {", downloads)
-        self.assertIn("focusPolicy: Qt.TabFocus", sidebar_button)
-        self.assertIn("focusPolicy: Qt.TabFocus", about_link)
+        self.assertIn("focusPolicy: Qt.TabFocus", navigation_button)
 
     def test_application_menu_buttons_open_visible_overlay_popups(self):
         engine = QQmlEngine()
@@ -210,7 +291,7 @@ ApplicationWindow {{
             self.app.processEvents()
             for button_name, popup_name in (
                 ("projectMenuButton", "projectMenuPopup"),
-                ("helpMenuButton", "helpMenuPopup"),
+                ("settingsMenuButton", "settingsMenuPopup"),
             ):
                 button = window.findChild(QQuickItem, button_name)
                 popup = window.findChild(QObject, popup_name)
@@ -257,6 +338,14 @@ ApplicationWindow {{
         self.assertIn("signal forwardRequested", title_bar)
         self.assertIn('glyph: "\\uE72B"', title_bar)
         self.assertIn('glyph: "\\uE72A"', title_bar)
+        self.assertLess(
+            title_bar.index('objectName: "homeNavigationButton"'),
+            title_bar.index('objectName: "backNavigationButton"'),
+        )
+        self.assertLess(
+            title_bar.index('objectName: "backNavigationButton"'),
+            title_bar.index('objectName: "forwardNavigationButton"'),
+        )
         self.assertIn("onBackRequested: root.navigateBack()", main)
         self.assertIn("onForwardRequested: root.navigateForward()", main)
         self.assertNotIn("Shortcut {", main)
@@ -280,7 +369,7 @@ ApplicationWindow {{
     def test_main_uses_the_branded_window_chrome(self):
         main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
         navigation = (QML_DIR / "NavigationRail.qml").read_text(encoding="utf-8")
-        about = (QML_DIR / "AboutPage.qml").read_text(encoding="utf-8")
+        about = (QML_DIR / "AboutDialog.qml").read_text(encoding="utf-8")
         title_bar = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
 
         self.assertIn(
@@ -294,6 +383,9 @@ ApplicationWindow {{
         self.assertNotIn("visibility: Window.Maximized", main)
         self.assertIn('title: ""', main)
         self.assertIn("AppMenuBar {", main)
+        self.assertNotIn("WorkspaceToolbar {", main)
+        self.assertFalse((QML_DIR / "WorkspaceToolbar.qml").exists())
+        self.assertNotIn("visible: !root.projectWorkspaceVisible\n            Layout.fillWidth: true", main)
         self.assertNotIn("WindowResizeBorder {", main)
         self.assertNotIn("Behavior on Layout.preferredWidth", main)
         self.assertFalse((QML_DIR / "BrandMark.qml").exists())
@@ -302,6 +394,10 @@ ApplicationWindow {{
         self.assertNotIn("startSystemMove()", title_bar)
         self.assertNotIn("SafeArea.margins", title_bar)
         self.assertIn("signal settingsRequested", title_bar)
+        self.assertIn("signal helpRequested", title_bar)
+        self.assertIn("AboutDialog", main)
+        self.assertIn("HelpDialog", main)
+        self.assertNotIn('readonly property string routeAbout: "about"', main)
         self.assertIn("signal newSingleProjectRequested", title_bar)
         self.assertNotIn("showMinimized()", title_bar)
         self.assertNotIn("CaptionButton", title_bar)
@@ -336,10 +432,12 @@ ApplicationWindow {{
         self.assertIn("function pausePreview()", audio_dialog)
         self.assertIn("function flushVideoSettingsSave()", audio_dialog)
         self.assertIn("flushVideoSettingsSave()", audio_dialog)
-        self.assertIn("root.visible && AppController.audioPreviewState === \"ready\"", audio_dialog)
+        self.assertIn("root.visible && root.previewReady", audio_dialog)
+        self.assertIn("AppController.audioPreviewOriginalSource.length > 0", audio_dialog)
         self.assertIn("readonly property bool previewPlaying", audio_dialog)
         self.assertIn('iconName: root.previewPlaying ? "pause" : "play"', audio_dialog)
-        self.assertIn("!AppController.enableAudioSeparation", audio_dialog)
+        self.assertNotIn("!AppController.enableAudioSeparation", audio_dialog)
+        self.assertIn('qsTr("Âm thanh nền")', audio_dialog)
         self.assertIn("AppController.originalVolume / 100.0", audio_dialog)
         self.assertIn("AppController.ttsVolume / 100.0", audio_dialog)
         self.assertIn("AppController.backgroundMusicVolume / 100.0", audio_dialog)
@@ -453,7 +551,10 @@ ApplicationWindow {{
         self.assertIn("id: previewPrimeTimer", editor)
         self.assertIn("playbackRate = 0.25", editor)
         self.assertIn("videoPlayer.playbackRate = 1.0", editor)
-        self.assertIn("Do not seek again after pausing", editor)
+        self.assertIn("function acceptPreviewFrame(fullscreenFrame)", editor)
+        self.assertIn("function onVideoFrameChanged()", editor)
+        self.assertIn("A timeout is cleanup, not proof that a frame exists", editor)
+        self.assertNotIn("previewRevealTimer", editor)
         self.assertIn("property bool previewScrubbing", editor)
         self.assertIn("id: previewScrubTimer", editor)
         self.assertIn("statusVisible: root.previewStatusVisible", editor)
@@ -565,6 +666,8 @@ ApplicationWindow {{
         self.assertNotIn("darkMode", theme)
         settings = (QML_DIR / "SettingsPage.qml").read_text(encoding="utf-8")
         self.assertNotIn('I18n.t("Theme")', settings)
+        self.assertNotIn("AppTabBar {", settings)
+        self.assertNotIn("sectionIndex", settings)
 
     def test_background_music_link_import_stays_in_the_project_audio_flow(self):
         dialog = (QML_DIR / "BackgroundMusicLinkDialog.qml").read_text(encoding="utf-8")
@@ -646,7 +749,7 @@ ApplicationWindow {{
         service = (ROOT / "src" / "haizflow" / "services" / "zernio.py").read_text(encoding="utf-8")
         connection_bar = (QML_DIR / "SocialConnectionBar.qml").read_text(encoding="utf-8")
         post_options = (QML_DIR / "ZernioPostOptionsDialog.qml").read_text(encoding="utf-8")
-        card = (QML_DIR / "SocialPublishCard.qml").read_text(encoding="utf-8")
+        row = (QML_DIR / "SocialPublishRow.qml").read_text(encoding="utf-8")
         guide = (QML_DIR / "ZernioGuideDialog.qml").read_text(encoding="utf-8")
         connections = (QML_DIR / "ZernioConnectionDialog.qml").read_text(encoding="utf-8")
         key_dialog = (QML_DIR / "ZernioApiKeyDialog.qml").read_text(encoding="utf-8")
@@ -714,9 +817,8 @@ ApplicationWindow {{
         self.assertNotIn("clearZernioApiKey", page)
         self.assertNotIn("clearZernioApiKey", connection_bar)
         self.assertIn("secure_credentials.write_secret", controller)
-        self.assertNotIn('I18n.t("Open published post")', card)
-        self.assertIn('collapsed: root.published || root.publishStatus === "scheduled"', card)
-        self.assertIn("function resetReusableState()", card)
+        self.assertNotIn('I18n.t("Open published post")', row)
+        self.assertIn('collapsed: root.published || root.publishStatus === "scheduled"', row)
         self.assertIn('"/media/presign"', service)
         self.assertIn('"/posts"', service)
         self.assertNotIn("playwright", combined)
@@ -809,10 +911,17 @@ ApplicationWindow {{
 
         self.assertIn('qsTr("Nhận diện nhiều người nói")', settings)
         self.assertIn('speakerModeEdited(checked ? "multiple" : "single")', settings)
+        self.assertIn('visible: root.ttsProvider === "omnivoice"', settings)
         self.assertNotIn('qsTr("Một giọng")', settings)
         self.assertNotIn('qsTr("Nhiều người")', settings)
         self.assertIn("HelpPopover {", help_label)
-        self.assertIn("Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent", help_popover)
+        self.assertIn("parent: Overlay.overlay", help_popover)
+        self.assertIn("function updateHelpAnchor()", help_popover)
+        self.assertIn("root.mapToItem(overlay, 0, 0)", help_popover)
+        self.assertIn("property real anchorX", help_popover)
+        self.assertIn("parent.width - width - Theme.space8", help_popover)
+        self.assertIn("parent.height - Theme.space8", help_popover)
+        self.assertIn("Popup.CloseOnEscape | Popup.CloseOnPressOutside", help_popover)
         self.assertIn('qsTr("Đóng")', help_popover)
         self.assertNotIn("Maximize", help_label)
 

@@ -8,6 +8,8 @@ Rectangle {
     property real position: 0
     property real duration: 0
     property bool playing: false
+    property url thumbnailSource: ""
+    property bool previewReady: false
     property alias videoOutput: fullscreenVideoOutput
 
     signal playbackToggled()
@@ -25,7 +27,19 @@ Rectangle {
         fillMode: VideoOutput.PreserveAspectFit
     }
 
+    Image {
+        anchors.fill: fullscreenVideoOutput
+        source: root.thumbnailSource
+        sourceSize.width: 1280
+        sourceSize.height: 720
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        visible: !root.previewReady && status === Image.Ready
+        z: 1
+    }
+
     PreviewTransport {
+        z: 2
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

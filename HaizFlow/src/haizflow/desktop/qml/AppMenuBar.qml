@@ -15,6 +15,7 @@ Rectangle {
     signal newPublishProjectRequested
     signal settingsRequested
     signal aboutRequested
+    signal helpRequested
     signal backRequested
     signal forwardRequested
     signal homeRequested
@@ -40,6 +41,22 @@ Rectangle {
         spacing: 2
 
         TopBarNavigationButton {
+            objectName: "homeNavigationButton"
+            glyph: "\uE80F"
+            toolTipText: qsTr("Trang chủ")
+            onClicked: root.homeRequested()
+        }
+
+        Rectangle {
+            Layout.preferredWidth: 1
+            Layout.preferredHeight: 18
+            Layout.leftMargin: Theme.space4
+            Layout.rightMargin: Theme.space4
+            color: Theme.divider
+        }
+
+        TopBarNavigationButton {
+            objectName: "backNavigationButton"
             glyph: "\uE72B"
             toolTipText: qsTr("Quay lại")
             enabled: root.canGoBack
@@ -47,16 +64,11 @@ Rectangle {
         }
 
         TopBarNavigationButton {
+            objectName: "forwardNavigationButton"
             glyph: "\uE72A"
             toolTipText: qsTr("Tiến")
             enabled: root.canGoForward
             onClicked: root.forwardRequested()
-        }
-
-        TopBarNavigationButton {
-            glyph: "\uE80F"
-            toolTipText: qsTr("Trang chủ")
-            onClicked: root.homeRequested()
         }
 
         Item {
@@ -72,31 +84,30 @@ Rectangle {
             onClicked: root.toggleMenu(projectMenu, projectButton, menuWasOpenOnPress)
         }
 
+        TopBarMenuButton {
+            id: settingsButton
+
+            objectName: "settingsMenuButton"
+            text: qsTr("Cài đặt")
+            onPressed: menuWasOpenOnPress = settingsMenu.visible
+            onClicked: root.toggleMenu(settingsMenu, settingsButton, menuWasOpenOnPress)
+        }
+
         Item {
             Layout.fillWidth: true
         }
 
         TopBarNavigationButton {
-            id: settingsButton
-
-            objectName: "settingsButton"
-            glyph: "\uE713"
-            toolTipText: qsTr("Cài đặt")
-            onClicked: {
-                projectMenu.close();
-                helpMenu.close();
-                root.settingsRequested();
-            }
-        }
-
-        TopBarNavigationButton {
             id: helpButton
 
-            objectName: "helpMenuButton"
+            objectName: "helpButton"
             glyph: "\uE897"
             toolTipText: qsTr("Trợ giúp")
-            onPressed: menuWasOpenOnPress = helpMenu.visible
-            onClicked: root.toggleMenu(helpMenu, helpButton, menuWasOpenOnPress)
+            onClicked: {
+                projectMenu.close();
+                settingsMenu.close();
+                root.helpRequested();
+            }
         }
     }
 
@@ -107,7 +118,7 @@ Rectangle {
         }
 
         projectMenu.close();
-        helpMenu.close();
+        settingsMenu.close();
         const anchorPosition = anchorButton.mapToItem(Overlay.overlay, 0, 0);
         const barBottom = root.mapToItem(Overlay.overlay, 0, root.height);
         menu.x = Math.round(anchorPosition.x);
@@ -166,11 +177,18 @@ Rectangle {
     }
 
     TopBarPopupMenu {
-        id: helpMenu
+        id: settingsMenu
 
-        objectName: "helpMenuPopup"
+        objectName: "settingsMenuPopup"
         parent: Overlay.overlay
-        menuContentWidth: aboutItem.implicitWidth
+        menuContentWidth: Math.max(settingsItem.implicitWidth, aboutItem.implicitWidth)
+
+        AppMenuItem {
+            id: settingsItem
+
+            text: qsTr("Cài đặt")
+            onTriggered: root.settingsRequested()
+        }
 
         AppMenuItem {
             id: aboutItem

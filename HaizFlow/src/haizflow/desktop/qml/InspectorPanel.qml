@@ -28,6 +28,7 @@ AppSurface {
     ColumnLayout {
         id: inspectorBody
         Layout.fillWidth: true
+        Layout.fillHeight: true
         spacing: Theme.space12
     }
 }

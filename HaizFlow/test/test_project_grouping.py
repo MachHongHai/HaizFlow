@@ -767,6 +767,12 @@ class ProjectGroupingTests(unittest.TestCase):
                 video.files["final_video"] = str(old_export)
                 video.files["thumbnail"] = str(old_thumbnail)
                 video.checkpoints = {"translation": "old-checkpoint"}
+                video.active_artifacts = {
+                    "recognition": "old-recognition",
+                    "translation": "old-translation",
+                }
+                video.manual_target_tool = "translation"
+                video.manual_completed_stages = ["translation", "voice"]
                 video.status = "paused"
                 video.progress = 100
                 video.review_approved = True
@@ -802,6 +808,9 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(updated.status, "pending")
         self.assertEqual(updated.progress, 0)
         self.assertEqual(updated.checkpoints, {})
+        self.assertEqual(updated.active_artifacts, {})
+        self.assertEqual(updated.manual_target_tool, "")
+        self.assertEqual(updated.manual_completed_stages, [])
         self.assertFalse(updated.review_approved)
         self.assertFalse(backup_exists)
         self.assertIn("Previous processing data was removed", logs)

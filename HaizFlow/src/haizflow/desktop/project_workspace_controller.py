@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 from haizflow.desktop.media import thumbnail_source
+from haizflow.schemas.video import CropSettings
 from haizflow.services import project_store, social_publish as tiktok_publish, video_store
 from haizflow.services.desktop_videos import migrate_legacy_single_export
 
@@ -63,15 +64,23 @@ class ProjectWorkspaceController:
         host._tts_voice = host._normalized_voice_for_language(
             host._target_language, video.tts_voice, host._tts_provider
         )
-        host._speaker_mode = str(getattr(video, "speaker_mode", "single") or "single")
+        stored_speaker_mode = str(getattr(video, "speaker_mode", "single") or "single")
+        host._speaker_mode = (
+            "multiple"
+            if host._tts_provider == "omnivoice" and stored_speaker_mode == "multiple"
+            else "single"
+        )
         if (
-            host._tts_voice != video.tts_voice or host._tts_provider != getattr(video, "tts_provider", "edge")
+            host._tts_voice != video.tts_voice
+            or host._tts_provider != getattr(video, "tts_provider", "edge")
+            or host._speaker_mode != stored_speaker_mode
         ) and video.status != "processing":
             video = (
                 video_store.update_video(
                     video.video_id,
                     tts_provider=host._tts_provider,
                     tts_voice=host._tts_voice,
+                    speaker_mode=host._speaker_mode,
                 )
                 or video
             )
@@ -88,6 +97,38 @@ class ProjectWorkspaceController:
         host._original_subtitle_removal_mode = str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch")
         host._subtitle_style = video.subtitle_style
         host._subtitle_layout_override = bool(getattr(video, "subtitle_layout_override", False))
+        stored_crop = getattr(video, "crop", None)
+        if isinstance(stored_crop, CropSettings):
+            host._crop_settings = stored_crop
+        else:
+            try:
+                host._crop_settings = CropSettings.model_validate(stored_crop or {})
+            except (TypeError, ValueError):
+                host._crop_settings = CropSettings()
+        if (
+            host._crop_settings.zoom_percent > 100
+            and not any(
+                (
+                    host._crop_settings.left_percent,
+                    host._crop_settings.right_percent,
+                    host._crop_settings.top_percent,
+                    host._crop_settings.bottom_percent,
+                )
+            )
+        ):
+            # Older projects stored the same rectangle as zoom + pan. Convert
+            # it once in the editor facade so the direct-manipulation frame
+            # matches the previous render instead of jumping back to 100%.
+            visible = 10000 / host._crop_settings.zoom_percent
+            hidden = 100 - visible
+            left = round(hidden * (host._crop_settings.pan_x_percent + 100) / 200)
+            top = round(hidden * (host._crop_settings.pan_y_percent + 100) / 200)
+            host._crop_settings = CropSettings(
+                left_percent=left,
+                right_percent=max(0, round(hidden - left)),
+                top_percent=top,
+                bottom_percent=max(0, round(hidden - top)),
+            )
         host._background_music_path = str((video.files or {}).get("background_music") or "")
         input_path = host._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
         host._video_path = input_path
@@ -108,6 +149,7 @@ class ProjectWorkspaceController:
         host.ttsVolumeChanged.emit()
         host.watermarkTextChanged.emit()
         host.subtitleSettingsChanged.emit()
+        host.cropSettingsChanged.emit()
         host.backgroundMusicChanged.emit()
         host.workflowModeChanged.emit()
         host.projectSetupChanged.emit()

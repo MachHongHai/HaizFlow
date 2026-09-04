@@ -1,125 +1,139 @@
 # HaizFlow
 
-**Open-source desktop tool for batch video repurposing: download, replace subtitles, dub, and export — no API fees.**
+**Free, local-first video translation and dubbing for Windows.**
 
-[English](#english) · [Tiếng Việt](#tieng-viet) · [Download for Windows](https://github.com/MachHongHai/HaizFlow/releases) · [Report an issue](https://github.com/MachHongHai/HaizFlow/issues)
+HaizFlow turns a source video into a translated, voiced and publishable result from one desktop application. Speech recognition, translation, local voice synthesis, source separation and rendering can run on your own computer. The core workflow does not require a paid inference API.
 
-HaizFlow creates localized, reupload-ready versions of public videos. Download a source video, cover its existing subtitles, generate a new voice and subtitles, then export a finished version — all from one project-based desktop workflow.
+The application is designed for people who want control over their media and operating costs: project files stay local, reusable work is cached, and every tool in the Manual editor can be used independently.
 
-<a id="english"></a>
+## Capabilities
 
-## English
+- Transcribe speech with Whisper/WhisperX and translate subtitles with HY-MT2.
+- Generate speech with local OmniVoice or the optional online Edge TTS provider.
+- Separate vocals and background audio with Demucs.
+- Render karaoke subtitles, original-subtitle cleanup, watermark and audio mix with FFmpeg.
+- Process one video automatically, manage a batch queue, or work in a non-linear Manual editor.
+- Import individual videos and public channel media from supported platforms.
+- Publish through an optional user-configured Zernio connection.
 
-### Why HaizFlow?
+## Local-first, without a paid API bill
 
-- **Easy to use** — dedicated spaces for downloads, one video, batches, and social publishing, with consistent navigation and actions.
-- **Built for batches** — manage multiple videos in a queue while keeping every project's progress and settings organized.
-- **Everything in one app** — import media, translate, dub, add subtitles, mix audio, and export without switching tools.
-- **Local-first** — core media processing happens on your computer. No API key is required for the standard workflow.
-- **Projects stay organized** — each project keeps its media, settings, output, activity history, and recovery information together.
+The default architecture runs model inference on the user's CPU or supported NVIDIA GPU. After the required model assets have been downloaded and verified, the local pipeline does not send video, transcripts or voice data to a metered inference service.
 
-### What you can do
+Some features are intentionally online:
 
-| Need | HaizFlow helps you |
-| --- | --- |
-| Process a video | Import a local video or public link, choose a target language and voice, then export a translated, dubbed video with new subtitles. |
-| Process batches | Add multiple videos to one project, review their status in a queue, and start or resume processing when ready. |
-| Download media | Download public videos, browse supported public channels, or download and extract audio to an output folder you choose. |
-| Improve audio and subtitles | Keep original audio or separate vocals, add background music from a file or link, preview the mix, and adjust levels before processing. |
-| Replace source subtitles | Detect likely burned-in subtitle areas and place new subtitles cleanly over them. |
-| Publish to social platforms | Prepare a project-backed queue and publish through the platforms connected to your Zernio account, without browser automation. |
+- first-run model and runtime downloads;
+- importing media from a URL or channel;
+- Edge TTS, when selected instead of local OmniVoice;
+- social publishing through Zernio.
 
-### Get started
+These network boundaries are tied to visible features. Credentials are stored with Windows Credential Manager.
 
-1. Download the Windows installer from [Releases](https://github.com/MachHongHai/HaizFlow/releases).
-2. Choose where you want HaizFlow installed.
-3. Open the app and create a Download, Single, Batch, or Social Publishing project.
-4. Add media, choose your output options, and start processing.
+## Project modes
 
-Large local models are downloaded only when first needed. HaizFlow shows download progress and verifies them before use; later launches reuse the installed models.
+### Automatic
 
-### Privacy and connectivity
+Configure one video and let the ordered pipeline produce the final result. Checkpoints support safe resume and prevent valid completed work from being repeated.
 
-Core media processing is designed to run on your computer. Downloading from a public link connects to the selected source platform. OmniVoice is the local TTS option; Edge TTS is the online alternative and sends the selected subtitle text to that service.
+### Batch
 
-Social publishing is an optional cloud workflow. It requires a user-supplied Zernio API key and one or more platform connections authorized through Zernio OAuth. Videos selected for publishing are uploaded through Zernio to the chosen platform. HaizFlow stores the API key in Windows Credential Manager, keeps publishing queues inside their projects, and does not use browser automation. The standard download and video-processing workflows do not require Zernio.
+Apply the same processing model to multiple videos. Batch reuses the Automatic settings schema and adds queue state plus per-video overrides.
 
-### Responsible use
+### Manual editor
 
-Only download, process, and publish content you own or have permission to use. Please follow the rules and terms of each media platform.
+Use Source, Recognition & Translation, Subtitles, Image, Voice, Audio and Export as independent tools. A project can be exported in its current state; optional work does not have to be completed to satisfy a fixed sequence.
 
-### Support and feedback
+Manual artifacts are content-addressed. Changing one subtitle can regenerate one voice clip instead of the whole soundtrack; changing timing reuses speech; changing music rebuilds the mix without rerunning translation or TTS.
 
-Need help or found a problem? Please open an [issue on GitHub](https://github.com/MachHongHai/HaizFlow/issues). Product feedback and usability suggestions are welcome.
+### Downloads and publishing
 
-## Author
+Download projects keep imported media separate from processing projects. Publishing projects maintain their own queue and project-owned copies, so an upload cannot mutate an editor source.
 
-Created by **Mạch Hồng Hải**.
+## Requirements
 
-- GitHub: [MachHongHai](https://github.com/MachHongHai)
-- Email: machhonghaipr@gmail.com
+- Windows 10 version 1809 or newer, x64.
+- Python 3.13 x64 for a source installation.
+- Sufficient free storage for selected models, project media and preview cache.
+- CPU mode: approximately 6 GB or more available system RAM.
+- GPU mode: a compatible CUDA GPU with at least 7 GB total VRAM and sufficient free VRAM.
+
+GPU inference is optional. FFmpeg may still use NVENC, Intel Quick Sync or AMD AMF when AI inference runs on CPU.
+
+## Run from source
+
+```powershell
+git clone https://github.com/MachHongHai/HaizFlow.git
+cd HaizFlow\HaizFlow
+.\scripts\install-desktop-env.ps1
+.\scripts\run-desktop.ps1
+```
+
+The setup script creates `.venv`, installs the hash-locked Windows/Python 3.13 dependency set and installs HaizFlow in editable mode. To place dependency downloads and temporary builds on another drive, set `HAIZFLOW_HOME` or the cache paths documented in `.env.example` before installation.
+
+The first application launch verifies the selected runtime and downloads only the model set required by the chosen CPU/GPU configuration. Model files are checked by size and SHA-256 before use.
+
+## Development checks
+
+Run the complete source gate from the inner `HaizFlow` directory:
+
+```powershell
+.\scripts\test.ps1
+```
+
+The gate compiles Python modules, runs Ruff, checks QML diagnostics and executes the unit and regression suite. Release work has additional dependency, runtime, FFmpeg and frozen-artifact checks; see [Release readiness](HaizFlow/docs/release-readiness.md).
+
+Useful entry points:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\verify-runtime.py
+.\scripts\audit-dependencies.ps1
+.\scripts\build-exe.ps1
+```
+
+Do not run the build scripts merely to start development. `run-desktop.ps1` is the source launcher.
+
+## Repository map
+
+```text
+HaizFlow/
+  src/haizflow/
+    desktop/    PySide6 controllers, QML UI, translations and desktop assets
+    pipeline/   recognition, speech, audio and rendering transforms
+    services/   projects, persistence, downloads, caches and integrations
+    schemas/    validated project and video contracts
+    core/       runtime paths, hardware policy, logging and integrity policy
+  test/         Python and QML regression tests
+  scripts/      environment, verification and release tooling
+  docs/         architecture, security and release notes
+  licenses/     third-party notices and license texts
+```
+
+For component boundaries, Manual cache semantics, concurrency and persisted layouts, read [Architecture](HaizFlow/docs/architecture.md).
+
+## Data, cache and recovery
+
+Every project owns its source copy, metadata, intermediates and exports. Metadata is written atomically with a backup. Manual cache entries are immutable and are published only after their outputs validate.
+
+Preview data is disposable; source files and user exports are not. Cache eviction protects active artifacts and open media. The runtime root can be placed outside the system drive so models, logs, caches and temporary files remain under a directory chosen by the user.
+
+## Security and reproducibility
+
+- Production dependencies are pinned and installed from a SHA-256 hash lock.
+- Downloaded model repositories, revisions, required files and hashes are fixed in source.
+- Model loaders use explicit verified local paths and reject missing or corrupt payloads.
+- External URLs and redirects are restricted to hosts required by the selected feature.
+- Diagnostic exports are bounded and exclude project media.
+
+Reviewed dependency advisories and compensating controls are documented in [Dependency security](HaizFlow/docs/dependency-security.md).
 
 ## License
 
-HaizFlow is released under the [Apache License 2.0](HaizFlow/LICENSE). Third-party dependencies, models, and bundled binaries retain their own licenses; see [NOTICE](HaizFlow/NOTICE) and `HaizFlow/licenses/`.
+HaizFlow source code is available under the [Apache License 2.0](HaizFlow/LICENSE). Bundled and downloadable components keep their own licenses; see [NOTICE](HaizFlow/NOTICE) and the [`licenses`](HaizFlow/licenses) directory.
 
-<a id="tieng-viet"></a>
+A model or voice runtime may impose terms that differ from the HaizFlow source license. Review the applicable notices before redistribution or commercial use.
 
-## Tiếng Việt
+## Contributing
 
-**Công cụ desktop mã nguồn mở để reup video hàng loạt: tải video, che phụ đề gốc, lồng tiếng, thêm phụ đề mới và xuất video sẵn sàng để reup — không tốn phí API.**
+Bug reports should include the affected project mode, the operation that was running, whether CPU or GPU mode was selected, and a minimal reproducible sequence. Do not attach private source video, credentials or an entire runtime directory unless it is explicitly required and safe to share.
 
-HaizFlow tạo phiên bản video sẵn sàng để reup từ các nguồn công khai. Tải video nguồn, che vùng phụ đề cũ, tạo giọng đọc và phụ đề mới, rồi xuất video hoàn chỉnh — tất cả trong một quy trình theo dự án, rõ ràng và dễ theo dõi.
-
-### Vì sao dùng HaizFlow?
-
-- **Dễ sử dụng** — có không gian riêng cho tải xuống, một video, hàng loạt và đăng mạng xã hội; điều hướng cùng thao tác được bố trí nhất quán.
-- **Tối ưu cho hàng loạt** — quản lí nhiều video trong hàng đợi, lưu lại tiến độ và thiết lập của từng dự án.
-- **Mọi thứ trong một ứng dụng** — nhập tệp, dịch, lồng tiếng, chèn phụ đề, phối âm và xuất video mà không phải chuyển qua nhiều công cụ.
-- **Ưu tiên xử lí trên máy** — các bước xử lí chính chạy trên máy của bạn. Quy trình mặc định không cần khóa API.
-- **Dự án luôn gọn gàng** — tệp nguồn, thiết lập, video xuất, lịch sử hoạt động và dữ liệu khôi phục được quản lí trong cùng một dự án.
-
-### Bạn có thể làm gì?
-
-| Nhu cầu | HaizFlow hỗ trợ |
-| --- | --- |
-| Xử lí một video | Nhập video từ máy hoặc liên kết công khai, chọn ngôn ngữ đích và giọng đọc, sau đó xuất video đã dịch, lồng tiếng và có phụ đề mới. |
-| Xử lí hàng loạt | Thêm nhiều video vào một dự án, theo dõi trạng thái trong hàng đợi, rồi bắt đầu hoặc tiếp tục xử lí khi phù hợp. |
-| Tải nội dung | Tải video công khai, duyệt video từ kênh công khai được hỗ trợ, hoặc tải/trích âm thanh vào thư mục đầu ra bạn chọn. |
-| Âm thanh và phụ đề | Giữ âm thanh gốc hoặc tách giọng, thêm nhạc nền từ tệp/liên kết, nghe thử phối âm và chỉnh âm lượng trước khi xử lí. |
-| Phụ đề gốc | Tự nhận diện vùng phụ đề cứng có độ tin cậy cao để đặt phụ đề mới gọn gàng lên trên. |
-| Đăng mạng xã hội | Chuẩn bị hàng đợi theo dự án và đăng qua các nền tảng đã kết nối với tài khoản Zernio mà không điều khiển trình duyệt. |
-
-### Bắt đầu sử dụng
-
-1. Tải bộ cài đặt Windows tại [trang phát hành](https://github.com/MachHongHai/HaizFlow/releases).
-2. Chọn thư mục muốn cài HaizFlow.
-3. Mở ứng dụng và tạo dự án Tải xuống, Đơn lẻ, Hàng loạt hoặc Đăng mạng xã hội.
-4. Thêm tệp nguồn, chọn đầu ra mong muốn và bắt đầu xử lí.
-
-Các mô hình lớn chỉ được tải khi lần đầu cần dùng. HaizFlow hiển thị tiến độ tải, kiểm tra tệp trước khi dùng và sẽ tái sử dụng ở những lần mở sau.
-
-### Quyền riêng tư và kết nối mạng
-
-Các bước xử lí chính được thiết kế để chạy trên máy của bạn. Khi tải từ liên kết công khai, ứng dụng sẽ kết nối tới nền tảng nguồn tương ứng. OmniVoice là lựa chọn TTS chạy local; Edge TTS là lựa chọn trực tuyến và sẽ nhận phần văn bản phụ đề cần tổng hợp giọng nói.
-
-Đăng mạng xã hội là quy trình cloud tùy chọn. Tính năng này cần API key Zernio do người dùng cung cấp và các nền tảng được ủy quyền qua OAuth của Zernio. Video được chọn đăng sẽ tải qua Zernio tới nền tảng đã chọn. HaizFlow lưu API key trong Windows Credential Manager, giữ hàng đợi trong từng dự án và không tự động hóa trình duyệt. Các quy trình tải xuống và xử lí video thông thường không cần Zernio.
-
-### Sử dụng có trách nhiệm
-
-Chỉ tải, xử lí và xuất bản nội dung bạn sở hữu hoặc được cho phép sử dụng. Hãy tuân thủ điều khoản của từng nền tảng.
-
-### Hỗ trợ và góp ý
-
-Nếu gặp vấn đề hoặc cần hỗ trợ, hãy tạo [báo cáo trên GitHub](https://github.com/MachHongHai/HaizFlow/issues). Mọi góp ý về sản phẩm và trải nghiệm sử dụng đều rất được chào đón.
-
-## Tác giả
-
-Dự án được tạo bởi **Mạch Hồng Hải**.
-
-- GitHub: [MachHongHai](https://github.com/MachHongHai)
-- Email: machhonghaipr@gmail.com
-
-## Giấy phép
-
-HaizFlow sử dụng [Apache License 2.0](HaizFlow/LICENSE). Thư viện phụ thuộc, mô hình và tệp nhị phân của bên thứ ba giữ giấy phép riêng; xem [NOTICE](HaizFlow/NOTICE) và `HaizFlow/licenses/`.
+Code changes should preserve layer boundaries, add a regression test for behavior changes and pass `scripts/test.ps1`.

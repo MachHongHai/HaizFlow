@@ -1,261 +1,226 @@
-# Architecture
+# HaizFlow architecture
 
-## Purpose and Boundaries
+This document describes the current desktop application, its dependency boundaries, persisted data and execution model. It is intended for contributors who need to change HaizFlow without coupling the user interface to media-processing details.
 
-HaizFlow is a local-first Windows application. The desktop process owns the user interface, video state, and orchestration. Media processing happens in Python pipeline modules and external command-line tools. HaizFlow has no application-owned HTTP backend, browser client, or cloud database. The optional social-publishing workspace is the explicit exception to local processing: it calls Zernio's REST API and uses Zernio OAuth connections owned by the user.
+## 1. System boundary
+
+HaizFlow is a Windows desktop application. The main process hosts a PySide6/Qt Quick interface and coordinates local project data, model workers and FFmpeg processes. There is no HaizFlow web backend, browser client or hosted project database.
+
+The core dubbing path can run on the user's machine without a paid API:
 
 ```text
-PySide6 / QML desktop shell
-  -> HaizFlowController
-  -> local video store and project files
-  -> pipeline orchestration
-  -> WhisperX small or Whisper large-v3-turbo, HY-MT2 worker
-  -> OmniVoice local or Edge TTS, Demucs, FFmpeg
-  -> optional Zernio REST API -> connected social platforms
+QML desktop UI
+  -> HaizFlowController facade
+  -> focused desktop controller
+  -> service or pipeline operation
+  -> local project artifacts
+  -> preview or final FFmpeg output
 ```
 
-## Source Layout
+Network access is explicit and feature-specific. It is used to download verified model files, import public media, use Edge TTS when selected, and publish through a user-configured Zernio account. Local OmniVoice, Whisper/WhisperX, HY-MT2, Demucs and FFmpeg do not require a metered inference API after their assets are installed.
+
+## 2. Architectural principles
+
+- **Local ownership.** Source media, intermediate artifacts, settings and exports belong to a local project directory.
+- **Narrow UI boundary.** QML reads observable state and invokes slots. It does not run model inference, FFmpeg or project filesystem mutations.
+- **Explicit side effects.** A user command starts one named operation. Background work does not silently advance an unrelated Manual tool.
+- **Content-addressed reuse.** Expensive Manual results are keyed by inputs and configuration rather than screen state.
+- **Atomic publication.** A file becomes visible to the application only after validation and atomic promotion from staging.
+- **Backward-readable data.** Schema changes provide defaults and migrations; newer unknown schemas are rejected rather than rewritten.
+- **Bounded concurrency.** Model and media workers are limited to protect audio playback, GPU memory and project consistency.
+
+## 3. Source layout and dependency direction
 
 ```text
 src/haizflow/
-  desktop/
-    main.py                 Qt application bootstrap
-    qml_controller.py       Stable QML singleton facade, observable state, and routing
-    catalog_media_controller.py        Catalog projections, thumbnails, and media metadata
-    diagnostics_controller.py          Redacted support-bundle export workflow
-    preview_media_controller.py        Subtitle-preview edit session and preview media state
-    processing_lifecycle_controller.py Queue, pipeline callbacks, and live logs
-    project_commands_controller.py     Mutating project, batch, and video commands
-    project_import_controller.py       Local, URL, and channel media acquisition
-    project_workspace_controller.py    Project selection and incremental catalog/model updates
-    runtime_device_controller.py       Runtime warm-up, shutdown, and hardware transitions
-    settings_controller.py             Persistent desktop settings operations
-    social_publish_controller.py       Zernio account, upload, and publishing queue orchestration
-    catalog.py              Supported target languages and TTS voices
-    localization.py         Localized native Qt dialog adapters
-    media.py                Video-path, thumbnail, and OS-open helpers
-    models.py               QAbstractListModel implementations for QML
-    presenters.py           Project summaries and localized display mapping
-    url_import.py           QML-facing background URL import state coordinator
-    channel_import.py       Persistent channel scan/download coordinator
-    qml/                    Pages, dialogs, design tokens, and reusable controls
-  pipeline/
-    process_video.py          Stage orchestration and checkpoint validation
-    extract_audio.py        FFmpeg audio extraction
-    transcribe.py           WhisperX warm cache, transcription, and alignment
-    audio_separation.py     Optional Demucs integration
-    tts.py                  OmniVoice/Edge provider routing and synthesis policy
-    omnivoice_tts.py        Dependency-isolated local OmniVoice worker
-    audio_timeline.py       Timestamped speech and background-audio mixing
-    subtitle.py             SRT generation
-    render.py               FFmpeg video and ASS subtitle rendering
-  services/
-    video_store.py            Persistent video metadata and per-video logs
-    desktop_videos.py         Project-aware video creation and media import
-    video_download.py       YouTube, TikTok, and Douyin URL inspection/download
-    channel_import.py       Channel metadata, sorting, deduplication, and sessions
-    douyin_channel_worker.py Isolated Douyin Beta profile inspector
-    translation.py          HY-MT2 worker protocol
-    hymt2_worker.py         Isolated local translation worker entry point
-    desktop_settings.py     Graphite appearance, language and device persistence
-    social_publish.py       Atomic project-backed social publishing state
-    zernio.py               Authenticated Zernio REST and streaming upload client
-    secure_credentials.py   Windows Credential Manager storage for external API keys
-  schemas/
-    video.py                  VideoConfig and VideoInfo contracts
-    channel_import.py       Channel request, candidate, and session contracts
-  vendor/
-    douyin_xbogus.py        Audited Apache-2.0 Douyin compatibility helper
-  core/
-    paths.py                Source, frozen-app, and runtime-data path resolution
-    events.py               In-process video-log notifications
+  core/          runtime paths, hardware policy, diagnostics and shared events
+  desktop/       Qt bootstrap, QML facade, controllers, models and presenters
+    qml/         pages, workspaces, dialogs and shared controls
+    assets/      branding and pre-rendered voice samples
+    translations/ Qt translation catalogs
+  pipeline/      transcription, speech, audio and rendering transforms
+  schemas/       persisted and cross-layer Pydantic contracts
+  services/      projects, storage, downloads, queues, caches and integrations
+  utils/         small stateless media/process helpers
+  vendor/        audited compatibility code retained with upstream licensing
+test/            Python, integration, QML creation and regression tests
+scripts/         environment, verification and release tooling
+installer/       Inno Setup definition
+licenses/        third-party notices and license texts
 ```
 
-## Ownership Rules
+Dependencies point inward from presentation to application services: QML uses the registered controller API; desktop controllers call services and pipeline entry points; services and pipelines use schemas and core policy. Services, pipelines, schemas and core modules must not import QML.
 
-New code should follow these boundaries so features remain independently testable:
+| Layer | Owns | Does not own |
+| --- | --- | --- |
+| QML | layout, direct manipulation, focus and presentation state | model inference, filesystem mutation, subprocesses |
+| `qml_controller.py` | stable properties, signals, slots and controller wiring | long-running algorithms |
+| desktop controllers | one UI workflow and its cancellation/lifecycle | codecs or persisted schema definitions |
+| services | use cases, persistence, queues and cache manifests | visual state |
+| pipeline | deterministic transforms with explicit inputs and outputs | navigation or project selection |
+| schemas | validated persisted contracts | I/O orchestration |
 
-- `desktop/qml/` owns presentation, animation, layout, and direct user interaction.
-- `desktop/qml_controller.py` is the stable QML singleton facade. It owns observable UI state and delegates commands to the focused desktop controllers; it must not implement media algorithms or project workflows.
-- `desktop/*_controller.py` owns one desktop workflow each. Controllers may depend on services and the QML facade's narrow host interface, but must not import QML files or create another QML API surface.
-- `desktop/models.py` owns list-model roles and update semantics. Add a new model here instead of embedding it in the controller.
-- `services/` owns reusable application use cases, persistence, queues, and isolated model-worker protocols. Services must not import QML files.
-- `pipeline/` owns ordered media stages. A stage receives explicit inputs, writes declared outputs, and reports progress through callbacks.
-- `schemas/` owns persisted and cross-layer data contracts. Additive schema changes require defaults so existing projects remain readable.
-- `core/` owns process-wide policy and infrastructure with no UI dependency.
-- `utils/` is reserved for small stateless helpers; domain workflows belong in services or pipeline modules.
+## 4. Desktop composition
 
-## Extension Guide
+`haizflow_desktop.py` enters the project virtual environment when available and launches `haizflow.desktop.main`. The Qt bootstrap configures application identity, translations and runtime paths before loading `Main.qml`.
+
+`Main.qml` is the persistent shell. It owns route history, the top navigation bar, global dialogs and the bottom activity strip. `RouteHost.qml` loads the current page without rebuilding the shell. Project workspaces hide the navigation rail while retaining the same Back, Forward, Home, Projects, Settings and Help controls.
+
+`HaizFlowController` is registered as the QML singleton facade. Focused desktop controllers separate catalog/project state, project commands, imports, processing lifecycle, preview rendering, audio preview, downloads, publishing, settings, hardware/model bootstrap and diagnostics. List data is exposed through `QAbstractListModel` implementations in `desktop/models.py`.
+
+Background model status belongs to the persistent activity strip. Dialogs are reserved for confirmation or errors that require a decision; transient action feedback uses the toast stack.
+
+## 5. Projects and persisted state
+
+`project_store` owns the project index and `.haizflow-project.json` manifests. `video_store` owns each video's `video.json`, log, media paths and checkpoints. Project and video IDs are immutable UUID-backed identifiers; readable folder names are labels, not identity.
+
+Project metadata currently uses schema v4. Video metadata uses schema v17. Writes use an interprocess lock, temporary file, `fsync` and atomic replacement. The previous valid document is retained as a backup, and corrupt input is quarantined before recovery.
+
+```text
+<project-name>--<short-id>/
+  .haizflow-project.json
+  exports/
+  videos/
+    <source-name>--<short-id>/
+      video.json
+      logs.txt
+      input/
+      temp/
+        editor-preview/
+        cache/manual/
+```
+
+Download projects own `downloads/video`, `downloads/channel` and `downloads/audio`. Publishing projects own `publishing/media`, thumbnails and an atomic queue file. Deletion resolves the registered project root before removing project-owned content; it does not derive a target from the display name.
+
+## 6. Automatic and batch execution
+
+Automatic and Batch projects use the ordered pipeline in `pipeline/process_video.py`:
+
+```text
+managed video input
+  -> source audio or Demucs separation
+  -> Whisper/WhisperX recognition and timing
+  -> HY-MT2 translation
+  -> subtitle document and ASS materialization
+  -> OmniVoice or Edge TTS clips
+  -> timestamped audio mix
+  -> FFmpeg render and mux
+```
+
+Each stage publishes a checkpoint signature derived from its inputs and relevant settings. Resume accepts a checkpoint only when the signature matches and every declared output exists and is non-empty. Batch adds queue ownership and per-video overrides; it does not maintain a separate media algorithm.
+
+Only one heavy foreground pipeline runs at a time. Pause and cancellation propagate through the process registry. Completed artifacts remain reusable; partial output is never promoted as a checkpoint.
+
+## 7. Manual editor and artifact graph
+
+Manual projects are non-linear. The workspace exposes Source, Recognition & Translation, Subtitles, Image, Voice, Audio and Export as independent tools. Each command performs only the operation named by the tool.
+
+- Recognition and translation create a subtitle document but do not synthesize speech.
+- Image cleanup reuses a matching OCR-region artifact when switching between original, blur and patch modes.
+- Voice synthesis creates only missing TTS clips.
+- Audio settings assemble existing tracks and do not invoke a model.
+- Export encodes the user's current state; optional layers may be absent.
+
+```text
+video -> source audio -> optional separation
+selected audio -> recognition -> translation -> subtitle document
+subtitle document + voice configuration -> TTS clips
+video -> OCR region -> optional blur/patch layer
+video + layout + subtitles + watermark -> visual proxy
+source/no-vocals + TTS clips + music + levels -> audio mix
+current visual state + current audio state -> export
+```
+
+Changing one subtitle invalidates that sentence's voice clip and descendants. Changing timing repositions cached clips without rerunning TTS. Changing music or a level invalidates only the mix. Returning to a previously used source mode, voice or cleanup mode reactivates its cache variant.
+
+### Manual artifact store
+
+`services/manual_artifacts.py` stores immutable artifacts below `temp/cache/manual`. `manifest.json` records each kind, signature, status, inputs, configuration fingerprint, outputs, timestamps, size and error state. Active signatures remain in `video.json`; historical variants stay in the manifest.
+
+```text
+cache/manual/
+  manifest.json
+  source-audio/<signature>/
+  separation/<signature>/
+  recognition/<signature>/
+  translation/<signature>/
+  subtitles/<signature>/
+  ocr/<signature>/
+  visual/<signature>/
+  voice/clips/<signature>/
+  voice/manifests/<signature>/
+  audio/<signature>/
+  export/<signature>/
+```
+
+A producer writes to staging. Publication validates required files, writes a completion marker and atomically renames the directory. Lookup rejects partial, missing, empty or mismatched output. Active artifacts and artifacts held by runtime consumers are pinned. Project and global limits evict least-recently-used inactive variants before active data.
+
+`manual_completed_stages` remains a migration input for older metadata but has no authority in the current Manual UI.
+
+## 8. Preview and direct manipulation
+
+The editor uses a lightweight preview path rather than rebuilding the final video after every seek.
+
+- Seeking updates media position and the subtitle clock without invalidating visual cache.
+- Visual configuration and audio mix have independent signatures.
+- TTS clips and source/background tracks are mixed from validated cached files.
+- A completed A/V preview is published atomically; the player swaps source while preserving position and playback intent.
+- Direct subtitle manipulation uses the renderer-resolved output dimensions, layout rectangle, font size, phrase partition and karaoke clock.
+- When the matching render is ready, the transform overlay is dismissed and the rendered proxy becomes authoritative.
+- Player source switching is serialized and old workers/players are released when leaving the workspace.
+
+The result pane keeps the last valid frame while a replacement is prepared. Model warm-up and background activity use the bottom status strip instead of blocking the workspace.
+
+## 9. Model and process isolation
+
+HY-MT2 runs in a persistent JSON-lines worker. GPU mode uses verified Transformers/safetensors files; CPU mode uses the verified GGUF model through `llama-cpp-python`. OmniVoice runs in a dependency-isolated worker because its runtime dependency set differs from the main application. Demucs uses a local checksum-verified checkpoint. FFmpeg remains an external process with cancellation and timeout handling.
+
+Model bootstrap is the production path for installing model payloads. Repository, revision, filename, size and SHA-256 are fixed in source. Downloads use resumable partial files and atomic promotion. Runtime loaders accept explicit local paths and do not fall back to an unpinned network download.
+
+Hardware policy in `core/hardware.py` selects supported CUDA precision, memory profile, warm-up behavior, inference batch size and CPU thread limits. FFmpeg hardware encoding is probed separately from AI inference; a failed hardware encode can fall back to `libx264`.
+
+## 10. Network and privacy boundary
+
+Network access is limited to features that require it:
+
+- verified first-run model downloads;
+- URL/channel media inspection and download;
+- Edge TTS when explicitly selected;
+- Zernio authentication, upload and publishing.
+
+Credentials are stored through Windows Credential Manager. Media import validates supported hosts and writes to project-owned staging before promotion. Social upload requires explicit confirmation. Diagnostic bundles contain bounded, redacted runtime data and exclude project media and project metadata.
+
+## 11. Observability and failure handling
+
+Per-video `logs.txt` is the authoritative processing log. Pipeline events update persisted progress and a structured activity presentation. Raw technical logs are available on demand rather than occupying the normal workspace.
+
+HY-MT2 diagnostics are bounded and record backend, device, memory snapshots and failures. The application log rotates at a fixed size and captures Python, thread and Qt failures. An error retains the failed tool, safe retry point and recovery action without discarding validated artifacts.
+
+## 12. Runtime containment and packaging
+
+Python 3.13 x64 is the supported source/build runtime. `pyproject.toml` declares direct dependencies. `requirements-lock-py313-win64.txt` is the hash-locked transitive production set; `uv.lock` supports deterministic developer resolution.
+
+PyInstaller uses an `onedir` artifact because Qt, Torch and media libraries require adjacent native files. Models are not embedded in the executable distribution. The installer-selected application directory owns mutable runtime data:
+
+```text
+runtime/
+  models/   verified model payloads
+  cache/    disposable third-party and application caches
+  data/     durable settings, indexes and diagnostics
+  tmp/      transient work
+```
+
+In source mode, `HAIZFLOW_HOME` can establish the same containment boundary. Runtime configuration redirects known third-party caches and temporary directories below that root to avoid unplanned writes to the system drive.
+
+## 13. Change checklist
 
 | Change | Primary location | Required follow-through |
 | --- | --- | --- |
-| New screen or dialog | `desktop/qml/` | Add reusable controls to `qmldir`; expose only required controller state. |
-| New project command | `services/` | Add a narrow controller slot and unit tests for the service. |
-| New pipeline stage | `pipeline/` | Add checkpoint signature, progress mapping, cancellation checks, and a persisted output path. |
-| New translation or TTS provider | `services/` | Define one stable request/response boundary; keep provider details out of QML. |
-| New persisted setting | `services/desktop_settings.py` | Add a default, validation, migration behavior, and QML binding. |
-| New video/project field | `schemas/video.py` | Preserve backward compatibility and test loading old metadata. |
+| QML component or screen | `desktop/qml` | focus/accessibility, translation, creation test, no media logic |
+| Controller command | focused desktop controller | narrow facade slot, cancellation and state tests |
+| Pipeline transform | `pipeline` | explicit inputs/outputs, progress, signature and cancellation |
+| Persisted field | `schemas` and store migration | default, validation and old-metadata test |
+| Manual artifact | artifact service and tool runner | signature, publication, dependency and eviction tests |
+| External provider | `services` | trust boundary, credentials, retry/cancel and notices |
 
-`pyproject.toml` is the canonical direct dependency declaration. `requirements.txt` remains a source-development convenience only. Production installation uses `requirements-lock-py313-win64.txt`, a complete Windows x64/Python 3.13 transitive lock generated by `scripts/lock-dependencies.ps1`. Every entry is exact and carries one or more SHA-256 hashes; `dependency-lock-manifest.json` fingerprints the lock and its source inputs. The installer installs the lock with `--require-hashes`, then installs this package with `--no-deps --no-build-isolation`. QML files are declared as package data so source installs and future non-PyInstaller distributions use the same asset layout.
-
-Run `scripts/test.ps1` before merging. It compiles application, script, and test modules before running the complete unit suite. `scripts/verify-runtime.py` reads pinned versions directly from `pyproject.toml`, validates native runtime prerequisites, and is mandatory before an executable build.
-
-## Application Lifecycle
-
-1. `haizflow_desktop.py` relaunches itself with `.venv\Scripts\python.exe` when available. The source launcher exits after creating the project-runtime process; it does not import Qt or ML packages from the system Python installation.
-2. `haizflow.desktop.main` creates the Qt application and registers `HaizFlowController` with the QML engine.
-3. `HaizFlowController` loads settings and project metadata, starts polling timers, and schedules legacy migration/recovery/thumbnail maintenance only after the first Qt frame. Model warm-up also runs on a background thread.
-4. `Main.qml` routes between independent Download, Single, Batch, and Social Publishing project libraries, their workspaces, and Settings.
-5. Closing the application cancels active network imports and Zernio uploads, unsubscribes log events, shuts down the HY-MT2 worker, and releases both warmed models.
-
-## Video State Model
-
-`VideoInfo` is persisted as `video.json` inside the owning project's readable
-`videos/<source-label>--<short-id>` workspace. The complete immutable video ID
-remains in metadata and is never inferred from the folder name. Its important states are:
-
-| State | Meaning |
-| --- | --- |
-| `pending` | Created but not processing. |
-| `processing` | A pipeline stage is active. |
-| `awaiting_review` | Translation is ready and waits for user edits. |
-| `paused` | Processing was interrupted by the user; `resume_step` records the safe checkpoint. |
-| `done` | Final video has been rendered. |
-| `failed` | The pipeline captured an exception and wrote it to the video log. |
-| `cancelled` | A destructive cancellation occurred. |
-
-Every update persists progress, stage detail, current/total item counts, timestamps, and a `MediaSource` provenance record. Video metadata uses schema v13 in `video.json`, a per-video lock, atomic replacement (`temp -> fsync -> replace`), and the last valid `.bak` copy, so UI polling cannot observe a partially written file. Ordered migrations retain legacy identity/provenance while adding recovery checkpoints and current ASR, TTS, subtitle-removal, audio-mix and watermark settings. Unversioned metadata migrates through every ordered step and preserves its pre-migration JSON as `.schema-migration.bak`. A schema newer than the running application is rejected rather than rewritten.
-
-## Media Import
-
-Single projects accept one local file or one supported video URL. Batch projects accept files, a top-level folder, individual video URLs, or a channel/profile URL. `ChannelImportCoordinator` is separate from the single-URL coordinator and from the model-processing queue. YouTube and TikTok inspection uses the pinned `yt-dlp==2026.7.4`; Douyin Beta inspection runs in a disposable helper process. Only allowlisted YouTube, TikTok, and Douyin hostnames are accepted.
-
-Channel candidates are sorted after metadata collection and deduplicated using `platform + remote_video_id` with a normalized-URL fallback. YouTube content selection maps directly to the Shorts and Videos tabs; the all-video option merges both collections before deduplication. TikTok candidates are hydrated before display and are accepted only when metadata confirms a video stream. Douyin photo notes and slideshows are rejected by its isolated inspector. Cookie data from Edge, Chrome, or a selected Netscape `cookies.txt` file exists only in coordinator memory and subprocess input. It is excluded from manifests, session JSON, settings, and user-facing persisted errors.
-
-Each scan is stored under `<project>/imports/channel/<session-id>/session.json`. Completed downloads pass through `create_desktop_video`, so managed input, log, thumbnail, workspace, and export ownership remain identical to file imports. Because the download workspace already belongs to the project, the final media file is moved atomically into its video workspace instead of being copied a second time. Download workspaces are retained only for failed retries and removed after a successful project import. Reopening a project restores interrupted candidates as retryable entries; deleting the project cancels its coordinator session and removes the complete project-owned import tree. The download manager permits two workers while model processing is idle, throttles new work to one while the pipeline is active, and never starts the dubbing pipeline automatically.
-
-## Social Publishing through Zernio
-
-Publishing projects are separate from media downloading. A publishing project copies selected MP4, MOV, or WebM videos into `publishing/media`, generates project-owned thumbnails, and persists its queue atomically in the legacy-compatible `.haizflow-tiktok-publish.json` store. Reopening the project restores caption, normalized hashtags, platform/connection selection, stable idempotency request IDs, Zernio post IDs, and upload status. Replacing queue entries or deleting the project removes only project-owned files; startup cleanup removes interrupted and orphaned copies.
-
-The user creates a Zernio API key and HaizFlow stores it as a generic secret in Windows Credential Manager. Account connection opens a Zernio-provided OAuth URL in the user's active Chrome profile when available, otherwise in the Windows default browser. Supported post options are derived from the selected platform instead of exposing TikTok-only controls everywhere. Publishing is sequential: request a presigned media URL, stream the video directly to it with cancellation/progress, then create a platform post through Zernio using one persistent `x-request-id`. The UI requires an explicit confirmation before upload. There is no Playwright, Selenium, DOM selector, managed browser profile, cookie extraction, or social-site browser automation in this workflow.
-
-## Pipeline
-
-```text
-video input
-  -> extract audio
-  -> selected audio mode: preserve the original track, or use Demucs vocals/no-vocals separation
-  -> selected ASR: WhisperX small or Whisper large-v3-turbo
-  -> sentence alignment and per-subtitle language identification
-  -> HY-MT2 translation
-  -> optional subtitle review with a project-backed editable draft and timeline
-  -> SRT generation
-  -> selected TTS: local OmniVoice (presets or authorized clone) or online Edge TTS
-  -> audio timeline construction
-  -> FFmpeg render
-```
-
-Local files and downloaded links share the same import boundary. `services.video_download` validates an allowlist of
-YouTube, TikTok, and Douyin hosts, uses yt-dlp to inspect one non-live video, and downloads into a project-owned
-`.downloads` staging directory. `desktop.url_import` exposes metadata and progress to one shared QML dialog. Only after
-the download is complete does the controller create or replace the persisted video workspace; successful, failed, and
-cancelled downloads remove their staging directory. The processing queue therefore never observes a partial source file.
-
-### WhisperX
-
-`pipeline.transcribe` owns a process-local ASR cache. The user can select WhisperX small for CPU/low-VRAM systems or Whisper large-v3-turbo for a CUDA system whose downloaded checkpoint passed integrity verification. Warm-up loads the selected model in a background thread when the detected memory profile can safely retain it. Subsequent transcription calls reuse it only when both device and model match. CUDA uses FP16 and a larger batch; CPU uses INT8, a RAM-aware batch of one to four, and a bounded thread count. Low-memory profiles release warm ASR before translation or local TTS. The pickle-based VAD checkpoint from the locked WhisperX release is excluded from the installer, downloaded by first-run bootstrap from a commit-pinned URL, and checked against fixed size/SHA-256 before it is loaded through an explicit local path. Whisper first produces sentence-level subtitle boundaries, then the same ASR model identifies the language of each sentence from only that sentence's audio. Detected language switches are transcribed again with the appropriate tokenizer, so a mixed-language video is not forced into the language detected at its beginning. Alignment is permitted only for five fixed torchaudio assets (`en/fr/de/es/it`): URL, exact size and SHA-256 are production constants. The first-run model bootstrap downloads them atomically with visible progress and cancellation, then PyTorch receives `weights_only=True`. Pipeline code is local-only and refuses a missing or corrupt payload instead of starting a hidden download. WhisperX's mutable Hugging Face alignment table is never used; other languages safely retain the Whisper span and derive sentence boundaries proportionally. HaizFlow supplies a no-download single-span sentence splitter, preventing WhisperX from fetching mutable NLTK `punkt_tab` data. Alignment models are short-lived and released after use because they are language-specific and can consume significant memory.
-
-Audio is decoded by the bundled FFmpeg process and passed to WhisperX as an in-memory waveform. The active pipeline therefore does not depend on TorchCodec's optional native decoder. Enabling that decoder on Windows would additionally require a compatible FFmpeg `full-shared` distribution; the static command-line FFmpeg bundle is intentionally kept smaller.
-
-### Translation
-
-HY-MT2 runs in a persistent separate process. In source mode the parent invokes the worker with the same project virtual-environment interpreter; in a frozen build it invokes the executable's internal `--hymt2-worker` entry point. The worker receives JSON-line requests over standard input and returns JSON-line status, item-progress, and response events. Each subtitle is translated independently while bounded preceding topic anchors are supplied as reference-only context. This keeps the one-input/one-output contract required by TTS, avoids subject leakage between adjacent subtitles, and prevents unbounded full-video prompts.
-
-The runtime selects one of two inference backends according to the persisted `gpu` or `cpu` preference. CUDA uses the official Transformers model and keeps the warm worker for the desktop session. BF16 is selected only when the active GPU reports native support; other compatible NVIDIA GPUs use FP16. On supported 7-8 GB Windows GPUs, the checkpoint is staged in system memory before transfer to CUDA to avoid a native Transformers meta-tensor loading failure; only the inference batch size is reduced. CPU mode uses the official `Hy-MT2-1.8B-Q4_K_M.gguf` model through `llama-cpp-python`, one prompt at a time. CPU translation is loaded only when needed and is released after a RAM-profile-dependent idle period. The installer never embeds either model. First-run setup downloads only the selected HY-MT2 backend; switching processing device later reopens the same setup UI and adds the other backend on demand. Both repositories are pinned to immutable Hugging Face commit revisions in `haizflow.core.model_integrity`; repo, revision, required files, sizes, and SHA-256 values are production constants rather than environment overrides. Every downloaded model is verified before it can be loaded.
-
-### Voice Synthesis
-
-`pipeline.tts` creates one validated MP3 per translated segment. OmniVoice runs locally in a dependency-isolated worker so its Transformers 5 runtime cannot replace the application's pinned Transformers 4 stack. The worker loads the checkpoint once per video, uses FP16/TF32 on CUDA or bounded FP32 threads on CPU, emits progress/heartbeat status, and is terminated if it stops making progress. Presets use only the SDK's validated instruction vocabulary. Voice cloning requires a user-authorized sample plus its exact transcript and is stored per video. The checkpoint and runtime wheels are revision, size, and SHA-256 pinned and loaded below `runtime\models`; no hidden cache download is allowed. The model checkpoint's CC-BY-NC-4.0 license remains a release/commercial-use gate.
-
-Edge TTS remains the online alternative. Its requests run sequentially by default because the consumer WebSocket endpoint is less reliable under concurrent requests; `TTS_MAX_CONCURRENCY` remains an advanced override. Long text, especially unspaced CJK text, is split at natural boundaries before transport. Each response is written to a temporary file and promoted atomically only after MP3 validation. Segments that exhaust the primary retry budget are recovered with fresh connections and longer backoff. Persistent failures from either provider stop the pipeline before rendering instead of inserting silent audio. Completion callbacks update both persistent progress and the project log.
-
-### Audio Source Modes
-
-The two audio modes are mutually exclusive. Original mode mixes the source track at the user-selected volume. Separation mode transcribes the Demucs vocals track and mixes the no-vocals track at full volume; the original-volume setting is intentionally ignored. The official `htdemucs` checkpoint is identified by signature `955717e8`, exact size, and full SHA-256. First-run setup installs it under `runtime/models/demucs`; the subprocess receives both `-n 955717e8` and `--repo <verified-local-directory>`, so it cannot fall back to Demucs' remote model repository. Source mode launches `python -m demucs.separate`; frozen mode invokes the same executable through the explicit `--demucs-separate` internal entry point because a PyInstaller executable is not a general Python interpreter. Both separated paths are persisted in the project workspace so translation review, pause/resume, and GPU recovery reuse the correct audio. If a separated background artifact is missing, the pipeline regenerates it instead of silently falling back to the source vocals.
-
-### Checkpoints
-
-`process_video.py` records checkpoint signatures for translation, subtitles, voice parts, mixed audio, and final rendering. A checkpoint is valid only when its signature matches current inputs and all expected outputs exist and are non-empty. This permits safe reuse while preventing stale output from being treated as current.
-
-## Runtime Data and Packaging
-
-`core.paths` uses `HAIZFLOW_HOME` as a hard containment root in source mode. In a frozen build the installer-selected `{app}` directory is authoritative: mutable data and downloaded models default to `{app}\runtime`, while native tools remain below `{app}\_internal`. The user may select a writable directory on C, D, E, or another drive; no drive letter is hardcoded. Model staging, Qt caches, Torch/Hugging Face caches, settings, diagnostics, temporary files, and the project index therefore remain below that selected application root. `projects.json` is protected by an OS-level interprocess lock and atomic replacement. A valid previous index is retained as `.bak`; corrupt input is copied to a timestamped quarantine file and recovered by merging the backup with `.haizflow-project.json` manifests discovered under registered project roots. Project records use schema v4; per-video metadata uses schema v13. Each project has an immutable UUID-backed `project:<uuid>` identity, so projects can share a display name without sharing inputs, exports, or deletion operations.
-
-The frozen runtime layout is deliberately stable: `{app}\runtime\models` contains checksum-verified model payloads, `{app}\runtime\cache` contains disposable third-party caches, `{app}\runtime\data` contains durable settings/logs/indexes, and `{app}\runtime\tmp` contains transient work. The launcher establishes this boundary before importing Qt, Torch, Transformers, WhisperX, OCR, or TTS code. It redirects Hugging Face, Torch/TorchInductor, CUDA, Triton, Qt/QML, NumPy/Numba, Matplotlib, NLTK, pip/uv, EasyOCR, Paddle/PaddleX, KaggleHub, XDG, profile, and temporary-directory fallbacks into it. Model loaders accept only explicit files below `runtime\models` and do not invoke library download helpers. Source runs can use `HAIZFLOW_HOME`; a real frozen build ignores inherited machine-wide overrides so a user-selected D: or E: install cannot silently write HaizFlow-owned data back to C:.
-
-`project_store` owns project registration and manifests. `video_store` separately owns the metadata, checkpoints, logs, and workspace of each video inside a project. These responsibilities are related but not duplicates, and user-facing/domain code uses only project/video terminology.
-
-Every new project uses `<display-name>--<short-project-id>/`; only the folders
-owned by that project type are created:
-
-```text
-single-or-batch--a1b2c3d4e5/
-  .haizflow-project.json
-  exports/                         Final rendered videos
-  videos/source-name--91fd53e728/
-    video.json, logs.txt
-    input/                         Stable managed source
-    temp/                          Checkpoints, editor proxies and intermediates
-
-downloads--b2c3d4e5f6/
-  .haizflow-project.json
-  downloads/
-    channel/                       Channel/profile downloads
-    video/                         Individual video downloads
-    audio/                         Audio downloads and extracted audio
-
-publishing--c3d4e5f6a7/
-  .haizflow-project.json
-  .haizflow-tiktok-publish.json    Legacy-compatible atomic Zernio queue
-  publishing/
-    media/                         Project-owned upload copies
-    thumbnails/                    Generated queue thumbnails
-```
-
-The full project and video UUIDs remain authoritative inside their manifests;
-short IDs exist only to keep Explorer and Windows paths readable. Readers
-discover a workspace from `video.json`, so older UUID-named folders remain
-fully compatible and are not renamed underneath active or resumable projects.
-There is no active global workspace outside projects. On startup, the legacy
-`RUNTIME_DATA_DIR/jobs/<video-id>/job.json` layout is migrated into the
-registered project's `videos/` directory; the original metadata is retained
-as a migration backup.
-
-The build uses PyInstaller `--onedir` because Qt, Torch, WhisperX, and FFmpeg require adjacent native files. The executable is not designed to be relocated independently from its distribution directory.
-
-The unified dependency set contains a CUDA-capable Torch build for GPU systems and `llama-cpp-python` for CPU translation. `scripts/prepare-offline-models.ps1` remains a developer/runtime-validation utility, but `scripts/build-exe.ps1` never places its output in the artifact. `services.model_bootstrap` is the sole production network boundary for model files: it calculates required free space, downloads to resumable `.part` files, reports progress, supports cancellation, checks HTTPS redirect hosts, size and SHA-256, and atomically promotes verified files. Successful verification writes integrity markers. Later launches validate those local markers in milliseconds, keep the setup overlay hidden, and only warm the models in the background. The overlay returns only for an incomplete/corrupt required set or when switching to a translation backend that has not been installed. Frozen smoke and installer eligibility fail if `_internal/models` contains any file or a known checkpoint appears elsewhere in the artifact.
-
-Dependency vulnerability policy is defined in `docs/dependency-security.md`. The release audit fails on every new advisory; reviewed exceptions are exact advisory IDs with an expiry date. HY-MT2 Transformer loading is local-only, safetensors-only, revision/SHA-256 pinned and explicitly disables remote code.
-
-`core.hardware` is the single policy source for CUDA visibility, compute capability, BF16 support, VRAM/RAM requirements, the persisted device preference, thread limits, Whisper batch size, warm-up policy, translation lifetime, and CPU/GPU labels exposed in Settings. GPU selection requires CUDA, at least 7 GB total VRAM, and approximately 5 GB free VRAM; CPU selection requires approximately 6 GB system RAM. A 7-8 GB GPU uses a lower-memory profile that releases WhisperX before HY-MT2 translation while retaining the official model at the safest supported precision. FFmpeg separately probes NVENC, Quick Sync, and AMF because hardware video encoding can remain available while AI inference is set to CPU. A failed hardware render is retried with `libx264` and the `veryfast` preset.
-
-## Observability
-
-`services.video_store.log_to_video` is the authoritative pipeline log path. It writes a timestamped line to the selected video's project-owned workspace `logs.txt` and emits an in-process event. The desktop controller subscribes to the event stream, appends live lines to the selected project's log, and polls persisted video metadata for state changes. The separate app log is diagnostic-only and never contains project media or pipeline state.
-
-Each HY-MT2 process also writes a bounded diagnostic log under `<runtime-data>/logs/hymt2-workers`. It records the model/backend, Python and Torch/CUDA versions, RAM/commit/VRAM snapshots at tokenizer load, weight load, CUDA transfer, model readiness, and first generation, plus Python tracebacks and Windows native exit codes. The parent retains the newest 25 worker logs and includes the exact file path in translation failures.
-
-`core.logging_config` keeps the application log bounded to one active 5 MiB file plus three rotations and captures unhandled main-thread, Python-thread, unraisable and Qt messages. `core.diagnostics` exports only bounded, redacted app/model-worker log tails plus a whitelist of build/runtime versions. It never reads project metadata, project names, project media or per-project logs. Frozen releases include a build ID derived from the application version and exact Git commit.
-
-## Concurrency Policy
-
-- One foreground pipeline video is active at a time.
-- Batch videos are queued and run sequentially.
-- Channel downloads use an independent manager: at most two downloads while the pipeline is idle and one while media processing is active. TikTok and Douyin never run more than one download concurrently.
-- Zernio uploads and platform post creation run sequentially inside the active Publishing project. Closing or switching away cancels new work; project switching is blocked while a request is active.
-- CUDA warms HY-MT2 and WhisperX sequentially in the background to avoid competing model loads. CPU profiles warm only WhisperX when RAM permits.
-- HY-MT2 is isolated in one persistent worker; CPU profiles shut it down after an adaptive idle interval, while CUDA retains it for the desktop session.
-- Edge TTS is limited to one through four requests; OmniVoice uses one isolated local worker per active video and queues preview requests rather than loading concurrent model copies.
-
-This policy favours GPU stability and reproducibility over maximising throughput on a single workstation.
+Run `scripts/test.ps1` before merging. Packaging or model-integrity changes also require the release checks in [release-readiness.md](release-readiness.md).

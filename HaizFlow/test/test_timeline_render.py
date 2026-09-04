@@ -1,9 +1,12 @@
 import tempfile
 import unittest
 import re
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+
+import srt
 
 from haizflow.pipeline.audio_timeline import _segment_slot_end_ms
 from haizflow.pipeline import render
@@ -488,6 +491,38 @@ class TimelineRenderTests(unittest.TestCase):
 
         self.assertIn("gblur=", filter_prefix)
 
+    def test_subtitle_treatment_uses_source_caption_visibility_without_expanding_ocr(self):
+        expression = render._subtitle_visibility_enable(
+            [(0.031, 6.561), (6.561, 9.825), (12.0, 14.0)],
+            source_start_seconds=0.0,
+            source_duration_seconds=20.0,
+        )
+        filter_prefix = render._subtitle_patch_prefix(
+            (78, 562, 418, 54), 576, 1024, expression
+        )
+
+        self.assertEqual(
+            expression,
+            "between(t,0.031,9.825)+between(t,12.000,14.000)",
+        )
+        self.assertIn(
+            "overlay=78:562:enable='between(t,0.031,9.825)+between(t,12.000,14.000)'",
+            filter_prefix,
+        )
+        self.assertIn("crop=418:54:78:504", filter_prefix)
+
+    def test_subtitle_visibility_is_shifted_into_a_preview_window(self):
+        expression = render._subtitle_visibility_enable(
+            [(8.0, 14.0), (18.0, 24.0)],
+            source_start_seconds=12.0,
+            source_duration_seconds=8.0,
+        )
+
+        self.assertEqual(
+            expression,
+            "between(t,0.000,2.000)+between(t,6.000,8.000)",
+        )
+
     def test_removal_region_does_not_change_vertical_caption_preset(self):
         region = {
             "x_percent": 14,
@@ -618,6 +653,121 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertEqual(sum(durations), 137)
         self.assertIn("xin ", rendered)
         self.assertTrue(rendered.endswith("bạn"))
+
+    def test_font_size_changes_visual_phrases_without_changing_word_clock(self):
+        subtitle = srt.Subtitle(
+            index=1,
+            start=timedelta(seconds=2),
+            end=timedelta(seconds=6),
+            content="Mỗi từ phải giữ đúng nhịp với giọng đọc khi đổi cỡ chữ",
+        )
+        layout = render.SubtitleRegionLayout(100, 700, 420, 90)
+
+        small_parts = render._subtitle_parts_for_region(
+            subtitle,
+            layout,
+            SubtitleStyle(font_size=32),
+            fixed_font_size=True,
+        )
+        large_parts = render._subtitle_parts_for_region(
+            subtitle,
+            layout,
+            SubtitleStyle(font_size=76),
+            fixed_font_size=True,
+        )
+        small_clock = [
+            duration
+            for _units, durations in render._karaoke_part_timelines(
+                subtitle.content,
+                [part[2] for part in small_parts],
+                4.0,
+            )
+            for duration in durations
+        ]
+        large_clock = [
+            duration
+            for _units, durations in render._karaoke_part_timelines(
+                subtitle.content,
+                [part[2] for part in large_parts],
+                4.0,
+            )
+            for duration in durations
+        ]
+
+        self.assertGreater(len(large_parts), len(small_parts))
+        self.assertEqual(large_clock, small_clock)
+        self.assertEqual(sum(large_clock), 400)
+
+    def test_direct_preview_returns_only_the_phrase_visible_at_the_playhead(self):
+        text = (
+            "Nếu quay lại thời cổ đại, triều đình sẽ cấp cho bạn gỗ để làm lương, "
+            "bạn có thể dùng nó để nấu ăn và sưởi ấm qua mùa đông"
+        )
+
+        early = render.subtitle_preview_fragment(text, 0.0, 8.6, 0.2, 60, 72, 1080)
+        late = render.subtitle_preview_fragment(text, 0.0, 8.6, 8.2, 60, 72, 1080)
+
+        self.assertTrue(early)
+        self.assertTrue(late)
+        self.assertNotEqual(early, late)
+        self.assertLess(len(early), len(text))
+        self.assertLess(len(late), len(text))
+        self.assertIn(early, text)
+        self.assertIn(late, text)
+
+    def test_direct_preview_uses_the_renderer_width_when_font_size_changes(self):
+        text = "Mỗi khung chỉnh phải bao quanh đúng cụm từ đang được phát trên video"
+
+        small = render.subtitle_preview_fragment(text, 2.0, 7.0, 2.1, 28, 72, 1080)
+        large = render.subtitle_preview_fragment(text, 2.0, 7.0, 2.1, 92, 72, 1080)
+
+        self.assertGreater(len(small), len(large))
+        self.assertIn(small, text)
+        self.assertIn(large, text)
+
+    def test_direct_preview_exposes_a_white_to_gold_karaoke_sweep(self):
+        text = "Đây là một câu karaoke chạy theo đúng nhịp trên video"
+
+        start = render.subtitle_preview_frame(text, 0.0, 4.0, 0.0, 42, 72, 1080)
+        middle = render.subtitle_preview_frame(text, 0.0, 4.0, 0.5, 42, 72, 1080)
+
+        self.assertEqual(start["text"], middle["text"])
+        self.assertEqual(start["karaokeProgress"], 0.0)
+        self.assertGreater(middle["karaokeProgress"], 0.0)
+        self.assertLessEqual(middle["karaokeProgress"], 1.0)
+
+    def test_resolved_preview_layout_matches_the_renderer_ocr_preset(self):
+        layout = render.resolve_subtitle_preview_layout(
+            {
+                "x_percent": 35,
+                "y_percent": 72,
+                "width_percent": 30,
+                "height_percent": 8,
+                "line_height_percent": 7,
+            },
+            1080,
+            1920,
+            "keep_ratio",
+            CropSettings(),
+            SubtitleStyle(),
+            False,
+        )
+
+        self.assertEqual(layout["outputWidth"], 1080)
+        self.assertEqual(layout["outputHeight"], 1920)
+        self.assertEqual(layout["fontSize"], 74)
+        self.assertEqual(layout["positionXPercent"], 50)
+        self.assertEqual(layout["positionYPercent"], 76)
+        self.assertEqual(layout["layoutWidth"], 324)
+
+    def test_exact_layout_preview_uses_renderer_width_not_form_default(self):
+        text = "Người du hành nhưng để tạo một cụm từ đồng bộ với giọng đọc"
+
+        narrow = render.subtitle_preview_frame_for_layout(text, 0, 5, 0.1, 74, 324, 7)
+        wide = render.subtitle_preview_frame_for_layout(text, 0, 5, 0.1, 74, 778, 7)
+
+        self.assertNotEqual(narrow["text"], wide["text"])
+        self.assertLess(len(narrow["text"]), len(wide["text"]))
 
     def test_no_space_language_is_split_into_balanced_character_phrases(self):
         parts = render._split_subtitle_words("这是一个没有空格的长字幕句子", 6)

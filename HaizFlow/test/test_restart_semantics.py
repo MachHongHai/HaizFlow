@@ -134,6 +134,94 @@ class RestartCheckpointTests(unittest.TestCase):
         )
         host._enqueue_video.assert_called_once_with(video.video_id)
 
+    def test_manual_timing_edit_preserves_voice_and_invalidates_only_the_mix(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            transcript = Path(temp_dir) / "translated.json"
+            transcript.write_text(
+                '[{"start": 0, "end": 1, "text": "same voice"}]',
+                encoding="utf-8",
+            )
+            video = SimpleNamespace(
+                video_id="manual-timing",
+                project_type="manual",
+                status="manual_ready",
+                files={"transcript_json": str(transcript)},
+                checkpoints={
+                    "translation": "translation-signature",
+                    "voice": "voice-signature",
+                    "timeline": "timeline-signature",
+                    "render": "render-signature",
+                },
+                manual_completed_stages=["translation", "subtitles", "voice", "timeline", "render"],
+            )
+            host = SimpleNamespace(
+                _selected_video_id=video.video_id,
+                refreshVideos=mock.Mock(),
+                selectedVideoChanged=SimpleNamespace(emit=mock.Mock()),
+            )
+            controller = ProjectCommandsController(host)
+
+            with (
+                mock.patch(
+                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    return_value=video,
+                ),
+                mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+            ):
+                approved = controller.approve_translation_review(
+                    '[{"start": 0, "end": 1.8, "text": "same voice", '
+                    '"timeline_edited": true, "fit_voice_to_timing": true}]'
+                )
+
+        self.assertTrue(approved)
+        changes = update_video.call_args.kwargs
+        self.assertEqual(changes["manual_completed_stages"], ["translation", "subtitles", "voice"])
+        self.assertEqual(changes["manual_completed_stage"], "voice")
+        self.assertEqual(
+            changes["checkpoints"],
+            {"translation": "translation-signature", "voice": "voice-signature"},
+        )
+
+    def test_manual_text_edit_invalidates_old_voice(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            transcript = Path(temp_dir) / "translated.json"
+            transcript.write_text(
+                '[{"start": 0, "end": 1, "text": "old voice"}]',
+                encoding="utf-8",
+            )
+            video = SimpleNamespace(
+                video_id="manual-text",
+                project_type="manual",
+                status="manual_ready",
+                files={"transcript_json": str(transcript)},
+                checkpoints={"translation": "translation-signature", "voice": "voice-signature"},
+                manual_completed_stages=["translation", "subtitles", "voice"],
+            )
+            host = SimpleNamespace(
+                _selected_video_id=video.video_id,
+                refreshVideos=mock.Mock(),
+                selectedVideoChanged=SimpleNamespace(emit=mock.Mock()),
+            )
+            controller = ProjectCommandsController(host)
+
+            with (
+                mock.patch(
+                    "haizflow.desktop.project_commands_controller.video_store.get_video",
+                    return_value=video,
+                ),
+                mock.patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update_video,
+                mock.patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"),
+            ):
+                approved = controller.approve_translation_review(
+                    '[{"start": 0, "end": 1, "text": "new voice"}]'
+                )
+
+        self.assertTrue(approved)
+        changes = update_video.call_args.kwargs
+        self.assertEqual(changes["manual_completed_stages"], ["translation"])
+        self.assertEqual(changes["checkpoints"], {"translation": "translation-signature"})
+
     def test_changed_voice_signature_discards_all_old_voice_parts_before_tts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -1,19 +1,51 @@
-import threading
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from haizflow.desktop.presenters import build_project_summaries
 from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
 from haizflow.desktop.qml_controller import HaizFlowController
-from haizflow.pipeline.process_video import _complete_manual_stage
 from haizflow.pipeline import process_video
+from haizflow.pipeline.process_video import _complete_manual_stage
 from haizflow.schemas.video import VideoConfig
 
 
 class ManualWorkflowTests(unittest.TestCase):
+    def test_retranslation_requires_confirmation_when_voice_is_active(self):
+        video = SimpleNamespace(
+            video_id="manual-video",
+            project_type="manual",
+            status="manual_ready",
+            active_artifacts={"tts_manifest": "voice-current"},
+        )
+        host = SimpleNamespace(
+            _project_type="manual",
+            _settings_language="vi",
+            _selected_video=lambda: video,
+            _processing_queue=SimpleNamespace(contains=lambda _video_id: False),
+            appAlertRequested=Mock(),
+        )
+
+        with (
+            patch(
+                "haizflow.pipeline.manual_tools.tool_states",
+                return_value=[{"toolId": "translation", "canRun": True, "blockedReason": ""}],
+            ),
+            patch("haizflow.desktop.qml_controller.manual_artifacts.active", return_value={"artifact_id": "voice"}),
+            patch("haizflow.desktop.qml_controller.QMessageBox.question", return_value=0) as question,
+        ):
+            started = HaizFlowController.runManualTool(host, "translation")
+
+        self.assertFalse(started)
+        question.assert_called_once_with(
+            None,
+            "Translate again",
+            "Translating again will remove the current voice. You will need to create the voice again.",
+        )
+
     def test_manual_is_a_first_class_video_project_type(self):
         config = VideoConfig(project_type="manual")
 
@@ -152,6 +184,49 @@ class ManualWorkflowTests(unittest.TestCase):
         changes = update.call_args.kwargs
         self.assertNotIn("manual_completed_stages", changes)
         self.assertNotIn("manual_completed_stage", changes)
+
+    def test_changing_mix_levels_invalidates_only_timeline_and_render(self):
+        saved = VideoConfig(project_type="manual", tts_volume=100)
+        edited = saved.model_copy(update={"tts_volume": 74})
+        video = SimpleNamespace(
+            **saved.model_dump(),
+            video_id="manual-video",
+            manual_completed_stage="render",
+            manual_completed_stages=["translation", "subtitles", "voice", "timeline", "render"],
+        )
+        video.subtitle_style = saved.subtitle_style
+        video.crop = saved.crop
+        host = SimpleNamespace(_build_config=lambda: edited)
+
+        with patch("haizflow.desktop.qml_controller.video_store.update_video") as update:
+            HaizFlowController._apply_setup_to_video(host, video)
+
+        changes = update.call_args.kwargs
+        self.assertEqual(
+            changes["manual_completed_stages"],
+            ["translation", "subtitles", "voice"],
+        )
+        self.assertEqual(changes["manual_completed_stage"], "voice")
+
+    def test_changing_recognition_audio_source_invalidates_translation(self):
+        saved = VideoConfig(project_type="manual", enable_audio_separation=False)
+        edited = saved.model_copy(update={"enable_audio_separation": True})
+        video = SimpleNamespace(
+            **saved.model_dump(),
+            video_id="manual-video",
+            manual_completed_stage="voice",
+            manual_completed_stages=["translation", "subtitles", "voice"],
+        )
+        video.subtitle_style = saved.subtitle_style
+        video.crop = saved.crop
+        host = SimpleNamespace(_build_config=lambda: edited)
+
+        with patch("haizflow.desktop.qml_controller.video_store.update_video") as update:
+            HaizFlowController._apply_setup_to_video(host, video)
+
+        changes = update.call_args.kwargs
+        self.assertEqual(changes["manual_completed_stages"], [])
+        self.assertEqual(changes["status"], "pending")
 
     def test_manual_subtitle_layout_is_independent_from_original_subtitle_cleanup(self):
         manual_video = SimpleNamespace(

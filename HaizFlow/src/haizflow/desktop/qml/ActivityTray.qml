@@ -11,8 +11,11 @@ Rectangle {
     property bool showDetails: true
     signal detailsRequested()
 
-    implicitHeight: visible ? UiMetrics.activityTrayHeight : 0
-    visible: activityState !== "ready" || message.length > 0
+    // Keep the status strip's geometry stable. Model warm-up used to remove
+    // this item when it finished, making every workspace visibly grow after
+    // a few seconds even though the window DPI and font sizes had not changed.
+    implicitHeight: UiMetrics.activityTrayHeight
+    visible: true
     color: Theme.surfaceElevated
     border.width: 1
     border.color: Theme.outline
@@ -22,6 +25,7 @@ Rectangle {
         anchors.leftMargin: Theme.space16
         anchors.rightMargin: Theme.space12
         spacing: Theme.space12
+        visible: root.activityState !== "ready" || root.message.length > 0
 
         FluentIcon {
             Layout.preferredWidth: 16

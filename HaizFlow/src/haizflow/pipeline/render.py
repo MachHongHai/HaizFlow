@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import tempfile
+from functools import lru_cache
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from pathlib import Path
@@ -102,7 +103,46 @@ def _karaoke_ass_text(text: str, duration_seconds: float) -> str:
     """Create a white-to-gold left-to-right ASS karaoke sweep."""
     units = _karaoke_units(text)
     durations = _allocate_centiseconds(units, duration_seconds)
+    return _karaoke_ass_from_units(units, durations)
+
+
+def _karaoke_ass_from_units(units: list[str], durations: list[int]) -> str:
+    """Render a pre-timed karaoke sequence without reallocating its clock."""
     return "".join(f"{{\\kf{duration}}}{_escape_ass_text(unit)}" for unit, duration in zip(units, durations))
+
+
+def _karaoke_part_timelines(
+    text: str,
+    parts: list[str],
+    duration_seconds: float,
+) -> list[tuple[list[str], list[int]]]:
+    """Partition one stable word clock across any visual phrase layout.
+
+    Font size can change where a cue is split into display phrases, but it
+    must never change when a spoken word is highlighted. Allocate the entire
+    cue once, then hand contiguous slices of that clock to each visual part.
+    """
+    full_units = _karaoke_units(text)
+    full_durations = _allocate_centiseconds(full_units, duration_seconds)
+    timelines: list[tuple[list[str], list[int]]] = []
+    cursor = 0
+    for index, part in enumerate(parts):
+        part_units = _karaoke_units(part)
+        count = len(part_units)
+        if index == len(parts) - 1:
+            durations = full_durations[cursor:]
+        else:
+            durations = full_durations[cursor : cursor + count]
+        if len(durations) != count:
+            # Defensive fallback for an unexpected tokenizer mismatch. The
+            # normal phrase splitter only partitions the original text.
+            durations = _allocate_centiseconds(
+                part_units,
+                max(0.01, duration_seconds * max(1, count) / max(1, len(full_units))),
+            )
+        timelines.append((part_units, durations))
+        cursor += count
+    return timelines
 
 
 @dataclass(frozen=True)
@@ -245,15 +285,15 @@ def _subtitle_parts_for_region(
     max_chars = max(10, int(inner_width / (display_font * 0.48)))
     parts = _split_subtitle_words(content, max_chars, strict_max_chars=fixed_font_size)
     duration_seconds = max(0.0, (subtitle.end - subtitle.start).total_seconds())
+    part_timelines = _karaoke_part_timelines(content, parts, duration_seconds)
     if fixed_font_size:
-        total_weight = sum(max(1, len(part)) for part in parts)
         cursor = subtitle.start
         result = []
-        for index, part in enumerate(parts):
+        for index, (part, timeline) in enumerate(zip(parts, part_timelines)):
             if index == len(parts) - 1:
                 end = subtitle.end
             else:
-                end = cursor + timedelta(seconds=duration_seconds * max(1, len(part)) / total_weight)
+                end = cursor + timedelta(seconds=sum(timeline[1]) / 100)
             result.append((cursor, end, part, subtitle_style.font_size, 100))
             cursor = end
         return result
@@ -279,19 +319,172 @@ def _subtitle_parts_for_region(
     # words creates a distracting zoom/pulse effect even when every phrase
     # individually fits. The longest phrase establishes the stable size.
     stable_font_size = min(item[1] for item in fitted_parts)
-    total_weight = sum(max(1, len(part)) for part in parts)
     cursor = subtitle.start
     result = []
-    for index, (part, fitted) in enumerate(zip(parts, fitted_parts)):
+    for index, (part, fitted, timeline) in enumerate(zip(parts, fitted_parts, part_timelines)):
         if index == len(parts) - 1:
             end = subtitle.end
         else:
-            fraction = max(1, len(part)) / total_weight
-            end = cursor + timedelta(seconds=duration_seconds * fraction)
+            end = cursor + timedelta(seconds=sum(timeline[1]) / 100)
         text, _font_size, _scale_x = fitted
         result.append((cursor, end, text, stable_font_size, 100))
         cursor = end
     return result
+
+
+@lru_cache(maxsize=512)
+def _subtitle_preview_timeline_for_layout(
+    content: str,
+    duration_centiseconds: int,
+    font_size: int,
+    layout_width: int,
+    outline: int,
+) -> tuple[tuple[str, ...], tuple[int, ...]]:
+    """Cache the exact phrase geometry used by one resolved ASS layout."""
+    inner_width = max(24, int(layout_width) - max(0, int(outline)) * 4)
+    display_font = max(10, min(160, int(font_size)))
+    max_chars = max(10, int(inner_width / (display_font * 0.48)))
+    parts = tuple(_split_subtitle_words(content, max_chars, strict_max_chars=True))
+    if len(parts) <= 1:
+        return parts, (max(1, duration_centiseconds),)
+    timelines = _karaoke_part_timelines(
+        content,
+        list(parts),
+        max(0.01, duration_centiseconds / 100),
+    )
+    cursor = 0
+    boundaries: list[int] = []
+    for _part, timeline in zip(parts, timelines):
+        cursor += sum(timeline[1])
+        boundaries.append(cursor)
+    return parts, tuple(boundaries)
+
+
+@lru_cache(maxsize=512)
+def _subtitle_preview_timeline(
+    content: str,
+    duration_centiseconds: int,
+    font_size: int,
+    box_width_percent: int,
+    output_width: int,
+    outline: int,
+) -> tuple[tuple[str, ...], tuple[int, ...]]:
+    """Cache phrase geometry; only the playhead changes during playback."""
+    resolved_width = max(24, int(output_width or 0))
+    layout_width = max(24.0, resolved_width * max(20, min(100, int(box_width_percent))) / 100)
+    return _subtitle_preview_timeline_for_layout(
+        content,
+        duration_centiseconds,
+        font_size,
+        round(layout_width),
+        outline,
+    )
+
+
+def subtitle_preview_fragment(
+    text: str,
+    start_seconds: float,
+    end_seconds: float,
+    playhead_seconds: float,
+    font_size: int,
+    box_width_percent: int,
+    output_width: int,
+    outline: int = 2,
+) -> str:
+    """Return the exact sequential phrase visible at one preview instant.
+
+    Manual direct manipulation draws text in QML over a subtitle-free proxy.
+    It must use the same phrase partition and word clock as the ASS renderer;
+    otherwise a long cue appears as one huge multiline block while dragging.
+    """
+    return str(
+        subtitle_preview_frame(
+            text,
+            start_seconds,
+            end_seconds,
+            playhead_seconds,
+            font_size,
+            box_width_percent,
+            output_width,
+            outline,
+        )["text"]
+    )
+
+
+def subtitle_preview_frame(
+    text: str,
+    start_seconds: float,
+    end_seconds: float,
+    playhead_seconds: float,
+    font_size: int,
+    box_width_percent: int,
+    output_width: int,
+    outline: int = 2,
+) -> dict[str, str | float]:
+    """Return the active phrase and its renderer-compatible karaoke sweep."""
+    content = " ".join(str(text or "").split())
+    if not content:
+        return {"text": "", "karaokeProgress": 0.0}
+    duration = max(0.01, float(end_seconds) - float(start_seconds))
+    duration_centiseconds = max(1, round(duration * 100))
+    parts, boundaries = _subtitle_preview_timeline(
+        content,
+        duration_centiseconds,
+        int(font_size),
+        int(box_width_percent),
+        int(output_width),
+        int(outline),
+    )
+    elapsed_centiseconds = round(
+        max(0.0, min(duration, float(playhead_seconds) - float(start_seconds))) * 100
+    )
+    for index, boundary in enumerate(boundaries):
+        if elapsed_centiseconds < boundary or index == len(parts) - 1:
+            phrase_start = boundaries[index - 1] if index > 0 else 0
+            phrase_duration = max(1, boundary - phrase_start)
+            progress = max(
+                0.0,
+                min(1.0, (elapsed_centiseconds - phrase_start) / phrase_duration),
+            )
+            return {"text": parts[index], "karaokeProgress": progress}
+    return {"text": parts[-1], "karaokeProgress": 1.0}
+
+
+def subtitle_preview_frame_for_layout(
+    text: str,
+    start_seconds: float,
+    end_seconds: float,
+    playhead_seconds: float,
+    font_size: int,
+    layout_width: int,
+    outline: int,
+) -> dict[str, str | float]:
+    """Return a preview frame using an already-resolved renderer layout."""
+    content = " ".join(str(text or "").split())
+    if not content:
+        return {"text": "", "karaokeProgress": 0.0}
+    duration = max(0.01, float(end_seconds) - float(start_seconds))
+    duration_centiseconds = max(1, round(duration * 100))
+    parts, boundaries = _subtitle_preview_timeline_for_layout(
+        content,
+        duration_centiseconds,
+        int(font_size),
+        int(layout_width),
+        int(outline),
+    )
+    elapsed_centiseconds = round(
+        max(0.0, min(duration, float(playhead_seconds) - float(start_seconds))) * 100
+    )
+    for index, boundary in enumerate(boundaries):
+        if elapsed_centiseconds < boundary or index == len(parts) - 1:
+            phrase_start = boundaries[index - 1] if index > 0 else 0
+            phrase_duration = max(1, boundary - phrase_start)
+            progress = max(
+                0.0,
+                min(1.0, (elapsed_centiseconds - phrase_start) / phrase_duration),
+            )
+            return {"text": parts[index], "karaokeProgress": progress}
+    return {"text": parts[-1], "karaokeProgress": 1.0}
 
 
 def _write_positioned_ass(
@@ -338,13 +531,22 @@ def _write_positioned_ass(
         x = round(width * subtitle_style.position_x_percent / 100)
         y = round(height * subtitle_style.position_y_percent / 100)
         if region_layout:
-            for start_time, end_time, content, font_size, scale_x in _subtitle_parts_for_region(
+            visual_parts = _subtitle_parts_for_region(
                 subtitle,
                 region_layout,
                 subtitle_style,
                 fixed_font_size=fixed_font_size,
+            )
+            timelines = _karaoke_part_timelines(
+                subtitle.content,
+                [part[2] for part in visual_parts],
+                (subtitle.end - subtitle.start).total_seconds(),
+            )
+            for (start_time, end_time, content, font_size, scale_x), (units, durations) in zip(
+                visual_parts,
+                timelines,
             ):
-                karaoke = _karaoke_ass_text(content, (end_time - start_time).total_seconds())
+                karaoke = _karaoke_ass_from_units(units, durations)
                 cue_outline = _karaoke_outline(font_size, subtitle_style.outline)
                 lines.append(
                     f"Dialogue: 0,{_ass_timestamp(start_time)},{_ass_timestamp(end_time)},Default,,0,0,0,,"
@@ -571,6 +773,75 @@ def _manual_subtitle_layout(
     return SubtitleRegionLayout(x, y, width, height)
 
 
+def resolve_subtitle_preview_layout(
+    region: dict | None,
+    source_width: int,
+    source_height: int,
+    output_format: str,
+    crop: CropSettings,
+    subtitle_style: SubtitleStyle,
+    subtitle_layout_override: bool,
+) -> dict[str, int]:
+    """Resolve the exact subtitle geometry and style used by ``render_video``.
+
+    The direct manipulation layer is drawn by Qt rather than libass.  It must
+    still use the renderer's effective OCR region, preset font size and
+    outline, otherwise a caption visibly changes the moment it is selected.
+    """
+    if source_width <= 0 or source_height <= 0:
+        return {}
+    if not isinstance(crop, CropSettings):
+        crop = CropSettings(**dict(crop or {}))
+    if not isinstance(subtitle_style, SubtitleStyle):
+        subtitle_style = SubtitleStyle(**dict(subtitle_style or {}))
+    _crop_x, _crop_y, cropped_width, cropped_height = _crop_geometry(
+        source_width,
+        source_height,
+        crop,
+    )
+    if output_format in {"tiktok_9_16_crop", "blur_background_9_16"}:
+        output_width, output_height = 1080, 1920
+    else:
+        output_width = max(2, int(cropped_width) // 2 * 2)
+        output_height = max(2, int(cropped_height) // 2 * 2)
+    region_layout = _output_subtitle_region_layout(
+        region,
+        source_width,
+        source_height,
+        output_format,
+        crop,
+        output_width,
+        output_height,
+    )
+    effective_style = (
+        subtitle_style
+        if subtitle_layout_override
+        else _style_for_original_subtitle_region(
+            subtitle_style,
+            region_layout,
+            output_width,
+            output_height,
+        )
+    )
+    layout = (
+        _manual_subtitle_layout(effective_style, output_width, output_height)
+        if subtitle_layout_override
+        else region_layout or _default_subtitle_layout(effective_style, output_width, output_height)
+    )
+    return {
+        "outputWidth": output_width,
+        "outputHeight": output_height,
+        "layoutWidth": max(24, round(layout.width)),
+        "layoutHeight": max(20, round(layout.height)),
+        "fontSize": int(effective_style.font_size),
+        "outline": int(_karaoke_outline(effective_style.font_size, effective_style.outline)),
+        "positionXPercent": int(effective_style.position_x_percent),
+        "positionYPercent": int(effective_style.position_y_percent),
+        "boxWidthPercent": max(20, min(100, round(layout.width * 100 / output_width))),
+        "boxHeightPercent": max(1, min(100, round(layout.height * 100 / output_height))),
+    }
+
+
 def _source_subtitle_removal_region(
     region: dict | None, source_width: int, source_height: int
 ) -> tuple[int, int, int, int] | None:
@@ -631,6 +902,7 @@ def _subtitle_blur_prefix(
     region: tuple[int, int, int, int],
     source_width: int,
     source_height: int,
+    enable_expression: str = "",
 ) -> str:
     """Build one stable blur that completely suppresses text inside the OCR box."""
     x, y, width, height, feather = _feathered_blur_region(
@@ -658,13 +930,14 @@ def _subtitle_blur_prefix(
     # glyphs. The previous zero weight at the boundary left letters visible.
     blur_weight = f"0.94+0.06*min(1,{edge_distance}/{feather})"
     blend_filter = f"blend=all_expr='A*(1-({blur_weight}))+B*({blur_weight})'"
+    overlay_enable = f":enable='{enable_expression}'" if enable_expression else ""
     return (
         f"[0:v]split=3[source_clean][source_region][source_blur];"
         f"[source_region]crop={width}:{height}:{x}:{y}[original_region];"
         f"[source_blur]crop={sample_width}:{sample_height}:{sample_x}:{sample_y},"
         f"{blur_filter},crop={width}:{height}:{inner_x}:{inner_y}[subtitle_blur];"
         f"[original_region][subtitle_blur]{blend_filter}[subtitle_blended];"
-        f"[source_clean][subtitle_blended]overlay={x}:{y}[source_without_original];"
+        f"[source_clean][subtitle_blended]overlay={x}:{y}{overlay_enable}[source_without_original];"
     )
 
 
@@ -694,6 +967,7 @@ def _subtitle_patch_prefix(
     region: tuple[int, int, int, int],
     source_width: int,
     source_height: int,
+    enable_expression: str = "",
 ) -> str:
     """Cover the OCR box with real pixels from an adjacent picture strip."""
     x, y, width, height = region
@@ -703,16 +977,57 @@ def _subtitle_patch_prefix(
     height = max(2, min(height, source_height - y))
     patch_y = _subtitle_patch_source_y((x, y, width, height), source_height)
     if patch_y is None:
-        return _subtitle_blur_prefix((x, y, width, height), source_width, source_height)
+        return _subtitle_blur_prefix(
+            (x, y, width, height), source_width, source_height, enable_expression
+        )
     feather = max(2, min(8, round(min(width, height) * 0.06)))
     edge_distance = "min(min(X,W-1-X),min(Y,H-1-Y))"
+    overlay_enable = f":enable='{enable_expression}'" if enable_expression else ""
     return (
         f"[0:v]split=2[source_clean][source_patch];"
         f"[source_patch]crop={width}:{height}:{x}:{patch_y},format=rgba,"
         f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
         f"a='255*min(1,{edge_distance}/{feather})'[subtitle_patch];"
-        f"[source_clean][subtitle_patch]overlay={x}:{y}[source_without_original];"
+        f"[source_clean][subtitle_patch]overlay={x}:{y}{overlay_enable}[source_without_original];"
     )
+
+
+def _subtitle_visibility_enable(
+    intervals: list[tuple[float, float]] | None,
+    *,
+    source_start_seconds: float = 0.0,
+    source_duration_seconds: float | None = None,
+) -> str:
+    """Return a local-timeline FFmpeg expression for source caption visibility.
+
+    OCR determines geometry, while transcription timings determine when that
+    geometry should be treated.  Keeping the two independent prevents a clean
+    first frame from receiving a conspicuous patch strip without expanding the
+    OCR rectangle itself.
+    """
+    if not intervals:
+        return ""
+    window_start = max(0.0, float(source_start_seconds or 0.0))
+    window_end = (
+        float("inf")
+        if source_duration_seconds is None
+        else window_start + max(0.0, float(source_duration_seconds or 0.0))
+    )
+    normalized: list[tuple[float, float]] = []
+    for raw_start, raw_end in intervals:
+        try:
+            start = max(window_start, float(raw_start))
+            end = min(window_end, float(raw_end))
+        except (TypeError, ValueError):
+            continue
+        if end <= start + 0.01:
+            continue
+        local = (max(0.0, start - window_start), max(0.0, end - window_start))
+        if normalized and local[0] <= normalized[-1][1] + 0.06:
+            normalized[-1] = (normalized[-1][0], max(normalized[-1][1], local[1]))
+        else:
+            normalized.append(local)
+    return "+".join(f"between(t,{start:.3f},{end:.3f})" for start, end in normalized)
 
 
 def _original_subtitle_removal_prefix(
@@ -720,10 +1035,11 @@ def _original_subtitle_removal_prefix(
     source_width: int,
     source_height: int,
     mode: str,
+    enable_expression: str = "",
 ) -> str:
     if str(mode or "").strip().lower() in {"patch", "inpaint"}:
-        return _subtitle_patch_prefix(region, source_width, source_height)
-    return _subtitle_blur_prefix(region, source_width, source_height)
+        return _subtitle_patch_prefix(region, source_width, source_height, enable_expression)
+    return _subtitle_blur_prefix(region, source_width, source_height, enable_expression)
 
 
 def _watermark_filter(
@@ -819,6 +1135,7 @@ def render_video(
     process_registry_id: str | None = None,
     compatibility_preview: bool = False,
     subtitle_region_override: dict | None = None,
+    original_subtitle_intervals: list[tuple[float, float]] | None = None,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     process_key = str(process_registry_id or video_id)
@@ -929,6 +1246,11 @@ def render_video(
     )
     requested_removal_mode = str(original_subtitle_removal_mode).strip().lower()
     removal_mode = "patch" if requested_removal_mode in {"patch", "inpaint"} else "blur"
+    removal_enable = _subtitle_visibility_enable(
+        original_subtitle_intervals,
+        source_start_seconds=source_start_seconds,
+        source_duration_seconds=source_duration,
+    )
     if removal_region:
         x, y, width, height = removal_region
         log_to_video(
@@ -954,6 +1276,7 @@ def render_video(
                 source_width,
                 source_height,
                 removal_mode,
+                removal_enable,
             )
             input_label = "[source_without_original]"
         source = f"{input_label}{prefix + ',' if prefix else ''}split[base][fg]"
@@ -974,6 +1297,7 @@ def render_video(
                 source_width,
                 source_height,
                 removal_mode,
+                removal_enable,
             )
             vf_filter = f"{removal_prefix}[source_without_original]{','.join(filters)}[outv]"
         else:

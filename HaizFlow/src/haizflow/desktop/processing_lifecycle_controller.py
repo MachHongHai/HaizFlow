@@ -87,7 +87,15 @@ class ProcessingLifecycleController:
         if not video or video.status == "cancelled" or video_id in host._deleted_video_ids:
             return
         try:
-            if not host._initial_model_warmup_done.is_set():
+            manual_tool = (
+                str(getattr(video, "manual_target_tool", "") or "")
+                if getattr(video, "project_type", "single") == "manual"
+                else ""
+            )
+            requires_model_runtime = not manual_tool or manual_tool in {
+                "separation", "recognition", "translation", "image", "voice"
+            }
+            if requires_model_runtime and not host._initial_model_warmup_done.is_set():
                 video_store.log_to_video(video_id, "Waiting for startup model warm-up to finish.")
                 video_store.update_video(
                     video_id,
@@ -111,27 +119,39 @@ class ProcessingLifecycleController:
             current_video = video_store.get_video(video_id)
             if not current_video or current_video.status in {"paused", "cancelled"}:
                 return
-            runtime_probe_error = getattr(host, "_runtime_probe_error", "")
-            if runtime_probe_error:
-                raise RuntimeError(f"Model runtime validation failed: {runtime_probe_error}")
-            if getattr(host, "_model_setup_state", "ready") != "ready":
-                raise RuntimeError("Required models are not ready.")
-            with host._model_runtime_lock:
-                pass
+            if requires_model_runtime:
+                runtime_probe_error = getattr(host, "_runtime_probe_error", "")
+                if runtime_probe_error:
+                    raise RuntimeError(f"Model runtime validation failed: {runtime_probe_error}")
+                if getattr(host, "_model_setup_state", "ready") != "ready":
+                    raise RuntimeError("Required models are not ready.")
+                with host._model_runtime_lock:
+                    pass
             video_store.update_video(
                 video_id,
                 status="processing",
                 step="starting",
-                step_detail="Model warm-up complete; starting video",
+                step_detail=(
+                    "Model warm-up complete; starting tool"
+                    if requires_model_runtime else "Starting Manual tool"
+                ),
             )
-            from haizflow.pipeline.process_video import process_video_sync
 
             stop_after = None
             if getattr(current_video, "project_type", "single") == "manual":
+                target_tool = str(getattr(current_video, "manual_target_tool", "") or "")
+                if target_tool:
+                    from haizflow.pipeline.manual_tools import run_manual_tool_sync
+
+                    video_store.log_to_video(video_id, f"Manual tool requested: {target_tool}.")
+                    run_manual_tool_sync(video_id, target_tool)
+                    return
                 stop_after = str(getattr(current_video, "manual_target_stage", "") or "")
                 if not stop_after:
-                    raise RuntimeError("Choose a Manual stage before starting processing.")
+                    raise RuntimeError("Choose a Manual tool before starting processing.")
                 video_store.log_to_video(video_id, f"Manual run requested through stage: {stop_after}.")
+            from haizflow.pipeline.process_video import process_video_sync
+
             if stop_after:
                 process_video_sync(video_id, stop_after=stop_after)
             else:

@@ -70,7 +70,7 @@ from haizflow.core.hardware import (
 from haizflow.core.model_integrity import ModelIntegrityError, verify_whisper_turbo_model
 from haizflow.pipeline.process_registry import pause_video
 from haizflow.schemas.video import CropSettings, VideoConfig, SubtitleStyle
-from haizflow.services import desktop_settings, video_store, project_store
+from haizflow.services import desktop_settings, manual_artifacts, video_store, project_store
 from haizflow.services.desktop_videos import create_desktop_video, migrate_legacy_single_export
 from haizflow.services.processing_queue import SerialProcessingQueue
 from haizflow.services.model_bootstrap import models_ready
@@ -103,6 +103,7 @@ class HaizFlowController(QObject):
     ttsVolumeChanged = Signal()
     watermarkTextChanged = Signal()
     subtitleSettingsChanged = Signal()
+    cropSettingsChanged = Signal()
     backgroundMusicChanged = Signal()
     backgroundMusicImportChanged = Signal()
     batchBackgroundMusicDraftReady = Signal(str)
@@ -137,6 +138,7 @@ class HaizFlowController(QObject):
     appAlertRequested = Signal(str, str, str)
     appConfirmationRequested = Signal(str, str)
     editorPreviewChanged = Signal()
+    manualToolStateChanged = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -170,6 +172,7 @@ class HaizFlowController(QObject):
         self._original_subtitle_removal_mode = "patch"
         self._subtitle_style = SubtitleStyle()
         self._subtitle_layout_override = False
+        self._crop_settings = CropSettings()
         self._background_music_path = ""
         self._background_music_import_busy = False
         self._background_music_import_status = ""
@@ -184,6 +187,7 @@ class HaizFlowController(QObject):
         # shared QML editor fields.  It prevents a delayed autosave from a
         # previously selected card from being written into the next video.
         self._settings_owner_video_id = None
+        self._manual_settings_drafts = {}
         self._selected_video_snapshot = None
         self.selectedVideoChanged.connect(self._refresh_selected_video_snapshot)
         self.selectedVideoChanged.connect(self.selectedElapsedChanged.emit)
@@ -209,6 +213,9 @@ class HaizFlowController(QObject):
         self._model_setup_target_device = ""
         self._startup_maintenance_thread: threading.Thread | None = None
         self._startup_maintenance_events = queue.Queue()
+        self._manual_cache_events = queue.Queue()
+        self._manual_cache_jobs: set[str] = set()
+        self._manual_cache_jobs_lock = threading.Lock()
         self._hardware_probe_events = queue.Queue()
         self._hardware_probe_lock = threading.Lock()
         self._hardware_probe_running = False
@@ -343,6 +350,7 @@ class HaizFlowController(QObject):
         self._drain_tiktok_publish_events()
         self._drain_audio_preview_events()
         self._drain_startup_maintenance_events()
+        self._drain_manual_cache_events()
         self._drain_model_setup_events()
         HaizFlowController._runtime_device_for(self).drain_hardware_events()
 
@@ -394,6 +402,63 @@ class HaizFlowController(QObject):
                 self._status_message = f"Organized {len(migrated)} video workspace(s) into their projects."
             self.refreshVideos()
         self.statusMessageChanged.emit()
+
+    def _schedule_manual_cache_migration(self, video_id: str) -> None:
+        """Migrate one Manual workspace after Qt has rendered the editor.
+
+        Legacy registration can checksum large media. It must never run in
+        ``selectVideo`` because that slot executes on the GUI thread.
+        """
+        normalized_id = str(video_id or "")
+        if not normalized_id or self._shutdown_started:
+            return
+        with self._manual_cache_jobs_lock:
+            if normalized_id in self._manual_cache_jobs:
+                return
+            self._manual_cache_jobs.add(normalized_id)
+
+        def migrate() -> None:
+            error = ""
+            changed = False
+            try:
+                from haizflow.pipeline.manual_tools import migrate_legacy_artifacts
+
+                changed = bool(migrate_legacy_artifacts(normalized_id))
+            except (OSError, RuntimeError, ValueError) as exc:
+                error = str(exc)
+            finally:
+                self._manual_cache_events.put(
+                    {"video_id": normalized_id, "changed": changed, "error": error}
+                )
+
+        threading.Thread(
+            target=migrate,
+            name=f"manual-cache-migration-{normalized_id[:8]}",
+            daemon=True,
+        ).start()
+
+    def _drain_manual_cache_events(self) -> None:
+        changed_selected = False
+        while True:
+            try:
+                event = self._manual_cache_events.get_nowait()
+            except queue.Empty:
+                break
+            video_id = str(event.get("video_id") or "")
+            with self._manual_cache_jobs_lock:
+                self._manual_cache_jobs.discard(video_id)
+            error = str(event.get("error") or "")
+            if error:
+                video_store.log_to_video(video_id, f"Manual cache migration deferred: {error}")
+            if video_id != str(self._selected_video_id or ""):
+                continue
+            self._selected_video_snapshot = video_store.get_video(video_id)
+            changed_selected = True
+        if changed_selected:
+            # One coalesced refresh is enough even if several worker messages
+            # arrived during the same dispatcher tick.
+            self.manualToolStateChanged.emit("")
+            self.selectedVideoChanged.emit()
 
     def _drain_model_setup_events(self) -> None:
         changed = False
@@ -976,6 +1041,9 @@ class HaizFlowController(QObject):
             return
         self._tts_provider = provider
         self._tts_voice = normalized_voice
+        speaker_changed = provider != "omnivoice" and getattr(self, "_speaker_mode", "single") != "single"
+        if speaker_changed:
+            self._speaker_mode = "single"
         preview = getattr(self, "_audio_preview", None)
         if preview is not None:
             preview.invalidate()
@@ -983,6 +1051,8 @@ class HaizFlowController(QObject):
             self.ttsProviderChanged.emit()
         if voice_changed:
             self.ttsVoiceChanged.emit()
+        if speaker_changed:
+            self.speakerModeChanged.emit()
         self.ttsProviderOptionsChanged.emit()
         self.ttsVoiceOptionsChanged.emit()
 
@@ -1039,7 +1109,12 @@ class HaizFlowController(QObject):
 
     @speakerMode.setter
     def speakerMode(self, value):
-        normalized = "multiple" if str(value or "").strip().lower() == "multiple" else "single"
+        normalized = (
+            "multiple"
+            if self._tts_provider == "omnivoice"
+            and str(value or "").strip().lower() == "multiple"
+            else "single"
+        )
         if self._speaker_mode != normalized:
             self._speaker_mode = normalized
             self.speakerModeChanged.emit()
@@ -1050,7 +1125,19 @@ class HaizFlowController(QObject):
         # Selecting the clone entry opens its setup dialog.  Do not disable the
         # entry before a sample exists, otherwise the user has no path to add
         # an authorised reference recording.
-        return [{**item, "available": True} for item in options]
+        return [
+            {
+                **item,
+                "available": True,
+                "previewAvailable": self._audio_preview.has_voice_sample(
+                    self._tts_provider,
+                    item.get("voice", ""),
+                    self._target_language,
+                    selected_video_id=str(self._selected_video_id or ""),
+                ),
+            }
+            for item in options
+        ]
 
     @Property(str, notify=selectedVideoChanged)
     def voiceCloneReferencePath(self):
@@ -1067,7 +1154,13 @@ class HaizFlowController(QObject):
     def voiceOptionsForLanguage(self, language_code: str):
         language = str(language_code or "vi")
         return [
-            {**item, "available": item.get("voice") != "omnivoice:clone"}
+            {
+                **item,
+                "available": item.get("voice") != "omnivoice:clone",
+                "previewAvailable": self._audio_preview.has_voice_sample(
+                    "omnivoice", item.get("voice", ""), language
+                ),
+            }
             for item in self._voice_options_for_language(language, "omnivoice")
         ]
 
@@ -1081,7 +1174,17 @@ class HaizFlowController(QObject):
         # cloning is deliberately per-video because every source needs its own
         # authorised reference recording. The selected-video property above
         # enables it only when that file actually exists.
-        return [{**item, "available": item.get("voice") != "omnivoice:clone"} for item in options]
+        effective_provider = self._normalized_tts_provider(language_code, provider)
+        return [
+            {
+                **item,
+                "available": item.get("voice") != "omnivoice:clone",
+                "previewAvailable": self._audio_preview.has_voice_sample(
+                    effective_provider, item.get("voice", ""), str(language_code or "vi")
+                ),
+            }
+            for item in options
+        ]
 
     @Property(int, notify=ttsVoiceOptionsChanged)
     def ttsVoiceIndex(self):
@@ -1157,9 +1260,7 @@ class HaizFlowController(QObject):
         # independent visual tools. Auto/Batch keep their established compact
         # behaviour where OCR placement owns the replacement subtitle region.
         layout_changed = (
-            normalized
-            and self._subtitle_layout_override
-            and getattr(self, "_project_type", "single") != "manual"
+            normalized and self._subtitle_layout_override and getattr(self, "_project_type", "single") != "manual"
         )
         if changed or layout_changed:
             self._remove_original_subtitles = normalized
@@ -1200,6 +1301,11 @@ class HaizFlowController(QObject):
     def subtitleFontSize(self, value):
         self._set_subtitle_style_value("font_size", value, 10, 160)
 
+    @Property(bool, notify=subtitleSettingsChanged)
+    def subtitleLayoutOverride(self):
+        """Whether Manual is using an explicit user-positioned caption box."""
+        return self._subtitle_layout_override
+
     @Property(int, notify=subtitleSettingsChanged)
     def subtitlePositionXPercent(self):
         return self._subtitle_style.position_x_percent
@@ -1231,6 +1337,85 @@ class HaizFlowController(QObject):
     @subtitleBoxHeightPercent.setter
     def subtitleBoxHeightPercent(self, value):
         self._set_subtitle_style_value("box_height_percent", value, 1, 100)
+
+    def _set_crop_value(self, key: str, value: float) -> None:
+        """Update one crop edge while preserving a usable visible region."""
+        normalized = round(max(0.0, min(84.0, float(value))), 4)
+        crop = self._crop_settings.model_dump()
+        opposite = {
+            "left_percent": "right_percent",
+            "right_percent": "left_percent",
+            "top_percent": "bottom_percent",
+            "bottom_percent": "top_percent",
+        }[key]
+        # A crop smaller than 8% is almost impossible to manipulate and can
+        # produce invalid even-sized FFmpeg geometry on small proxy frames.
+        normalized = round(min(normalized, 92.0 - float(crop[opposite])), 4)
+        if abs(float(crop[key]) - normalized) < 0.0001:
+            return
+        crop[key] = normalized
+        # Direct manipulation uses edge crop. Clear the legacy zoom/pan mode
+        # so the QML frame and FFmpeg always describe the same rectangle.
+        crop.update(zoom_percent=100, pan_x_percent=0, pan_y_percent=0)
+        self._crop_settings = CropSettings(**crop)
+        self.cropSettingsChanged.emit()
+
+    @Property(float, notify=cropSettingsChanged)
+    def cropLeftPercent(self):
+        return self._crop_settings.left_percent
+
+    @cropLeftPercent.setter
+    def cropLeftPercent(self, value):
+        self._set_crop_value("left_percent", value)
+
+    @Property(float, notify=cropSettingsChanged)
+    def cropRightPercent(self):
+        return self._crop_settings.right_percent
+
+    @cropRightPercent.setter
+    def cropRightPercent(self, value):
+        self._set_crop_value("right_percent", value)
+
+    @Property(float, notify=cropSettingsChanged)
+    def cropTopPercent(self):
+        return self._crop_settings.top_percent
+
+    @cropTopPercent.setter
+    def cropTopPercent(self, value):
+        self._set_crop_value("top_percent", value)
+
+    @Property(float, notify=cropSettingsChanged)
+    def cropBottomPercent(self):
+        return self._crop_settings.bottom_percent
+
+    @cropBottomPercent.setter
+    def cropBottomPercent(self, value):
+        self._set_crop_value("bottom_percent", value)
+
+    @Slot(float, float, float, float)
+    def setCropDraft(self, left, top, right, bottom):
+        """Publish one atomic crop-frame update from the QML drag handler."""
+        left = round(max(0.0, min(84.0, float(left))), 4)
+        top = round(max(0.0, min(84.0, float(top))), 4)
+        right = round(max(0.0, min(84.0, float(right), 92.0 - left)), 4)
+        bottom = round(max(0.0, min(84.0, float(bottom), 92.0 - top)), 4)
+        next_crop = CropSettings(
+            left_percent=left,
+            top_percent=top,
+            right_percent=right,
+            bottom_percent=bottom,
+        )
+        if self._crop_settings == next_crop:
+            return
+        self._crop_settings = next_crop
+        self.cropSettingsChanged.emit()
+
+    @Slot()
+    def resetCropDraft(self):
+        if self._crop_settings == CropSettings():
+            return
+        self._crop_settings = CropSettings()
+        self.cropSettingsChanged.emit()
 
     @Property(str, notify=backgroundMusicChanged)
     def backgroundMusicPath(self):
@@ -1406,11 +1591,11 @@ class HaizFlowController(QObject):
         background_music_source = existing_url(files.get("background_music") or "")
 
         ocr_region = {}
-        ocr_cache = os.path.join(video_dir, "temp", "original_subtitle_region.json")
+        ocr_cache = str(files.get("ocr_region") or os.path.join(video_dir, "temp", "original_subtitle_region.json"))
         try:
             with open(ocr_cache, "r", encoding="utf-8") as cache_file:
                 payload = json.load(cache_file)
-            candidate = payload.get("region", {}) if isinstance(payload, dict) else {}
+            candidate = payload.get("region", payload) if isinstance(payload, dict) else {}
             if isinstance(candidate, dict):
                 required = {"x_percent", "y_percent", "width_percent", "height_percent"}
                 if required.issubset(candidate):
@@ -1445,6 +1630,17 @@ class HaizFlowController(QObject):
         final_mix_source = rendered_video_source
         use_final_mix = bool(final_mix_source)
         use_separated_background = bool(not use_final_mix and separation_enabled and separated_background_source)
+        from haizflow.pipeline.render import resolve_subtitle_preview_layout
+
+        subtitle_render_layout = resolve_subtitle_preview_layout(
+            ocr_region,
+            max(0, int(getattr(video, "video_width", 0) or 0)),
+            max(0, int(getattr(video, "video_height", 0) or 0)),
+            str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
+            crop or CropSettings(),
+            subtitle_style or SubtitleStyle(),
+            bool(getattr(video, "subtitle_layout_override", False)),
+        )
         return {
             "renderedVideoSource": rendered_video_source,
             "finalMixSource": final_mix_source,
@@ -1453,12 +1649,8 @@ class HaizFlowController(QObject):
             "musicSource": background_music_source if not use_final_mix else "",
             "useVideoAudio": not use_final_mix and not use_separated_background,
             "videoVolume": max(0.0, min(1.0, float(getattr(video, "original_video_volume", 60)) / 100.0)),
-            "backgroundVolume": max(
-                0.0, min(1.0, float(getattr(video, "original_video_volume", 60)) / 100.0)
-            ),
-            "musicVolume": max(
-                0.0, min(1.0, float(getattr(video, "background_music_volume", 30)) / 100.0)
-            ),
+            "backgroundVolume": max(0.0, min(1.0, float(getattr(video, "original_video_volume", 60)) / 100.0)),
+            "musicVolume": max(0.0, min(1.0, float(getattr(video, "background_music_volume", 30)) / 100.0)),
             "ttsVolume": max(0.0, min(1.0, float(getattr(video, "tts_volume", 100)) / 100.0)),
             # Visual settings are copied from the selected video rather than
             # read from the controller's current draft.  This prevents an
@@ -1466,6 +1658,7 @@ class HaizFlowController(QObject):
             # position, size or crop while navigation/settings signals race.
             "subtitleStyle": serializable_settings(subtitle_style),
             "subtitleLayoutOverride": bool(getattr(video, "subtitle_layout_override", False)),
+            "subtitleRenderLayout": subtitle_render_layout,
             "outputFormat": str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
             "crop": serializable_settings(crop),
             "audioSeparationEnabled": separation_enabled,
@@ -1483,6 +1676,11 @@ class HaizFlowController(QObject):
     @Property(str, notify=editorPreviewChanged)
     def editorPreviewSource(self):
         return self._editor_preview.source
+
+    @Property(str, notify=editorPreviewChanged)
+    def editorPreviewBaseSource(self):
+        """Return the current subtitle-free A/V proxy for direct transforms."""
+        return self._editor_preview.base_source
 
     @Property(str, notify=editorPreviewChanged)
     def editorPreviewAudioSource(self):
@@ -1512,6 +1710,76 @@ class HaizFlowController(QObject):
     @Property(str, notify=editorPreviewChanged)
     def editorPreviewStage(self):
         return self._editor_preview.stage
+
+    @Slot(str, float, float, float, int, int, int, result=str)
+    def subtitlePreviewFragment(
+        self,
+        text,
+        start_seconds,
+        end_seconds,
+        playhead_seconds,
+        font_size,
+        box_width_percent,
+        output_width,
+    ):
+        """Resolve the same timed phrase used by the production ASS render."""
+        from haizflow.pipeline.render import subtitle_preview_fragment
+
+        return subtitle_preview_fragment(
+            text,
+            start_seconds,
+            end_seconds,
+            playhead_seconds,
+            font_size,
+            box_width_percent,
+            output_width,
+            self._subtitle_style.outline,
+        )
+
+    @Slot(str, float, float, float, int, int, int, result="QVariantMap")
+    def subtitlePreviewFrame(
+        self,
+        text,
+        start_seconds,
+        end_seconds,
+        playhead_seconds,
+        font_size,
+        layout_width,
+        outline,
+    ):
+        """Resolve the active phrase and karaoke fill used by Manual preview."""
+        from haizflow.pipeline.render import subtitle_preview_frame_for_layout
+
+        return subtitle_preview_frame_for_layout(
+            text,
+            start_seconds,
+            end_seconds,
+            playhead_seconds,
+            font_size,
+            layout_width,
+            outline,
+        )
+
+    @Slot(result=bool)
+    def adoptSubtitlePreviewLayout(self):
+        """Atomically turn the current rendered layout into an editable layout."""
+        preview = self.reviewPreviewMedia
+        layout = dict(preview.get("subtitleRenderLayout") or {}) if isinstance(preview, dict) else {}
+        if not layout:
+            return False
+        style = self._subtitle_style.model_dump()
+        style.update(
+            font_size=int(layout.get("fontSize", style["font_size"])),
+            outline=int(layout.get("outline", style["outline"])),
+            position_x_percent=int(layout.get("positionXPercent", style["position_x_percent"])),
+            position_y_percent=int(layout.get("positionYPercent", style["position_y_percent"])),
+            box_width_percent=int(layout.get("boxWidthPercent", style["box_width_percent"])),
+            box_height_percent=int(layout.get("boxHeightPercent", style["box_height_percent"])),
+        )
+        self._subtitle_style = SubtitleStyle(**style)
+        self._subtitle_layout_override = True
+        self.subtitleSettingsChanged.emit()
+        return self.saveSelectedVideoSettings()
 
     @Property(bool, notify=selectedVideoChanged)
     def canEditSelectedSubtitles(self):
@@ -1562,6 +1830,49 @@ class HaizFlowController(QObject):
     def manualTargetStage(self):
         video = self._selected_video()
         return str(getattr(video, "manual_target_stage", "") or "") if video else ""
+
+    @Property(str, notify=selectedVideoChanged)
+    def manualTargetTool(self):
+        video = self._selected_video()
+        return str(getattr(video, "manual_target_tool", "") or "") if video else ""
+
+    @Property("QVariantList", notify=selectedVideoChanged)
+    def manualToolModel(self):
+        video = self._selected_video()
+        if not video or getattr(video, "project_type", "single") != "manual":
+            return []
+        try:
+            from haizflow.pipeline.manual_tools import tool_states
+
+            display_video = video
+            if (
+                video.status in {"pending", "processing"}
+                and getattr(video, "manual_target_tool", "")
+                and not self._processing_queue.contains(video.video_id)
+            ):
+                # A terminated worker can leave a durable processing snapshot
+                # behind. The queue is authoritative for live UI state; do not
+                # block every Manual control with a phantom "other tool".
+                display_video = video.model_copy(
+                    update={"status": "manual_ready", "manual_target_tool": ""}
+                )
+            return tool_states(display_video, language=self._settings_language)
+        except (OSError, RuntimeError, ValueError):
+            return []
+
+    @Property("QVariantMap", notify=selectedVideoChanged)
+    def manualArtifactSummary(self):
+        video = self._selected_video()
+        if not video or getattr(video, "project_type", "single") != "manual":
+            return {"count": 0, "sizeBytes": 0, "activeCount": 0, "activeKinds": []}
+        manifest = manual_artifacts.load_manifest(video.video_id)
+        records = list(manifest.get("artifacts", {}).values())
+        return {
+            "count": len(records),
+            "sizeBytes": manual_artifacts.cache_size(video.video_id),
+            "activeCount": len(getattr(video, "active_artifacts", {}) or {}),
+            "activeKinds": list((getattr(video, "active_artifacts", {}) or {}).keys()),
+        }
 
     @Property(str, notify=selectedVideoChanged)
     def selectedProgressDetail(self):
@@ -1937,6 +2248,16 @@ class HaizFlowController(QObject):
     def previewAudioMix(self):
         return self._audio_preview.start()
 
+    @Slot(str, str, str, result=bool)
+    def previewVoiceSample(self, provider: str, voice: str, target_language: str):
+        """Prepare a short, cached sample for a voice-library row."""
+        return self._audio_preview.start(
+            provider=provider,
+            voice=voice,
+            target_language=target_language,
+            voice_only=True,
+        )
+
     @Slot(str, str, str, bool, int, int, int, str, result=bool)
     def previewBatchAudioMix(
         self,
@@ -2231,9 +2552,35 @@ class HaizFlowController(QObject):
         QML settings use a short debounce.  Capturing the id at edit time and
         validating it here makes a selection change an atomic draft boundary.
         """
-        return HaizFlowController._project_commands_for(self).persist_selected_video_settings(
-            str(video_id or "")
-        )
+        requested_id = str(video_id or "")
+        if not requested_id:
+            return False
+        if requested_id == str(self._selected_video_id or ""):
+            saved = HaizFlowController._project_commands_for(self).persist_selected_video_settings(requested_id)
+        else:
+            draft = self._manual_settings_drafts.get(requested_id)
+            video = video_store.get_video(requested_id)
+            if not draft or not video or self._processing_queue.contains(requested_id):
+                return False
+            self._apply_config_to_video(video, draft)
+            saved = True
+        if saved:
+            self._manual_settings_drafts.pop(requested_id, None)
+        return saved
+
+    @Slot(str, result=bool)
+    def captureVideoSettingsDraft(self, video_id):
+        """Snapshot settings for the video that owns the current editor fields."""
+        requested_id = str(video_id or "")
+        if (
+            not requested_id
+            or requested_id != str(self._selected_video_id or "")
+            or requested_id != str(self._settings_owner_video_id or "")
+            or self._processing_queue.contains(requested_id)
+        ):
+            return False
+        self._manual_settings_drafts[requested_id] = self._build_config().model_copy(deep=True)
+        return True
 
     @Slot()
     def stopBatch(self):
@@ -2360,6 +2707,173 @@ class HaizFlowController(QObject):
         return queued
 
     @Slot(str, result=bool)
+    def runManualTool(self, tool_id):
+        from haizflow.pipeline.manual_tools import ensure_current_subtitle_document, tool_states
+
+        tool_id = str(tool_id or "").strip().lower()
+        allowed = {"source", "separation", "translation", "subtitle", "image", "voice", "audio", "export"}
+        video = self._selected_video()
+        if not video or self._project_type != "manual" or video.project_type != "manual":
+            self.appAlertRequested.emit("Thủ công", "Hãy nhập video vào dự án Thủ công trước.", "warning")
+            return False
+        if tool_id not in allowed:
+            self.appAlertRequested.emit("Thủ công", "Công cụ này không khả dụng.", "warning")
+            return False
+        if tool_id in {"subtitle", "voice", "audio", "export"}:
+            ensure_current_subtitle_document(video.video_id)
+            video = video_store.get_video(video.video_id) or video
+        if (
+            video.status in {"pending", "processing"}
+            and getattr(video, "manual_target_tool", "")
+            and not self._processing_queue.contains(video.video_id)
+        ):
+            video_store.update_video(
+                video.video_id,
+                status="manual_ready",
+                manual_target_tool="",
+                error=None,
+            )
+            video = video_store.get_video(video.video_id) or video
+        if self._processing_queue.contains(video.video_id):
+            # The queue, rather than the persisted status snapshot, is the
+            # authority for a live job. A double click on the active tool is
+            # a harmless no-op; a genuinely different tool remains disabled
+            # until the current job leaves the queue.
+            current_tool = str(getattr(video, "manual_target_tool", "") or "")
+            same_tool = current_tool == tool_id or (
+                tool_id == "separation" and current_tool in {"source", "separation"}
+            )
+            if same_tool:
+                return True
+            self.appAlertRequested.emit(
+                "Đang xử lý",
+                "Dừng hoặc chờ tác vụ hiện tại hoàn tất trước khi chạy công cụ khác.",
+                "info",
+            )
+            return False
+        aggregate_id = "source" if tool_id == "separation" else tool_id
+        state = next(
+            (
+                item
+                for item in tool_states(video, language=self._settings_language)
+                if item["toolId"] == aggregate_id
+            ),
+            None,
+        )
+        if state and not state["canRun"]:
+            self.appAlertRequested.emit("Chưa thể chạy", state["blockedReason"] or "Thiếu dữ liệu đầu vào.", "info")
+            return False
+        if tool_id == "translation" and manual_artifacts.active(video, "tts_manifest"):
+            answer = QMessageBox.question(
+                None,
+                "Translate again",
+                "Translating again will remove the current voice. You will need to create the voice again.",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+        self._apply_setup_to_video(video, review_approved=True)
+        video_store.update_video(
+            video.video_id,
+            manual_target_tool=tool_id,
+            manual_target_stage="",
+            error=None,
+            status="manual_ready" if getattr(video, "active_artifacts", {}) else "pending",
+        )
+        video_store.log_to_video(video.video_id, f"Manual tool queued: {tool_id}.")
+        queued = self._enqueue_video(video.video_id)
+        if queued:
+            self.manualToolStateChanged.emit(tool_id)
+            self.selectedVideoChanged.emit()
+            self.refreshVideos()
+        return queued
+
+    @Slot(str, result=bool)
+    def cancelManualTool(self, tool_id):
+        video = self._selected_video()
+        if not video or str(getattr(video, "manual_target_tool", "") or "") != str(tool_id or ""):
+            return False
+        self.stopVideo()
+        return True
+
+    @Slot(str, result=bool)
+    def setManualSubtitleTreatment(self, treatment):
+        """Commit source-subtitle cleanup atomically, then run OCR if needed.
+
+        ``removeOriginalSubtitles`` and its method used to be two independent
+        QML controls.  Selecting "Che" therefore queued OCR before the user
+        could choose blur or patch.  This slot persists one complete choice and
+        only then starts the optional image analysis.
+        """
+        from haizflow.pipeline.manual_tools import image_region_cached
+
+        normalized = str(treatment or "").strip().lower()
+        if normalized not in {"keep", "blur", "patch"}:
+            return False
+        video = self._selected_video()
+        if not video or self._project_type != "manual" or video.project_type != "manual":
+            return False
+        if self._processing_queue.contains(video.video_id):
+            self.appAlertRequested.emit(
+                "Đang xử lý",
+                "Dừng hoặc chờ tác vụ hiện tại hoàn tất trước khi đổi cách che phụ đề.",
+                "info",
+            )
+            return False
+
+        self._remove_original_subtitles = normalized != "keep"
+        if normalized != "keep":
+            self._original_subtitle_removal_mode = normalized
+        self.subtitleSettingsChanged.emit()
+        self._apply_setup_to_video(video, review_approved=True)
+        refreshed = video_store.get_video(video.video_id) or video
+
+        # Keeping the source is a complete visual state and never needs OCR.
+        # Blur/patch share the same cached geometry; only the lightweight
+        # preview layer changes when that geometry already exists.
+        if normalized == "keep" or image_region_cached(refreshed):
+            self.manualToolStateChanged.emit("image")
+            self.selectedVideoChanged.emit()
+            return True
+        return self.runManualTool("image")
+
+    @Slot(str, result=bool)
+    def clearManualCache(self, scope):
+        scope = str(scope or "project").strip().lower()
+        selected = self._selected_video()
+        if scope == "project" and selected and selected.project_type == "manual":
+            from haizflow.pipeline.manual_tools import ensure_current_subtitle_document
+
+            ensure_current_subtitle_document(selected.video_id)
+            removed = manual_artifacts.clear(selected.video_id, include_active=False)
+            removed += self._editor_preview.clear_cache(selected.video_id)
+            self.manualToolStateChanged.emit("")
+            self.selectedVideoChanged.emit()
+            if removed:
+                amount = f"{removed / (1024 * 1024):.1f} MB" if removed >= 1024 * 1024 else f"{removed / 1024:.0f} KB"
+                self.appAlertRequested.emit("Đã dọn cache", f"Đã giải phóng {amount} dữ liệu không còn dùng.", "info")
+            else:
+                self.appAlertRequested.emit("Cache đã gọn", "Không có dữ liệu cũ để xóa.", "info")
+            return True
+        if scope == "all":
+            from haizflow.pipeline.manual_tools import ensure_current_subtitle_document
+
+            removed = 0
+            for video in video_store.list_videos():
+                if video.project_type == "manual":
+                    ensure_current_subtitle_document(video.video_id)
+                    removed += manual_artifacts.clear(video.video_id, include_active=False)
+                    removed += self._editor_preview.clear_cache(video.video_id)
+            self.manualToolStateChanged.emit("")
+            self.selectedVideoChanged.emit()
+            if removed:
+                amount = f"{removed / (1024 * 1024):.1f} MB" if removed >= 1024 * 1024 else f"{removed / 1024:.0f} KB"
+                self.appAlertRequested.emit("Đã dọn cache", f"Đã giải phóng {amount} dữ liệu không còn dùng.", "info")
+            else:
+                self.appAlertRequested.emit("Cache đã gọn", "Không có dữ liệu cũ để xóa.", "info")
+            return True
+        return False
+
+    @Slot(str, result=bool)
     def approveTranslationReview(self, payload):
         return HaizFlowController._project_commands_for(self).approve_translation_review(payload)
 
@@ -2384,6 +2898,8 @@ class HaizFlowController(QObject):
 
     def _select_video(self, video):
         HaizFlowController._project_workspace_for(self).select_video(video)
+        if getattr(video, "project_type", "single") == "manual":
+            self._schedule_manual_cache_migration(video.video_id)
 
     @Slot(int)
     def selectBatchVideo(self, row: int):
@@ -2740,11 +3256,7 @@ class HaizFlowController(QObject):
 
     def _build_config(self):
         manual_subtitle_layout = bool(
-            self._subtitle_layout_override
-            and (
-                self._project_type == "manual"
-                or not self._remove_original_subtitles
-            )
+            self._subtitle_layout_override and (self._project_type == "manual" or not self._remove_original_subtitles)
         )
         return VideoConfig(
             # Auto and Batch no longer expose the legacy pre-TTS review mode.
@@ -2762,7 +3274,7 @@ class HaizFlowController(QObject):
             remove_original_subtitles=self._remove_original_subtitles,
             original_subtitle_removal_mode=self._original_subtitle_removal_mode,
             output_format="keep_ratio",
-            crop=CropSettings(),
+            crop=self._crop_settings,
             enable_audio_separation=self._enable_audio_separation,
             original_video_volume=self._original_volume,
             background_music_volume=self._background_music_volume,
@@ -2777,7 +3289,15 @@ class HaizFlowController(QObject):
         )
 
     def _apply_setup_to_video(self, video, review_approved=None):
-        config = self._build_config()
+        HaizFlowController._apply_config_to_video(
+            self,
+            video,
+            self._build_config(),
+            review_approved,
+        )
+
+    def _apply_config_to_video(self, video, config, review_approved=None):
+        manual_artifacts_to_deactivate: set[str] = set()
         changes = {
             "mode": config.mode,
             "source_language": config.source_language,
@@ -2807,6 +3327,18 @@ class HaizFlowController(QObject):
                 return getattr(video, name, None) != value
 
             invalidated = set()
+            recognition_changed = any(
+                (
+                    changed("source_language", config.source_language),
+                    changed("speech_recognition_model", config.speech_recognition_model),
+                    changed("enable_audio_separation", config.enable_audio_separation),
+                )
+            )
+            target_language_changed = changed("target_language", config.target_language)
+            if recognition_changed or target_language_changed:
+                manual_artifacts_to_deactivate.update({"recognition", "translation", "export"})
+            if target_language_changed:
+                manual_artifacts_to_deactivate.update({"tts_manifest", "audio_mix"})
             if any(
                 (
                     changed("source_language", config.source_language),
@@ -2828,6 +3360,7 @@ class HaizFlowController(QObject):
                 # translated text and every audio artifact; export rebuilds
                 # only the visual proxy/SRT whose signature actually changed.
                 invalidated.add("render")
+                manual_artifacts_to_deactivate.update({"visual_proxy", "export"})
             if any(
                 (
                     changed("tts_provider", config.tts_provider),
@@ -2836,6 +3369,9 @@ class HaizFlowController(QObject):
                 )
             ):
                 invalidated.update({"voice", "timeline", "render"})
+                manual_artifacts_to_deactivate.update(
+                    {"tts_manifest", "audio_mix", "export"}
+                )
             if any(
                 (
                     changed("original_video_volume", config.original_video_volume),
@@ -2844,6 +3380,7 @@ class HaizFlowController(QObject):
                 )
             ):
                 invalidated.update({"timeline", "render"})
+                manual_artifacts_to_deactivate.update({"audio_mix", "export"})
             if any(
                 (
                     changed("output_format", config.output_format),
@@ -2852,6 +3389,7 @@ class HaizFlowController(QObject):
                 )
             ):
                 invalidated.add("render")
+                manual_artifacts_to_deactivate.update({"visual_proxy", "export"})
             if completed.intersection(invalidated):
                 remaining = [stage for stage in stage_order if stage in completed and stage not in invalidated]
                 changes["manual_completed_stages"] = remaining
@@ -2862,6 +3400,8 @@ class HaizFlowController(QObject):
         if review_approved is not None:
             changes["review_approved"] = review_approved
         video_store.update_video(video.video_id, **changes)
+        if manual_artifacts_to_deactivate:
+            manual_artifacts.deactivate(video.video_id, manual_artifacts_to_deactivate)
 
     @staticmethod
     def _processing_delegate_for(host):

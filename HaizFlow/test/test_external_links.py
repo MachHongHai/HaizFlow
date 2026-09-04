@@ -118,14 +118,14 @@ class ExternalLinkTests(unittest.TestCase):
         shell_open.assert_called_once_with("https://zernio.com/dashboard/api-keys")
 
     def test_about_email_is_displayed_as_non_clickable_text(self):
-        about_section = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "AboutPage.qml").read_text(encoding="utf-8")
+        about_section = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "AboutDialog.qml").read_text(encoding="utf-8")
         self.assertIn('text: "machhonghaipr@gmail.com"', about_section)
         self.assertNotIn("mail.google.com", about_section)
         self.assertIn('AppController.copyText("machhonghaipr@gmail.com")', about_section)
-        self.assertIn('AppController.copyText("https://github.com/MachHongHai")', about_section)
         self.assertIn('text: "MachHongHai/HaizFlow"', about_section)
         self.assertIn('destination: "https://github.com/MachHongHai/HaizFlow"', about_section)
         self.assertIn('AppController.copyText("https://github.com/MachHongHai/HaizFlow")', about_section)
+        self.assertNotIn("Đại học", about_section)
 
 
 if __name__ == "__main__":

@@ -686,6 +686,13 @@ Module {
             index: 68
         }
         Property {
+            name: "subtitleLayoutOverride"
+            type: "bool"
+            read: "subtitleLayoutOverride"
+            notify: "subtitleSettingsChanged"
+            index: 167
+        }
+        Property {
             name: "subtitlePositionXPercent"
             type: "int"
             read: "subtitlePositionXPercent"
@@ -716,6 +723,34 @@ Module {
             write: "subtitleBoxHeightPercent"
             notify: "subtitleSettingsChanged"
             index: 72
+        }
+        Property {
+            name: "cropLeftPercent"
+            type: "double"
+            read: "cropLeftPercent"
+            write: "cropLeftPercent"
+            notify: "cropSettingsChanged"
+        }
+        Property {
+            name: "cropTopPercent"
+            type: "double"
+            read: "cropTopPercent"
+            write: "cropTopPercent"
+            notify: "cropSettingsChanged"
+        }
+        Property {
+            name: "cropRightPercent"
+            type: "double"
+            read: "cropRightPercent"
+            write: "cropRightPercent"
+            notify: "cropSettingsChanged"
+        }
+        Property {
+            name: "cropBottomPercent"
+            type: "double"
+            read: "cropBottomPercent"
+            write: "cropBottomPercent"
+            notify: "cropSettingsChanged"
         }
         Property {
             name: "backgroundMusicPath"
@@ -876,6 +911,13 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "editorPreviewBaseSource"
+            type: "QString"
+            read: "editorPreviewBaseSource"
+            notify: "editorPreviewChanged"
+            isReadonly: true
+        }
+        Property {
             name: "editorPreviewAudioSource"
             type: "QString"
             read: "editorPreviewAudioSource"
@@ -942,6 +984,27 @@ Module {
             name: "manualTargetStage"
             type: "QString"
             read: "manualTargetStage"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "manualTargetTool"
+            type: "QString"
+            read: "manualTargetTool"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "manualToolModel"
+            type: "QVariantList"
+            read: "manualToolModel"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "manualArtifactSummary"
+            type: "QVariantMap"
+            read: "manualArtifactSummary"
             notify: "selectedVideoChanged"
             isReadonly: true
         }
@@ -1368,6 +1431,7 @@ Module {
         Signal { name: "ttsVolumeChanged" }
         Signal { name: "watermarkTextChanged" }
         Signal { name: "subtitleSettingsChanged" }
+        Signal { name: "cropSettingsChanged" }
         Signal { name: "backgroundMusicChanged" }
         Signal { name: "backgroundMusicImportChanged" }
         Signal {
@@ -1376,6 +1440,10 @@ Module {
         }
         Signal { name: "audioPreviewChanged" }
         Signal { name: "editorPreviewChanged" }
+        Signal {
+            name: "manualToolStateChanged"
+            Parameter { name: "a1"; type: "QString" }
+        }
         Signal { name: "workflowModeChanged" }
         Signal { name: "selectedVideoChanged" }
         Signal { name: "selectedElapsedChanged" }
@@ -1483,6 +1551,13 @@ Module {
         Method { name: "clearBackgroundMusic"; type: "bool" }
         Method { name: "previewAudioMix"; type: "bool" }
         Method {
+            name: "previewVoiceSample"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+            Parameter { name: "a3"; type: "QString" }
+        }
+        Method {
             name: "previewBatchAudioMix"
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
@@ -1569,10 +1644,23 @@ Module {
         }
         Method { name: "loadBatchSettings" }
         Method { name: "saveSelectedVideoSettings"; type: "bool" }
+        Method {
+            name: "setCropDraft"
+            Parameter { name: "left"; type: "double" }
+            Parameter { name: "top"; type: "double" }
+            Parameter { name: "right"; type: "double" }
+            Parameter { name: "bottom"; type: "double" }
+        }
+        Method { name: "resetCropDraft" }
         Method { name: "persistSelectedBatchVideoSettings"; type: "bool" }
         Method { name: "persistSelectedVideoSettings"; type: "bool" }
         Method {
             name: "persistVideoSettingsFor"
+            type: "bool"
+            Parameter { name: "video_id"; type: "QString" }
+        }
+        Method {
+            name: "captureVideoSettingsDraft"
             type: "bool"
             Parameter { name: "video_id"; type: "QString" }
         }
@@ -1588,6 +1676,26 @@ Module {
             name: "runManualStage"
             type: "bool"
             Parameter { name: "stage"; type: "QString" }
+        }
+        Method {
+            name: "runManualTool"
+            type: "bool"
+            Parameter { name: "tool_id"; type: "QString" }
+        }
+        Method {
+            name: "cancelManualTool"
+            type: "bool"
+            Parameter { name: "tool_id"; type: "QString" }
+        }
+        Method {
+            name: "setManualSubtitleTreatment"
+            type: "bool"
+            Parameter { name: "treatment"; type: "QString" }
+        }
+        Method {
+            name: "clearManualCache"
+            type: "bool"
+            Parameter { name: "scope"; type: "QString" }
         }
         Method {
             name: "approveTranslationReview"
@@ -1625,6 +1733,29 @@ Module {
             Parameter { name: "a2"; type: "double" }
         }
         Method { name: "releaseEditorPreview" }
+        Method {
+            name: "subtitlePreviewFragment"
+            type: "QString"
+            Parameter { name: "text"; type: "QString" }
+            Parameter { name: "start_seconds"; type: "double" }
+            Parameter { name: "end_seconds"; type: "double" }
+            Parameter { name: "playhead_seconds"; type: "double" }
+            Parameter { name: "font_size"; type: "int" }
+            Parameter { name: "box_width_percent"; type: "int" }
+            Parameter { name: "output_width"; type: "int" }
+        }
+        Method {
+            name: "subtitlePreviewFrame"
+            type: "QVariantMap"
+            Parameter { name: "text"; type: "QString" }
+            Parameter { name: "start_seconds"; type: "double" }
+            Parameter { name: "end_seconds"; type: "double" }
+            Parameter { name: "playhead_seconds"; type: "double" }
+            Parameter { name: "font_size"; type: "int" }
+            Parameter { name: "layout_width"; type: "int" }
+            Parameter { name: "outline"; type: "int" }
+        }
+        Method { name: "adoptSubtitlePreviewLayout"; type: "bool" }
         Method {
             name: "discardVoiceCloneRecording"
             Parameter { name: "a1"; type: "QString" }

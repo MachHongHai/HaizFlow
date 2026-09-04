@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "description": "Prerecorded, sentence-locked voice-library samples. Runtime preview never invokes a TTS model or reuses another project's dialogue.",
+  "sentences": {
+    "vi": "Ứng dụng được phát triển bởi Mạch Hồng Hải, một sinh viên Đại học Kinh tế Thành phố Hồ Chí Minh, nếu bạn thích ứng dụng này, hãy vào phần liên hệ và gửi tặng một sao cho repository Github ứng dụng này. Cảm ơn bạn rất nhiều vì đã sử dụng ứng dụng của tôi, chúc bạn một ngày mới tốt lành."
+  },
+  "samples": [
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:female",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_female/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:male",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_male/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:female_low",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_female_low/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:deep",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_deep/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:bright",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_bright/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:male_high",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_male_high/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:female_mature",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_female_mature/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:male_mature",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_male_mature/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:female_soprano",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_female_soprano/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:male_tenor",
+      "language": "vi",
+      "category": "natural",
+      "path": "omnivoice/omnivoice_male_tenor/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:female_narrator",
+      "language": "vi",
+      "category": "narration",
+      "path": "omnivoice/omnivoice_female_narrator/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:male_narrator",
+      "language": "vi",
+      "category": "narration",
+      "path": "omnivoice/omnivoice_male_narrator/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:female_elder_high",
+      "language": "vi",
+      "category": "narration",
+      "path": "omnivoice/omnivoice_female_elder_high/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:male_elder_high",
+      "language": "vi",
+      "category": "narration",
+      "path": "omnivoice/omnivoice_male_elder_high/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:elder",
+      "language": "vi",
+      "category": "narration",
+      "path": "omnivoice/omnivoice_elder/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:storyteller",
+      "language": "vi",
+      "category": "narration",
+      "path": "omnivoice/omnivoice_storyteller/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:whisper",
+      "language": "vi",
+      "category": "style",
+      "path": "omnivoice/omnivoice_whisper/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:whisper_low",
+      "language": "vi",
+      "category": "style",
+      "path": "omnivoice/omnivoice_whisper_low/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:whisper_high",
+      "language": "vi",
+      "category": "style",
+      "path": "omnivoice/omnivoice_whisper_high/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:whisper_elder",
+      "language": "vi",
+      "category": "style",
+      "path": "omnivoice/omnivoice_whisper_elder/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:child",
+      "language": "vi",
+      "category": "style",
+      "path": "omnivoice/omnivoice_child/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:cartoon",
+      "language": "vi",
+      "category": "style",
+      "path": "omnivoice/omnivoice_cartoon/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:child_soft",
+      "language": "vi",
+      "category": "style",
+      "path": "omnivoice/omnivoice_child_soft/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:child_low",
+      "language": "vi",
+      "category": "style",
+      "path": "omnivoice/omnivoice_child_low/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:animated_bright",
+      "language": "vi",
+      "category": "entertainment",
+      "path": "omnivoice/omnivoice_animated_bright/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:animated_soft",
+      "language": "vi",
+      "category": "entertainment",
+      "path": "omnivoice/omnivoice_animated_soft/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:comic_low",
+      "language": "vi",
+      "category": "entertainment",
+      "path": "omnivoice/omnivoice_comic_low/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:tech_presenter",
+      "language": "vi",
+      "category": "entertainment",
+      "path": "omnivoice/omnivoice_tech_presenter/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:show_host",
+      "language": "vi",
+      "category": "entertainment",
+      "path": "omnivoice/omnivoice_show_host/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:trailer_deep",
+      "language": "vi",
+      "category": "entertainment",
+      "path": "omnivoice/omnivoice_trailer_deep/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:radio_warm",
+      "language": "vi",
+      "category": "entertainment",
+      "path": "omnivoice/omnivoice_radio_warm/vi.mp3"
+    },
+    {
+      "provider": "omnivoice",
+      "voice": "omnivoice:mystery_whisper",
+      "language": "vi",
+      "category": "entertainment",
+      "path": "omnivoice/omnivoice_mystery_whisper/vi.mp3"
+    },
+    {
+      "provider": "edge",
+      "voice": "vi-VN-HoaiMyNeural",
+      "language": "vi",
+      "category": "language",
+      "path": "edge/vi-VN-HoaiMyNeural/vi.mp3"
+    },
+    {
+      "provider": "edge",
+      "voice": "vi-VN-NamMinhNeural",
+      "language": "vi",
+      "category": "language",
+      "path": "edge/vi-VN-NamMinhNeural/vi.mp3"
+    }
+  ]
+}

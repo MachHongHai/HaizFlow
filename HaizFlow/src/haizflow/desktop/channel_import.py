@@ -139,7 +139,7 @@ class ChannelImportCoordinator(QObject):
         for signal in signals:
             signal.emit()
         # The facade uses this one aggregate notifier for the small summary
-        # shown outside ChannelImportPage.
+        # shown outside the active download workspace.
         self.changed.emit()
 
     def _notify_all(self) -> None:

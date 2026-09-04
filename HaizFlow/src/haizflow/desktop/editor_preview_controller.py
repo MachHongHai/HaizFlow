@@ -24,10 +24,9 @@ from haizflow.pipeline.process_registry import (
     start_video,
 )
 from haizflow.pipeline.render import map_subtitle_region_to_output_percent, render_video
-from haizflow.pipeline.tts import generate_voice_parts
 from haizflow.schemas.video import CropSettings
-from haizflow.services import video_store
-from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
+from haizflow.services import manual_artifacts, video_store
+from haizflow.utils.ffmpeg import _binary, get_video_dimensions, get_video_duration
 
 
 class EditorPreviewController:
@@ -37,9 +36,11 @@ class EditorPreviewController:
     process and only the latest result may update QML. Files stay inside the
     selected video's workspace, never in the operating-system temp directory.
 
-    QML receives one continuous visual proxy and a separate audio layer, so
-    seeking never switches media sources or exposes an undecoded black frame.
-    Internally, the visual proxy is assembled from fixed cached chunks. An
+    QML receives one continuous audio/video proxy, so Windows Media Foundation
+    owns a single playback clock. Internally, visual and audio artifacts remain
+    independently cached; a fast stream-copy mux publishes their synchronized
+    playback file without encoding video frames again. The visual proxy is
+    assembled from fixed cached chunks. An
     edit invalidates only overlapping subtitle chunks; unchanged frames are
     stream-copied into the next published proxy instead of being encoded
     again.
@@ -47,12 +48,31 @@ class EditorPreviewController:
 
     _VISUAL_CHUNK_SECONDS = 12.0
 
+    @staticmethod
+    def _manual_voice_artifact(video) -> dict | None:
+        """Return only the TTS manifest matching the current Manual document.
+
+        Legacy stage flags are intentionally ignored.  A flag can remain set
+        after text or voice settings change, while the immutable artifact
+        signature cannot.  This keeps subtitle and audio preview publication
+        synchronized.
+        """
+        if getattr(video, "project_type", "single") != "manual":
+            return None
+        # ``manual_tools`` is intentionally light to import: model runtimes
+        # are loaded only by explicit background tool runners.
+        from haizflow.pipeline.manual_tools import active_voice_record
+
+        return active_voice_record(video, validate=False)
+
     def __init__(self, host):
         self._host = host
         self._lock = threading.RLock()
+        self._worker_lock = threading.Lock()
         self._generation = 0
         self._active_process_id = ""
         self._source = ""
+        self._base_source = ""
         self._audio_source = ""
         self._busy = False
         self._progress = 0.0
@@ -62,14 +82,24 @@ class EditorPreviewController:
         self._duration_seconds = 0.0
         self._video_id = ""
         self._request_fingerprint = ""
+        self._completed_requests: dict[str, tuple[str, str, float, float, dict, str]] = {}
+        self._completed_base_sources: dict[str, tuple[str, dict]] = {}
         self._duration_cache: dict[tuple[str, int, int], float] = {}
         self._published_output_identity: dict = {}
         self._last_progress_emit = 0.0
+        self._pin_owner = f"editor-preview:{id(self)}"
+        self._pinned_video_id = ""
 
     @property
     def source(self) -> str:
         with self._lock:
             return self._source
+
+    @property
+    def base_source(self) -> str:
+        """Subtitle-free visual proxy used for direct on-canvas editing."""
+        with self._lock:
+            return self._base_source
 
     @property
     def busy(self) -> bool:
@@ -180,19 +210,43 @@ class EditorPreviewController:
         path.write_text(srt.compose(subtitles), encoding="utf-8")
 
     @staticmethod
-    def _ocr_region(video_dir: Path) -> dict:
-        try:
-            payload = json.loads(
-                (video_dir / "temp" / "original_subtitle_region.json").read_text(encoding="utf-8")
-            )
-            region = payload.get("region", {}) if isinstance(payload, dict) else {}
-            return dict(region) if isinstance(region, dict) else {}
-        except (OSError, TypeError, json.JSONDecodeError):
-            return {}
+    def _ocr_region(video_dir: Path, configured_path: str = "") -> dict:
+        for path in (
+            Path(configured_path) if configured_path else None,
+            video_dir / "temp" / "original_subtitle_region.json",
+        ):
+            if path is None:
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                region = payload.get("region", payload) if isinstance(payload, dict) else {}
+                if isinstance(region, dict) and region:
+                    return dict(region)
+            except (OSError, TypeError, json.JSONDecodeError):
+                continue
+        return {}
+
+    @staticmethod
+    def _source_subtitle_intervals(video_dir: Path, configured_path: str = "") -> list[tuple[float, float]]:
+        """Read source-caption visibility windows without changing OCR bounds."""
+        segments = EditorPreviewController._load_segments(
+            configured_path or str(video_dir / "temp" / "source_segments.json")
+        )
+        intervals: list[tuple[float, float]] = []
+        for segment in segments:
+            try:
+                start = max(0.0, float(segment.get("start", 0) or 0))
+                end = max(start, float(segment.get("end", start) or start))
+            except (TypeError, ValueError):
+                continue
+            if end > start + 0.01:
+                intervals.append((round(start, 3), round(end, 3)))
+        return intervals
 
     @staticmethod
     def _visual_cache_payload(settings: dict) -> dict:
         """Keep audio-only changes from invalidating the visual proxy."""
+        removes_source_text = bool(settings["remove_original_subtitles"])
         return {
             "video_id": settings["video_id"],
             "source_identity": settings["source_identity"],
@@ -208,31 +262,45 @@ class EditorPreviewController:
             "crop": settings["crop"],
             "output_format": settings["output_format"],
             "subtitle_layout_override": settings["subtitle_layout_override"],
-            "remove_original_subtitles": settings["remove_original_subtitles"],
-            "removal_mode": settings["removal_mode"],
+            "remove_original_subtitles": removes_source_text,
+            # Blur/patch/OCR are irrelevant while the source is unchanged.
+            # Normalizing them gives "Giữ nguyên" one stable cache identity.
+            "removal_mode": settings["removal_mode"] if removes_source_text else "keep",
             "watermark_text": settings["watermark_text"],
-            "ocr_region": settings["ocr_region"],
+            "ocr_region": settings["ocr_region"] if removes_source_text else {},
+            "original_subtitle_intervals": settings["original_subtitle_intervals"] if removes_source_text else [],
             "preview_encoding": settings["preview_encoding"],
         }
 
     @staticmethod
     def _base_visual_cache_payload(settings: dict) -> dict:
         """Fingerprint source effects that do not depend on translated text."""
+        removes_source_text = bool(settings["remove_original_subtitles"])
         return {
             "video_id": settings["video_id"],
             "source_identity": settings["source_identity"],
             "crop": settings["crop"],
             "output_format": settings["output_format"],
-            "remove_original_subtitles": settings["remove_original_subtitles"],
-            "removal_mode": settings["removal_mode"],
+            "remove_original_subtitles": removes_source_text,
+            "removal_mode": settings["removal_mode"] if removes_source_text else "keep",
             "watermark_text": settings["watermark_text"],
-            "ocr_region": settings["ocr_region"],
+            "ocr_region": settings["ocr_region"] if removes_source_text else {},
+            "original_subtitle_intervals": settings["original_subtitle_intervals"] if removes_source_text else [],
             "preview_encoding": settings["preview_encoding"],
         }
 
     @staticmethod
     def _audio_cache_payload(settings: dict) -> dict:
         """Fingerprint only data that can change the audible preview mix."""
+        voice_ready = bool((settings.get("voice_state") or {}).get("ready"))
+        audio_inputs = dict(settings["audio_inputs"])
+        if not voice_ready:
+            # Text, voice choice and clone reference are inaudible until an
+            # exact Manual TTS manifest exists. Keep the original/music mix
+            # hot while translation and subtitle layers are edited.
+            audio_inputs.pop("transcript_json", None)
+            audio_inputs.pop("voice_reference", None)
+            audio_inputs.pop("voice_output", None)
         return {
             "video_id": settings["video_id"],
             "source_identity": settings["source_identity"],
@@ -243,19 +311,19 @@ class EditorPreviewController:
                     "text": item.get("text", ""),
                     "speaker": item.get("speaker", ""),
                 }
-                for item in settings["segments"]
+                for item in (settings["segments"] if voice_ready else [])
             ],
-            "tts_provider": settings["tts_provider"],
-            "tts_voice": settings["tts_voice"],
-            "target_language": settings["target_language"],
-            "speaker_mode": settings["speaker_mode"],
+            "tts_provider": settings["tts_provider"] if voice_ready else "",
+            "tts_voice": settings["tts_voice"] if voice_ready else "",
+            "target_language": settings["target_language"] if voice_ready else "",
+            "speaker_mode": settings["speaker_mode"] if voice_ready else "",
             "original_video_volume": settings["original_video_volume"],
             "background_music_volume": settings["background_music_volume"],
             "tts_volume": settings["tts_volume"],
-            "audio_inputs": settings["audio_inputs"],
+            "audio_inputs": audio_inputs,
             "voice_state": settings.get("voice_state", {}),
             "duration": settings["duration"],
-            "audio_cache_version": "editor-audio-v3-manual-voice-state",
+            "audio_cache_version": "editor-audio-v4-optional-voice-layer",
         }
 
     @classmethod
@@ -321,8 +389,12 @@ class EditorPreviewController:
             return False
 
         video_dir = Path(video_store.get_video_dir(video.video_id))
-        ocr_region = self._ocr_region(video_dir)
         files = dict(getattr(video, "files", {}) or {})
+        ocr_region = self._ocr_region(video_dir, str(files.get("ocr_region") or ""))
+        original_subtitle_intervals = self._source_subtitle_intervals(
+            video_dir,
+            str(files.get("source_segments") or ""),
+        )
         settings = {
             "video_id": video.video_id,
             "source_path": os.path.abspath(source_path),
@@ -360,24 +432,45 @@ class EditorPreviewController:
             # source. Without it, completing Manual TTS looked identical to
             # the earlier visual-only request and QML kept silent audio until
             # the user opened the Audio tool.
-            "voice_state": {
-                "checkpoint": str((getattr(video, "checkpoints", {}) or {}).get("voice") or ""),
-                "ready": "voice" in set(getattr(video, "manual_completed_stages", []) or []),
-            },
+            "voice_state": (
+                {
+                    "artifact": str(manual_voice.get("artifact_id") or ""),
+                    "signature": str(manual_voice.get("signature") or ""),
+                    "ready": True,
+                }
+                if (manual_voice := self._manual_voice_artifact(video))
+                else {
+                    "checkpoint": str((getattr(video, "checkpoints", {}) or {}).get("voice") or ""),
+                    "ready": (
+                        getattr(video, "project_type", "single") != "manual"
+                        and "voice" in set(getattr(video, "manual_completed_stages", []) or [])
+                    ),
+                }
+            ),
             "ocr_region": ocr_region,
+            "original_subtitle_intervals": original_subtitle_intervals,
             # Version the proxy cache when its encoding contract changes.
             "preview_encoding": "layered-full-timeline-sdr-yuv420p-v5",
         }
         preview_dir = video_dir / "temp" / "editor-preview"
+        fingerprint_settings = dict(settings)
+        if not settings["remove_original_subtitles"]:
+            fingerprint_settings.update(
+                removal_mode="keep",
+                ocr_region={},
+                original_subtitle_intervals=[],
+            )
         request_fingerprint = hashlib.sha256(
             json.dumps(
-                settings,
+                fingerprint_settings,
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
+        settings["request_fingerprint"] = request_fingerprint
 
+        cache_hit = False
         with self._lock:
             # Text editing, focus changes and draft auto-save can coalesce into
             # the same QML request. Never cancel a useful FFmpeg/TTS worker just
@@ -387,21 +480,82 @@ class EditorPreviewController:
                     return True
                 if self._stage == "ready" and self._source and self._published_source_is_intact():
                     return True
-            self._generation += 1
-            generation = self._generation
-            previous_process_id = self._active_process_id
-            process_id = f"editor-preview-{video.video_id}-{generation}"
-            self._active_process_id = process_id
-            self._busy = True
-            self._progress = 0.0
-            self._stage = "preparing"
-            self._error = ""
-            self._video_id = video.video_id
-            self._request_fingerprint = request_fingerprint
-            self._last_progress_emit = 0.0
+            completed = self._completed_requests.get(request_fingerprint)
+            if completed:
+                (
+                    cached_video,
+                    cached_audio,
+                    cached_start,
+                    cached_duration,
+                    cached_identity,
+                    cached_visual_signature,
+                ) = completed
+                video_intact = (
+                    Path(cached_video).is_file()
+                    and self._file_identity(cached_video) == cached_identity
+                )
+                audio_intact = not cached_audio or Path(cached_audio).is_file()
+                if video_intact and audio_intact:
+                    self._generation += 1
+                    generation = self._generation
+                    previous_process_id = self._active_process_id
+                    self._active_process_id = ""
+                    self._source = QUrl.fromLocalFile(str(Path(cached_video).resolve())).toString()
+                    cached_base = self._completed_base_sources.get(request_fingerprint)
+                    if cached_base and Path(cached_base[0]).is_file() and self._file_identity(
+                        cached_base[0]
+                    ) == cached_base[1]:
+                        self._base_source = QUrl.fromLocalFile(
+                            str(Path(cached_base[0]).resolve())
+                        ).toString()
+                    else:
+                        self._base_source = ""
+                    self._audio_source = (
+                        QUrl.fromLocalFile(str(Path(cached_audio).resolve())).toString() if cached_audio else ""
+                    )
+                    self._busy = False
+                    self._progress = 1.0
+                    self._stage = "ready"
+                    self._error = ""
+                    self._video_id = video.video_id
+                    self._request_fingerprint = request_fingerprint
+                    self._start_seconds = cached_start
+                    self._duration_seconds = cached_duration
+                    self._published_output_identity = self._file_identity(cached_video)
+                    self._last_progress_emit = 0.0
+                    if getattr(video, "project_type", "single") == "manual":
+                        if self._pinned_video_id and self._pinned_video_id != video.video_id:
+                            manual_artifacts.unpin(self._pinned_video_id, self._pin_owner)
+                        manual_artifacts.pin(
+                            video.video_id,
+                            "visual_proxy",
+                            cached_visual_signature,
+                            self._pin_owner,
+                        )
+                        self._pinned_video_id = video.video_id
+                    cache_hit = True
+            if cache_hit:
+                process_id = ""
+            else:
+                self._generation += 1
+                generation = self._generation
+                previous_process_id = self._active_process_id
+                process_id = f"editor-preview-{video.video_id}-{generation}"
+                self._active_process_id = process_id
+                self._busy = True
+                self._progress = 0.0
+                self._stage = "preparing"
+                self._error = ""
+                # Keep the last complete base visible while a replacement is
+                # being prepared. It is cleared only when changing project.
+                self._video_id = video.video_id
+                self._request_fingerprint = request_fingerprint
+                self._last_progress_emit = 0.0
         if previous_process_id:
             cancel_video(previous_process_id)
         self._host.editorPreviewChanged.emit()
+        if cache_hit:
+            return True
 
         worker = threading.Thread(
             target=self._render,
@@ -412,11 +566,30 @@ class EditorPreviewController:
         worker.start()
         return True
 
+    def _request_is_current(self, generation: int, process_id: str) -> bool:
+        with self._lock:
+            return (
+                generation == self._generation
+                and process_id == self._active_process_id
+                and bool(process_id)
+            )
+
     def _render(self, generation, process_id, video, settings, preview_dir: Path) -> None:
+        # Only one preview worker may touch decoder/cache state at a time.
+        # A newer request cancels the process used by the current worker and
+        # waits here; an obsolete worker can never re-register its process id.
+        with self._worker_lock:
+            if not self._request_is_current(generation, process_id):
+                return
+            self._render_current(generation, process_id, video, settings, preview_dir)
+
+    def _render_current(self, generation, process_id, video, settings, preview_dir: Path) -> None:
         try:
             # FFprobe can block on a damaged file.  It must never run on the
             # GUI thread; every request enters this worker before probing.
             total_duration = self._source_duration(settings["source_path"])
+            if not self._request_is_current(generation, process_id):
+                return
             if total_duration <= 0:
                 raise RuntimeError("The source video duration could not be read")
             # The playhead is deliberately absent from the signature. Seeking
@@ -457,6 +630,10 @@ class EditorPreviewController:
             base_completion_path = base_dir / "preview.complete.json"
             output_path = render_dir / "preview.mp4"
             completion_path = render_dir / "preview.complete.json"
+            self._remove_stale_files(output_path)
+            self._remove_stale_audio_dirs(preview_dir, audio_dir / "preview-audio.wav")
+            if not self._request_is_current(generation, process_id):
+                return
             base_dir.mkdir(parents=True, exist_ok=True)
             render_dir.mkdir(parents=True, exist_ok=True)
             cache_is_complete = self._preview_cache_is_complete(
@@ -510,6 +687,8 @@ class EditorPreviewController:
                     for spec in chunk_specs
                     if not self._preview_cache_is_complete(spec[2], spec[3], spec[1])
                 ]
+                if not self._request_is_current(generation, process_id):
+                    return
                 start_video(process_id)
                 try:
                     if not base_is_complete:
@@ -531,6 +710,7 @@ class EditorPreviewController:
                             0.03,
                             0.39,
                             subtitle_region_override=None,
+                            original_subtitle_intervals=settings["original_subtitle_intervals"],
                         ):
                             return
                     chunk_progress_start = 0.44 if not base_is_complete else 0.03
@@ -572,9 +752,8 @@ class EditorPreviewController:
                         return
                 finally:
                     clean_video(process_id)
-            with self._lock:
-                if generation != self._generation:
-                    return
+            if not self._request_is_current(generation, process_id):
+                return
             start_video(process_id)
             try:
                 audio_path = self._prepare_preview_audio(
@@ -584,15 +763,40 @@ class EditorPreviewController:
                     settings,
                     audio_dir,
                 )
+                base_playback_path = self._mux_preview_media(
+                    generation,
+                    process_id,
+                    base_output_path,
+                    audio_path,
+                    preview_dir,
+                    settings["duration"],
+                    publish_progress=False,
+                )
+                if base_playback_path is None:
+                    return
+                playback_path = self._mux_preview_media(
+                    generation,
+                    process_id,
+                    output_path,
+                    audio_path,
+                    preview_dir,
+                    settings["duration"],
+                )
+                if playback_path is None:
+                    return
             finally:
                 clean_video(process_id)
             self._set_progress(generation, 0.99, "loading")
             self._finish_success(
                 generation,
-                output_path,
+                playback_path,
                 settings["start"],
                 settings["duration"],
-                audio_path,
+                video_id=video.video_id,
+                request_fingerprint=str(settings.get("request_fingerprint") or ""),
+                visual_signature=visual_signature,
+                visual_cache_path=output_path,
+                base_playback_path=base_playback_path,
             )
         except Exception as exc:
             self._finish_error(generation, str(exc))
@@ -618,6 +822,7 @@ class EditorPreviewController:
         *,
         source_start_seconds: float = 0.0,
         subtitle_region_override: dict | None = None,
+        original_subtitle_intervals: list[tuple[float, float]] | None = None,
     ) -> bool:
         """Render and atomically publish one reusable visual cache layer."""
         output_path.unlink(missing_ok=True)
@@ -648,6 +853,7 @@ class EditorPreviewController:
                 process_registry_id=process_id,
                 compatibility_preview=True,
                 subtitle_region_override=subtitle_region_override,
+                original_subtitle_intervals=original_subtitle_intervals,
                 progress_callback=lambda fraction: self._set_progress(
                     generation,
                     progress_start + max(0.0, min(1.0, float(fraction))) * progress_span,
@@ -739,12 +945,128 @@ class EditorPreviewController:
                 if generation != self._generation:
                     return False
             os.replace(staged_output, output_path)
-            self._write_completion_marker(completion_path, output_path, rendered_duration)
+            self._write_completion_marker(
+                completion_path,
+                output_path,
+                rendered_duration,
+                chunk_directories=[path.parent.name for path in chunk_paths],
+            )
             self._set_progress(generation, 0.65, "assembling")
             return True
         finally:
             staged_output.unlink(missing_ok=True)
             concat_path.unlink(missing_ok=True)
+
+    def _mux_preview_media(
+        self,
+        generation: int,
+        process_id: str,
+        visual_path: Path,
+        audio_path: Path | None,
+        preview_dir: Path,
+        expected_duration: float,
+        *,
+        publish_progress: bool = True,
+    ) -> Path | None:
+        """Publish one playback file with one clock for QMediaPlayer.
+
+        The visual stream is copied bit-for-bit. Only the already-cached WAV
+        mix is encoded to AAC, which is far cheaper than rendering a frame and
+        avoids the unreliable pair of independently clocked MediaPlayers used
+        by the old Manual editor.
+        """
+        if audio_path is None or not audio_path.is_file() or audio_path.stat().st_size <= 44:
+            return visual_path
+        media_signature = hashlib.sha256(
+            json.dumps(
+                {
+                    "visual": self._file_identity(visual_path),
+                    "audio": self._file_identity(audio_path),
+                    "duration": round(float(expected_duration), 3),
+                    "format": "editor-playback-mp4-aac-v1",
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()[:20]
+        media_dir = preview_dir / f"media-{media_signature}"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        output_path = media_dir / "preview.mp4"
+        completion_path = media_dir / "preview.complete.json"
+        if self._preview_cache_is_complete(output_path, completion_path, expected_duration):
+            self._remove_stale_media_dirs(preview_dir, output_path)
+            if publish_progress:
+                self._set_progress(generation, 0.97, "loading")
+            return output_path
+
+        staged_output = media_dir / f"preview-{generation}.muxing.mp4"
+        staged_output.unlink(missing_ok=True)
+        if publish_progress:
+            self._set_progress(generation, 0.94, "mixing")
+        process = subprocess.Popen(
+            [
+                _binary("ffmpeg"),
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(visual_path),
+                "-i",
+                str(audio_path),
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
+                "-b:a",
+                "160k",
+                "-shortest",
+                "-movflags",
+                "+faststart",
+                str(staged_output),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        try:
+            _stdout, stderr = communicate_process(
+                process_id,
+                process,
+                label="Editor preview audio/video mux",
+            )
+            if not self._request_is_current(generation, process_id):
+                return None
+            if process.returncode != 0:
+                detail = " ".join((stderr or "").split())[-900:]
+                raise RuntimeError(
+                    "Không thể ghép âm thanh vào bản xem trước."
+                    + (f" FFmpeg: {detail}" if detail else "")
+                )
+            rendered_duration = get_video_duration(str(staged_output))
+            if rendered_duration < expected_duration - 0.25:
+                raise RuntimeError("Bản xem trước có âm thanh kết thúc sớm hơn video nguồn.")
+            if not self._request_is_current(generation, process_id):
+                return None
+            os.replace(staged_output, output_path)
+            self._write_completion_marker(completion_path, output_path, rendered_duration)
+            self._remove_stale_media_dirs(preview_dir, output_path)
+            if publish_progress:
+                self._set_progress(generation, 0.97, "loading")
+            return output_path
+        finally:
+            staged_output.unlink(missing_ok=True)
 
     def _source_duration(self, source_path: str) -> float:
         """Cache FFprobe by immutable file identity across editor revisions."""
@@ -779,12 +1101,20 @@ class EditorPreviewController:
         )
 
     @staticmethod
-    def _write_completion_marker(marker_path: Path, output_path: Path, duration: float) -> None:
+    def _write_completion_marker(
+        marker_path: Path,
+        output_path: Path,
+        duration: float,
+        *,
+        chunk_directories: list[str] | None = None,
+    ) -> None:
         payload = {
             "version": 1,
             "duration": round(float(duration), 3),
             "size": output_path.stat().st_size,
         }
+        if chunk_directories:
+            payload["chunk_directories"] = list(dict.fromkeys(chunk_directories))
         staged = marker_path.with_suffix(".writing.json")
         staged.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
         os.replace(staged, marker_path)
@@ -873,56 +1203,49 @@ class EditorPreviewController:
         settings: dict,
         render_dir: Path,
     ) -> Path | None:
-        """Regenerate only changed voice lines and rebuild the editor mix.
+        """Rebuild a preview mix exclusively from already generated clips.
 
-        Existing per-line TTS files are hard-linked into the signature cache;
-        a text edit therefore synthesizes only the affected line. Timing-only
-        edits reuse every voice clip and only rebuild the inexpensive mix.
+        Preview is a cache/mix operation, never a hidden TTS entry point.
+        Timing and level edits reuse existing voice parts.  If text changes
+        and no exact cached clip exists, the currently published synchronized
+        preview remains visible until the user explicitly runs the Voice tool.
         """
+        is_manual = getattr(video, "project_type", "single") == "manual"
         status = str(getattr(video, "status", "") or "")
-        if status not in {"done", "manual_ready"}:
+        # A Manual tool is not a linear pipeline stage. Existing source,
+        # separation and TTS artifacts remain valid while another tool is
+        # queued or running, so the editor must keep its audible mix alive.
+        # Auto/Batch retain their stricter completed-output gate.
+        if not is_manual and status not in {"done", "manual_ready"}:
             return None
-        if (
-            getattr(video, "project_type", "single") == "manual"
-            and "voice" not in set(getattr(video, "manual_completed_stages", []) or [])
-        ):
-            # Manual means manual: visual preview may be generated as soon as
-            # translated text exists, but TTS is never started implicitly.
-            # Once voice clips exist, level/music edits may rebuild only the
-            # cheap preview mix without requiring the Audio module first.
-            return None
+        manual_voice = self._manual_voice_artifact(video)
         files = dict(getattr(video, "files", {}) or {})
-        current_mix = Path(str(files.get("voice_output") or ""))
         transcript_path = str(files.get("transcript_json") or "")
         baseline = self._load_segments(transcript_path)
         segments = settings["segments"]
-        if (
-            current_mix.is_file()
-            and current_mix.stat().st_size > 44
-            and len(baseline) == len(segments)
-            and all(self._same_spoken_line(item, baseline[index]) for index, item in enumerate(segments))
-            and all(
-                abs(float(item.get("start", 0) or 0) - float(baseline[index].get("start", 0) or 0)) < 0.001
-                and abs(float(item.get("end", 0) or 0) - float(baseline[index].get("end", 0) or 0)) < 0.001
-                for index, item in enumerate(segments)
-            )
-        ):
-            return current_mix
 
         render_dir.mkdir(parents=True, exist_ok=True)
         preview_mix = render_dir / "preview-audio.wav"
         if preview_mix.is_file() and preview_mix.stat().st_size > 44:
             return preview_mix
 
-        self._set_progress(generation, 0.68, "voice")
+        self._set_progress(generation, 0.68, "mixing")
         preview_segments = render_dir / "preview-segments.json"
-        preview_segments.write_text(json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8")
+        audio_segments = list(segments)
         preview_parts = render_dir / "voice-parts"
         preview_parts.mkdir(parents=True, exist_ok=True)
         voice_cache = render_dir.parent / "voice-cache"
         voice_cache.mkdir(parents=True, exist_ok=True)
-        original_parts = Path(video_store.get_video_dir(video.video_id)) / "temp" / "voice_parts"
-        for index, segment in enumerate(segments):
+        configured_parts = str(files.get("voice_parts_dir") or "")
+        if manual_voice:
+            manifest_path = str((manual_voice.get("resolved_outputs") or {}).get("manifest") or "")
+            configured_parts = str(Path(manifest_path).parent / "parts") if manifest_path else configured_parts
+        original_parts = (
+            Path(configured_parts)
+            if configured_parts
+            else Path(video_store.get_video_dir(video.video_id)) / "temp" / "voice_parts"
+        )
+        for index, segment in enumerate(audio_segments if (manual_voice or not is_manual) else []):
             target_part = preview_parts / f"voice_{index + 1:04d}.mp3"
             if target_part.is_file() and target_part.stat().st_size > 0:
                 continue
@@ -935,25 +1258,29 @@ class EditorPreviewController:
                 if source_part.is_file() and source_part.stat().st_size > 0:
                     self._link_or_copy(source_part, target_part)
 
-        def report_voice(completed: int, total: int) -> None:
-            fraction = completed / max(1, total)
-            self._set_progress(generation, 0.68 + fraction * 0.20, "voice")
-
-        generate_voice_parts(
-            str(preview_segments),
-            str(preview_parts),
-            settings["tts_voice"],
-            video.video_id,
-            progress_callback=report_voice,
-            provider=settings["tts_provider"],
-            target_language=settings["target_language"],
-            process_registry_id=process_id,
-            keep_worker_warm=True,
+        missing_parts = [
+            index + 1
+            for index in range(len(audio_segments))
+            if not (preview_parts / f"voice_{index + 1:04d}.mp3").is_file()
+            or (preview_parts / f"voice_{index + 1:04d}.mp3").stat().st_size <= 0
+        ]
+        if missing_parts:
+            if is_manual:
+                # Never keep stale speech under newly edited text. Manual
+                # preview drops only the unavailable TTS layer and keeps the
+                # source/music layers live until Voice is explicitly run.
+                audio_segments = []
+            else:
+                raise RuntimeError(
+                    "Bản xem trước chưa đổi vì phụ đề đã sửa chưa có giọng tương ứng. "
+                    "Hãy chọn Giọng đọc và tạo lại giọng."
+                )
+        if is_manual and not manual_voice:
+            audio_segments = []
+        preview_segments.write_text(
+            json.dumps(audio_segments, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        with self._lock:
-            if generation != self._generation:
-                return None
-        for index, segment in enumerate(segments):
+        for index, segment in enumerate(audio_segments):
             source_part = preview_parts / f"voice_{index + 1:04d}.mp3"
             cached_part = voice_cache / f"{self._voice_cache_key(segment, settings)}.mp3"
             if not source_part.is_file() or source_part.stat().st_size <= 0:
@@ -969,7 +1296,7 @@ class EditorPreviewController:
                 os.replace(staged_cache, cached_part)
             finally:
                 staged_cache.unlink(missing_ok=True)
-        self._set_progress(generation, 0.90, "mixing")
+        self._set_progress(generation, 0.76, "mixing")
         source_path = settings["source_path"]
         separated_background = Path(str(files.get("background_audio") or ""))
         background_path = (
@@ -1005,6 +1332,8 @@ class EditorPreviewController:
             tts_volume=settings["tts_volume"],
             prepared_base_audio_path=str(base_audio_path),
             process_registry_id=process_id,
+            require_voice_parts=bool(audio_segments),
+            require_background_audio=not is_manual,
         )
         return preview_mix
 
@@ -1015,27 +1344,103 @@ class EditorPreviewController:
         start: float,
         duration: float,
         audio_path: Path | None = None,
+        *,
+        video_id: str = "",
+        request_fingerprint: str = "",
+        visual_signature: str = "",
+        visual_cache_path: Path | None = None,
+        base_playback_path: Path | None = None,
     ) -> None:
+        # Finish cache bookkeeping before publishing the idle state. On
+        # Windows, route teardown can delete the video workspace immediately
+        # after QML observes ``busy == false``; publishing first raced that
+        # deletion against completion-marker reads in this worker.
         with self._lock:
             if generation != self._generation:
                 return
-            self._source = QUrl.fromLocalFile(str(output_path.resolve())).toString()
+        with self._lock:
+            if generation != self._generation:
+                return
+            resolved_video_id = video_id or self._video_id
+            resolved_fingerprint = request_fingerprint or self._request_fingerprint
+            resolved_visual_signature = visual_signature or resolved_fingerprint
+        published_output = output_path
+        cache_visual = visual_cache_path or output_path
+        video = video_store.get_video(resolved_video_id)
+        if video and getattr(video, "project_type", "single") == "manual" and resolved_fingerprint:
+            try:
+                manual_artifacts.register_existing(
+                    video.video_id,
+                    "visual_proxy",
+                    resolved_visual_signature,
+                    {"video": str(cache_visual)},
+                    inputs=[
+                        artifact_id
+                        for kind, artifact_signature in (getattr(video, "active_artifacts", {}) or {}).items()
+                        if kind in {"subtitle_document", "ocr_region"} and artifact_signature
+                        for artifact_id in [manual_artifacts.artifact_id(kind, artifact_signature)]
+                    ],
+                    config_fingerprint="editor-visual-proxy-v1",
+                    activate_artifact=False,
+                )
+            except (OSError, RuntimeError, ValueError):
+                # Preview publication must stay usable even if an optional
+                # cache maintenance pass fails. The rendered file remains in
+                # the editor workspace as a safe fallback.
+                published_output = output_path
+        with self._lock:
+            if (
+                generation != self._generation
+                or resolved_video_id != self._video_id
+                or resolved_fingerprint != self._request_fingerprint
+            ):
+                return
+            source_url = QUrl.fromLocalFile(str(published_output.resolve())).toString()
+            self._source = source_url
+            if base_playback_path is not None and base_playback_path.is_file():
+                resolved_base = str(base_playback_path.resolve())
+                self._base_source = QUrl.fromLocalFile(resolved_base).toString()
+                self._completed_base_sources[resolved_fingerprint] = (
+                    resolved_base,
+                    self._file_identity(resolved_base),
+                )
             self._start_seconds = start
             self._duration_seconds = duration
-            self._audio_source = (
-                QUrl.fromLocalFile(str(audio_path.resolve())).toString()
-                if audio_path is not None and audio_path.is_file()
-                else ""
-            )
+            # ``output_path`` is the atomically published A/V mux. Never
+            # expose the WAV beside it: a second QMediaPlayer introduces a
+            # second clock and was the source of intermittent silent/desynced
+            # Manual playback. Keep the property for old QML compatibility,
+            # but new previews intentionally publish it empty.
+            self._audio_source = ""
             self._busy = False
             self._progress = 1.0
             self._stage = "ready"
             self._error = ""
             self._active_process_id = ""
-            self._published_output_identity = self._file_identity(output_path)
+            self._published_output_identity = self._file_identity(published_output)
+            self._completed_requests[resolved_fingerprint] = (
+                str(published_output.resolve()),
+                "",
+                start,
+                duration,
+                self._file_identity(published_output),
+                resolved_visual_signature,
+            )
+            while len(self._completed_requests) > 12:
+                evicted = next(iter(self._completed_requests))
+                self._completed_requests.pop(evicted)
+                self._completed_base_sources.pop(evicted, None)
+            if video and getattr(video, "project_type", "single") == "manual":
+                if self._pinned_video_id and self._pinned_video_id != video.video_id:
+                    manual_artifacts.unpin(self._pinned_video_id, self._pin_owner)
+                manual_artifacts.pin(
+                    video.video_id,
+                    "visual_proxy",
+                    resolved_visual_signature,
+                    self._pin_owner,
+                )
+                self._pinned_video_id = video.video_id
         self._host.editorPreviewChanged.emit()
-        self._remove_stale_files(output_path)
-        self._remove_stale_audio_dirs(output_path.parent.parent, audio_path)
 
     def _finish_error(self, generation: int, error: str) -> None:
         with self._lock:
@@ -1088,10 +1493,53 @@ class EditorPreviewController:
             )
         except OSError:
             return
-        # Keep the active proxy plus recent Undo/Redo states. Full
-        # timeline proxies are intentionally bounded because even low-res
-        # versions become large across batch projects.
-        for path in [*visual_candidates[4:], *base_candidates[2:], *chunk_candidates[256:]]:
+        retained_visuals = [current_path] if current_path in visual_candidates else []
+        retained_visuals.extend(path for path in visual_candidates if path != current_path)
+        retained_visuals = retained_visuals[:4]
+        referenced_chunk_dirs: set[str] = set()
+        has_chunk_manifest = False
+        for visual_path in retained_visuals:
+            marker_path = visual_path.parent / "preview.complete.json"
+            try:
+                marker = json.loads(marker_path.read_text(encoding="utf-8"))
+                names = marker.get("chunk_directories", [])
+                if isinstance(names, list):
+                    has_chunk_manifest = has_chunk_manifest or bool(names)
+                    referenced_chunk_dirs.update(
+                        str(name) for name in names if str(name).startswith("chunk-")
+                    )
+            except (OSError, TypeError, json.JSONDecodeError):
+                continue
+        # Keep the active proxy plus recent Undo/Redo states. New completion
+        # markers reference their exact chunks; the small legacy fallback is
+        # only for caches created before manifests existed.
+        stale_chunks = (
+            [path for path in chunk_candidates if path.parent.name not in referenced_chunk_dirs]
+            if has_chunk_manifest
+            else chunk_candidates[32:]
+        )
+        stale_visuals = [path for path in visual_candidates if path not in retained_visuals]
+        for path in [*stale_visuals, *base_candidates[2:], *stale_chunks]:
+            try:
+                shutil.rmtree(path.parent)
+            except OSError:
+                pass
+
+    @staticmethod
+    def _remove_stale_media_dirs(preview_dir: Path, current_media_path: Path) -> None:
+        try:
+            candidates = sorted(
+                (path for path in preview_dir.glob("media-*/preview.mp4") if path.is_file()),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError:
+            return
+        retained = [current_media_path] if current_media_path in candidates else []
+        retained.extend(path for path in candidates if path != current_media_path)
+        for path in candidates:
+            if path in retained[:6]:
+                continue
             try:
                 shutil.rmtree(path.parent)
             except OSError:
@@ -1166,6 +1614,7 @@ class EditorPreviewController:
             self._stage = ""
             self._error = ""
             self._source = ""
+            self._base_source = ""
             self._audio_source = ""
             self._start_seconds = 0.0
             self._duration_seconds = 0.0
@@ -1173,6 +1622,47 @@ class EditorPreviewController:
             self._request_fingerprint = ""
             self._published_output_identity = {}
             self._last_progress_emit = 0.0
+            pinned_video_id = self._pinned_video_id
+            self._pinned_video_id = ""
         if process_id:
             cancel_video(process_id)
+        if pinned_video_id:
+            manual_artifacts.unpin(pinned_video_id, self._pin_owner)
         self._host.editorPreviewChanged.emit()
+
+    def clear_cache(self, video_id: str) -> int:
+        """Remove inactive editor proxies without touching media currently open in QML."""
+        requested_id = str(video_id or "")
+        if not requested_id:
+            return 0
+        with self._lock:
+            if requested_id == self._video_id and self._busy:
+                return 0
+            pinned_paths: set[Path] = set()
+            if requested_id == self._video_id:
+                for source in (self._source, self._base_source, self._audio_source):
+                    local = QUrl(source).toLocalFile() if source else ""
+                    if local:
+                        pinned_paths.add(Path(local).resolve())
+        preview_root = Path(video_store.get_video_dir(requested_id)) / "temp" / "editor-preview"
+        if not preview_root.is_dir():
+            return 0
+        removed = 0
+        for child in tuple(preview_root.iterdir()):
+            try:
+                resolved_child = child.resolve()
+                if any(path == resolved_child or path.is_relative_to(resolved_child) for path in pinned_paths):
+                    continue
+                size = (
+                    sum(item.stat().st_size for item in child.rglob("*") if item.is_file())
+                    if child.is_dir()
+                    else child.stat().st_size
+                )
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+                removed += size
+            except OSError:
+                continue
+        return removed

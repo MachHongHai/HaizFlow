@@ -72,6 +72,27 @@ def _timing_file_is_current(path):
         return False
 
 
+def _source_subtitle_intervals(path: str) -> list[tuple[float, float]]:
+    """Load source caption visibility windows for temporal OCR treatment."""
+    try:
+        with open(path, "r", encoding="utf-8") as source_file:
+            segments = json.load(source_file)
+    except (OSError, TypeError, json.JSONDecodeError):
+        return []
+    intervals: list[tuple[float, float]] = []
+    for segment in segments if isinstance(segments, list) else []:
+        if not isinstance(segment, dict):
+            continue
+        try:
+            start = max(0.0, float(segment.get("start", 0) or 0))
+            end = max(start, float(segment.get("end", start) or start))
+        except (TypeError, ValueError):
+            continue
+        if end > start + 0.01:
+            intervals.append((round(start, 3), round(end, 3)))
+    return intervals
+
+
 def _checkpoint_valid(video, name, signature, outputs):
     # Auto projects reuse checkpoints only for pause/resume. Manual projects
     # deliberately execute downstream modules in separate runs, so their
@@ -837,6 +858,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
     # opened and normalized by the desktop UI.
     manual_subtitle_layout = _manual_subtitle_layout_for_render(video)
     original_subtitle_region = _original_subtitle_region_for_render(video, reporter, video_dir)
+    original_subtitle_intervals = _source_subtitle_intervals(
+        os.path.join(video_dir, "temp", "source_segments.json")
+    )
     render_signature = _signature(
         timeline_signature,
         subtitle_signature,
@@ -845,10 +869,11 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         crop_data,
         # Bump when changing the visual treatment so a previously rendered
         # luma-only result is never reused as a valid final export.
-        "static-largest-original-subtitle-ocr-v18-exact-pixel-bounds",
+        "static-largest-original-subtitle-ocr-v19-temporal-visibility",
         remove_original_subtitles,
         original_subtitle_removal_mode,
         original_subtitle_region,
+        original_subtitle_intervals,
         "watermark-bold-italic-keyline-v3",
         getattr(video, "watermark_text", ""),
         manual_subtitle_layout,
@@ -886,6 +911,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             subtitle_layout_override=manual_subtitle_layout,
             progress_callback=report_render_progress,
             original_subtitle_removal_mode=original_subtitle_removal_mode,
+            original_subtitle_intervals=original_subtitle_intervals,
         )
         _mark_checkpoint(video, "render", render_signature)
 

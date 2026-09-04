@@ -92,6 +92,17 @@ class ActivityEventModelTests(unittest.TestCase):
         model.append_lines(["__QUEUE_CHANGED__", "18:21:26 [DEBUG] [PIPELINE] internal state"])
         self.assertEqual(model.rowCount(), 0)
 
+    def test_parses_the_structured_iso_log_format_written_by_video_store(self):
+        model = ActivityEventModel()
+        model.append_lines([
+            "[2026-08-31T12:34:56Z] [INFO] [MANUAL] Cache hit · voice",
+        ])
+
+        index = model.index(0, 0)
+        self.assertEqual(model.data(index, model.TimestampRole), "12:34:56")
+        self.assertEqual(model.data(index, model.StageRole), "MANUAL")
+        self.assertEqual(model.data(index, model.TitleRole), "Công cụ Thủ công")
+
 
 if __name__ == "__main__":
     unittest.main()
