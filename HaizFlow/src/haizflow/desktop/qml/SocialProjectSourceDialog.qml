@@ -145,12 +145,12 @@ AppDialog {
         Item { Layout.preferredWidth: Theme.space8 },
         StudioButton {
             text: qsTr("Hủy")
-            tone: "secondary"
+            variant: "ghost"
             onClicked: root.close()
         },
         StudioButton {
             text: qsTr("Thêm video")
-            tone: "primary"
+            variant: "primary"
             enabled: AppController.tiktokProjectSourceSelectedCount > 0
                 && !AppController.tiktokPublishBusy
             onClicked: {

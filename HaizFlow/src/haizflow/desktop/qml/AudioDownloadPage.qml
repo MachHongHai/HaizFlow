@@ -63,7 +63,7 @@ Item {
                             elide: Text.ElideMiddle
                             textFormat: Text.PlainText
                         }
-                        AppButton { text: qsTr("Chọn tệp"); compact: true; onClicked: root.downloader.chooseAudioSource() }
+                        StudioButton { text: qsTr("Chọn tệp"); onClicked: root.downloader.chooseAudioSource() }
                     }
 
                     RowLayout {
@@ -75,18 +75,17 @@ Item {
                             elide: Text.ElideMiddle
                             textFormat: Text.PlainText
                         }
-                        AppButton {
+                        StudioButton {
                             visible: !root.downloader.outputManaged
                             text: qsTr("Chọn thư mục")
-                            compact: true
                             onClicked: root.downloader.chooseAudioOutputDirectory()
                         }
                     }
 
-                    AppButton {
+                    StudioButton {
                         Layout.fillWidth: true
                         text: root.fromLink ? qsTr("Tải âm thanh") : qsTr("Tách âm thanh")
-                        tone: "primary"
+                        variant: "primary"
                         enabled: root.downloader.audioOutputDirectory.length > 0
                             && (root.fromLink ? audioLink.text.trim().length > 0 : root.downloader.audioSource.length > 0)
                         onClicked: root.fromLink ? root.downloader.downloadAudio(audioLink.text.trim()) : root.downloader.extractAudio()

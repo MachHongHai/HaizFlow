@@ -33,6 +33,7 @@ Rectangle {
     property bool subtitleLivePreviewEnabled: false
     property bool suppressResultAudio: false
     property string subtitleText: ""
+    property var subtitleSprite: ({})
     property real subtitleKaraokeProgress: 0
     property int subtitleFontSize: 60
     property int subtitlePositionXPercent: 50
@@ -47,10 +48,8 @@ Rectangle {
     signal subtitleEditingDismissed()
     signal subtitleLayoutPreviewChanged(int fontSize, int positionX, int positionY)
     signal subtitleLayoutCommitted(int fontSize, int positionX, int positionY)
-    readonly property url effectiveResultSource: subtitleLivePreviewEnabled && String(resultBaseSource).length > 0
-            ? resultBaseSource
-            : resultSource
-    readonly property real positionSeconds: resultPlayer.position / 1000
+    readonly property url effectiveResultSource: subtitleLivePreviewEnabled ? resultBaseSource : resultSource
+    readonly property real positionSeconds: scrubController.scrubPositionMs / 1000
     readonly property real durationSeconds: Math.max(inputPlayer.duration, resultPlayer.duration) / 1000
     readonly property bool bothPlaying: synchronizedPlayback
         && inputPlayer.playbackState === MediaPlayer.PlayingState
@@ -62,9 +61,55 @@ Rectangle {
     border.color: Theme.outline
 
     function seekTo(seconds) {
-        const milliseconds = Math.max(0, Number(seconds || 0) * 1000);
-        inputPlayer.position = milliseconds;
-        resultPlayer.position = milliseconds;
+        beginScrub(seconds);
+        endScrub(seconds);
+    }
+
+    function beginScrub(seconds) {
+        scrubController.begin(seconds * 1000, resultPlaybackRequested
+            || (!resultPriming && resultPlayer.playbackState === MediaPlayer.PlayingState));
+    }
+    function updateScrub(seconds) { scrubController.updatePosition(seconds * 1000); }
+    function endScrub(seconds) { scrubController.end(seconds * 1000); }
+
+    function syncAudio() {
+        AppController.manualPreviewAudio.synchronize(root.positionSeconds,
+            resultPlayer.playbackState === MediaPlayer.PlayingState
+                && !root.resultPriming && !root.resultSourceSwitching && !scrubController.scrubbing,
+            root.resultMuted);
+    }
+    onResultMutedChanged: syncAudio()
+    onPositionSecondsChanged: syncAudio()
+
+    PreviewScrubController {
+        id: scrubController
+        onPauseRequested: {
+            root.finishFrameRefresh(false);
+            root.resultPlaybackRequested = false;
+            inputPlayer.pause();
+            resultPlayer.pause();
+            root.syncAudio();
+        }
+        onSeekRequested: function(positionMs) {
+            AppController.manualPreviewAudio.seek(positionMs / 1000);
+            root.pendingResultPositionMs = positionMs;
+            root.lastStablePositionMs = positionMs;
+            if (!root.inputSourceSwitching && inputPlayer.seekable)
+                inputPlayer.position = positionMs;
+            if (!root.resultSourceSwitching && resultPlayer.seekable) {
+                resultPlayer.position = positionMs;
+                // Seeking to the current position need not emit positionChanged.
+                scrubController.observe(resultPlayer.position);
+            }
+        }
+        onResumeRequested: {
+            if (!root.resultSourceSwitching) {
+                root.resultPlaybackRequested = true;
+                resultPlayer.play();
+                if (root.synchronizedPlayback)
+                    inputPlayer.play();
+            }
+        }
     }
 
     function restorePosition(seconds) {
@@ -223,17 +268,19 @@ Rectangle {
             frameRefreshSafetyTimer.stop();
     }
     onResultSourceChanged: {
-        pendingResultPositionMs = lastStablePositionMs;
+        pendingResultPositionMs = scrubController.desiredPositionMs;
         resultPriming = false;
         if (!inputPriming)
             frameRefreshSafetyTimer.stop();
     }
     onEffectiveResultSourceChanged: {
-        pendingResultPositionMs = lastStablePositionMs;
+        pendingResultPositionMs = scrubController.desiredPositionMs;
+        scrubController.wasPlaying = scrubController.wasPlaying || resultPlaybackRequested
+            || (!resultPriming && resultPlayer.playbackState === MediaPlayer.PlayingState);
+        scrubController.sourceChanged();
         // A cache swap is a media-clock boundary. Stop every previous clock
         // before attaching the new mux, otherwise Windows Media Foundation
         // can briefly replay buffered audio from both sources.
-        synchronizedPlayback = false;
         resultPlaybackRequested = false;
         resultPriming = false;
         resultSourceSwitching = true;
@@ -359,7 +406,8 @@ Rectangle {
                     to: Math.max(0.1, root.durationSeconds)
                     value: root.positionSeconds
                     enabled: root.durationSeconds > 0
-                    onMoved: root.seekTo(value)
+                    onPressedChanged: pressed ? root.beginScrub(value) : root.endScrub(value)
+                    onMoved: root.updateScrub(value)
                     Accessible.name: qsTr("Vị trí xem trước")
                 }
 
@@ -392,6 +440,7 @@ Rectangle {
         contentItem: Item {
             VideoOutput {
                 id: fullscreenOutput
+                endOfStreamPolicy: VideoOutput.KeepLastFrame
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
@@ -406,6 +455,7 @@ Rectangle {
                 z: 4
                 videoRect: fullscreenOutput.contentRect
                 subtitleText: root.subtitleText
+                sprite: root.subtitleSprite
                 karaokeProgress: root.subtitleKaraokeProgress
                 fontSize: root.subtitleFontSize
                 positionXPercent: root.subtitlePositionXPercent
@@ -421,7 +471,7 @@ Rectangle {
                     && root.subtitleInteractive
                     && String(root.resultBaseSource).length > 0
                 editing: root.subtitleEditEnabled
-                livePreviewVisible: root.subtitleLivePreviewEnabled && !root.resultSourceSwitching
+                livePreviewVisible: root.fullscreenResult && root.subtitleLivePreviewEnabled && !root.resultSourceSwitching
                 onActivated: root.activateSubtitleEditor()
                 onEditingDismissed: root.subtitleEditingDismissed()
                 onLayoutPreviewChanged: function(fontSize, positionX, positionY) {
@@ -489,7 +539,8 @@ Rectangle {
                         from: 0
                         to: Math.max(0.1, root.durationSeconds)
                         value: root.positionSeconds
-                        onMoved: root.seekTo(value)
+                        onPressedChanged: pressed ? root.beginScrub(value) : root.endScrub(value)
+                        onMoved: root.updateScrub(value)
                         Accessible.name: qsTr("Vị trí xem trước")
                     }
                 }
@@ -584,7 +635,8 @@ Rectangle {
             || root.synchronizedPlayback)
         onTriggered: {
             const masterPosition = resultPlayer.position;
-            if (root.synchronizedPlayback && Math.abs(inputPlayer.position - masterPosition) > 220)
+            if (!scrubController.scrubbing && !scrubController.pending
+                    && root.synchronizedPlayback && Math.abs(inputPlayer.position - masterPosition) > 220)
                 inputPlayer.position = masterPosition;
         }
     }
@@ -607,6 +659,7 @@ Rectangle {
             if (inputPlayer.mediaStatus === MediaPlayer.LoadedMedia
                     || inputPlayer.mediaStatus === MediaPlayer.BufferedMedia) {
                 root.inputSourceSwitching = false;
+                inputPlayer.position = scrubController.desiredPositionMs;
                 inputPrimeTimer.restart();
             }
         }
@@ -622,12 +675,7 @@ Rectangle {
         source: root.attachedResultSource
         videoOutput: fullscreenLayer.visible && root.fullscreenResult
             ? fullscreenOutput : resultPane.videoOutputItem
-        audioOutput: AudioOutput {
-            muted: root.resultMuted
-                || root.resultPriming
-                || root.resultSourceSwitching
-                || root.suppressResultAudio
-        }
+        onPlaybackStateChanged: root.syncAudio()
 
         onMediaStatusChanged: function() {
             if (resultPlayer.mediaStatus === MediaPlayer.EndOfMedia) {
@@ -645,11 +693,10 @@ Rectangle {
             if (resultPlayer.mediaStatus !== MediaPlayer.LoadedMedia
                     && resultPlayer.mediaStatus !== MediaPlayer.BufferedMedia)
                 return;
+            if (!root.resultSourceSwitching)
+                return;
             root.resultSourceSwitching = false;
-            resultPlayer.position = Math.max(
-                0,
-                Math.min(root.pendingResultPositionMs, resultPlayer.duration)
-            );
+            scrubController.sourceReady();
             if (root.resultPlaybackRequested) {
                 play();
             } else {
@@ -664,8 +711,10 @@ Rectangle {
         }
 
         onPositionChanged: function() {
-            if (!root.resultPriming)
+            if (!root.resultPriming && !root.resultSourceSwitching) {
+                scrubController.observe(resultPlayer.position);
                 root.lastStablePositionMs = resultPlayer.position;
+            }
         }
     }
 
@@ -697,6 +746,7 @@ Rectangle {
 
         VideoOutput {
             id: paneVideoOutput
+            endOfStreamPolicy: VideoOutput.KeepLastFrame
             anchors.fill: parent
             fillMode: VideoOutput.PreserveAspectFit
         }
@@ -707,6 +757,7 @@ Rectangle {
             z: 4
             videoRect: paneVideoOutput.contentRect
             subtitleText: root.subtitleText
+            sprite: root.subtitleSprite
             karaokeProgress: root.subtitleKaraokeProgress
             fontSize: root.subtitleFontSize
             positionXPercent: root.subtitlePositionXPercent
@@ -722,7 +773,7 @@ Rectangle {
                 && root.subtitleInteractive
                 && String(root.resultBaseSource).length > 0
             editing: pane === resultPane && root.subtitleEditEnabled
-            livePreviewVisible: root.subtitleLivePreviewEnabled && !root.resultSourceSwitching
+            livePreviewVisible: pane === resultPane && root.subtitleLivePreviewEnabled && !root.resultSourceSwitching
             onActivated: root.activateSubtitleEditor()
             onEditingDismissed: root.subtitleEditingDismissed()
             onLayoutPreviewChanged: function(fontSize, positionX, positionY) {

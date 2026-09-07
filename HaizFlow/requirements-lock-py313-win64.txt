@@ -239,6 +239,7 @@ certifi==2026.6.17 \
     --hash=sha256:024c88eeec92ca068db80f02b8b07c9cef7b9fe261d1d535abfd5abd6f6af432 \
     --hash=sha256:2227dcbaafe0d2f59279d1762ddddc37783ed4354594f194ffc31d20f41fc3db
     # via
+    #   curl-cffi
     #   edge-tts
     #   requests
 cffi==2.0.0 \
@@ -328,6 +329,7 @@ cffi==2.0.0 \
     --hash=sha256:fe562eb1a64e67dd297ccc4f5addea2501664954f2692b69a76449ec7913ecbf
     # via
     #   haizflow (pyproject.toml)
+    #   curl-cffi
     #   soundfile
 charset-normalizer==3.4.9 \
     --hash=sha256:0327fcd59a935777d83410750c50600ee9571af2846f71ce40f25b13da1ef380 \
@@ -558,6 +560,29 @@ ctranslate2==4.8.1 \
     #   haizflow (pyproject.toml)
     #   faster-whisper
     #   whisperx
+curl-cffi==0.15.0 \
+    --hash=sha256:08c799b89740b9bc49c09fbc3d5907f13ac1f845ca52620507ef9466d4639dd5 \
+    --hash=sha256:0b6c0543b993996670e9e4b78e305a2d60809d5681903ffb5568e21a387434d3 \
+    --hash=sha256:1977e1e12cfb5c11352cbb74acef1bed24eb7d226dab61ca57c168c21acd4d61 \
+    --hash=sha256:2b6c847d86283b07ae69bb72c82eb8a59242277142aa35b89850f89e792a02fc \
+    --hash=sha256:408d6f14e346841cd889c2e0962832bb235ba3b6749ebf609f347f747da5e60f \
+    --hash=sha256:41f80170ba844009273b2660da1964ec31e99e5719d16b3422ada87177e32e13 \
+    --hash=sha256:4682dc38d4336e0eb0b185374db90a760efde63cbea994b4e63f3521d44c4c92 \
+    --hash=sha256:582e570aa2586b96ed47cf4a17586b9a3c462cbe43f780487c3dc245c6ef1527 \
+    --hash=sha256:5a0c1896a0d5a5ac1eb89cd24b008d2b718dd1df6fd2f75451b59ca66e49e572 \
+    --hash=sha256:7b7a92767a888ee90147e18964b396d8435ff42737030d6fb00824ffd6094805 \
+    --hash=sha256:7e63539d0d839d0a8c5eacf86229bc68c57803547f35e0db7ee0986328b478c3 \
+    --hash=sha256:829cc357061ecb99cc2d406301f609a039e05665322f5c025ec67c38b0dc49ce \
+    --hash=sha256:838e48212447d9c81364b04707a5c861daf08f8320f9ecb3406a8919d1d5c3b3 \
+    --hash=sha256:967ad7355bd8e9586f8c2d02eaa99953747549e7ea4a9b25cd53353e6b67fe6d \
+    --hash=sha256:9e5e69eee735f659287e2c84444319d68a1fa68dd37abf228943a4074864283a \
+    --hash=sha256:a25620d9bf989c9c029a7d1642999c4c265abb0bad811deb2f77b0b5b2b12e5b \
+    --hash=sha256:a6d57f8389273a3a1f94370473c74897467bcc36af0a17336989780c507fa43d \
+    --hash=sha256:aa1323950224db24f4c510d010b3affa02196ca853fb424191fa917a513d3f4b \
+    --hash=sha256:b624c7ce087bfda967a013ed0a64702a525444e5b6e97d23534d567ccc6525aa \
+    --hash=sha256:bda66404010e9ed743b1b83c20c86f24fe21a9a6873e17479d6e67e29d8ded28 \
+    --hash=sha256:ea0c67652bf6893d34ee0f82c944f37e488f6147e9421bef1771cc6545b02ded
+    # via yt-dlp
 cycler==0.12.1 \
     --hash=sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30 \
     --hash=sha256:88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c
@@ -2446,7 +2471,9 @@ retrying==1.4.2 \
 rich==15.0.0 \
     --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb \
     --hash=sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36
-    # via pyannote-audio
+    # via
+    #   curl-cffi
+    #   pyannote-audio
 ruff==0.14.14 \
     --hash=sha256:01ff589aab3f5b539e35db38425da31a57521efd1e4ad1ae08fc34dbe30bd7df \
     --hash=sha256:026c1d25996818f0bf498636686199d9bd0d9d6341c9c2c3b62e2a0198b758de \

@@ -18,6 +18,8 @@ from haizflow.services import manual_artifacts, video_store
 # property getter used to stall the first Manual workspace paint for 20+ s.
 TIMING_SOURCE = "whisperx-context-aligned-sentences-v9-semantic-source"
 DETECTOR_CACHE_VERSION = 21
+VOICE_CLIP_CACHE_VERSION = "manual-tts-clip-v1"
+VOICE_MANIFEST_CACHE_VERSION = "manual-tts-manifest-v1"
 
 
 # Keep these names patchable for unit tests while loading every heavyweight
@@ -291,15 +293,65 @@ def _voice_clip_signatures(video, segments: list[dict[str, Any]]) -> list[str]:
             reference_text,
             recognition,
             index if speaker_mode == "multiple" else 0,
-            "manual-tts-clip-v1",
+            VOICE_CLIP_CACHE_VERSION,
         )
         for index, segment in enumerate(segments)
     ]
 
 
+def ensure_narrator_anchor(video_id: str) -> str:
+    """Persist the single-speaker identity used by existing and future clips."""
+    video = video_store.get_video(video_id)
+    if not video:
+        return ""
+    provider = resolve_tts_provider(video.tts_provider, video.target_language)
+    if (
+        provider != "omnivoice"
+        or str(getattr(video, "speaker_mode", "single") or "single") != "single"
+        or str(getattr(video, "tts_voice", "") or "") == "omnivoice:clone"
+    ):
+        return ""
+    config = manual_artifacts.signature(
+        provider,
+        video.tts_voice,
+        video.target_language,
+        "manual-narrator-anchor-v1",
+    )
+    files = dict(video.files or {})
+    anchors = dict(files.get("tts_narrator_anchors") or {})
+    existing = str(anchors.get(config) or "")
+    if not existing and str(files.get("tts_narrator_anchor_config") or "") == config:
+        # Adopt the single legacy slot into the per-voice map. A project may
+        # switch A -> B -> A and each preset must recover its original voice
+        # identity together with its cached clips.
+        existing = str(files.get("tts_narrator_anchor_text") or "")
+    if existing:
+        if anchors.get(config) != existing:
+            anchors[config] = existing
+            _update_files(video_id, tts_narrator_anchors=anchors)
+        return existing
+    segments = _load_segments(video, validate=False)
+    if not segments:
+        return ""
+    from haizflow.pipeline.omnivoice_tts import _select_voice_anchor, _voice_anchor_excerpt
+
+    candidate = _select_voice_anchor(segments)
+    anchor = _voice_anchor_excerpt(str((candidate or {}).get("text") or ""))
+    if not anchor:
+        return ""
+    anchors[config] = anchor
+    _update_files(
+        video_id,
+        tts_narrator_anchor_text=anchor,
+        tts_narrator_anchor_config=config,
+        tts_narrator_anchors=anchors,
+    )
+    return anchor
+
+
 def voice_signature(video, *, validate: bool = True) -> str:
     clips = _voice_clip_signatures(video, _load_segments(video, validate=validate))
-    return manual_artifacts.signature(clips, "manual-tts-manifest-v1") if clips else ""
+    return manual_artifacts.signature(clips, VOICE_MANIFEST_CACHE_VERSION) if clips else ""
 
 
 def _record_segments(record: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -791,6 +843,11 @@ def publish_edited_subtitles(video_id: str, segments: list[dict[str, Any]]) -> d
     try:
         segments_path = staging / "segments.json"
         segments_path.write_text(json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8")
+        (staging / "document.json").write_text(json.dumps({
+            "schema_version": 2,
+            "revision": max((int(item.get("revision", 0)) for item in segments), default=0),
+            "segments": segments,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
         style = _style_dict(video)
         generate_srt(
             str(segments_path),
@@ -804,7 +861,7 @@ def publish_edited_subtitles(video_id: str, segments: list[dict[str, Any]]) -> d
             "subtitle_document",
             artifact_signature,
             staging,
-            {"segments": "segments.json", "srt": "subtitles.srt"},
+            {"segments": "segments.json", "srt": "subtitles.srt", "document": "document.json"},
             inputs=[value for value in [_active_signature(video, "translation")] if value],
             config_fingerprint="manual-subtitle-document-v1",
         )
@@ -1089,30 +1146,64 @@ def _run_voice(video, reporter) -> None:
     subtitle = _current_subtitle_record(video)
     if not segments or not subtitle:
         raise RuntimeError("Hãy chuẩn bị phụ đề trước khi tạo giọng đọc.")
+    narrator_anchor = ensure_narrator_anchor(video.video_id)
+    video = video_store.get_video(video.video_id) or video
     clip_signatures = _voice_clip_signatures(video, segments)
-    expected = manual_artifacts.signature(clip_signatures, "manual-tts-manifest-v1")
+    expected = manual_artifacts.signature(clip_signatures, VOICE_MANIFEST_CACHE_VERSION)
     cached = manual_artifacts.resolve(video.video_id, "tts_manifest", expected)
     if not cached:
         staging = manual_artifacts.create_staging_directory(video.video_id, "tts_manifest")
         parts_dir = staging / "parts"
         parts_dir.mkdir(parents=True, exist_ok=True)
         try:
-            missing_clip_count = 0
+            missing_clip_indices = []
             for index, clip_signature in enumerate(clip_signatures, 1):
                 clip = manual_artifacts.resolve(video.video_id, "tts_clip", clip_signature)
                 if clip:
                     shutil.copy2(clip["resolved_outputs"]["audio"], parts_dir / f"voice_{index:04d}.mp3")
                 else:
-                    missing_clip_count += 1
-            if missing_clip_count:
-                reporter.update(5, "manual_voice", f"Đang tạo {missing_clip_count} câu chưa có cache")
+                    missing_clip_indices.append(index)
+            if missing_clip_indices:
+                missing_clip_count = len(missing_clip_indices)
+                detail = (
+                    "Đang tạo lại câu đã chỉnh"
+                    if missing_clip_count == 1
+                    else f"Đang tạo {missing_clip_count} câu đã thay đổi"
+                )
+                reporter.update(5, "manual_voice", detail, 0, missing_clip_count)
                 effective = resolve_tts_provider(video.tts_provider, video.target_language)
                 if effective == "omnivoice":
                     shutdown_hymt2_worker()
                     from haizflow.pipeline.transcribe import release_warm_whisperx_model
                     release_warm_whisperx_model()
+
+                def report_voice_status(stage: str, current: int, total: int) -> None:
+                    preparing_details = {
+                        "loading_model": "Đang nạp model giọng đọc",
+                        "reusing_model": "Đang dùng model giọng đọc đã nạp",
+                        "creating_voice_anchor": "Đang ổn định chất giọng",
+                        "launching_worker": "Đang khởi tạo bộ tạo giọng",
+                    }
+                    if stage in preparing_details:
+                        percent = 5
+                        status_detail = preparing_details[stage]
+                    else:
+                        percent = 5 + round(90 * current / max(1, total))
+                        status_detail = (
+                            f"Đã tạo {current}/{total} câu"
+                            if current
+                            else detail
+                        )
+                    reporter.update(
+                        percent,
+                        "manual_voice",
+                        status_detail,
+                        current,
+                        total,
+                    )
+
                 generate_voice_parts(
-                    _current_subtitle_path(video),
+                    str(subtitle["resolved_outputs"].get("segments") or subtitle["resolved_outputs"].get("transcript")),
                     str(parts_dir),
                     video.tts_voice,
                     video.video_id,
@@ -1122,7 +1213,10 @@ def _run_voice(video, reporter) -> None:
                     ),
                     provider=video.tts_provider,
                     target_language=video.target_language,
-                    keep_worker_warm=False,
+                    keep_worker_warm=True,
+                    segment_indices=missing_clip_indices,
+                    narrator_anchor_text=narrator_anchor,
+                    status_callback=report_voice_status if effective == "omnivoice" else None,
                 )
             else:
                 reporter.update(95, "manual_voice", "Đang khôi phục giọng đọc từ cache")
@@ -1143,6 +1237,7 @@ def _run_voice(video, reporter) -> None:
                     *[manual_artifacts.artifact_id("tts_clip", value) for value in clip_signatures],
                 ],
                 config_fingerprint=manual_artifacts.signature(video.tts_provider, video.tts_voice, video.speaker_mode),
+                activate_artifact=False,
             )
         finally:
             # A cancelled batch may already contain several atomically
@@ -1151,8 +1246,10 @@ def _run_voice(video, reporter) -> None:
             # the genuinely missing sentences.
             _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures)
             shutil.rmtree(staging, ignore_errors=True)
-    else:
-        manual_artifacts.activate(video.video_id, "tts_manifest", expected)
+    current = video_store.get_video(video.video_id)
+    if current and voice_signature(current) != expected:
+        return
+    manual_artifacts.activate(video.video_id, "tts_manifest", expected)
     manifest_path = cached["resolved_outputs"]["manifest"]
     _update_files(video.video_id, voice_parts_dir=str(Path(manifest_path).parent / "parts"))
 
@@ -1168,7 +1265,7 @@ def _publish_completed_voice_clips(video, subtitle, parts_dir: Path, clip_signat
             clip_signature,
             {"audio": str(part_path)},
             inputs=[subtitle["artifact_id"]],
-            config_fingerprint="manual-tts-clip-v1",
+            config_fingerprint=VOICE_CLIP_CACHE_VERSION,
             activate_artifact=False,
         )
 
@@ -1183,7 +1280,7 @@ def _register_voice_manifest_from_parts(video, parts_dir: Path) -> dict[str, Any
     if any(not _is_valid_mp3(str(parts_dir / f"voice_{index:04d}.mp3")) for index in range(1, len(segments) + 1)):
         return None
     _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures)
-    expected = manual_artifacts.signature(clip_signatures, "manual-tts-manifest-v1")
+    expected = manual_artifacts.signature(clip_signatures, VOICE_MANIFEST_CACHE_VERSION)
     cached = manual_artifacts.resolve(video.video_id, "tts_manifest", expected)
     if cached:
         manual_artifacts.activate(video.video_id, "tts_manifest", expected)

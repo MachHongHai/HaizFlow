@@ -125,7 +125,16 @@ class ExternalLinkTests(unittest.TestCase):
         self.assertIn('text: "MachHongHai/HaizFlow"', about_section)
         self.assertIn('destination: "https://github.com/MachHongHai/HaizFlow"', about_section)
         self.assertIn('AppController.copyText("https://github.com/MachHongHai/HaizFlow")', about_section)
+        self.assertIn('destination: "https://www.linkedin.com/in/machhonghai/"', about_section)
+        self.assertIn('AppController.copyText("https://www.linkedin.com/in/machhonghai/")', about_section)
         self.assertNotIn("Đại học", about_section)
+
+    def test_home_introduction_links_to_github_and_linkedin(self):
+        creator = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "HomeCreatorPanel.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('destination: "https://github.com/MachHongHai/HaizFlow"', creator)
+        self.assertIn('destination: "https://www.linkedin.com/in/machhonghai/"', creator)
 
 
 if __name__ == "__main__":

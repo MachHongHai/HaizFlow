@@ -14,9 +14,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable
 
 from haizflow.core.model_integrity import (
     ALIGNMENT_MODEL_BASE_URL,
@@ -32,9 +32,8 @@ from haizflow.core.model_integrity import (
     HYMT2_GPU_FILES,
     HYMT2_GPU_REPO,
     HYMT2_GPU_REVISION,
-    SUBTITLE_OCR_BASE_URL,
-    SUBTITLE_OCR_FILES,
     OMNIVOICE_FILES,
+    OMNIVOICE_HTTP_RUNTIME_ASSETS,
     OMNIVOICE_HUB_FILE,
     OMNIVOICE_HUB_SHA256,
     OMNIVOICE_HUB_SIZE,
@@ -49,6 +48,8 @@ from haizflow.core.model_integrity import (
     OMNIVOICE_TRANSFORMERS_SHA256,
     OMNIVOICE_TRANSFORMERS_SIZE,
     OMNIVOICE_TRANSFORMERS_URL,
+    SUBTITLE_OCR_BASE_URL,
+    SUBTITLE_OCR_FILES,
     WHISPER_FILES,
     WHISPER_REPO,
     WHISPER_REVISION,
@@ -63,14 +64,13 @@ from haizflow.core.model_integrity import (
     verify_cpu_model,
     verify_demucs_model,
     verify_gpu_model,
-    verify_subtitle_ocr_models,
     verify_omnivoice_model,
     verify_omnivoice_sdk,
+    verify_subtitle_ocr_models,
     verify_whisper_model,
     verify_whisper_turbo_model,
     verify_whisperx_vad_model,
 )
-
 
 DOWNLOAD_HEADROOM_BYTES = 1024**3
 DOWNLOAD_CHUNK_BYTES = 4 * 1024 * 1024
@@ -254,6 +254,17 @@ def required_assets(device: str) -> tuple[ModelAsset, ...]:
                 OMNIVOICE_HUB_SHA256,
             ),
         )
+    )
+    assets.extend(
+        ModelAsset(
+            "omnivoice-runtime",
+            "OmniVoice isolated HTTP runtime",
+            url,
+            f"omnivoice/sdk/{filename}",
+            size,
+            digest,
+        )
+        for filename, (url, size, digest) in OMNIVOICE_HTTP_RUNTIME_ASSETS.items()
     )
     return tuple(assets)
 

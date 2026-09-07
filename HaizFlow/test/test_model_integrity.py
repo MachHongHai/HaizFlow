@@ -19,6 +19,27 @@ class ModelIntegrityTests(unittest.TestCase):
         self.assertIn(model_integrity.DEMUCS_MODEL_SHA256[:8], model_integrity.DEMUCS_MODEL_FILE)
         for _name, (_size, digest) in model_integrity.WHISPER_FILES.items():
             self.assertRegex(digest, r"^[0-9a-f]{64}$")
+
+    def test_omnivoice_runtime_pins_complete_httpx_dependency_closure(self):
+        expected_prefixes = {
+            "httpx-",
+            "httpcore-",
+            "h11-",
+            "anyio-",
+            "idna-",
+            "typing_extensions-",
+            "certifi-",
+        }
+        filenames = set(model_integrity.OMNIVOICE_HTTP_RUNTIME_ASSETS)
+        self.assertEqual(
+            {prefix for prefix in expected_prefixes if any(name.startswith(prefix) for name in filenames)},
+            expected_prefixes,
+        )
+        for filename, (url, size, digest) in model_integrity.OMNIVOICE_HTTP_RUNTIME_ASSETS.items():
+            self.assertIn(filename, model_integrity.OMNIVOICE_RUNTIME_FILES)
+            self.assertTrue(url.startswith("https://files.pythonhosted.org/"))
+            self.assertGreater(size, 0)
+            self.assertRegex(digest, r"^[0-9a-f]{64}$")
         self.assertEqual(set(model_integrity.ALIGNMENT_MODELS), {"en", "fr", "de", "es", "it"})
         for _bundle, filename, size, digest in model_integrity.ALIGNMENT_MODELS.values():
             self.assertTrue(filename.endswith((".pt", ".pth")))

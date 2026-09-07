@@ -208,20 +208,18 @@ FloatingToolDialog {
             spacing: Theme.space8
             visible: root.screen === "source"
 
-            AppButton {
+            StudioButton {
                 Layout.preferredWidth: 142
                 text: qsTr("Ghi âm")
                 iconGlyph: "\uE720"
-                compact: true
-                tone: "primary"
+                variant: "primary"
                 onClicked: root.screen = "record"
             }
 
-            AppButton {
+            StudioButton {
                 Layout.preferredWidth: 126
                 text: qsTr("Chọn tệp")
                 iconGlyph: "\uE8B7"
-                compact: true
                 onClicked: root.chooseReferenceFile()
             }
         }
@@ -376,11 +374,10 @@ FloatingToolDialog {
                     textFormat: Text.PlainText
                 }
 
-                AppButton {
+                StudioButton {
                     visible: root.hasSample && !root.recording
                     text: qsTr("Ghi lại")
-                    compact: true
-                    tone: "ghost"
+                    variant: "ghost"
                     onClicked: root.beginRecording()
                 }
             }

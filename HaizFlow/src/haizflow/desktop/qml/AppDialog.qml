@@ -11,6 +11,9 @@ Dialog {
     property int preferredHeight: 0
     property int maximumWidth: 760
     property int maximumHeight: 720
+    readonly property bool hasFooterActions: actionArea.children.length > 0
+    readonly property int headerHeight: 60
+    readonly property int footerHeight: hasFooterActions ? 56 : 0
     default property alias body: bodyColumn.data
     property alias footerActions: actionArea.data
 
@@ -18,8 +21,12 @@ Dialog {
     focus: true
     padding: 0
     width: Math.min(maximumWidth, preferredWidth, parent ? parent.width - 48 : preferredWidth)
-    implicitHeight: Math.min(parent ? parent.height - 48 : 720,
-        dialogHeader.implicitHeight + bodyColumn.implicitHeight + dialogFooter.implicitHeight + 2)
+    // Layout margins and a RowLayout's minimumHeight are not part of the
+    // children's implicitHeight.  Count the complete chrome explicitly so
+    // the footer can never overflow below the dialog background.
+    implicitHeight: Math.min(maximumHeight, parent ? parent.height - 48 : maximumHeight,
+        headerHeight + bodyColumn.implicitHeight + Theme.space32
+            + (hasFooterActions ? footerHeight + 2 : 1))
     height: preferredHeight > 0
         ? Math.min(maximumHeight, preferredHeight, parent ? parent.height - 48 : preferredHeight)
         : implicitHeight
@@ -31,6 +38,7 @@ Dialog {
     footer: null
 
     background: Rectangle {
+        objectName: "appDialogBackground"
         radius: Theme.radius
         color: Theme.surface
         border.width: 1
@@ -38,12 +46,15 @@ Dialog {
     }
 
     contentItem: ColumnLayout {
+        objectName: "appDialogContent"
         spacing: 0
 
         RowLayout {
             id: dialogHeader
             Layout.fillWidth: true
-            Layout.minimumHeight: 60
+            Layout.minimumHeight: root.headerHeight
+            Layout.preferredHeight: root.headerHeight
+            Layout.maximumHeight: root.headerHeight
             Layout.leftMargin: Theme.space20
             Layout.rightMargin: Theme.space12
             spacing: Theme.space12
@@ -79,12 +90,18 @@ Dialog {
             }
         }
 
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Theme.divider
+        }
 
         ColumnLayout {
             id: bodyColumn
+            objectName: "appDialogBody"
             Layout.fillWidth: true
-            Layout.fillHeight: root.preferredHeight > 0
+            Layout.fillHeight: true
+            Layout.minimumHeight: 0
             Layout.leftMargin: Theme.space20
             Layout.rightMargin: Theme.space20
             Layout.topMargin: Theme.space16
@@ -92,13 +109,21 @@ Dialog {
             spacing: Theme.space12
         }
 
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: root.hasFooterActions ? 1 : 0
+            visible: root.hasFooterActions
+            color: Theme.divider
+        }
 
         RowLayout {
             id: dialogFooter
+            objectName: "appDialogFooter"
             Layout.fillWidth: true
-            Layout.minimumHeight: actionArea.children.length > 0 ? 56 : 0
-            visible: actionArea.children.length > 0
+            Layout.minimumHeight: root.footerHeight
+            Layout.preferredHeight: root.footerHeight
+            Layout.maximumHeight: root.footerHeight
+            visible: root.hasFooterActions
             Layout.leftMargin: Theme.space20
             Layout.rightMargin: Theme.space20
             spacing: Theme.space8

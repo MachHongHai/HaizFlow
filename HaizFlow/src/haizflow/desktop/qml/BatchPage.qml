@@ -106,7 +106,7 @@ Item {
 
                     MediaSourceImportButton {
                         Layout.preferredWidth: 132
-                        tone: "primary"
+                        variant: "primary"
                         onFileRequested: AppController.browseBatchVideos()
                         onLinkRequested: root.requestUrlImport()
                         onDownloadProjectRequested: root.requestDownloadProjectImport()
@@ -139,19 +139,19 @@ Item {
                 Layout.fillWidth: true
             }
 
-            AppButton {
+            StudioButton {
                 text: qsTr("Cài đặt hàng loạt")
                 iconGlyph: "\uE713"
-                tone: "secondary"
+                variant: "secondary"
                 enabled: AppController.batchCount > 0 && !AppController.isBatchRunning
                 onClicked: root.requestBatchSettings()
             }
 
-            AppButton {
+            StudioButton {
                 visible: !AppController.isBatchRunning
                 text: AppController.batchPausedCount > 0 ? qsTr("Tiếp tục xử lý") : qsTr("Bắt đầu xử lý")
                 iconGlyph: "\uE768"
-                tone: "primary"
+                variant: "primary"
                 enabled: AppController.batchPendingCount > 0 || AppController.batchPausedCount > 0
                 onClicked: {
                     if (AppController.batchPausedCount > 0)
@@ -161,11 +161,11 @@ Item {
                 }
             }
 
-            AppButton {
+            StudioButton {
                 visible: AppController.isBatchRunning
                 text: AppController.isBatchPausing ? qsTr("Đang tạm dừng") : qsTr("Tạm dừng xử lý")
                 iconGlyph: "\uE71A"
-                tone: "danger"
+                variant: "danger"
                 enabled: !AppController.isBatchPausing
                 onClicked: AppController.stopBatch()
             }

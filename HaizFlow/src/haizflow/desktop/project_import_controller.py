@@ -7,14 +7,14 @@ import shutil
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
-from queue import Empty
+from datetime import UTC, datetime
 from pathlib import Path
+from queue import Empty
 
 from haizflow.config import TMP_DIR
+from haizflow.core.paths import app_data_dir
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import collect_batch_video_paths, create_video_thumbnail_path, normalize_video_path
-from haizflow.core.paths import app_data_dir
 from haizflow.schemas.video import SubtitleStyle, VideoConfig
 from haizflow.services import project_store, social_publish, video_store
 from haizflow.services.channel_import import normalize_remote_url
@@ -24,7 +24,7 @@ from haizflow.services.desktop_videos import (
     set_desktop_background_music,
     set_desktop_voice_reference,
 )
-from haizflow.services.video_download import DownloadCancelled, _load_yt_dlp, _youtube_dl_options, validate_video_url
+from haizflow.services.video_download import DownloadCancelled, download_audio, validate_video_url
 from haizflow.utils.ffmpeg import validate_video_integrity
 
 
@@ -301,6 +301,15 @@ class ProjectImportController:
             source_path = str(event.get("path") or "")
             stored_path = set_desktop_background_music(selected, source_path)
             self._invalidate_manual_audio_mix(selected)
+            refreshed = video_store.get_video(selected.video_id) or selected
+            history_before = task.get("history_before")
+            if history_before:
+                host._record_video_asset_change(
+                    selected.video_id,
+                    history_before,
+                    host._capture_video_asset_snapshot(refreshed, preserve=True),
+                    "Nhạc nền",
+                )
             if host._selected_video_id == selected.video_id:
                 host._background_music_path = stored_path
                 host.selectedVideoChanged.emit()
@@ -343,11 +352,19 @@ class ProjectImportController:
 
         task_id = uuid.uuid4().hex
         self._background_music_cancel = threading.Event()
+        selected = video_store.get_video(host._selected_video_id)
+        capture_snapshot = getattr(host, "_capture_video_asset_snapshot", None)
+        history_before = (
+            capture_snapshot(selected, preserve=True)
+            if selected is not None and callable(capture_snapshot)
+            else None
+        )
         self._background_music_task = {
             "task_id": task_id,
             "target": "video",
             "video_id": host._selected_video_id,
             "url": normalized_url,
+            "history_before": history_before,
         }
         host._background_music_import_busy = True
         host._background_music_import_status = "Downloading background music"
@@ -422,25 +439,7 @@ class ProjectImportController:
             os.makedirs(temporary_directory, exist_ok=True)
             if cancel_event.is_set():
                 raise DownloadCancelled("Background music download cancelled.")
-            yt_dlp = _load_yt_dlp()
-
-            def progress_hook(progress: dict) -> None:
-                if cancel_event.is_set():
-                    raise DownloadCancelled("Background music download cancelled.")
-
-            options = _youtube_dl_options()
-            options.update(
-                {
-                    "outtmpl": str(Path(output_path).with_suffix(".%(ext)s")),
-                    "format": "bestaudio/best",
-                    "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
-                    "progress_hooks": [progress_hook],
-                    "nopart": True,
-                    "overwrites": True,
-                }
-            )
-            with yt_dlp.YoutubeDL(options) as downloader:
-                downloader.extract_info(task["url"], download=True)
+            download_audio(task["url"], output_path, cancel_event=cancel_event)
             if cancel_event.is_set():
                 raise DownloadCancelled("Background music download cancelled.")
             produced = Path(output_path)
@@ -546,7 +545,7 @@ class ProjectImportController:
                 "type": "video_url",
                 "platform": host._url_importer.platform,
                 "source_url": host._url_importer.url,
-                "imported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "imported_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             },
         }
         if not host._url_importer.start_download(host._selected_project_root()):
@@ -734,7 +733,7 @@ class ProjectImportController:
             "channel_url": str(target.get("channel_url") or ""),
             "channel_name": str(target.get("channel_name") or candidate.get("uploader") or ""),
             "import_session_id": session_id,
-            "imported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "imported_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
         if self._can_import_in_background():
             queued = self._queue_import(
@@ -804,7 +803,9 @@ class ProjectImportController:
             None,
             "Choose background music",
             self._media_dialog_directory(),
-            "Audio or video files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.mp4 *.mov *.mkv *.webm *.avi);;All files (*.*)",
+            "Audio or video files "
+            "(*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.mp4 *.mov *.mkv *.webm *.avi);;"
+            "All files (*.*)",
         )
         if path:
             self.set_background_music(path)
@@ -814,7 +815,8 @@ class ProjectImportController:
             None,
             "Choose an authorised voice sample",
             self._media_dialog_directory(),
-            "Audio or video files (*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.mp4 *.mov *.mkv *.webm);;All files (*.*)",
+            "Audio or video files "
+            "(*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.mp4 *.mov *.mkv *.webm);;All files (*.*)",
         )
         return os.path.abspath(path) if path else ""
 
@@ -841,6 +843,7 @@ class ProjectImportController:
                 "warning",
             )
             return False
+        history_before = host._capture_video_asset_snapshot(video, preserve=True)
         try:
             set_desktop_voice_reference(video, path, transcript)
         except (OSError, RuntimeError, ValueError) as exc:
@@ -854,7 +857,18 @@ class ProjectImportController:
         # Persist provider/voice together with the copied sample. Otherwise a
         # page reload can restore the previous voice while leaving an orphaned
         # clone reference in the workspace.
-        host.persistSelectedVideoSettings()
+        host._edit_history_recording_suspended += 1
+        try:
+            host.persistSelectedVideoSettings()
+        finally:
+            host._edit_history_recording_suspended -= 1
+        refreshed = video_store.get_video(video.video_id) or video
+        host._record_video_asset_change(
+            video.video_id,
+            history_before,
+            host._capture_video_asset_snapshot(refreshed, preserve=True),
+            "Mẫu giọng",
+        )
         host.selectedVideoChanged.emit()
         preview = getattr(host, "_audio_preview", None)
         if preview is not None:
@@ -919,6 +933,7 @@ class ProjectImportController:
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if not video:
             return False
+        history_before = host._capture_video_asset_snapshot(video, preserve=True)
         try:
             set_desktop_voice_reference(video, "")
         except OSError as exc:
@@ -927,7 +942,18 @@ class ProjectImportController:
         if host._tts_voice == "omnivoice:clone":
             host._tts_voice = "omnivoice:female"
             host.ttsVoiceChanged.emit()
-        host.persistSelectedVideoSettings()
+        host._edit_history_recording_suspended += 1
+        try:
+            host.persistSelectedVideoSettings()
+        finally:
+            host._edit_history_recording_suspended -= 1
+        refreshed = video_store.get_video(video.video_id) or video
+        host._record_video_asset_change(
+            video.video_id,
+            history_before,
+            host._capture_video_asset_snapshot(refreshed, preserve=True),
+            "Mẫu giọng",
+        )
         host.ttsVoiceOptionsChanged.emit()
         host.selectedVideoChanged.emit()
         return True
@@ -938,7 +964,9 @@ class ProjectImportController:
             None,
             "Choose background music for the batch",
             self._media_dialog_directory(),
-            "Audio or video files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.mp4 *.mov *.mkv *.webm *.avi);;All files (*.*)",
+            "Audio or video files "
+            "(*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.mp4 *.mov *.mkv *.webm *.avi);;"
+            "All files (*.*)",
         )
         if not path:
             return ""
@@ -961,12 +989,20 @@ class ProjectImportController:
                     None, "Background music", "Pause or finish this video before changing its background music."
                 )
                 return False
+            history_before = host._capture_video_asset_snapshot(selected, preserve=True)
             try:
                 stored_path = set_desktop_background_music(selected, source_path)
                 self._invalidate_manual_audio_mix(selected)
             except (OSError, RuntimeError, ValueError) as exc:
                 QMessageBox.warning(None, "Background music", str(exc))
                 return False
+            refreshed = video_store.get_video(selected.video_id) or selected
+            host._record_video_asset_change(
+                selected.video_id,
+                history_before,
+                host._capture_video_asset_snapshot(refreshed, preserve=True),
+                "Nhạc nền",
+            )
             host._background_music_path = stored_path
             host.refreshVideos()
             host.selectedVideoChanged.emit()
@@ -1078,7 +1114,8 @@ class ProjectImportController:
             QMessageBox.information(
                 None,
                 "Social publishing",
-                "Wait for the current Zernio or publishing-project import task to finish before creating another project.",
+                "Wait for the current Zernio or publishing-project import task to finish "
+                "before creating another project.",
             )
             return False
         previous_video_id = str(getattr(host, "_selected_video_id", "") or "")

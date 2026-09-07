@@ -7,9 +7,57 @@ import QtQuick.tooling 1.2
 
 Module {
     Component {
+        name: "ManualSubtitleModel"
+        prototype: "QObject"
+        accessSemantics: "reference"
+        Property { name: "segments"; type: "QVariantList"; isReadonly: true }
+        Property { name: "revision"; type: "int"; isReadonly: true }
+    }
+    Component {
+        name: "SubtitleOverlayRenderer"
+        prototype: "QObject"
+        accessSemantics: "reference"
+        Property { name: "frame"; type: "QVariantMap"; isReadonly: true }
+        Method { name: "configure"; Parameter { name: "payload"; type: "string" } Parameter { name: "layout"; type: "string" } Parameter { name: "fixed"; type: "bool" } }
+        Method { name: "seek"; Parameter { name: "seconds"; type: "double" } }
+    }
+    Component {
+        name: "ManualPreviewAudioController"
+        prototype: "QObject"
+        accessSemantics: "reference"
+        Method { name: "setVolumes"; Parameter { name: "original"; type: "int" } Parameter { name: "voice"; type: "int" } Parameter { name: "music"; type: "int" } }
+        Method { name: "synchronize"; Parameter { name: "seconds"; type: "double" } Parameter { name: "playing"; type: "bool" } Parameter { name: "muted"; type: "bool" } }
+        Method { name: "seek"; Parameter { name: "seconds"; type: "double" } }
+    }
+    Component {
         file: "D:/Du-an/HaizFlow/HaizFlow/src/haizflow/desktop/qml_controller.py"
         lineNumber: 0
         name: "HaizFlowController"
+        Property { name: "manualSubtitleModel"; type: "ManualSubtitleModel"; isPointer: true; isReadonly: true }
+        Property { name: "subtitleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
+        Property { name: "manualPreviewAudio"; type: "ManualPreviewAudioController"; isPointer: true; isReadonly: true }
+        Property { name: "manualCanUndo"; type: "bool"; isReadonly: true }
+        Property { name: "manualCanRedo"; type: "bool"; isReadonly: true }
+        Property { name: "manualUndoLabel"; type: "string"; isReadonly: true }
+        Property { name: "manualRedoLabel"; type: "string"; isReadonly: true }
+        Property { name: "selectedStepId"; type: "QString"; isReadonly: true }
+        Property { name: "canUndoEdit"; type: "bool"; isReadonly: true }
+        Property { name: "canRedoEdit"; type: "bool"; isReadonly: true }
+        Property { name: "undoEditLabel"; type: "string"; isReadonly: true }
+        Property { name: "redoEditLabel"; type: "string"; isReadonly: true }
+        Method { name: "setEditHistoryScope"; Parameter { name: "scope"; type: "string" } }
+        Method { name: "undoEdit"; type: "bool" }
+        Method { name: "redoEdit"; type: "bool" }
+        Method { name: "undoManualEdit"; type: "bool" }
+        Method { name: "redoManualEdit"; type: "bool" }
+        Method { name: "loadManualSubtitles" }
+        Method { name: "beginManualSubtitleEdit"; Parameter { name: "segmentId"; type: "string" } }
+        Method { name: "endManualSubtitleEdit" }
+        Method { name: "saveManualSubtitleText"; type: "bool"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "text"; type: "string" } Parameter { name: "expectedRevision"; type: "int" } Parameter { name: "requestId"; type: "string" } }
+        Method { name: "saveManualSubtitleTiming"; type: "bool"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "start"; type: "double" } Parameter { name: "end"; type: "double" } }
+        Method { name: "recordManualSubtitleLayoutChange"; Parameter { name: "beforeFontSize"; type: "int" } Parameter { name: "beforePositionX"; type: "int" } Parameter { name: "beforePositionY"; type: "int" } Parameter { name: "afterFontSize"; type: "int" } Parameter { name: "afterPositionX"; type: "int" } Parameter { name: "afterPositionY"; type: "int" } }
+        Signal { name: "manualSubtitleSaved"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "revision"; type: "int" } Parameter { name: "requestId"; type: "string" } }
+        Signal { name: "manualSubtitleSaveFailed"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "requestId"; type: "string" } Parameter { name: "message"; type: "string" } }
         accessSemantics: "reference"
         prototype: "QObject"
         exports: ["HaizFlow/AppController 1.0"]
@@ -1443,6 +1491,11 @@ Module {
         Signal {
             name: "manualToolStateChanged"
             Parameter { name: "a1"; type: "QString" }
+        }
+        Signal {
+            name: "manualExportCompleted"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
         }
         Signal { name: "workflowModeChanged" }
         Signal { name: "selectedVideoChanged" }

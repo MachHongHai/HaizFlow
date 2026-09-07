@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from haizflow.desktop.localization import QMessageBox, _set_ui_language
 from haizflow.core.hardware import (
     basic_hardware_capabilities,
     clear_runtime_profile_cache,
     recommended_processing_device,
     validate_processing_device,
 )
+from haizflow.desktop.localization import QMessageBox, _set_ui_language
 from haizflow.services import desktop_settings
 
 
@@ -31,6 +31,10 @@ class SettingsController:
         if not compatible:
             QMessageBox.warning(None, "Processing device", compatibility_message)
             return False
+        history_before = {
+            "language": str(host._settings_language),
+            "processing_device": str(host._settings_processing_device),
+        }
         device_changed = processing_device != host._settings_processing_device
         try:
             settings = desktop_settings.save_settings(
@@ -68,10 +72,23 @@ class SettingsController:
         host.statusMessageChanged.emit()
         if device_changed and not (pipeline_active or host._device_switching):
             host._switch_processing_device(host._settings_processing_device)
+        record = getattr(host, "_record_app_settings_change", None)
+        if callable(record):
+            record(
+                history_before,
+                {
+                    "language": str(host._settings_language),
+                    "processing_device": str(host._settings_processing_device),
+                },
+            )
         return True
 
     def reset(self) -> None:
         host = self._host
+        history_before = {
+            "language": str(host._settings_language),
+            "processing_device": str(host._settings_processing_device),
+        }
         pipeline_active = host._pipeline_is_active()
         capabilities = getattr(host, "_hardware_capabilities", None) or basic_hardware_capabilities()
         try:
@@ -107,3 +124,12 @@ class SettingsController:
         host.statusMessageChanged.emit()
         if device_changed and not (pipeline_active or host._device_switching):
             host._switch_processing_device(host._settings_processing_device)
+        record = getattr(host, "_record_app_settings_change", None)
+        if callable(record):
+            record(
+                history_before,
+                {
+                    "language": str(host._settings_language),
+                    "processing_device": str(host._settings_processing_device),
+                },
+            )

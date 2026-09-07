@@ -408,35 +408,21 @@ class ProjectListModel(QAbstractListModel):
 
 
 class ProjectGridModel(ProjectListModel):
-    """Project model with a synthetic first cell for creating a project."""
+    """Project list used by the mode-specific grid pages.
+
+    Project creation belongs to the page command bar rather than a synthetic
+    model row.  Keeping this type preserves the public controller API while
+    ensuring every exposed row maps directly to a persisted project.
+    """
 
     IsCreateCardRole = Qt.ItemDataRole.UserRole + 10
-
-    def rowCount(self, parent=QModelIndex()):
-        return 0 if parent.isValid() else len(self._projects) + 1
-
-    def _project_row_to_model_row(self, row: int) -> int:
-        # Row zero is the synthetic "create project" card.
-        return row + 1
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or index.row() < 0 or index.row() >= self.rowCount():
             return None
         if role == self.IsCreateCardRole:
-            return index.row() == 0
-        if index.row() == 0:
-            return {
-                self.ProjectNameRole: "",
-                self.ProjectTypeRole: "",
-                self.VideoCountRole: 0,
-                self.StatusRole: "",
-                self.ProgressRole: 0,
-                self.ThumbnailRole: "",
-                self.VideoSizeRole: "",
-                self.UpdatedAtRole: "",
-                self.ActivityAtRole: "",
-            }.get(role)
-        return super().data(self.index(index.row() - 1, 0), role)
+            return False
+        return super().data(index, role)
 
     def roleNames(self):
         roles = super().roleNames()

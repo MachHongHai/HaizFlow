@@ -43,6 +43,44 @@ class TtsReliabilityTests(unittest.TestCase):
                         "video",
                     )
 
+    def test_edge_partial_refresh_generates_only_requested_segment(self):
+        async def synthesize(text, _voice, output_path, _retries, **_kwargs):
+            _write_test_mp3(output_path)
+            generated.append(text)
+            return 1
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            segments_path = Path(temp_dir) / "segments.json"
+            segments_path.write_text(
+                json.dumps([
+                    {"text": "Giữ nguyên"},
+                    {"text": "Chỉ tạo câu này"},
+                    {"text": "Cũng giữ nguyên"},
+                ], ensure_ascii=False),
+                encoding="utf-8",
+            )
+            output_dir = Path(temp_dir) / "voice"
+            generated = []
+            progress = []
+            with (
+                mock.patch.object(tts, "_tts_text_with_retry", side_effect=synthesize),
+                mock.patch.object(tts, "log_to_video"),
+            ):
+                tts.generate_voice_parts(
+                    str(segments_path),
+                    str(output_dir),
+                    "vi-VN-NamMinhNeural",
+                    "video",
+                    progress_callback=lambda current, total: progress.append((current, total)),
+                    segment_indices=[2],
+                )
+
+            self.assertEqual(generated, ["Chỉ tạo câu này"])
+            self.assertFalse((output_dir / "voice_0001.mp3").exists())
+            self.assertTrue((output_dir / "voice_0002.mp3").exists())
+            self.assertFalse((output_dir / "voice_0003.mp3").exists())
+            self.assertEqual(progress[-1], (1, 1))
+
     def test_text_normalization_removes_transport_sensitive_punctuation(self):
         normalized = tts.preprocess_text_for_tts("  Xin\u00a0chao\u200b \u2013 tu nhien\u2026  ")
         self.assertEqual(normalized, "Xin chao, tu nhien...")

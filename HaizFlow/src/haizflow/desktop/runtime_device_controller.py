@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import queue
+import shutil
 import threading
 from pathlib import Path
 
 from haizflow.config import MODELS_DIR
-from haizflow.desktop.localization import QMessageBox
 from haizflow.core.events import unsubscribe_log
 from haizflow.core.hardware import (
     configure_processing_device,
@@ -18,15 +18,16 @@ from haizflow.core.hardware import (
     validate_processing_device,
 )
 from haizflow.core.runtime_probe import probe_runtime
+from haizflow.desktop.localization import QMessageBox
 from haizflow.pipeline.process_registry import pause_video
 from haizflow.services import desktop_settings, video_store
-from haizflow.services.translation import shutdown_hymt2_worker, warm_hymt2_worker
 from haizflow.services.model_bootstrap import (
     ModelBootstrapCancelled,
     ModelProgress,
     install_required_models,
     models_ready,
 )
+from haizflow.services.translation import shutdown_hymt2_worker, warm_hymt2_worker
 
 
 class RuntimeDeviceController:
@@ -126,6 +127,18 @@ class RuntimeDeviceController:
         dimension_probe = getattr(host, "_dimension_probe", None)
         if dimension_probe:
             dimension_probe.shutdown()
+        manual_subtitles = getattr(host, "_manual_subtitles", None)
+        if manual_subtitles:
+            manual_subtitles.close()
+        subtitle_overlay = getattr(host, "_subtitle_overlay", None)
+        if subtitle_overlay:
+            subtitle_overlay.close()
+        manual_audio = getattr(host, "_manual_audio", None)
+        if manual_audio:
+            manual_audio.close()
+        for directory in getattr(host, "_edit_history_asset_directories", set()):
+            shutil.rmtree(directory, ignore_errors=True)
+        getattr(host, "_edit_history_asset_directories", set()).clear()
         for background_thread in (
             getattr(host, "_thumbnail_refresh_thread", None),
             getattr(host, "_startup_maintenance_thread", None),

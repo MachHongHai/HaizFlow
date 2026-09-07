@@ -8,7 +8,7 @@ AppDialog {
     id: root
 
     title: qsTr("Giới thiệu HaizFlow")
-    subtitle: qsTr("Thông tin phiên bản và liên hệ")
+    subtitle: qsTr("Ứng dụng nguồn mở dành cho Windows")
     preferredWidth: 580
     maximumWidth: 620
 
@@ -49,6 +49,15 @@ AppDialog {
                 font.pixelSize: TypeScale.body
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Phát triển bởi Mạch Hồng Hải")
+                color: Theme.textSubtle
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.label
+                textFormat: Text.PlainText
             }
         }
     }
@@ -105,9 +114,24 @@ AppDialog {
         }
     }
 
-    footerActions: AppButton {
+    SettingRow {
+        Layout.fillWidth: true
+        label: "LinkedIn"
+        ExternalTextLink {
+            text: "linkedin.com/in/machhonghai"
+            destination: "https://www.linkedin.com/in/machhonghai/"
+        }
+        IconButton {
+            controlSize: 28
+            glyph: "\uE8C8"
+            toolTipText: qsTr("Sao chép liên kết")
+            onClicked: AppController.copyText("https://www.linkedin.com/in/machhonghai/")
+        }
+    }
+
+    footerActions: StudioButton {
         text: qsTr("Đóng")
-        tone: "primary"
+        variant: "primary"
         onClicked: root.close()
     }
 }

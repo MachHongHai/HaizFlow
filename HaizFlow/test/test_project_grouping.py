@@ -183,7 +183,7 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(single_model.project_at(0)["project_name"], "Interview")
         self.assertEqual(batch_model.project_at(0)["project_name"], "Campaign")
 
-    def test_project_grid_notifies_the_real_project_rows_after_its_create_card(self):
+    def test_project_grid_exposes_only_persisted_project_rows(self):
         model = ProjectGridModel()
         project = {
             "key": "project:one",
@@ -200,7 +200,9 @@ class ProjectGroupingTests(unittest.TestCase):
 
         model.set_projects([{**project, "status": "processing", "progress": 50}])
 
-        self.assertEqual(changed_rows, [(1, 1)])
+        self.assertEqual(model.rowCount(), 1)
+        self.assertFalse(model.data(model.index(0, 0), ProjectGridModel.IsCreateCardRole))
+        self.assertEqual(changed_rows, [(0, 0)])
 
     def test_batch_output_uses_a_unique_folder_for_each_video(self):
         with tempfile.TemporaryDirectory() as temp_dir:

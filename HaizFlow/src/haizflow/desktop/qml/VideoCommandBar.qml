@@ -122,68 +122,68 @@ Rectangle {
         RowLayout {
             spacing: Theme.space8
 
-            AppButton {
+            StudioButton {
                 visible: root.canReview || root.canEditSubtitles
                 text: root.canReview ? qsTr("Duyệt phụ đề") : qsTr("Sửa lại phụ đề")
                 iconGlyph: "\uE70F"
-                tone: root.canReview ? "primary" : "secondary"
+                variant: root.canReview ? "primary" : "secondary"
                 onClicked: root.requestReviewTranslation()
             }
 
-            AppButton {
+            StudioButton {
                 visible: AppController.selectedStatus === "paused" && !root.selectedQueued
                 text: qsTr("Tiếp tục")
                 iconGlyph: "\uE768"
-                tone: "primary"
+                variant: "primary"
                 onClicked: AppController.resumeSelectedVideo()
             }
 
-            AppButton {
+            StudioButton {
                 visible: root.canStart
                 text: qsTr("Xử lý")
                 iconGlyph: "\uE768"
-                tone: "primary"
+                variant: "primary"
                 onClicked: AppController.startProjectVideo()
             }
 
-            AppButton {
+            StudioButton {
                 visible: root.canRestart
                 text: qsTr("Chạy lại")
                 iconGlyph: "\uE72C"
-                tone: AppController.selectedStatus === "done" ? "secondary" : "primary"
+                variant: AppController.selectedStatus === "done" ? "secondary" : "primary"
                 onClicked: AppController.restartSelectedVideo()
             }
 
-            AppButton {
+            StudioButton {
                 visible: root.selectedProcessing && !root.pausePending
                 text: qsTr("Tạm dừng")
                 iconGlyph: "\uE769"
-                tone: "danger"
+                variant: "danger"
                 onClicked: AppController.stopVideo()
             }
 
-            AppButton {
+            StudioButton {
                 visible: root.selectedQueued && !root.selectedProcessing
                     && AppController.selectedStatus !== "paused"
                 text: qsTr("Đang chờ")
                 iconGlyph: "\uE895"
-                tone: "secondary"
+                variant: "secondary"
                 enabled: false
             }
 
-            AppButton {
+            StudioButton {
                 visible: root.pausePending
                 text: qsTr("Đang tạm dừng")
                 iconGlyph: "\uE895"
-                tone: "secondary"
+                variant: "secondary"
                 enabled: false
             }
 
-            AppButton {
+            StudioButton {
                 visible: AppController.hasSelectedVideo
                 text: qsTr("Mở video đầu ra")
                 iconGlyph: "\uE768"
-                tone: "primary"
+                variant: "primary"
                 enabled: root.hasOutput
                 onClicked: AppController.openOutputFile()
             }

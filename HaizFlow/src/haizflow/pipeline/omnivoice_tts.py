@@ -20,10 +20,7 @@ from typing import Any
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, MODELS_DIR, TMP_DIR
 from haizflow.core.hardware import processing_device_preference
 from haizflow.core.model_integrity import (
-    OMNIVOICE_HUB_FILE,
     OMNIVOICE_RUNTIME_FILES,
-    OMNIVOICE_SDK_FILE,
-    OMNIVOICE_TRANSFORMERS_FILE,
     verify_omnivoice_model,
     verify_omnivoice_sdk,
 )
@@ -36,11 +33,12 @@ from haizflow.pipeline.process_registry import (
 from haizflow.services.video_store import log_to_video
 from haizflow.utils.ffmpeg import _binary
 
-_RUNTIME_MARKER_VERSION = "omnivoice-0.2.1-transformers-5.3.0-hub-1.3.0"
+_RUNTIME_MARKER_VERSION = "omnivoice-0.2.1-transformers-5.3.0-hub-1.3.0-httpx-0.28.1"
 _SAMPLE_RATE = 24_000
 _RUNTIME_PREPARE_LOCK = threading.Lock()
 _PERSISTENT_WORKER_LOCK = threading.RLock()
 _PERSISTENT_WORKER_PROCESS: subprocess.Popen[str] | None = None
+_PERSISTENT_IDLE_TIMER: threading.Timer | None = None
 _PERSISTENT_WORKER_REGISTRY_ID = "omnivoice-warm-runtime"
 _GPU_STALL_TIMEOUT_SECONDS = 15 * 60
 _CPU_STALL_TIMEOUT_SECONDS = 40 * 60
@@ -99,10 +97,36 @@ OMNIVOICE_LANGUAGE_IDS = {
     "ar": "arb",
 }
 
+OMNIVOICE_NARRATOR_ANCHORS = {
+    "vi": "Giọng kể này được giữ ổn định và tự nhiên trong suốt video.",
+    "en": "This narrator keeps a clear and consistent voice throughout the video.",
+    "zh": "这位旁白在整段视频中保持清晰自然的声音。",
+    "hi": "यह कथावाचक पूरे वीडियो में एक स्पष्ट और समान आवाज़ बनाए रखता है।",
+    "es": "Esta narración mantiene una voz clara y constante durante todo el video.",
+    "fr": "Cette narration garde une voix claire et constante pendant toute la vidéo.",
+    "arb": "يحافظ هذا الراوي على صوت واضح ومتناسق طوال الفيديو.",
+    "pt": "Esta narração mantém uma voz clara e consistente durante todo o vídeo.",
+    "ru": "Этот диктор сохраняет ясный и ровный голос на протяжении всего видео.",
+    "id": "Narator ini menjaga suara yang jelas dan konsisten sepanjang video.",
+    "de": "Diese Erzählstimme bleibt im gesamten Video klar und einheitlich.",
+    "ja": "このナレーションは動画全体で自然で一貫した声を保ちます。",
+    "ko": "이 내레이션은 영상 전체에서 자연스럽고 일관된 목소리를 유지합니다.",
+    "it": "Questa narrazione mantiene una voce chiara e uniforme per tutto il video.",
+    "th": "เสียงบรรยายนี้คงความชัดเจนและสม่ำเสมอตลอดทั้งวิดีโอ",
+    "fil": "Pananatilihin ng tagapagsalaysay ang malinaw at pare-parehong boses sa buong video.",
+}
+
 
 def _omnivoice_language_id(language_id: str) -> str:
     normalized = str(language_id or "").strip().lower()
     return OMNIVOICE_LANGUAGE_IDS.get(normalized, normalized)
+
+
+def _narrator_anchor_text(language_id: str) -> str:
+    return OMNIVOICE_NARRATOR_ANCHORS.get(
+        _omnivoice_language_id(language_id),
+        OMNIVOICE_NARRATOR_ANCHORS["en"],
+    )
 
 
 def _write_status_file(status_path: Path, payload: dict[str, Any]) -> bool:
@@ -210,6 +234,13 @@ def _prepare_isolated_runtime_unlocked() -> Path:
         site_packages / "omnivoice" / "__init__.py",
         site_packages / "transformers" / "__init__.py",
         site_packages / "huggingface_hub" / "__init__.py",
+        site_packages / "httpx" / "__init__.py",
+        site_packages / "httpcore" / "__init__.py",
+        site_packages / "anyio" / "__init__.py",
+        site_packages / "h11" / "__init__.py",
+        site_packages / "idna" / "__init__.py",
+        site_packages / "typing_extensions.py",
+        site_packages / "certifi" / "__init__.py",
     )
     if (
         marker.is_file()
@@ -222,11 +253,7 @@ def _prepare_isolated_runtime_unlocked() -> Path:
     shutil.rmtree(temporary, ignore_errors=True)
     temporary.mkdir(parents=True, exist_ok=True)
     try:
-        for filename in (
-            OMNIVOICE_SDK_FILE,
-            OMNIVOICE_TRANSFORMERS_FILE,
-            OMNIVOICE_HUB_FILE,
-        ):
+        for filename in OMNIVOICE_RUNTIME_FILES:
             wheel = sdk_root / filename
             expected_size, _digest = OMNIVOICE_RUNTIME_FILES[filename]
             if not wheel.is_file() or wheel.stat().st_size != expected_size:
@@ -291,6 +318,7 @@ def _worker_environment() -> dict[str, str]:
 
 def _stop_persistent_worker_unlocked() -> None:
     global _PERSISTENT_WORKER_PROCESS
+    _cancel_idle_shutdown()
     process = _PERSISTENT_WORKER_PROCESS
     _PERSISTENT_WORKER_PROCESS = None
     if process is None:
@@ -312,8 +340,31 @@ def _stop_persistent_worker_unlocked() -> None:
     unregister_process(_PERSISTENT_WORKER_REGISTRY_ID, process, force=True)
 
 
+def _cancel_idle_shutdown() -> None:
+    global _PERSISTENT_IDLE_TIMER
+    if _PERSISTENT_IDLE_TIMER is not None:
+        _PERSISTENT_IDLE_TIMER.cancel()
+        _PERSISTENT_IDLE_TIMER = None
+
+
+def _schedule_idle_shutdown() -> None:
+    global _PERSISTENT_IDLE_TIMER
+    _cancel_idle_shutdown()
+    def expire():
+        # A cancelled timer may already be waiting for the worker lock.
+        with _PERSISTENT_WORKER_LOCK:
+            if _PERSISTENT_IDLE_TIMER is timer:
+                _stop_persistent_worker_unlocked()
+
+    timer = threading.Timer(90.0, expire)
+    timer.daemon = True
+    _PERSISTENT_IDLE_TIMER = timer
+    timer.start()
+
+
 def _persistent_worker_unlocked() -> subprocess.Popen[str]:
     global _PERSISTENT_WORKER_PROCESS
+    _cancel_idle_shutdown()
     process = _PERSISTENT_WORKER_PROCESS
     if process is not None and process.poll() is None and process.stdin is not None:
         return process
@@ -492,6 +543,7 @@ def _run_persistent_worker_process(
                     except (OSError, ValueError, TypeError, json.JSONDecodeError):
                         time.sleep(0.05)
                         continue
+                    _schedule_idle_shutdown()
                     return int(response.get("return_code", 1)), str(response.get("error") or "")
                 if process.poll() is not None:
                     detail = f"Warm OmniVoice worker exited unexpectedly ({process.returncode})."
@@ -612,6 +664,7 @@ def synthesize_batch_to_mp3(
     keep_worker_warm: bool = False,
     process_registry_id: str | None = None,
     inference_steps: int = 32,
+    narrator_anchor_text: str = "",
 ) -> None:
     """Synthesize missing segments, normally reusing one warm isolated model."""
     if not items:
@@ -692,6 +745,8 @@ def synthesize_batch_to_mp3(
             "site_packages": str(_sdk_root() / "site-packages"),
             "device": "cuda:0" if processing_device_preference() == "gpu" else "cpu",
             "language": _omnivoice_language_id(language_id),
+            "narrator_anchor_text": str(narrator_anchor_text or "").strip()
+            or _narrator_anchor_text(language_id),
             "items": request_items,
             "speaker_mode": "multiple" if speaker_mode == "multiple" else "single",
             "inference_steps": max(8, min(32, int(inference_steps))),
@@ -832,6 +887,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
         runtime.pop("model_key", None)
         if previous_model is not None:
             del previous_model
+            runtime.pop("narrator_prompt_cache", None)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         model = OmniVoice.from_pretrained(
@@ -854,51 +910,61 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
         if device.startswith("cuda"):
             torch.cuda.manual_seed_all(voice_seed)
 
-    # A dedicated short prompt avoids turning one 20-40 second translated
-    # paragraph into the reference for the whole video. It is useful only for
-    # multi-segment preset narration; previews and explicit clone references
-    # do not need this extra generation.
-    if speaker_mode == "single" and len(synthesis_items) > 1:
-        anchor_candidate = _select_voice_anchor(synthesis_items)
-        if anchor_candidate is not None:
-            anchor_text = _voice_anchor_excerpt(str(anchor_candidate.get("text") or ""))
-            if anchor_text:
-                anchor_instruction = OMNIVOICE_VOICE_INSTRUCTIONS.get(
-                    str(anchor_candidate.get("voice") or "").strip().lower(),
-                    OMNIVOICE_VOICE_INSTRUCTIONS["omnivoice:female"],
+    # A fixed, language-specific reference keeps the same preset identity when
+    # a later edit regenerates only one segment. The persistent worker retains
+    # the prompt; multiple-speaker mode deliberately keeps per-segment voices.
+    if speaker_mode == "single" and synthesis_items:
+        anchor_text = str(request.get("narrator_anchor_text") or "").strip()
+        anchor_voice = str(synthesis_items[0].get("voice") or "omnivoice:female").strip().lower()
+        anchor_instruction = OMNIVOICE_VOICE_INSTRUCTIONS.get(
+            anchor_voice,
+            OMNIVOICE_VOICE_INSTRUCTIONS["omnivoice:female"],
+        )
+        narrator_prompt_cache = runtime.setdefault("narrator_prompt_cache", {})
+        anchor_key = (
+            model_key,
+            str(request.get("language") or ""),
+            anchor_voice,
+            voice_seed,
+            anchor_text,
+        )
+        anchor_prompt = narrator_prompt_cache.get(anchor_key)
+        if anchor_prompt is None and anchor_text:
+            write_status(0, "creating_voice_anchor")
+            reset_seed()
+            generated_anchor: Any = None
+            anchor_waveform: Any = None
+            try:
+                with torch.inference_mode():
+                    generated_anchor = model.generate(
+                        text=anchor_text,
+                        language=str(request.get("language") or "") or None,
+                        instruct=anchor_instruction,
+                        num_step=int(request.get("inference_steps") or 32),
+                        normalize_text=True,
+                        audio_chunk_duration=10.0,
+                        audio_chunk_threshold=8.0,
+                    )
+                anchor_waveform = (
+                    generated_anchor[0] if isinstance(generated_anchor, (list, tuple)) else generated_anchor
                 )
-                write_status(0, "creating_voice_anchor")
-                reset_seed()
-                generated_anchor: Any = None
-                anchor_waveform: Any = None
-                try:
-                    with torch.inference_mode():
-                        generated_anchor = model.generate(
-                            text=anchor_text,
-                            language=str(request.get("language") or "") or None,
-                            instruct=anchor_instruction,
-                            num_step=int(request.get("inference_steps") or 32),
-                            normalize_text=True,
-                            audio_chunk_duration=10.0,
-                            audio_chunk_threshold=8.0,
-                        )
-                    anchor_waveform = (
-                        generated_anchor[0] if isinstance(generated_anchor, (list, tuple)) else generated_anchor
-                    )
-                    if isinstance(anchor_waveform, torch.Tensor):
-                        anchor_waveform = anchor_waveform.detach().float().cpu().numpy()
-                    anchor_waveform = np.asarray(anchor_waveform, dtype=np.float32).reshape(-1)
-                    if anchor_waveform.size < 240 or not np.isfinite(anchor_waveform).all():
-                        raise RuntimeError("OmniVoice returned an invalid narrator anchor.")
-                    anchor_path = status_path.parent / "narrator-anchor.wav"
-                    sample_rate = int(getattr(model, "sampling_rate", None) or _SAMPLE_RATE)
-                    sf.write(str(anchor_path), anchor_waveform, sample_rate, subtype="PCM_16")
-                    anchor_prompt = model.create_voice_clone_prompt(
-                        ref_audio=str(anchor_path),
-                        ref_text=anchor_text,
-                    )
-                finally:
-                    del generated_anchor, anchor_waveform
+                if isinstance(anchor_waveform, torch.Tensor):
+                    anchor_waveform = anchor_waveform.detach().float().cpu().numpy()
+                anchor_waveform = np.asarray(anchor_waveform, dtype=np.float32).reshape(-1)
+                if anchor_waveform.size < 240 or not np.isfinite(anchor_waveform).all():
+                    raise RuntimeError("OmniVoice returned an invalid narrator anchor.")
+                anchor_path = status_path.parent / "narrator-anchor.wav"
+                sample_rate = int(getattr(model, "sampling_rate", None) or _SAMPLE_RATE)
+                sf.write(str(anchor_path), anchor_waveform, sample_rate, subtype="PCM_16")
+                anchor_prompt = model.create_voice_clone_prompt(
+                    ref_audio=str(anchor_path),
+                    ref_text=anchor_text,
+                )
+                narrator_prompt_cache[anchor_key] = anchor_prompt
+            finally:
+                del generated_anchor, anchor_waveform
+        elif anchor_prompt is not None:
+            write_status(0, "reusing_voice_anchor")
 
     write_status(0, "synthesizing")
     for completed, item in enumerate(synthesis_items, 1):

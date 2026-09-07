@@ -24,11 +24,10 @@ Item {
                 .arg(AppController.tiktokPublishCount)
                 .arg(qsTr("đã đăng"))
 
-            AppButton {
-                compact: true
+            StudioButton {
                 text: AppController.tiktokPublishBusy ? qsTr("Hủy") : qsTr("Đăng tất cả")
                 iconGlyph: AppController.tiktokPublishBusy ? "\uE71A" : "\uE768"
-                tone: AppController.tiktokPublishBusy ? "danger" : "primary"
+                variant: AppController.tiktokPublishBusy ? "danger" : "primary"
                 enabled: AppController.tiktokPublishBusy
                     || (AppController.tiktokPublishCount > 0
                         && AppController.zernioApiKeyVerified
@@ -97,14 +96,12 @@ Item {
                     }
                 }
 
-                AppButton {
-                    compact: true
+                StudioButton {
                     text: qsTr("Chỉnh nội dung")
                     onClicked: defaultsDialogLoader.invoke("openForDefaults", [])
                 }
 
-                AppButton {
-                    compact: true
+                StudioButton {
                     text: qsTr("Tùy chọn bài đăng")
                     iconGlyph: "\uE713"
                     enabled: zernioSetupPanel.setupComplete && !AppController.tiktokPublishBusy
@@ -145,14 +142,13 @@ Item {
                     textFormat: Text.PlainText
                 }
 
-                AppButton {
+                StudioButton {
                     id: addVideosButton
                     property bool menuWasOpenOnPress: false
 
-                    compact: true
                     text: qsTr("Thêm video")
                     iconGlyph: "\uE710"
-                    tone: "primary"
+                    variant: "primary"
                     enabled: !AppController.tiktokPublishBusy
                     onPressed: menuWasOpenOnPress = addSourceMenu.visible
                     onClicked: {

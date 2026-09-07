@@ -10,14 +10,19 @@ import uuid
 from collections import deque
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import Property, QObject, Signal, Slot
 
-from haizflow.config import BIN_DIR, MEDIA_PROCESS_TIMEOUT_SECONDS, TMP_DIR
+from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, TMP_DIR
 from haizflow.desktop.channel_import import ChannelImportCoordinator
 from haizflow.desktop.localization import QFileDialog, native_media_dialog_directory
 from haizflow.desktop.url_import import VideoUrlImportCoordinator
 from haizflow.services import project_store
-from haizflow.services.video_download import DownloadCancelled, download_video, inspect_video_url
+from haizflow.services.video_download import (
+    DownloadCancelled,
+    download_audio,
+    download_video,
+    inspect_video_url,
+)
 from haizflow.utils.ffmpeg import _binary
 
 
@@ -527,7 +532,7 @@ class MediaDownloadController(QObject):
                         shutil.move(downloaded, destination)
                     else:
                         destination = self._unique_path(output / f"{metadata.title}.m4a")
-                        self._download_audio(metadata.url, destination)
+                        download_audio(metadata.url, destination, self._report, self._cancel)
                 finally:
                     shutil.rmtree(workspace, ignore_errors=True)
             if self._cancel.is_set():
@@ -535,33 +540,6 @@ class MediaDownloadController(QObject):
             self._finished.emit(str(destination))
         except Exception as exc:
             self._failed.emit(str(exc))
-
-    def _download_audio(self, url: str, destination: Path):
-        import yt_dlp
-
-        options = {
-            "quiet": True,
-            "no_warnings": True,
-            "noplaylist": True,
-            "socket_timeout": 20,
-            "outtmpl": str(destination.with_suffix(".%(ext)s")),
-            "format": "bestaudio/best",
-            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
-            "progress_hooks": [self._yt_progress],
-            "nopart": True,
-            "overwrites": True,
-        }
-        if os.path.isdir(BIN_DIR):
-            options["ffmpeg_location"] = BIN_DIR
-        with yt_dlp.YoutubeDL(options) as downloader:
-            downloader.extract_info(url, download=True)
-        produced = (
-            destination if destination.is_file() else next(destination.parent.glob(f"{destination.stem}.*"), None)
-        )
-        if not produced or not Path(produced).is_file():
-            raise RuntimeError("The link did not produce an audio file.")
-        if Path(produced) != destination:
-            shutil.move(str(produced), destination)
 
     def _extract(self, source: str, destination: Path):
         result = subprocess.run(
@@ -586,14 +564,6 @@ class MediaDownloadController(QObject):
         )
         if result.returncode or not destination.is_file():
             raise RuntimeError((result.stderr or "Could not extract audio from this file.").strip()[:400])
-
-    def _yt_progress(self, event):
-        if self._cancel.is_set():
-            raise DownloadCancelled("Download cancelled.")
-        if event.get("status") == "downloading":
-            done = int(event.get("downloaded_bytes") or 0)
-            total = int(event.get("total_bytes") or event.get("total_bytes_estimate") or 0)
-            self._report(round(done * 100 / total) if total else 0, "Downloading audio")
 
     def _report(self, progress, detail):
         self._progress.emit(max(0, min(100, int(progress))), str(detail))

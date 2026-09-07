@@ -1,3 +1,4 @@
+import queue
 import tempfile
 import threading
 import unittest
@@ -14,6 +15,80 @@ from haizflow.schemas.video import VideoConfig
 
 
 class ManualWorkflowTests(unittest.TestCase):
+    def test_manual_tool_queue_resets_stale_progress_before_backend_start(self):
+        video = SimpleNamespace(
+            video_id="manual-video",
+            project_type="manual",
+            project_key="manual:project",
+            status="manual_ready",
+            manual_target_tool="voice",
+            progress=100,
+            current_item=8,
+            total_items=8,
+            estimated_remaining_seconds=0,
+        )
+        host = SimpleNamespace(
+            _model_setup_state="ready",
+            _processing_queue=SimpleNamespace(
+                contains=Mock(return_value=False),
+                enqueue=Mock(return_value=True),
+                pending_ids=Mock(return_value=[video.video_id]),
+            ),
+            processingChanged=SimpleNamespace(emit=Mock()),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()),
+            _log_queue=queue.Queue(),
+        )
+        with (
+            patch(
+                "haizflow.desktop.processing_lifecycle_controller.video_store.get_video",
+                return_value=video,
+            ),
+            patch("haizflow.desktop.processing_lifecycle_controller.video_store.update_video") as update,
+            patch("haizflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
+            patch("haizflow.desktop.processing_lifecycle_controller.project_store.touch_project_by_key"),
+        ):
+            started = ProcessingLifecycleController(host).enqueue_video(video.video_id)
+
+        self.assertTrue(started)
+        queued = update.call_args_list[0].kwargs
+        self.assertEqual(queued["progress"], 0)
+        self.assertEqual(queued["current_item"], 0)
+        self.assertEqual(queued["total_items"], 0)
+        self.assertEqual(queued["step_detail"], "Đang chờ xử lý")
+
+    def test_manual_export_completion_is_emitted_only_after_output_exists(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "final.mp4"
+            output_path.write_bytes(b"exported-video")
+            video = SimpleNamespace(
+                video_id="manual-video",
+                project_type="manual",
+                status="done",
+                step="done",
+            )
+            host = SimpleNamespace(
+                _log_queue=queue.Queue(),
+                _selected_video_id=video.video_id,
+                refreshVideos=Mock(),
+                selectedVideoChanged=SimpleNamespace(emit=Mock()),
+                _refresh_batch_model=Mock(),
+                batchChanged=SimpleNamespace(emit=Mock()),
+                manualExportCompleted=SimpleNamespace(emit=Mock()),
+                _resolve_video_file=Mock(return_value=str(output_path)),
+            )
+            host._log_queue.put(f"__QUEUE_FINISHED__:{video.video_id}")
+
+            with patch(
+                "haizflow.desktop.processing_lifecycle_controller.video_store.get_video",
+                return_value=video,
+            ):
+                ProcessingLifecycleController(host).drain_log_queue()
+
+            host.manualExportCompleted.emit.assert_called_once_with(
+                video.video_id,
+                str(output_path),
+            )
+
     def test_retranslation_requires_confirmation_when_voice_is_active(self):
         video = SimpleNamespace(
             video_id="manual-video",

@@ -34,6 +34,7 @@ from haizflow.services.channel_import import (
 )
 from haizflow.services.douyin_channel_worker import (
     _candidate as douyin_candidate,
+    _request as douyin_request,
     _validated_douyin_url,
     inspect_profile as inspect_douyin_profile,
 )
@@ -42,6 +43,27 @@ from haizflow.services.video_download import DownloadCancelled
 
 
 class ChannelUrlTests(unittest.TestCase):
+    def test_douyin_request_retries_a_temporary_network_failure(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.geturl.return_value = "https://www.douyin.com/user/creator"
+        response.read.return_value = b"{}"
+
+        with (
+            patch(
+                "haizflow.services.douyin_channel_worker.urllib.request.urlopen",
+                side_effect=[TimeoutError("timed out"), response],
+            ) as urlopen,
+            patch("haizflow.services.douyin_channel_worker.time.sleep") as retry_sleep,
+        ):
+            body, resolved = douyin_request("https://www.douyin.com/user/creator", "")
+
+        self.assertEqual(body, b"{}")
+        self.assertEqual(resolved, "https://www.douyin.com/user/creator")
+        self.assertEqual(urlopen.call_count, 2)
+        retry_sleep.assert_called_once_with(0.5)
+
     def test_douyin_worker_rejects_non_http_and_lookalike_hosts(self):
         for url in (
             "file:///C:/secret.txt",
@@ -237,6 +259,55 @@ class ChannelUrlTests(unittest.TestCase):
         self.assertEqual(info, {"id": "123"})
         self.assertEqual(fake_ytdlp.YoutubeDL.call_count, 2)
         wait_for_retry.assert_called_once()
+
+    def test_youtube_channel_scan_retries_temporary_webpage_failure(self):
+        first = Mock()
+        first.__enter__ = Mock(return_value=first)
+        first.__exit__ = Mock(return_value=False)
+        first.extract_info.side_effect = RuntimeError(
+            "Unable to download webpage: The read operation timed out"
+        )
+        second = Mock()
+        second.__enter__ = Mock(return_value=second)
+        second.__exit__ = Mock(return_value=False)
+        second.extract_info.return_value = {"id": "channel", "entries": []}
+        fake_ytdlp = SimpleNamespace(YoutubeDL=Mock(side_effect=[first, second]))
+
+        with (
+            patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp),
+            patch("haizflow.services.channel_import._wait_for_retry") as wait_for_retry,
+            patch("haizflow.services.video_download.importlib.util.find_spec", return_value=object()),
+        ):
+            info = _extract_info_with_platform_retry(
+                "YouTube",
+                {"noplaylist": False},
+                "https://www.youtube.com/@creator/videos",
+                threading.Event(),
+            )
+
+        self.assertEqual(info["id"], "channel")
+        self.assertEqual(fake_ytdlp.YoutubeDL.call_count, 2)
+        self.assertNotIn("impersonate", fake_ytdlp.YoutubeDL.call_args_list[0].args[0])
+        self.assertEqual(fake_ytdlp.YoutubeDL.call_args_list[1].args[0]["impersonate"], "chrome")
+        wait_for_retry.assert_called_once()
+
+    def test_channel_access_error_is_not_retried(self):
+        downloader = Mock()
+        downloader.__enter__ = Mock(return_value=downloader)
+        downloader.__exit__ = Mock(return_value=False)
+        downloader.extract_info.side_effect = RuntimeError("This channel is private")
+        fake_ytdlp = SimpleNamespace(YoutubeDL=Mock(return_value=downloader))
+
+        with patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake_ytdlp):
+            with self.assertRaisesRegex(RuntimeError, "private"):
+                _extract_info_with_platform_retry(
+                    "YouTube",
+                    {"noplaylist": False},
+                    "https://www.youtube.com/@private/videos",
+                    threading.Event(),
+                )
+
+        self.assertEqual(fake_ytdlp.YoutubeDL.call_count, 1)
 
     def test_tiktok_candidates_are_hydrated_to_reject_slideshows(self):
         candidate = ChannelVideoCandidate(

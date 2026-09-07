@@ -14,11 +14,15 @@ Rectangle {
     property url thumbnailSource: ""
     property real zoomFactor: 1
     property bool editingClip: false
+    property bool managedScrubbing: false
     property real pendingZoomAnchorTime: 0
     property real pendingZoomAnchorX: 0
 
     signal segmentSelected(int index)
     signal seekRequested(real seconds)
+    signal scrubStarted(real seconds)
+    signal scrubMoved(real seconds)
+    signal scrubFinished(real seconds)
     signal interactionDismissed()
     signal timingCommitted(int index, real start, real end)
     signal timingCommitResolution(int index, bool accepted)
@@ -566,19 +570,28 @@ Rectangle {
                     MouseArea {
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: -4
-                        width: 18
+                        width: 24
                         height: parent.height + 8
                         cursorShape: Qt.SizeHorCursor
                         preventStealing: true
-                        onPressed: root.editingClip = true
+                        property real lastTarget: 0
+                        onPressed: function(mouse) {
+                            root.editingClip = true;
+                            const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
+                            lastTarget = root.clamp((point.x - root.trackLeft) / root.pixelsPerSecond, 0, root.duration);
+                            root.scrubStarted(lastTarget);
+                            if (!root.managedScrubbing) root.seekRequested(lastTarget);
+                        }
                         onPositionChanged: function (mouse) {
                             if (!pressed)
                                 return;
                             const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
-                            root.seekRequested(root.clamp((point.x - root.trackLeft) / root.pixelsPerSecond, 0, root.duration));
+                            lastTarget = root.clamp((point.x - root.trackLeft) / root.pixelsPerSecond, 0, root.duration);
+                            root.scrubMoved(lastTarget);
+                            if (!root.managedScrubbing) root.seekRequested(lastTarget);
                         }
-                        onReleased: root.editingClip = false
-                        onCanceled: root.editingClip = false
+                        onReleased: { root.editingClip = false; root.scrubFinished(lastTarget); }
+                        onCanceled: { root.editingClip = false; root.scrubFinished(lastTarget); }
                     }
                 }
             }

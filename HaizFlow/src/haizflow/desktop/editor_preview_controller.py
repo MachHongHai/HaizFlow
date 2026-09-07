@@ -454,6 +454,10 @@ class EditorPreviewController:
         }
         preview_dir = video_dir / "temp" / "editor-preview"
         fingerprint_settings = dict(settings)
+        if getattr(video, "project_type", "single") == "manual" and hasattr(self._host, "manualPreviewAudio"):
+            settings["independent_manual_preview"] = True
+            settings["preview_encoding"] = "manual-base-pcm-libass-v1"
+            fingerprint_settings = self._base_visual_cache_payload(settings)
         if not settings["remove_original_subtitles"]:
             fingerprint_settings.update(
                 removal_mode="keep",
@@ -628,6 +632,26 @@ class EditorPreviewController:
             audio_dir = preview_dir / f"audio-{audio_signature}"
             base_output_path = base_dir / "preview.mp4"
             base_completion_path = base_dir / "preview.complete.json"
+            if settings.get("independent_manual_preview"):
+                base_dir.mkdir(parents=True, exist_ok=True)
+                if not self._preview_cache_is_complete(base_output_path, base_completion_path, settings["duration"]):
+                    start_video(process_id)
+                    try:
+                        if not self._render_proxy_layer(generation, process_id, video,
+                            settings["source_path"], base_output_path, base_completion_path,
+                            [], settings["duration"], settings["output_format"], video.crop,
+                            settings["ocr_region"] if settings["remove_original_subtitles"] else None,
+                            settings["watermark_text"], False, settings["removal_mode"], .03, .94,
+                            subtitle_region_override=None,
+                            original_subtitle_intervals=settings["original_subtitle_intervals"]):
+                            return
+                    finally:
+                        clean_video(process_id)
+                self._finish_success(generation, base_output_path, 0, settings["duration"],
+                    video_id=video.video_id, request_fingerprint=settings["request_fingerprint"],
+                    visual_signature=base_signature, visual_cache_path=base_output_path,
+                    base_playback_path=base_output_path)
+                return
             output_path = render_dir / "preview.mp4"
             completion_path = render_dir / "preview.complete.json"
             self._remove_stale_files(output_path)

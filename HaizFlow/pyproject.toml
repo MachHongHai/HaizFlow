@@ -42,7 +42,7 @@ dependencies = [
   # explicit until all upstream constraints naturally resolve to 3.14.3+.
   "aiohttp==3.14.3",
   "websockets==16.0",
-  "yt-dlp==2026.7.4",
+  "yt-dlp[curl-cffi]==2026.7.4",
   "pydub==0.25.1",
   "srt==3.5.3",
   "demucs==4.0.1",

@@ -183,16 +183,15 @@ Item {
                             elide: Text.ElideMiddle
                             textFormat: Text.PlainText
                         }
-                        AppButton {
+                        StudioButton {
                             visible: !root.downloader.outputManaged
                             text: qsTr("Chọn thư mục")
-                            compact: true
                             enabled: !root.channelActive
                             onClicked: root.downloader.chooseChannelOutputDirectory()
                         }
-                        AppButton {
+                        StudioButton {
                             text: root.hasResults ? qsTr("Quét lại") : qsTr("Xem trước")
-                            tone: "primary"
+                            variant: "primary"
                             enabled: channelUrl.text.trim().length > 0 && !root.channelActive
                             onClicked: root.downloader.inspectChannel(channelUrl.text.trim(), root.selectedPlatform, ranking.currentValue, channelLimit.value, contentFilter.currentValue, ranking.currentValue === "popular" ? scanScope.currentValue : 0)
                         }
@@ -208,7 +207,7 @@ Item {
                             wrapMode: Text.WordWrap
                             textFormat: Text.PlainText
                         }
-                        AppButton { visible: root.channelActive; text: qsTr("Hủy tải"); compact: true; tone: "danger"; onClicked: root.downloader.cancel() }
+                        StudioButton { visible: root.channelActive; text: qsTr("Hủy tải"); variant: "danger"; onClicked: root.downloader.cancel() }
                     }
                     AppProgressBar { Layout.fillWidth: true; visible: root.channelActive; value: root.downloader.channelProgress }
                 }
@@ -232,9 +231,9 @@ Item {
                             onToggled: root.downloader.selectAllChannel(checked)
                         }
                         Item { Layout.fillWidth: true }
-                        AppButton {
+                        StudioButton {
                             text: qsTr("%1 (%2)").arg(qsTr("Tải video đã chọn")).arg(root.downloader.channelSelectedCount)
-                            tone: "primary"
+                            variant: "primary"
                             enabled: root.downloader.channelSelectedCount > 0
                                 && root.downloader.channelOutputDirectory.length > 0 && !root.channelActive
                             onClicked: root.downloader.downloadSelectedChannel()

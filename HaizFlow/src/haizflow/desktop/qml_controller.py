@@ -1,18 +1,40 @@
-import os
 import json
+import os
 import queue
+import shutil
 import threading
-from datetime import datetime, timezone
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QEventLoop, QObject, Property, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QEvent, QEventLoop, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
 
+from haizflow.config import MODELS_DIR, RUNTIME_DATA_DIR
+from haizflow.core.events import subscribe_log, unsubscribe_log
+from haizflow.core.hardware import (
+    basic_hardware_capabilities,
+    clear_runtime_profile_cache,
+    configure_processing_device,
+    detect_hardware_capabilities,
+    recommended_processing_device,
+    runtime_profile_for,
+    validate_processing_device,
+)
+from haizflow.core.model_integrity import ModelIntegrityError, verify_whisper_turbo_model
 from haizflow.desktop.activity_log import ActivityLogBuffer
+from haizflow.desktop.audio_preview_controller import AudioPreviewController
 from haizflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
+from haizflow.desktop.catalog_media_controller import CatalogMediaController
 from haizflow.desktop.channel_import import ChannelImportCoordinator
+from haizflow.desktop.diagnostics_controller import DiagnosticsController
+from haizflow.desktop.editor_preview_controller import EditorPreviewController
+from haizflow.desktop.external_links import open_external_url
 from haizflow.desktop.localization import QMessageBox, _set_ui_language
+from haizflow.desktop.manual_edit_history import AppEditHistory
+from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+from haizflow.desktop.manual_subtitle_model import ManualSubtitleModel
 from haizflow.desktop.media import (
     collect_batch_video_paths,
     create_video_thumbnail_path,
@@ -21,31 +43,18 @@ from haizflow.desktop.media import (
     resolve_video_file,
     thumbnail_source,
 )
+from haizflow.desktop.media_download_controller import MediaDownloadController
 from haizflow.desktop.media_probe import VideoDimensionProbe
 from haizflow.desktop.models import (
     ActivityEventModel,
     DownloadProjectSourceListModel,
-    ProjectGridModel,
     ProjectBrowserProxyModel,
+    ProjectGridModel,
     ProjectListModel,
     SocialProjectSourceListModel,
     SocialPublishListModel,
     VideoListModel,
 )
-from haizflow.desktop.preview_media_controller import PreviewMediaController
-from haizflow.desktop.editor_preview_controller import EditorPreviewController
-from haizflow.desktop.audio_preview_controller import AudioPreviewController
-from haizflow.desktop.media_download_controller import MediaDownloadController
-from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
-from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
-from haizflow.desktop.project_commands_controller import ProjectCommandsController
-from haizflow.desktop.project_import_controller import ProjectImportController
-from haizflow.desktop.catalog_media_controller import CatalogMediaController
-from haizflow.desktop.diagnostics_controller import DiagnosticsController
-from haizflow.desktop.external_links import open_external_url
-from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
-from haizflow.desktop.settings_controller import SettingsController
-from haizflow.desktop.social_publish_controller import SocialPublishController
 from haizflow.desktop.presenters import (
     build_project_summaries,
     format_duration,
@@ -54,26 +63,27 @@ from haizflow.desktop.presenters import (
     stage_label,
     voice_options_for_language,
 )
+from haizflow.desktop.preview_media_controller import PreviewMediaController
+from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycleController
+from haizflow.desktop.project_commands_controller import ProjectCommandsController
+from haizflow.desktop.project_import_controller import ProjectImportController
+from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
+from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
+from haizflow.desktop.settings_controller import SettingsController
+from haizflow.desktop.social_publish_controller import SocialPublishController
+from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 from haizflow.desktop.url_import import VideoUrlImportCoordinator
-
-from haizflow.config import MODELS_DIR, RUNTIME_DATA_DIR
-from haizflow.core.events import subscribe_log, unsubscribe_log
-from haizflow.core.hardware import (
-    basic_hardware_capabilities,
-    configure_processing_device,
-    clear_runtime_profile_cache,
-    detect_hardware_capabilities,
-    recommended_processing_device,
-    runtime_profile_for,
-    validate_processing_device,
-)
-from haizflow.core.model_integrity import ModelIntegrityError, verify_whisper_turbo_model
 from haizflow.pipeline.process_registry import pause_video
-from haizflow.schemas.video import CropSettings, VideoConfig, SubtitleStyle
-from haizflow.services import desktop_settings, manual_artifacts, video_store, project_store
-from haizflow.services.desktop_videos import create_desktop_video, migrate_legacy_single_export
-from haizflow.services.processing_queue import SerialProcessingQueue
+from haizflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig
+from haizflow.services import desktop_settings, manual_artifacts, project_store, video_store
+from haizflow.services.desktop_videos import (
+    create_desktop_video,
+    migrate_legacy_single_export,
+    set_desktop_background_music,
+    set_desktop_voice_reference,
+)
 from haizflow.services.model_bootstrap import models_ready
+from haizflow.services.processing_queue import SerialProcessingQueue
 from haizflow.services.translation import shutdown_hymt2_worker
 
 QML_IMPORT_NAME = "HaizFlow"
@@ -86,6 +96,24 @@ class HaizFlowController(QObject):
     _qml_instance = None
     _THUMBNAIL_RETRY_MAX_ATTEMPTS = 3
     _THUMBNAIL_RETRY_INITIAL_DELAY_SECONDS = 15.0
+    _EDITABLE_VIDEO_SETTING_FIELDS = (
+        "target_language",
+        "speech_recognition_model",
+        "tts_provider",
+        "tts_voice",
+        "speaker_mode",
+        "subtitle_style",
+        "subtitle_layout_override",
+        "remove_original_subtitles",
+        "original_subtitle_removal_mode",
+        "output_format",
+        "crop",
+        "enable_audio_separation",
+        "original_video_volume",
+        "background_music_volume",
+        "tts_volume",
+        "watermark_text",
+    )
 
     videoPathChanged = Signal()
     videoThumbnailChanged = Signal()
@@ -139,6 +167,13 @@ class HaizFlowController(QObject):
     appConfirmationRequested = Signal(str, str)
     editorPreviewChanged = Signal()
     manualToolStateChanged = Signal(str)
+    manualExportCompleted = Signal(str, str)
+    manualSubtitleSaved = Signal(str, int, str)
+    manualSubtitleSaveFailed = Signal(str, str, str)
+    manualSubtitleDocumentChanged = Signal()
+    manualVoiceRefreshStateChanged = Signal(str, int, str)
+    manualEditHistoryChanged = Signal()
+    editHistoryChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -240,6 +275,32 @@ class HaizFlowController(QObject):
         self._runtime_state = "ready" if os.getenv("HAIZFLOW_SMOKE_TEST") == "1" else "warming"
         self._preview_media = PreviewMediaController(self)
         self._editor_preview = EditorPreviewController(self)
+        self._edit_history_scope = "none"
+        self._edit_history_recording_suspended = 0
+        self._edit_history_asset_directories: set[str] = set()
+        self._manual_edit_history = AppEditHistory(self)
+        self._manual_edit_history.changed.connect(self.manualEditHistoryChanged)
+        self._manual_edit_history.changed.connect(self.editHistoryChanged)
+        self.selectedVideoChanged.connect(self._sync_edit_history_context)
+        self.projectSetupChanged.connect(self._sync_edit_history_context)
+        self._manual_subtitles = ManualSubtitleModel(self, self._manual_edit_history)
+        self._subtitle_overlay = SubtitleOverlayRenderer(self)
+        self._manual_audio = ManualPreviewAudioController(self)
+        self._manual_subtitles.changed.connect(self.refreshManualPreviewAudio)
+        self.selectedVideoChanged.connect(self.refreshManualPreviewAudio)
+        self._manual_subtitles.saved.connect(self.manualSubtitleSaved)
+        self._manual_subtitles.saveFailed.connect(self.manualSubtitleSaveFailed)
+        self._manual_subtitles.changed.connect(self.manualSubtitleDocumentChanged)
+        self.selectedVideoChanged.connect(self.manualSubtitleDocumentChanged)
+        self._manual_subtitles.published.connect(self._manual_subtitles_published)
+        self._manual_voice_refresh_pending = False
+        self._manual_voice_refresh_enabled = False
+        self._manual_voice_video_id = ""
+        self._manual_editing_segment_id = ""
+        self._manual_voice_refresh_timer = QTimer(self)
+        self._manual_voice_refresh_timer.setSingleShot(True)
+        self._manual_voice_refresh_timer.setInterval(800)
+        self._manual_voice_refresh_timer.timeout.connect(self._refresh_manual_voice)
         self._audio_preview = AudioPreviewController(self)
         self._media_downloader = MediaDownloadController(self)
         self._tiktok_publisher = SocialPublishController(self)
@@ -512,6 +573,15 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        audio = getattr(self, "_manual_audio", None)
+        if audio is not None:
+            audio.close()
+        overlay = getattr(self, "_subtitle_overlay", None)
+        if overlay is not None:
+            overlay.close()
+        subtitles = getattr(self, "_manual_subtitles", None)
+        if subtitles is not None:
+            subtitles.close()
         editor_preview = getattr(self, "_editor_preview", None)
         if editor_preview is not None:
             editor_preview.release()
@@ -1553,7 +1623,7 @@ class HaizFlowController(QObject):
         if not isinstance(transcript_path, str) or not transcript_path.strip():
             return []
         try:
-            with open(transcript_path, "r", encoding="utf-8") as file:
+            with open(transcript_path, encoding="utf-8") as file:
                 segments = json.load(file)
             return segments if isinstance(segments, list) else []
         except (OSError, json.JSONDecodeError):
@@ -1593,7 +1663,7 @@ class HaizFlowController(QObject):
         ocr_region = {}
         ocr_cache = str(files.get("ocr_region") or os.path.join(video_dir, "temp", "original_subtitle_region.json"))
         try:
-            with open(ocr_cache, "r", encoding="utf-8") as cache_file:
+            with open(ocr_cache, encoding="utf-8") as cache_file:
                 payload = json.load(cache_file)
             candidate = payload.get("region", payload) if isinstance(payload, dict) else {}
             if isinstance(candidate, dict):
@@ -1804,6 +1874,11 @@ class HaizFlowController(QObject):
         video = self._selected_video()
         return video.step_detail or video.step if video else "pending"
 
+    @Property(str, notify=selectedVideoChanged)
+    def selectedStepId(self):
+        video = self._selected_video()
+        return str(video.step or "") if video else ""
+
     @Property(int, notify=selectedVideoChanged)
     def selectedProgress(self):
         video = self._selected_video()
@@ -1836,7 +1911,7 @@ class HaizFlowController(QObject):
         video = self._selected_video()
         return str(getattr(video, "manual_target_tool", "") or "") if video else ""
 
-    @Property("QVariantList", notify=selectedVideoChanged)
+    @Property("QVariantList", notify=manualSubtitleDocumentChanged)
     def manualToolModel(self):
         video = self._selected_video()
         if not video or getattr(video, "project_type", "single") != "manual":
@@ -1891,7 +1966,7 @@ class HaizFlowController(QObject):
         try:
             if video.status == "processing" and video.started_at:
                 started_at = datetime.fromisoformat(video.started_at.replace("Z", "+00:00"))
-                seconds += max(0.0, (datetime.now(timezone.utc) - started_at).total_seconds())
+                seconds += max(0.0, (datetime.now(UTC) - started_at).total_seconds())
             elif seconds <= 0 and video.started_at:
                 # Compatibility with metadata not yet migrated on disk.
                 started_at = datetime.fromisoformat(video.started_at.replace("Z", "+00:00"))
@@ -2113,7 +2188,8 @@ class HaizFlowController(QObject):
         if preference == "cpu":
             if not compatible:
                 return f"Chế độ CPU cần khoảng 6 GB RAM; hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GB."
-            return f"CPU sẵn sàng: {capabilities.total_ram_bytes / (1024**3):.0f} GB RAM, {capabilities.logical_cpu_count} luồng logic."
+            memory_gib = capabilities.total_ram_bytes / (1024**3)
+            return f"CPU sẵn sàng: {memory_gib:.0f} GB RAM, {capabilities.logical_cpu_count} luồng logic."
         if capabilities.gpu_supported:
             return f"Chế độ tự động sẽ dùng {capabilities.cuda_name}."
         if capabilities.cpu_supported:
@@ -2562,7 +2638,15 @@ class HaizFlowController(QObject):
             video = video_store.get_video(requested_id)
             if not draft or not video or self._processing_queue.contains(requested_id):
                 return False
+            history_before = self._video_settings_snapshot(video)
             self._apply_config_to_video(video, draft)
+            refreshed = video_store.get_video(requested_id)
+            if refreshed:
+                self._record_video_settings_change(
+                    requested_id,
+                    history_before,
+                    self._video_settings_snapshot(refreshed),
+                )
             saved = True
         if saved:
             self._manual_settings_drafts.pop(requested_id, None)
@@ -2771,6 +2855,12 @@ class HaizFlowController(QObject):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return False
+        if tool_id == "translation":
+            timer = getattr(self, "_manual_voice_refresh_timer", None)
+            if timer is not None:
+                timer.stop()
+            self._manual_voice_refresh_pending = False
+            self._manual_voice_refresh_enabled = False
         self._apply_setup_to_video(video, review_approved=True)
         video_store.update_video(
             video.video_id,
@@ -2820,12 +2910,19 @@ class HaizFlowController(QObject):
             )
             return False
 
+        before = self._video_settings_snapshot(video)
         self._remove_original_subtitles = normalized != "keep"
         if normalized != "keep":
             self._original_subtitle_removal_mode = normalized
         self.subtitleSettingsChanged.emit()
         self._apply_setup_to_video(video, review_approved=True)
         refreshed = video_store.get_video(video.video_id) or video
+        self._record_video_settings_change(
+            video.video_id,
+            before,
+            self._video_settings_snapshot(refreshed),
+            "Cách che phụ đề gốc",
+        )
 
         # Keeping the source is a complete visual state and never needs OCR.
         # Blur/patch share the same cached geometry; only the lightweight
@@ -2888,6 +2985,213 @@ class HaizFlowController(QObject):
     @Slot()
     def releaseEditorPreview(self):
         self._editor_preview.release()
+        self._manual_audio.release()
+        self._manual_voice_refresh_timer.stop()
+
+    @Property(QObject, constant=True)
+    def manualSubtitleModel(self):
+        return self._manual_subtitles
+
+    def _sync_edit_history_context(self):
+        if self._edit_history_scope == "settings":
+            context = "settings"
+        elif self._edit_history_scope == "project":
+            context = f"project:{self._selected_project_key}" if self._selected_project_key else ""
+        elif self._edit_history_scope == "video":
+            context = f"video:{self._selected_video_id}" if self._selected_video_id else ""
+        else:
+            context = ""
+        self._manual_edit_history.select_context(context)
+
+    @Slot(str)
+    def setEditHistoryScope(self, scope):
+        normalized = str(scope or "none").strip().lower()
+        self._edit_history_scope = normalized if normalized in {"video", "project", "settings"} else "none"
+        self._sync_edit_history_context()
+
+    @Property(bool, notify=editHistoryChanged)
+    def canUndoEdit(self):
+        return self._manual_edit_history.canUndo
+
+    @Property(bool, notify=editHistoryChanged)
+    def canRedoEdit(self):
+        return self._manual_edit_history.canRedo
+
+    @Property(str, notify=editHistoryChanged)
+    def undoEditLabel(self):
+        return self._manual_edit_history.undoLabel
+
+    @Property(str, notify=editHistoryChanged)
+    def redoEditLabel(self):
+        return self._manual_edit_history.redoLabel
+
+    @Slot(result=bool)
+    def undoEdit(self):
+        return self._manual_edit_history.undo()
+
+    @Slot(result=bool)
+    def redoEdit(self):
+        return self._manual_edit_history.redo()
+
+    def _apply_app_settings_snapshot(self, values: dict[str, str]) -> bool:
+        return self._settings_controller.apply(
+            "graphite",
+            str(values.get("language") or "vi"),
+            str(values.get("processing_device") or "cpu"),
+        )
+
+    def _record_app_settings_change(self, before: dict[str, str], after: dict[str, str]) -> None:
+        if before == after:
+            return
+        changed = sorted(name for name in set(before) | set(after) if before.get(name) != after.get(name))
+        self._manual_edit_history.record(
+            "Cài đặt ứng dụng",
+            lambda: self._apply_app_settings_snapshot(before),
+            lambda: self._apply_app_settings_snapshot(after),
+            merge_key=f"app-settings:{','.join(changed)}",
+            context_id="settings",
+        )
+
+    @Property(bool, notify=manualEditHistoryChanged)
+    def manualCanUndo(self):
+        return self._manual_edit_history.canUndo
+
+    @Property(bool, notify=manualEditHistoryChanged)
+    def manualCanRedo(self):
+        return self._manual_edit_history.canRedo
+
+    @Property(str, notify=manualEditHistoryChanged)
+    def manualUndoLabel(self):
+        return self._manual_edit_history.undoLabel
+
+    @Property(str, notify=manualEditHistoryChanged)
+    def manualRedoLabel(self):
+        return self._manual_edit_history.redoLabel
+
+    @Slot(result=bool)
+    def undoManualEdit(self):
+        return self.undoEdit()
+
+    @Slot(result=bool)
+    def redoManualEdit(self):
+        return self.redoEdit()
+
+    def _apply_manual_subtitle_layout(self, font_size: int, position_x: int, position_y: int) -> bool:
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return False
+        style = self._subtitle_style.model_dump()
+        style.update(
+            font_size=max(10, min(160, int(font_size))),
+            position_x_percent=max(0, min(100, int(position_x))),
+            position_y_percent=max(0, min(100, int(position_y))),
+        )
+        self._subtitle_style = SubtitleStyle(**style)
+        self._subtitle_layout_override = True
+        self.subtitleSettingsChanged.emit()
+        return self.saveSelectedVideoSettings()
+
+    @Slot(int, int, int, int, int, int)
+    def recordManualSubtitleLayoutChange(
+        self,
+        before_font_size,
+        before_position_x,
+        before_position_y,
+        after_font_size,
+        after_position_x,
+        after_position_y,
+    ):
+        before = (int(before_font_size), int(before_position_x), int(before_position_y))
+        after = (int(after_font_size), int(after_position_x), int(after_position_y))
+        if before == after or not self._selected_video_id:
+            return
+        video_id = str(self._selected_video_id)
+
+        def apply(values):
+            if str(self._selected_video_id or "") != video_id:
+                return False
+            return self._apply_manual_subtitle_layout(*values)
+
+        self._manual_edit_history.record(
+            "subtitle_layout",
+            lambda: apply(before),
+            lambda: apply(after),
+            merge_key=f"subtitle-layout:{video_id}",
+            context_id=f"video:{video_id}",
+        )
+
+    @Property(QObject, constant=True)
+    def subtitleOverlayRenderer(self):
+        return self._subtitle_overlay
+
+    @Property(QObject, constant=True)
+    def manualPreviewAudio(self):
+        return self._manual_audio
+
+    @Slot()
+    def refreshManualPreviewAudio(self):
+        video = self._selected_video()
+        if video and video.project_type == "manual" and self._manual_subtitles.video_id == video.video_id:
+            from haizflow.pipeline.manual_tools import active_voice_record
+            voice_enabled = bool(active_voice_record(video, validate=False)) or (
+                self._manual_voice_video_id == video.video_id and self._manual_voice_refresh_enabled)
+            self._manual_audio.request(video, self._manual_subtitles.segments, voice_enabled)
+
+    @Slot()
+    def loadManualSubtitles(self):
+        if self._manual_voice_video_id != str(self._selected_video_id or ""):
+            self._manual_voice_video_id = str(self._selected_video_id or "")
+            self._manual_voice_refresh_pending = False
+            self._manual_voice_refresh_enabled = False
+        self._manual_subtitles.load(str(self._selected_video_id or ""), self.reviewSegments)
+
+    @Slot(str)
+    def beginManualSubtitleEdit(self, segment_id):
+        self._manual_editing_segment_id = segment_id
+
+    @Slot()
+    def endManualSubtitleEdit(self):
+        self._manual_editing_segment_id = ""
+
+    @Slot(str, str, int, str, result=bool)
+    def saveManualSubtitleText(self, segment_id, text, expected_revision, request_id):
+        from haizflow.pipeline.manual_tools import active_voice_record, ensure_narrator_anchor
+        video = video_store.get_video(self._selected_video_id)
+        had_voice = bool(video and active_voice_record(video, validate=False))
+        if had_voice and video:
+            # Capture the identity reference before publishing edited text.
+            # The next per-segment refresh must match the clips that remain.
+            ensure_narrator_anchor(video.video_id)
+        self._manual_voice_refresh_enabled = self._manual_voice_refresh_enabled or had_voice
+        accepted = self._manual_subtitles.saveText(segment_id, text, expected_revision, request_id)
+        if accepted and self._manual_voice_refresh_enabled:
+            self._manual_voice_refresh_pending = True
+        return accepted
+
+    @Slot(str, float, float, result=bool)
+    def saveManualSubtitleTiming(self, segment_id, start, end):
+        return self._manual_subtitles.saveTiming(segment_id, start, end)
+
+    @Slot(str, int, bool)
+    def _manual_subtitles_published(self, video_id, revision, text_changed):
+        if video_id != self._selected_video_id:
+            return
+        self._refresh_selected_video_snapshot()
+        self.manualToolStateChanged.emit("subtitle")
+        self.manualSubtitleDocumentChanged.emit()
+        if text_changed and self._manual_voice_refresh_pending:
+            self._manual_voice_refresh_timer.start()
+
+    @Slot()
+    def _refresh_manual_voice(self):
+        if not self._manual_voice_refresh_pending:
+            return
+        if self._processing_queue.has_work or any(
+                state == "saving" for state in self._manual_subtitles._states.values()):
+            self._manual_voice_refresh_timer.start()
+            return
+        self._manual_voice_refresh_pending = False
+        self.runManualTool("voice")
 
     @Slot(int)
     def selectVideo(self, row: int):
@@ -3253,6 +3557,228 @@ class HaizFlowController(QObject):
             else:
                 self._last_video_metadata_revision = revision
         self.batchChanged.emit()
+
+    @classmethod
+    def _video_settings_snapshot(cls, video) -> dict[str, object]:
+        snapshot: dict[str, object] = {}
+        for name in cls._EDITABLE_VIDEO_SETTING_FIELDS:
+            value = getattr(video, name)
+            snapshot[name] = value.model_dump(mode="json") if hasattr(value, "model_dump") else value
+        return snapshot
+
+    @staticmethod
+    def _video_config_from_snapshot(video, snapshot: dict[str, object]) -> VideoConfig:
+        values = {
+            "mode": video.mode,
+            "source_language": video.source_language,
+            "target_language": video.target_language,
+            "translator_provider": video.translator_provider,
+            "speech_recognition_model": video.speech_recognition_model,
+            "tts_provider": video.tts_provider,
+            "tts_voice": video.tts_voice,
+            "speaker_mode": video.speaker_mode,
+            "subtitle_style": video.subtitle_style,
+            "subtitle_layout_override": video.subtitle_layout_override,
+            "remove_original_subtitles": video.remove_original_subtitles,
+            "original_subtitle_removal_mode": video.original_subtitle_removal_mode,
+            "output_format": video.output_format,
+            "crop": video.crop,
+            "enable_audio_separation": video.enable_audio_separation,
+            "original_video_volume": video.original_video_volume,
+            "background_music_volume": video.background_music_volume,
+            "tts_volume": video.tts_volume,
+            "watermark_text": video.watermark_text,
+            "project_name": video.project_name,
+            "project_directory": video.project_directory,
+            "project_type": video.project_type,
+            "project_id": video.project_id,
+            "project_key": video.project_key,
+            "review_approved": video.review_approved,
+        }
+        values.update(snapshot)
+        return VideoConfig.model_validate(values)
+
+    def _apply_video_settings_snapshot(self, video_id: str, snapshot: dict[str, object]) -> bool:
+        if str(self._selected_video_id or "") != str(video_id or ""):
+            return False
+        video = video_store.get_video(video_id)
+        if not video or self._processing_queue.contains(video_id):
+            return False
+        config = self._video_config_from_snapshot(video, snapshot)
+        self._apply_config_to_video(video, config)
+        refreshed = video_store.get_video(video_id)
+        if not refreshed:
+            return False
+        HaizFlowController._project_workspace_for(self).select_video(refreshed)
+        self.refreshVideos()
+        if refreshed.project_type == "batch":
+            self.batchChanged.emit()
+        self.manualToolStateChanged.emit("")
+        return True
+
+    def _record_video_settings_change(
+        self,
+        video_id: str,
+        before: dict[str, object],
+        after: dict[str, object],
+        label: str = "Cài đặt video",
+    ) -> None:
+        if (
+            self._edit_history_recording_suspended
+            or before == after
+        ):
+            return
+        changed_fields = sorted(name for name in set(before) | set(after) if before.get(name) != after.get(name))
+        self._manual_edit_history.record(
+            label,
+            lambda: self._apply_video_settings_snapshot(video_id, before),
+            lambda: self._apply_video_settings_snapshot(video_id, after),
+            merge_key=f"video-settings:{video_id}:{','.join(changed_fields)}",
+            context_id=f"video:{video_id}",
+        )
+
+    def _preserve_edit_asset(self, video_id: str, source: str) -> str:
+        source_path = Path(str(source or ""))
+        if not source_path.is_file():
+            return ""
+        directory = Path(video_store.get_video_dir(video_id)) / "temp" / "edit-history" / uuid.uuid4().hex
+        directory.mkdir(parents=True, exist_ok=True)
+        destination = directory / f"asset{source_path.suffix.lower()}"
+        try:
+            os.link(source_path, destination)
+        except OSError:
+            shutil.copy2(source_path, destination)
+        self._edit_history_asset_directories.add(str(directory.parent))
+        return str(destination)
+
+    def _capture_video_asset_snapshot(self, video, *, preserve: bool) -> dict[str, object]:
+        files = dict(video.files or {})
+        background_music = str(files.get("background_music") or "")
+        voice_reference = str(files.get("voice_reference") or "")
+        if preserve:
+            background_music = self._preserve_edit_asset(video.video_id, background_music)
+            voice_reference = self._preserve_edit_asset(video.video_id, voice_reference)
+        return {
+            "settings": self._video_settings_snapshot(video),
+            "background_music": background_music,
+            "voice_reference": voice_reference,
+            "voice_reference_transcript": str(files.get("voice_reference_transcript") or ""),
+        }
+
+    def _restore_video_asset_snapshot(self, video_id: str, snapshot: dict[str, object]) -> bool:
+        video = video_store.get_video(video_id)
+        if not video or self._processing_queue.contains(video_id):
+            return False
+        config = self._video_config_from_snapshot(video, dict(snapshot.get("settings") or {}))
+        self._apply_config_to_video(video, config)
+        video = video_store.get_video(video_id) or video
+        set_desktop_background_music(video, str(snapshot.get("background_music") or ""))
+        video = video_store.get_video(video_id) or video
+        set_desktop_voice_reference(
+            video,
+            str(snapshot.get("voice_reference") or ""),
+            str(snapshot.get("voice_reference_transcript") or ""),
+        )
+        if video.project_type == "manual":
+            manual_artifacts.deactivate(video_id, {"tts_manifest", "audio_mix", "visual_proxy", "export"})
+        return bool(video_store.get_video(video_id))
+
+    def _apply_video_asset_snapshot(self, video_id: str, snapshot: dict[str, object]) -> bool:
+        if str(self._selected_video_id or "") != str(video_id or ""):
+            return False
+        if not self._restore_video_asset_snapshot(video_id, snapshot):
+            return False
+        refreshed = video_store.get_video(video_id)
+        if not refreshed:
+            return False
+        HaizFlowController._project_workspace_for(self).select_video(refreshed)
+        self.refreshVideos()
+        if refreshed.project_type == "batch":
+            self.batchChanged.emit()
+        self.manualToolStateChanged.emit("")
+        return True
+
+    def _record_video_asset_change(
+        self,
+        video_id: str,
+        before: dict[str, object],
+        after: dict[str, object],
+        label: str,
+    ) -> None:
+        if before == after:
+            return
+        self._manual_edit_history.record(
+            label,
+            lambda: self._apply_video_asset_snapshot(video_id, before),
+            lambda: self._apply_video_asset_snapshot(video_id, after),
+            context_id=f"video:{video_id}",
+        )
+
+    def _apply_batch_settings_snapshots(
+        self,
+        project_key: str,
+        snapshots: dict[str, dict[str, object]],
+    ) -> bool:
+        if str(self._selected_project_key or "") != str(project_key or ""):
+            return False
+        videos = [video_store.get_video(video_id) for video_id in snapshots]
+        if any(not video or self._processing_queue.contains(video.video_id) for video in videos):
+            return False
+        for video in videos:
+            self._apply_config_to_video(
+                video,
+                self._video_config_from_snapshot(video, snapshots[video.video_id]),
+            )
+        HaizFlowController._project_commands_for(self).load_batch_settings()
+        self.refreshVideos()
+        self.batchChanged.emit()
+        return True
+
+    def _record_batch_settings_change(
+        self,
+        project_key: str,
+        before: dict[str, dict[str, object]],
+        after: dict[str, dict[str, object]],
+    ) -> None:
+        if before == after:
+            return
+        self._manual_edit_history.record(
+            "Cài đặt hàng loạt",
+            lambda: self._apply_batch_settings_snapshots(project_key, before),
+            lambda: self._apply_batch_settings_snapshots(project_key, after),
+            merge_key=f"batch-settings:{project_key}",
+            context_id=f"project:{project_key}",
+        )
+
+    def _apply_batch_asset_snapshots(
+        self,
+        project_key: str,
+        snapshots: dict[str, dict[str, object]],
+    ) -> bool:
+        if str(self._selected_project_key or "") != str(project_key or ""):
+            return False
+        if not all(self._restore_video_asset_snapshot(video_id, snapshot) for video_id, snapshot in snapshots.items()):
+            return False
+        HaizFlowController._project_commands_for(self).load_batch_settings()
+        self.refreshVideos()
+        self.batchChanged.emit()
+        return True
+
+    def _record_batch_asset_change(
+        self,
+        project_key: str,
+        before: dict[str, dict[str, object]],
+        after: dict[str, dict[str, object]],
+    ) -> None:
+        if before == after:
+            return
+        self._manual_edit_history.record(
+            "Cài đặt hàng loạt",
+            lambda: self._apply_batch_asset_snapshots(project_key, before),
+            lambda: self._apply_batch_asset_snapshots(project_key, after),
+            merge_key=f"batch-assets:{project_key}",
+            context_id=f"project:{project_key}",
+        )
 
     def _build_config(self):
         manual_subtitle_layout = bool(

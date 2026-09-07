@@ -14,6 +14,8 @@ Rectangle {
     signal newDownloadProjectRequested
     signal newPublishProjectRequested
     signal settingsRequested
+    signal undoRequested
+    signal redoRequested
     signal aboutRequested
     signal helpRequested
     signal backRequested
@@ -22,6 +24,9 @@ Rectangle {
 
     property bool canGoBack: false
     property bool canGoForward: false
+    property bool editAvailable: false
+    property bool canUndo: false
+    property bool canRedo: false
 
     implicitHeight: 40
     color: Theme.topBar
@@ -85,6 +90,16 @@ Rectangle {
         }
 
         TopBarMenuButton {
+            id: editButton
+
+            objectName: "editMenuButton"
+            text: qsTr("Chỉnh sửa")
+            enabled: root.editAvailable
+            onPressed: menuWasOpenOnPress = editMenu.visible
+            onClicked: root.toggleMenu(editMenu, editButton, menuWasOpenOnPress)
+        }
+
+        TopBarMenuButton {
             id: settingsButton
 
             objectName: "settingsMenuButton"
@@ -105,6 +120,7 @@ Rectangle {
             toolTipText: qsTr("Trợ giúp")
             onClicked: {
                 projectMenu.close();
+                editMenu.close();
                 settingsMenu.close();
                 root.helpRequested();
             }
@@ -118,12 +134,37 @@ Rectangle {
         }
 
         projectMenu.close();
+        editMenu.close();
         settingsMenu.close();
         const anchorPosition = anchorButton.mapToItem(Overlay.overlay, 0, 0);
         const barBottom = root.mapToItem(Overlay.overlay, 0, root.height);
         menu.x = Math.round(anchorPosition.x);
         menu.y = Math.round(barBottom.y + Theme.space4);
         menu.open();
+    }
+
+    TopBarPopupMenu {
+        id: editMenu
+
+        objectName: "editMenuPopup"
+        parent: Overlay.overlay
+        menuContentWidth: Math.max(undoItem.implicitWidth, redoItem.implicitWidth)
+
+        AppMenuItem {
+            id: undoItem
+
+            text: qsTr("Hoàn tác")
+            enabled: root.canUndo
+            onTriggered: root.undoRequested()
+        }
+
+        AppMenuItem {
+            id: redoItem
+
+            text: qsTr("Làm lại")
+            enabled: root.canRedo
+            onTriggered: root.redoRequested()
+        }
     }
 
     TopBarPopupMenu {

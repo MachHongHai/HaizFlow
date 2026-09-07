@@ -7,6 +7,7 @@ import random
 import re
 import string
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,11 +58,22 @@ def _request(url: str, cookie_header: str, *, timeout: int = 25) -> tuple[bytes,
     if cookie_header:
         headers["Cookie"] = cookie_header
     request = urllib.request.Request(url, headers=headers)
-    # Both the requested URL and the final redirect are restricted to
-    # HTTP(S) subdomains of douyin.com by _validated_douyin_url.
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
-        resolved_url = _validated_douyin_url(response.geturl())
-        return response.read(), resolved_url
+    retry_statuses = {408, 425, 429, 500, 502, 503, 504}
+    for attempt in range(3):
+        try:
+            # Both the requested URL and the final redirect are restricted to
+            # HTTP(S) subdomains of douyin.com by _validated_douyin_url.
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
+                resolved_url = _validated_douyin_url(response.geturl())
+                return response.read(), resolved_url
+        except urllib.error.HTTPError as exc:
+            if attempt >= 2 or exc.code not in retry_statuses:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+            if attempt >= 2:
+                raise
+        time.sleep(0.5 * (attempt + 1))
+    raise RuntimeError("Douyin request did not produce a response.")  # pragma: no cover
 
 
 def _resolve_profile_url(url: str, cookie_header: str) -> str:

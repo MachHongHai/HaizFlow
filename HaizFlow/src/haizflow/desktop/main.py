@@ -9,6 +9,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
 from haizflow.core.logging_config import configure_app_logging
+from haizflow.desktop.input_method_commit_filter import InputMethodCommitFilter
 from haizflow.desktop.qml_controller import HaizFlowController
 from haizflow.desktop.single_instance import SingleInstanceCoordinator
 from haizflow.desktop.translations import install_ui_translator
@@ -124,6 +125,10 @@ def main(*, smoke_test: bool = False) -> None:
     configure_app_logging()
     _configure_windows_app_identity()
     app = QApplication(sys.argv)
+    # Keep this object alive for the full QApplication lifetime. It commits
+    # pending Windows IME pre-edit text before QML focus/click handlers save it.
+    input_method_commit_filter = InputMethodCommitFilter(app)
+    app.installEventFilter(input_method_commit_filter)
     app.setApplicationName("HaizFlow")
     app.setApplicationDisplayName("\u200B")
     install_ui_translator(desktop_settings.load_settings().get("language", "en"))

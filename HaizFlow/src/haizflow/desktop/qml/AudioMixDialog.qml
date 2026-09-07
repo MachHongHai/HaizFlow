@@ -63,6 +63,7 @@ AppDialog {
     function scheduleVideoSettingsSave() {
         if (AppController.hasSelectedVideo && !AppController.isSelectedVideoQueued) {
             pendingSettingsVideoId = AppController.selectedVideoId
+            AppController.captureVideoSettingsDraft(pendingSettingsVideoId)
             videoSettingsSaveTimer.restart()
         }
     }

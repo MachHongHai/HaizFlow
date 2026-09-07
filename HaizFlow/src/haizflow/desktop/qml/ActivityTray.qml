@@ -48,10 +48,9 @@ Rectangle {
             Layout.preferredWidth: 140
             value: root.progress
         }
-        AppButton {
+        StudioButton {
             visible: root.showDetails && root.message.length > 0
-            compact: true
-            tone: "ghost"
+            variant: "ghost"
             text: qsTr("Chi tiết")
             onClicked: root.detailsRequested()
         }

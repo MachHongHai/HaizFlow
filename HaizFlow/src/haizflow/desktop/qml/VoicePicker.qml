@@ -325,10 +325,10 @@ Control {
                                         || voiceDelegate.modelData.previewAvailable === true)
                                 iconName: root.requestedVoice === String(voiceDelegate.modelData.voice || "")
                                     && voicePlayer.playbackState === MediaPlayer.PlayingState ? "pause" : "play"
-                                toolTipText: !enabled ? qsTr("Chưa có bản nghe thử")
+                                toolTipText: !enabled ? qsTr("Chưa có mẫu giọng")
                                     : root.requestedVoice === String(voiceDelegate.modelData.voice || "")
                                         && voicePlayer.playbackState === MediaPlayer.PlayingState
-                                        ? qsTr("Tạm dừng nghe thử") : qsTr("Nghe thử giọng")
+                                        ? qsTr("Tạm dừng mẫu giọng") : qsTr("Phát mẫu giọng")
                                 onClicked: root.togglePreview(String(voiceDelegate.modelData.voice || ""))
                             }
 
@@ -339,7 +339,7 @@ Control {
                                 running: visible
                                 visible: root.requestedVoice === String(voiceDelegate.modelData.voice || "")
                                     && root.previewState === "preparing"
-                                Accessible.name: qsTr("Đang tạo bản nghe thử")
+                                Accessible.name: qsTr("Đang mở mẫu giọng")
                             }
                         }
                     }

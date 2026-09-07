@@ -12,6 +12,10 @@ RowLayout {
     property bool inputVideoEnabled: true
     property bool showOutputFolder: false
     property bool outputFolderEnabled: true
+    property bool showVideoFolder: false
+    property bool videoFolderEnabled: true
+    property bool showTechnicalLog: false
+    property bool technicalLogEnabled: true
     property bool setupVisible: false
     property bool setupEnabled: true
     property string deleteText: qsTr("Xóa dự án")
@@ -20,6 +24,8 @@ RowLayout {
     signal projectFolderRequested()
     signal inputVideoRequested()
     signal outputFolderRequested()
+    signal videoFolderRequested()
+    signal technicalLogRequested()
     signal setupRequested()
     signal deleteRequested()
 
@@ -75,10 +81,26 @@ RowLayout {
             }
 
             AppMenuItem {
+                text: qsTr("Mở thư mục video")
+                iconGlyph: "\uE8B7"
+                collapsed: !root.showVideoFolder
+                enabled: root.videoFolderEnabled
+                onTriggered: root.videoFolderRequested()
+            }
+
+            AppMenuItem {
                 text: root.projectFolderText
                 iconGlyph: "\uE8B7"
                 enabled: root.projectFolderEnabled
                 onTriggered: root.projectFolderRequested()
+            }
+
+            AppMenuItem {
+                text: qsTr("Log kỹ thuật")
+                iconGlyph: "\uE9D9"
+                collapsed: !root.showTechnicalLog
+                enabled: root.technicalLogEnabled
+                onTriggered: root.technicalLogRequested()
             }
 
             AppMenuItem {

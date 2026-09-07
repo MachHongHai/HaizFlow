@@ -93,7 +93,7 @@ Button {
             StudioButton {
                 Layout.alignment: Qt.AlignRight
                 text: qsTr("Đóng")
-                tone: "ghost"
+                variant: "ghost"
                 onClicked: helpPopup.close()
             }
         }

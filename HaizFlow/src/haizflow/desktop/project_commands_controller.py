@@ -9,12 +9,12 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
-from haizflow.desktop.localization import QMessageBox
 from haizflow.core.hardware import runtime_profile
+from haizflow.desktop.localization import QMessageBox
 from haizflow.pipeline.process_registry import cancel_video, pause_video
+from haizflow.schemas.video import SubtitleStyle
 from haizflow.services import project_store, video_store
 from haizflow.services.desktop_videos import create_desktop_video, set_desktop_background_music
-from haizflow.schemas.video import SubtitleStyle
 
 
 def _subtitle_style_items(video) -> tuple[tuple[str, object], ...]:
@@ -397,6 +397,17 @@ class ProjectCommandsController:
             )
             return False
 
+        project_key_value = str(getattr(host, "_selected_project_key", "") or "")
+        snapshot_for = getattr(host, "_video_settings_snapshot", lambda _video: {})
+        asset_snapshot_for = getattr(host, "_capture_video_asset_snapshot", None)
+        if apply_background_music and callable(asset_snapshot_for):
+            history_before = {
+                video.video_id: asset_snapshot_for(video, preserve=True)
+                for video in videos
+            }
+        else:
+            history_before = {video.video_id: snapshot_for(video) for video in videos}
+
         updated = 0
         for video in videos:
             video_id = video.video_id
@@ -440,12 +451,31 @@ class ProjectCommandsController:
             return False
         if apply_background_music:
             try:
-                project_key_value = str(getattr(host, "_selected_project_key", "") or "")
                 project_root = project_store.project_root_for_key(project_key_value)
                 draft_assets = os.path.abspath(os.path.join(project_root, ".batch-assets"))
                 shutil.rmtree(draft_assets, ignore_errors=True)
             except (OSError, ValueError):
                 pass
+        record_batch = getattr(
+            host,
+            "_record_batch_asset_change" if apply_background_music else "_record_batch_settings_change",
+            None,
+        )
+        if callable(record_batch):
+            if apply_background_music and callable(asset_snapshot_for):
+                history_after = {
+                    video.video_id: asset_snapshot_for(
+                        video_store.get_video(video.video_id) or video,
+                        preserve=True,
+                    )
+                    for video in videos
+                }
+            else:
+                history_after = {
+                    video.video_id: snapshot_for(video_store.get_video(video.video_id) or video)
+                    for video in videos
+                }
+            record_batch(project_key_value, history_before, history_after)
         host.refreshVideos()
         host.batchChanged.emit()
         return True
@@ -518,7 +548,13 @@ class ProjectCommandsController:
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if not video or host._processing_queue.contains(video.video_id):
             return False
+        snapshot = getattr(host, "_video_settings_snapshot", lambda _video: {})(video)
         host._apply_setup_to_video(video)
+        refreshed = video_store.get_video(video.video_id)
+        if refreshed:
+            record = getattr(host, "_record_video_settings_change", None)
+            if callable(record):
+                record(video.video_id, snapshot, host._video_settings_snapshot(refreshed))
         if log_change:
             video_store.log_to_video(video.video_id, "Per-video dubbing settings saved.")
         host.refreshVideos()

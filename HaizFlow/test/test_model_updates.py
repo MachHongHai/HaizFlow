@@ -44,7 +44,7 @@ class ModelUpdateTests(unittest.TestCase):
 
         model.set_projects([updated])
 
-        self.assertEqual(changed, [(1, 1, [ProjectGridModel.ProgressRole])])
+        self.assertEqual(changed, [(0, 0, [ProjectGridModel.ProgressRole])])
 
     def test_single_video_update_does_not_reset_the_model(self):
         first = SimpleNamespace(

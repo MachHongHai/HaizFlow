@@ -36,23 +36,21 @@ Rectangle {
             elide: Text.ElideRight
         }
 
-        AppButton {
+        StudioButton {
             text: qsTr("Hoàn tác")
-            compact: true
             enabled: root.canUndo
             onClicked: root.undoRequested()
         }
 
-        AppButton {
+        StudioButton {
             text: qsTr("Làm lại")
-            compact: true
             enabled: root.canRedo
             onClicked: root.redoRequested()
         }
 
-        AppButton {
+        StudioButton {
             text: root.primaryText
-            tone: "primary"
+            variant: "primary"
             enabled: root.canCommit
             onClicked: root.commitRequested()
         }

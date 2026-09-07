@@ -151,12 +151,12 @@ AppDialog {
         Item { Layout.preferredWidth: Theme.space8 },
         StudioButton {
             text: qsTr("Hủy")
-            tone: "secondary"
+            variant: "ghost"
             onClicked: root.close()
         },
         StudioButton {
             text: qsTr("Nhập")
-            tone: "primary"
+            variant: "primary"
             enabled: AppController.downloadProjectSourceSelectedCount > 0
                 && (root.multipleSelection
                     || AppController.downloadProjectSourceSelectedCount === 1)

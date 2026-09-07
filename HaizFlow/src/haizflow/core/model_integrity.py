@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 
-
 HYMT2_GPU_REPO = "tencent/Hy-MT2-1.8B"
 HYMT2_GPU_REVISION = "9a341cd1b679d3efd23b46e847b01745a71ed792"
 HYMT2_CPU_REPO = "tencent/Hy-MT2-1.8B-GGUF"
@@ -68,6 +67,54 @@ OMNIVOICE_HUB_URL = (
 )
 OMNIVOICE_HUB_SIZE = 533_092
 OMNIVOICE_HUB_SHA256 = "763f450169bb05ea3867990e9d3ba9464eb617b874791301dc81be2c6ffb0bf5"
+# Hugging Face Hub 1.3 imports HTTPX while the isolated OmniVoice worker is
+# starting, even though inference itself is offline.  Keep the complete HTTP
+# client dependency closure beside the model SDK so the worker never depends
+# on whichever packages happen to be installed in the desktop interpreter.
+OMNIVOICE_HTTP_RUNTIME_ASSETS = {
+    "httpx-0.28.1-py3-none-any.whl": (
+        "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/"
+        "httpx-0.28.1-py3-none-any.whl",
+        73_517,
+        "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+    ),
+    "httpcore-1.0.9-py3-none-any.whl": (
+        "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/"
+        "httpcore-1.0.9-py3-none-any.whl",
+        78_784,
+        "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+    ),
+    "h11-0.16.0-py3-none-any.whl": (
+        "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/"
+        "h11-0.16.0-py3-none-any.whl",
+        37_515,
+        "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+    ),
+    "anyio-4.15.1-py3-none-any.whl": (
+        "https://files.pythonhosted.org/packages/12/b8/4bd346e22b28902df4d651910f5242c28d84e4a5c2435ca5c3f797ed7e2e/"
+        "anyio-4.15.1-py3-none-any.whl",
+        132_079,
+        "6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101",
+    ),
+    "idna-3.19-py3-none-any.whl": (
+        "https://files.pythonhosted.org/packages/57/b0/0e52c878c53f245edd3a11020f20979b3f490f245af532c7cae3027754b5/"
+        "idna-3.19-py3-none-any.whl",
+        68_550,
+        "815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4",
+    ),
+    "typing_extensions-4.16.0-py3-none-any.whl": (
+        "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/"
+        "typing_extensions-4.16.0-py3-none-any.whl",
+        45_571,
+        "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+    ),
+    "certifi-2026.7.22-py3-none-any.whl": (
+        "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/"
+        "certifi-2026.7.22-py3-none-any.whl",
+        136_983,
+        "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+    ),
+}
 OMNIVOICE_RUNTIME_FILES = {
     OMNIVOICE_SDK_FILE: (OMNIVOICE_SDK_SIZE, OMNIVOICE_SDK_SHA256),
     OMNIVOICE_TRANSFORMERS_FILE: (
@@ -75,6 +122,10 @@ OMNIVOICE_RUNTIME_FILES = {
         OMNIVOICE_TRANSFORMERS_SHA256,
     ),
     OMNIVOICE_HUB_FILE: (OMNIVOICE_HUB_SIZE, OMNIVOICE_HUB_SHA256),
+    **{
+        filename: (size, digest)
+        for filename, (_url, size, digest) in OMNIVOICE_HTTP_RUNTIME_ASSETS.items()
+    },
 }
 OMNIVOICE_FILES = {
     "audio_tokenizer/config.json": (2_531, "eefb20806f7104e77c9a5277c9df0f9bb8826b08eb1d4e8ab2b9829b6ef9fac1"),
@@ -338,7 +389,7 @@ def verify_omnivoice_sdk(model_directory: Path) -> Path:
     root = _verify(
         sdk_directory,
         kind="OmniVoice SDK",
-        revision=f"{OMNIVOICE_SDK_VERSION}-transformers-5.3.0-hub-1.3.0",
+        revision=_manifest_id("OmniVoice SDK", OMNIVOICE_SDK_VERSION, OMNIVOICE_RUNTIME_FILES),
         expected=OMNIVOICE_RUNTIME_FILES,
         marker_name=".haizflow-omnivoice-sdk-integrity.json",
     )

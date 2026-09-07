@@ -62,7 +62,7 @@ Item {
         anchors.fill: parent
         spacing: Theme.space16
 
-        SectionHeader {
+        PageHeader {
             Layout.fillWidth: true
             title: qsTr("Cài đặt")
         }

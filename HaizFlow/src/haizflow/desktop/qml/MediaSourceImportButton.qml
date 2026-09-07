@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import "."
 
-AppButton {
+StudioButton {
     id: root
 
     signal fileRequested()
@@ -13,8 +13,7 @@ AppButton {
 
     text: qsTr("Nhập nguồn")
     iconGlyph: "\uE710"
-    compact: true
-    tone: "secondary"
+    variant: "secondary"
     toolTipText: qsTr("Chọn tệp, liên kết hoặc video từ dự án tải xuống")
 
     function openMenu() {

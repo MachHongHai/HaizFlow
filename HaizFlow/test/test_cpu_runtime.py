@@ -54,6 +54,7 @@ class CpuRuntimeTests(unittest.TestCase):
             mock.patch.object(hardware, "_cuda_memory_bytes", return_value=vram_gib * 1024**3),
             mock.patch.object(hardware, "_cuda_free_memory_bytes", return_value=vram_gib * 1024**3),
             mock.patch.object(hardware, "_total_memory_bytes", return_value=ram_gib * 1024**3),
+            mock.patch.object(hardware, "_power_status", return_value=(True, 80)),
             mock.patch.object(hardware.os, "cpu_count", return_value=cpu_count),
         ):
             return hardware.runtime_profile()
@@ -217,6 +218,7 @@ class CpuRuntimeTests(unittest.TestCase):
             mock.patch.object(hardware, "_cuda_memory_bytes", return_value=8 * 1024**3),
             mock.patch.object(hardware, "_cuda_free_memory_bytes", return_value=4 * 1024**3),
             mock.patch.object(hardware, "_total_memory_bytes", return_value=16 * 1024**3),
+            mock.patch.object(hardware, "_power_status", return_value=(True, 80)),
             mock.patch.object(hardware.os, "cpu_count", return_value=8),
         ):
             compatible, message = hardware.validate_processing_device("gpu")

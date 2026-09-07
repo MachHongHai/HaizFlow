@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import shutil
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
 from urllib.parse import urlparse
 
 from haizflow.config import BIN_DIR
 from haizflow.utils.ffmpeg import get_media_stream_types
-
 
 SUPPORTED_VIDEO_HOSTS = {
     "b23.tv": "Bilibili",
@@ -56,6 +56,61 @@ _FORMAT_REFRESH_ERROR_MARKERS = (
     "no formats found",
     "unable to download video data",
     "video data is empty",
+)
+_NETWORK_RETRY_ERROR_MARKERS = (
+    "http error 403",
+    "http error 429",
+    "http error 500",
+    "http error 502",
+    "http error 503",
+    "http error 504",
+    "cloudflare",
+    "tls fingerprint",
+    "timed out",
+    "timeout",
+    "connection reset",
+    "remote end closed connection",
+    "temporary failure in name resolution",
+    "name or service not known",
+    "getaddrinfo failed",
+    "failed to resolve",
+    "network is unreachable",
+    "connection aborted",
+    "connection refused",
+    "connection timed out",
+    "read timed out",
+    "read operation timed out",
+    "incompleteread",
+    "broken pipe",
+    "winerror 10054",
+    "winerror 10060",
+    "unable to download webpage",
+    "unable to download json metadata",
+    "certificate verify failed",
+    "eof occurred in violation",
+    "temporarily unavailable",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+    "too many requests",
+    "try again",
+)
+_NON_RETRYABLE_ERROR_MARKERS = (
+    "video is private",
+    "private video",
+    "login required",
+    "sign in to confirm",
+    "members-only",
+    "premium-only",
+    "age-restricted",
+    "age restricted",
+    "not available in your country",
+    "not available in your region",
+    "geo-restricted",
+    "copyright",
+    "has been removed",
+    "video unavailable",
+    "unsupported url",
 )
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -107,9 +162,21 @@ def _matching_platform(hostname: str) -> str:
 
 def validate_video_url(value: str) -> tuple[str, str]:
     """Return a normalized supported URL and its platform label."""
-    url = str(value or "").strip()
+    url = str(value or "").replace("\u200b", "").replace("\ufeff", "").strip()
     if not url:
         raise ValueError("Paste a video link first.")
+    # Mobile share sheets often copy a sentence followed by the URL. Select
+    # the first supported HTTP link instead of treating the entire sentence as
+    # a hostname.
+    embedded = re.findall(r"https?://[^\s<>\"']+", url, flags=re.IGNORECASE)
+    if embedded:
+        supported = []
+        for candidate in embedded:
+            candidate = candidate.rstrip(".,;:!?)]}")
+            hostname = urlparse(candidate).hostname or ""
+            if _matching_platform(hostname):
+                supported.append(candidate)
+        url = supported[0] if supported else embedded[0].rstrip(".,;:!?)]}")
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
         url = f"https://{url}"
 
@@ -125,7 +192,7 @@ def validate_video_url(value: str) -> tuple[str, str]:
     return url, platform
 
 
-def _youtube_dl_options(auth: dict | None = None) -> dict:
+def _youtube_dl_options(auth: dict | None = None, *, impersonate: bool = False) -> dict:
     ffmpeg_location = BIN_DIR if os.path.isdir(BIN_DIR) else None
     options = {
         "quiet": True,
@@ -134,6 +201,8 @@ def _youtube_dl_options(auth: dict | None = None) -> dict:
         "socket_timeout": 20,
         "retries": 3,
         "fragment_retries": 3,
+        "extractor_retries": 3,
+        "file_access_retries": 3,
         "windowsfilenames": True,
         "logger": _QuietLogger(),
         # TikTok's webpage markup is intermittently unavailable. Supplying an
@@ -143,6 +212,12 @@ def _youtube_dl_options(auth: dict | None = None) -> dict:
     }
     if ffmpeg_location:
         options["ffmpeg_location"] = ffmpeg_location
+    # Some supported services reject Python's TLS fingerprint. yt-dlp uses
+    # curl_cffi for a real browser request profile; enable it only on a retry
+    # because forcing impersonation can make otherwise healthy extractors less
+    # reliable.
+    if impersonate and importlib.util.find_spec("curl_cffi") is not None:
+        options["impersonate"] = "chrome"
     auth = auth or {}
     cookie_file = str(auth.get("cookie_file") or "").strip()
     cookie_browser = str(auth.get("cookie_browser") or "").strip().lower()
@@ -178,9 +253,15 @@ def _is_retryable_tiktok_error(exc: Exception) -> bool:
 def _is_retryable_download_error(exc: Exception, platform: str) -> bool:
     """Return whether a fresh extractor session is likely to recover the media URL."""
     message = _ANSI_ESCAPE.sub("", str(exc)).lower()
-    if any(marker in message for marker in _FORMAT_REFRESH_ERROR_MARKERS):
+    if any(marker in message for marker in _NON_RETRYABLE_ERROR_MARKERS):
+        return False
+    if any(marker in message for marker in _FORMAT_REFRESH_ERROR_MARKERS + _NETWORK_RETRY_ERROR_MARKERS):
         return True
-    return platform == "TikTok" and _is_retryable_tiktok_error(exc)
+    if platform == "TikTok" and _is_retryable_tiktok_error(exc):
+        return True
+    return isinstance(exc, (ConnectionError, TimeoutError, OSError)) and not isinstance(
+        exc, PermissionError
+    )
 
 
 def _download_format_selector(platform: str) -> str:
@@ -209,8 +290,8 @@ def _wait_for_retry(cancel_event: threading.Event | None, seconds: float) -> Non
     time.sleep(seconds)
 
 
-def _inspect_video_info(yt_dlp, url: str) -> dict:
-    with yt_dlp.YoutubeDL(_youtube_dl_options()) as downloader:
+def _inspect_video_info(yt_dlp, url: str, *, impersonate: bool = False) -> dict:
+    with yt_dlp.YoutubeDL(_youtube_dl_options(impersonate=impersonate)) as downloader:
         return downloader.extract_info(url, download=False)
 
 
@@ -220,16 +301,16 @@ def inspect_video_url(url: str, cancel_event: threading.Event | None = None) -> 
         raise DownloadCancelled("Link inspection cancelled.")
 
     yt_dlp = _load_yt_dlp()
-    attempts = 2 if platform == "TikTok" else 1
+    attempts = 3
     info = None
     for attempt in range(attempts):
         try:
-            info = _inspect_video_info(yt_dlp, normalized_url)
+            info = _inspect_video_info(yt_dlp, normalized_url, impersonate=attempt > 0)
             break
         except Exception as exc:
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Link inspection cancelled.") from exc
-            if attempt + 1 < attempts and _is_retryable_tiktok_error(exc):
+            if attempt + 1 < attempts and _is_retryable_download_error(exc, platform):
                 _wait_for_retry(cancel_event, 0.6)
                 continue
             raise RuntimeError(_friendly_error(exc)) from exc
@@ -262,6 +343,63 @@ def inspect_video_url(url: str, cancel_event: threading.Event | None = None) -> 
         thumbnail_url=str(info.get("thumbnail") or ""),
         uploader=str(info.get("uploader") or info.get("channel") or "").strip(),
     )
+
+
+def download_audio(
+    url: str,
+    destination: str | Path,
+    progress_callback: Callable[[int, str], None] | None = None,
+    cancel_event: threading.Event | None = None,
+    auth: dict | None = None,
+) -> str:
+    """Download one link as M4A using the same network policy as video imports."""
+    normalized_url, platform = validate_video_url(url)
+    target = Path(destination)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    yt_dlp = _load_yt_dlp()
+
+    def hook(event: dict) -> None:
+        if cancel_event and cancel_event.is_set():
+            raise DownloadCancelled("Audio download cancelled.")
+        if event.get("status") != "downloading" or not progress_callback:
+            return
+        downloaded = int(event.get("downloaded_bytes") or 0)
+        total = int(event.get("total_bytes") or event.get("total_bytes_estimate") or 0)
+        progress_callback(round(downloaded * 100 / total) if total else 0, "Downloading audio")
+
+    attempts = 3
+    for attempt in range(attempts):
+        options = _youtube_dl_options(auth, impersonate=attempt > 0)
+        options.update(
+            {
+                "outtmpl": str(target.with_suffix(".%(ext)s")),
+                "format": "bestaudio/best",
+                "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
+                "progress_hooks": [hook],
+                "nopart": True,
+                "overwrites": True,
+            }
+        )
+        try:
+            with yt_dlp.YoutubeDL(options) as downloader:
+                downloader.extract_info(normalized_url, download=True)
+            if cancel_event and cancel_event.is_set():
+                raise DownloadCancelled("Audio download cancelled.")
+            if not target.is_file() or target.stat().st_size <= 0:
+                raise RuntimeError("The link did not produce an audio file.")
+            if progress_callback:
+                progress_callback(100, "Download complete")
+            return str(target)
+        except DownloadCancelled:
+            raise
+        except Exception as exc:
+            if cancel_event and cancel_event.is_set():
+                raise DownloadCancelled("Audio download cancelled.") from exc
+            if attempt + 1 < attempts and _is_retryable_download_error(exc, platform):
+                _wait_for_retry(cancel_event, 0.8 * (attempt + 1))
+                continue
+            raise RuntimeError(_friendly_error(exc)) from exc
+    raise RuntimeError("Audio download did not produce a result.")  # pragma: no cover
 
 
 def create_download_workspace(project_root: str) -> str:
@@ -380,23 +518,22 @@ def download_video(
         elif status == "finished":
             report(99, "Finalizing video")
 
-    options = _youtube_dl_options(auth)
-    options.update(
-        {
-            "outtmpl": os.path.join(workspace, "%(title).120B [%(id)s].%(ext)s"),
-            "format": _download_format_selector(metadata.platform),
-            "merge_output_format": "mp4",
-            "postprocessors": [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}],
-            "progress_hooks": [progress_hook],
-            "concurrent_fragment_downloads": 4,
-            "nopart": True,
-            "overwrites": True,
-        }
-    )
-
     report(0, "Starting download")
-    attempts = 3 if metadata.platform == "TikTok" else 2
+    attempts = 3
     for attempt in range(attempts):
+        options = _youtube_dl_options(auth, impersonate=attempt > 0)
+        options.update(
+            {
+                "outtmpl": os.path.join(workspace, "%(title).120B [%(id)s].%(ext)s"),
+                "format": _download_format_selector(metadata.platform),
+                "merge_output_format": "mp4",
+                "postprocessors": [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}],
+                "progress_hooks": [progress_hook],
+                "concurrent_fragment_downloads": 4,
+                "nopart": True,
+                "overwrites": True,
+            }
+        )
         try:
             # A new YoutubeDL instance on every attempt forces a fresh media
             # manifest.  TikTok's signed URLs can expire between inspection

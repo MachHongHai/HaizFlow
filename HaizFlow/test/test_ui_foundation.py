@@ -91,6 +91,19 @@ for width, height in ((1120, 720), (1440, 900), (1920, 1080), (2560, 1440)):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_home_uses_real_actions_and_an_empty_tutorial_frame(self):
+        home = (QML_DIR / "HomePage.qml").read_text(encoding="utf-8")
+        hero = (QML_DIR / "HomeHero.qml").read_text(encoding="utf-8")
+        tutorial = (QML_DIR / "TutorialPlaceholder.qml").read_text(encoding="utf-8")
+
+        self.assertIn("HomeHero {", home)
+        self.assertIn("HomeCreatorPanel {", home)
+        self.assertEqual(home.count("HomeActionButton {"), 4)
+        self.assertIn("TutorialPlaceholder {", home)
+        self.assertIn('qsTr("Biên dịch video ngay trên máy")', hero)
+        self.assertNotIn("MediaPlayer", tutorial)
+        self.assertNotIn("VideoOutput", tutorial)
+
     def test_ui_gallery_renders_at_supported_dpi_scales(self):
         script = f"""
 from PySide6.QtCore import QUrl
@@ -237,9 +250,80 @@ view.close()
             self.assertIn("AppDialog {", source, filename)
             self.assertNotIn("\nDialog {", source, filename)
 
+        dialog_shell = (QML_DIR / "AppDialog.qml").read_text(encoding="utf-8")
+        self.assertIn("readonly property int footerHeight", dialog_shell)
+        self.assertIn("Layout.preferredHeight: root.footerHeight", dialog_shell)
+        self.assertIn('objectName: "appDialogBackground"', dialog_shell)
+        self.assertIn('objectName: "appDialogFooter"', dialog_shell)
+
         progress = (QML_DIR / "AppProgressBar.qml").read_text(encoding="utf-8")
         self.assertNotIn('tone === "blue"', progress)
         self.assertNotIn('tone === "violet"', progress)
+
+    def test_user_actions_use_the_shared_studio_button(self):
+        allowed_base_button_files = {"AppButton.qml", "StudioButton.qml", "UiGallery.qml"}
+        legacy_uses = []
+        for source_file in QML_DIR.glob("*.qml"):
+            if source_file.name in allowed_base_button_files:
+                continue
+            if "AppButton {" in source_file.read_text(encoding="utf-8"):
+                legacy_uses.append(source_file.name)
+        self.assertEqual(legacy_uses, [])
+
+    def test_app_dialog_footer_stays_inside_its_background(self):
+        script = f"""
+from PySide6.QtCore import QObject, QPointF, QUrl
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlComponent, QQmlEngine
+from PySide6.QtQuick import QQuickItem
+app = QGuiApplication([])
+engine = QQmlEngine()
+engine.addImportPath(r'{QML_DIR}')
+component = QQmlComponent(engine)
+component.setData(b'''import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+import "{QML_DIR.as_uri()}"
+ApplicationWindow {{
+    width: 900; height: 700; visible: true
+    AppDialog {{
+        objectName: "testDialog"
+        title: "Dialog"
+        Text {{ text: "Body"; Layout.fillWidth: true }}
+        footerActions: [
+            StudioButton {{ text: "Cancel"; variant: "ghost" }},
+            StudioButton {{ objectName: "acceptButton"; text: "Accept"; variant: "primary" }}
+        ]
+        Component.onCompleted: open()
+    }}
+}}''', QUrl())
+assert component.isReady(), '\\n'.join(error.toString() for error in component.errors())
+window = component.create()
+assert window is not None, '\\n'.join(error.toString() for error in component.errors())
+for _ in range(8):
+    app.processEvents()
+dialog = window.findChild(QObject, "testDialog")
+background = window.findChild(QQuickItem, "appDialogBackground")
+footer = window.findChild(QQuickItem, "appDialogFooter")
+button = window.findChild(QQuickItem, "acceptButton")
+dialog_bottom = float(dialog.property("y")) + float(dialog.property("height"))
+assert abs(float(background.property("height")) - float(dialog.property("height"))) <= 0.5
+assert footer.mapToScene(QPointF(0, float(footer.property("height")))).y() <= dialog_bottom + 0.5
+assert button.mapToScene(QPointF(0, float(button.property("height")))).y() <= dialog_bottom + 0.5
+window.close()
+"""
+        environment = os.environ.copy()
+        environment["QT_QPA_PLATFORM"] = "offscreen"
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_static_qml_copy_uses_the_qt_catalog(self):
         legacy_calls = []
@@ -317,21 +401,12 @@ view.close()
         self.assertIn("SubtitleTransformOverlay {", compare_preview)
         self.assertIn("signal layoutCommitted", transform_overlay)
         self.assertIn("signal layoutPreviewChanged", transform_overlay)
-        self.assertIn('objectName: "subtitleTransformLiveText"', transform_overlay)
-        self.assertIn("font.pixelSize: root.previewFontSize", transform_overlay)
-        self.assertIn("property int layoutWidthPixels", transform_overlay)
-        self.assertIn("property int layoutHeightPixels", transform_overlay)
-        self.assertIn("root.layoutWidthPixels * root.previewScale", transform_overlay)
-        self.assertIn("root.layoutHeightPixels * root.previewScale", transform_overlay)
-        self.assertIn("textMeasure.implicitWidth + outlinePadding * 2", transform_overlay)
-        self.assertIn("textMeasure.implicitHeight + outlinePadding * 2", transform_overlay)
-        self.assertIn("rendererWidthLimit", transform_overlay)
-        self.assertIn("rendererHeightLimit", transform_overlay)
-        self.assertIn("wrapMode: Text.NoWrap", transform_overlay)
-        self.assertIn('color: "#FFFFFFFF"', transform_overlay)
-        self.assertIn('color: "#FFEF00"', transform_overlay)
-        self.assertNotIn("font.bold: true", transform_overlay)
-        self.assertIn("root.karaokeProgress", transform_overlay)
+        self.assertIn('objectName: "subtitleTransformSprite"', transform_overlay)
+        self.assertIn("root.sprite.normal", transform_overlay)
+        self.assertIn("root.sprite.karaoke", transform_overlay)
+        self.assertNotIn("textMeasure", transform_overlay)
+        self.assertNotIn("FontLoader", transform_overlay)
+        self.assertIn("selection.rasterScale", transform_overlay)
         self.assertIn("visible: root.livePreviewVisible", transform_overlay)
         self.assertIn("signal activated()", transform_overlay)
         self.assertEqual(transform_overlay.count("ScaleHandle {"), 4)
@@ -351,13 +426,13 @@ view.close()
         self.assertNotIn("InlineBanner {", navigation_rail)
 
         workspace = (QML_DIR / "ManualWorkspace.qml").read_text(encoding="utf-8")
-        self.assertGreaterEqual(workspace.count("root.selectedStageIndex = root.subtitleToolIndex"), 2)
+        self.assertIn("function selectSubtitle(index, seek)", workspace)
         self.assertIn("subtitleInteractive: root.previewSubtitleIndex >= 0", workspace)
-        self.assertIn("root.subtitleTransformActive = true", workspace)
+        self.assertIn("subtitleTransformActive = true", workspace)
         self.assertIn("onSubtitleActivated:", workspace)
-        self.assertIn("next[index].timeline_edited = true", workspace)
-        self.assertIn("next[index].fit_voice_to_timing = true", workspace)
-        self.assertIn("AppController.subtitlePreviewFrame(", workspace)
+        self.assertIn("saveManualSubtitleTiming", workspace)
+        self.assertNotIn("approveTranslationReview", workspace)
+        self.assertIn("AppController.subtitleOverlayRenderer.frame", workspace)
         self.assertIn("AppController.adoptSubtitlePreviewLayout()", workspace)
         self.assertIn("previewMedia.subtitleRenderLayout", workspace)
         self.assertIn("subtitleAudioRefreshPending", workspace)
@@ -365,7 +440,7 @@ view.close()
             workspace.index("onSubtitleActivated:") : workspace.index("onSubtitleEditingDismissed:")
         ]
         self.assertNotIn("adoptSubtitlePreviewLayout", activated_block)
-        self.assertIn("subtitleLivePreviewEnabled: root.subtitleVisualRefreshPending", workspace)
+        self.assertIn("subtitleLivePreviewEnabled: true", workspace)
         self.assertIn(
             "effectiveResultSource: subtitleLivePreviewEnabled",
             compare_preview,
@@ -375,13 +450,13 @@ view.close()
         self.assertIn("subtitleLayoutWidth: root.subtitleLayoutWidth", workspace)
         self.assertIn("subtitleLayoutHeight: root.subtitleLayoutHeight", workspace)
         self.assertIn("root.subtitleTransformActive = false;", workspace)
-        self.assertIn("onInteractionDismissed: root.subtitleTransformActive = false", workspace)
+        self.assertIn("onInteractionDismissed: root.dismissSubtitleEditor()", workspace)
         committed_block = workspace[
             workspace.index("onSubtitleLayoutCommitted:") : workspace.index(
                 "ManualStageInspector {"
             )
         ]
-        self.assertIn("root.subtitleTransformActive = false", committed_block)
+        self.assertNotIn("root.subtitleTransformActive = false", committed_block)
 
         panel = (QML_DIR / "InspectorPanel.qml").read_text(encoding="utf-8")
         self.assertIn("Layout.fillHeight: true", panel)
@@ -484,6 +559,10 @@ ApplicationWindow {{
         anchors.fill: parent
         videoRect: Qt.rect(100, 50, 600, 500)
         subtitleText: "Phu de tren video"
+        livePreviewVisible: true
+        sprite: ({{normal: "file:///nonexistent-fixture.png", karaoke: "",
+            x: 680, y: 700, width: 300, height: 60, fontSize: 60,
+            outputWidth: 1920, outputHeight: 1080, positionXPercent: 50, positionYPercent: 70}})
         fontSize: 60
         positionXPercent: 50
         positionYPercent: 70
@@ -502,7 +581,7 @@ assert window is not None, "\\n".join(error.toString() for error in component.er
 app.processEvents()
 overlay = window.findChild(QQuickItem, "overlay")
 selection = overlay.findChild(QQuickItem, "subtitleTransformSelection")
-live_text = overlay.findChild(QQuickItem, "subtitleTransformLiveText")
+live_text = overlay.findChild(QQuickItem, "subtitleTransformSprite")
 assert overlay.isVisible() and selection.isVisible()
 assert live_text.isVisible()
 point = selection.mapToScene(QPointF(selection.width() / 2, selection.height() / 2))
@@ -574,9 +653,44 @@ app.processEvents()
         self.assertIn("parent: Overlay.overlay", voice_picker)
         self.assertIn("parent.width - width - Theme.space8", voice_picker)
         self.assertIn("signal ttsVoicePreviewRequested(string value)", processing_form)
-        self.assertIn("previewEnabled: false", manual_inspector)
-        self.assertNotIn("previewVoiceSample", manual_inspector)
+        self.assertIn("previewEnabled: true", manual_inspector)
+        self.assertIn("previewVoiceSample", manual_inspector)
+        self.assertIn("previewSource: AppController.audioPreviewSource", manual_inspector)
+        self.assertIn("previewState: AppController.audioPreviewState", manual_inspector)
+        self.assertIn('qsTr("Phát mẫu giọng")', voice_picker)
         self.assertNotIn("VoicePreviewPanel", voice_picker)
+
+    def test_manual_export_completion_is_visible_and_loaded_on_demand(self):
+        workspace = (QML_DIR / "ManualWorkspace.qml").read_text(encoding="utf-8")
+        inspector = (QML_DIR / "ManualStageInspector.qml").read_text(encoding="utf-8")
+        dialog = (QML_DIR / "ExportCompletedDialog.qml").read_text(encoding="utf-8")
+
+        self.assertIn('text: qsTr("Mở video xuất")', workspace)
+        self.assertIn("onClicked: AppController.openOutputFile()", workspace)
+        self.assertIn("id: exportCompletedDialogLoader", workspace)
+        self.assertIn("active: false", workspace[workspace.index("id: exportCompletedDialogLoader"):])
+        self.assertIn("onManualExportCompleted(videoId, outputPath)", workspace)
+        self.assertIn("signal exportRequested()", inspector)
+        self.assertIn('root.toolId === "export" && started', inspector)
+        self.assertIn('title: qsTr("Video đã xuất")', dialog)
+        self.assertIn('text: qsTr("Mở video")', dialog)
+        self.assertIn('text: qsTr("Mở thư mục")', dialog)
+        self.assertIn("signal openVideoRequested()", dialog)
+
+    def test_manual_progress_separates_queue_prepare_and_measured_work(self):
+        inspector = (QML_DIR / "ManualStageInspector.qml").read_text(encoding="utf-8")
+        progress = (QML_DIR / "ManualToolProgress.qml").read_text(encoding="utf-8")
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+
+        self.assertIn("ManualToolProgress {", inspector)
+        self.assertIn("stepId: AppController.selectedStepId", inspector)
+        self.assertIn('phase === "queued"', progress)
+        self.assertIn('stepId === "waiting_for_models"', progress)
+        self.assertIn('phase === "running"', progress)
+        self.assertIn("visible: root.measured", progress)
+        self.assertIn('qsTr("Đang chuẩn bị")', progress)
+        self.assertIn('AppController.selectedStepId !== "waiting_for_models"', main)
+        self.assertIn('AppController.selectedStepId !== "starting"', main)
 
     def test_unused_redesign_prototypes_are_removed(self):
         removed = (

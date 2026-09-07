@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import queue
 
 from haizflow.desktop.activity_log import ActivityLogBuffer
@@ -26,7 +27,23 @@ class ProcessingLifecycleController:
             return False
         if video.status == "paused":
             prepare_video_resume(video_id)
-        video_store.update_video(video_id, status="pending", step="queued", step_detail="Queued for processing")
+        manual_tool = (
+            str(getattr(video, "manual_target_tool", "") or "")
+            if getattr(video, "project_type", "single") == "manual"
+            else ""
+        )
+        video_store.update_video(
+            video_id,
+            status="pending",
+            progress=0 if manual_tool else getattr(video, "progress", 0),
+            current_item=0 if manual_tool else getattr(video, "current_item", 0),
+            total_items=0 if manual_tool else getattr(video, "total_items", 0),
+            estimated_remaining_seconds=(
+                None if manual_tool else getattr(video, "estimated_remaining_seconds", None)
+            ),
+            step="queued",
+            step_detail="Đang chờ xử lý" if manual_tool else "Queued for processing",
+        )
         if not host._processing_queue.enqueue(video_id):
             return False
         project_store.touch_project_by_key(str(getattr(video, "project_key", "") or ""))
@@ -55,7 +72,20 @@ class ProcessingLifecycleController:
         if not video or video.status == "cancelled":
             return
         host._activate_pending_device_for_next_video(video_id)
-        video_store.update_video(video_id, status="processing", step="starting", step_detail="Processing started")
+        manual_tool = (
+            str(getattr(video, "manual_target_tool", "") or "")
+            if getattr(video, "project_type", "single") == "manual"
+            else ""
+        )
+        video_store.update_video(
+            video_id,
+            status="processing",
+            progress=0 if manual_tool else getattr(video, "progress", 0),
+            current_item=0 if manual_tool else getattr(video, "current_item", 0),
+            total_items=0 if manual_tool else getattr(video, "total_items", 0),
+            step="starting",
+            step_detail="Đang chuẩn bị công cụ" if manual_tool else "Processing started",
+        )
         video_store.log_to_video(video_id, "Processing started from the shared queue.")
         self.update_queue_positions()
         host._log_queue.put(f"__QUEUE_STARTED__:{video_id}")
@@ -100,8 +130,11 @@ class ProcessingLifecycleController:
                 video_store.update_video(
                     video_id,
                     status="processing",
+                    progress=0,
+                    current_item=0,
+                    total_items=0,
                     step="waiting_for_models",
-                    step_detail="Waiting for startup model warm-up",
+                    step_detail="Đang chuẩn bị model" if manual_tool else "Waiting for startup model warm-up",
                 )
                 # Do not use one uninterruptible wait here.  The project is
                 # already the queue's active item, so a user may pause it
@@ -130,9 +163,14 @@ class ProcessingLifecycleController:
             video_store.update_video(
                 video_id,
                 status="processing",
+                progress=0 if manual_tool else getattr(current_video, "progress", 0),
+                current_item=0 if manual_tool else getattr(current_video, "current_item", 0),
+                total_items=0 if manual_tool else getattr(current_video, "total_items", 0),
                 step="starting",
                 step_detail=(
-                    "Model warm-up complete; starting tool"
+                    "Đang khởi tạo công cụ"
+                    if manual_tool
+                    else "Model warm-up complete; starting tool"
                     if requires_model_runtime else "Starting Manual tool"
                 ),
             )
@@ -206,10 +244,33 @@ class ProcessingLifecycleController:
                 host._refresh_batch_model()
                 host.batchChanged.emit()
             elif item.startswith("__QUEUE_FINISHED__:"):
+                finished_video_id = item.partition(":")[2]
                 host.refreshVideos()
                 host.selectedVideoChanged.emit()
                 host._refresh_batch_model()
                 host.batchChanged.emit()
+                finished_video = video_store.get_video(finished_video_id)
+                if (
+                    finished_video
+                    and getattr(finished_video, "project_type", "single") == "manual"
+                    and finished_video.status == "done"
+                    and str(getattr(finished_video, "step", "") or "") == "done"
+                ):
+                    output_path = host._resolve_video_file(
+                        finished_video,
+                        ("final_video", "output_video"),
+                        ("output", "final.mp4"),
+                    )
+                    try:
+                        output_ready = bool(
+                            output_path
+                            and os.path.isfile(output_path)
+                            and os.path.getsize(output_path) > 0
+                        )
+                    except OSError:
+                        output_ready = False
+                    if output_ready:
+                        host.manualExportCompleted.emit(finished_video_id, output_path)
             elif item == "__QUEUE_IDLE__":
                 if host._processing_queue.has_work:
                     continue

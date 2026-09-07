@@ -59,7 +59,7 @@ AppDialog {
     footerActions: [
         StudioButton {
             text: qsTr("Hủy")
-            variant: "secondary"
+            variant: "ghost"
             onClicked: root.close()
         },
         StudioButton {

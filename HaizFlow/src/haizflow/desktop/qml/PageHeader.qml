@@ -20,6 +20,7 @@ RowLayout {
             Layout.fillWidth: true
             text: root.title
             color: Theme.text
+            font.family: Theme.fontFamily
             font.pixelSize: Theme.h1
             font.weight: Font.DemiBold
             textFormat: Text.PlainText
@@ -33,6 +34,7 @@ RowLayout {
             visible: root.subtitle.length > 0
             text: root.subtitle
             color: Theme.textMuted
+            font.family: Theme.fontFamily
             font.pixelSize: Theme.body
             textFormat: Text.PlainText
             elide: Text.ElideRight

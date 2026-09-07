@@ -11,9 +11,15 @@ Rectangle {
     required property string status
     required property int progress
     required property string thumbnailSource
+    required property string updatedAt
     property string typeLabel: projectType
     property string statusLabel: status
     signal activated(int index, string projectType)
+
+    function updatedLabel(value) {
+        const updated = new Date(value)
+        return isNaN(updated.getTime()) ? "" : Qt.formatDateTime(updated, Locale.ShortFormat)
+    }
 
     implicitHeight: 64
     color: hoverHandler.hovered ? Theme.surfaceMuted : "transparent"
@@ -67,6 +73,17 @@ Rectangle {
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.metadata
             textFormat: Text.PlainText
+        }
+
+        Text {
+            Layout.preferredWidth: 138
+            visible: root.width >= 690
+            text: root.updatedLabel(root.updatedAt)
+            color: Theme.textSubtle
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.metadata
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
         }
 
         FluentIcon {

@@ -23,13 +23,14 @@ AppDialog {
     }
 
     footerActions: [
-        AppButton {
+        StudioButton {
             text: qsTr("Hủy")
+            variant: "ghost"
             onClicked: root.reject()
         },
-        AppButton {
+        StudioButton {
             text: root.confirmText
-            tone: root.confirmTone
+            variant: root.confirmTone
             onClicked: {
                 root.confirmed()
                 root.accept()

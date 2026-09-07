@@ -26,11 +26,10 @@ AppSurface {
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
         }
-        AppButton {
+        StudioButton {
             visible: root.downloader.queueCount > 0
             text: qsTr("Xóa hàng đợi")
-            compact: true
-            tone: "secondary"
+            variant: "secondary"
             onClicked: root.downloader.clearQueuedDownloads()
         }
     }
@@ -46,11 +45,10 @@ AppSurface {
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
         }
-        AppButton {
+        StudioButton {
             visible: root.downloader.busy
             text: qsTr("Hủy tải")
-            compact: true
-            tone: "danger"
+            variant: "danger"
             onClicked: root.downloader.cancel()
         }
     }

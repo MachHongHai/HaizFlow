@@ -176,9 +176,8 @@ FloatingToolDialog {
                 textFormat: Text.PlainText
             }
 
-            AppButton {
+            StudioButton {
                 text: qsTr("Đặt lại vị trí")
-                compact: true
                 onClicked: {
                     root.draftPositionX = 51
                     root.draftPositionY = 96

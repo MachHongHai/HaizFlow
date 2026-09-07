@@ -14,6 +14,7 @@ InspectorPanel {
     function scheduleVideoSettingsSave() {
         if (AppController.hasSelectedVideo && !AppController.isSelectedVideoQueued) {
             pendingSettingsVideoId = AppController.selectedVideoId
+            AppController.captureVideoSettingsDraft(pendingSettingsVideoId)
             videoSettingsSaveTimer.restart()
         }
     }
@@ -136,12 +137,12 @@ InspectorPanel {
         }
     }
 
-    AppButton {
+    StudioButton {
         Layout.fillWidth: true
         visible: !AppController.hasSelectedVideo
         text: AppController.isProcessing ? qsTr("Đưa vào hàng đợi xử lý") : qsTr("Tạo và xử lý")
         iconGlyph: "\uE768"
-        tone: "primary"
+        variant: "primary"
         enabled: AppController.canEditSelectedVideo && AppController.videoPath.length > 0
         onClicked: AppController.startProjectVideo()
     }
@@ -161,6 +162,7 @@ InspectorPanel {
         function onSelectedVideoChanged() {
             if (videoSettingsSaveTimer.running && root.pendingSettingsVideoId !== AppController.selectedVideoId) {
                 videoSettingsSaveTimer.stop()
+                AppController.persistVideoSettingsFor(root.pendingSettingsVideoId)
                 root.pendingSettingsVideoId = ""
             }
         }

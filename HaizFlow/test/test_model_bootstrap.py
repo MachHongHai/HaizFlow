@@ -78,6 +78,8 @@ class ModelBootstrapTests(unittest.TestCase):
         self.assertTrue(any(path.startswith("omnivoice/") for path in cpu_paths))
         self.assertTrue(any(path.startswith("omnivoice/") for path in gpu_paths))
         self.assertTrue(any(path.startswith("omnivoice/sdk/") for path in cpu_paths))
+        self.assertTrue(any(path.endswith("/httpx-0.28.1-py3-none-any.whl") for path in cpu_paths))
+        self.assertTrue(any(path.endswith("/httpcore-1.0.9-py3-none-any.whl") for path in cpu_paths))
         self.assertFalse(any(path.startswith("whisper/large-v3-turbo/") for path in cpu_paths))
         self.assertTrue(any(path.startswith("whisper/large-v3-turbo/") for path in gpu_paths))
         self.assertEqual(

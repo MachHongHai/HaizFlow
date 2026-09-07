@@ -51,9 +51,9 @@ AppDialog {
         Item { Layout.fillWidth: true }
     }
 
-    footerActions: AppButton {
+    footerActions: StudioButton {
         text: qsTr("Đóng")
-        tone: "primary"
+        variant: "primary"
         onClicked: root.close()
     }
 }

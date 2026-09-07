@@ -25,7 +25,7 @@ from haizflow.schemas.channel_import import (
 from haizflow.services.video_download import (
     DownloadCancelled,
     VideoMetadata,
-    _is_retryable_tiktok_error,
+    _is_retryable_download_error,
     _load_yt_dlp,
     _wait_for_retry,
     _youtube_dl_options,
@@ -269,21 +269,26 @@ def _extract_info_with_platform_retry(
     url: str,
     cancel_event: threading.Event | None = None,
 ) -> dict:
-    """Retry TikTok's known transient rehydration error once."""
+    """Inspect a collection with fresh sessions after transient extractor errors."""
     yt_dlp = _load_yt_dlp()
-    attempts = 2 if platform == "TikTok" else 1
+    attempts = 3
     for attempt in range(attempts):
         if cancel_event and cancel_event.is_set():
             raise DownloadCancelled("Channel inspection cancelled.")
         try:
-            with yt_dlp.YoutubeDL(options) as downloader:
+            attempt_options = dict(options)
+            if attempt:
+                retry_options = _youtube_dl_options(impersonate=True)
+                if "impersonate" in retry_options:
+                    attempt_options["impersonate"] = retry_options["impersonate"]
+            with yt_dlp.YoutubeDL(attempt_options) as downloader:
                 info = downloader.extract_info(url, download=False)
             return info if isinstance(info, dict) else {}
         except Exception as exc:
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Channel inspection cancelled.") from exc
-            if attempt + 1 < attempts and _is_retryable_tiktok_error(exc):
-                _wait_for_retry(cancel_event, 0.6)
+            if attempt + 1 < attempts and _is_retryable_download_error(exc, platform):
+                _wait_for_retry(cancel_event, 0.6 * (attempt + 1))
                 continue
             raise
     return {}

@@ -50,6 +50,31 @@ ApplicationWindow {
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
     readonly property bool canNavigateForward: !globalNavigationBlocked && (downloadCanGoForward || routeCanGoForward)
+    readonly property bool editScopeAvailable: currentRoute === routeSettings
+        || currentRoute === routeSingleWorkspace
+        || currentRoute === routeManualWorkspace
+        || currentRoute === routeBatchWorkspace
+        || currentRoute === routeBatchVideo
+        || currentRoute === routeDownloadWorkspace
+        || currentRoute === routePublishWorkspace
+
+    function syncEditHistoryScope() {
+        if (currentRoute === routeSettings) {
+            AppController.setEditHistoryScope("settings");
+        } else if (currentRoute === routeBatchWorkspace
+                || currentRoute === routeDownloadWorkspace
+                || currentRoute === routePublishWorkspace) {
+            AppController.setEditHistoryScope("project");
+        } else if (currentRoute === routeSingleWorkspace
+                || currentRoute === routeManualWorkspace
+                || currentRoute === routeBatchVideo) {
+            AppController.setEditHistoryScope("video");
+        } else {
+            AppController.setEditHistoryScope("none");
+        }
+    }
+
+    onCurrentRouteChanged: syncEditHistoryScope()
 
     function navigationSection() {
         if (currentRoute === routeProjects)
@@ -195,6 +220,7 @@ ApplicationWindow {
     Component.onCompleted: {
         I18n.language = AppController.settingsLanguage;
         AppController.enableInAppAlerts();
+        syncEditHistoryScope();
     }
 
     Binding {
@@ -357,9 +383,14 @@ ApplicationWindow {
             Layout.preferredHeight: 40
             canGoBack: root.canNavigateBack
             canGoForward: root.canNavigateForward
+            editAvailable: root.editScopeAvailable
+            canUndo: AppController.canUndoEdit
+            canRedo: AppController.canRedoEdit
             onBackRequested: root.navigateBack()
             onForwardRequested: root.navigateForward()
             onHomeRequested: root.navigate(root.routeHome)
+            onUndoRequested: AppController.undoEdit()
+            onRedoRequested: AppController.redoEdit()
             onNewSingleProjectRequested: {
                 root.workspaceReturnRoute = root.routeSingleProjects;
                 projectSetupDialogLoader.invoke("openForType", ["single"]);
@@ -448,7 +479,10 @@ ApplicationWindow {
             showDetails: false
             activityState: root.modelStatusFailed ? "failed" : root.modelStatusBusy || AppController.isProcessing ? "processing" : "ready"
             message: root.modelStatusFailed || root.modelStatusBusy ? I18n.runtimeStatus(AppController.statusMessage) : AppController.isProcessing ? AppController.processingText : ""
-            progress: AppController.isSelectedVideoProcessing ? Math.max(0, Math.min(1, AppController.selectedProgress / 100)) : -1
+            progress: AppController.isSelectedVideoProcessing
+                && AppController.selectedStepId !== "waiting_for_models"
+                && AppController.selectedStepId !== "starting"
+                ? Math.max(0, Math.min(1, AppController.selectedProgress / 100)) : -1
         }
     }
 

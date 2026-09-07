@@ -14,15 +14,19 @@ Item {
     signal openProject(string projectType)
 
     function newProjectLabel() {
+        return qsTr("Dự án mới")
+    }
+
+    function pageTitle() {
         if (projectType === "batch")
-            return qsTr("Tạo dự án Hàng loạt")
+            return qsTr("Hàng loạt")
         if (projectType === "manual")
-            return qsTr("Tạo dự án Thủ công")
+            return qsTr("Thủ công")
         if (projectType === "download")
-            return qsTr("Tạo dự án Tải xuống")
+            return qsTr("Tải xuống")
         if (projectType === "publish")
-            return qsTr("Tạo dự án Đăng mạng xã hội")
-        return qsTr("Tạo dự án Tự động")
+            return qsTr("Đăng mạng xã hội")
+        return qsTr("Tự động")
     }
 
     opacity: visible ? 1 : 0
@@ -43,7 +47,20 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 0
+        spacing: Theme.space12
+
+        PageHeader {
+            Layout.fillWidth: true
+            title: root.pageTitle()
+
+            StudioButton {
+                objectName: "newProjectButton"
+                text: root.newProjectLabel()
+                iconName: "add"
+                variant: "primary"
+                onClicked: root.requestNewProject()
+            }
+        }
 
         GridView {
             id: projectGrid
@@ -57,9 +74,6 @@ Item {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: Theme.space20
-            Layout.rightMargin: Theme.space20
-            Layout.topMargin: Theme.space20
             model: root.projectModel
             cellWidth: cellContentWidth
             cellHeight: cardHeight + Theme.space16
@@ -67,158 +81,46 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             reuseItems: true
 
-            Component {
-                id: newProjectCardDelegate
-
-                Rectangle {
-                    id: newProjectCard
-
-                    width: projectGrid.cardWidth
-                    height: projectGrid.cardHeight
-                    radius: Theme.radius
-                    color: newProjectHover.hovered ? Theme.interactiveMuted : Theme.surfaceElevated
-                    border.width: activeFocus ? 2 : 1
-                    border.color: activeFocus || newProjectHover.hovered ? Theme.focus : Theme.outline
-                    focusPolicy: Qt.TabFocus
-                    Accessible.role: Accessible.Button
-                    Accessible.name: root.newProjectLabel()
-                    scale: newProjectTap.pressed ? 0.99 : 1
-
-                    Keys.onReturnPressed: root.requestNewProject()
-                    Keys.onSpacePressed: root.requestNewProject()
-
-                    HoverHandler {
-                        id: newProjectHover
-                        cursorShape: Qt.PointingHandCursor
-                    }
-
-                    TapHandler {
-                        id: newProjectTap
-                        onTapped: {
-                            root.requestNewProject();
-                        }
-                    }
-
-                    Column {
-                        anchors.centerIn: parent
-                        width: Math.min(parent.width - 40, 230)
-                        spacing: Theme.space12
-
-                        Rectangle {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 32
-                            height: 32
-                            radius: 16
-                            color: Theme.interactive
-
-                            AppIcon {
-                                anchors.centerIn: parent
-                                width: 14
-                                height: 14
-                                glyph: "\uE710"
-                                iconColor: Theme.textOnAccent
-                                iconSize: Theme.iconSmall
-                            }
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: root.newProjectLabel()
-                            color: Theme.text
-                            font.pixelSize: Theme.bodyLarge
-                            font.weight: Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                            maximumLineCount: 1
-                            wrapMode: Text.NoWrap
-                        }
-
-                    }
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Theme.motionFast
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                }
-            }
-
-            delegate: Item {
-                id: projectGridDelegate
-
-                required property int index
-                required property bool isCreateCard
-                required property string projectName
-                required property string projectType
-                required property int videoCount
-                required property string status
-                required property int progress
-                required property string thumbnailSource
-                required property string videoSize
-
+            delegate: ProjectCard {
+                id: projectCard
                 width: projectGrid.cardWidth
                 height: projectGrid.cardHeight
-
-                function resetFocusState() {
-                    projectGridDelegate.focus = false;
-                    projectCard.resetFocusState();
-                    if (newProjectCardLoader.item)
-                        newProjectCardLoader.item.focus = false;
+                onActivated: {
+                    if (AppController.selectProjectInMode(index, root.projectType))
+                        root.openProject(root.projectType)
                 }
-
-                GridView.onPooled: {
-                    visible = false;
-                    resetFocusState();
+                onOpenRequested: {
+                    if (AppController.selectProjectInMode(index, root.projectType))
+                        root.openProject(root.projectType)
                 }
-                GridView.onReused: {
-                    visible = true;
-                    resetFocusState();
+                onProjectFolderRequested: {
+                    if (AppController.selectProjectInMode(index, root.projectType))
+                        AppController.openProjectFolder()
                 }
-
-                Loader {
-                    id: newProjectCardLoader
-                    anchors.fill: parent
-                    active: projectGridDelegate.isCreateCard
-                    sourceComponent: newProjectCardDelegate
-                }
-
-                ProjectCard {
-                    id: projectCard
-                    visible: !projectGridDelegate.isCreateCard
-                    width: parent.width
-                    height: parent.height
-                    index: projectGridDelegate.index - 1
-                    projectName: projectGridDelegate.projectName
-                    projectType: projectGridDelegate.projectType
-                    videoCount: projectGridDelegate.videoCount
-                    status: projectGridDelegate.status
-                    progress: projectGridDelegate.progress
-                    thumbnailSource: projectGridDelegate.thumbnailSource
-                    videoSize: projectGridDelegate.videoSize
-                    onActivated: {
-                        if (AppController.selectProjectInMode(index, root.projectType))
-                            root.openProject(root.projectType);
-                    }
-                    onOpenRequested: {
-                        if (AppController.selectProjectInMode(index, root.projectType))
-                            root.openProject(root.projectType);
-                    }
-                    onProjectFolderRequested: {
-                        if (AppController.selectProjectInMode(index, root.projectType))
-                            AppController.openProjectFolder();
-                    }
-                    onDeleteRequested: {
-                        // Resolve the persisted project before showing a
-                        // confirmation. Opening it first changes activity
-                        // order and can make this row point at another card.
-                        AppController.deleteProjectInMode(index, root.projectType)
-                    }
+                onDeleteRequested: {
+                    // Resolve the persisted project before showing a
+                    // confirmation. Opening it first changes activity
+                    // order and can make this row point at another card.
+                    AppController.deleteProjectInMode(index, root.projectType)
                 }
             }
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
+            }
+
+            EmptyState {
+                anchors.centerIn: parent
+                visible: projectGrid.count === 0
+                title: qsTr("Chưa có dự án")
+                message: qsTr("Tạo dự án để bắt đầu.")
+
+                StudioButton {
+                    text: root.newProjectLabel()
+                    iconName: "add"
+                    variant: "primary"
+                    onClicked: root.requestNewProject()
+                }
             }
         }
     }

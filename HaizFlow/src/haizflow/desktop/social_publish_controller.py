@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import queue
 import re
@@ -16,9 +17,9 @@ from PySide6.QtGui import QGuiApplication
 from haizflow.desktop.external_links import open_external_url
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import create_video_thumbnail_path, normalize_video_path, thumbnail_source
-from haizflow.services import project_store, secure_credentials, social_publish as tiktok_publish, video_store, zernio
+from haizflow.services import project_store, secure_credentials, video_store, zernio
+from haizflow.services import social_publish as tiktok_publish
 from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
-
 
 ZERNIO_CREDENTIAL_TARGET = "HaizFlow/Zernio/APIKey"
 ZERNIO_SIGN_UP_URL = "https://zernio.com/signup"
@@ -978,17 +979,49 @@ class SocialPublishController:
         level = str(privacy_level or "")
         if self._privacy_levels and level not in self._privacy_levels:
             return False
-        self._state = tiktok_publish.update_publish_settings(
-            self._project_root,
-            privacy_level=level,
-            publish_now=publish_now,
-            allow_comment=bool(allow_comment and (self.comment_available if self._creator_info_loaded else True)),
-            allow_duet=bool(allow_duet and (self.duet_available if self._creator_info_loaded else True)),
-            allow_stitch=bool(allow_stitch and (self.stitch_available if self._creator_info_loaded else True)),
-            share_to_feed=bool(share_to_feed),
-            ai_generated=bool(ai_generated),
-            first_comment=first_comment,
+        before = self._publish_settings_snapshot()
+        values = {
+            "privacy_level": level,
+            "publish_now": publish_now,
+            "allow_comment": bool(allow_comment and (self.comment_available if self._creator_info_loaded else True)),
+            "allow_duet": bool(allow_duet and (self.duet_available if self._creator_info_loaded else True)),
+            "allow_stitch": bool(allow_stitch and (self.stitch_available if self._creator_info_loaded else True)),
+            "share_to_feed": bool(share_to_feed),
+            "ai_generated": bool(ai_generated),
+            "first_comment": first_comment,
+        }
+        self._state = tiktok_publish.update_publish_settings(self._project_root, **values)
+        after = self._publish_settings_snapshot()
+        history = getattr(self._host, "_manual_edit_history", None)
+        if history is not None and before != after:
+            context_id = f"project:{self._host._selected_project_key}"
+            history.record(
+                "Cài đặt đăng bài",
+                lambda: self._apply_publish_settings_snapshot(before),
+                lambda: self._apply_publish_settings_snapshot(after),
+                merge_key="publish-settings",
+                context_id=context_id,
+            )
+        self._emit_changed()
+        return True
+
+    def _publish_settings_snapshot(self) -> dict[str, object]:
+        keys = (
+            "privacy_level",
+            "publish_now",
+            "allow_comment",
+            "allow_duet",
+            "allow_stitch",
+            "share_to_feed",
+            "ai_generated",
+            "first_comment",
         )
+        return {key: self._state.get(key) for key in keys}
+
+    def _apply_publish_settings_snapshot(self, values: dict[str, object]) -> bool:
+        if not self._ensure_publish_project() or self._busy:
+            return False
+        self._state = tiktok_publish.update_publish_settings(self._project_root, **values)
         self._emit_changed()
         return True
 
@@ -1221,12 +1254,61 @@ class SocialPublishController:
     def save_defaults(self, caption: str, hashtags: str, apply_to_existing: bool) -> bool:
         if not self._ensure_publish_project():
             return False
+        before = self._publish_content_snapshot()
         self._state = tiktok_publish.update_defaults(
             self._project_root, caption, hashtags, apply_to_ready_items=bool(apply_to_existing)
         )
+        after = self._publish_content_snapshot()
+        history = getattr(self._host, "_manual_edit_history", None)
+        if history is not None and before != after:
+            context_id = f"project:{self._host._selected_project_key}"
+            history.record(
+                "Nội dung mặc định",
+                lambda: self._apply_publish_content_snapshot(before),
+                lambda: self._apply_publish_content_snapshot(after),
+                merge_key="publish-defaults",
+                context_id=context_id,
+            )
         self._consent_confirmed = False
         self._sync_model()
         self._emit_changed()
+        self._host.refreshVideos()
+        return True
+
+    def _publish_content_snapshot(self) -> dict[str, object]:
+        item_keys = (
+            "caption",
+            "hashtags",
+            "status",
+            "error",
+            "request_id",
+            "zernio_post_id",
+            "platform_post_url",
+            "platform_post_url_verified",
+            "upload_progress",
+        )
+        return {
+            "default_caption": str(self._state.get("default_caption") or ""),
+            "default_hashtags": str(self._state.get("default_hashtags") or ""),
+            "items": {
+                str(item["id"]): {key: copy.deepcopy(item.get(key)) for key in item_keys}
+                for item in self._state.get("items", [])
+            },
+        }
+
+    def _apply_publish_content_snapshot(self, snapshot: dict[str, object]) -> bool:
+        if not self._ensure_publish_project() or self._busy:
+            return False
+        state = tiktok_publish.load_state(self._project_root)
+        state["default_caption"] = str(snapshot.get("default_caption") or "")
+        state["default_hashtags"] = str(snapshot.get("default_hashtags") or "")
+        item_values = dict(snapshot.get("items") or {})
+        for item in state.get("items", []):
+            values = item_values.get(str(item.get("id")))
+            if values:
+                item.update(copy.deepcopy(values))
+        tiktok_publish.save_state(self._project_root, state)
+        self._reload()
         self._host.refreshVideos()
         return True
 
@@ -1246,6 +1328,39 @@ class SocialPublishController:
             status="ready" if item["status"] not in {"published", "posted"} else item["status"],
             error="",
         )
+        if updated is None:
+            return False
+        before = {
+            "caption": str(item.get("caption") or ""),
+            "hashtags": str(item.get("hashtags") or ""),
+            "status": str(item.get("status") or "ready"),
+            "error": str(item.get("error") or ""),
+        }
+        after = {
+            "caption": str(updated.get("caption") or ""),
+            "hashtags": str(updated.get("hashtags") or ""),
+            "status": str(updated.get("status") or "ready"),
+            "error": str(updated.get("error") or ""),
+        }
+        history = getattr(self._host, "_manual_edit_history", None)
+        if history is not None and before != after:
+            item_id = str(item["id"])
+            context_id = f"project:{self._host._selected_project_key}"
+            history.record(
+                "Nội dung bài đăng",
+                lambda: self._apply_item_edit(item_id, before),
+                lambda: self._apply_item_edit(item_id, after),
+                merge_key=f"publish-item:{item_id}",
+                context_id=context_id,
+            )
+        self._consent_confirmed = False
+        self._reload()
+        return True
+
+    def _apply_item_edit(self, item_id: str, values: dict[str, str]) -> bool:
+        if not self._ensure_publish_project() or self._busy:
+            return False
+        updated = tiktok_publish.update_item(self._project_root, item_id, **values)
         if updated is None:
             return False
         self._consent_confirmed = False
@@ -1732,7 +1847,8 @@ class SocialPublishController:
                     upload_progress=100 if status != "ready" else 0,
                 )
                 if status in _SUCCESS_POST_STATUSES:
-                    self._status = f"{PLATFORM_LABELS.get(str(event.get('platform') or ''), 'The platform')} published the video successfully."
+                    platform_label = PLATFORM_LABELS.get(str(event.get("platform") or ""), "The platform")
+                    self._status = f"{platform_label} published the video successfully."
                 else:
                     self._status = str(
                         event.get("error")
@@ -1976,7 +2092,10 @@ class SocialPublishController:
         now = time.monotonic()
         if now >= self._post_status_poll_deadline:
             self._stop_post_status_poll()
-            self._status = "The platform is still preparing the public post link. HaizFlow will check again when this project is reopened."
+            self._status = (
+                "The platform is still preparing the public post link. "
+                "HaizFlow will check again when this project is reopened."
+            )
             self._emit_changed()
             return
         if now >= self._post_status_poll_next:

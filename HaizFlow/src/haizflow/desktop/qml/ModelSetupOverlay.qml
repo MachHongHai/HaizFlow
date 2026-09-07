@@ -186,17 +186,17 @@ FocusScope {
                 Layout.fillWidth: true
             }
 
-            AppButton {
+            StudioButton {
                 visible: AppController.modelSetupCanCancel
                 text: qsTr("Tạm dừng tải")
-                tone: "secondary"
+                variant: "secondary"
                 onClicked: AppController.cancelModelSetup()
             }
 
-            AppButton {
+            StudioButton {
                 visible: !AppController.modelSetupBusy
                 text: qsTr("Tải lại model")
-                tone: "primary"
+                variant: "primary"
                 iconGlyph: "\uE72C"
                 onClicked: AppController.retryModelSetup()
             }

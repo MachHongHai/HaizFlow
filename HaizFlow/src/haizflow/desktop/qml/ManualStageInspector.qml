@@ -37,6 +37,23 @@ InspectorPanel {
     signal toolRequested(int index)
     signal sourceLinkRequested()
     signal settingsCommitted()
+    signal exportRequested()
+
+    function dismissTextEditor() {
+        const editor = stageLoader.item as ColumnLayout;
+        if (stageLoader.status === Loader.Ready && root.toolId === "subtitle") {
+            // qmllint disable missing-property
+            editor.dismissTextEditor();
+            // qmllint enable missing-property
+        }
+    }
+    function focusTextEditor() {
+        if (stageLoader.status === Loader.Ready && root.toolId === "subtitle") {
+            // qmllint disable missing-property
+            stageLoader.item.focusTextEditor();
+            // qmllint enable missing-property
+        }
+    }
 
     title: String(toolState.label || "")
     onCurrentStageChanged: inspectorScroll.contentY = 0
@@ -251,6 +268,9 @@ InspectorPanel {
             id: subtitleInspectorComponent
             ColumnLayout {
                 spacing: Theme.space8
+                height: Math.max(300, inspectorScroll.height)
+                function dismissTextEditor() { subtitleTextEditor.dismiss(); }
+                function focusTextEditor() { subtitleTextEditor.focusEditor(); }
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -284,27 +304,15 @@ InspectorPanel {
                     Layout.fillWidth: true
                     text: qsTr("Nội dung")
                 }
-                TextArea {
+                SubtitleTextEditor {
                     id: subtitleTextEditor
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 104
-                    enabled: root.editable && root.selectedSubtitle !== null
-                    text: root.selectedSubtitle ? String(root.selectedSubtitle.text || "") : ""
-                    placeholderText: qsTr("Chọn một phụ đề trên timeline")
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    wrapMode: TextEdit.Wrap
-                    selectByMouse: true
-                    background: Rectangle {
-                        color: Theme.input
-                        radius: Theme.radiusSmall
-                        border.width: subtitleTextEditor.activeFocus ? 2 : 1
-                        border.color: subtitleTextEditor.activeFocus ? Theme.focus : Theme.outline
-                    }
-                    onEditingFinished: {
-                        if (root.selectedSubtitle && text.trim() !== String(root.selectedSubtitle.text || ""))
-                            root.subtitleTextCommitted(root.selectedSubtitleIndex, text);
+                    Layout.fillHeight: true
+                    segmentId: root.selectedSubtitle ? String(root.selectedSubtitle.segment_id || "") : ""
+                    savedText: root.selectedSubtitle ? String(root.selectedSubtitle.text || "") : ""
+                    revision: root.selectedSubtitle ? Number(root.selectedSubtitle.revision || 0) : 0
+                    onCommitRequested: function(id, text, version, request) {
+                        AppController.saveManualSubtitleText(id, text, version, request);
                     }
                 }
                 Text {
@@ -393,10 +401,19 @@ InspectorPanel {
                     model: AppController.ttsVoiceOptions
                     currentValue: AppController.ttsVoice
                     allowVoiceClone: false
-                    previewEnabled: false
+                    previewEnabled: true
+                    previewSource: AppController.audioPreviewSource
+                    previewState: AppController.audioPreviewState
                     onSelected: function(voice) {
                         AppController.ttsVoice = voice;
                         root.scheduleSave();
+                    }
+                    onPreviewRequested: function(voice) {
+                        AppController.previewVoiceSample(
+                            AppController.ttsProvider,
+                            voice,
+                            AppController.targetLanguage
+                        );
                     }
                 }
                 StudioButton {
@@ -546,30 +563,14 @@ InspectorPanel {
         ColumnLayout {
             Layout.fillWidth: true
             visible: root.taskQueued && root.taskBelongsToTool
-            spacing: Theme.space4
-            RowLayout {
+            ManualToolProgress {
                 Layout.fillWidth: true
-                Text {
-                    Layout.fillWidth: true
-                    text: I18n.progressDetail(AppController.selectedProgressDetail || AppController.selectedStep)
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                }
-                Text {
-                    text: qsTr("%1%").arg(AppController.selectedProgress)
-                    color: Theme.interactive
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    font.weight: Font.DemiBold
-                    textFormat: Text.PlainText
-                }
-            }
-            AppProgressBar {
-                Layout.fillWidth: true
-                value: AppController.selectedProgress
+                status: AppController.selectedStatus
+                stepId: AppController.selectedStepId
+                detail: I18n.progressDetail(
+                    AppController.selectedProgressDetail || AppController.selectedStep
+                )
+                progress: AppController.selectedProgress
             }
         }
 
@@ -603,7 +604,9 @@ InspectorPanel {
                     AppController.resumeSelectedVideo();
                 else {
                     root.saveNow();
-                    AppController.runManualTool(root.toolId);
+                    const started = AppController.runManualTool(root.toolId);
+                    if (root.toolId === "export" && started)
+                        root.exportRequested();
                 }
             }
         }

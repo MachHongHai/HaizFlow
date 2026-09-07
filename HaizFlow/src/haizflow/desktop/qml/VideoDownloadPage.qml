@@ -42,16 +42,16 @@ Item {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        AppButton {
+                        StudioButton {
                             text: qsTr("Kiểm tra")
-                            tone: "secondary"
+                            variant: "secondary"
                             enabled: videoLink.text.trim().length > 0 && !root.downloader.videoPreviewBusy
                             onClicked: root.downloader.inspectVideo(videoLink.text.trim())
                         }
-                        AppButton {
+                        StudioButton {
                             visible: root.downloader.videoPreviewBusy
                             text: qsTr("Hủy")
-                            tone: "danger"
+                            variant: "danger"
                             onClicked: root.downloader.cancelVideoPreview()
                         }
                         Text {
@@ -134,18 +134,17 @@ Item {
                             elide: Text.ElideMiddle
                             textFormat: Text.PlainText
                         }
-                        AppButton {
+                        StudioButton {
                             visible: !root.downloader.outputManaged
                             text: qsTr("Chọn thư mục")
-                            compact: true
                             onClicked: root.downloader.chooseVideoOutputDirectory()
                         }
                     }
 
-                    AppButton {
+                    StudioButton {
                         Layout.fillWidth: true
                         text: qsTr("Tải video")
-                        tone: "primary"
+                        variant: "primary"
                         enabled: root.downloader.videoPreviewReady && root.downloader.videoOutputDirectory.length > 0
                         onClicked: root.downloader.downloadVideo(root.downloader.videoPreviewUrl)
                     }

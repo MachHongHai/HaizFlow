@@ -8,6 +8,7 @@ Item {
 
     property rect videoRect: Qt.rect(0, 0, 0, 0)
     property string subtitleText: ""
+    property var sprite: ({})
     property real karaokeProgress: 0
     property int fontSize: 60
     property int positionXPercent: 50
@@ -45,8 +46,8 @@ Item {
     )
     readonly property real previewLetterSpacing: Math.max(0, previewScale)
 
-    visible: interactive
-        && subtitleText.trim().length > 0
+    visible: (interactive || livePreviewVisible)
+        && String(sprite.normal || "").length > 0
         && videoRect.width > 0
         && videoRect.height > 0
 
@@ -84,7 +85,7 @@ Item {
     function activateEditor() {
         if (!editing)
             activated();
-        selection.forceActiveFocus();
+
     }
 
     MouseArea {
@@ -99,17 +100,6 @@ Item {
         y: root.videoRect.y
         width: root.videoRect.width
         height: root.videoRect.height
-
-        Text {
-            id: textMeasure
-            visible: false
-            text: root.subtitleText
-            font.family: karaokeFont.status === FontLoader.Ready ? karaokeFont.name : Theme.fontFamily
-            font.bold: false
-            font.pixelSize: root.previewFontSize
-            font.letterSpacing: root.previewLetterSpacing
-            textFormat: Text.PlainText
-        }
 
         MouseArea {
             anchors.fill: parent
@@ -136,116 +126,49 @@ Item {
         Rectangle {
             id: selection
             objectName: "subtitleTransformSelection"
-            readonly property real maximumTextWidth: Math.max(
-                48,
-                videoCanvas.width * root.clamp(root.boxWidthPercent, 20, 100) / 100
-            )
-            readonly property real outlinePadding: Math.max(
-                4,
-                root.outlineWidth * root.previewScale + 2 * root.previewScale
-            )
-
-            readonly property real rendererWidthLimit: root.layoutWidthPixels > 0
-                ? root.layoutWidthPixels * root.previewScale
-                : maximumTextWidth
-            readonly property real rendererHeightLimit: root.layoutHeightPixels > 0
-                ? root.layoutHeightPixels * root.previewScale
-                : videoCanvas.height * 0.32
-
-            width: root.clamp(
-                textMeasure.implicitWidth + outlinePadding * 2,
-                48,
-                Math.max(48, Math.min(maximumTextWidth, rendererWidthLimit))
-            )
-            height: root.clamp(
-                textMeasure.implicitHeight + outlinePadding * 2,
-                26,
-                Math.max(26, rendererHeightLimit)
-            )
-            x: root.clamp(
-                videoCanvas.width * root.draftPositionX / 100 - width / 2,
-                0,
-                Math.max(0, videoCanvas.width - width)
-            )
-            y: root.clamp(
-                videoCanvas.height * root.draftPositionY / 100 - height / 2,
-                0,
-                Math.max(0, videoCanvas.height - height)
-            )
-            color: root.editing
-                ? Qt.rgba(
-                    Theme.interactive.r,
-                    Theme.interactive.g,
-                    Theme.interactive.b,
-                    0.08
-                )
-                : "transparent"
+            readonly property real rasterScale: root.previewScale * root.draftFontSize / Math.max(1, Number(root.sprite.fontSize || root.fontSize))
+            width: Math.max(1, Number(root.sprite.width || 1) * rasterScale)
+            height: Math.max(1, Number(root.sprite.height || 1) * rasterScale)
+            x: videoCanvas.width * root.draftPositionX / 100
+                + (Number(root.sprite.x || 0) - Number(root.sprite.outputWidth || 1)
+                   * Number(root.sprite.positionXPercent || 50) / 100) * rasterScale
+            y: videoCanvas.height * root.draftPositionY / 100
+                + (Number(root.sprite.y || 0) - Number(root.sprite.outputHeight || 1)
+                   * Number(root.sprite.positionYPercent || 88) / 100) * rasterScale
+            color: "transparent"
             border.width: root.editing && root.livePreviewVisible ? 1 : 0
             border.color: root.editing ? Theme.focus : Theme.outlineStrong
             radius: Theme.radiusTiny
             activeFocusOnTab: root.interactive
             Accessible.role: Accessible.Slider
             Accessible.name: qsTr("Vị trí và cỡ phụ đề")
-            onActiveFocusChanged: {
-                if (!activeFocus
-                        && root.editing
-                        && !root.resizeInProgress()
-                        && !moveArea.pressed)
-                    root.editingDismissed();
-            }
-
-            Text {
-                id: liveSubtitle
-                objectName: "subtitleTransformLiveText"
-                x: selection.outlinePadding
-                y: selection.outlinePadding
-                width: Math.max(1, selection.width - selection.outlinePadding * 2)
-                height: Math.max(1, selection.height - selection.outlinePadding * 2)
-                text: root.subtitleText
-                visible: root.livePreviewVisible
-                color: "#FFFFFFFF"
-                font.family: karaokeFont.status === FontLoader.Ready ? karaokeFont.name : Theme.fontFamily
-                font.bold: false
-                font.pixelSize: root.previewFontSize
-                font.letterSpacing: root.previewLetterSpacing
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                wrapMode: Text.NoWrap
-                elide: Text.ElideNone
-                style: Text.Outline
-                styleColor: "#FF000000"
-                textFormat: Text.PlainText
-            }
-
             Item {
-                x: selection.outlinePadding
-                y: selection.outlinePadding
-                width: Math.max(
-                    0,
-                    (selection.width - selection.outlinePadding * 2)
-                        * root.clamp(root.karaokeProgress, 0, 1)
-                )
-                height: Math.max(1, selection.height - selection.outlinePadding * 2)
-                visible: root.livePreviewVisible && width > 0
+                anchors.fill: parent
+                visible: root.livePreviewVisible
                 clip: true
-
-                Text {
-                    width: Math.max(1, selection.width - selection.outlinePadding * 2)
+                Image {
+                    objectName: "subtitleTransformSprite"
+                    x: -Number(root.sprite.x || 0) * selection.rasterScale
+                    y: -Number(root.sprite.y || 0) * selection.rasterScale
+                    width: Number(root.sprite.outputWidth || 1) * selection.rasterScale
+                    height: Number(root.sprite.outputHeight || 1) * selection.rasterScale
+                    source: root.sprite.normal || ""
+                    sourceSize: Qt.size(Number(root.sprite.outputWidth || 1), Number(root.sprite.outputHeight || 1))
+                    asynchronous: true
+                }
+                Item {
+                    width: parent.width * root.clamp(Number(root.sprite.progress || 0), 0, 1)
                     height: parent.height
-                    text: root.subtitleText
-                    color: "#FFEF00"
-                    font.family: karaokeFont.status === FontLoader.Ready
-                        ? karaokeFont.name : Theme.fontFamily
-                    font.bold: false
-                    font.pixelSize: root.previewFontSize
-                    font.letterSpacing: root.previewLetterSpacing
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    wrapMode: Text.NoWrap
-                    elide: Text.ElideNone
-                    style: Text.Outline
-                    styleColor: "#FF000000"
-                    textFormat: Text.PlainText
+                    clip: true
+                    Image {
+                        x: -Number(root.sprite.x || 0) * selection.rasterScale
+                        y: -Number(root.sprite.y || 0) * selection.rasterScale
+                        width: Number(root.sprite.outputWidth || 1) * selection.rasterScale
+                        height: Number(root.sprite.outputHeight || 1) * selection.rasterScale
+                        source: root.sprite.karaoke || ""
+                        sourceSize: Qt.size(Number(root.sprite.outputWidth || 1), Number(root.sprite.outputHeight || 1))
+                        asynchronous: true
+                    }
                 }
             }
 
@@ -279,6 +202,7 @@ Item {
 
             MouseArea {
                 id: moveArea
+                enabled: root.interactive
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: root.editing ? Qt.SizeAllCursor : Qt.PointingHandCursor
@@ -420,8 +344,4 @@ Item {
         }
     }
 
-    FontLoader {
-        id: karaokeFont
-        source: "../../assets/fonts/Bangers-Regular.ttf"
-    }
 }

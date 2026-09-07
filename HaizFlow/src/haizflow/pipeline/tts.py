@@ -371,8 +371,10 @@ def _generate_edge_voice_parts(
     voice: str,
     video_id: str,
     progress_callback=None,
+    *,
+    segment_indices: list[int] | None = None,
 ):
-    """Generate every segment, recovering transient online failures without silence."""
+    """Generate only requested segments, recovering transient failures without silence."""
     request_mode = "sequential" if TTS_MAX_CONCURRENCY == 1 else "controlled_parallel"
     log_to_video(
         video_id,
@@ -383,12 +385,23 @@ def _generate_edge_voice_parts(
         segments = json.load(file)
     if not isinstance(segments, list) or not segments:
         raise RuntimeError("Voice generation requires at least one translated subtitle segment.")
-    for index, segment in enumerate(segments, 1):
+    requested_indices = (
+        list(range(1, len(segments) + 1))
+        if segment_indices is None
+        else list(dict.fromkeys(segment_indices))
+    )
+    if any(index < 1 or index > len(segments) for index in requested_indices):
+        raise ValueError("TTS segment index is outside the subtitle document.")
+    requested_segments = [(index, segments[index - 1]) for index in requested_indices]
+    for index, segment in requested_segments:
         if not isinstance(segment, dict) or not str(segment.get("text") or "").strip():
             raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
+    if not requested_segments:
+        return
 
     async def run_all():
-        total = len(segments)
+        total = len(requested_segments)
+        document_total = len(segments)
         limiter = asyncio.Semaphore(TTS_MAX_CONCURRENCY)
         completed = 0
         transient_failures = []
@@ -399,7 +412,7 @@ def _generate_edge_voice_parts(
             status = "REUSED" if reused else "COMPLETE"
             log_to_video(
                 video_id,
-                f"[TTS][{status}] segment={index}/{total} overall={completed}/{total} "
+                f"[TTS][{status}] segment={index}/{document_total} overall={completed}/{total} "
                 f"phase={phase} attempts={attempts}",
             )
             if progress_callback:
@@ -411,7 +424,7 @@ def _generate_edge_voice_parts(
                 error_detail = _tts_error_detail(error)
                 log_to_video(
                     video_id,
-                    f"[TTS][RETRY] segment={index}/{total} phase={phase} attempt={attempt}/{retries} "
+                    f"[TTS][RETRY] segment={index}/{document_total} phase={phase} attempt={attempt}/{retries} "
                     f"error={error_code} retry_in={delay:.1f}s text={_tts_text_preview(text)} "
                     f"detail={error_detail}",
                 )
@@ -428,13 +441,13 @@ def _generate_edge_voice_parts(
             check_cancellation(video_id)
             log_to_video(
                 video_id,
-                f"[TTS][QUEUED] segment={index}/{total} characters={len(text)} text={_tts_text_preview(text)}",
+                f"[TTS][QUEUED] segment={index}/{document_total} characters={len(text)} text={_tts_text_preview(text)}",
             )
             async with limiter:
                 try:
                     log_to_video(
                         video_id,
-                        f"[TTS][START] segment={index}/{total} phase=primary voice={voice} "
+                        f"[TTS][START] segment={index}/{document_total} phase=primary voice={voice} "
                         f"characters={len(text)} text={_tts_text_preview(text)} "
                         f"output={os.path.basename(part_path)}",
                     )
@@ -452,7 +465,7 @@ def _generate_edge_voice_parts(
                     transient_failures.append((index, text, part_path, exc))
                     log_to_video(
                         video_id,
-                        f"[TTS][RECOVERY_QUEUED] segment={index}/{total} "
+                        f"[TTS][RECOVERY_QUEUED] segment={index}/{document_total} "
                         f"error={_tts_error_code(exc)} text={_tts_text_preview(text)} "
                         f"detail={_tts_error_detail(exc)}",
                     )
@@ -460,10 +473,10 @@ def _generate_edge_voice_parts(
             report_completed(index, phase="primary", attempts=attempts)
 
         if TTS_MAX_CONCURRENCY == 1:
-            for index, segment in enumerate(segments, 1):
+            for index, segment in requested_segments:
                 await synthesize(index, segment)
         else:
-            await asyncio.gather(*(synthesize(index, segment) for index, segment in enumerate(segments, 1)))
+            await asyncio.gather(*(synthesize(index, segment) for index, segment in requested_segments))
 
         permanent_failures = []
         if transient_failures:
@@ -477,7 +490,7 @@ def _generate_edge_voice_parts(
                 check_cancellation(video_id)
                 log_to_video(
                     video_id,
-                    f"[TTS][RECOVERY_START] segment={index}/{total} error={_tts_error_code(initial_error)} "
+                    f"[TTS][RECOVERY_START] segment={index}/{document_total} error={_tts_error_code(initial_error)} "
                     f"characters={len(text)} text={_tts_text_preview(text)}",
                 )
                 try:
@@ -498,7 +511,7 @@ def _generate_edge_voice_parts(
                     _remove_file(part_path)
                     log_to_video(
                         video_id,
-                        f"[TTS][FAILED] segment={index}/{total} phase=recovery "
+                        f"[TTS][FAILED] segment={index}/{document_total} phase=recovery "
                         f"error={_tts_error_code(exc)} text={_tts_text_preview(text)} "
                         f"detail={_tts_error_detail(exc)}",
                     )
@@ -507,7 +520,7 @@ def _generate_edge_voice_parts(
 
         invalid_indices = [
             index
-            for index in range(1, total + 1)
+            for index, _segment in requested_segments
             if not _is_valid_mp3(os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3"))
         ]
         if permanent_failures or invalid_indices:
@@ -535,10 +548,20 @@ def generate_voice_parts(
     target_language: str = "vi",
     process_registry_id: str | None = None,
     keep_worker_warm: bool = False,
+    segment_indices: list[int] | None = None,
+    narrator_anchor_text: str = "",
+    status_callback=None,
 ):
     effective = resolve_tts_provider(provider, target_language)
     if effective == "edge":
-        return _generate_edge_voice_parts(segments_json_path, voice_parts_dir, voice, video_id, progress_callback)
+        return _generate_edge_voice_parts(
+            segments_json_path,
+            voice_parts_dir,
+            voice,
+            video_id,
+            progress_callback,
+            segment_indices=segment_indices,
+        )
 
     from haizflow.pipeline.omnivoice_tts import runtime_description, synthesize_batch_to_mp3
 
@@ -546,7 +569,18 @@ def generate_voice_parts(
         segments = json.load(file)
     if not isinstance(segments, list) or not segments:
         raise RuntimeError("Voice generation requires at least one translated subtitle segment.")
-    total = len(segments)
+    requested_indices = (
+        list(range(1, len(segments) + 1))
+        if segment_indices is None
+        else list(dict.fromkeys(segment_indices))
+    )
+    if any(index < 1 or index > len(segments) for index in requested_indices):
+        raise ValueError("TTS segment index is outside the subtitle document.")
+    requested_segments = [(index, segments[index - 1]) for index in requested_indices]
+    if not requested_segments:
+        return
+    total = len(requested_segments)
+    document_total = len(segments)
     log_to_video(
         video_id,
         f"[TTS][SESSION_START] provider=omnivoice backend=local device={runtime_description()} voice={voice}",
@@ -600,14 +634,17 @@ def generate_voice_parts(
 
         return max((item for item in source_segments if isinstance(item, dict)), key=match_score, default={})
 
-    for index, segment in enumerate(segments, 1):
+    for index, segment in requested_segments:
         text = str((segment or {}).get("text") or "").strip() if isinstance(segment, dict) else ""
         if not text:
             raise RuntimeError(f"Translated subtitle segment {index} is missing text.")
         part_path = os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3")
         if not _is_valid_mp3(part_path):
             _remove_file(part_path)
-            log_to_video(video_id, f"[TTS][QUEUED] provider=omnivoice segment={index}/{total} voice={voice}")
+            log_to_video(
+                video_id,
+                f"[TTS][QUEUED] provider=omnivoice segment={index}/{document_total} voice={voice}",
+            )
             source_reference = source_reference_for(segment)
             pending.append(
                 {
@@ -629,19 +666,23 @@ def generate_voice_parts(
     if pending:
 
         def report_omnivoice_progress(completed, _pending_total, stage):
-            if progress_callback is None:
-                return
             # Loading the local checkpoint is meaningful progress but no new
             # segment is complete yet. Keep the verified count stable until
             # the worker atomically finishes each waveform.
             verified = completed_before_worker + completed
-            progress_callback(min(verified, total), total)
+            verified = min(verified, total)
+            if status_callback is not None:
+                status_callback(stage, verified, total)
+            elif progress_callback is not None:
+                progress_callback(verified, total)
 
         worker_options = {}
         if process_registry_id:
             worker_options["process_registry_id"] = process_registry_id
         if keep_worker_warm:
             worker_options["keep_worker_warm"] = True
+        if narrator_anchor_text:
+            worker_options["narrator_anchor_text"] = narrator_anchor_text
         synthesize_batch_to_mp3(
             pending,
             video_id,
@@ -650,7 +691,7 @@ def generate_voice_parts(
             progress_callback=report_omnivoice_progress,
             **worker_options,
         )
-    for index in range(1, total + 1):
+    for index, _segment in requested_segments:
         part_path = os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3")
         if not _is_valid_mp3(part_path):
             raise RuntimeError(f"OmniVoice produced invalid audio for subtitle segment {index}.")

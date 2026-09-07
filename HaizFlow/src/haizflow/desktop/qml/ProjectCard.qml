@@ -118,30 +118,11 @@ Rectangle {
             color: Theme.video
             clip: true
 
-            Image {
-                id: thumbnailImage
+            MediaThumbnail {
                 anchors.fill: parent
                 source: root.thumbnailSource
-                sourceSize.width: Math.round(root.width * 2)
-                sourceSize.height: Math.round(root.width * 1.12)
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                visible: status === Image.Ready
-            }
-
-            ThumbnailFallback {
-                anchors.fill: parent
-                visible: root.projectType !== "download" && root.projectType !== "publish" && (root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error)
-            }
-
-            AppIcon {
-                anchors.centerIn: parent
-                visible: root.projectType === "download" || root.projectType === "publish"
-                width: 42
-                height: 42
-                glyph: root.projectType === "publish" ? "\uE768" : "\uE896"
-                iconColor: Theme.interactive
-                iconSize: 42
+                fallbackIcon: root.projectType === "download" ? "download"
+                    : root.projectType === "publish" ? "share" : "video"
             }
 
             Rectangle {

@@ -34,11 +34,10 @@ FloatingToolDialog {
                 elide: Text.ElideRight
             }
 
-            AppButton {
+            StudioButton {
                 text: qsTr("Sao chép")
                 iconGlyph: "\uE8C8"
-                compact: true
-                tone: "secondary"
+                variant: "secondary"
                 onClicked: activityLog.copyAll()
             }
         }

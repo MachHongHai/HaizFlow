@@ -6,13 +6,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from haizflow.services import video_download
+from haizflow.services import video_download  # noqa: E402
 
 
 class VideoDownloadTests(unittest.TestCase):
@@ -31,6 +30,13 @@ class VideoDownloadTests(unittest.TestCase):
                 url, platform = video_download.validate_video_url(value)
                 self.assertTrue(url.startswith("https://"))
                 self.assertEqual(platform, expected_platform)
+
+    def test_mobile_share_text_extracts_the_supported_link(self):
+        url, platform = video_download.validate_video_url(
+            "Xem video này nhé https://vm.tiktok.com/ZM-demo/?share=1. Nội dung khác"
+        )
+        self.assertEqual(url, "https://vm.tiktok.com/ZM-demo/?share=1")
+        self.assertEqual(platform, "TikTok")
 
     def test_lookalike_and_unrelated_hosts_are_rejected(self):
         for value in ("https://youtube.com.evil.example/video", "https://example.invalid/1", "file:///clip.mp4"):
@@ -93,6 +99,51 @@ class VideoDownloadTests(unittest.TestCase):
                 video_download.inspect_video_url("https://www.tiktok.com/@creator/video/123")
 
         self.assertEqual(youtube_dl.call_count, 1)
+
+    def test_youtube_metadata_retries_a_temporary_dns_failure_with_fresh_session(self):
+        first_downloader = mock.MagicMock()
+        first_downloader.__enter__.return_value = first_downloader
+        first_downloader.extract_info.side_effect = RuntimeError(
+            "ERROR: Unable to download webpage: Temporary failure in name resolution"
+        )
+        second_downloader = mock.MagicMock()
+        second_downloader.__enter__.return_value = second_downloader
+        second_downloader.extract_info.return_value = {
+            "title": "Recovered clip",
+            "duration": 12,
+            "extractor_key": "Youtube",
+        }
+
+        with (
+            mock.patch(
+                "yt_dlp.YoutubeDL",
+                side_effect=[first_downloader, second_downloader],
+            ) as youtube_dl,
+            mock.patch.object(video_download, "_wait_for_retry") as wait_for_retry,
+            mock.patch.object(video_download.importlib.util, "find_spec", return_value=object()),
+        ):
+            metadata = video_download.inspect_video_url("https://youtu.be/demo")
+
+        self.assertEqual(metadata.title, "Recovered clip")
+        self.assertEqual(youtube_dl.call_count, 2)
+        self.assertNotIn("impersonate", youtube_dl.call_args_list[0].args[0])
+        self.assertEqual(youtube_dl.call_args_list[1].args[0]["impersonate"], "chrome")
+        wait_for_retry.assert_called_once()
+
+    def test_access_errors_are_not_hidden_by_network_words_in_message(self):
+        error = RuntimeError(
+            "ERROR: Video unavailable. Sign in to confirm this private video is yours; try again"
+        )
+
+        self.assertFalse(video_download._is_retryable_download_error(error, "YouTube"))
+
+    def test_operating_system_network_errors_are_retryable(self):
+        self.assertTrue(
+            video_download._is_retryable_download_error(
+                ConnectionResetError("socket closed"),
+                "Vimeo",
+            )
+        )
 
     def test_downloader_error_text_removes_ansi_escape_sequences(self):
         self.assertEqual(
@@ -239,6 +290,37 @@ class VideoDownloadTests(unittest.TestCase):
         event.set()
         with self.assertRaises(video_download.DownloadCancelled):
             video_download.inspect_video_url("https://youtu.be/demo", event)
+
+    def test_audio_download_uses_shared_retry_and_browser_impersonation(self):
+        first = mock.MagicMock()
+        first.__enter__.return_value = first
+        first.extract_info.side_effect = RuntimeError("ERROR: HTTP Error 403: Forbidden")
+        second = mock.MagicMock()
+        second.__enter__.return_value = second
+        yt_dlp = mock.MagicMock()
+        yt_dlp.YoutubeDL.side_effect = [first, second]
+
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "sample.m4a"
+
+            def finish(_url, download):
+                self.assertTrue(download)
+                destination.write_bytes(b"audio")
+                return {"filepath": str(destination)}
+
+            second.extract_info.side_effect = finish
+            with (
+                mock.patch.object(video_download, "_load_yt_dlp", return_value=yt_dlp),
+                mock.patch.object(video_download, "_wait_for_retry") as wait_for_retry,
+                mock.patch.object(video_download.importlib.util, "find_spec", return_value=object()),
+            ):
+                result = video_download.download_audio("https://youtu.be/demo", destination)
+
+        self.assertEqual(result, str(destination))
+        self.assertEqual(yt_dlp.YoutubeDL.call_count, 2)
+        self.assertNotIn("impersonate", yt_dlp.YoutubeDL.call_args_list[0].args[0])
+        self.assertEqual(yt_dlp.YoutubeDL.call_args_list[1].args[0]["impersonate"], "chrome")
+        wait_for_retry.assert_called_once()
 
 
 if __name__ == "__main__":

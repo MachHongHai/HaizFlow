@@ -207,13 +207,13 @@ Rectangle {
                 label: root.statusLabel()
             }
 
-            AppButton {
+            StudioButton {
                 id: retryButton
                 anchors.fill: parent
                 visible: root.candidateStatus === "failed"
                 text: qsTr("Thử lại")
                 iconGlyph: "\uE72C"
-                tone: "secondary"
+                variant: "secondary"
                 enabled: root.downloadsEnabled
                 onClicked: root.retryRequested()
             }

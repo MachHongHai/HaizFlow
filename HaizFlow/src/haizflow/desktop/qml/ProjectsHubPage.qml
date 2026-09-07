@@ -29,19 +29,9 @@ Item {
         anchors.fill: parent
         spacing: Theme.space12
 
-        RowLayout {
+        PageHeader {
             Layout.fillWidth: true
-            spacing: Theme.space12
-
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("Dự án")
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: TypeScale.pageTitle
-                font.weight: Font.DemiBold
-                textFormat: Text.PlainText
-            }
+            title: qsTr("Dự án")
 
             StudioButton {
                 id: newProjectButton

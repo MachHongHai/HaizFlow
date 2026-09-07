@@ -255,6 +255,41 @@ class ManualArtifactTests(unittest.TestCase):
         subtitle("subtitle-text", 3, "Nội dung mới")
         self.assertIsNone(manual_tools.active_voice_record(self.video))
 
+    def test_single_speaker_narrator_anchor_is_stable_but_multiple_speakers_skip_it(self):
+        self.video.tts_provider = "omnivoice"
+        self.video.tts_voice = "omnivoice:male"
+        self.video.target_language = "vi"
+        self.video.speaker_mode = "single"
+        self.video.files = {}
+        segments = [
+            {"text": "Ngắn"},
+            {"text": "Đây là câu đủ dài để giữ nhận dạng của một giọng kể xuyên suốt video."},
+        ]
+
+        with patch.object(manual_tools, "_load_segments", return_value=segments) as load:
+            first = manual_tools.ensure_narrator_anchor(self.video.video_id)
+            second = manual_tools.ensure_narrator_anchor(self.video.video_id)
+
+        self.assertEqual(first, second)
+        self.assertIn("giọng kể", first)
+        self.assertEqual(load.call_count, 1)
+
+        self.video.tts_voice = "omnivoice:female"
+        with patch.object(manual_tools, "_load_segments", return_value=[{"text": "Mốc giọng nữ"}]):
+            female = manual_tools.ensure_narrator_anchor(self.video.video_id)
+        self.assertEqual(female, "Mốc giọng nữ")
+
+        self.video.tts_voice = "omnivoice:male"
+        with patch.object(
+            manual_tools,
+            "_load_segments",
+            side_effect=AssertionError("Returning to a voice must restore its existing anchor"),
+        ):
+            self.assertEqual(manual_tools.ensure_narrator_anchor(self.video.video_id), first)
+
+        self.video.speaker_mode = "multiple"
+        self.assertEqual(manual_tools.ensure_narrator_anchor(self.video.video_id), "")
+
     def test_timing_edit_keeps_voice_clips_and_invalidates_only_rendered_consumers(self):
         self.video.subtitle_style = {}
         self.video.files = {
@@ -757,6 +792,58 @@ assert not (blocked & set(sys.modules)), blocked & set(sys.modules)
 
         generate.assert_not_called()
         self.assertEqual(reporter.update.call_args.args[2], "Đang khôi phục giọng đọc từ cache")
+
+    def test_voice_runner_synthesizes_only_the_missing_clip(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cached_part = root / "cached.mp3"
+            cached_part.write_bytes(b"ID3" + b"a" * 4096)
+            stage = root / "manifest-stage"
+            reporter = SimpleNamespace(update=Mock())
+            video = SimpleNamespace(
+                video_id="manual-video",
+                tts_provider="edge",
+                target_language="vi",
+                tts_voice="vi-VN-NamMinhNeural",
+                speaker_mode="single",
+            )
+            subtitle = {"artifact_id": "subtitle_document:current", "resolved_outputs": {"segments": "subtitles.json"}}
+            segments = [
+                {"start": 0, "end": 1, "text": "Không đổi"},
+                {"start": 1, "end": 2, "text": "Đã sửa"},
+            ]
+
+            def resolve(_video_id, kind, artifact_signature):
+                if kind == "tts_manifest":
+                    return None
+                if artifact_signature == "clip-one":
+                    return {"resolved_outputs": {"audio": str(cached_part)}}
+                return None
+
+            def publish(*_args, **_kwargs):
+                return {"resolved_outputs": {"manifest": str(stage / "manifest.json")}}
+
+            with (
+                patch.object(manual_tools, "_load_segments", return_value=segments),
+                patch.object(manual_tools, "_current_subtitle_record", return_value=subtitle),
+                patch.object(manual_tools, "_voice_clip_signatures", return_value=["clip-one", "clip-two"]),
+                patch.object(manual_tools, "ensure_narrator_anchor", return_value="voice identity anchor"),
+                patch.object(manual_tools.video_store, "get_video", return_value=None),
+                patch.object(manual_tools.manual_artifacts, "resolve", side_effect=resolve),
+                patch.object(manual_tools.manual_artifacts, "create_staging_directory", return_value=stage),
+                patch.object(manual_tools.manual_artifacts, "publish", side_effect=publish),
+                patch.object(manual_tools.manual_artifacts, "register_existing"),
+                patch.object(manual_tools.manual_artifacts, "activate"),
+                patch.object(manual_tools, "generate_voice_parts") as generate,
+                patch.object(manual_tools, "_update_files"),
+                patch.object(manual_tools, "_is_valid_mp3", return_value=True),
+            ):
+                manual_tools._run_voice(video, reporter)
+
+        self.assertEqual(generate.call_args.kwargs["segment_indices"], [2])
+        self.assertEqual(generate.call_args.kwargs["narrator_anchor_text"], "voice identity anchor")
+        self.assertEqual(reporter.update.call_args_list[0].args[2], "Đang tạo lại câu đã chỉnh")
+        self.assertEqual(reporter.update.call_args_list[0].args[4], 1)
 
 
 if __name__ == "__main__":
