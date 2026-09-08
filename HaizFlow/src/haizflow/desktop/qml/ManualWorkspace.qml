@@ -182,7 +182,14 @@ Item {
         syncVolumes();
         schedulePreview();
     }
-    Component.onDestruction: AppController.releaseEditorPreview()
+    Component.onDestruction: {
+        // A route change can destroy the 500 ms text-save timer before it
+        // fires. Commit the active editor while its signal wiring is still
+        // alive, then detach native preview resources.
+        stageInspector.dismissTextEditor();
+        AppController.endManualSubtitleEdit();
+        AppController.releaseEditorPreview();
+    }
 
     Timer {
         id: previewTimer

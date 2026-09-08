@@ -296,6 +296,11 @@ class HaizFlowController(QObject):
         self._manual_voice_refresh_pending = False
         self._manual_voice_refresh_enabled = False
         self._manual_voice_video_id = ""
+        # Preview controllers are relatively expensive and receive several
+        # global video/status signals.  Keep them dormant unless the Manual
+        # workspace is actually mounted; otherwise a background progress
+        # update can decode audio again after the user has left the editor.
+        self._manual_editor_active = False
         self._manual_editing_segment_id = ""
         self._manual_voice_refresh_timer = QTimer(self)
         self._manual_voice_refresh_timer.setSingleShot(True)
@@ -1254,6 +1259,30 @@ class HaizFlowController(QObject):
                 ),
             }
             for item in options
+        ]
+
+    @Slot(str, result="QVariantList")
+    def manualVoiceOptionsForProvider(self, provider: str):
+        """Return voice choices for the Manual dialog without mutating its draft."""
+        effective_provider = self._normalized_tts_provider(self._target_language, provider)
+        reference_available = bool(self.voiceCloneReferencePath)
+        return [
+            {
+                **item,
+                "available": (
+                    item.get("voice") != "omnivoice:clone" or reference_available
+                ),
+                "previewAvailable": self._audio_preview.has_voice_sample(
+                    effective_provider,
+                    item.get("voice", ""),
+                    self._target_language,
+                    selected_video_id=str(self._selected_video_id or ""),
+                ),
+            }
+            for item in self._voice_options_for_language(
+                self._target_language,
+                effective_provider,
+            )
         ]
 
     @Property(int, notify=ttsVoiceOptionsChanged)
@@ -2877,12 +2906,160 @@ class HaizFlowController(QObject):
             self.refreshVideos()
         return queued
 
+    @Slot(str, result="QVariantMap")
+    def manualVoiceConfiguration(self, segment_id: str):
+        """Describe the effective voice for one segment without changing state."""
+        from haizflow.pipeline.manual_tools import published_voice_record
+
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return {}
+        segment_key = str(segment_id or "")
+        overrides = dict((video.files or {}).get("manual_voice_overrides") or {})
+        override = overrides.get(segment_key)
+        override = override if isinstance(override, dict) else {}
+        return {
+            "provider": str(override.get("provider") or video.tts_provider or "omnivoice"),
+            "voice": str(override.get("voice") or video.tts_voice or ""),
+            "globalProvider": str(video.tts_provider or "omnivoice"),
+            "globalVoice": str(video.tts_voice or ""),
+            "speakerMode": str(video.speaker_mode or "single"),
+            "segmentOverride": bool(override),
+            "hasPublishedVoice": bool(published_voice_record(video, validate=False)),
+        }
+
+    @Slot(str, str, str, str, str, result=bool)
+    def configureAndRunManualVoice(
+        self,
+        provider: str,
+        voice: str,
+        scope: str,
+        segment_id: str,
+        speaker_mode: str,
+    ) -> bool:
+        """Commit a confirmed Manual voice draft and run only the Voice tool."""
+        video = self._selected_video()
+        if not video or self._project_type != "manual" or video.project_type != "manual":
+            return False
+        if self._processing_queue.contains(video.video_id):
+            self.appAlertRequested.emit(
+                "Đang xử lý",
+                "Dừng hoặc chờ tác vụ hiện tại hoàn tất trước khi tạo giọng.",
+                "info",
+            )
+            return False
+
+        selected_provider = self._normalized_tts_provider(video.target_language, provider)
+        selected_voice = self._normalized_voice_for_language(
+            video.target_language,
+            voice,
+            selected_provider,
+        )
+        selected_scope = "segment" if str(scope or "").strip().lower() == "segment" else "all"
+        selected_segment = str(segment_id or "")
+        segments = self._manual_subtitles.segments
+        if selected_scope == "segment" and not any(
+            str(item.get("segment_id") or "") == selected_segment for item in segments
+        ):
+            self.appAlertRequested.emit(
+                "Chưa chọn đoạn",
+                "Chọn một đoạn phụ đề trước khi tạo giọng riêng cho đoạn đó.",
+                "info",
+            )
+            return False
+
+        if selected_voice == "omnivoice:clone" and not self.voiceCloneReferencePath:
+            self.appAlertRequested.emit(
+                "Chưa có mẫu giọng",
+                "Thêm mẫu giọng được phép sử dụng trước khi chọn giọng đã nhân bản.",
+                "warning",
+            )
+            return False
+
+        before = self._manual_voice_configuration_snapshot(video)
+        files = dict(video.files or {})
+        overrides = {
+            str(key): dict(value)
+            for key, value in dict(files.get("manual_voice_overrides") or {}).items()
+            if isinstance(value, dict)
+        }
+        if selected_scope == "segment":
+            if selected_provider == video.tts_provider and selected_voice == video.tts_voice:
+                overrides.pop(selected_segment, None)
+            else:
+                overrides[selected_segment] = {
+                    "provider": selected_provider,
+                    "voice": selected_voice,
+                }
+        else:
+            overrides.clear()
+            self._tts_provider = selected_provider
+            self._tts_voice = selected_voice
+            self._speaker_mode = (
+                "multiple"
+                if selected_provider == "omnivoice"
+                and str(speaker_mode or "").strip().lower() == "multiple"
+                else "single"
+            )
+            self.ttsProviderChanged.emit()
+            self.ttsProviderOptionsChanged.emit()
+            self.ttsVoiceChanged.emit()
+            self.ttsVoiceOptionsChanged.emit()
+            self.speakerModeChanged.emit()
+
+        if overrides:
+            files["manual_voice_overrides"] = overrides
+        else:
+            files.pop("manual_voice_overrides", None)
+        video_store.update_video(video.video_id, files=files)
+        video = video_store.get_video(video.video_id) or video
+        if selected_scope == "all":
+            self._apply_setup_to_video(video, review_approved=True)
+            video = video_store.get_video(video.video_id) or video
+        video_store.log_to_video(
+            video.video_id,
+            "Manual voice request confirmed for "
+            + (f"segment {selected_segment}." if selected_scope == "segment" else "the full video."),
+        )
+        self._record_manual_voice_configuration_change(
+            video.video_id,
+            before,
+            self._manual_voice_configuration_snapshot(video),
+        )
+        return self.runManualTool("voice")
+
     @Slot(str, result=bool)
     def cancelManualTool(self, tool_id):
         video = self._selected_video()
         if not video or str(getattr(video, "manual_target_tool", "") or "") != str(tool_id or ""):
             return False
-        self.stopVideo()
+        if self._processing_queue.active_video_id == video.video_id:
+            self.stopVideo()
+            return True
+        # stopVideo() intentionally handles only the active worker.  A Manual
+        # job may still be waiting behind another video, so remove that queue
+        # item directly and restore the editor to a stable, runnable state.
+        if not self._processing_queue.discard(video.video_id):
+            # The queue can promote this item between the active snapshot and
+            # discard(). Hand ownership back to the normal active-job pause
+            # path instead of losing the user's click in that narrow race.
+            if self._processing_queue.active_video_id == video.video_id:
+                self.stopVideo()
+                return True
+            return False
+        video_store.update_video(
+            video.video_id,
+            status="manual_ready",
+            manual_target_tool="",
+            step="manual_ready",
+            step_detail="Đã hủy tác vụ đang chờ",
+            estimated_remaining_seconds=None,
+        )
+        video_store.log_to_video(video.video_id, f"Cancelled queued Manual tool: {tool_id}.")
+        self._update_queue_positions()
+        self.processingChanged.emit()
+        self.selectedVideoChanged.emit()
+        self.refreshVideos()
         return True
 
     @Slot(str, result=bool)
@@ -2984,8 +3161,10 @@ class HaizFlowController(QObject):
 
     @Slot()
     def releaseEditorPreview(self):
+        self._manual_editor_active = False
         self._editor_preview.release()
         self._manual_audio.release()
+        self._subtitle_overlay.release()
         self._manual_voice_refresh_timer.stop()
 
     @Property(QObject, constant=True)
@@ -3130,20 +3309,32 @@ class HaizFlowController(QObject):
 
     @Slot()
     def refreshManualPreviewAudio(self):
+        if not self._manual_editor_active:
+            return
         video = self._selected_video()
         if video and video.project_type == "manual" and self._manual_subtitles.video_id == video.video_id:
-            from haizflow.pipeline.manual_tools import active_voice_record
-            voice_enabled = bool(active_voice_record(video, validate=False)) or (
+            from haizflow.pipeline.manual_tools import published_voice_record
+            voice_enabled = bool(published_voice_record(video, validate=False)) or (
                 self._manual_voice_video_id == video.video_id and self._manual_voice_refresh_enabled)
             self._manual_audio.request(video, self._manual_subtitles.segments, voice_enabled)
 
     @Slot()
     def loadManualSubtitles(self):
+        self._manual_editor_active = True
         if self._manual_voice_video_id != str(self._selected_video_id or ""):
             self._manual_voice_video_id = str(self._selected_video_id or "")
             self._manual_voice_refresh_pending = False
             self._manual_voice_refresh_enabled = False
         self._manual_subtitles.load(str(self._selected_video_id or ""), self.reviewSegments)
+        # Leaving the workspace deliberately pauses an automatic per-segment
+        # voice refresh.  Reopening the same project resumes it instead of
+        # leaving the edited segment permanently silent.
+        if (
+            self._manual_voice_refresh_pending
+            and self._manual_voice_refresh_enabled
+            and not self._manual_voice_refresh_timer.isActive()
+        ):
+            self._manual_voice_refresh_timer.start()
 
     @Slot(str)
     def beginManualSubtitleEdit(self, segment_id):
@@ -3155,9 +3346,9 @@ class HaizFlowController(QObject):
 
     @Slot(str, str, int, str, result=bool)
     def saveManualSubtitleText(self, segment_id, text, expected_revision, request_id):
-        from haizflow.pipeline.manual_tools import active_voice_record, ensure_narrator_anchor
+        from haizflow.pipeline.manual_tools import ensure_narrator_anchor, published_voice_record
         video = video_store.get_video(self._selected_video_id)
-        had_voice = bool(video and active_voice_record(video, validate=False))
+        had_voice = bool(video and published_voice_record(video, validate=False))
         if had_voice and video:
             # Capture the identity reference before publishing edited text.
             # The next per-segment refresh must match the clips that remain.
@@ -3567,6 +3758,77 @@ class HaizFlowController(QObject):
         return snapshot
 
     @staticmethod
+    def _manual_voice_configuration_snapshot(video) -> dict[str, object]:
+        files = dict(getattr(video, "files", {}) or {})
+        overrides = {
+            str(key): dict(value)
+            for key, value in dict(files.get("manual_voice_overrides") or {}).items()
+            if isinstance(value, dict)
+        }
+        return {
+            "tts_provider": str(video.tts_provider or "omnivoice"),
+            "tts_voice": str(video.tts_voice or ""),
+            "speaker_mode": str(video.speaker_mode or "single"),
+            "overrides": overrides,
+        }
+
+    def _apply_manual_voice_configuration_snapshot(
+        self,
+        video_id: str,
+        snapshot: dict[str, object],
+    ) -> bool:
+        if str(self._selected_video_id or "") != str(video_id or ""):
+            return False
+        video = video_store.get_video(video_id)
+        if not video or self._processing_queue.contains(video_id):
+            return False
+        config = self._video_config_from_snapshot(
+            video,
+            {
+                "tts_provider": str(snapshot.get("tts_provider") or "omnivoice"),
+                "tts_voice": str(snapshot.get("tts_voice") or ""),
+                "speaker_mode": str(snapshot.get("speaker_mode") or "single"),
+            },
+        )
+        self._apply_config_to_video(video, config)
+        video = video_store.get_video(video_id) or video
+        files = dict(video.files or {})
+        overrides = dict(snapshot.get("overrides") or {})
+        if overrides:
+            files["manual_voice_overrides"] = overrides
+        else:
+            files.pop("manual_voice_overrides", None)
+        video_store.update_video(video_id, files=files)
+        # Undo/redo is a metadata action. If this exact voice configuration
+        # was generated before, switch to its immutable manifest immediately
+        # instead of leaving the audible preview on the variant being undone.
+        from haizflow.pipeline.manual_tools import activate_cached_voice_variant
+
+        activate_cached_voice_variant(video_id, validate=False)
+        refreshed = video_store.get_video(video_id)
+        if not refreshed:
+            return False
+        HaizFlowController._project_workspace_for(self).select_video(refreshed)
+        self.refreshVideos()
+        self.manualToolStateChanged.emit("voice")
+        return True
+
+    def _record_manual_voice_configuration_change(
+        self,
+        video_id: str,
+        before: dict[str, object],
+        after: dict[str, object],
+    ) -> None:
+        if self._edit_history_recording_suspended or before == after:
+            return
+        self._manual_edit_history.record(
+            "Cấu hình giọng đọc",
+            lambda: self._apply_manual_voice_configuration_snapshot(video_id, before),
+            lambda: self._apply_manual_voice_configuration_snapshot(video_id, after),
+            context_id=f"video:{video_id}",
+        )
+
+    @staticmethod
     def _video_config_from_snapshot(video, snapshot: dict[str, object]) -> VideoConfig:
         values = {
             "mode": video.mode,
@@ -3862,9 +4124,13 @@ class HaizFlowController(QObject):
             )
             target_language_changed = changed("target_language", config.target_language)
             if recognition_changed or target_language_changed:
-                manual_artifacts_to_deactivate.update({"recognition", "translation", "export"})
-            if target_language_changed:
-                manual_artifacts_to_deactivate.update({"tts_manifest", "audio_mix"})
+                # Recognition and translation controls describe the next
+                # explicit translation request.  The current subtitle, voice,
+                # mix and export remain the published editor state until that
+                # request succeeds.  Detaching them while merely browsing a
+                # language/model made the preview lose sound before any work
+                # had been confirmed.
+                manual_artifacts_to_deactivate.update({"recognition", "translation"})
             if any(
                 (
                     changed("source_language", config.source_language),
@@ -3895,9 +4161,11 @@ class HaizFlowController(QObject):
                 )
             ):
                 invalidated.update({"voice", "timeline", "render"})
-                manual_artifacts_to_deactivate.update(
-                    {"tts_manifest", "audio_mix", "export"}
-                )
+                # Voice controls describe the next requested variant. Keep
+                # the last complete manifest/mix active until the explicit
+                # Voice command publishes its replacement. Detaching here
+                # made simply selecting a preset silence and invalidate the
+                # editor before the user had confirmed any work.
             if any(
                 (
                     changed("original_video_volume", config.original_video_volume),
@@ -3921,8 +4189,13 @@ class HaizFlowController(QObject):
                 changes["manual_completed_stages"] = remaining
                 changes["manual_completed_stage"] = remaining[-1] if remaining else ""
                 changes["manual_target_stage"] = ""
-                changes["status"] = "manual_ready" if remaining else "pending"
-                changes["step"] = f"manual_{remaining[-1]}" if remaining else "pending"
+                # A settings edit is not a queued job.  The legacy linear
+                # checkpoint adapter may become empty, but the artifact graph
+                # and current editor state are still ready for interaction.
+                # Persisting ``pending`` here made the header claim that work
+                # was queued even though SerialProcessingQueue was empty.
+                changes["status"] = "manual_ready"
+                changes["step"] = f"manual_{remaining[-1]}" if remaining else "manual_ready"
         if review_approved is not None:
             changes["review_approved"] = review_approved
         video_store.update_video(video.video_id, **changes)

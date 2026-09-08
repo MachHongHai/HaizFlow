@@ -47,6 +47,9 @@ dependencies = [
   "srt==3.5.3",
   "demucs==4.0.1",
   "rapidocr==3.8.1",
+  # WhisperX uses NLTK for sentence segmentation. Keep the patched line
+  # explicit so vulnerable transitive releases cannot return to the lock.
+  "nltk==3.10.3",
 ]
 
 [project.scripts]

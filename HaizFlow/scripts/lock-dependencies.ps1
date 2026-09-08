@@ -67,7 +67,10 @@ $SourceBlock = (@($PrimaryIndex) + $InstallIndexes) -join [Environment]::NewLine
 $LockContent = $LockContent.Replace($PrimaryIndex, $SourceBlock)
 [System.IO.File]::WriteAllText($LockFile, $LockContent, [System.Text.UTF8Encoding]::new($false))
 
-& $Python (Join-Path $PSScriptRoot "verify-dependency-lock.py") --write-manifest
+# Regenerating a lock is expected to produce versions that are not installed
+# yet. Validate its structure and record its provenance first; the environment
+# sync below is responsible for the installed-version check.
+& $Python (Join-Path $PSScriptRoot "verify-dependency-lock.py") --write-manifest --no-installed-check
 if ($LASTEXITCODE -ne 0) {
   throw "Generated dependency lock failed verification."
 }

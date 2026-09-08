@@ -43,6 +43,7 @@ def _sha256(path: Path) -> str:
 def run_release_smoke(
     *,
     pre_finalize: bool = False,
+    installed_layout: bool = False,
 ) -> dict[str, object]:
     failures: list[str] = []
     details: list[str] = []
@@ -94,12 +95,20 @@ def run_release_smoke(
         )
     for path, label in release_files:
         _check(path.exists(), label, failures, details)
-    _check(
-        not (artifact / "runtime").exists(),
-        "Mutable root runtime excluded from frozen artifact",
-        failures,
-        details,
-    )
+    if installed_layout:
+        _check(
+            (artifact / "runtime").is_dir(),
+            "Installer-created mutable runtime directory",
+            failures,
+            details,
+        )
+    else:
+        _check(
+            not (artifact / "runtime").exists(),
+            "Mutable root runtime excluded from frozen artifact",
+            failures,
+            details,
+        )
 
     try:
         from PySide6 import QtCore, QtMultimedia, QtQml, QtQuick  # noqa: F401
@@ -182,9 +191,11 @@ def run_release_smoke(
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pre-finalize", action="store_true")
+    parser.add_argument("--installed-layout", action="store_true")
     args = parser.parse_args(argv)
     result = run_release_smoke(
         pre_finalize=args.pre_finalize,
+        installed_layout=args.installed_layout,
     )
     if sys.stdout is not None:
         print(json.dumps(result, ensure_ascii=True), flush=True)

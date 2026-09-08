@@ -125,10 +125,12 @@ def main(*, smoke_test: bool = False) -> None:
     configure_app_logging()
     _configure_windows_app_identity()
     app = QApplication(sys.argv)
-    # Keep this object alive for the full QApplication lifetime. It commits
-    # pending Windows IME pre-edit text before QML focus/click handlers save it.
+    # Keep this object alive for the full QApplication lifetime.  Do not
+    # install the global filter until QML has finished constructing the
+    # controller singleton: Qt emits internal object events while loading the
+    # type graph, and feeding those events through QInputMethod can recursively
+    # re-enter PySide before a window exists.
     input_method_commit_filter = InputMethodCommitFilter(app)
-    app.installEventFilter(input_method_commit_filter)
     app.setApplicationName("HaizFlow")
     app.setApplicationDisplayName("\u200B")
     install_ui_translator(desktop_settings.load_settings().get("language", "en"))
@@ -171,6 +173,7 @@ def main(*, smoke_test: bool = False) -> None:
         if not engine.rootObjects():
             raise SystemExit(1)
         window = engine.rootObjects()[0]
+        app.installEventFilter(input_method_commit_filter)
         if not app_icon.isNull():
             window.setIcon(app_icon)
         # Maximized windowed mode keeps the native title bar, taskbar and Snap Layout.

@@ -40,6 +40,23 @@ class InputMethodCommitFilterTests(unittest.TestCase):
 
         self.assertEqual(committed, [])
 
+    def test_reentrant_event_is_ignored_before_inspecting_native_event(self):
+        class NestedEvent:
+            def type(self):
+                raise AssertionError("a nested Qt event must not be inspected while committing")
+
+        nested_event = NestedEvent()
+        event_filter = None
+
+        def commit():
+            self.assertFalse(event_filter.eventFilter(None, nested_event))
+
+        event_filter = InputMethodCommitFilter(commit_callback=commit)
+
+        self.assertFalse(
+            event_filter.eventFilter(None, QEvent(QEvent.Type.FocusAboutToChange))
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

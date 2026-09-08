@@ -849,19 +849,24 @@ class ProjectImportController:
         except (OSError, RuntimeError, ValueError) as exc:
             host._show_app_alert("Voice cloning", str(exc), "warning")
             return False
-        host._tts_provider = "omnivoice"
-        host._tts_voice = "omnivoice:clone"
-        host.ttsProviderChanged.emit()
-        host.ttsVoiceChanged.emit()
-        host.ttsVoiceOptionsChanged.emit()
-        # Persist provider/voice together with the copied sample. Otherwise a
-        # page reload can restore the previous voice while leaving an orphaned
-        # clone reference in the workspace.
-        host._edit_history_recording_suspended += 1
-        try:
-            host.persistSelectedVideoSettings()
-        finally:
-            host._edit_history_recording_suspended -= 1
+        if video.project_type != "manual":
+            host._tts_provider = "omnivoice"
+            host._tts_voice = "omnivoice:clone"
+            host.ttsProviderChanged.emit()
+            host.ttsVoiceChanged.emit()
+            host.ttsVoiceOptionsChanged.emit()
+            # Auto/Batch use the setup form as their committed configuration.
+            host._edit_history_recording_suspended += 1
+            try:
+                host.persistSelectedVideoSettings()
+            finally:
+                host._edit_history_recording_suspended -= 1
+        else:
+            # Manual treats the voice dialog as a transaction. Recording or
+            # importing an authorised sample only makes the clone option
+            # available; it does not change the requested voice until the
+            # user confirms the dialog.
+            host.ttsVoiceOptionsChanged.emit()
         refreshed = video_store.get_video(video.video_id) or video
         host._record_video_asset_change(
             video.video_id,

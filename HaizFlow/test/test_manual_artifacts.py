@@ -117,6 +117,37 @@ class ManualArtifactTests(unittest.TestCase):
         self.assertIsNotNone(resolved)
         self.assertEqual(self.video.active_artifacts["translation"], "a")
 
+    def test_metadata_restore_reactivates_cached_voice_without_running_tts(self):
+        self.video.files = {"voice_output": "stale-mix.wav"}
+        self.video.active_artifacts = {
+            "tts_manifest": "voice-b",
+            "audio_mix": "mix-b",
+            "export": "export-b",
+        }
+        manifest = self.root / "voice-a" / "manifest.json"
+        manifest.parent.mkdir()
+        manifest.write_text("{}", encoding="utf-8")
+        cached = {
+            "signature": "voice-a",
+            "resolved_outputs": {"manifest": str(manifest)},
+        }
+
+        with (
+            patch.object(manual_tools, "_subtitle_ready", return_value=True),
+            patch.object(manual_tools, "voice_signature", return_value="voice-a"),
+            patch.object(manual_artifacts, "peek", return_value=cached),
+            patch.object(manual_artifacts, "activate", wraps=manual_artifacts.activate) as activate,
+        ):
+            restored = manual_tools.activate_cached_voice_variant("manual-video")
+
+        self.assertTrue(restored)
+        activate.assert_called_once_with("manual-video", "tts_manifest", "voice-a")
+        self.assertEqual(self.video.active_artifacts.get("tts_manifest"), "voice-a")
+        self.assertNotIn("audio_mix", self.video.active_artifacts)
+        self.assertNotIn("export", self.video.active_artifacts)
+        self.assertNotIn("voice_output", self.video.files)
+        self.assertEqual(self.video.files["voice_parts_dir"], str(manifest.parent / "parts"))
+
     def test_prune_never_deletes_active_artifact(self):
         self.publish_text("active", "[]")
         inactive = self.publish_text("inactive", "[{}]")
@@ -233,7 +264,10 @@ class ManualArtifactTests(unittest.TestCase):
 
         original = subtitle("subtitle-original", 0, "Xin chào")
         voice_stage = manual_artifacts.create_staging_directory("manual-video", "tts_manifest")
-        (voice_stage / "manifest.json").write_text("{}", encoding="utf-8")
+        (voice_stage / "manifest.json").write_text(
+            json.dumps({"speaker_mode": "single"}),
+            encoding="utf-8",
+        )
         voice = manual_artifacts.publish(
             "manual-video",
             "tts_manifest",
@@ -249,11 +283,17 @@ class ManualArtifactTests(unittest.TestCase):
         subtitle("subtitle-timing", 3, "Xin chào")
         self.assertEqual(manual_tools.active_voice_record(self.video), voice)
 
+        self.video.tts_voice = "omnivoice:female"
+        self.assertEqual(manual_tools.active_voice_record(self.video), voice)
+        self.assertFalse(manual_tools._voice_ready(self.video, validate=False))
+        self.video.tts_voice = "omnivoice:male"
+
         self.video.speaker_mode = "multiple"
-        self.assertIsNone(manual_tools.active_voice_record(self.video))
+        self.assertEqual(manual_tools.active_voice_record(self.video), voice)
         self.video.speaker_mode = "single"
         subtitle("subtitle-text", 3, "Nội dung mới")
         self.assertIsNone(manual_tools.active_voice_record(self.video))
+        self.assertEqual(manual_tools.published_voice_record(self.video), voice)
 
     def test_single_speaker_narrator_anchor_is_stable_but_multiple_speakers_skip_it(self):
         self.video.tts_provider = "omnivoice"
@@ -290,6 +330,31 @@ class ManualArtifactTests(unittest.TestCase):
         self.video.speaker_mode = "multiple"
         self.assertEqual(manual_tools.ensure_narrator_anchor(self.video.video_id), "")
 
+    def test_segment_voice_override_changes_only_its_generation_group(self):
+        self.video.tts_provider = "edge"
+        self.video.tts_voice = "vi-VN-NamMinhNeural"
+        self.video.files = {
+            "manual_voice_overrides": {
+                "segment-b": {
+                    "provider": "omnivoice",
+                    "voice": "omnivoice:female",
+                }
+            }
+        }
+        segments = [
+            {"segment_id": "segment-a", "text": "Câu một"},
+            {"segment_id": "segment-b", "text": "Câu hai"},
+            {"segment_id": "segment-c", "text": "Câu ba"},
+        ]
+
+        self.assertEqual(
+            manual_tools._voice_generation_groups(self.video, segments),
+            {
+                ("edge", "vi-VN-NamMinhNeural"): [1, 3],
+                ("omnivoice", "omnivoice:female"): [2],
+            },
+        )
+
     def test_timing_edit_keeps_voice_clips_and_invalidates_only_rendered_consumers(self):
         self.video.subtitle_style = {}
         self.video.files = {
@@ -322,12 +387,12 @@ class ManualArtifactTests(unittest.TestCase):
 
         self.assertEqual(self.video.active_artifacts.get("tts_manifest"), "voice-current")
         self.assertNotIn("audio_mix", self.video.active_artifacts)
-        self.assertNotIn("visual_proxy", self.video.active_artifacts)
+        self.assertEqual(self.video.active_artifacts.get("visual_proxy"), "visual-current")
         self.assertNotIn("export", self.video.active_artifacts)
         self.assertIn("voice_parts_dir", self.video.files)
         self.assertNotIn("voice_output", self.video.files)
 
-    def test_text_edit_detaches_voice_and_its_rendered_consumers(self):
+    def test_text_edit_keeps_published_voice_for_unchanged_preview_segments(self):
         self.video.subtitle_style = {}
         self.video.files = {
             "voice_parts_dir": str(self.root / "parts"),
@@ -357,9 +422,11 @@ class ManualArtifactTests(unittest.TestCase):
                 "manual-video", [{"start": 0, "end": 1, "text": "Câu mới"}]
             )
 
-        for kind in ("tts_manifest", "audio_mix", "visual_proxy", "export"):
+        for kind in ("audio_mix", "export"):
             self.assertNotIn(kind, self.video.active_artifacts)
-        self.assertNotIn("voice_parts_dir", self.video.files)
+        self.assertEqual(self.video.active_artifacts.get("tts_manifest"), "voice-current")
+        self.assertEqual(self.video.active_artifacts.get("visual_proxy"), "visual-current")
+        self.assertIn("voice_parts_dir", self.video.files)
         self.assertNotIn("voice_output", self.video.files)
 
     def test_atomic_manifest_replace_retries_a_transient_windows_denial(self):

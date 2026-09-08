@@ -20,6 +20,7 @@ Module {
         Property { name: "frame"; type: "QVariantMap"; isReadonly: true }
         Method { name: "configure"; Parameter { name: "payload"; type: "string" } Parameter { name: "layout"; type: "string" } Parameter { name: "fixed"; type: "bool" } }
         Method { name: "seek"; Parameter { name: "seconds"; type: "double" } }
+        Method { name: "release" }
     }
     Component {
         name: "ManualPreviewAudioController"
@@ -28,6 +29,7 @@ Module {
         Method { name: "setVolumes"; Parameter { name: "original"; type: "int" } Parameter { name: "voice"; type: "int" } Parameter { name: "music"; type: "int" } }
         Method { name: "synchronize"; Parameter { name: "seconds"; type: "double" } Parameter { name: "playing"; type: "bool" } Parameter { name: "muted"; type: "bool" } }
         Method { name: "seek"; Parameter { name: "seconds"; type: "double" } }
+        Method { name: "release" }
     }
     Component {
         file: "D:/Du-an/HaizFlow/HaizFlow/src/haizflow/desktop/qml_controller.py"
@@ -1566,6 +1568,11 @@ Module {
             Parameter { name: "a2"; type: "QString" }
         }
         Method {
+            name: "manualVoiceOptionsForProvider"
+            type: "QVariantList"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method {
             name: "processingDeviceCompatible"
             type: "bool"
             Parameter { name: "a1"; type: "QString" }
@@ -1734,6 +1741,20 @@ Module {
             name: "runManualTool"
             type: "bool"
             Parameter { name: "tool_id"; type: "QString" }
+        }
+        Method {
+            name: "manualVoiceConfiguration"
+            type: "QVariantMap"
+            Parameter { name: "segment_id"; type: "QString" }
+        }
+        Method {
+            name: "configureAndRunManualVoice"
+            type: "bool"
+            Parameter { name: "provider"; type: "QString" }
+            Parameter { name: "voice"; type: "QString" }
+            Parameter { name: "scope"; type: "QString" }
+            Parameter { name: "segment_id"; type: "QString" }
+            Parameter { name: "speaker_mode"; type: "QString" }
         }
         Method {
             name: "cancelManualTool"

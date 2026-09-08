@@ -1,6 +1,7 @@
 param(
   [switch]$SkipFrozenSmokeTest,
   [switch]$AllowDirtyBuild,
+  [switch]$AllowUnsigned,
   [string]$SignCertificatePath = "",
   [string]$TimestampServer = "http://timestamp.digicert.com"
 )
@@ -13,12 +14,18 @@ $ArtifactPath = [System.IO.Path]::GetFullPath((Join-Path $DistRoot "HaizFlow"))
 $PyInstallerRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "build\pyinstaller"))
 $PyInstallerWorkPath = Join-Path $PyInstallerRoot "work"
 $PyInstallerSpecPath = Join-Path $PyInstallerRoot "spec"
+$PyInstallerConfigPath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\pyinstaller-config"))
 $BuildMetadataPath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-metadata"))
 $IconPath = Join-Path $Root "src\haizflow\desktop\assets\branding\haizflow.ico"
 $VersionResourcePath = Join-Path $BuildMetadataPath "HaizFlow-version.txt"
 $CompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-compliance"))
 $FfmpegCompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\compliance\ffmpeg"))
 $FfmpegManifestPath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\ffmpeg-manifest.json"))
+$ReleaseTempParent = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-temp"))
+$ReleaseTemp = [System.IO.Path]::GetFullPath((Join-Path $ReleaseTempParent ([guid]::NewGuid().ToString("N"))))
+$PreviousTemp = $env:TEMP
+$PreviousTmp = $env:TMP
+$PreviousPyInstallerConfig = $env:PYINSTALLER_CONFIG_DIR
 
 function Invoke-PythonChecked {
   param([string[]]$Arguments, [string]$Label)
@@ -56,9 +63,30 @@ function Sign-ReleaseExecutable {
 if (!(Test-Path $Python)) {
   throw "Project environment is missing. Run scripts\install-desktop-env.ps1 first."
 }
+if (!$SignCertificatePath -and !$AllowUnsigned) {
+  throw "A public release requires Authenticode signing. Supply -SignCertificatePath, or use -AllowUnsigned only for an internal engineering build."
+}
+if (!$SignCertificatePath) {
+  Write-Warning "Building an unsigned engineering artifact. Do not distribute it as a public release."
+}
 
 Push-Location -LiteralPath $Root
 try {
+
+if (![System.IO.Path]::GetDirectoryName($ReleaseTemp).Equals($ReleaseTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Refusing to use an unsafe release temporary directory: $ReleaseTemp"
+}
+New-Item -ItemType Directory -Path $ReleaseTemp -Force | Out-Null
+if (![System.IO.Path]::GetDirectoryName($PyInstallerConfigPath).Equals(
+    [System.IO.Path]::GetFullPath((Join-Path $Root "build")),
+    [System.StringComparison]::OrdinalIgnoreCase
+)) {
+  throw "Refusing to use an unsafe PyInstaller configuration directory: $PyInstallerConfigPath"
+}
+New-Item -ItemType Directory -Path $PyInstallerConfigPath -Force | Out-Null
+$env:TEMP = $ReleaseTemp
+$env:TMP = $ReleaseTemp
+$env:PYINSTALLER_CONFIG_DIR = $PyInstallerConfigPath
 
 $GitStatus = & git status --porcelain
 if ($LASTEXITCODE -ne 0) {
@@ -271,5 +299,15 @@ Invoke-PythonChecked -Arguments @(
   Write-Output "Release artifact ready: $ArtifactPath"
 }
 finally {
+  $env:TEMP = $PreviousTemp
+  $env:TMP = $PreviousTmp
+  $env:PYINSTALLER_CONFIG_DIR = $PreviousPyInstallerConfig
+  if (Test-Path -LiteralPath $ReleaseTemp) {
+    $ResolvedReleaseTemp = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $ReleaseTemp).Path)
+    if (![System.IO.Path]::GetDirectoryName($ResolvedReleaseTemp).Equals($ReleaseTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Refusing to delete an unsafe release temporary directory: $ResolvedReleaseTemp"
+    }
+    Remove-Item -LiteralPath $ResolvedReleaseTemp -Recurse -Force
+  }
   Pop-Location
 }

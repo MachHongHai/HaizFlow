@@ -90,7 +90,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
             EditorPreviewController._audio_cache_payload(completed),
         )
 
-    def test_manual_preview_accepts_only_the_voice_manifest_for_current_text(self):
+    def test_manual_preview_keeps_published_voice_while_a_new_preset_is_pending(self):
         video = SimpleNamespace(
             video_id="manual-video",
             project_type="manual",
@@ -119,12 +119,15 @@ class EditorPreviewControllerTests(unittest.TestCase):
 
         peek.assert_called_once_with("manual-video", "tts_manifest", "voice-current")
 
-        stale_record = {**record, "config_fingerprint": "old-voice-settings"}
+        pending_replacement = {**record, "config_fingerprint": "old-voice-settings"}
         with mock.patch(
             "haizflow.desktop.editor_preview_controller.manual_artifacts.peek",
-            return_value=stale_record,
+            return_value=pending_replacement,
         ):
-            self.assertIsNone(EditorPreviewController._manual_voice_artifact(video))
+            self.assertEqual(
+                EditorPreviewController._manual_voice_artifact(video),
+                pending_replacement,
+            )
 
     def test_manual_visual_preview_is_published_into_the_artifact_cache(self):
         with tempfile.TemporaryDirectory() as temp_dir:

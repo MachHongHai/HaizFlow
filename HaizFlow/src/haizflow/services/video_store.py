@@ -1,5 +1,6 @@
 import json
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -34,6 +35,7 @@ _METADATA_REVISION = 0
 _METADATA_REVISION_LOCK = threading.Lock()
 _METADATA_CHANGES: deque[tuple[int, str]] = deque(maxlen=4_096)
 _LEGACY_METADATA_NAME = "job.json"
+LOGGER = logging.getLogger(__name__)
 
 _LOG_COMPONENTS = {
     "audio_separation": "DEMUCS",
@@ -948,7 +950,15 @@ def list_videos() -> List[VideoInfo]:
     videos = []
     seen = set()
     for video_id in _project_video_ids():
-        video_info = get_video(video_id)
+        try:
+            video_info = get_video(video_id)
+        except RuntimeError:
+            # A damaged project must remain recoverable from its files, but it
+            # must not prevent the catalog (and therefore the whole desktop
+            # application) from opening.  Keep the failure in diagnostics and
+            # skip only the unreadable video record.
+            LOGGER.exception("Skipping unreadable video metadata during catalog load: %s", video_id)
+            continue
         if video_info:
             videos.append(video_info)
             seen.add(video_id)
@@ -956,7 +966,11 @@ def list_videos() -> List[VideoInfo]:
         for video_id in os.listdir(LEGACY_VIDEO_WORKSPACES_DIR):
             if video_id in seen or not os.path.isdir(_legacy_video_dir(video_id)):
                 continue
-            video_info = get_video(video_id)
+            try:
+                video_info = get_video(video_id)
+            except RuntimeError:
+                LOGGER.exception("Skipping unreadable legacy video metadata during catalog load: %s", video_id)
+                continue
             if video_info:
                 videos.append(video_info)
     videos.sort(key=lambda item: item.created_at, reverse=True)

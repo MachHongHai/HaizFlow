@@ -1,6 +1,7 @@
 param(
   [string]$ArtifactPath = "",
-  [switch]$PreFinalize
+  [switch]$PreFinalize,
+  [switch]$InstalledLayout
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,6 +61,9 @@ $SmokeTemp = Join-Path $SmokeRoot "tmp"
 $ReleaseArguments = @("--release-smoke")
 if ($PreFinalize) {
   $ReleaseArguments += "--pre-finalize"
+}
+if ($InstalledLayout) {
+  $ReleaseArguments += "--installed-layout"
 }
 
 $PreviousHome = $env:HAIZFLOW_HOME

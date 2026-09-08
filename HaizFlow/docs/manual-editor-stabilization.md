@@ -1,34 +1,55 @@
-# Manual Editor: tình trạng triển khai
+# Manual editor engineering status
 
-## Đã tích hợp
+[Documentation](README.md) · [Architecture](architecture.md#7-manual-editor-and-artifact-graph) · [Tiếng Việt](manual-editor-stabilization.vi.md)
 
-- `ManualSubtitleModel`: ID ổn định, revision, giữ nguyên nội dung nhập, lưu working document bằng atomic rename và công bố artifact trong executor tuần tự.
-- `SubtitleTextEditor`: vùng nhập lớn, autosave 500 ms, commit khi rời ô, trạng thái lưu và thử lại. Manual không dùng `approveTranslationReview` để lưu từng lần nhập.
-- `SubtitleOverlayRenderer`: dùng ASS writer và font của export để tạo sprite trắng/vàng trong suốt. Khung chọn lấy alpha bounds của sprite. Video nền Manual không burn-in phụ đề.
-- Một scrub controller cho transport, fullscreen và timeline; gộp seek 75 ms, giữ đích mới nhất khi đổi nguồn.
-- Một `QAudioSink` cho âm thanh kết quả. MediaPlayer kết quả chỉ phát hình. Volume điều chỉnh trực tiếp; câu đã đổi text không phát clip cũ.
-- Tự yêu cầu tạo lại giọng sau 800 ms nếu tài liệu trước khi sửa có giọng; dùng hàng đợi xử lý hiện có và cache từng clip.
-- OmniVoice giữ worker ấm, có timer nghỉ 90 giây và kiểm tra danh tính timer để callback cũ không đóng worker đang được dùng lại.
-- Menu `Chỉnh sửa` dùng lịch sử theo đúng phạm vi tài liệu: từng video, từng project hoặc Cài đặt. Auto, Manual và video con trong Batch ghi toàn bộ `VideoConfig`; Batch ghi một lệnh nguyên tử cho cả nhóm; Đăng mạng xã hội ghi nội dung và tùy chọn bài; Cài đặt ghi ngôn ngữ và thiết bị xử lý. Text/timing phụ đề, nhạc nền và mẫu giọng cũng có snapshot phục hồi riêng. Lịch sử vẫn tách tuyệt đối khỏi Back/Forward của điều hướng.
-- Voice manifest chỉ được kích hoạt nếu chữ ký tài liệu vẫn khớp sau khi tác vụ kết thúc.
-- Khôi phục project `kkk` từ artifact `3513e4f955dbce481e45f5696e685bbe43cc1904fa4c9ab88b56cb83e695acb5`. Metadata và phụ đề trước phục hồi nằm tại thư mục `cache/manual/recovery/20260905T113848915039Z` của video. Không tự gọi model trong thao tác phục hồi.
+This note separates implemented editor behavior from remaining acceptance work. It is a maintenance record, not a user guide or a claim that every media/device combination has been certified.
 
-## Kiểm thử đã chạy
+## Implemented
 
-- 662 unit/integration tests: đạt.
-- Test text tiếng Việt dài, phản hồi revision cũ, commit một lần khi rời ô, click chọn và bỏ chọn trên video.
-- Test alpha bounds hai sprite libass; chưa phải phép so sánh pixel toàn bộ frame với export.
-- 100 lần seek với audio sink giả: tái sử dụng một output, giải phóng đúng một lần.
-- Khởi tạo cả bảy inspector bằng controller thật trong runtime cô lập: không có cảnh báo QML.
-- Ruff kiểm tra lỗi Python, compileall và qmllint các component sửa đổi: đạt.
+- `ManualSubtitleModel` provides stable segment identity, revision-aware saves, session draft retention, atomic working documents, and serialized immutable publication.
+- `SubtitleTextEditor` provides a full-height wrapped editor, 500 ms autosave, immediate focus-loss commit, save status, retry, and Windows IME commit before focus actions.
+- `SubtitleOverlayRenderer` uses the export ASS writer and font path to create normal/karaoke transparent sprites; selection bounds derive from rendered alpha rather than QML text metrics.
+- Manual result video does not intentionally burn translated captions into the base proxy; the subtitle overlay is a separate layer.
+- Preview transport, fullscreen, and timeline share scrub state with consolidated seeks and source-generation rejection.
+- Result audio is owned by one preview audio controller/output. Source, separated background, speech clips, and music share one clock; level changes do not rerender video.
+- Text edits invalidate speech only for the changed segment. Timing edits reposition cached clips without invoking TTS.
+- OmniVoice can retain a warm worker for bounded idle time. Edge TTS uses a serialized per-video path and content-addressed sentence clips.
+- Edit history is separate from navigation history and records supported text, timing, media, voice, audio, visual, project, publishing, and application-setting changes in their owning context.
+- Voice manifests activate only if their subtitle document signature is still current when generation completes.
+- Preview artifacts are published atomically and stale callbacks are rejected by generation/revision.
 
-## Chưa hoàn tất nghiệm thu kế hoạch
+## Verified by automated coverage
 
-- So sánh karaoke từng từ và từng pixel với video xuất trên media thật. Hiện mặt chữ dùng libass nhưng phép clip vàng còn nội suy theo thời lượng phrase; chưa chứng minh tương đương sweep từng từ của libass.
-- Pin revision lịch sử và phục hồi working document chưa được công bố sau khi ứng dụng bị ngắt.
-- Voice state theo từng segment và UI thử lại lỗi mạng; ưu tiên/ngắt tác vụ tự cập nhật ở ranh giới câu. Hiện chỉ tuần tự hóa trên hàng đợi có sẵn.
-- Khi đóng ứng dụng, executor lưu tài liệu, overlay và audio được đóng theo thứ tự; tác vụ lưu chưa bắt đầu bị hủy và tác vụ đang giữ file atomic được chờ hoàn tất. Việc hủy riêng tác vụ tự cập nhật giọng đang chạy và đóng warm worker theo quyền sở hữu workspace vẫn cần hoàn thiện.
-- Giới hạn cache sprite trên đĩa và decode audio dài theo cửa sổ/memmap. Cache PCM đã có giới hạn LRU 128 MB nhưng một track rất dài có thể vượt giới hạn đó.
-- Smoke test MP4 với thiết bị âm thanh Windows thật, source swap liên tục và kiểm tra không rè/lặp. Test sink giả không thay thế bước này.
+- Long Vietnamese/Unicode drafts survive save, reload, and stale revision callbacks without trimming.
+- A dismissed subtitle editor commits the full draft once.
+- Subtitle alpha bounds use renderer output and do not reuse a previous phrase on a cache miss.
+- Repeated seek operations reuse and release one audio output in the test abstraction.
+- Manual inspectors instantiate with the real controller under an isolated Qt runtime.
+- Voice cache tests distinguish text invalidation from timing/style changes.
+- Python compilation, correctness lint, unit/integration tests, and QML lint are part of `scripts/test.ps1`.
 
-Không coi tài liệu này là xác nhận toàn bộ kế hoạch đã hoàn thành. Auto/Batch tiếp tục dùng nhánh preview và pipeline cũ.
+The current test count is intentionally not embedded here; the gate output from the reviewed commit is authoritative.
+
+## Remaining acceptance work
+
+- Pixel-level karaoke comparison between idle preview, selected preview, and a final exported frame on representative real media.
+- Windows hardware-audio stress testing across repeated source swaps, 100+ seeks, device changes, suspend/resume, and workspace shutdown.
+- Long-duration decode/memory validation. The PCM cache is bounded, but a single very long track still needs a measured windowed/memory-mapped strategy.
+- Crash-interruption tests for pending subtitle publication and voice refresh at every atomic boundary.
+- Real-provider Edge TTS outage/rate-limit recovery and retry UI across multiple locale voices.
+- Ownership tests proving every Manual worker and media connection is released after rapid project switching.
+- Cache quota acceptance with active/pinned artifact protection under low-disk conditions.
+
+## Regression invariants
+
+1. Seeking never starts OCR, translation, TTS, separation, or final render.
+2. Selecting a different voice changes requested voice state only; it does not replace the active preview audio until the user generates or activates a complete matching voice artifact.
+3. A stale voice, subtitle, preview, or media callback cannot activate over a newer revision.
+4. Subtitle size and position do not change text, timing, or TTS identity.
+5. Timing changes do not call a TTS provider.
+6. Image mode changes do not call recognition or translation.
+7. Audio levels do not call a model or rebuild the visual proxy.
+8. Export consumes the current valid optional layers and does not silently run missing tools.
+9. Leaving the workspace stops one audio owner and releases player connections without affecting unrelated project workers.
+
+Any change that violates an invariant requires an architecture decision and new acceptance criteria, not a local UI workaround.

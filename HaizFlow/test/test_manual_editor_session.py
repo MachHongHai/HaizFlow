@@ -15,7 +15,11 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtTest import QTest
 
 from haizflow.desktop.manual_edit_history import ManualEditHistory
-from haizflow.desktop.manual_preview_audio_controller import mix_frames
+from haizflow.desktop.manual_preview_audio_controller import (
+    ManualPreviewAudioController,
+    mix_frames,
+    voice_segment_is_compatible,
+)
 from haizflow.desktop.manual_subtitle_model import ManualSubtitleModel, identify_segments
 from haizflow.desktop.qml_controller import HaizFlowController
 from haizflow.desktop.subtitle_overlay_renderer import export_events, rasterize
@@ -195,6 +199,57 @@ class ManualEditorSessionTests(unittest.TestCase):
             self.assertEqual(renderer.frame, {})
         renderer.close()
 
+    def test_overlay_configuration_clears_old_frame_and_cancels_queued_work(self):
+        from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+
+        class PendingFuture:
+            def __init__(self):
+                self.cancelled_flag = False
+
+            def cancel(self):
+                self.cancelled_flag = True
+                return True
+
+        renderer = SubtitleOverlayRenderer()
+        queued = PendingFuture()
+        renderer._futures.add(queued)
+        renderer._frame = {"normal": "old-revision.png"}
+        changes = []
+        renderer.changed.connect(lambda: changes.append(True))
+        layout = json.dumps({
+            "fontSize": 32,
+            "outline": 3,
+            "positionXPercent": 50,
+            "positionYPercent": 82,
+            "layoutWidth": 300,
+            "layoutHeight": 70,
+            "outputWidth": 360,
+            "outputHeight": 640,
+        })
+        with patch.object(renderer, "_submit"):
+            renderer.configure('[]', layout, True)
+        self.assertTrue(queued.cancelled_flag)
+        self.assertEqual(renderer.frame, {})
+        self.assertTrue(changes)
+        renderer.close()
+
+    def test_overlay_release_drops_editor_state_but_keeps_raster_cache(self):
+        from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
+
+        renderer = SubtitleOverlayRenderer()
+        renderer._key = "video-a"
+        renderer._events = [{"start": 0, "end": 1, "body": "old"}]
+        renderer._header = "header"
+        renderer._layout = {"outputWidth": 360}
+        renderer._frame = {"normal": "old.png"}
+        renderer._cache[(0, "old")] = {"normal": "cached.png"}
+        renderer.release()
+        self.assertEqual(renderer.frame, {})
+        self.assertEqual(renderer._events, [])
+        self.assertEqual(renderer._key, "")
+        self.assertIn((0, "old"), renderer._cache)
+        renderer.close()
+
     def test_mix_mutes_only_stale_voice_and_loops_music(self):
         samples = np.full((8, 2), 1000, dtype=np.int16)
         tracks = [{"id": "source", "kind": "source", "samples": samples, "start": 0},
@@ -203,6 +258,20 @@ class ManualEditorSessionTests(unittest.TestCase):
         output = np.frombuffer(mix_frames(tracks, 1, 4, {"source": .5, "voice": 1, "music": .2},
                                          {"voice-1"}), dtype="<i2")
         self.assertTrue(np.all(output == 700))
+
+    def test_voice_preview_keeps_only_sentences_matching_the_published_manifest(self):
+        source = {"text": "Câu chưa đổi", "start": 1, "end": 2}
+        self.assertTrue(voice_segment_is_compatible(dict(source), source))
+        self.assertFalse(voice_segment_is_compatible({**source, "text": "Câu mới"}, source))
+        # Single-speaker clips are text keyed, so moving a sentence keeps its
+        # voice. Multiple-speaker clips also encode the recognized speaker at
+        # that timestamp and therefore require timing compatibility.
+        self.assertTrue(
+            voice_segment_is_compatible({**source, "start": 3, "end": 4}, source, False)
+        )
+        self.assertFalse(
+            voice_segment_is_compatible({**source, "start": 3, "end": 4}, source, True)
+        )
 
     def test_repeated_seeks_reuse_one_audio_output_and_release_it(self):
         from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
@@ -242,6 +311,133 @@ class ManualEditorSessionTests(unittest.TestCase):
         self.assertEqual(sink.stops, 1)
         self.assertEqual(sink.deleted, 1)
         self.assertIsNone(audio._sink)
+
+    def test_pending_voice_choice_does_not_replace_published_preview_audio(self):
+        class PendingFuture:
+            def __init__(self):
+                self.cancelled_flag = False
+
+            def add_done_callback(self, _callback):
+                return None
+
+            def cancel(self):
+                self.cancelled_flag = True
+                return True
+
+        class RecordingExecutor:
+            def __init__(self):
+                self.calls = 0
+
+            def submit(self, _callback):
+                self.calls += 1
+                return PendingFuture()
+
+            def shutdown(self, **_kwargs):
+                return None
+
+        video = SimpleNamespace(
+            video_id="manual-video",
+            project_type="manual",
+            tts_provider="edge",
+            tts_voice="vi-VN-NamMinhNeural",
+            enable_audio_separation=False,
+            files={},
+        )
+        segments = [{"segment_id": "segment-a", "text": "Xin chào", "start": 0, "end": 1}]
+        published = {
+            "signature": "published-voice",
+            "resolved_outputs": {"manifest": "voice-manifest.json"},
+        }
+        audio = ManualPreviewAudioController()
+        audio._executor.shutdown(wait=False, cancel_futures=True)
+        executor = RecordingExecutor()
+        audio._executor = executor
+        with patch("haizflow.pipeline.manual_tools.published_voice_record", return_value=published):
+            audio.request(video, segments)
+            original_key = audio._key
+            video.tts_voice = "vi-VN-HoaiMyNeural"
+            audio.request(video, segments)
+            video.files["watermark"] = "HaizFlow"
+            video.files["ocr_region"] = "region.json"
+            audio.request(video, segments)
+
+        self.assertEqual(audio._key, original_key)
+        self.assertEqual(executor.calls, 1)
+        audio.close()
+
+    def test_obsolete_audio_decode_is_cancelled_when_audio_inputs_change(self):
+        class PendingFuture:
+            def __init__(self):
+                self.cancelled_flag = False
+
+            def add_done_callback(self, _callback):
+                return None
+
+            def cancel(self):
+                self.cancelled_flag = True
+                return True
+
+        class RecordingExecutor:
+            def __init__(self):
+                self.futures = []
+
+            def submit(self, _callback):
+                future = PendingFuture()
+                self.futures.append(future)
+                return future
+
+            def shutdown(self, **_kwargs):
+                return None
+
+        video = SimpleNamespace(
+            video_id="manual-video",
+            project_type="manual",
+            enable_audio_separation=False,
+            files={},
+        )
+        segments = [{"segment_id": "segment-a", "text": "Xin chào", "start": 0, "end": 1}]
+        audio = ManualPreviewAudioController()
+        audio._executor.shutdown(wait=False, cancel_futures=True)
+        executor = RecordingExecutor()
+        audio._executor = executor
+        with patch("haizflow.pipeline.manual_tools.published_voice_record", return_value=None):
+            audio.request(video, segments)
+            first = executor.futures[0]
+            video.files["background_music"] = "new-music.mp3"
+            audio.request(video, segments)
+        self.assertTrue(first.cancelled_flag)
+        self.assertEqual(len(executor.futures), 2)
+        audio.close()
+
+    def test_manual_audio_refresh_is_dormant_outside_editor(self):
+        host = SimpleNamespace(
+            _manual_editor_active=False,
+            _selected_video=Mock(),
+            _manual_audio=Mock(),
+            _manual_subtitles=SimpleNamespace(video_id="manual-video", segments=[]),
+        )
+        HaizFlowController.refreshManualPreviewAudio(host)
+        host._selected_video.assert_not_called()
+        host._manual_audio.request.assert_not_called()
+
+    def test_reopening_editor_resumes_pending_voice_refresh(self):
+        timer = Mock()
+        timer.isActive.return_value = False
+        subtitles = Mock()
+        host = SimpleNamespace(
+            _manual_editor_active=False,
+            _manual_voice_video_id="manual-video",
+            _selected_video_id="manual-video",
+            _manual_voice_refresh_pending=True,
+            _manual_voice_refresh_enabled=True,
+            _manual_voice_refresh_timer=timer,
+            _manual_subtitles=subtitles,
+            reviewSegments=[{"text": "Đã sửa", "start": 0, "end": 1}],
+        )
+        HaizFlowController.loadManualSubtitles(host)
+        self.assertTrue(host._manual_editor_active)
+        subtitles.load.assert_called_once_with("manual-video", host.reviewSegments)
+        timer.start.assert_called_once_with()
 
     def test_scrub_keeps_latest_target_across_source_swap(self):
         engine = QQmlEngine()

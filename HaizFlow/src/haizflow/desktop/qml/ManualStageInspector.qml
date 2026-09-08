@@ -28,6 +28,7 @@ InspectorPanel {
     readonly property bool taskPaused: AppController.selectedStatus === "paused" && !taskQueued
     readonly property bool taskBelongsToTool: AppController.manualTargetTool === toolId
         || (toolId === "source" && AppController.manualTargetTool === "separation")
+    readonly property bool hasPublishedVoice: Boolean(toolState.hasPublishedArtifact)
     readonly property var selectedSubtitle: selectedSubtitleIndex >= 0
         && selectedSubtitleIndex < subtitleSegments.length
         ? subtitleSegments[selectedSubtitleIndex] : null
@@ -57,6 +58,16 @@ InspectorPanel {
 
     title: String(toolState.label || "")
     onCurrentStageChanged: inspectorScroll.contentY = 0
+
+    Component.onDestruction: {
+        // Persist the latest control value when navigation tears down this
+        // inspector before the short settings debounce has elapsed.
+        if (settingsSaveTimer.running && pendingSettingsVideoId.length > 0) {
+            settingsSaveTimer.stop();
+            AppController.persistVideoSettingsFor(pendingSettingsVideoId);
+            pendingSettingsVideoId = "";
+        }
+    }
 
     function scheduleSave() {
         if (!AppController.hasSelectedVideo || AppController.isSelectedVideoQueued)
@@ -92,6 +103,20 @@ InspectorPanel {
         if (toolId === "audio") return toolState.cacheHit ? qsTr("Tạo lại bản phối") : qsTr("Tạo bản phối");
         if (toolId === "export") return toolState.cacheHit ? qsTr("Xuất lại video") : qsTr("Xuất video");
         return qsTr("Chạy công cụ");
+    }
+
+    function openVoiceDialog(initialScope) {
+        const segment = root.selectedSubtitle;
+        const segmentId = segment ? String(segment.segment_id || "") : "";
+        const segmentText = segment ? String(segment.text || "") : "";
+        const configuration = AppController.manualVoiceConfiguration(segmentId);
+        voiceDialogLoader.invoke("openForVoice", [
+            Boolean(configuration.hasPublishedVoice),
+            segmentId,
+            segmentText,
+            configuration,
+            initialScope || "all"
+        ]);
     }
 
     function hasCurrentCache(requestedToolId) {
@@ -373,68 +398,55 @@ InspectorPanel {
         Component {
             id: voiceInspectorComponent
             ColumnLayout {
-                spacing: Theme.space8
+                spacing: Theme.space12
 
-                SettingLabel {
+                InlineBanner {
                     Layout.fillWidth: true
-                    text: qsTr("Công cụ giọng đọc")
+                    visible: root.hasPublishedVoice
+                    tone: root.hasCurrentCache("voice") ? "success"
+                        : root.hasPublishedVoice ? "warning" : "info"
+                    title: root.hasCurrentCache("voice")
+                        ? qsTr("Giọng đọc đã sẵn sàng")
+                        : root.hasPublishedVoice ? qsTr("Giọng hiện tại vẫn đang được dùng")
+                        : qsTr("Chưa tạo giọng đọc")
+                    message: root.hasCurrentCache("voice")
+                        ? qsTr("Bạn có thể đổi giọng hoặc tạo lại mà không ảnh hưởng các lớp khác.")
+                        : root.hasPublishedVoice
+                            ? qsTr("Thiết lập đã đổi. Xác nhận tạo giọng mới khi bạn sẵn sàng.")
+                        : qsTr("Chọn giọng và phạm vi trước khi bắt đầu.")
                 }
-                AppComboBox {
-                    Layout.fillWidth: true
-                    enabled: root.editable
-                    textRole: "label"
-                    valueRole: "provider"
-                    model: AppController.ttsProviderOptions
-                    currentIndex: AppController.ttsProviderIndex
-                    onActivated: {
-                        AppController.ttsProvider = currentValue;
-                        root.scheduleSave();
-                    }
-                }
-                SettingLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("Giọng đọc")
-                }
-                VoicePicker {
-                    Layout.fillWidth: true
-                    enabled: root.editable
-                    model: AppController.ttsVoiceOptions
-                    currentValue: AppController.ttsVoice
-                    allowVoiceClone: false
-                    previewEnabled: true
-                    previewSource: AppController.audioPreviewSource
-                    previewState: AppController.audioPreviewState
-                    onSelected: function(voice) {
-                        AppController.ttsVoice = voice;
-                        root.scheduleSave();
-                    }
-                    onPreviewRequested: function(voice) {
-                        AppController.previewVoiceSample(
-                            AppController.ttsProvider,
-                            voice,
-                            AppController.targetLanguage
-                        );
-                    }
-                }
+
                 StudioButton {
                     Layout.fillWidth: true
-                    visible: AppController.ttsProvider === "omnivoice"
-                    text: AppController.ttsVoice === "omnivoice:clone"
-                        ? qsTr("Giọng đã nhân bản") : qsTr("Nhân bản giọng")
+                    visible: !root.hasPublishedVoice
+                    text: qsTr("Tạo giọng")
                     iconName: "volume"
-                    variant: AppController.ttsVoice === "omnivoice:clone" ? "primary" : "secondary"
-                    enabled: root.editable
-                    onClicked: voiceCloneDialogLoader.invoke("openForSelectedVideo", [])
+                    variant: "primary"
+                    enabled: root.editable && !root.taskQueued && root.toolState.canRun
+                    onClicked: root.openVoiceDialog("all")
                 }
-                AppCheckBox {
+
+                RowLayout {
                     Layout.fillWidth: true
-                    visible: AppController.ttsProvider === "omnivoice"
-                    enabled: root.editable && AppController.ttsProvider === "omnivoice"
-                    text: qsTr("Nhận diện nhiều người nói")
-                    checked: AppController.speakerMode === "multiple"
-                    onToggled: {
-                        AppController.speakerMode = checked ? "multiple" : "single";
-                        root.scheduleSave();
+                    visible: root.hasPublishedVoice
+                    spacing: Theme.space8
+
+                    StudioButton {
+                        Layout.fillWidth: true
+                        text: qsTr("Đổi giọng")
+                        iconName: "edit"
+                        variant: "primary"
+                        enabled: root.editable && !root.taskQueued
+                        onClicked: root.openVoiceDialog("all")
+                    }
+
+                    StudioButton {
+                        Layout.fillWidth: true
+                        text: qsTr("Tạo lại")
+                        iconName: "refresh"
+                        variant: "secondary"
+                        enabled: root.editable && !root.taskQueued
+                        onClicked: root.openVoiceDialog("all")
                     }
                 }
             }
@@ -447,7 +459,7 @@ InspectorPanel {
 
                 AudioLevelControl {
                     Layout.fillWidth: true
-                    label: AppController.enableAudioSeparation
+                    label: AppController.enableAudioSeparation && root.hasCurrentCache("source")
                         ? qsTr("Âm nền") : qsTr("Âm thanh gốc")
                     volume: AppController.originalVolume
                     adjustable: root.editable
@@ -557,7 +569,8 @@ InspectorPanel {
         Layout.fillHeight: false
         Layout.preferredHeight: implicitHeight
         Layout.maximumHeight: implicitHeight
-        visible: ["translation", "voice", "export"].indexOf(root.toolId) >= 0
+        visible: (root.taskBelongsToTool && (root.taskQueued || root.taskPaused))
+            || ["translation", "voice", "export"].indexOf(root.toolId) >= 0
         spacing: Theme.space8
 
         ColumnLayout {
@@ -587,18 +600,21 @@ InspectorPanel {
 
         StudioButton {
             Layout.fillWidth: true
-            visible: root.toolId !== "image"
-                || (root.taskBelongsToTool && (root.taskQueued || root.taskProcessing || root.taskPaused))
+            visible: (root.taskBelongsToTool && (root.taskQueued || root.taskPaused))
+                || ["translation", "export"].indexOf(root.toolId) >= 0
             text: root.taskProcessing && root.taskBelongsToTool ? qsTr("Tạm dừng")
-                : root.taskQueued && root.taskBelongsToTool ? qsTr("Đang chờ")
+                : root.taskQueued && root.taskBelongsToTool ? qsTr("Hủy tác vụ")
                 : root.taskPaused && root.taskBelongsToTool ? qsTr("Tiếp tục") : root.runLabel()
-            iconName: root.taskProcessing && root.taskBelongsToTool ? "pause" : "play"
-            variant: root.taskProcessing && root.taskBelongsToTool ? "danger" : "primary"
+            iconName: root.taskProcessing && root.taskBelongsToTool ? "pause"
+                : root.taskQueued && root.taskBelongsToTool ? "stop" : "play"
+            variant: (root.taskProcessing || root.taskQueued) && root.taskBelongsToTool
+                ? "danger" : "primary"
             enabled: root.taskProcessing && root.taskBelongsToTool
+                || root.taskQueued && root.taskBelongsToTool
                 || root.taskPaused && root.taskBelongsToTool
                 || (root.editable && !root.taskQueued && root.toolState.canRun)
             onClicked: {
-                if (root.taskProcessing && root.taskBelongsToTool)
+                if ((root.taskProcessing || root.taskQueued) && root.taskBelongsToTool)
                     AppController.cancelManualTool(AppController.manualTargetTool);
                 else if (root.taskPaused && root.taskBelongsToTool)
                     AppController.resumeSelectedVideo();
@@ -634,6 +650,21 @@ InspectorPanel {
         }
     }
 
+    LazyDialogLoader {
+        id: voiceDialogLoader
+        parent: root
+        sourceComponent: Component {
+            ManualVoiceDialog {
+                onConfirmed: function(provider, voice, scope, segmentId, speakerMode) {
+                    if (AppController.configureAndRunManualVoice(
+                            provider, voice, scope, segmentId, speakerMode))
+                        root.settingsCommitted();
+                }
+                onCloneRequested: voiceCloneDialogLoader.invoke("openForSelectedVideo", [])
+                onClosed: voiceDialogLoader.release()
+            }
+        }
+    }
     LazyDialogLoader {
         id: backgroundMusicLinkDialogLoader
         parent: root

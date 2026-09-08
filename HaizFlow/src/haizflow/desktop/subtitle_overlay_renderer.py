@@ -12,7 +12,7 @@ from pathlib import Path
 
 import srt
 from PIL import Image
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from haizflow.config import RUNTIME_DATA_DIR
 from haizflow.pipeline.render import SubtitleRegionLayout, _karaoke_font_directory, _write_positioned_ass
@@ -105,6 +105,7 @@ class SubtitleOverlayRenderer(QObject):
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="subtitle-libass")
         self._cache = {}
         self._pending = set()
+        self._futures = set()
         self._closed = False
         self._ready.connect(self._accept)
         self._root = Path(RUNTIME_DATA_DIR) / "cache" / "subtitle-overlays"
@@ -122,6 +123,12 @@ class SubtitleOverlayRenderer(QObject):
         self._generation += 1
         generation = self._generation
         self._events = []
+        self._pending.clear()
+        for future in tuple(self._futures):
+            future.cancel()
+        if self._frame:
+            self._frame = {}
+            self.changed.emit()
         segments, layout = json.loads(payload), json.loads(layout_json)
         self._layout = layout
         def build():
@@ -132,7 +139,18 @@ class SubtitleOverlayRenderer(QObject):
                 return ("events", generation, header, events)
             except Exception as exc:
                 return ("error", generation, str(exc))
-        self._executor.submit(build).add_done_callback(self._deliver)
+        self._submit(build)
+
+    def _submit(self, operation):
+        future = self._executor.submit(operation)
+        self._futures.add(future)
+
+        def deliver(completed):
+            self._futures.discard(completed)
+            self._deliver(completed)
+
+        future.add_done_callback(deliver)
+        return future
 
     def _deliver(self, future):
         if not self._closed and not future.cancelled():
@@ -177,7 +195,7 @@ class SubtitleOverlayRenderer(QObject):
                 return ("frame", key, rasterize(header, body, layout, self._root))
             except Exception as exc:
                 return ("failed_frame", key, str(exc))
-        self._executor.submit(render).add_done_callback(self._deliver)
+        self._submit(render)
 
     @Slot(object)
     def _accept(self, result):
@@ -194,7 +212,26 @@ class SubtitleOverlayRenderer(QObject):
         elif result[0] == "failed_frame":
             self._pending.discard(result[1])
 
+    @Slot()
+    def release(self):
+        """Detach editor state while retaining reusable raster cache entries."""
+        self._generation += 1
+        self._key = ""
+        self._events = []
+        self._header = ""
+        self._layout = {}
+        self._pending.clear()
+        for future in tuple(self._futures):
+            future.cancel()
+        if self._frame:
+            self._frame = {}
+            self.changed.emit()
+
     def close(self):
         self._closed = True
-        self._generation += 1
+        self.release()
+        for future in tuple(self._futures):
+            future.cancel()
+        self._futures.clear()
+        self._pending.clear()
         self._executor.shutdown(wait=False, cancel_futures=True)

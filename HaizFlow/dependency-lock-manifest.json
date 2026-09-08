@@ -3,9 +3,9 @@
   "target": "windows-x86_64-python-3.13",
   "generator": "uv==0.11.19",
   "inputs": {
-    "pyproject.toml": "cd0fdfbf0cee44df2f23a2664cba53ff476a74256ddd4115bff5baad421b14a3",
-    "requirements-build.in": "101d37625666182baf195b2fdd4a2d9ca8107fdebafcd1d9bee0ab5f2a10276a"
+    "pyproject.toml": "71e0fce1bbbddc510a3c07056897835550163c63e71067ff180eb5b7b600b5b9",
+    "requirements-build.in": "29a8e07f5dca8fb3abc827bc992e2e51501a2e4ad802abbc81f12924328fdf80"
   },
   "lock_file": "requirements-lock-py313-win64.txt",
-  "lock_sha256": "28909b49b94c41135c36d8581cfdfa9a7944b6579de58a480da0847192f2d719"
+  "lock_sha256": "63fc295be23e0470c532375a717a03903c6a6e4751663864f865e4287e6f5a0e"
 }

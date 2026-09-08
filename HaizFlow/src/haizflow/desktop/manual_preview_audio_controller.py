@@ -15,8 +15,23 @@ from PySide6.QtMultimedia import QAudioFormat, QAudioSink, QMediaDevices
 
 from haizflow.utils.ffmpeg import _binary
 
-
 RATE = 48000
+
+
+def voice_segment_is_compatible(current_segment, source_segment, multiple_speakers=False):
+    """Whether a cached voice clip still represents this visible sentence."""
+    if " ".join(str(current_segment.get("text") or "").split()) != " ".join(
+        str(source_segment.get("text") or "").split()
+    ):
+        return False
+    if not multiple_speakers:
+        return True
+    return (
+        abs(float(current_segment.get("start") or 0) - float(source_segment.get("start") or 0))
+        < .001
+        and abs(float(current_segment.get("end") or 0) - float(source_segment.get("end") or 0))
+        < .001
+    )
 
 
 def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
@@ -62,8 +77,8 @@ class ManualPreviewAudioController(QObject):
         self._volumes = {"source": .6, "voice": 1.0, "music": .3}
         self._cache = OrderedDict()
         self._closed = False
-        self._voice_config = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="manual-audio")
+        self._future = None
         self._ready.connect(self._accept)
         self._timer = QTimer(self)
         self._timer.setInterval(10)
@@ -79,7 +94,8 @@ class ManualPreviewAudioController(QObject):
         command = [_binary("ffmpeg"), "-v", "error", "-i", str(path), "-vn"]
         if duration is not None:
             from pydub import AudioSegment
-            from haizflow.pipeline.audio_timeline import trim_silence, _atempo_filters
+
+            from haizflow.pipeline.audio_timeline import _atempo_filters, trim_silence
             audio = trim_silence(AudioSegment.from_file(path))
             # Use the same pitch-preserving tempo policy as exported voice.
             target = max(1, duration - (20 if not fit and len(audio) > duration else 0))
@@ -109,25 +125,58 @@ class ManualPreviewAudioController(QObject):
         if self._video_id != video.video_id:
             self.release()
             self._video_id = video.video_id
-        voice_config = (video.tts_provider, video.tts_voice, video.speaker_mode, voice_enabled)
-        voice_changed = voice_config != self._voice_config
-        self._voice_config = voice_config
-        config = (video.video_id, voice_enabled, video.enable_audio_separation, video.tts_provider, video.tts_voice,
-                  video.speaker_mode, dict(video.files or {}), dict(video.active_artifacts or {}), segments)
+        from haizflow.pipeline import manual_tools
+
+        active_voice = manual_tools.published_voice_record(video, validate=False) if voice_enabled else None
+        active_voice_signature = str((active_voice or {}).get("signature") or "")
+        # The picker contains a draft voice until the user confirms generation.
+        # Key playback by the published manifest, never by that draft, so merely
+        # browsing presets cannot detach or mute the current editor audio.
+        files = dict(video.files or {})
+        active_artifacts = dict(getattr(video, "active_artifacts", {}) or {})
+        audio_inputs = {
+            name: files.get(name)
+            for name in (
+                "input",
+                "input_video",
+                "source_audio",
+                "background_audio",
+                "background_music",
+            )
+            if files.get(name)
+        }
+        active_audio_artifacts = {
+            name: active_artifacts.get(name)
+            for name in ("source_audio", "separation")
+            if active_artifacts.get(name)
+        }
+        config = (
+            video.video_id,
+            bool(active_voice),
+            active_voice_signature,
+            video.enable_audio_separation,
+            audio_inputs,
+            active_audio_artifacts,
+            segments,
+        )
         key = hashlib.sha256(json.dumps(config, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
         current = {str(s.get("segment_id", index)): str(s.get("text", "")) for index, s in enumerate(segments)}
         self._muted_ids = {t["id"] for t in self._tracks if t["kind"] == "voice"
-                           and (voice_changed or not voice_enabled or current.get(t["id"]) != t.get("text"))}
+                           and (not voice_enabled or current.get(t["id"]) != t.get("text"))}
         if key == self._key:
             return
         self._key = key
         self._generation += 1
         generation = self._generation
+        if self._future is not None:
+            self._future.cancel()
         def prepare():
             try:
-                from haizflow.pipeline import manual_tools
-                from haizflow.services import manual_artifacts
+                if generation != self._generation:
+                    return generation, [], ""
                 background, _, _ = manual_tools._audio_background(video)
+                if generation != self._generation:
+                    return generation, [], ""
                 tracks = []
                 if background:
                     try:
@@ -139,12 +188,26 @@ class ManualPreviewAudioController(QObject):
                 if music:
                     tracks.append({"id": "music", "kind": "music", "start": 0, "loop": True,
                                    "samples": self._decode(music)})
-                signatures = manual_tools._voice_clip_signatures(video, segments) if voice_enabled else []
+                if generation != self._generation:
+                    return generation, [], ""
+                clip_outputs = dict((active_voice or {}).get("resolved_outputs") or {})
+                manifest_payload = manual_tools._voice_manifest_payload(active_voice)
+                signatures = manifest_payload.get("clips") if isinstance(manifest_payload, dict) else []
+                signatures = [str(value) for value in signatures] if isinstance(signatures, list) else []
+                source_segments = manual_tools.published_voice_source_segments(
+                    video, active_voice, validate=False
+                )
+                multiple = str(manifest_payload.get("speaker_mode") or "single") == "multiple"
+
                 for index, (segment, signature) in enumerate(zip(segments, signatures)):
                     if generation != self._generation:
                         return generation, [], ""
-                    clip = manual_artifacts.resolve(video.video_id, "tts_clip", signature)
-                    if not clip:
+                    if index >= len(source_segments) or not voice_segment_is_compatible(
+                        segment, source_segments[index], multiple
+                    ):
+                        continue
+                    clip_path = str(clip_outputs.get(f"clip_{index + 1}") or "")
+                    if not clip_path:
                         continue
                     from haizflow.pipeline.audio_timeline import _segment_slot_end_ms
                     start = int(segment["start"] * 1000)
@@ -160,14 +223,17 @@ class ManualPreviewAudioController(QObject):
                     tracks.append({"id": str(segment.get("segment_id", index)), "kind": "voice",
                         "text": str(segment.get("text", "")), "signature": signature,
                         "start": start * RATE // 1000,
-                        "samples": self._decode(clip["resolved_outputs"]["audio"], duration,
+                        "samples": self._decode(clip_path, duration,
                                                 bool(segment.get("fit_voice_to_timing")))})
                 return generation, tracks, ""
             except Exception as exc:
                 return generation, [], str(exc)
-        self._executor.submit(prepare).add_done_callback(self._deliver)
+        self._future = self._executor.submit(prepare)
+        self._future.add_done_callback(self._deliver)
 
     def _deliver(self, future):
+        if self._future is future:
+            self._future = None
         if not self._closed and not future.cancelled():
             self._ready.emit(future.result())
 
@@ -253,6 +319,9 @@ class ManualPreviewAudioController(QObject):
     @Slot()
     def release(self):
         self._generation += 1
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
         self._key = ""
         self._playing = False
         self._timer.stop()

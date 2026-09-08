@@ -273,30 +273,59 @@ def _subtitle_document_signature(video, path: str) -> str:
 
 
 def _voice_clip_signatures(video, segments: list[dict[str, Any]]) -> list[str]:
-    provider = str(getattr(video, "tts_provider", "omnivoice") or "omnivoice")
     language = str(getattr(video, "target_language", "vi") or "vi")
-    voice = str(getattr(video, "tts_voice", "") or "")
     speaker_mode = str(getattr(video, "speaker_mode", "single") or "single")
-    files = dict(video.files or {})
+    files = dict(getattr(video, "files", {}) or {})
+    overrides = dict(files.get("manual_voice_overrides") or {})
     reference = manual_artifacts.file_state(files.get("voice_reference"))
     reference_text = str(files.get("voice_reference_transcript") or "")
     recognition = recognition_signature(video) if speaker_mode == "multiple" else ""
-    return [
-        manual_artifacts.signature(
-            preprocess_text_for_tts(str(segment.get("text") or "")),
-            provider,
-            resolve_tts_provider(provider, language),
-            language,
-            voice,
-            speaker_mode,
-            reference,
-            reference_text,
-            recognition,
-            index if speaker_mode == "multiple" else 0,
-            VOICE_CLIP_CACHE_VERSION,
+    signatures = []
+    for index, segment in enumerate(segments):
+        segment_id = str(segment.get("segment_id") or "")
+        override = overrides.get(segment_id) if segment_id else None
+        override = override if isinstance(override, dict) else {}
+        provider = str(
+            override.get("provider")
+            or getattr(video, "tts_provider", "omnivoice")
+            or "omnivoice"
         )
-        for index, segment in enumerate(segments)
-    ]
+        voice = str(override.get("voice") or getattr(video, "tts_voice", "") or "")
+        signatures.append(
+            manual_artifacts.signature(
+                preprocess_text_for_tts(str(segment.get("text") or "")),
+                provider,
+                resolve_tts_provider(provider, language),
+                language,
+                voice,
+                speaker_mode,
+                reference,
+                reference_text,
+                recognition,
+                index if speaker_mode == "multiple" else 0,
+                VOICE_CLIP_CACHE_VERSION,
+            )
+        )
+    return signatures
+
+
+def _voice_generation_groups(video, segments: list[dict[str, Any]]) -> dict[tuple[str, str], list[int]]:
+    """Group one-based segment indices by their requested TTS configuration."""
+    files = dict(getattr(video, "files", {}) or {})
+    overrides = dict(files.get("manual_voice_overrides") or {})
+    groups: dict[tuple[str, str], list[int]] = {}
+    for index, segment in enumerate(segments, 1):
+        segment_id = str(segment.get("segment_id") or "")
+        override = overrides.get(segment_id) if segment_id else None
+        override = override if isinstance(override, dict) else {}
+        provider = str(
+            override.get("provider")
+            or getattr(video, "tts_provider", "omnivoice")
+            or "omnivoice"
+        )
+        voice = str(override.get("voice") or getattr(video, "tts_voice", "") or "")
+        groups.setdefault((provider, voice), []).append(index)
+    return groups
 
 
 def ensure_narrator_anchor(video_id: str) -> str:
@@ -365,31 +394,56 @@ def _record_segments(record: dict[str, Any] | None) -> list[dict[str, Any]]:
     return [dict(item) for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
 
 
-def active_voice_record(video, *, validate: bool = False) -> dict[str, Any] | None:
-    """Return the active voice manifest when it still matches editor state.
+def published_voice_record(video, *, validate: bool = False) -> dict[str, Any] | None:
+    """Return the last atomically published voice variant, even if partly stale.
 
-    This deliberately avoids rebuilding per-clip TTS signatures.  Those
-    signatures normalize text through the provider module and are appropriate
-    in a background runner, but not in ``manualToolModel`` or preview slots on
-    Qt's GUI thread.  Immutable manifest inputs contain enough information to
-    reject changed text/settings while allowing single-speaker timing edits to
-    reuse their existing clips.
+    Preview uses this record to keep unchanged sentences audible while an
+    edited sentence is being regenerated.  Render/mix readiness must continue
+    to use :func:`active_voice_record`, which applies the stricter document
+    compatibility check below.
     """
     signature = _active_signature(video, "tts_manifest")
     if not signature:
         return None
     resolver = manual_artifacts.resolve if validate else manual_artifacts.peek
-    voice = resolver(video.video_id, "tts_manifest", signature)
+    return resolver(video.video_id, "tts_manifest", signature)
+
+
+def published_voice_source_segments(
+    video,
+    record: dict[str, Any] | None = None,
+    *,
+    validate: bool = False,
+) -> list[dict[str, Any]]:
+    """Load the subtitle revision used to create a published voice manifest."""
+    voice = record or published_voice_record(video, validate=validate)
+    source_signature_value = next(
+        (
+            str(value).split(":", 1)[1]
+            for value in (voice or {}).get("inputs", [])
+            if str(value).startswith("subtitle_document:")
+        ),
+        "",
+    )
+    if not source_signature_value:
+        return []
+    resolver = manual_artifacts.resolve if validate else manual_artifacts.peek
+    return _record_segments(resolver(video.video_id, "subtitle_document", source_signature_value))
+
+
+def active_voice_record(video, *, validate: bool = False) -> dict[str, Any] | None:
+    """Return the published voice manifest that is still safe to play.
+
+    The provider and preset currently selected in the inspector are a pending
+    request until the Voice tool publishes a replacement manifest.  They must
+    therefore never detach or silence the last complete manifest.  Subtitle
+    text is different: playing speech for older words would be misleading, so
+    the active document is still compared with the manifest's source document.
+    """
+    resolver = manual_artifacts.resolve if validate else manual_artifacts.peek
+    voice = published_voice_record(video, validate=validate)
     if not voice:
         return None
-    expected_config = manual_artifacts.signature(
-        str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
-        str(getattr(video, "tts_voice", "") or ""),
-        str(getattr(video, "speaker_mode", "single") or "single"),
-    )
-    if str(voice.get("config_fingerprint") or "") != expected_config:
-        return None
-
     current_signature = _active_signature(video, "subtitle_document")
     source_signature_value = next(
         (
@@ -408,7 +462,17 @@ def active_voice_record(video, *, validate: bool = False) -> dict[str, Any] | No
     source = resolver(video.video_id, "subtitle_document", source_signature_value)
     if not current or not source:
         return None
-    multiple = str(getattr(video, "speaker_mode", "single") or "single") == "multiple"
+    # Compare timing according to the manifest that is actually playing, not
+    # the pending setting in the voice dialog. Otherwise confirming a switch
+    # from single to multiple speakers can detach the old, still-valid voice
+    # before the replacement has been published.
+    published_payload = _voice_manifest_payload(voice)
+    published_speaker_mode = str(
+        published_payload.get("speaker_mode")
+        or getattr(video, "speaker_mode", "single")
+        or "single"
+    )
+    multiple = published_speaker_mode == "multiple"
 
     def spoken_rows(record: dict[str, Any]) -> list[tuple[Any, ...]]:
         return [
@@ -429,12 +493,36 @@ def active_voice_record(video, *, validate: bool = False) -> dict[str, Any] | No
     return voice if spoken_rows(current) == spoken_rows(source) else None
 
 
+def active_voice_clip_signatures(video, *, validate: bool = False) -> list[str]:
+    """Return the exact clips referenced by the currently published manifest."""
+    record = active_voice_record(video, validate=validate)
+    manifest_path = str(((record or {}).get("resolved_outputs") or {}).get("manifest") or "")
+    if not manifest_path:
+        return []
+    try:
+        payload = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    clips = payload.get("clips") if isinstance(payload, dict) else None
+    return [str(value) for value in clips] if isinstance(clips, list) else []
+
+
+def _voice_manifest_payload(record: dict[str, Any] | None) -> dict[str, Any]:
+    path = str(((record or {}).get("resolved_outputs") or {}).get("manifest") or "")
+    if not path:
+        return {}
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
 def _current_voice_record(video, *, validate: bool = True) -> dict[str, Any] | None:
-    if not validate:
-        return active_voice_record(video, validate=False)
-    expected = voice_signature(video, validate=validate)
-    resolver = manual_artifacts.resolve if validate else manual_artifacts.peek
-    return resolver(video.video_id, "tts_manifest", expected) if expected else None
+    # Rendering and mixing consume the last published state. The Voice tool's
+    # readiness check separately compares that state with ``voice_signature``
+    # for the pending configuration.
+    return active_voice_record(video, validate=validate)
 
 
 def _audio_background(video, *, validate: bool = True) -> tuple[str, str, list[str]]:
@@ -533,7 +621,30 @@ def _subtitle_ready(video, *, validate: bool = True) -> bool:
 
 def _voice_ready(video, *, validate: bool = True) -> bool:
     if not validate:
-        return active_voice_record(video, validate=False) is not None
+        active = active_voice_record(video, validate=False)
+        if not active:
+            return False
+        segments = _load_segments(video, validate=False)
+        desired_groups = [
+            {"provider": provider, "voice": voice, "segments": indices}
+            for (provider, voice), indices in _voice_generation_groups(video, segments).items()
+        ]
+        payload = _voice_manifest_payload(active)
+        if isinstance(payload.get("voice_configs"), list):
+            return (
+                payload["voice_configs"] == desired_groups
+                and str(payload.get("speaker_mode") or "single")
+                == str(getattr(video, "speaker_mode", "single") or "single")
+            )
+        # Compatibility for manifests created before per-segment voice
+        # selection was introduced.
+        if dict(getattr(video, "files", {}) or {}).get("manual_voice_overrides"):
+            return False
+        return str(active.get("config_fingerprint") or "") == manual_artifacts.signature(
+            str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
+            str(getattr(video, "tts_voice", "") or ""),
+            str(getattr(video, "speaker_mode", "single") or "single"),
+        )
     expected = voice_signature(video, validate=validate)
     return _artifact_ready(video, "tts_manifest", expected, validate=validate)
 
@@ -561,6 +672,32 @@ def image_region_cached(video_or_id) -> bool:
         return _artifact_ready(video, "ocr_region", ocr_signature(video))
     except (FileNotFoundError, OSError, ValueError):
         return False
+
+
+def activate_cached_voice_variant(video_id: str, *, validate: bool = False) -> bool:
+    """Publish the cached voice matching current settings without running TTS.
+
+    This is used by undo/redo and other metadata-only setting restores.  The
+    previous manifest remains active when no matching variant exists, which
+    preserves the editor's last complete audible state until the user confirms
+    another Voice run.
+    """
+    video = video_store.get_video(video_id)
+    if not video or video.project_type != "manual" or not _subtitle_ready(video, validate=False):
+        return False
+    expected = voice_signature(video, validate=False)
+    resolver = manual_artifacts.resolve if validate else manual_artifacts.peek
+    cached = resolver(video_id, "tts_manifest", expected) if expected else None
+    if not cached:
+        return False
+    manual_artifacts.activate(video_id, "tts_manifest", expected)
+    manual_artifacts.deactivate(video_id, {"audio_mix", "export"})
+    refreshed = video_store.get_video(video_id) or video
+    files = dict(refreshed.files or {})
+    files["voice_parts_dir"] = str(Path(cached["resolved_outputs"]["manifest"]).parent / "parts")
+    files.pop("voice_output", None)
+    video_store.update_video(video_id, files=files)
+    return True
 
 
 def restore_cached_variants(video_id: str) -> list[str]:
@@ -742,6 +879,18 @@ def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
             # surfaced stale persisted state as a false error.
             "blockedReason": "" if another_tool_busy or can_run else blocked,
             "cacheHit": bool(cached),
+            "hasPublishedArtifact": bool(
+                published_voice_record(video, validate=False)
+                if tool_id == "voice"
+                else _active_signature(video, {
+                    "source": "separation" if video.enable_audio_separation else "source_audio",
+                    "translation": "translation",
+                    "subtitle": "subtitle_document",
+                    "image": "ocr_region",
+                    "audio": "audio_mix",
+                    "export": "export",
+                }.get(tool_id, ""))
+            ),
             "activeSignature": _active_signature(video, {
                 "source": "separation" if video.enable_audio_separation else "source_audio",
                 "recognition": "recognition", "translation": "translation", "subtitle": "subtitle_document",
@@ -872,19 +1021,18 @@ def publish_edited_subtitles(video_id: str, segments: list[dict[str, Any]]) -> d
     if text_changed:
         manual_artifacts.deactivate(
             video_id,
-            {"tts_manifest", "audio_mix", "visual_proxy", "export"},
+            {"audio_mix", "export"},
         )
     elif timing_changed:
         # Single-speaker TTS clips are text keyed and remain reusable. Only
-        # their placement and every rendered consumer become stale.
-        manual_artifacts.deactivate(video_id, {"audio_mix", "visual_proxy", "export"})
+        # their placement and final rendered consumer become stale. The
+        # Manual visual proxy is subtitle-free, so its cache remains valid.
+        manual_artifacts.deactivate(video_id, {"audio_mix", "export"})
     if text_changed or timing_changed:
         refreshed = video_store.get_video(video_id)
         if refreshed:
             files = dict(refreshed.files or {})
             files.pop("voice_output", None)
-            if text_changed:
-                files.pop("voice_parts_dir", None)
             video_store.update_video(video_id, files=files)
     return record
 
@@ -1171,13 +1319,23 @@ def _run_voice(video, reporter) -> None:
                     else f"Đang tạo {missing_clip_count} câu đã thay đổi"
                 )
                 reporter.update(5, "manual_voice", detail, 0, missing_clip_count)
-                effective = resolve_tts_provider(video.tts_provider, video.target_language)
-                if effective == "omnivoice":
+                generation_groups = _voice_generation_groups(video, segments)
+                requested_groups = [
+                    (provider, voice, [index for index in indices if index in missing_clip_indices])
+                    for (provider, voice), indices in generation_groups.items()
+                ]
+                requested_groups = [item for item in requested_groups if item[2]]
+                if any(
+                    resolve_tts_provider(provider, video.target_language) == "omnivoice"
+                    for provider, _voice, _indices in requested_groups
+                ):
                     shutdown_hymt2_worker()
                     from haizflow.pipeline.transcribe import release_warm_whisperx_model
                     release_warm_whisperx_model()
 
-                def report_voice_status(stage: str, current: int, total: int) -> None:
+                completed_before = 0
+
+                def report_voice_status(stage: str, current: int, _total: int) -> None:
                     preparing_details = {
                         "loading_model": "Đang nạp model giọng đọc",
                         "reusing_model": "Đang dùng model giọng đọc đã nạp",
@@ -1185,44 +1343,72 @@ def _run_voice(video, reporter) -> None:
                         "launching_worker": "Đang khởi tạo bộ tạo giọng",
                     }
                     if stage in preparing_details:
-                        percent = 5
+                        percent = 5 + round(90 * completed_before / max(1, missing_clip_count))
                         status_detail = preparing_details[stage]
                     else:
-                        percent = 5 + round(90 * current / max(1, total))
+                        overall = completed_before + current
+                        percent = 5 + round(90 * overall / max(1, missing_clip_count))
                         status_detail = (
-                            f"Đã tạo {current}/{total} câu"
-                            if current
+                            f"Đã tạo {overall}/{missing_clip_count} câu"
+                            if overall
                             else detail
                         )
                     reporter.update(
                         percent,
                         "manual_voice",
                         status_detail,
-                        current,
-                        total,
+                        completed_before + current,
+                        missing_clip_count,
                     )
 
-                generate_voice_parts(
-                    str(subtitle["resolved_outputs"].get("segments") or subtitle["resolved_outputs"].get("transcript")),
-                    str(parts_dir),
-                    video.tts_voice,
-                    video.video_id,
-                    progress_callback=lambda current, total: reporter.update(
-                        5 + round(90 * current / max(1, total)), "manual_voice",
-                        f"Đã tạo {current}/{total} câu", current, total
-                    ),
-                    provider=video.tts_provider,
-                    target_language=video.target_language,
-                    keep_worker_warm=True,
-                    segment_indices=missing_clip_indices,
-                    narrator_anchor_text=narrator_anchor,
-                    status_callback=report_voice_status if effective == "omnivoice" else None,
-                )
+                for provider, voice, group_indices in requested_groups:
+                    effective = resolve_tts_provider(provider, video.target_language)
+
+                    def report_group_progress(current: int, _total: int) -> None:
+                        overall = completed_before + current
+                        reporter.update(
+                            5 + round(90 * overall / max(1, missing_clip_count)),
+                            "manual_voice",
+                            f"Đã tạo {overall}/{missing_clip_count} câu",
+                            overall,
+                            missing_clip_count,
+                        )
+
+                    generate_voice_parts(
+                        str(
+                            subtitle["resolved_outputs"].get("segments")
+                            or subtitle["resolved_outputs"].get("transcript")
+                        ),
+                        str(parts_dir),
+                        voice,
+                        video.video_id,
+                        progress_callback=report_group_progress,
+                        provider=provider,
+                        target_language=video.target_language,
+                        keep_worker_warm=True,
+                        segment_indices=group_indices,
+                        narrator_anchor_text=narrator_anchor,
+                        status_callback=report_voice_status if effective == "omnivoice" else None,
+                    )
+                    completed_before += len(group_indices)
             else:
                 reporter.update(95, "manual_voice", "Đang khôi phục giọng đọc từ cache")
             _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures)
+            voice_configs = [
+                {"provider": provider, "voice": voice, "segments": indices}
+                for (provider, voice), indices in _voice_generation_groups(video, segments).items()
+            ]
             (staging / "manifest.json").write_text(
-                json.dumps({"clips": clip_signatures}, ensure_ascii=False, indent=2), encoding="utf-8"
+                json.dumps(
+                    {
+                        "clips": clip_signatures,
+                        "voice_configs": voice_configs,
+                        "speaker_mode": video.speaker_mode,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
             )
             outputs = {"manifest": "manifest.json"}
             outputs.update({f"clip_{index}": f"parts/voice_{index:04d}.mp3" for index in range(1, len(segments) + 1)})
@@ -1236,7 +1422,7 @@ def _run_voice(video, reporter) -> None:
                     subtitle["artifact_id"],
                     *[manual_artifacts.artifact_id("tts_clip", value) for value in clip_signatures],
                 ],
-                config_fingerprint=manual_artifacts.signature(video.tts_provider, video.tts_voice, video.speaker_mode),
+                config_fingerprint=manual_artifacts.signature(voice_configs, video.speaker_mode),
                 activate_artifact=False,
             )
         finally:

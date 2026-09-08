@@ -426,6 +426,36 @@ class VideoMetadataMigrationTests(unittest.TestCase):
 
         self.assertEqual(migrated.watermark_text, "HaizFlow " + ("x" * 71))
 
+    def test_current_metadata_accepts_nested_manual_file_metadata(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        current = json.loads(path.read_text(encoding="utf-8"))
+        current["files"]["tts_narrator_anchors"] = {
+            "voice-signature": "Đoạn neo giọng ổn định"
+        }
+        path.write_text(json.dumps(current), encoding="utf-8")
+
+        loaded = video_store.get_video(video.video_id)
+
+        self.assertEqual(
+            loaded.files["tts_narrator_anchors"],
+            {"voice-signature": "Đoạn neo giọng ổn định"},
+        )
+
+    def test_catalog_skips_one_unreadable_video_instead_of_crashing(self):
+        healthy = self._create_video()
+        with (
+            mock.patch.object(video_store, "_project_video_ids", return_value=["broken", healthy.video_id]),
+            mock.patch.object(
+                video_store,
+                "get_video",
+                side_effect=[RuntimeError("corrupt metadata"), healthy],
+            ),
+        ):
+            listed = video_store.list_videos()
+
+        self.assertEqual([item.video_id for item in listed], [healthy.video_id])
+
     def test_future_video_schema_is_rejected_without_falling_back(self):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))

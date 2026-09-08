@@ -13,18 +13,34 @@
 #ifndef SetupIconPath
   #error SetupIconPath must point to the generated multi-resolution .ico file.
 #endif
+#ifndef BrandingMarkPath
+  #error BrandingMarkPath must point to the installer branding PNG.
+#endif
+#ifndef OutputBaseFilename
+  #error OutputBaseFilename must be supplied by scripts\build-installer.ps1.
+#endif
+
+#if Ver < EncodeVer(6, 5, 0)
+  #error HaizFlow requires Inno Setup 6.5 or later for the high-DPI dark wizard.
+#endif
 
 #define AppName "HaizFlow"
-#define AppPublisher "HaizFlow"
+#define AppPublisher "Mach Hong Hai"
+#define AppUrl "https://github.com/MachHongHai/HaizFlow"
 
 [Setup]
 AppId={{799AE20D-E7A5-4D79-96DE-708E161BF32A}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+AppPublisherURL={#AppUrl}
+AppSupportURL={#AppUrl}/issues
+AppUpdatesURL={#AppUrl}/releases
 AppVerName={#AppName} {#AppVersion}
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} Windows installer
+VersionInfoCopyright=Copyright (c) 2026 Mach Hong Hai
+VersionInfoOriginalFileName={#OutputBaseFilename}.exe
 VersionInfoProductName={#AppName}
 VersionInfoVersion={#AppVersion}
 DefaultDirName={localappdata}\Programs\{#AppName}
@@ -39,17 +55,27 @@ MinVersion=10.0.17763
 AllowUNCPath=no
 AllowNetworkDrive=no
 OutputDir=..\dist\installer
-OutputBaseFilename=HaizFlow-{#AppVersion}-Setup
+OutputBaseFilename={#OutputBaseFilename}
 SetupIconFile={#SetupIconPath}
 LicenseFile={#SourceDir}\LICENSE.txt
 Compression=lzma2/ultra64
 SolidCompression=yes
-WizardStyle=modern
+DefaultDialogFontName=Segoe UI
+WizardStyle=modern dark slate includetitlebar hidebevels
+WizardSizePercent=120,120
+WizardImageFile={#BrandingMarkPath}
+WizardSmallImageFile={#BrandingMarkPath}
+WizardImageBackColor=#11100F
+WizardSmallImageBackColor=#1B1A18
+WizardImageStretch=yes
+WizardKeepAspectRatio=yes
 UninstallDisplayIcon={app}\HaizFlow.exe
 UninstallDisplayName={#AppName}
 CloseApplications=yes
+CloseApplicationsFilter=HaizFlow.exe
 RestartApplications=no
 RestartIfNeededByRun=no
+SetupLogging=yes
 
 [Files]
 ; Release eligibility guarantees SourceDir has no root runtime directory.
@@ -91,6 +117,121 @@ Filename: "{app}\HaizFlow.exe"; Description: "Launch HaizFlow"; Flags: nowait po
 [Code]
 var
   DeleteRuntimeOnUninstall: Boolean;
+  CompatibilityPage: TWizardPage;
+  StorageValueLabel: TNewStaticText;
+
+function RoundedUpGiB(const Bytes: Int64): String; forward;
+
+procedure AddRequirementRow(
+  Page: TWizardPage;
+  const Heading: String;
+  const Detail: String;
+  Top: Integer
+);
+var
+  HeadingLabel: TNewStaticText;
+  DetailLabel: TNewStaticText;
+begin
+  HeadingLabel := TNewStaticText.Create(Page);
+  HeadingLabel.Parent := Page.Surface;
+  HeadingLabel.Left := ScaleX(0);
+  HeadingLabel.Top := ScaleY(Top);
+  HeadingLabel.Width := Page.SurfaceWidth;
+  HeadingLabel.AutoSize := False;
+  HeadingLabel.Height := ScaleY(20);
+  HeadingLabel.Font.Style := [fsBold];
+  HeadingLabel.Caption := Heading;
+
+  DetailLabel := TNewStaticText.Create(Page);
+  DetailLabel.Parent := Page.Surface;
+  DetailLabel.Left := ScaleX(0);
+  DetailLabel.Top := ScaleY(Top + 21);
+  DetailLabel.Width := Page.SurfaceWidth;
+  DetailLabel.AutoSize := False;
+  DetailLabel.Height := ScaleY(32);
+  DetailLabel.WordWrap := True;
+  DetailLabel.Caption := Detail;
+end;
+
+procedure SupportLinkClick(Sender: TObject);
+var
+  ErrorCode: Integer;
+begin
+  ShellExec('open', '{#AppUrl}', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+end;
+
+procedure InitializeWizard;
+var
+  IntroLabel: TNewStaticText;
+  SupportLink: TNewStaticText;
+begin
+  WizardForm.Caption := 'HaizFlow Setup';
+  WizardForm.WelcomeLabel1.Caption := 'Install HaizFlow';
+  WizardForm.WelcomeLabel2.Caption :=
+    'Set up the local-first video workspace on this computer.' + #13#10 + #13#10 +
+    'The application is installed now. Verified AI models are downloaded on first launch.';
+  WizardForm.FinishedHeadingLabel.Caption := 'HaizFlow is ready';
+  WizardForm.FinishedLabel.Caption :=
+    'Installation completed. Launch HaizFlow to select CPU or GPU processing and download the required models.';
+
+  CompatibilityPage := CreateCustomPage(
+    wpSelectDir,
+    'System requirements',
+    'Review the runtime requirements before installation.'
+  );
+
+  IntroLabel := TNewStaticText.Create(CompatibilityPage);
+  IntroLabel.Parent := CompatibilityPage.Surface;
+  IntroLabel.Left := ScaleX(0);
+  IntroLabel.Top := ScaleY(0);
+  IntroLabel.Width := CompatibilityPage.SurfaceWidth;
+  IntroLabel.AutoSize := False;
+  IntroLabel.Height := ScaleY(38);
+  IntroLabel.WordWrap := True;
+  IntroLabel.Caption :=
+    'Core processing runs locally. An internet connection is required for the first model download, URL imports and online voices.';
+
+  AddRequirementRow(
+    CompatibilityPage,
+    'Windows',
+    'Windows 10 version 1809 or later, or Windows 11, on a 64-bit PC.',
+    52
+  );
+  AddRequirementRow(
+    CompatibilityPage,
+    'Processor and memory',
+    'CPU mode works without an NVIDIA GPU. 8 GB RAM is the practical minimum; 16 GB or more is recommended.',
+    110
+  );
+  AddRequirementRow(
+    CompatibilityPage,
+    'Graphics',
+    'An NVIDIA GPU is optional. HaizFlow falls back to CPU processing when CUDA is unavailable or unsupported.',
+    168
+  );
+
+  StorageValueLabel := TNewStaticText.Create(CompatibilityPage);
+  StorageValueLabel.Parent := CompatibilityPage.Surface;
+  StorageValueLabel.Left := ScaleX(0);
+  StorageValueLabel.Top := ScaleY(226);
+  StorageValueLabel.Width := CompatibilityPage.SurfaceWidth;
+  StorageValueLabel.AutoSize := False;
+  StorageValueLabel.Height := ScaleY(48);
+  StorageValueLabel.WordWrap := True;
+  StorageValueLabel.Font.Style := [fsBold];
+  StorageValueLabel.Caption :=
+    'Storage: at least ' + RoundedUpGiB({#RequiredFreshBytes}) + ' GiB free for the application, models and working space.';
+
+  SupportLink := TNewStaticText.Create(CompatibilityPage);
+  SupportLink.Parent := CompatibilityPage.Surface;
+  SupportLink.Left := ScaleX(0);
+  SupportLink.Top := ScaleY(286);
+  SupportLink.AutoSize := True;
+  SupportLink.Cursor := crHand;
+  SupportLink.Font.Style := [fsUnderline];
+  SupportLink.Caption := 'Source, releases and support';
+  SupportLink.OnClick := @SupportLinkClick;
+end;
 
 function IsDriveRoot(const Path: String): Boolean;
 begin
@@ -147,6 +288,31 @@ end;
 function RoundedDownGiB(const Bytes: Int64): String;
 begin
   Result := IntToStr(Bytes div 1073741824);
+end;
+
+procedure UpdateCompatibilityStorage;
+var
+  FreeBytes: Int64;
+  TotalBytes: Int64;
+  RequiredBytes: Int64;
+begin
+  if IsUpgradeTarget(WizardDirValue) then
+    RequiredBytes := {#RequiredFreeBytes}
+  else
+    RequiredBytes := {#RequiredFreshBytes};
+  if GetSpaceOnDisk64(WizardDirValue, FreeBytes, TotalBytes) then
+    StorageValueLabel.Caption :=
+      'Storage: ' + RoundedDownGiB(FreeBytes) + ' GiB available; ' +
+      RoundedUpGiB(RequiredBytes) + ' GiB required for a safe install and first model download.'
+  else
+    StorageValueLabel.Caption :=
+      'Storage: ' + RoundedUpGiB(RequiredBytes) + ' GiB is required. Setup will verify the selected folder before copying files.';
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CompatibilityPage <> nil) and (CurPageID = CompatibilityPage.ID) then
+    UpdateCompatibilityStorage;
 end;
 
 function ValidateInstallTarget: String;

@@ -157,14 +157,59 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("AllowUNCPath=no", installer)
         self.assertIn("AllowNetworkDrive=no", installer)
         self.assertIn("SetupIconFile={#SetupIconPath}", installer)
+        self.assertIn("WizardStyle=modern dark slate includetitlebar hidebevels", installer)
+        self.assertIn("WizardImageFile={#BrandingMarkPath}", installer)
+        self.assertIn("WizardSmallImageFile={#BrandingMarkPath}", installer)
+        self.assertIn("System requirements", installer)
+        self.assertIn("CPU mode works without an NVIDIA GPU", installer)
+        self.assertIn("CloseApplicationsFilter=HaizFlow.exe", installer)
+        self.assertIn("SetupLogging=yes", installer)
         self.assertNotIn("generate-app-icon.py", build_script)
         self.assertIn('"/DSetupIconPath=$SetupIconPath"', build_script)
+        self.assertIn('"/DBrandingMarkPath=$BrandingMarkPath"', build_script)
+        self.assertIn('"/DOutputBaseFilename=$OutputBaseFilename"', build_script)
         self.assertIn('"/DRequiredFreshBytes=$($FreshRequirements.required_free_bytes)"', build_script)
         self.assertIn("function PrepareToInstall(var NeedsRestart: Boolean): String;", installer)
         self.assertIn("FileExists(AddBackslash(Path) + 'HaizFlow.exe') and", installer)
         self.assertIn("FileExists(AddBackslash(Path) + 'BUILD-INFO.json') and", installer)
         self.assertIn("DirExists(AddBackslash(Path) + '_internal');", installer)
         self.assertNotIn("DirExists(AddBackslash(Path) + 'runtime')", installer)
+
+    def test_public_builds_require_signing_and_installer_is_smoke_tested(self):
+        executable_build = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
+        installer_build = (ROOT / "scripts" / "build-installer.ps1").read_text(encoding="utf-8")
+        installer_smoke = (ROOT / "scripts" / "test-installer.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("[switch]$AllowUnsigned", executable_build)
+        self.assertIn("[switch]$AllowUnsigned", installer_build)
+        self.assertIn("A public release requires Authenticode signing", executable_build)
+        self.assertIn("A public release installer requires Authenticode signing", installer_build)
+        self.assertIn("-UNSIGNED-Setup", installer_build)
+        self.assertIn('Join-Path $PSScriptRoot "test-installer.ps1"', installer_build)
+        self.assertIn('"/VERYSILENT"', installer_smoke)
+        self.assertIn("-InstalledLayout", installer_smoke)
+        self.assertIn("Silent uninstall must preserve runtime data", installer_smoke)
+
+    def test_release_build_temporary_files_stay_below_project_build_directory(self):
+        executable_build = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
+        installer_build = (ROOT / "scripts" / "build-installer.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('Join-Path $Root "build\\release-temp"', executable_build)
+        self.assertIn("$env:TEMP = $ReleaseTemp", executable_build)
+        self.assertIn('Join-Path $Root "build\\pyinstaller-config"', executable_build)
+        self.assertIn("$env:PYINSTALLER_CONFIG_DIR = $PyInstallerConfigPath", executable_build)
+        self.assertIn("$env:PYINSTALLER_CONFIG_DIR = $PreviousPyInstallerConfig", executable_build)
+        self.assertIn('Join-Path $Root "build\\installer-temp"', installer_build)
+        self.assertIn("$env:TEMP = $InstallerTemp", installer_build)
+
+    def test_environment_sync_handles_exact_hash_locked_packages_across_indexes(self):
+        install_script = (ROOT / "scripts" / "install-desktop-env.ps1").read_text(encoding="utf-8")
+        lock_script = (ROOT / "scripts" / "lock-dependencies.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("--index-strategy unsafe-first-match", install_script)
+        self.assertNotIn("--index-strategy unsafe-best-match", install_script)
+        self.assertIn("constrained by the lock's SHA-256 hashes", install_script)
+        self.assertIn("--write-manifest --no-installed-check", lock_script)
 
     def test_release_build_enforces_dependency_vulnerability_audit(self):
         build_script = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
@@ -197,6 +242,8 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("$CanonicalTorchPackages", audit_script)
         self.assertIn("Canonical PyTorch vulnerability audit found an unreviewed advisory.", audit_script)
         self.assertIn("Dependency vulnerability audit found an unreviewed advisory.", audit_script)
+        self.assertIn('"PYSEC-2026-3740"', audit_script)
+        self.assertIn('"CVE-2026-9856"', audit_script)
         self.assertNotIn("--ignore-vuln *", audit_script)
 
         entrypoint = (ROOT / "haizflow_desktop.py").read_text(encoding="utf-8")
@@ -210,6 +257,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('"trust_remote_code": False', worker)
         self.assertIn('"use_safetensors": True', worker)
         self.assertNotIn("trust_remote_code=True", worker)
+        self.assertNotIn("save_pretrained(", worker)
 
     def test_installer_eligibility_rejects_dirty_or_partial_artifacts(self):
         with tempfile.TemporaryDirectory() as temp_dir:

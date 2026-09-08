@@ -109,6 +109,11 @@ Control {
         }
     }
 
+    function stopPreview() {
+        voicePlayer.stop()
+        requestedVoice = ""
+    }
+
     onModelChanged: syncCategory()
     onCurrentValueChanged: syncCategory()
     onAllowVoiceCloneChanged: syncCategory()

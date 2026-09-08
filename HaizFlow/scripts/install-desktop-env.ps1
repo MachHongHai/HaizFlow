@@ -84,7 +84,12 @@ if ($Uv) {
   # ``sync`` removes packages left behind by older dependency sets.  This is
   # important for reproducible builds and prevents stale demo/server packages
   # from leaking into vulnerability and license inventories.
-  & $Uv.Source pip sync --python $Python --strict $DependencyLock
+  # The lock uses PyPI plus explicit CUDA/llama indexes.  uv prioritizes every
+  # extra index over PyPI and may find an incompatible version of a common
+  # package (for example certifi) before the exact PyPI pin.  Exhaust the
+  # indexes until the exact locked version is found.  Every accepted artifact
+  # is still constrained by the lock's SHA-256 hashes.
+  & $Uv.Source pip sync --python $Python --strict --index-strategy unsafe-first-match $DependencyLock
   if ($LASTEXITCODE -ne 0) {
     throw "Locked dependency synchronization failed with exit code $LASTEXITCODE."
   }

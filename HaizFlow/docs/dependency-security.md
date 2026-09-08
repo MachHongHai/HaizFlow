@@ -1,71 +1,80 @@
-# Chính sách an toàn dependency
+# Dependency and model security policy
 
-Ngày rà soát: 2026-08-12
+[Documentation](README.md) · [Release readiness](release-readiness.md) · [Tiếng Việt](dependency-security.vi.md)
 
-Mỗi release phải chạy:
+Last reviewed: **2026-09-08**
+Next review: **before every release and no later than 2026-10-08**
+
+This policy defines the trust boundary for Python packages, native tools, and model artifacts used by HaizFlow. A listed exception is temporary and does not waive future advisories.
+
+## Mandatory audit
+
+Every release candidate must run:
 
 ```powershell
 .\scripts\audit-dependencies.ps1
 ```
 
-Script dùng `pip-audit==2.10.1`, quét trực tiếp environment sẽ được đóng gói và chỉ bỏ qua đúng các advisory đã được đánh giá bên dưới. Advisory mới luôn làm release gate thất bại. Danh sách ngoại lệ phải được rà soát lại trước mỗi release và chậm nhất ngày 2026-09-12.
+The script audits the environment that will be packaged with a pinned `pip-audit`. A new advisory fails the gate unless it is identified, threat-modeled, mitigated, time-bounded, and recorded here. Production must match `pyproject.toml`, the SHA-256-locked `requirements-lock-py313-win64.txt`, and `dependency-lock-manifest.json`.
 
-## Đã khắc phục
+## Baseline controls
 
-- `pip` đã nâng từ 25.1.1 lên 26.1.2 và dependency lock đã được sinh lại bằng `uv==0.11.19`.
-- `aiohttp` đã nâng lên 3.14.3 để khắc phục `PYSEC-2026-3545`, `PYSEC-2026-3546` và `PYSEC-2026-3547`; version an toàn được pin trực tiếp trong `pyproject.toml` và lock có hash.
-- HY-MT2 chỉ đọc model đã pin revision và kiểm tra SHA-256, dùng `local_files_only=True`, `use_safetensors=True` và `trust_remote_code=False`.
+- The Windows lock fixes exact versions and SHA-256 hashes. Environment sync uses uv's `unsafe-first-match` only to reach the exact locked version across the dedicated PyTorch, llama.cpp, and PyPI indexes; it never uses unconstrained best-match resolution.
+- Model repository, immutable revision, filename, expected size, and full SHA-256 are fixed in the bootstrap manifest.
+- Downloads are staged and atomically promoted only after integrity verification.
+- HY-MT2 uses `local_files_only=True`, `use_safetensors=True`, and `trust_remote_code=False`.
+- Runtime loaders receive verified local paths and do not silently fall back to unpinned model downloads.
+- Release artifacts must not accidentally contain model payloads.
+- User-provided checkpoints are not accepted as trusted production models.
 
-## Ngoại lệ có kiểm soát
+## Controlled exceptions
 
-### transformers 4.57.6
+### Transformers 4.57.6
 
-Advisory được chấp nhận tạm thời:
+Temporarily accepted: [PYSEC-2025-217](https://osv.dev/vulnerability/PYSEC-2025-217), [PYSEC-2026-2288](https://osv.dev/vulnerability/PYSEC-2026-2288), [PYSEC-2026-2289](https://osv.dev/vulnerability/PYSEC-2026-2289), [PYSEC-2026-2290](https://osv.dev/vulnerability/PYSEC-2026-2290), and [CVE-2026-9856](https://github.com/advisories/GHSA-xrqw-3rrv-vx5w).
 
-- [`PYSEC-2025-217`](https://osv.dev/vulnerability/PYSEC-2025-217)
-- [`PYSEC-2026-2288`](https://osv.dev/vulnerability/PYSEC-2026-2288)
-- [`PYSEC-2026-2289`](https://osv.dev/vulnerability/PYSEC-2026-2289)
-- [`PYSEC-2026-2290`](https://osv.dev/vulnerability/PYSEC-2026-2290)
+The affected paths load untrusted checkpoints/configuration, expose Trainer/conversion surfaces, or write caller-controlled `chat_template` keys through `save_pretrained()`. HaizFlow loads a fixed, checksum-verified HY-MT2 artifact, refuses remote code, requires safetensors, and never calls tokenizer or processor `save_pretrained()`. Transformers 5 is not substituted until its interpretation of the HY-MT2 RoPE configuration passes compatibility and translation-quality gates.
 
-Các advisory liên quan tới việc nạp checkpoint/config không đáng tin hoặc các đường `Trainer`/conversion mà HaizFlow không cho người dùng gọi. HaizFlow chỉ nạp checkpoint HY-MT2 cố định, đã kiểm tra từng file bằng SHA-256, không chạy remote code và không dùng `Trainer`.
+### NLTK 3.10.3
 
-Không nâng thẳng lên Transformers 5 trong RC này: thử nghiệm 5.14.1 cho thấy cấu hình RoPE của checkpoint HY-MT2 4.57.6 có khóa không còn được nhận diện (`beta_fast`, `alpha`, `beta_slow`, `mscale_all_dim`, `mscale`). Đóng gói bản đó có thể âm thầm thay đổi chất lượng dịch. Ngoại lệ chỉ được gỡ sau khi có bản model/config tương thích và bộ nghiệm thu chất lượng dịch đạt.
+Temporarily accepted: [PYSEC-2026-3740 / CVE-2026-81726](https://github.com/advisories/GHSA-8mgp-746c-j5xp).
 
-### diskcache 5.6.3
+NLTK 3.10.3 fixes the earlier parser, corpus-reader, recursion, and denial-of-service advisories. The remaining finding concerns caller-controlled paths in model-artifact loading and persistence APIs. HaizFlow does not expose those APIs: its WhisperX alignment wrapper replaces the NLTK resource loader with an internal sentence splitter, performs no NLTK download, and accepts no user-selected NLTK model path. Remove this exception when a compatible patched NLTK release is available.
 
-Advisory được chấp nhận tạm thời:
+### DiskCache 5.6.3
 
-- [`PYSEC-2026-2447`](https://osv.dev/vulnerability/PYSEC-2026-2447)
+Temporarily accepted: [PYSEC-2026-2447](https://osv.dev/vulnerability/PYSEC-2026-2447).
 
-Đây là dependency gián tiếp của `llama-cpp-python` và upstream chưa có phiên bản sửa. Lỗi yêu cầu kẻ tấn công ghi được dữ liệu pickle vào cache rồi làm ứng dụng đọc cache đó. HaizFlow không gọi `Llama.from_pretrained`, không dùng DiskCache và chỉ mở file GGUF local đã pin SHA-256. Runtime/cache nằm dưới thư mục cài đặt do người dùng chọn; người đã có quyền thay đổi thư mục này cũng có thể thay EXE/DLL/model của ứng dụng. Ngoại lệ phải được xóa ngay khi upstream phát hành bản sửa hoặc `llama-cpp-python` bỏ dependency này.
+DiskCache is transitive through `llama-cpp-python`. HaizFlow neither uses DiskCache for model acquisition nor calls `Llama.from_pretrained`; the CPU path opens a fixed GGUF file verified by size and SHA-256. Remove this exception when upstream provides a compatible fixed dependency path.
 
-### lightning 2.6.5
+### Lightning 2.6.5
 
-Advisory được chấp nhận tạm thời:
+Temporarily accepted: [PYSEC-2026-3624 / CVE-2026-58659](https://osv.dev/vulnerability/PYSEC-2026-3624).
 
-- [`PYSEC-2026-3624`](https://osv.dev/vulnerability/PYSEC-2026-3624) / CVE-2026-58659
+`pyannote-audio` requires Lightning. Until a compatible fixed release is available, `haizflow.core.dependency_security` rejects checkpoint-requested `_instantiator` imports outside the official CLI paths in both Lightning namespaces. The guard is regression-tested and disables itself after a fixed upstream version is detected.
 
-`pyannote-audio` yêu cầu Lightning và 2.6.5 hiện vẫn là bản phát hành mới nhất. Upstream đã merge bản vá nhưng chưa phát hành version chứa nó. HaizFlow backport đúng cơ chế allowlist của upstream trong `haizflow.core.dependency_security`: trước lần nạp model đầu tiên, cả hai namespace Lightning đều bị chặn nếu checkpoint yêu cầu import `_instantiator` ngoài hai đường CLI chính thức. Lớp bảo vệ có test chống import tùy ý, tự bỏ qua khi version Lightning tương lai đã có bản vá, và các model HaizFlow vẫn phải qua kiểm tra nguồn/size/SHA-256. Ngoại lệ này phải được xóa ngay khi Lightning phát hành bản chứa bản vá.
+### Torch 2.8.0+cu128 family
 
-### torch 2.8.0+cu128
+Because `pip-audit` cannot directly map the CUDA local-version suffix, the release gate also audits canonical Torch, TorchAudio, and TorchVision versions. Temporarily accepted advisories are [PYSEC-2025-203](https://osv.dev/vulnerability/PYSEC-2025-203), [PYSEC-2025-204](https://osv.dev/vulnerability/PYSEC-2025-204), [PYSEC-2025-206](https://osv.dev/vulnerability/PYSEC-2025-206), [PYSEC-2026-139](https://osv.dev/vulnerability/PYSEC-2026-139), [PYSEC-2026-2286](https://osv.dev/vulnerability/PYSEC-2026-2286), [PYSEC-2025-194](https://osv.dev/vulnerability/PYSEC-2025-194), [CVE-2025-2999](https://osv.dev/vulnerability/CVE-2025-2999), and [CVE-2025-3001](https://osv.dev/vulnerability/CVE-2025-3001).
 
-`pip-audit` không ánh xạ được hậu tố wheel CUDA `+cu128` về PyPI. Release gate vì vậy quét thêm version canonical của `torch`, `torchaudio` và `torchvision`; các advisory mới vẫn làm build thất bại. Các ngoại lệ tạm thời:
+WhisperX 3.8.6 declares the Torch 2.8 compatibility family. HaizFlow does not accept user Torch checkpoints or expose PT2, JIT, Trainer, or the affected operator paths. HY-MT2 uses pinned safetensors; Whisper uses a pinned CTranslate2 model. Only five checksum-pinned torchaudio alignment assets (`en`, `fr`, `de`, `es`, `it`) are allowed. Other languages retain Whisper timing and use internal segmentation. VAD is commit-, size-, and checksum-pinned.
 
-- [`PYSEC-2025-203`](https://osv.dev/vulnerability/PYSEC-2025-203)
-- [`PYSEC-2025-204`](https://osv.dev/vulnerability/PYSEC-2025-204)
-- [`PYSEC-2025-206`](https://osv.dev/vulnerability/PYSEC-2025-206)
-- [`PYSEC-2026-139`](https://osv.dev/vulnerability/PYSEC-2026-139)
-- [`PYSEC-2026-2286`](https://osv.dev/vulnerability/PYSEC-2026-2286)
-- [`PYSEC-2025-194`](https://osv.dev/vulnerability/PYSEC-2025-194)
-- [`CVE-2025-2999`](https://osv.dev/vulnerability/CVE-2025-2999)
-- [`CVE-2025-3001`](https://osv.dev/vulnerability/CVE-2025-3001)
+### Demucs checkpoint format
 
-WhisperX 3.8.6 mới nhất yêu cầu `torch~=2.8.0`, `torchaudio~=2.8.0`, `torchvision~=0.23.0` và `torchcodec<0.8`; nâng cưỡng bức lên Torch 2.10 làm runtime nằm ngoài compatibility contract upstream. HaizFlow không nhận checkpoint Torch từ người dùng, không dùng PT2/JIT/Trainer và không gọi các operator được nêu trong nhóm lỗi tensor DoS/memory-corruption. HY-MT2 dùng safetensors đã pin SHA-256; Whisper dùng CTranslate2 model đã pin.
+Demucs 4.0.1 loads an upstream model class through `torch.load`. HaizFlow fixes the `htdemucs` host, URL, size, and full SHA-256 and prevents arbitrary repository resolution. Only the isolated Demucs subprocess receives `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1`, after verification. The main process and other workers never receive that override.
 
-WhisperX mặc định còn có thể tải alignment checkpoint pickle không pin. HaizFlow đã vô hiệu hóa đường đó: chỉ năm torchaudio alignment asset chính thức cho `en/fr/de/es/it` được cho phép, mỗi file có size/SHA-256 cố định, URL HTTPS cố định, được bootstrap lần chạy đầu tải atomic với progress/cancel/retry, kiểm lại trước mỗi lần nạp và dùng `weights_only=True`. Pipeline frozen/source chỉ dùng repository local đã xác minh và không tự tải alignment model từ mạng. Ngôn ngữ khác giữ timestamp Whisper và chia câu theo tỷ lệ thay vì tải Hugging Face checkpoint không pin. VAD pickle của WhisperX cũng bị loại khỏi PyInstaller; bootstrap tải nó từ URL khóa theo commit, kiểm size/SHA-256 và pipeline truyền explicit local path khi nạp. HaizFlow dùng sentence splitter nội bộ cho từng span nên WhisperX không còn tự tải `punkt_tab` của NLTK. Đây là giảm thiểu bắt buộc cho đến khi WhisperX hỗ trợ Torch đã sửa và alignment safetensors/revision pin.
+## Network and data exposure
 
-Demucs 4.0.1 upstream nạp checkpoint bằng `torch.load`, nên HaizFlow không cho tên model mặc định tự truy cập remote repository. Checkpoint `htdemucs` chính thức được khóa bằng URL HTTPS/host cố định, kích thước chính xác và full SHA-256 `8726e21a…`; bootstrap model tải file đó vào runtime và release gate cấm nhúng model trong artifact. Runtime chỉ truyền local repository đã xác minh cho subprocess và từ chối chạy nếu payload thiếu/hỏng. Do PyTorch 2.6+ đổi mặc định `torch.load` sang `weights_only=True` trong khi package Demucs chứa cả class model, riêng subprocess Demucs nhận `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` sau bước xác minh; biến này không được đặt cho process chính hay worker khác. Vì checkpoint pickle vẫn là định dạng có thể thực thi khi nạp, full checksum là trust boundary bắt buộc và không được thay bằng file do người dùng cung cấp.
+| Feature | Data crossing the local boundary |
+| --- | --- |
+| Model bootstrap | Requests for fixed model files and transport metadata |
+| URL/channel import | Submitted public URL, configured platform cookies, provider response |
+| Edge TTS | Subtitle text required for speech synthesis |
+| Social publishing | Explicitly selected media, post content, provider credentials |
+| Diagnostic export | Bounded redacted application/model logs; no project media or metadata |
 
-## Phạm vi dữ liệu
+WhisperX, HY-MT2, OmniVoice, Demucs, OCR, FFmpeg, and project storage remain local after verified assets are present.
 
-WhisperX, HY-MT2, Demucs và FFmpeg chạy local. Edge TTS nhận văn bản phụ đề đã dịch để tổng hợp giọng nói. Nhập video bằng URL/kênh kết nối tới nền tảng tương ứng. Chức năng xuất chẩn đoán chỉ lấy log ứng dụng/model đã giới hạn kích thước và redaction; không lấy video, tên project hoặc log project.
+## Review requirements
+
+A package, model, download host, deserializer, native binary, or provider change requires compatibility evidence, license review, vulnerability audit output, immutable integrity metadata where applicable, failure/corruption/cancellation tests, and an updated threat model. An exception expires when its mitigation no longer matches the implementation or a compatible fixed release becomes available.

@@ -47,7 +47,13 @@ class InputMethodCommitFilter(QObject):
 
     def eventFilter(self, watched: QObject | None, event: QEvent | None) -> bool:  # noqa: N802
         del watched
-        if event is None or event.type() not in self._COMMIT_EVENTS or self._committing:
+        # ``QInputMethod.commit()`` can synchronously dispatch another Qt
+        # event while the original event is still crossing the Python/C++
+        # boundary.  Check the re-entry guard *before* touching the nested
+        # QEvent.  Calling ``event.type()`` first caused PySide to recursively
+        # convert the same native event until the application crashed during
+        # Main.qml startup on Windows.
+        if self._committing or event is None or event.type() not in self._COMMIT_EVENTS:
             return False
         self._committing = True
         try:

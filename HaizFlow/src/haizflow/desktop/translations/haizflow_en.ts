@@ -1412,13 +1412,12 @@
 <context>
     <name>ManualStageInspector</name>
     <message>
-        <location filename="../qml/ManualStageInspector.qml" line="+396"/>
-        <location line="+65"/>
+        <location filename="../qml/ManualStageInspector.qml" line="+462"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
     </message>
     <message>
-        <location line="-274"/>
+        <location line="-260"/>
         <source>Âm thanh</source>
         <translation>Audio</translation>
     </message>
@@ -1448,7 +1447,7 @@
         <translation>Keep original</translation>
     </message>
     <message>
-        <location line="-265"/>
+        <location line="-279"/>
         <source>Đã lưu</source>
         <translation>Saved</translation>
     </message>
@@ -1473,7 +1472,7 @@
         <translation>Generate subtitles</translation>
     </message>
     <message>
-        <location line="+73"/>
+        <location line="+87"/>
         <source>Video nguồn</source>
         <translation>Source video</translation>
     </message>
@@ -1503,7 +1502,42 @@
         <translation>Cover · Patch</translation>
     </message>
     <message>
-        <location line="+190"/>
+        <location line="+36"/>
+        <source>Giọng đọc đã sẵn sàng</source>
+        <translation>Voice is ready</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Giọng hiện tại vẫn đang được dùng</source>
+        <translation>The current voice remains active</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Bạn có thể đổi giọng hoặc tạo lại mà không ảnh hưởng các lớp khác.</source>
+        <translation>You can change or regenerate the voice without affecting other layers.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Thiết lập đã đổi. Xác nhận tạo giọng mới khi bạn sẵn sàng.</source>
+        <translation>The settings have changed. Confirm when you are ready to generate the new voice.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Chọn giọng và phạm vi trước khi bắt đầu.</source>
+        <translation>Choose a voice and its scope before generating.</translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <source>Đổi giọng</source>
+        <translation>Change voice</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Tạo lại</source>
+        <translation>Regenerate</translation>
+    </message>
+    <message>
+        <location line="+104"/>
         <source>Dọn dữ liệu tạm</source>
         <translation>Clear temporary data</translation>
     </message>
@@ -1513,23 +1547,23 @@
         <translation>Remove background music</translation>
     </message>
     <message>
-        <location line="-223"/>
+        <location line="-209"/>
         <source>Phụ đề trước</source>
         <translation>Previous subtitle</translation>
     </message>
     <message>
-        <location line="-209"/>
+        <location line="-223"/>
         <source>Đang chạy</source>
         <translation>Running</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+510"/>
+        <location line="+511"/>
         <source>Đang chờ</source>
         <translation>Queued</translation>
     </message>
     <message>
-        <location line="-509"/>
+        <location line="-510"/>
         <source>Đã tạm dừng</source>
         <translation>Paused</translation>
     </message>
@@ -1545,11 +1579,12 @@
     </message>
     <message>
         <location line="+0"/>
+        <location line="+319"/>
         <source>Tạo giọng</source>
         <translation>Generate voice</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="-318"/>
         <source>Tạo lại bản phối</source>
         <translation>Rebuild mix</translation>
     </message>
@@ -1574,7 +1609,7 @@
         <translation>Run tool</translation>
     </message>
     <message>
-        <location line="+112"/>
+        <location line="+126"/>
         <source>Tách lại giọng</source>
         <translation>Separate again</translation>
     </message>
@@ -1613,7 +1648,7 @@
         <translation type="vanished">Select a subtitle on the timeline</translation>
     </message>
     <message>
-        <location line="+154"/>
+        <location line="+140"/>
         <source>Âm nền</source>
         <translation>Background audio</translation>
     </message>
@@ -1623,7 +1658,8 @@
         <translation>Original audio</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="-52"/>
+        <location line="+65"/>
         <source>Chưa tạo giọng đọc</source>
         <translation>Voice has not been generated</translation>
     </message>
@@ -1638,7 +1674,7 @@
         <translation>Export the current state. Only enabled layers with available data appear in the video.</translation>
     </message>
     <message>
-        <location line="-169"/>
+        <location line="-155"/>
         <source>Watermark</source>
         <translation>Watermark</translation>
     </message>
@@ -1648,27 +1684,23 @@
         <translation>Set watermark</translation>
     </message>
     <message>
-        <location line="+16"/>
         <source>Công cụ giọng đọc</source>
-        <translation>TTS engine</translation>
+        <translation type="vanished">TTS engine</translation>
     </message>
     <message>
-        <location line="+43"/>
         <source>Giọng đã nhân bản</source>
-        <translation>Cloned voice</translation>
+        <translation type="vanished">Cloned voice</translation>
     </message>
     <message>
-        <location line="+0"/>
         <source>Nhân bản giọng</source>
-        <translation>Clone voice</translation>
+        <translation type="vanished">Clone voice</translation>
     </message>
     <message>
-        <location line="+10"/>
         <source>Nhận diện nhiều người nói</source>
-        <translation>Detect multiple speakers</translation>
+        <translation type="vanished">Detect multiple speakers</translation>
     </message>
     <message>
-        <location line="+39"/>
+        <location line="+94"/>
         <location line="+11"/>
         <source>Nhạc nền</source>
         <translation>Background music</translation>
@@ -1684,13 +1716,13 @@
         <translation>Choose file</translation>
     </message>
     <message>
-        <location line="-321"/>
-        <location line="+328"/>
+        <location line="-307"/>
+        <location line="+314"/>
         <source>Từ liên kết</source>
         <translation>From link</translation>
     </message>
     <message>
-        <location line="-225"/>
+        <location line="-211"/>
         <source>Đoạn %1/%2</source>
         <translation>Clip %1/%2</translation>
     </message>
@@ -1704,7 +1736,7 @@
         <translation type="vanished">%1%</translation>
     </message>
     <message>
-        <location line="+287"/>
+        <location line="+274"/>
         <source>Tạm dừng</source>
         <translation>Pause</translation>
     </message>
@@ -1750,6 +1782,95 @@
         <location line="+29"/>
         <source>%1%</source>
         <translation>%1%</translation>
+    </message>
+</context>
+<context>
+    <name>ManualVoiceDialog</name>
+    <message>
+        <location filename="../qml/ManualVoiceDialog.qml" line="+26"/>
+        <source>Đổi hoặc tạo lại giọng</source>
+        <translation>Change or regenerate voice</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Tạo giọng đọc</source>
+        <translation>Generate voice</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Chỉ áp dụng cho đoạn đang chọn</source>
+        <translation>Apply only to the selected segment</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Áp dụng một giọng thống nhất cho toàn video</source>
+        <translation>Apply one consistent voice to the entire video</translation>
+    </message>
+    <message>
+        <location line="+79"/>
+        <source>Phạm vi</source>
+        <translation>Scope</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <location line="+3"/>
+        <source>Toàn video</source>
+        <translation>Entire video</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <source>Đoạn này</source>
+        <translation>This segment</translation>
+    </message>
+    <message>
+        <location line="+34"/>
+        <source>Công cụ</source>
+        <translation>Engine</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Giọng đọc</source>
+        <translation>Voice</translation>
+    </message>
+    <message>
+        <location line="+48"/>
+        <source>Nhận diện nhiều người nói</source>
+        <translation>Detect multiple speakers</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Đổi mẫu giọng</source>
+        <translation>Change voice sample</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Thêm mẫu giọng</source>
+        <translation>Add voice sample</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Các đoạn khác được giữ nguyên</source>
+        <translation>Other segments remain unchanged</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Chỉ đoạn đang chọn được tạo bằng giọng này; cache của phần còn lại không thay đổi.</source>
+        <translation>Only the selected segment will use this voice; cached audio for all other segments remains unchanged.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Hủy</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Tạo cho đoạn này</source>
+        <translation>Generate for this segment</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Tạo cho toàn video</source>
+        <translation>Generate for entire video</translation>
     </message>
 </context>
 <context>
@@ -3617,7 +3738,7 @@
         <translation>Cloned voice</translation>
     </message>
     <message>
-        <location line="+146"/>
+        <location line="+151"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
     </message>

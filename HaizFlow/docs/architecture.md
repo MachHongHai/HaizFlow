@@ -1,5 +1,7 @@
 # HaizFlow architecture
 
+[Documentation](README.md) · [Repository](../README.md) · [Tiếng Việt](architecture.vi.md)
+
 This document describes the current desktop application, its dependency boundaries, persisted data and execution model. It is intended for contributors who need to change HaizFlow without coupling the user interface to media-processing details.
 
 ## 1. System boundary
@@ -131,7 +133,7 @@ source/no-vocals + TTS clips + music + levels -> audio mix
 current visual state + current audio state -> export
 ```
 
-Changing one subtitle invalidates that sentence's voice clip and descendants. Changing timing repositions cached clips without rerunning TTS. Changing music or a level invalidates only the mix. Returning to a previously used source mode, voice or cleanup mode reactivates its cache variant.
+Changing one subtitle invalidates that sentence's voice clip and descendants. Changing timing repositions cached clips without rerunning TTS. Changing music or a level invalidates only the mix. Returning to a previously used source mode, voice or cleanup mode reactivates its cache variant. Manual voice selection is transactional: dialog state is a draft, and only confirmation updates the requested manifest. Per-segment overrides participate in each clip signature, while playback remains attached to the last complete manifest until its replacement is published.
 
 ### Manual artifact store
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 
 VIDEO_METADATA_SCHEMA_VERSION = 17
@@ -151,4 +151,7 @@ class VideoInfo(BaseModel):
     current_item: int = 0
     total_items: int = 0
     error: Optional[str] = None
-    files: Dict[str, Optional[str]] = Field(default_factory=dict)
+    # Most entries are paths, but Manual artifacts also persist small,
+    # versioned maps such as narrator anchors.  Treating every value as a
+    # string made valid schema-v17 projects unreadable at application startup.
+    files: Dict[str, Any] = Field(default_factory=dict)

@@ -15,6 +15,30 @@ from haizflow.schemas.video import VideoConfig
 
 
 class ManualWorkflowTests(unittest.TestCase):
+    def test_pending_translation_settings_keep_current_editor_layers_published(self):
+        current = VideoConfig(project_type="manual", target_language="vi")
+        values = {
+            name: getattr(current, name)
+            for name in type(current).model_fields
+        }
+        video = SimpleNamespace(
+            video_id="manual-video",
+            manual_completed_stages=[],
+            **values,
+        )
+        requested = current.model_copy(update={"target_language": "en"})
+
+        with (
+            patch("haizflow.desktop.qml_controller.video_store.update_video"),
+            patch("haizflow.desktop.qml_controller.manual_artifacts.deactivate") as deactivate,
+        ):
+            HaizFlowController._apply_config_to_video(SimpleNamespace(), video, requested)
+
+        deactivate.assert_called_once_with(
+            video.video_id,
+            {"recognition", "translation"},
+        )
+
     def test_manual_tool_queue_resets_stale_progress_before_backend_start(self):
         video = SimpleNamespace(
             video_id="manual-video",
@@ -55,6 +79,39 @@ class ManualWorkflowTests(unittest.TestCase):
         self.assertEqual(queued["current_item"], 0)
         self.assertEqual(queued["total_items"], 0)
         self.assertEqual(queued["step_detail"], "Đang chờ xử lý")
+
+    def test_cancel_manual_tool_removes_a_waiting_job(self):
+        video = SimpleNamespace(
+            video_id="manual-video",
+            project_type="manual",
+            manual_target_tool="voice",
+        )
+        queue_state = SimpleNamespace(
+            active_video_id="another-video",
+            discard=Mock(return_value=True),
+        )
+        host = SimpleNamespace(
+            _selected_video=lambda: video,
+            _processing_queue=queue_state,
+            stopVideo=Mock(),
+            _update_queue_positions=Mock(),
+            processingChanged=SimpleNamespace(emit=Mock()),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()),
+            refreshVideos=Mock(),
+        )
+        with (
+            patch("haizflow.desktop.qml_controller.video_store.update_video") as update,
+            patch("haizflow.desktop.qml_controller.video_store.log_to_video"),
+        ):
+            cancelled = HaizFlowController.cancelManualTool(host, "voice")
+
+        self.assertTrue(cancelled)
+        queue_state.discard.assert_called_once_with(video.video_id)
+        host.stopVideo.assert_not_called()
+        self.assertEqual(update.call_args.kwargs["status"], "manual_ready")
+        self.assertEqual(update.call_args.kwargs["manual_target_tool"], "")
+        host._update_queue_positions.assert_called_once_with()
+        host.processingChanged.emit.assert_called_once_with()
 
     def test_manual_export_completion_is_emitted_only_after_output_exists(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -301,7 +358,8 @@ class ManualWorkflowTests(unittest.TestCase):
 
         changes = update.call_args.kwargs
         self.assertEqual(changes["manual_completed_stages"], [])
-        self.assertEqual(changes["status"], "pending")
+        self.assertEqual(changes["status"], "manual_ready")
+        self.assertEqual(changes["step"], "manual_ready")
 
     def test_manual_subtitle_layout_is_independent_from_original_subtitle_cleanup(self):
         manual_video = SimpleNamespace(
@@ -440,6 +498,61 @@ class ManualWorkflowTests(unittest.TestCase):
                 str(root / "temp" / "audio.wav"),
                 stop_after="voice",
             )
+
+    def test_manual_voice_dialog_applies_one_segment_without_changing_global_voice(self):
+        video = SimpleNamespace(
+            video_id="manual-video",
+            project_type="manual",
+            target_language="vi",
+            tts_provider="edge",
+            tts_voice="vi-VN-NamMinhNeural",
+            speaker_mode="single",
+            files={},
+        )
+
+        def update_video(_video_id, **changes):
+            for name, value in changes.items():
+                setattr(video, name, value)
+            return video
+
+        host = SimpleNamespace(
+            _project_type="manual",
+            _selected_video=lambda: video,
+            _processing_queue=SimpleNamespace(contains=lambda _video_id: False),
+            _normalized_tts_provider=lambda _language, provider: provider,
+            _normalized_voice_for_language=lambda _language, voice, _provider: voice,
+            _manual_subtitles=SimpleNamespace(
+                segments=[{"segment_id": "segment-a", "text": "Xin chào"}]
+            ),
+            voiceCloneReferencePath="",
+            appAlertRequested=SimpleNamespace(emit=Mock()),
+            _manual_voice_configuration_snapshot=HaizFlowController._manual_voice_configuration_snapshot,
+            _record_manual_voice_configuration_change=Mock(),
+            runManualTool=Mock(return_value=True),
+        )
+
+        with (
+            patch("haizflow.desktop.qml_controller.video_store.update_video", side_effect=update_video),
+            patch("haizflow.desktop.qml_controller.video_store.log_to_video"),
+        ):
+            result = HaizFlowController.configureAndRunManualVoice(
+                host,
+                "omnivoice",
+                "omnivoice:female",
+                "segment",
+                "segment-a",
+                "single",
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(video.tts_provider, "edge")
+        self.assertEqual(video.tts_voice, "vi-VN-NamMinhNeural")
+        self.assertEqual(
+            video.files["manual_voice_overrides"]["segment-a"],
+            {"provider": "omnivoice", "voice": "omnivoice:female"},
+        )
+        host.runManualTool.assert_called_once_with("voice")
+        host._record_manual_voice_configuration_change.assert_called_once()
 
 
 if __name__ == "__main__":
