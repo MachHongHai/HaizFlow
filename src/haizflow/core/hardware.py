@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import csv
 import ctypes
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
 from dataclasses import dataclass
 from functools import lru_cache
 
-
 _GIB = 1024 ** 3
-_MIN_CPU_RAM_BYTES = 5 * _GIB
-_MIN_GPU_SYSTEM_RAM_BYTES = 8 * _GIB
+# Windows commonly reports a marketed 16 GB machine as roughly 14.8 GiB of
+# usable physical memory. These thresholds enforce the public 16 GB minimum
+# without rejecting that normal hardware reservation.
+_MIN_CPU_RAM_BYTES = 14 * _GIB
+_MIN_GPU_SYSTEM_RAM_BYTES = 14 * _GIB
 _MIN_GPU_VRAM_BYTES = 7 * _GIB
 _MIN_GPU_FREE_VRAM_BYTES = 5 * _GIB
 _FULL_GPU_VRAM_BYTES = 12 * _GIB
@@ -26,6 +30,18 @@ _WINDOWS_INFO_LOCK = threading.Lock()
 # Dynamic telemetry such as VRAM and battery status is collected without
 # PowerShell. Avoid launching a shell repeatedly while Settings is closed.
 _WINDOWS_INFO_TTL_SECONDS = 24 * 60 * 60
+
+
+@dataclass(frozen=True)
+class _NvidiaSnapshot:
+    name: str = ""
+    total_vram_bytes: int = 0
+    free_vram_bytes: int = 0
+    compute_capability: tuple[int, int] = (0, 0)
+
+    @property
+    def available(self) -> bool:
+        return bool(self.name and self.total_vram_bytes)
 
 
 @dataclass(frozen=True)
@@ -135,56 +151,131 @@ def _total_memory_bytes() -> int:
         return 0
 
 
-def _cuda_details() -> tuple[bool, str]:
-    try:
-        import torch
+def available_memory_bytes() -> int:
+    """Return currently available physical memory without optional packages."""
 
-        if torch.cuda.is_available():
-            return True, torch.cuda.get_device_name(0)
-    except Exception:
-        pass
-    return False, ""
+    if os.name == "nt":
+        class MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatusEx()
+        status.dwLength = ctypes.sizeof(MemoryStatusEx)
+        try:
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return int(status.ullAvailPhys)
+        except (AttributeError, OSError):
+            return 0
+        return 0
+
+    try:
+        pages = os.sysconf("SC_AVPHYS_PAGES")
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        return int(pages * page_size)
+    except (AttributeError, OSError, ValueError):
+        return 0
+
+
+def _nvidia_smi_path() -> str:
+    located = shutil.which("nvidia-smi")
+    if located:
+        return located
+    if os.name == "nt":
+        candidates = (
+            os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvidia-smi.exe"),
+            os.path.join(
+                os.environ.get("ProgramFiles", r"C:\Program Files"),
+                "NVIDIA Corporation",
+                "NVSMI",
+                "nvidia-smi.exe",
+            ),
+        )
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
+    return ""
+
+
+def _run_nvidia_query(fields: tuple[str, ...]) -> list[str]:
+    executable = _nvidia_smi_path()
+    if not executable:
+        return []
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    try:
+        result = subprocess.run(
+            [
+                executable,
+                f"--query-gpu={','.join(fields)}",
+                "--format=csv,noheader,nounits",
+                "--id=0",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=3,
+            check=False,
+            creationflags=creationflags,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+    rows = list(csv.reader(line for line in result.stdout.splitlines() if line.strip()))
+    return [value.strip() for value in rows[0]] if rows else []
+
+
+@lru_cache(maxsize=1)
+def _nvidia_snapshot() -> _NvidiaSnapshot:
+    values = _run_nvidia_query(("name", "memory.total", "memory.free", "compute_cap"))
+    if len(values) != 4:
+        values = _run_nvidia_query(("name", "memory.total", "memory.free"))
+    if len(values) < 3:
+        return _NvidiaSnapshot()
+    try:
+        total = int(float(values[1])) * 1024**2
+        free = int(float(values[2])) * 1024**2
+    except (TypeError, ValueError):
+        return _NvidiaSnapshot()
+    capability = (0, 0)
+    if len(values) > 3:
+        try:
+            major, minor = values[3].split(".", 1)
+            capability = (int(major), int(minor))
+        except (TypeError, ValueError):
+            capability = (0, 0)
+    return _NvidiaSnapshot(values[0], total, free, capability)
+
+
+def _cuda_details() -> tuple[bool, str]:
+    snapshot = _nvidia_snapshot()
+    return snapshot.available, snapshot.name
 
 
 def _cuda_memory_bytes() -> int:
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            return int(torch.cuda.get_device_properties(0).total_memory)
-    except Exception:
-        pass
-    return 0
+    return _nvidia_snapshot().total_vram_bytes
 
 
 def _cuda_free_memory_bytes() -> int:
     """Return free VRAM without allocating a model; zero means unavailable."""
-    try:
-        import torch
-
-        if torch.cuda.is_available() and hasattr(torch.cuda, "mem_get_info"):
-            free_bytes, _total_bytes = torch.cuda.mem_get_info(0)
-            return int(free_bytes)
-    except Exception:
-        pass
-    return 0
+    return _nvidia_snapshot().free_vram_bytes
 
 
 def _cuda_precision_details() -> tuple[tuple[int, int], bool]:
     """Return the active CUDA architecture and its safe HY-MT2 precision."""
-    try:
-        import torch
-
-        if not torch.cuda.is_available():
-            return (0, 0), False
-        raw_capability = torch.cuda.get_device_capability(0)
-        if len(raw_capability) < 2:
-            return (0, 0), False
-        capability = (int(raw_capability[0]), int(raw_capability[1]))
-        bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
-        return capability, bf16_supported
-    except Exception:
-        return (0, 0), False
+    capability = _nvidia_snapshot().compute_capability
+    # NVIDIA Ampere (SM 8.x) and newer provide native BF16 tensor support.
+    # The engine smoke/probe remains the final authority before inference.
+    return capability, capability[0] >= 8
 
 
 def _power_status() -> tuple[bool | None, int | None]:
@@ -398,16 +489,20 @@ def validate_processing_device(
             return False, f"GPU mode requires at least 5 GB free VRAM; detected {available:.1f} GB free."
         if capabilities.total_ram_bytes and capabilities.total_ram_bytes < _MIN_GPU_SYSTEM_RAM_BYTES:
             available = capabilities.total_ram_bytes / _GIB
-            return False, f"GPU mode requires at least 8 GB system RAM; detected {available:.1f} GB."
+            return False, f"HaizFlow requires a 16 GB system; detected {available:.1f} GiB usable RAM."
         return True, f"GPU ready: {capabilities.cuda_name}, {capabilities.total_vram_bytes / _GIB:.0f} GB VRAM."
     if preference == "cpu":
         if not capabilities.cpu_supported:
             available = capabilities.total_ram_bytes / _GIB
-            return False, f"CPU mode requires approximately 6 GB RAM; detected {available:.1f} GB."
+            return False, f"HaizFlow requires a 16 GB system; detected {available:.1f} GiB usable RAM."
         ram = capabilities.total_ram_bytes / _GIB
         return True, f"CPU ready: {ram:.0f} GB RAM, {capabilities.logical_cpu_count} logical processors."
     if capabilities.cpu_supported:
-        return True, f"CPU ready: {capabilities.total_ram_bytes / _GIB:.0f} GB RAM, {capabilities.logical_cpu_count} logical processors."
+        return (
+            True,
+            f"CPU ready: {capabilities.total_ram_bytes / _GIB:.0f} GB RAM, "
+            f"{capabilities.logical_cpu_count} logical processors.",
+        )
     return False, "This computer does not meet the minimum CPU or GPU memory requirement."
 
 
@@ -505,3 +600,4 @@ def clear_runtime_profile_cache() -> None:
     """Test helper for environment-forced hardware profiles."""
     runtime_profile.cache_clear()
     hardware_capabilities.cache_clear()
+    _nvidia_snapshot.cache_clear()

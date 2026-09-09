@@ -71,6 +71,7 @@ _INTERNAL_STREAM_MODES = {
     "--omnivoice-worker",
     "--runtime-probe",
     "--release-smoke",
+    "--ui-smoke-test",
 }
 if any(mode in sys.argv for mode in _INTERNAL_STREAM_MODES):
     _restore_internal_standard_streams()
@@ -121,7 +122,13 @@ if "--ui-smoke-test" in sys.argv:
     os.environ["HAIZFLOW_SMOKE_TEST"] = "1"
     from haizflow.desktop.main import main as run_desktop_smoke
 
-    run_desktop_smoke(smoke_test=True)
+    try:
+        run_desktop_smoke(smoke_test=True)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        raise
     raise SystemExit(0)
 
 from haizflow.desktop.main import main  # noqa: E402,I001

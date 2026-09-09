@@ -76,7 +76,7 @@ DOWNLOAD_HEADROOM_BYTES = 1024**3
 DOWNLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 DOWNLOAD_RETRIES = 3
 DOWNLOAD_TIMEOUT_SECONDS = 60
-USER_AGENT = "HaizFlow model bootstrap/1"
+USER_AGENT = "HaizFlow resource manager/1"
 
 
 class ModelBootstrapError(RuntimeError):
@@ -324,6 +324,9 @@ def _approved_download_url(url: str) -> bool:
         or host == "modelscope.cn"
         or host.endswith(".modelscope.cn")
         or host == "files.pythonhosted.org"
+        or host == "github.com"
+        or host == "objects.githubusercontent.com"
+        or host.endswith(".githubusercontent.com")
     )
 
 
@@ -477,20 +480,25 @@ def models_ready(root: Path, device: str) -> bool:
         return False
 
 
-def install_required_models(
+def install_model_assets(
     root: Path,
-    device: str,
+    assets: Iterable[ModelAsset],
     *,
     progress: ProgressCallback,
     cancel_event=None,
+    verify_complete: Callable[[Path], object] | None = None,
 ) -> Path:
-    """Install and verify the selected first-run model set."""
+    """Install one resource pack without pulling unrelated model families.
+
+    Downloads remain resumable and are only promoted after their pinned hash
+    matches. ``verify_complete`` lets each independent pack publish its own
+    integrity marker after all files are present.
+    """
     root = root.expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-    normalized_device = "gpu" if device == "gpu" else "cpu"
-    assets = required_assets(normalized_device)
+    assets = tuple(assets)
     total_bytes = sum(asset.size for asset in assets)
-    progress(ModelProgress("checking", "", "Checking installed models", 0, total_bytes))
+    progress(ModelProgress("checking", "", "Checking installed resources", 0, total_bytes))
 
     valid: set[str] = set()
     completed = 0
@@ -525,7 +533,7 @@ def install_required_models(
         required_gib = required_free / 1024**3
         available_gib = shutil.disk_usage(root).free / 1024**3
         raise ModelBootstrapError(
-            f"Not enough free space for models. Required {required_gib:.1f} GiB; "
+            f"Not enough free space. Required {required_gib:.1f} GiB; "
             f"available {available_gib:.1f} GiB in {root}."
         )
 
@@ -544,18 +552,30 @@ def install_required_models(
         completed += asset.size
 
     _check_cancelled(cancel_event)
-    progress(
-        ModelProgress(
-            "verifying",
-            "",
-            "Verifying the complete model set",
-            total_bytes,
-            total_bytes,
-        )
-    )
-    _verify_installed_components(root, normalized_device)
-    progress(ModelProgress("ready", "", "Models are ready", total_bytes, total_bytes))
+    progress(ModelProgress("verifying", "", "Verifying installed resources", total_bytes, total_bytes))
+    if verify_complete is not None:
+        verify_complete(root)
+    progress(ModelProgress("ready", "", "Resources are ready", total_bytes, total_bytes))
     return root
+
+
+def install_required_models(
+    root: Path,
+    device: str,
+    *,
+    progress: ProgressCallback,
+    cancel_event=None,
+) -> Path:
+    """Install and verify the selected legacy-compatible model set."""
+    normalized_device = "gpu" if device == "gpu" else "cpu"
+    assets = required_assets(normalized_device)
+    return install_model_assets(
+        root,
+        assets,
+        progress=progress,
+        cancel_event=cancel_event,
+        verify_complete=lambda resolved_root: _verify_installed_components(resolved_root, normalized_device),
+    )
 
 
 def model_payload_paths(root: Path, device: str) -> Iterable[Path]:

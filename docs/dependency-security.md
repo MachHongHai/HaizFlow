@@ -15,11 +15,11 @@ Every release candidate must run:
 .\scripts\audit-dependencies.ps1
 ```
 
-The script audits the environment that will be packaged with a pinned `pip-audit`. A new advisory fails the gate unless it is identified, threat-modeled, mitigated, time-bounded, and recorded here. Production must match `pyproject.toml`, the SHA-256-locked `requirements-lock-py313-win64.txt`, and `dependency-lock-manifest.json`.
+The script audits the Core lock and every separately shipped engine lock with a pinned `pip-audit`. A new advisory fails the gate unless it is identified, threat-modeled, mitigated, time-bounded, and recorded here. Core must match `pyproject.toml`, the SHA-256-locked `requirements-lock-py313-win64.txt`, and `dependency-lock-manifest.json`; engine artifacts must match `engine-dependency-lock-manifest.json`.
 
 ## Baseline controls
 
-- The Windows lock fixes exact versions and SHA-256 hashes. Environment sync uses uv's `unsafe-first-match` only to reach the exact locked version across the dedicated PyTorch, llama.cpp, and PyPI indexes; it never uses unconstrained best-match resolution.
+- Every Windows lock fixes exact versions and SHA-256 hashes. Core resolves only from PyPI. Dedicated CPU/CUDA engine locks declare their required PyTorch or llama.cpp index and are verified independently before packaging.
 - Model repository, immutable revision, filename, expected size, and full SHA-256 are fixed in the bootstrap manifest.
 - Downloads are staged and atomically promoted only after integrity verification.
 - HY-MT2 uses `local_files_only=True`, `use_safetensors=True`, and `trust_remote_code=False`.
@@ -40,6 +40,12 @@ The affected paths load untrusted checkpoints/configuration, expose Trainer/conv
 Temporarily accepted: [PYSEC-2026-3740 / CVE-2026-81726](https://github.com/advisories/GHSA-8mgp-746c-j5xp).
 
 NLTK 3.10.3 fixes the earlier parser, corpus-reader, recursion, and denial-of-service advisories. The remaining finding concerns caller-controlled paths in model-artifact loading and persistence APIs. HaizFlow does not expose those APIs: its WhisperX alignment wrapper replaces the NLTK resource loader with an internal sentence splitter, performs no NLTK download, and accepts no user-selected NLTK model path. Remove this exception when a compatible patched NLTK release is available.
+
+### Accelerate 1.14.0
+
+Temporarily accepted: [CVE-2026-69112](https://github.com/advisories/GHSA-4j2p-28q2-5m79).
+
+The affected Accelerate functions trust shard paths from a checkpoint `weight_map`. HaizFlow does not accept user model repositories: HY-MT2 and OmniVoice use immutable, SHA-256-verified local resource packs. In addition, `validate_checkpoint_weight_maps()` runs immediately before either provider loads a model. It rejects absolute paths, traversal, symlinks, missing shards, and any non-regular index or shard. Remove this exception when a compatible patched Accelerate release is published.
 
 ### DiskCache 5.6.3
 

@@ -37,6 +37,7 @@ _RUNTIME_MARKER_VERSION = "omnivoice-0.2.1-transformers-5.3.0-hub-1.3.0-httpx-0.
 _SAMPLE_RATE = 24_000
 _RUNTIME_PREPARE_LOCK = threading.Lock()
 _PERSISTENT_WORKER_LOCK = threading.RLock()
+_PERSISTENT_OPERATION_LOCK = threading.Lock()
 _PERSISTENT_WORKER_PROCESS: subprocess.Popen[str] | None = None
 _PERSISTENT_IDLE_TIMER: threading.Timer | None = None
 _PERSISTENT_WORKER_REGISTRY_ID = "omnivoice-warm-runtime"
@@ -286,6 +287,15 @@ def _prepare_isolated_runtime() -> Path:
 
 
 def _worker_command(request_path: Path) -> list[str]:
+    from haizflow.services.resource_packs import installed_engine_command
+
+    external = installed_engine_command(
+        "voice",
+        "omnivoice_worker",
+        {"provider": "omnivoice", "device": processing_device_preference()},
+    )
+    if external:
+        return [*external, str(request_path)]
     if getattr(sys, "frozen", False):
         return [sys.executable, "--omnivoice-worker", str(request_path)]
     return [
@@ -298,6 +308,15 @@ def _worker_command(request_path: Path) -> list[str]:
 
 
 def _worker_server_command() -> list[str]:
+    from haizflow.services.resource_packs import installed_engine_command
+
+    external = installed_engine_command(
+        "voice",
+        "omnivoice_server",
+        {"provider": "omnivoice", "device": processing_device_preference()},
+    )
+    if external:
+        return external
     if getattr(sys, "frozen", False):
         return [sys.executable, "--omnivoice-server"]
     return [
@@ -518,15 +537,16 @@ def _run_persistent_worker_process(
         else _CPU_STALL_TIMEOUT_SECONDS
     )
 
-    with _PERSISTENT_WORKER_LOCK:
-        process = _persistent_worker_unlocked()
-        try:
-            assert process.stdin is not None
-            process.stdin.write(f"{request_path}\n")
-            process.stdin.flush()
-        except (OSError, ValueError) as exc:
-            _stop_persistent_worker_unlocked()
-            return 1, f"Could not start the warm OmniVoice request: {exc}"
+    with _PERSISTENT_OPERATION_LOCK:
+        with _PERSISTENT_WORKER_LOCK:
+            process = _persistent_worker_unlocked()
+            try:
+                assert process.stdin is not None
+                process.stdin.write(f"{request_path}\n")
+                process.stdin.flush()
+            except (OSError, ValueError) as exc:
+                _stop_persistent_worker_unlocked()
+                return 1, f"Could not start the warm OmniVoice request: {exc}"
 
         last_completed = -1
         last_stage = ""
@@ -543,11 +563,15 @@ def _run_persistent_worker_process(
                     except (OSError, ValueError, TypeError, json.JSONDecodeError):
                         time.sleep(0.05)
                         continue
-                    _schedule_idle_shutdown()
+                    with _PERSISTENT_WORKER_LOCK:
+                        if _PERSISTENT_WORKER_PROCESS is process:
+                            _schedule_idle_shutdown()
                     return int(response.get("return_code", 1)), str(response.get("error") or "")
                 if process.poll() is not None:
                     detail = f"Warm OmniVoice worker exited unexpectedly ({process.returncode})."
-                    _stop_persistent_worker_unlocked()
+                    with _PERSISTENT_WORKER_LOCK:
+                        if _PERSISTENT_WORKER_PROCESS is process:
+                            _stop_persistent_worker_unlocked()
                     return int(process.returncode or 1), detail
 
                 now = time.monotonic()
@@ -581,7 +605,9 @@ def _run_persistent_worker_process(
                         f"{request.get('device') or 'cpu'}."
                     )
                     log_to_video(video_id, f"[TTS][ERROR] {detail}")
-                    _stop_persistent_worker_unlocked()
+                    with _PERSISTENT_WORKER_LOCK:
+                        if _PERSISTENT_WORKER_PROCESS is process:
+                            _stop_persistent_worker_unlocked()
                     return 1, detail
                 elif now - last_heartbeat >= _HEARTBEAT_LOG_INTERVAL_SECONDS:
                     last_heartbeat = now
@@ -592,13 +618,17 @@ def _run_persistent_worker_process(
                     )
                 if now - started >= MEDIA_PROCESS_TIMEOUT_SECONDS:
                     detail = "OmniVoice synthesis exceeded the configured processing timeout."
-                    _stop_persistent_worker_unlocked()
+                    with _PERSISTENT_WORKER_LOCK:
+                        if _PERSISTENT_WORKER_PROCESS is process:
+                            _stop_persistent_worker_unlocked()
                     return 1, detail
                 time.sleep(0.15)
         except BaseException:
             # A cancelled editor generation must not leave an old request
             # consuming the GPU while the replacement waits behind it.
-            _stop_persistent_worker_unlocked()
+            with _PERSISTENT_WORKER_LOCK:
+                if _PERSISTENT_WORKER_PROCESS is process:
+                    _stop_persistent_worker_unlocked()
             raise
 
 
@@ -831,6 +861,58 @@ def clear_runtime() -> None:
         _stop_persistent_worker_unlocked()
 
 
+def warm_runtime(language_id: str = "vi") -> None:
+    """Load OmniVoice in its isolated worker without synthesizing user audio."""
+    _prepare_isolated_runtime()
+    model_root = verify_omnivoice_model(Path(MODELS_DIR) / "omnivoice")
+    runtime_tmp = Path(TMP_DIR)
+    runtime_tmp.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="omnivoice-warm-", dir=runtime_tmp) as temp_name:
+        temp_root = Path(temp_name)
+        response_path = temp_root / "response.json"
+        request_path = temp_root / "request.json"
+        request = {
+            "model_root": str(model_root),
+            "site_packages": str(_sdk_root() / "site-packages"),
+            "device": "cuda:0" if processing_device_preference() == "gpu" else "cpu",
+            "language": _omnivoice_language_id(language_id),
+            "items": [],
+            "speaker_mode": "single",
+            "inference_steps": 8,
+            "status_path": str(temp_root / "status.json"),
+            "response_path": str(response_path),
+            "voice_seed": 0,
+        }
+        request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+        with _PERSISTENT_OPERATION_LOCK:
+            with _PERSISTENT_WORKER_LOCK:
+                process = _persistent_worker_unlocked()
+                if process.stdin is None:
+                    raise RuntimeError("OmniVoice worker input channel is unavailable.")
+                process.stdin.write(f"{request_path}\n")
+                process.stdin.flush()
+            deadline = time.monotonic() + 600.0
+            while time.monotonic() < deadline:
+                if response_path.is_file():
+                    response = json.loads(response_path.read_text(encoding="utf-8"))
+                    if int(response.get("return_code", 1)) != 0:
+                        raise RuntimeError(str(response.get("error") or "OmniVoice warm-up failed."))
+                    with _PERSISTENT_WORKER_LOCK:
+                        if _PERSISTENT_WORKER_PROCESS is process:
+                            _schedule_idle_shutdown()
+                    return
+                if process.poll() is not None:
+                    with _PERSISTENT_WORKER_LOCK:
+                        if _PERSISTENT_WORKER_PROCESS is process:
+                            _stop_persistent_worker_unlocked()
+                    raise RuntimeError("OmniVoice warm-up worker stopped unexpectedly.")
+                time.sleep(0.1)
+            with _PERSISTENT_WORKER_LOCK:
+                if _PERSISTENT_WORKER_PROCESS is process:
+                    _stop_persistent_worker_unlocked()
+            raise RuntimeError("OmniVoice warm-up timed out.")
+
+
 def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> int:
     request = json.loads(Path(request_path).read_text(encoding="utf-8"))
     site_packages = str(request["site_packages"])
@@ -883,6 +965,8 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
     model = runtime.get("model") if runtime.get("model_key") == model_key else None
     write_status(0, "reusing_model" if model is not None else "loading_model")
     if model is None:
+        from haizflow.core.dependency_security import validate_checkpoint_weight_maps
+
         previous_model = runtime.pop("model", None)
         runtime.pop("model_key", None)
         if previous_model is not None:
@@ -890,8 +974,10 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
             runtime.pop("narrator_prompt_cache", None)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+        model_root = str(request["model_root"])
+        validate_checkpoint_weight_maps(model_root)
         model = OmniVoice.from_pretrained(
-            str(request["model_root"]),
+            model_root,
             device_map=device,
             dtype=dtype,
             low_cpu_mem_usage=True,

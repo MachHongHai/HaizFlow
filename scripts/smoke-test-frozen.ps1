@@ -31,10 +31,15 @@ function Invoke-FrozenCheck {
       }
     }
   )
+  $SafeLabel = $Label -replace '[^A-Za-z0-9.-]', '_'
+  $StandardOutput = Join-Path $SmokeRoot "$SafeLabel.stdout.log"
+  $StandardError = Join-Path $SmokeRoot "$SafeLabel.stderr.log"
   $Process = Start-Process `
     -FilePath $Executable `
     -ArgumentList ($QuotedArguments -join " ") `
     -WindowStyle Hidden `
+    -RedirectStandardOutput $StandardOutput `
+    -RedirectStandardError $StandardError `
     -PassThru
   try {
     Wait-Process -Id $Process.Id -Timeout $TimeoutSeconds -ErrorAction Stop
@@ -45,7 +50,21 @@ function Invoke-FrozenCheck {
   }
   $Process.Refresh()
   if ($Process.ExitCode -ne 0) {
-    throw "$Label failed with exit code $($Process.ExitCode)."
+    $Diagnostic = @()
+    foreach ($LogPath in @($StandardOutput, $StandardError)) {
+      if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
+        $RawContent = Get-Content -LiteralPath $LogPath -Raw -ErrorAction SilentlyContinue
+        $Content = if ($null -eq $RawContent) { "" } else { $RawContent.Trim() }
+        if ($Content) {
+          if ($Content.Length -gt 8000) {
+            $Content = $Content.Substring($Content.Length - 8000)
+          }
+          $Diagnostic += $Content
+        }
+      }
+    }
+    $Detail = if ($Diagnostic.Count) { "`n" + ($Diagnostic -join "`n") } else { "" }
+    throw "$Label failed with exit code $($Process.ExitCode).$Detail"
   }
   Write-Output "[OK] $Label"
 }

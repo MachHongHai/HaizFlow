@@ -3,7 +3,12 @@ param()
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
-$DependencyLock = Join-Path $Root "requirements-lock-py313-win64.txt"
+$DependencyLocks = @(
+  (Join-Path $Root "requirements-lock-py313-win64.txt"),
+  (Join-Path $Root "requirements-lock-engine-cpu-py313-win64.txt"),
+  (Join-Path $Root "requirements-lock-engine-cuda128-py313-win64.txt"),
+  (Join-Path $Root "requirements-lock-engine-vision-py313-win64.txt")
+)
 $Uv = Get-Command uvx -ErrorAction SilentlyContinue
 
 if (!$Uv) {
@@ -12,9 +17,15 @@ if (!$Uv) {
 if (!(Test-Path -LiteralPath $Python -PathType Leaf)) {
   throw "Project Python is missing: $Python"
 }
-if (!(Test-Path -LiteralPath $DependencyLock -PathType Leaf)) {
-  throw "Dependency lock is missing: $DependencyLock"
+foreach ($DependencyLock in $DependencyLocks) {
+  if (!(Test-Path -LiteralPath $DependencyLock -PathType Leaf)) {
+    throw "Dependency lock is missing: $DependencyLock"
+  }
 }
+& $Python (Join-Path $PSScriptRoot "verify-dependency-lock.py") --no-installed-check
+if ($LASTEXITCODE -ne 0) { throw "Core dependency lock verification failed." }
+& $Python (Join-Path $PSScriptRoot "verify-engine-dependency-locks.py")
+if ($LASTEXITCODE -ne 0) { throw "Engine dependency lock verification failed." }
 
 # Reviewed exceptions are documented in docs/dependency-security.md. Any new
 # advisory remains fatal. Keep the IDs explicit so a broad package ignore
@@ -34,6 +45,11 @@ $AcceptedVulnerabilities = @(
   # HaizFlow only loads checksum-pinned local HY-MT2 safetensors with remote
   # code disabled and never calls tokenizer/processor save_pretrained().
   "CVE-2026-9856",
+  # Accelerate CVE-2026-69112 concerns caller-controlled weight_map shard
+  # paths. Both HY-MT2 and OmniVoice now validate every local checkpoint index
+  # and regular shard before Accelerate can access it; all model files are also
+  # delivered by immutable SHA-256-verified resource packs.
+  "CVE-2026-69112",
   # Lightning 2.6.5 is the newest compatible release and upstream has not
   # published the merged CVE-2026-58659 fix yet. HaizFlow backports the exact
   # instantiator allowlist in core/dependency_security.py and tests it.
@@ -50,30 +66,39 @@ $AcceptedCanonicalTorchVulnerabilities = @(
   "CVE-2025-3001"
 )
 
-$Arguments = @(
-  "--from", "pip-audit==2.10.1",
-  "pip-audit",
-  "--requirement", $DependencyLock,
-  "--no-deps",
-  "--disable-pip",
-  "--progress-spinner", "off"
-)
-foreach ($Vulnerability in $AcceptedVulnerabilities) {
-  $Arguments += @("--ignore-vuln", $Vulnerability)
-}
-
-& $Uv.Source @Arguments
-if ($LASTEXITCODE -ne 0) {
-  throw "Dependency vulnerability audit found an unreviewed advisory."
+foreach ($DependencyLock in $DependencyLocks) {
+  $Arguments = @(
+    "--from", "pip-audit==2.10.1",
+    "pip-audit",
+    "--requirement", $DependencyLock,
+    "--no-deps",
+    "--disable-pip",
+    "--progress-spinner", "off"
+  )
+  foreach ($Vulnerability in $AcceptedVulnerabilities) {
+    $Arguments += @("--ignore-vuln", $Vulnerability)
+  }
+  & $Uv.Source @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "Dependency vulnerability audit found an unreviewed advisory in $([System.IO.Path]::GetFileName($DependencyLock))."
+  }
 }
 
 # The CUDA wheels report local versions such as 2.8.0+cu128, which pip-audit
 # cannot map to PyPI and otherwise skips. Audit their canonical upstream
 # versions separately so a new PyTorch advisory still blocks the release.
 $CanonicalTorchPackages = & $Python -c @"
-import importlib.metadata
-for name in ('torch', 'torchaudio', 'torchvision'):
-    version = importlib.metadata.version(name).split('+', 1)[0]
+import re
+from pathlib import Path
+root = Path(r'$($Root.Replace("'", "''"))')
+found = {}
+for profile in ('cpu', 'cuda128'):
+    text = (root / f'requirements-lock-engine-{profile}-py313-win64.txt').read_text(encoding='utf-8')
+    for name in ('torch', 'torchaudio', 'torchvision'):
+        match = re.search(rf'(?m)^{name}==([^\s\\]+)', text)
+        if match:
+            found[name] = match.group(1).split('+', 1)[0]
+for name, version in sorted(found.items()):
     print(f'{name}=={version}')
 "@
 if ($LASTEXITCODE -ne 0 -or @($CanonicalTorchPackages).Count -ne 3) {
@@ -111,4 +136,4 @@ finally {
   }
 }
 
-Write-Output "Dependency vulnerability audit passed for the exact hashed lock; reviewed exceptions are documented and CUDA wheels were audited by canonical version."
+Write-Output "Dependency vulnerability audit passed for the Core and three exact engine locks; reviewed exceptions are documented and PyTorch wheels were audited by canonical version."

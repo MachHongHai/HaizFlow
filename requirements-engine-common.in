@@ -1,0 +1,9 @@
+# Shared runtime dependencies imported by HaizFlow code inside every frozen
+# resource engine. Keep this list small: UI and desktop-only dependencies must
+# remain in the Core application.
+python-dotenv==1.2.2
+pydantic==2.13.4
+# Keep network primitives on security-fixed releases even when an engine lock
+# also consults a vendor wheel index containing stale transitive packages.
+idna==3.15
+urllib3==2.7.0

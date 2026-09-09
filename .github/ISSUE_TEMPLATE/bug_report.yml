@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible HaizFlow defect
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English or Vietnamese is welcome. Remove private links, credentials, and copyrighted media before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: List the smallest sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result and relevant log
+      description: Include only the bounded technical log needed to diagnose the issue.
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows and hardware
+      placeholder: Windows 11 24H2, RTX 4060 8 GB, 16 GB RAM
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials, private URLs, and media I cannot share.
+          required: true

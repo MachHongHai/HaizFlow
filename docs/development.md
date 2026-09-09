@@ -81,7 +81,7 @@ src/haizflow/
   services/       use cases, storage, queues, cache, integrations
   utils/          stateless process and media helpers
   vendor/         audited compatibility code
-test/             unit, integration, QML creation, and regression tests
+tests/            unit, integration, QML creation, and regression tests
 scripts/          environment, audit, verification, build, release tools
 installer/        Inno Setup definition
 licenses/         third-party notices and license texts
@@ -229,7 +229,56 @@ Dependency or model changes also require [dependency security](dependency-securi
 
 Open an issue at [MachHongHai/HaizFlow](https://github.com/MachHongHai/HaizFlow/issues) when an architectural decision needs discussion before implementation.
 
-## 16. Packaging verification
+## 16. External engine packs
+
+Core and inference engines have separate dependency boundaries. Do not add Torch, ONNX Runtime, WhisperX,
+Transformers, Demucs, or model checkpoints to the Core lock or PyInstaller profile.
+
+Dependencies imported by HaizFlow code in every engine belong in `requirements-engine-common.in`. Profile-only
+inference dependencies remain in `requirements-engine-cpu.in`, `requirements-engine-cuda128.in`, or
+`requirements-engine-vision.in`. The verifier requires both sets in every engine lock and rejects Qt desktop
+packages from those locks.
+
+Regenerate all reviewed engine locks after changing an engine input:
+
+```powershell
+.\scripts\lock-engine-dependencies.ps1 -Profile all
+.\.venv\Scripts\python.exe .\scripts\verify-engine-dependency-locks.py
+```
+
+Build an unsigned internal engine only for local acceptance:
+
+```powershell
+.\scripts\build-resource-engine.ps1 -Profile cpu -Version 1 -AllowUnsigned
+```
+
+Valid profiles are `cpu`, `cuda128`, and `vision`. Each build uses an isolated virtual environment, validates
+the exact hash lock, freezes only that profile, generates profile-specific third-party notices, and runs a smoke
+test that imports the promised native modules. The smoke command is embedded in `engine.json`; Resource Manager
+runs it again before atomically activating a downloaded pack.
+
+Dependency resolution, PyInstaller work, and temporary files stay below `build/` on the repository drive. Do not
+redirect these jobs to the system temporary directory; CPU and CUDA environments can consume many gigabytes.
+
+A public pack must be Authenticode-signed and uploaded to an immutable HTTPS release URL. Pin the built archive
+only after upload:
+
+```powershell
+$env:HAIZFLOW_SIGN_CERT_PASSWORD = "<certificate-password>"
+.\scripts\build-resource-engine.ps1 `
+  -Profile cuda128 `
+  -Version 1 `
+  -SignCertificatePath C:\secure\haizflow-signing.pfx `
+  -ReleaseUrl https://github.com/MachHongHai/HaizFlow/releases/download/v1/engine-cuda128-py313-1.zip
+.\.venv\Scripts\python.exe .\scripts\verify-resource-pack-manifest.py --strict
+```
+
+Never invent archive sizes or checksums. `finalize-resource-pack.py` reads the finished ZIP and writes the actual
+compressed size, installed size, SHA-256, version, and URL to `runtime/resource-pack-manifest.json`. Public Core
+builds fail while any engine entry is unpinned. Model assets remain separately pinned by repository revision,
+filename, byte size, and SHA-256 in the model-integrity catalog.
+
+## 17. Packaging verification
 
 An unsigned build is an explicit engineering artifact, not a public release:
 

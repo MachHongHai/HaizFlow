@@ -14,7 +14,6 @@ from pathlib import Path
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-
 ROOT = Path(__file__).resolve().parents[1]
 LICENSE_PREFIXES = ("license", "copying", "notice", "copyright")
 MAX_LICENSE_BYTES = 4 * 1024 * 1024
@@ -42,7 +41,18 @@ def _source_url(metadata) -> str:
     return str(metadata.get("Home-page") or "").strip()
 
 
-def _direct_dependencies() -> set[str]:
+def _direct_dependencies(input_paths: tuple[Path, ...]) -> set[str]:
+    if input_paths:
+        direct = set()
+        for path in input_paths:
+            for raw_line in path.read_text(encoding="utf-8").splitlines():
+                value = raw_line.strip()
+                if not value or value.startswith(("#", "--")):
+                    continue
+                requirement = Requirement(value)
+                if not requirement.marker or requirement.marker.evaluate():
+                    direct.add(canonicalize_name(requirement.name))
+        return direct
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     direct = set()
     for raw_requirement in project.get("dependencies", []):
@@ -53,10 +63,9 @@ def _direct_dependencies() -> set[str]:
     return direct
 
 
-def _locked_distributions() -> set[str]:
+def _locked_distributions(lock_path: Path) -> set[str]:
     """Return the distributions that can actually enter the frozen artifact."""
 
-    lock_path = ROOT / "requirements-lock-py313-win64.txt"
     if not lock_path.is_file():
         raise RuntimeError(f"Dependency lock is missing: {lock_path}")
     names = {
@@ -97,7 +106,14 @@ def _copy_distribution_licenses(distribution, destination: Path) -> list[str]:
     return sorted(copied)
 
 
-def generate(output_directory: Path, *, strict: bool) -> int:
+def generate(
+    output_directory: Path,
+    *,
+    strict: bool,
+    lock_path: Path | None = None,
+    direct_input_paths: tuple[Path, ...] = (),
+    profile: str = "core",
+) -> int:
     output = output_directory.resolve()
     build_root = (ROOT / "build").resolve()
     is_unapproved_repo_path = ROOT in output.parents and output != build_root and build_root not in output.parents
@@ -110,8 +126,9 @@ def generate(output_directory: Path, *, strict: bool) -> int:
     python_licenses.mkdir(parents=True)
     component_licenses.mkdir(parents=True)
 
-    direct = _direct_dependencies()
-    locked = _locked_distributions()
+    lock_path = (lock_path or ROOT / "requirements-lock-py313-win64.txt").resolve()
+    direct = _direct_dependencies(tuple(path.resolve() for path in direct_input_paths))
+    locked = _locked_distributions(lock_path)
     rows = []
     unresolved_direct = []
     unresolved_all = []
@@ -162,29 +179,56 @@ def generate(output_directory: Path, *, strict: bool) -> int:
     lines = [
         "# Third-Party Notices",
         "",
-        "This inventory is generated from the exact Python environment used to build the Windows artifact.",
-        "License texts copied from installed wheels are under `licenses/python`; curated non-Python component texts are under `licenses/components`.",
+        f"Build profile: `{profile}`.",
+        "",
+        "This inventory is generated from the exact dependency lock and Python environment "
+        "used to build the Windows artifact.",
+        "License texts copied from installed wheels are under `licenses/python`; curated "
+        "non-Python component texts are under `licenses/components`.",
         "",
         "## Non-Python Components",
         "",
         "| Component | Distribution status | License | Source |",
         "| --- | --- | --- | --- |",
-        "| FFmpeg 8.1.2 essentials build | Bundled | GPL-3.0-or-later configured build | https://ffmpeg.org/ |",
-        "| HY-MT2 1.8B Transformers, revision 9a341cd1b679d3efd23b46e847b01745a71ed792 | First-run downloaded model | Apache-2.0 | https://huggingface.co/tencent/Hy-MT2-1.8B |",
-        "| HY-MT2 1.8B GGUF, revision 1cd5208700acedef4ef93019b6cfc148b8522d45 | First-run downloaded model | Apache-2.0 | https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF |",
-        "| PP-OCRv5 Mobile ONNX (RapidOCR v3.8.0) | First-run downloaded model | Apache-2.0 | https://github.com/PaddlePaddle/PaddleOCR |",
-        "| OmniVoice SDK 0.2.1 | First-run downloaded runtime | Apache-2.0 | https://github.com/k2-fsa/OmniVoice |",
-        "| OmniVoice checkpoint, revision c5fdb5ccb189668d56333f77ba2629f4cd7535f4 | First-run downloaded model | CC-BY-NC-4.0 (non-commercial) | https://huggingface.co/k2-fsa/OmniVoice |",
-        "| Douyin X-Bogus compatibility helper | Bundled adapted source | Apache-2.0 | https://github.com/jiji262/douyin-downloader |",
-        "| Microsoft Fluent System Icons (curated SVG subset) | Bundled | MIT | https://github.com/microsoft/fluentui-system-icons |",
-        "",
-        "The release bundles the signed upstream FFmpeg 8.1.2 source archive under `sources/ffmpeg`. The publisher must also satisfy corresponding-source obligations for covered statically linked libraries.",
-        "",
+    ]
+    if profile == "core":
+        lines.extend(
+            [
+                "| FFmpeg 8.1.2 essentials build | Bundled | GPL-3.0-or-later configured build | https://ffmpeg.org/ |",
+                "| Douyin X-Bogus compatibility helper | Bundled adapted source | Apache-2.0 | "
+                "https://github.com/jiji262/douyin-downloader |",
+                "| Microsoft Fluent System Icons (curated SVG subset) | Bundled | MIT | "
+                "https://github.com/microsoft/fluentui-system-icons |",
+                "| Bangers typeface | Bundled | SIL Open Font License 1.1 | https://github.com/google/fonts |",
+                "",
+                "AI engines and model files are not part of the Core artifact. Each independently "
+                "distributed resource pack carries its own inventory and applicable terms.",
+                "",
+                "The release bundles the signed upstream FFmpeg 8.1.2 source archive under "
+                "`sources/ffmpeg`. The publisher must also satisfy corresponding-source obligations "
+                "for covered statically linked libraries.",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "| HaizFlow inference engine launcher | Bundled | Apache-2.0 | "
+                "https://github.com/MachHongHai/HaizFlow |",
+                "",
+                "Model checkpoints are distributed as separate checksum-pinned packs and are not "
+                "included in this engine archive.",
+                "",
+            ]
+        )
+    lines.extend(
+        [
         "## Python Distributions",
         "",
         "| Package | Version | Direct | Declared license | Source | Copied license files |",
         "| --- | --- | --- | --- | --- | --- |",
-    ]
+        ]
+    )
     for name, version, license_text, source_url, copied, is_direct in rows:
         values = [name, version, "yes" if is_direct else "no", license_text, source_url, copied]
         escaped = [str(value).replace("|", "\\|").replace("\n", " ") for value in values]
@@ -198,7 +242,8 @@ def generate(output_directory: Path, *, strict: bool) -> int:
     lines.extend(
         [
             "",
-            "This document is an engineering inventory, not legal advice. The complete copied license texts govern their components.",
+            "This document is an engineering inventory, not legal advice. The complete copied "
+            "license texts govern their components.",
             "",
         ]
     )
@@ -215,8 +260,17 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--lock", type=Path)
+    parser.add_argument("--direct-input", type=Path, action="append", default=[])
+    parser.add_argument("--profile", default="core")
     args = parser.parse_args(argv)
-    return generate(args.output, strict=args.strict)
+    return generate(
+        args.output,
+        strict=args.strict,
+        lock_path=args.lock,
+        direct_input_paths=tuple(args.direct_input),
+        profile=str(args.profile),
+    )
 
 
 if __name__ == "__main__":

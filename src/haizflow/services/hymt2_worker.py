@@ -492,6 +492,9 @@ def _load_model(model_name: str):
         dtype = torch.float32
         precision_label = "FP32"
     model_source, local_files_only = _local_transformers_model_source(model_name)
+    from haizflow.core.dependency_security import validate_checkpoint_weight_maps
+
+    validate_checkpoint_weight_maps(model_source)
     _emit_diagnostic(
         "tokenizer_load_start",
         torch,

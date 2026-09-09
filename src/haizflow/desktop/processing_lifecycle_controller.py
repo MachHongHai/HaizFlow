@@ -6,10 +6,8 @@ import os
 import queue
 
 from haizflow.desktop.activity_log import ActivityLogBuffer
-from haizflow.core.hardware import runtime_profile
 from haizflow.pipeline.process_registry import is_cancelled, is_paused, prepare_video_resume
 from haizflow.services import project_store, video_store
-from haizflow.services.translation import warm_hymt2_worker
 
 
 class ProcessingLifecycleController:
@@ -200,20 +198,21 @@ class ProcessingLifecycleController:
                 video_store.log_to_video(video_id, message)
                 video_store.update_video(video_id, status="failed", error=str(exc), step="failed")
 
-    @staticmethod
-    def prepare_batch_models(video_id: str) -> None:
-        profile = runtime_profile()
-        video_store.log_to_video(video_id, f"Preparing shared models for batch profile: {profile.summary}.")
-        try:
-            if profile.warm_hymt2_on_startup:
-                warm_hymt2_worker(lambda detail: video_store.log_to_video(video_id, detail))
-            if profile.warm_whisper_on_startup:
-                from haizflow.pipeline.transcribe import warm_whisperx_model
+    def prepare_batch_models(self, video_id: str) -> None:
+        """Queue speculative batch warm-up without importing inference in Core."""
 
-                warm_whisperx_model()
-            video_store.log_to_video(video_id, "Shared models are ready for the batch.")
-        except Exception as exc:
-            video_store.log_to_video(video_id, f"Batch model preparation deferred: {exc}")
+        video = video_store.get_video(video_id)
+        if video is None:
+            return
+        context = {
+            "device": str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu"),
+            "model": str(getattr(video, "speech_recognition_model", "small") or "small"),
+            "source_language": str(getattr(video, "source_language", "auto") or "auto"),
+            "language": str(getattr(video, "target_language", "") or ""),
+        }
+        self._host._smart_warmup.request("recognition", context, priority=8)
+        self._host._smart_warmup.request("translation", context, priority=9)
+        video_store.log_to_video(video_id, "Batch models were queued for background preparation.")
 
     def on_video_log(self, video_id: str, line: str) -> None:
         host = self._host

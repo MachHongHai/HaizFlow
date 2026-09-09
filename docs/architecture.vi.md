@@ -43,7 +43,7 @@ src/haizflow/
   services/      project, storage, download, queue, cache, integration
   utils/         helper media/process không trạng thái
   vendor/        mã tương thích có license upstream
-test/            unit, integration, QML creation và regression
+tests/           unit, integration, QML creation và regression
 scripts/         setup, verification và release tooling
 installer/       Inno Setup
 licenses/        third-party notice và license
@@ -62,9 +62,9 @@ Dependency đi từ presentation vào application services: QML → facade/contr
 
 ## 4. Desktop composition
 
-`haizflow_desktop.py` cấu hình runtime boundary trước khi import Qt/Torch và chuyển vào `.venv` nếu có. `Main.qml` là shell sống lâu, sở hữu route history, top bar, dialog toàn cục và activity strip. `RouteHost.qml` thay page mà không dựng lại shell.
+`haizflow_desktop.py` cấu hình runtime boundary, chuyển vào `.venv` nếu có rồi mới import Qt. Nó không import framework suy luận hoặc khởi động engine. `Main.qml` là shell sống lâu, sở hữu route history, top bar, dialog toàn cục và activity strip. `RouteHost.qml` thay page mà không dựng lại shell.
 
-`HaizFlowController` là singleton facade cho QML. Các controller chuyên trách sở hữu catalog/project, command, import, processing lifecycle, preview video, preview audio, download, publishing, setting, model bootstrap và diagnostics. Danh sách lớn được expose bằng `QAbstractListModel`.
+`HaizFlowController` là singleton facade cho QML. Các controller chuyên trách sở hữu catalog/project, command, import, processing lifecycle, preview video, preview audio, download, publishing, setting, gói tài nguyên, smart warm-up và diagnostics. Danh sách lớn được expose bằng `QAbstractListModel`.
 
 Activity ngắn nằm ở status strip; raw log chỉ mở khi cần chẩn đoán. Dialog dành cho quyết định hoặc lỗi cần hành động.
 
@@ -145,9 +145,11 @@ Khi đổi source, result pane giữ frame hợp lệ gần nhất. Worker/playe
 
 ## 9. Model và process isolation
 
-HY-MT2 dùng JSON-lines worker persistent. GPU dùng Transformers/safetensors đã verify; CPU dùng GGUF qua `llama-cpp-python`. OmniVoice chạy trong worker dependency-isolated. Demucs dùng checkpoint pin checksum. FFmpeg là external process có cancel và timeout.
+Core không import Torch, ONNX Runtime, WhisperX, Transformers, Demucs hoặc llama.cpp. Suy luận chạy trong engine CPU, CUDA 12.8 hoặc vision được freeze, version và cài riêng. HY-MT2/OmniVoice dùng server JSON-lines persistent bên trong engine đã chọn; recognition, OCR và Demucs reuse đúng process đã được warm. FFmpeg vẫn là external process do Core quản lý, có cancel và timeout.
 
-Model bootstrap là đường duy nhất cài payload production. Repository, revision, filename, size và SHA-256 được khóa. Loader nhận local path tường minh và không fallback sang network download không pin.
+Trình quản lý gói tài nguyên là đường production để cài engine và model tùy chọn. Mỗi gói khai báo phiên bản giao thức, URL bất biến, kích thước chính xác và SHA-256. Download hỗ trợ tiếp tục; engine phải vượt smoke test cô lập trước khi được kích hoạt nguyên tử và vẫn giữ một bản rollback. Loader nhận local path tường minh, không fallback sang download mạng chưa khóa.
+
+`SmartWarmupController` chỉ chạy sau khi cửa sổ Core đã phản hồi. Controller dự đoán capability kế tiếp từ project và công cụ đang chọn, chỉ warm gói đã cài trong worker nền và luôn nhường tác vụ người dùng. Trạng thái warm tách khỏi tiến trình video: model sẵn sàng giúp giảm độ trễ inference đầu nhưng không bao giờ làm thanh tác vụ báo hoàn tất. Khi thiếu bộ nhớ, tài nguyên dự đoán được giải phóng trước tác vụ đang chạy.
 
 Hardware policy chọn CUDA precision, memory profile, warm-up, batch size và CPU thread. FFmpeg hardware encode được probe riêng; thất bại có thể fallback `libx264`.
 
@@ -155,7 +157,7 @@ Hardware policy chọn CUDA precision, memory profile, warm-up, batch size và C
 
 Mạng chỉ dùng cho:
 
-- verified model download lần đầu;
+- tải gói tài nguyên đã được người dùng xác nhận và kiểm checksum;
 - URL/channel inspection và download;
 - Edge TTS khi user chọn;
 - Zernio authentication, upload và publishing.
@@ -170,19 +172,25 @@ Lỗi phải giữ tool thất bại, retry point an toàn và recovery action, 
 
 ## 12. Runtime và packaging
 
-Python 3.13 x64 là runtime source/build. `pyproject.toml` khai báo direct dependency; `requirements-lock-py313-win64.txt` khóa transitive set có hash; `uv.lock` phục vụ resolution tái lập.
+Python 3.13 x64 là runtime source/build. `pyproject.toml` khai báo direct dependency; `requirements-lock-py313-win64.txt` là lock Core chỉ dùng PyPI và có hash. Engine CPU, CUDA, vision có lock hash và manifest review riêng; `uv.lock` phục vụ phát triển, không phải release artifact.
 
-PyInstaller dùng `onedir`; model không nằm trong installer. Thư mục cài đặt sở hữu runtime mutable:
+PyInstaller dùng `onedir` cho Core; engine AI, model và dữ liệu mutable không nằm trong installer. Resource Manager tạo resource root local sau khi cài:
 
 ```text
 runtime/
+  engines/
   models/
+  packages/
   cache/
   data/
   tmp/
 ```
 
 Source mode có thể dùng `HAIZFLOW_HOME` để tạo cùng containment boundary.
+
+Inventory lúc khởi động chỉ kiểm tra sự tồn tại và kích thước dự kiến; UI thread không hash checkpoint nhiều GiB.
+SHA-256 đầy đủ chạy khi cài, sửa chữa hoặc ngay trước lần load model cần tin cậy đầu tiên. Việc dọn thư mục cũ sau
+khi chuyển ổ tài nguyên cũng chạy trong maintenance worker sau frame đầu tiên.
 
 ## 13. Checklist thay đổi
 

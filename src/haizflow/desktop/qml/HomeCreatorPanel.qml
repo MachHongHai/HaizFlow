@@ -31,7 +31,7 @@ AppSurface {
 
     Text {
         Layout.fillWidth: true
-        text: qsTr("HaizFlow là dự án nguồn mở dành cho quy trình xử lý video cục bộ trên Windows.")
+        text: qsTr("HaizFlow miễn phí, mã nguồn mở và có thể xử lý video ngay trên máy Windows.")
         color: Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.label

@@ -179,11 +179,12 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertFalse(options[1]["available"])
 
-    def test_whisper_turbo_readiness_uses_the_integrity_verifier(self):
-        with patch.object(qml_controller, "verify_whisper_turbo_model") as verifier:
-            self.assertTrue(HaizFlowController._detect_whisper_turbo_model_ready())
+    def test_whisper_turbo_readiness_uses_fast_resource_inventory(self):
+        manager = SimpleNamespace(status=Mock(return_value="installed"))
+        host = SimpleNamespace(_resource_packs=SimpleNamespace(manager=manager))
 
-        verifier.assert_called_once()
+        self.assertTrue(HaizFlowController._detect_whisper_turbo_model_ready(host))
+        manager.status.assert_called_once_with("model-whisper-turbo")
 
     def test_download_project_source_import_uses_single_replace_and_batch_copy_flows(self):
         with tempfile.TemporaryDirectory() as temporary:

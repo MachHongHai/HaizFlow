@@ -69,7 +69,7 @@ src/haizflow/
   services/       use case, storage, queue, cache, integration
   utils/          helper media/process không trạng thái
   vendor/         mã tương thích đã audit
-test/             unit, integration, QML creation, regression
+tests/            unit, integration, QML creation, regression
 scripts/          môi trường, audit, verify, build, release
 installer/        định nghĩa Inno Setup
 licenses/         notice và license bên thứ ba
@@ -182,7 +182,55 @@ Tài liệu user nói rõ thao tác, kết quả và cách phục hồi. Tài li
 
 Mở issue tại [MachHongHai/HaizFlow](https://github.com/MachHongHai/HaizFlow/issues) nếu cần thống nhất quyết định kiến trúc trước khi code.
 
-## 16. Kiểm chứng đóng gói
+## 16. Gói bộ xử lý độc lập
+
+Core và engine suy luận có boundary dependency riêng. Không thêm Torch, ONNX Runtime, WhisperX, Transformers,
+Demucs hoặc checkpoint model vào lock hay profile PyInstaller của Core.
+
+Dependency mà mã HaizFlow trong mọi engine cùng import phải nằm trong `requirements-engine-common.in`.
+Dependency suy luận riêng giữ ở `requirements-engine-cpu.in`, `requirements-engine-cuda128.in` hoặc
+`requirements-engine-vision.in`. Verifier bắt buộc cả hai nhóm có mặt trong lock engine và từ chối package Qt
+desktop lọt vào engine.
+
+Sau khi đổi input của engine, tạo lại toàn bộ lock đã khóa hash rồi kiểm chứng:
+
+```powershell
+.\scripts\lock-engine-dependencies.ps1 -Profile all
+.\.venv\Scripts\python.exe .\scripts\verify-engine-dependency-locks.py
+```
+
+Chỉ dùng build chưa ký cho kiểm thử nội bộ:
+
+```powershell
+.\scripts\build-resource-engine.ps1 -Profile cpu -Version 1 -AllowUnsigned
+```
+
+Ba profile hợp lệ là `cpu`, `cuda128` và `vision`. Mỗi build dùng virtual environment cô lập, kiểm lock hash,
+chỉ freeze dependency của profile tương ứng, tạo notice bên thứ ba riêng và chạy smoke test bằng cách import các
+native module mà engine cam kết cung cấp. Lệnh smoke nằm trong `engine.json`; Resource Manager chạy lại lệnh này
+trước khi kích hoạt gói tải về bằng thao tác atomic.
+
+Cache resolve dependency, thư mục làm việc PyInstaller và tệp tạm đều nằm dưới `build/` trên ổ chứa repository.
+Không chuyển các tác vụ này sang thư mục tạm hệ thống vì environment CPU/CUDA có thể dùng nhiều GiB.
+
+Gói phát hành công khai phải được ký Authenticode và tải lên URL HTTPS bất biến. Chỉ pin archive sau khi upload:
+
+```powershell
+$env:HAIZFLOW_SIGN_CERT_PASSWORD = "<mật-khẩu-certificate>"
+.\scripts\build-resource-engine.ps1 `
+  -Profile cuda128 `
+  -Version 1 `
+  -SignCertificatePath C:\secure\haizflow-signing.pfx `
+  -ReleaseUrl https://github.com/MachHongHai/HaizFlow/releases/download/v1/engine-cuda128-py313-1.zip
+.\.venv\Scripts\python.exe .\scripts\verify-resource-pack-manifest.py --strict
+```
+
+Không tự điền dung lượng hoặc checksum ước lượng. `finalize-resource-pack.py` đọc ZIP hoàn chỉnh và ghi dung lượng
+nén, dung lượng cài, SHA-256, phiên bản và URL thực vào `runtime/resource-pack-manifest.json`. Build Core công khai
+bị chặn nếu còn engine chưa pin. Asset model tiếp tục được khóa riêng bằng revision repository, tên file, số byte
+và SHA-256 trong catalog kiểm toàn vẹn model.
+
+## 17. Kiểm chứng đóng gói
 
 Build chưa ký chỉ là artifact kỹ thuật nội bộ, không phải bản phát hành công khai:
 

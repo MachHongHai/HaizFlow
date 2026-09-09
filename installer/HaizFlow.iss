@@ -10,6 +10,15 @@
 #ifndef RequiredFreshBytes
   #error RequiredFreshBytes must be calculated from the verified artifact.
 #endif
+#ifndef RecommendedFreeBytes
+  #error RecommendedFreeBytes must be calculated from the verified artifact.
+#endif
+#ifndef RecommendedFreshBytes
+  #error RecommendedFreshBytes must be calculated from the verified artifact.
+#endif
+#ifndef ArtifactBytes
+  #error ArtifactBytes must be calculated from the verified artifact.
+#endif
 #ifndef SetupIconPath
   #error SetupIconPath must point to the generated multi-resolution .ico file.
 #endif
@@ -121,6 +130,7 @@ var
   StorageValueLabel: TNewStaticText;
 
 function RoundedUpGiB(const Bytes: Int64): String; forward;
+function RoundedUpTenthGiB(const Bytes: Int64): String; forward;
 
 procedure AddRequirementRow(
   Page: TWizardPage;
@@ -169,10 +179,10 @@ begin
   WizardForm.WelcomeLabel1.Caption := 'Install HaizFlow';
   WizardForm.WelcomeLabel2.Caption :=
     'Set up the local-first video workspace on this computer.' + #13#10 + #13#10 +
-    'The application is installed now. Verified AI models are downloaded on first launch.';
+    'The Core application is installed. Optional AI resources are managed in Settings.';
   WizardForm.FinishedHeadingLabel.Caption := 'HaizFlow is ready';
   WizardForm.FinishedLabel.Caption :=
-    'Installation completed. Launch HaizFlow to select CPU or GPU processing and download the required models.';
+    'Installation completed. Launch HaizFlow, then install only the resource packs you need.';
 
   CompatibilityPage := CreateCustomPage(
     wpSelectDir,
@@ -189,7 +199,7 @@ begin
   IntroLabel.Height := ScaleY(38);
   IntroLabel.WordWrap := True;
   IntroLabel.Caption :=
-    'Core processing runs locally. An internet connection is required for the first model download, URL imports and online voices.';
+    'Core processing runs locally. Internet is used only when you install a resource pack, import a URL, use an online voice, or publish.';
 
   AddRequirementRow(
     CompatibilityPage,
@@ -200,7 +210,7 @@ begin
   AddRequirementRow(
     CompatibilityPage,
     'Processor and memory',
-    'CPU mode works without an NVIDIA GPU. 8 GB RAM is the practical minimum; 16 GB or more is recommended.',
+    'CPU mode works without an NVIDIA GPU. 16 GB RAM is the supported minimum.',
     110
   );
   AddRequirementRow(
@@ -220,7 +230,9 @@ begin
   StorageValueLabel.WordWrap := True;
   StorageValueLabel.Font.Style := [fsBold];
   StorageValueLabel.Caption :=
-    'Storage: at least ' + RoundedUpGiB({#RequiredFreshBytes}) + ' GiB free for the application, models and working space.';
+    'Core application: ' + RoundedUpTenthGiB({#ArtifactBytes}) + ' GiB. AI engines and models are optional.' + #13#10 +
+    RoundedUpGiB({#RequiredFreshBytes}) + ' GiB minimum; ' +
+    RoundedUpGiB({#RecommendedFreshBytes}) + ' GiB recommended before a new install.';
 
   SupportLink := TNewStaticText.Create(CompatibilityPage);
   SupportLink.Parent := CompatibilityPage.Surface;
@@ -290,23 +302,40 @@ begin
   Result := IntToStr(Bytes div 1073741824);
 end;
 
+function RoundedUpTenthGiB(const Bytes: Int64): String;
+var
+  Tenths: Int64;
+begin
+  Tenths := (Bytes * 10 + 1073741823) div 1073741824;
+  Result := IntToStr(Tenths div 10) + '.' + IntToStr(Tenths mod 10);
+end;
+
 procedure UpdateCompatibilityStorage;
 var
   FreeBytes: Int64;
   TotalBytes: Int64;
   RequiredBytes: Int64;
+  RecommendedBytes: Int64;
 begin
   if IsUpgradeTarget(WizardDirValue) then
-    RequiredBytes := {#RequiredFreeBytes}
+  begin
+    RequiredBytes := {#RequiredFreeBytes};
+    RecommendedBytes := {#RecommendedFreeBytes};
+  end
   else
+  begin
     RequiredBytes := {#RequiredFreshBytes};
+    RecommendedBytes := {#RecommendedFreshBytes};
+  end;
   if GetSpaceOnDisk64(WizardDirValue, FreeBytes, TotalBytes) then
     StorageValueLabel.Caption :=
       'Storage: ' + RoundedDownGiB(FreeBytes) + ' GiB available; ' +
-      RoundedUpGiB(RequiredBytes) + ' GiB required for a safe install and first model download.'
+      RoundedUpGiB(RequiredBytes) + ' GiB minimum; ' + RoundedUpGiB(RecommendedBytes) +
+      ' GiB recommended for one active project.'
   else
     StorageValueLabel.Caption :=
-      'Storage: ' + RoundedUpGiB(RequiredBytes) + ' GiB is required. Setup will verify the selected folder before copying files.';
+      'Storage: ' + RoundedUpGiB(RequiredBytes) + ' GiB minimum; ' + RoundedUpGiB(RecommendedBytes) +
+      ' GiB recommended. Setup verifies the selected folder before copying files.';
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -421,4 +450,4 @@ begin
 end;
 
 [Messages]
-SelectDirLabel3=Choose where to install HaizFlow. The application and runtime data, including models downloaded on first launch, will stay below this folder. Existing runtime data is preserved during upgrades.
+SelectDirLabel3=Choose where to install HaizFlow. The Core application and resource packs you approve stay below this folder unless you move resource storage in Settings. Existing runtime data is preserved during upgrades.

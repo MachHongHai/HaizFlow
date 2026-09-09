@@ -98,8 +98,8 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
     """Reject a stale, partial, dirty, or differently-versioned frozen build.
 
     A checksum proves files did not change after finalization. This gate also
-    proves that they were finalised from this clean source revision. Model
-    payloads are intentionally forbidden because first-run bootstrap owns them.
+    proves that they were finalised from this clean source revision. AI engine
+    and model payloads are intentionally forbidden because Resource Manager owns them.
     """
     artifact = artifact_directory.resolve()
     verify_manifest(artifact)
@@ -145,8 +145,8 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
         ("git_commit", current_commit),
         ("git_dirty", False),
         ("packaging", "PyInstaller onedir"),
-        ("model_delivery", "first-run-download"),
-        ("model_storage", "runtime/models"),
+        ("model_delivery", "resource-packs"),
+        ("model_storage", "external-resource-root"),
         ("bundled_cpu_model", False),
         ("bundled_gpu_model", False),
         ("bundled_whisper_model", False),
@@ -183,7 +183,7 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
     bundled_model_files = list(model_root.rglob("*")) if model_root.exists() else []
     if any(path.is_file() for path in bundled_model_files):
         raise RuntimeError(
-            "Model payload must not be bundled in the installer; first-run download owns _internal/models."
+            "Model payload must not be bundled in the Core installer; Resource Manager owns external models."
         )
     forbidden_model_files = {
         (filename.lower(), size)
@@ -257,8 +257,8 @@ def finalize(artifact_directory: Path) -> None:
         "git_branch": _git_value("branch", "--show-current"),
         "git_dirty": bool(_git_value("status", "--porcelain")),
         "python": sys.version.split()[0],
-        "model_delivery": "first-run-download",
-        "model_storage": "runtime/models",
+        "model_delivery": "resource-packs",
+        "model_storage": "external-resource-root",
         "bundled_cpu_model": False,
         "bundled_gpu_model": False,
         "bundled_whisper_model": False,

@@ -2,24 +2,28 @@
 
 [Documentation](README.md) · [Repository](../README.md) · [Tiếng Việt](user-guide.vi.md)
 
-This guide explains the application in task order. It assumes no knowledge of the internal models or media pipeline.
+This guide covers installation, projects, editing and routine troubleshooting. You do not need to know which internal model or file format HaizFlow uses.
 
-## 1. Before you begin
+## 1. Before installation
 
-HaizFlow is a Windows desktop application. It stores projects locally and can perform the core recognition, translation, local speech, audio, and video operations without a paid inference API.
+HaizFlow supports Windows 10 version 1809 or later and Windows 11 on x64 computers. The official minimum is 16 GiB RAM. An NVIDIA GPU is optional; it shortens processing time for compatible models but is not required for the Core application.
 
-Prepare the following:
+Allow space for four separate items:
 
-- a readable source video with an audio track;
-- enough free storage for the source, generated assets, caches, and export;
-- an Internet connection for first-use model downloads and any online feature;
-- optional NVIDIA GPU resources for faster local inference.
+1. the Core application;
+2. the engines and models you choose in Resource packs;
+3. source videos and exports;
+4. temporary editing data.
 
-Local processing does not mean every feature is offline. Edge TTS, URL imports, model installation, and social publishing require a network connection.
+Setup displays the measured requirement for its exact build. The current verified Core artifact is 477 MiB and Setup recommends 4 GiB of free space. Optional resource packs and project media are measured separately and are not included in the Core figure.
 
-## 2. Install and open HaizFlow
+HaizFlow can perform recognition, translation, local speech, audio separation and OCR on the computer after the appropriate packs are installed. Edge TTS, public-link imports, resource downloads and social publishing require an Internet connection.
 
-For a source checkout:
+## 2. Install and open
+
+For a published build, start Setup and use the location suggested by Windows unless you have a reason to choose another local drive. Do not place engines or models on a network drive.
+
+To run from source:
 
 ```powershell
 git clone https://github.com/MachHongHai/HaizFlow.git
@@ -28,239 +32,210 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-desktop-env.ps1
 .\.venv\Scripts\python.exe .\haizflow_desktop.py
 ```
 
-The first setup can take time because Torch, Qt, and media libraries are large. Do not interrupt PowerShell while dependencies are being synchronized.
+The Home page opens without waiting for an AI model. If **Keep models ready** is enabled, HaizFlow prepares installed models in a separate process once the interface is responsive. This preparation does not start work on a video.
 
-When a model is first required, HaizFlow shows its download or preparation state in the bottom activity strip. A model becomes available only after its expected size and SHA-256 checksum are verified.
+## 3. Install resource packs
 
-## 3. Understand the application shell
+Open **Settings → Resource packs**. Packs are grouped by processor, recognition, translation, voice and picture.
 
-The persistent top bar contains navigation, Projects, Edit, Settings, and Help. Back and Forward follow route history. Undo and Redo belong to Edit history and are independent from navigation.
+Each row shows download size, installed size, version, location and current state. Before installation, HaizFlow also counts extraction space, the previous version retained for rollback and 2 GiB of free-space reserve.
 
-The main navigation contains:
+- **Install** downloads and verifies a pack.
+- **Pause** and **Resume** control a download without discarding valid partial data.
+- **Repair** checks and replaces damaged files.
+- **Remove** deletes a pack that no worker is using.
+- **Move storage** transfers all managed resources to another local drive, verifies the copy and only then removes the old copy.
 
-- **Home:** recent projects, primary actions, developer links, and the tutorial placeholder.
-- **Projects:** all project types in a filterable grid.
-- **Downloads:** projects for video, channel, and audio acquisition.
-- **Social publishing:** publishing projects and their queues.
-- **Settings:** language, processing device, runtime information, model storage, privacy, and Manual cache cleanup.
+HaizFlow does not download a missing pack automatically. If a tool needs one, the message names the missing packs and opens the correct section in Settings. Return to the project and run the command after installation.
 
-When a project opens, the side navigation is hidden so the preview and editing surface receive more room. Use Home or Projects in the top bar to leave the workspace.
+## 4. Navigate the application
 
-## 4. Choose a project type
+The top bar contains Home, Back, Forward, Projects, Edit, Settings and Help.
 
-Select **New project**, then choose the mode that matches the job.
+- **Back** and **Forward** move through pages you have visited.
+- **Undo** and **Redo**, under Edit, reverse supported edits. They do not act as page navigation.
+- **Help** opens the About window and support links.
 
-### Automatic
+The side navigation is visible on Home, Projects, Downloads and Social publishing. It is hidden inside a project to leave more space for the video and timeline. Use Home or Projects in the top bar to leave a project.
 
-Use Automatic when one configuration should produce a complete localized video with minimal intervention. The pipeline is ordered and supports pause, resume, and recovery from validated checkpoints.
+## 5. Create a project
 
-### Manual
+Select **New project**, then choose the type that matches the work.
 
-Use Manual when you need independent control. Recognition and translation, subtitle editing, image cleanup, voice generation, audio mixing, and export are tools rather than mandatory steps.
+- **Automatic:** one video, one set of options and an ordered processing job. It supports pause, resume and validated recovery.
+- **Manual:** independent tools for source, translation, subtitles, picture, voice, sound and export.
+- **Batch:** several videos with a shared base configuration and a separate result for each video.
+- **Download:** video, channel or audio acquisition from a supported public source.
+- **Social publishing:** preparation and submission through a Zernio account supplied by the user.
 
-### Batch
+Home lists recent projects. The Projects page keeps the full collection in a searchable, filterable card grid.
 
-Use Batch for several videos with a common baseline. Each video retains its own status and output. A per-video override does not silently replace the batch baseline for new imports.
+## 6. Import a video
 
-### Download
-
-Use Download to save public video, channel, or audio sources into a managed project. Supported services can change their public access behavior; authentication may be required by the source platform.
-
-### Social publishing
-
-Use Social publishing to prepare captions and queue exported videos through a Zernio account that you configure.
-
-## 5. Import media
-
-### From a local file
+### From a file
 
 1. Select **From file**.
 2. Choose a supported video.
-3. Wait for integrity validation and thumbnail generation.
-4. Confirm that the preview and duration are available before processing.
+3. Wait until the thumbnail and duration appear.
+4. Check that the video can be played before starting a long operation.
 
-HaizFlow copies or registers the media within the project workflow. Do not remove the project folder while the application is running.
+Do not rename, move or delete files inside an open project directory.
 
 ### From a public link
 
 1. Select **From link**.
-2. Paste a direct public video URL. Share text containing one supported URL is also accepted.
-3. Select **Check** and review title, platform, creator, duration, and thumbnail.
-4. Select **Download and import**.
+2. Paste a public video URL. Text containing one supported URL is accepted as well.
+3. Select **Check**.
+4. Review the title, platform, creator, duration and thumbnail.
+5. Select **Download and import**.
 
-Metadata and download operations use bounded retries for temporary DNS, timeout, HTTP, and expired-manifest failures. A private, removed, region-locked, or login-protected video is reported directly instead of being retried indefinitely.
+HaizFlow retries temporary DNS, timeout, HTTP and expired-media errors with a fresh yt-dlp session. It does not endlessly retry a private, removed, region-restricted or login-protected video.
 
-If a link fails:
+If inspection fails, open the URL in a browser first. Confirm that the content is public, update platform authentication if the service requires it, and try again after a short wait if the service is limiting requests.
 
-1. Open the URL in a normal browser and confirm that it is public.
-2. Check the platform authentication setting when applicable.
-3. Retry after a short delay if the platform is rate-limiting requests.
-4. Update the checkout if the platform changed its page format and yt-dlp released a fix.
-
-## 6. Run an Automatic project
+## 7. Automatic projects
 
 1. Add the source video.
-2. Choose the recognition model and target language.
+2. Choose the source and target languages and recognition model.
 3. Choose OmniVoice for local speech or Edge TTS for an online voice.
-4. Configure original-subtitle treatment:
-   - keep the original picture;
-   - blur the detected subtitle region;
-   - patch the detected region.
-5. Choose original audio or voice separation.
-6. Add optional background music and watermark.
-7. Set source, speech, and music levels.
+4. Decide whether to keep, blur or patch the original subtitles.
+5. Keep the source sound or separate speech from the background.
+6. Add music or a watermark if required.
+7. Set the source, voice and music levels.
 8. Start processing.
 
-The command bar reports the active operation. Pausing preserves completed checkpoints. Restarting may invalidate downstream artifacts, so use it only when a clean run is required.
+The command bar distinguishes model preparation from video processing. A model reaching the ready state does not complete the task progress bar. Pausing retains completed checkpoints; restarting deliberately discards results that depend on the restarted operation.
 
-After translation, use the subtitle editor to correct text or timing. HaizFlow does not add or delete subtitle segments in this editor. Text changes invalidate speech for the affected sentence; timing changes reposition existing speech without synthesizing it again.
+## 8. Manual editor
 
-## 7. Work in the Manual editor
-
-Manual tools are independent. You can select any available tool and return to a cached variant later.
+Manual tools are not numbered steps. Select any tool whose required input is available.
 
 ### Source
 
-- Replace the source from a file or link.
-- Select **Keep original audio** to use the source track.
-- Select **Separate vocals**, then run separation to create vocals and background variants with Demucs.
-
-Changing the active source-audio mode uses a matching cached variant when available. It does not run recognition automatically.
+Replace the video from a file or link. **Keep original audio** uses the source track. **Separate vocals** runs Demucs and stores both the speech and background variants. Moving between variants reuses a valid saved result and does not start recognition.
 
 ### Recognition & translation
 
-Choose the recognition model and target language, then run the command. The result is a subtitle document with timing; it does not create speech.
+Choose the languages and recognition model, then run **Recognize and translate**. The result is timed subtitle text without a generated voice.
 
-Running this tool again replaces the translated subtitle document. Existing subtitle style, position, image configuration, watermark, music, and levels remain project settings. Existing speech is invalidated because it no longer represents the new text.
+Running the command again replaces the subtitle text after confirmation. The existing subtitle style and position, source-subtitle treatment, watermark, music and levels remain unchanged. Generated speech is marked out of date because it no longer matches the new text.
 
 ### Subtitles
 
-- Click a subtitle clip on the timeline or click the subtitle in the result preview.
-- Edit the complete segment text in the inspector.
-- Drag the subtitle on the result preview to change the project position.
-- Drag the transform handle to change the project subtitle size.
-- Drag clip edges on the timeline to change timing.
+Select a clip on the timeline or click the subtitle in the result video. The editor opens the complete text for that segment.
 
-Text saves automatically. The status changes from **Saving** to **Saved**. Clicking an empty preview area commits the draft, removes keyboard focus, and hides the transform frame.
+- Type normally; Vietnamese IME composition is committed before save or focus changes.
+- The draft saves 500 ms after typing stops and immediately when you click elsewhere.
+- **Saving**, **Saved** or a retry message shows the actual state.
+- Drag the subtitle on the video to move the project subtitle position.
+- Drag its handle to change the project subtitle size.
+- Drag a clip edge on the timeline to change its start or end time.
 
-Undo and Redo operate on editor history, including text, timing, visual, audio, voice, and project settings. They are not the same as Back and Forward navigation.
+Clicking an empty part of the video saves the draft, removes text focus and hides the transform frame. Text changes make only that segment's voice out of date. Timing and style changes do not synthesize speech again.
 
-### Image
+Undo and Redo cover supported text, timing, picture, voice, sound and project-setting changes. They are separate from Back and Forward.
 
-Choose whether to keep or conceal the source subtitles. When concealment is selected, choose blur or patch before the operation starts. The detected OCR region is a visual layer below the translated subtitle layer.
+### Picture
 
-Watermark changes belong here. Subtitle content, size, and timing do not.
+Choose **Keep** to leave the source picture untouched, or **Conceal** and then choose **Blur** or **Patch**. Selecting concealment runs the required analysis only after the method has been chosen. The concealed region remains below the translated subtitle layer.
+
+Watermark controls also belong here. Subtitle text and size are edited directly from the subtitle or the Subtitles tool, not from Picture.
 
 ### Voice
 
-Select **Generate voice** to open the voice dialog. Choose the provider, voice, and scope, then confirm; closing the dialog leaves the current voice and cache untouched. After speech exists, **Change voice** and **Regenerate** open the same dialog instead of changing the project immediately.
+Before speech exists, select **Generate voice**. Once speech exists, use **Change voice** or **Regenerate**. These actions open a dialog; changing a field in the dialog does not alter the video until you confirm.
 
-Use **Entire video** for one consistent voice, or **This segment** to synthesize only the subtitle selected on the timeline. Segment-level changes reuse every unaffected clip. Only missing or invalidated sentence clips are synthesized.
+Choose **This segment** to affect only the selected subtitle or **Entire video** to use one voice throughout. Unchanged segments keep their valid audio. When multi-speaker recognition is off, regenerated segments use the same voice configuration as the rest of the video.
 
-- OmniVoice runs locally after its assets are installed.
-- Edge TTS sends subtitle text to the selected online service.
-- Multi-speaker recognition is shown only when the selected provider supports that workflow.
+OmniVoice runs locally after its packs are installed. Edge TTS is an online provider and sends the text to that service. Voice samples in Automatic projects are prerecorded; opening a sample does not run a model.
 
-Editing one sentence after speech exists schedules that sentence for refresh; unchanged sentences retain their valid clips. Changing timing alone does not call TTS.
+### Sound
 
-### Audio
+Source, voice and music level controls are always visible. Changes are heard against the current video without running translation or TTS. Add music from a local file or a supported link.
 
-Source/background, speech, and music levels are applied to preview directly. Add background music from a file or supported link. Audio settings do not run recognition, translation, separation, or TTS.
-
-If a required voice clip is missing, the interface identifies the missing data rather than generating it silently.
+If a voice clip is missing, HaizFlow identifies the affected subtitle instead of creating it without confirmation.
 
 ### Export
 
-Export uses the current state. OCR cleanup, synthesized voice, music, watermark, or translated subtitles may be omitted if you did not enable or create them. The export command does not run missing AI tools on your behalf.
+Select **Export video** to render the current edit. Translated subtitles, concealed source subtitles, generated speech, music and watermark are optional. Export does not run an omitted AI tool on your behalf.
 
-When export completes, use the visible output action to play the video or open its containing folder.
+When the file is ready, the completion window offers **Play video**, **Open folder** and **Close**. The current output also remains available from the project toolbar.
 
-## 8. Preview, timeline, and playback
+## 9. Preview and timeline
 
-- The source preview and result preview have independent play, pause, stop, mute, and fullscreen controls.
-- **Play both** starts synchronized comparison playback.
-- Drag the transport slider or timeline playhead to seek. The UI follows the pointer immediately and sends consolidated seek requests to the player.
-- Preview generation keeps the last valid frame visible while a replacement is prepared.
-- A thin progress indicator appears only when the selected tool is producing a replacement artifact.
+The source and result players have separate play, pause, stop, mute and fullscreen controls. **Play both** starts them from the same position for comparison.
 
-The preview uses lower-cost proxies and cached layers for responsiveness. The final export still uses the configured output rendering path.
+Drag the player slider, click the timeline or drag the playhead to seek. During dragging, the thumb follows the pointer immediately; player seeks are combined to keep the interface responsive. Releasing the pointer applies the exact final position.
 
-## 9. Batch processing
+When a preview source changes, the last valid frame remains visible until its replacement is ready. Background model work must not take ownership of the player or sound output.
 
-1. Create a Batch project.
-2. Add files or import supported links.
-3. Set the shared processing configuration.
-4. Review any per-video override.
-5. Start the queue.
+## 10. Batch, Downloads and publishing
 
-Each row shows its own state and progress. Failed videos can be retried without discarding successful videos. Changing the batch baseline affects the intended batch configuration; a temporary per-video view does not become the new baseline automatically.
+### Batch
 
-## 10. Downloads
+Add videos, set the shared options and start the queue. Every row keeps its own status and progress. Retry a failed video without discarding successful outputs. A temporary per-video override does not silently become the base configuration for future imports.
 
-The Downloads workspace has three tabs:
+### Downloads
 
-- **Video:** inspect one URL, review metadata, then download.
-- **Channel:** inspect a public channel/profile, select candidates, then queue downloads.
-- **Audio:** download audio from a supported URL or extract audio from a local media file.
+- **Video:** inspect one URL, review its details and download it.
+- **Channel:** inspect a public channel or profile, select items and add them to the queue.
+- **Audio:** download supported audio or extract sound from a local media file.
 
-Downloads continue through the project queue. Temporary files are staged in project-owned directories and are promoted only after validation.
+Changing tabs does not reset the active request or queue.
 
-## 11. Social publishing
+### Social publishing
 
-1. Create or open a Social publishing project.
-2. Connect Zernio and store the API key through the application.
-3. Set default caption and post options.
-4. Add media from a file, folder, or another HaizFlow project.
-5. Review the platform, content, and queue state.
-6. Confirm publishing.
+Connect Zernio, set the caption and post options, add an exported video, review the destination and confirm. This sends media to a third-party service. Review its terms, privacy rules, quotas and charges before use. A published item provides **Open post**.
 
-Publishing uploads media to a third-party service and is not a local-only operation. Review Zernio and destination-platform terms, quota, privacy, and pricing before use. Published items expose **Open post**; invalid actions are not offered.
+## 11. Storage and cache
 
-## 12. Storage and cache
+| Item | Current limit or rule |
+| --- | ---: |
+| Current verified Core artifact | 477 MiB |
+| Core installation | Setup calculates the exact minimum; the current recommendation is 4 GiB free |
+| Free space retained during resource installation | 2 GiB after download, installation and rollback estimates |
+| Manual temporary data | 4 GiB per project; 16 GiB in total by default |
 
-Projects contain source references or managed copies, metadata, logs, previews, caches, and exports. Manual caches are content-addressed so a previous valid voice, OCR, visual, or audio variant can be reactivated.
+These Core figures do not include optional engines, models, source videos, exports or render temporary files. Resource packs and exports run their own free-space check using measured or estimated bytes.
 
-Use **Settings → Clear temporary Manual data** when cache storage must be reclaimed. Active inputs and exports are not cache entries and must not be deleted by this action. Close active work before manually moving a project directory.
+Use **Settings → Clear temporary Manual data** to remove inactive previews, old mixes and other rebuildable data. The command must not remove source media, exports, the active edit or revisions required by Undo and Redo.
 
-Advanced source users can set `HAIZFLOW_HOME` in `.env` to contain models, cache, data, and temporary files under a chosen local directory.
+Source users may set `HAIZFLOW_HOME` in `.env` to place managed models, cache, data and temporary files under another local directory.
 
-## 13. Troubleshooting
+## 12. Common problems
 
-### The application is preparing a model
+### A model is being prepared
 
-Wait for the bottom activity strip to complete. Model initialization and actual job progress are separate states. If preparation fails, open the technical log and verify storage, network, checksum, and GPU memory.
+You may continue using the interface. Preparation and video processing have separate status messages. If preparation fails, open the technical log and check free space, network access, file verification and available RAM or VRAM.
 
-### A URL fails on the first attempt
+### A public URL cannot be imported
 
-Current builds automatically retry known temporary failures with a fresh yt-dlp session. If the final error says private, unavailable, unauthorized, or login required, retrying without changing access conditions will not help.
+Open it in a browser and confirm that it is still public. Private, removed, restricted or login-protected content needs the appropriate access; pressing the button repeatedly cannot bypass that restriction. For a temporary service error, wait briefly and try once more.
 
-### Preview is silent
+### The result has no sound
 
-Confirm that the expected source/voice/music track exists, is not muted, and has non-zero volume. In Manual projects, generating voice and selecting/mixing audio are independent actions.
+Check that the intended source, voice and music tracks exist, are not muted and have a non-zero level. In a Manual project, generating a voice and choosing the sound mix are separate actions.
 
-### Preview differs briefly after opening a project
+### The result looks like the source for a moment
 
-Wait for the active cached preview to finish loading. The result pane should keep the last valid frame and swap only to a complete replacement. If it remains incorrect, open the technical log and report the project state without attaching private media.
+Wait for the saved preview to load. The result should keep its last valid frame and replace it only with a complete preview. If it remains incorrect, open the technical log and report the project state.
 
-### Vietnamese input loses the final word
+### Vietnamese input loses the last word
 
-Current builds commit Windows IME composition before focus changes and save actions. If the issue persists, include the Windows version, input method, affected field, and exact reproduction text in an issue.
+Current builds commit Windows IME text before saving. If this still occurs, report the Windows version, input method, affected field and exact text used to reproduce it.
 
 ### The application becomes slow
 
-- Stop unnecessary active jobs.
-- Confirm that the configured processing device has available memory.
-- Clear inactive Manual cache variants if disk pressure is high.
-- Avoid placing active projects on a slow network filesystem.
+Stop jobs you no longer need, check available RAM/VRAM and free disk space, and clear inactive Manual data if the cache is full. Avoid editing an active project from a slow network location.
 
-## 14. Report a problem
+## 13. Report a problem
 
 Open [GitHub Issues](https://github.com/MachHongHai/HaizFlow/issues) and include:
 
 - the action you performed;
-- expected and actual behavior;
-- a minimal reproducible source when sharing is permitted;
-- the visible error and relevant technical log excerpt;
-- Windows, GPU, and application version information.
+- what you expected and what happened instead;
+- the visible error and a relevant excerpt from the technical log;
+- Windows, GPU and HaizFlow versions;
+- a small sample only when you have permission to share it.
 
-Do not publish credentials, private links, full project metadata, or copyrighted media without permission.
+Do not publish passwords, API keys, private links, complete project metadata or copyrighted media without permission.

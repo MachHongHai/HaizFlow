@@ -13,6 +13,9 @@ DEFAULT_SETTINGS = {
     "language": "en",
     "processing_device": "cpu",
     "processing_device_origin": "detected",
+    "keep_models_warm": True,
+    "manual_project_cache_gib": 4,
+    "manual_global_cache_gib": 16,
 }
 _SETTINGS_LOCK = threading.RLock()
 
@@ -44,31 +47,50 @@ def load_settings() -> dict:
 
 
 def save_settings(settings: dict) -> dict:
+    # Callers that only own one setting (for example the runtime device
+    # controller) must not reset newer preferences added by another feature.
+    # Merge the persisted document first, then normalize the complete result.
+    merged = dict(DEFAULT_SETTINGS)
+    with _SETTINGS_LOCK:
+        try:
+            with open(SETTINGS_PATH, "r", encoding="utf-8") as file:
+                existing = json.load(file)
+            if isinstance(existing, dict):
+                merged.update({key: existing[key] for key in DEFAULT_SETTINGS if key in existing})
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            existing = {}
+    merged.update({key: value for key, value in settings.items() if key in DEFAULT_SETTINGS})
+
+    def bounded_integer(key: str, default: int, minimum: int, maximum: int) -> int:
+        try:
+            value = int(merged.get(key, default))
+        except (TypeError, ValueError):
+            value = default
+        return max(minimum, min(maximum, value))
+
     normalized = {
         # Theme switching was removed in favour of one production palette.
         # Always normalize legacy dark/light preferences so old installations
         # cannot silently reintroduce a second appearance.
         "theme": "graphite",
-        "language": settings.get("language") if settings.get("language") in {"en", "vi"} else "en",
+        "language": merged.get("language") if merged.get("language") in {"en", "vi"} else "en",
         "processing_device": (
-            settings.get("processing_device")
-            if settings.get("processing_device") in {"cpu", "gpu"}
+            merged.get("processing_device")
+            if merged.get("processing_device") in {"cpu", "gpu"}
             else "cpu"
         ),
         "processing_device_origin": (
-            settings.get("processing_device_origin")
-            if settings.get("processing_device_origin") in {"detected", "manual"}
+            merged.get("processing_device_origin")
+            if merged.get("processing_device_origin") in {"detected", "manual"}
             else "detected"
         ),
+        "keep_models_warm": bool(merged.get("keep_models_warm", True)),
+        "manual_project_cache_gib": bounded_integer("manual_project_cache_gib", 4, 1, 64),
+        "manual_global_cache_gib": bounded_integer("manual_global_cache_gib", 16, 4, 256),
     }
     with _SETTINGS_LOCK:
-        try:
-            with open(SETTINGS_PATH, "r", encoding="utf-8") as file:
-                existing = json.load(file)
-            if isinstance(existing, dict) and all(existing.get(key) == value for key, value in normalized.items()):
-                return normalized
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            pass
+        if isinstance(existing, dict) and all(existing.get(key) == value for key, value in normalized.items()):
+            return normalized
         SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         handle, temporary_path = tempfile.mkstemp(
             prefix=".desktop-settings-",

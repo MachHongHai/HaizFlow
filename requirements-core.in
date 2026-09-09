@@ -1,0 +1,4 @@
+-e .
+
+# Core release profile: do not add AI engines here. Engine builds use the
+# dedicated profile inputs below and communicate with Core through protocol 1.

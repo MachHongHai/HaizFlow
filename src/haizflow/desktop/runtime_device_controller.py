@@ -5,29 +5,21 @@ from __future__ import annotations
 import queue
 import shutil
 import threading
-from pathlib import Path
 
-from haizflow.config import MODELS_DIR
 from haizflow.core.events import unsubscribe_log
 from haizflow.core.hardware import (
     configure_processing_device,
     detect_hardware_capabilities,
     processing_device_preference,
     recommended_processing_device,
-    runtime_profile,
     validate_processing_device,
 )
 from haizflow.core.runtime_probe import probe_runtime
 from haizflow.desktop.localization import QMessageBox
 from haizflow.pipeline.process_registry import pause_video
 from haizflow.services import desktop_settings, video_store
-from haizflow.services.model_bootstrap import (
-    ModelBootstrapCancelled,
-    ModelProgress,
-    install_required_models,
-    models_ready,
-)
-from haizflow.services.translation import shutdown_hymt2_worker, warm_hymt2_worker
+from haizflow.services.model_bootstrap import ModelProgress
+from haizflow.services.translation import shutdown_hymt2_worker
 
 
 class RuntimeDeviceController:
@@ -153,10 +145,17 @@ class RuntimeDeviceController:
         warmup_thread = host._warmup_thread
         if warmup_thread and warmup_thread.is_alive():
             warmup_thread.join(timeout=1.0)
-        if queue_stopped and not (warmup_thread and warmup_thread.is_alive()):
-            from haizflow.pipeline.transcribe import release_warm_whisperx_model
+        if (
+            queue_stopped
+            and not (warmup_thread and warmup_thread.is_alive())
+            and getattr(host, "_smart_warmup", None) is None
+        ):
+            try:
+                from haizflow.pipeline.transcribe import release_warm_whisperx_model
 
-            release_warm_whisperx_model()
+                release_warm_whisperx_model()
+            except (ImportError, ModuleNotFoundError):
+                pass
         if getattr(type(host), "_qml_instance", None) is host:
             type(host)._qml_instance = None
 
@@ -176,32 +175,6 @@ class RuntimeDeviceController:
                 "total_bytes": progress.total_bytes,
             }
         host._model_setup_events.put(values)
-
-    def _install_models(self, device: str) -> None:
-        host = self._host
-        host._model_setup_target_device = device
-
-        def report(progress: ModelProgress) -> None:
-            # File verification is not the end of first-run setup: the selected
-            # runtime still has to be probed and warmed. Do not briefly emit a
-            # terminal ``ready`` state that can unload/reload the overlay
-            # between those two phases.
-            if progress.state == "ready":
-                progress = ModelProgress(
-                    "warming",
-                    "",
-                    "Preparing the local model runtime",
-                    progress.completed_bytes,
-                    progress.total_bytes,
-                )
-            self._queue_model_setup(host, progress)
-
-        install_required_models(
-            Path(MODELS_DIR),
-            device,
-            progress=report,
-            cancel_event=host._model_setup_cancel_event,
-        )
 
     def _resolve_startup_processing_device(self) -> str:
         """Probe CUDA off the GUI thread before choosing the model runtime."""
@@ -269,182 +242,57 @@ class RuntimeDeviceController:
 
     def _warm_models_at_startup(self):
         host = self._host
-        setup_was_required = False
         try:
             if hasattr(host, "_hardware_probe_events") and not getattr(host, "_startup_hardware_resolved", False):
-                requested_device = self._resolve_startup_processing_device()
-            else:
-                requested_device = host._model_setup_target_device or processing_device_preference()
-            setup_was_required = not models_ready(Path(MODELS_DIR), requested_device)
-            if setup_was_required:
-                self._install_models(requested_device)
-                self._queue_model_setup(
-                    host,
-                    state="warming",
-                    component="",
-                    detail="Preparing the local model runtime",
-                )
-            probe = probe_runtime(requested_device)
-            if not probe.ok and requested_device == "gpu":
-                cpu_setup_required = not models_ready(Path(MODELS_DIR), "cpu")
-                if cpu_setup_required:
-                    setup_was_required = True
-                    self._queue_model_setup(
-                        host,
-                        state="checking",
-                        component="HY-MT2 CPU translation",
-                        detail="GPU runtime is unavailable; preparing the CPU fallback",
-                    )
-                    self._install_models("cpu")
-                cpu_probe = probe_runtime("cpu")
-                if cpu_probe.ok:
-                    configure_processing_device("cpu")
-                    host._active_processing_device = "cpu"
-                    host._settings_processing_device = "cpu"
-                    host._processing_device_origin = "detected"
-                    try:
-                        desktop_settings.save_settings(
-                            {
-                                "theme": host._settings_theme,
-                                "language": host._settings_language,
-                                "processing_device": "cpu",
-                                "processing_device_origin": "detected",
-                            }
-                        )
-                    except OSError:
-                        pass
-                    host._status_message = f"GPU runtime unavailable; using CPU. {probe.message}"
-                    host.settingsChanged.emit()
-                    host.hardwareChanged.emit()
-                    options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
-                    if options_changed:
-                        options_changed.emit()
-                else:
-                    host._runtime_probe_error = f"GPU runtime: {probe.message} CPU runtime: {cpu_probe.message}"
-            elif not probe.ok:
-                host._runtime_probe_error = probe.message
-            if host._runtime_probe_error:
-                host._status_message = f"Model runtime unavailable: {host._runtime_probe_error}"
-                self._set_runtime_state("failed")
-                host.statusMessageChanged.emit()
-                self._queue_model_setup(
-                    host,
-                    state="failed",
-                    component="",
-                    detail=host._status_message,
-                )
-                return
-            host._warm_models()
-            if host._runtime_state == "ready":
-                host._model_setup_target_device = ""
-                # Always finish the setup lifecycle. The constructor may have
-                # checked models for the saved device before the background
-                # hardware probe selected a different (already-installed)
-                # device. In that case no download was required, but leaving
-                # the state at ``checking`` kept the first-run overlay visible
-                # forever.
-                self._queue_model_setup(
-                    host,
-                    state="ready",
-                    component="",
-                    detail="Models are ready",
-                )
-            else:
-                self._queue_model_setup(
-                    host,
-                    state="failed",
-                    component="",
-                    detail=host._status_message,
-                )
-        except ModelBootstrapCancelled:
-            host._runtime_probe_error = "Model setup was cancelled."
-            host._status_message = host._runtime_probe_error
-            self._set_runtime_state("failed")
-            host.statusMessageChanged.emit()
-            self._queue_model_setup(
-                host,
-                state="cancelled",
-                component="",
-                detail="Model download was cancelled. You can retry when ready.",
-            )
+                self._resolve_startup_processing_device()
+            smart = getattr(host, "_smart_warmup", None)
+            if smart is not None:
+                smart.request_startup_prediction()
+            self._set_runtime_state("ready")
         except Exception as exc:
             host._runtime_probe_error = str(exc)
-            host._status_message = f"Model setup failed: {exc}"
-            self._set_runtime_state("failed")
+            host._status_message = f"Không thể kiểm tra bộ xử lý: {exc}"
+            self._set_runtime_state("ready")
             host.statusMessageChanged.emit()
-            self._queue_model_setup(
-                host,
-                state="failed",
-                component="",
-                detail=str(exc),
-            )
         finally:
             host._initial_model_warmup_done.set()
 
     def retryModelSetup(self):
         host = self._host
-        if host._warmup_thread and host._warmup_thread.is_alive():
-            return
-        retry_target = host._model_setup_target_device
-        if retry_target in {"cpu", "gpu"} and retry_target != host._active_processing_device:
-            self._switch_processing_device(retry_target)
-            return
-        host._model_setup_cancel_event = threading.Event()
-        host._runtime_probe_error = ""
-        host._initial_model_warmup_done.clear()
-        self._set_runtime_state("warming")
-        host._model_setup_state = "checking"
-        host._model_setup_component = ""
-        host._model_setup_detail = "Checking installed models"
-        host.modelSetupChanged.emit()
-        host._warmup_thread = threading.Thread(
-            target=self._warm_models_at_startup,
-            name="haizflow-model-setup",
-            daemon=True,
-        )
-        host._warmup_thread.start()
+        resource_packs = getattr(host, "_resource_packs", None)
+        if resource_packs is not None:
+            resource_packs.model.refresh()
+            resource_packs.changed.emit()
+        smart = getattr(host, "_smart_warmup", None)
+        if smart is not None:
+            smart.request_startup_prediction()
 
     def cancelModelSetup(self):
-        host = self._host
-        if host._model_setup_state not in {"checking", "downloading", "verifying"}:
-            return
-        host._model_setup_cancel_event.set()
-        host._model_setup_detail = "Cancelling model download"
-        host.modelSetupChanged.emit()
+        return
 
     def _warm_models_unlocked(self):
         host = self._host
-        profile = runtime_profile()
-        try:
-            warmed = []
-            if profile.warm_hymt2_on_startup:
-                warm_hymt2_worker(host._set_warmup_status)
-                warmed.append("HY-MT2")
-            if profile.warm_whisper_on_startup:
-                from haizflow.pipeline.transcribe import warm_whisperx_model
-
-                warm_whisperx_model()
-                warmed.append("WhisperX")
-            host._status_message = (
-                f"{', '.join(warmed)} ready - {profile.summary}" if warmed else f"Ready - {profile.summary}"
-            )
-            self._set_runtime_state("ready")
-        except Exception as exc:
-            host._status_message = f"Model warm-up unavailable: {exc}"
-            self._set_runtime_state("failed")
-        host.statusMessageChanged.emit()
+        smart = getattr(host, "_smart_warmup", None)
+        if smart is not None:
+            smart.request_startup_prediction()
+        self._set_runtime_state("ready")
 
     def _switch_processing_device(self, preference: str):
         host = self._host
         previous_device = host._active_processing_device
         host._model_setup_cancel_event = threading.Event()
         host._model_setup_target_device = preference
-        setup_required = not models_ready(Path(MODELS_DIR), preference)
-        if setup_required:
-            host._model_setup_state = "checking"
-            host._model_setup_component = ""
-            host._model_setup_detail = "Checking installed models"
-            host.modelSetupChanged.emit()
+        engine_pack = "engine-cuda128-py313" if preference == "gpu" else "engine-cpu-py313"
+        resource_packs = getattr(host, "_resource_packs", None)
+        if resource_packs is not None and resource_packs.manager.status(engine_pack) == "missing":
+            host._settings_processing_device = previous_device
+            host.appAlertRequested.emit(
+                "Thiếu bộ xử lý",
+                "Cài gói bộ xử lý phù hợp trong Cài đặt → Gói tài nguyên trước khi đổi thiết bị.",
+                "info",
+            )
+            host.settingsChanged.emit()
+            return
         host._device_switching = True
         self._set_runtime_state("warming")
         host._status_message = "Switching processing device"
@@ -468,16 +316,6 @@ class RuntimeDeviceController:
 
         def switch_models():
             try:
-                from haizflow.pipeline.transcribe import release_warm_whisperx_model
-
-                if setup_required:
-                    self._install_models(preference)
-                    self._queue_model_setup(
-                        host,
-                        state="warming",
-                        component="",
-                        detail="Preparing the selected model runtime",
-                    )
                 probe = probe_runtime(preference)
                 if not probe.ok:
                     active_device = host._active_processing_device
@@ -509,8 +347,11 @@ class RuntimeDeviceController:
                     host.statusMessageChanged.emit()
                     return
                 with host._model_runtime_lock:
-                    self._shutdown_translation()
-                    release_warm_whisperx_model()
+                    smart = getattr(host, "_smart_warmup", None)
+                    if smart is not None:
+                        smart.quiesce_for_device_switch()
+                    else:
+                        self._shutdown_translation()
                     configure_processing_device(preference)
                     host._active_processing_device = preference
                     host._settings_processing_device = preference
@@ -542,30 +383,10 @@ class RuntimeDeviceController:
                         component="",
                         detail="Models are ready",
                     )
-            except ModelBootstrapCancelled:
-                restore_previous_setting()
-                host._status_message = "Processing device switch cancelled during model setup."
-                self._set_runtime_state("ready")
-                if setup_required:
-                    self._queue_model_setup(
-                        host,
-                        state="cancelled",
-                        component="",
-                        detail="Model download was cancelled. Retry to finish switching device.",
-                    )
-                host.settingsChanged.emit()
-                host.statusMessageChanged.emit()
             except Exception as exc:
                 restore_previous_setting()
                 host._status_message = f"Processing device switch failed: {exc}"
                 self._set_runtime_state("ready")
-                if setup_required:
-                    self._queue_model_setup(
-                        host,
-                        state="failed",
-                        component="",
-                        detail=str(exc),
-                    )
                 host.settingsChanged.emit()
                 host.statusMessageChanged.emit()
             finally:
@@ -634,12 +455,13 @@ class RuntimeDeviceController:
             return
 
         try:
-            from haizflow.pipeline.transcribe import release_warm_whisperx_model
-
             with host._model_runtime_lock:
                 if preference != processing_device_preference():
-                    self._shutdown_translation()
-                    release_warm_whisperx_model()
+                    smart = getattr(host, "_smart_warmup", None)
+                    if smart is not None:
+                        smart.quiesce_for_device_switch()
+                    else:
+                        self._shutdown_translation()
                     configure_processing_device(preference)
             host._active_processing_device = preference
             host._runtime_probe_error = ""

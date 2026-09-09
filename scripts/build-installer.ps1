@@ -86,6 +86,9 @@ try {
     "/DAppVersion=$Version" `
     "/DRequiredFreeBytes=$($Requirements.required_free_bytes)" `
     "/DRequiredFreshBytes=$($FreshRequirements.required_free_bytes)" `
+    "/DRecommendedFreeBytes=$($Requirements.recommended_free_bytes)" `
+    "/DRecommendedFreshBytes=$($FreshRequirements.recommended_free_bytes)" `
+    "/DArtifactBytes=$($FreshRequirements.artifact_bytes)" `
     "/DSetupIconPath=$SetupIconPath" `
     "/DBrandingMarkPath=$BrandingMarkPath" `
     "/DOutputBaseFilename=$OutputBaseFilename" `

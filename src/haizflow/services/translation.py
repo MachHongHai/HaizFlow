@@ -13,15 +13,12 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from haizflow.config import HYMT2_REQUEST_TIMEOUT_SECONDS, HYMT2_WARM_TIMEOUT_SECONDS
-from haizflow.core.hardware import runtime_profile
+from haizflow.core.hardware import processing_device_preference, runtime_profile
 from haizflow.core.paths import is_frozen, project_root
 from haizflow.pipeline.process_registry import register_process, release_process_job, unregister_process
 from haizflow.services.video_store import log_to_video
 
-try:
-    from transformers.models.whisper.tokenization_whisper import LANGUAGES as WHISPER_LANGUAGE_NAMES
-except ImportError:  # pragma: no cover - transformers is a runtime dependency.
-    WHISPER_LANGUAGE_NAMES = {}
+WHISPER_LANGUAGE_NAMES = {}
 
 
 LANGUAGE_NAMES = {
@@ -192,6 +189,15 @@ def translate_segments(
 
 
 def _worker_command() -> list[str]:
+    from haizflow.services.resource_packs import installed_engine_command
+
+    external = installed_engine_command(
+        "translation",
+        "hymt2_server",
+        {"device": processing_device_preference()},
+    )
+    if external:
+        return external
     if is_frozen():
         return [sys.executable, "--hymt2-worker", "--server"]
     return [sys.executable, "-m", "haizflow.services.hymt2_worker", "--server"]

@@ -1,25 +1,20 @@
 # Tài liệu HaizFlow
 
-[English](README.md) · [Tiếng Việt](README.vi.md) · [Trang chính repository](../README.vi.md)
+[Trang chính](../README.vi.md) · [Hướng dẫn sử dụng](user-guide.vi.md) · [English](README.md)
 
-Tài liệu được chia theo đối tượng đọc. Hướng dẫn người dùng tập trung vào thao tác và kết quả nhìn thấy; tài liệu kỹ thuật xác định invariant, ranh giới và yêu cầu kiểm chứng.
+Hãy đọc hướng dẫn sử dụng nếu bạn cần cài đặt hoặc vận hành HaizFlow. Các tài liệu kỹ thuật trình bày cách phần mềm được xây dựng, ranh giới an toàn và những kiểm tra bắt buộc trước khi phát hành.
 
-| Bắt đầu tại đây | Dành cho | Phạm vi |
-| --- | --- | --- |
-| [Hướng dẫn sử dụng](user-guide.vi.md) | Người dùng và tester | Cài đặt, các loại dự án, chỉnh sửa, lưu trữ và xử lý lỗi. |
-| [Kiến trúc](architecture.vi.md) | Kỹ sư | Component, mô hình dữ liệu, dependency, worker, cache và ranh giới an toàn. |
-| [Hướng dẫn phát triển](development.vi.md) | Người đóng góp | Môi trường tái lập, test, quy ước QML/Python và pull request. |
-| [Trạng thái kỹ thuật Manual editor](manual-editor-stabilization.vi.md) | Maintainer | Phần đã triển khai, nghiệm thu còn lại và trọng tâm regression. |
-| [An toàn dependency](dependency-security.vi.md) | Người duyệt security | Chính sách audit, dependency đã khóa, ngoại lệ và giảm thiểu. |
-| [Sẵn sàng phát hành](release-readiness.vi.md) | Người phát hành | Điều kiện pháp lý, build, installer và production. |
+| Tài liệu | Dùng khi cần… |
+| --- | --- |
+| [Hướng dẫn sử dụng](user-guide.vi.md) | cài ứng dụng, tạo dự án, chỉnh video hoặc xử lý một lỗi thường gặp. |
+| [Kiến trúc](architecture.vi.md) | tìm hiểu process, dữ liệu lưu, cache, xử lý đồng thời và kết nối mạng. |
+| [Hướng dẫn phát triển](development.vi.md) | chuẩn bị source, chạy kiểm thử hoặc đóng góp mã. |
+| [Trạng thái trình sửa Thủ công](manual-editor-stabilization.vi.md) | xem những bảo đảm đã triển khai và các kiểm tra phần cứng còn thiếu. |
+| [An toàn dependency](dependency-security.vi.md) | rà dependency, model và các ngoại lệ bảo mật tạm thời. |
+| [Sẵn sàng phát hành](release-readiness.vi.md) | build, ký, kiểm thử và duyệt một bản có thể phân phối. |
+| [Đóng góp](../CONTRIBUTING.vi.md) | gửi issue hoặc pull request có phạm vi rõ ràng. |
+| [Chính sách bảo mật](../SECURITY.vi.md) | báo lỗ hổng qua kênh riêng tư. |
 
-## Quy ước tài liệu
+Repository hiển thị tài liệu tiếng Anh trước; tệp `.vi.md` tương ứng là bản tiếng Việt. Command, đường dẫn, tên thiết lập, trường schema và mã lỗi được giữ nguyên khi dịch có thể gây nhầm lẫn.
 
-- Tiếng Anh là bản canonical được hiển thị trước; mỗi tài liệu có bản `.vi.md` tương ứng.
-- Không dịch command, path, option, schema field và mã lỗi.
-- Hướng dẫn người dùng dùng câu trực tiếp, nói rõ thao tác và kết quả.
-- Tài liệu kỹ thuật dùng thuật ngữ chính xác, tách biệt hành vi đã kiểm chứng với giả định hoặc công việc dự kiến.
-- Số lượng test và kích thước artifact không được coi là thông tin sản phẩm vĩnh viễn; bằng chứng release nằm trong build metadata.
-- Ranh giới mạng, quyền riêng tư, giấy phép model và giới hạn tương thích phải xuất hiện tại nơi chúng ảnh hưởng tới quyết định.
-
-Nếu thấy tài liệu sai hoặc thiếu, hãy mở [GitHub issue](https://github.com/MachHongHai/HaizFlow/issues).
+Nếu tài liệu có chỗ sai, hãy mở [issue về tài liệu](https://github.com/MachHongHai/HaizFlow/issues) và ghi rõ trang cùng mục cần sửa.

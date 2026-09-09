@@ -15,7 +15,6 @@ from packaging.requirements import Requirement
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 GIB = 1024**3
-RUNTIME_WORKING_HEADROOM_BYTES = 2 * GIB
 
 
 def sha256(path: Path) -> str:
@@ -54,6 +53,12 @@ def check(condition: bool, message: str, failures: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate the HaizFlow source/build runtime.")
     parser.add_argument("--for-build", action="store_true")
+    parser.add_argument(
+        "--profile",
+        choices=("core", "full"),
+        default="full",
+        help="Core validates the distributable UI runtime without optional AI engines.",
+    )
     args = parser.parse_args()
     failures: list[str] = []
 
@@ -131,36 +136,37 @@ def main() -> int:
     except Exception as exc:
         check(False, f"Qt imports: {exc}", failures)
 
-    try:
-        import torch
+    torch = None
+    if args.profile == "full":
+        try:
+            import torch as imported_torch
 
-        torch_build = "CUDA-capable" if torch.version.cuda else "CPU-only"
-        check(bool(torch.version.cuda), f"Unified Torch build: {torch_build}", failures)
-        print(f"[INFO] CUDA available: {torch.cuda.is_available()}")
-        if torch.cuda.is_available():
-            print(f"[INFO] CUDA device: {torch.cuda.get_device_name(0)}")
-            tensor = torch.ones((16, 16), device="cuda", dtype=torch.float16)
-            result = tensor @ tensor
-            torch.cuda.synchronize()
-            check(float(result.sum().item()) > 0, "CUDA allocation and FP16 compute", failures)
-            print(f"[INFO] CUDA compute capability: {torch.cuda.get_device_capability(0)}")
-            print(f"[INFO] CUDA BF16 supported: {torch.cuda.is_bf16_supported()}")
-            del tensor, result
-            torch.cuda.empty_cache()
-    except Exception as exc:
-        check(False, f"Torch import: {exc}", failures)
+            torch = imported_torch
+            torch_build = "CUDA-capable" if torch.version.cuda else "CPU-only"
+            check(bool(torch.version.cuda), f"Unified Torch build: {torch_build}", failures)
+            print(f"[INFO] CUDA available: {torch.cuda.is_available()}")
+            if torch.cuda.is_available():
+                print(f"[INFO] CUDA device: {torch.cuda.get_device_name(0)}")
+                tensor = torch.ones((16, 16), device="cuda", dtype=torch.float16)
+                result = tensor @ tensor
+                torch.cuda.synchronize()
+                check(float(result.sum().item()) > 0, "CUDA allocation and FP16 compute", failures)
+                print(f"[INFO] CUDA compute capability: {torch.cuda.get_device_capability(0)}")
+                print(f"[INFO] CUDA BF16 supported: {torch.cuda.is_bf16_supported()}")
+                del tensor, result
+                torch.cuda.empty_cache()
+        except Exception as exc:
+            check(False, f"Torch import: {exc}", failures)
 
-    try:
-        import torchcodec  # noqa: F401
+        try:
+            import torchcodec  # noqa: F401
 
-        print("[OK] Optional TorchCodec native decoder")
-    except Exception:
-        print(
-            "[WARN] Optional TorchCodec decoder is unavailable because the bundled FFmpeg is a static build. "
-            "The pipeline supplies preloaded waveforms to WhisperX and does not depend on this decoder."
-        )
+            print("[OK] Optional TorchCodec native decoder")
+        except Exception:
+            print("[WARN] Optional TorchCodec decoder is unavailable; waveform fallback remains active.")
 
     from haizflow.config import HF_HOME, MODELS_DIR, RUNTIME_DATA_DIR, TMP_DIR, TORCH_HOME
+    from haizflow.core.storage_policy import MINIMUM_OPERATIONAL_FREE_BYTES
     from haizflow.core.runtime_probe import probe_runtime
 
     check(Path(RUNTIME_DATA_DIR).is_absolute(), f"Runtime data: {RUNTIME_DATA_DIR}", failures)
@@ -178,13 +184,14 @@ def main() -> int:
         except OSError:
             writable = False
         check(writable, f"Writable runtime directory: {path}", failures)
-    model_bytes = directory_size(Path(MODELS_DIR))
-    required_free_bytes = model_bytes + RUNTIME_WORKING_HEADROOM_BYTES
+    model_bytes = directory_size(Path(MODELS_DIR)) if args.profile == "full" else 0
+    required_free_bytes = model_bytes + MINIMUM_OPERATIONAL_FREE_BYTES
     free_bytes = shutil.disk_usage(RUNTIME_DATA_DIR).free
     check(
         free_bytes >= required_free_bytes,
         f"Runtime disk has {free_bytes / GIB:.1f} GB free; requires {required_free_bytes / GIB:.1f} GB "
-        f"({model_bytes / GIB:.1f} GB installed models + 2.0 GB working headroom)",
+        f"({model_bytes / GIB:.1f} GB installed models + "
+        f"{MINIMUM_OPERATIONAL_FREE_BYTES / GIB:.1f} GB operational reserve)",
         failures,
     )
 
@@ -227,11 +234,12 @@ def main() -> int:
             failures,
         )
 
-    cpu_probe = probe_runtime("cpu")
-    check(cpu_probe.ok, f"Isolated CPU model runtime: {cpu_probe.message}", failures)
-    if "torch" in locals() and torch.cuda.is_available():
-        gpu_probe = probe_runtime("gpu")
-        check(gpu_probe.ok, f"Isolated GPU model runtime: {gpu_probe.message}", failures)
+    if args.profile == "full":
+        cpu_probe = probe_runtime("cpu")
+        check(cpu_probe.ok, f"Isolated CPU model runtime: {cpu_probe.message}", failures)
+        if torch is not None and torch.cuda.is_available():
+            gpu_probe = probe_runtime("gpu")
+            check(gpu_probe.ok, f"Isolated GPU model runtime: {gpu_probe.message}", failures)
 
     pip_check = subprocess.run(
         [sys.executable, "-m", "pip", "check"],
@@ -244,7 +252,7 @@ def main() -> int:
     )
     check(pip_check.returncode == 0, pip_check.stdout.strip() or pip_check.stderr.strip() or "pip check", failures)
 
-    if args.for_build:
+    if args.for_build and args.profile == "full":
         from haizflow.core.model_integrity import (
             verify_alignment_models,
             verify_demucs_model,
@@ -274,6 +282,7 @@ def main() -> int:
                 (f"First-run {device.upper()} model manifest ({required_download_bytes(device) / GIB:.1f} GiB)"),
                 failures,
             )
+    if args.for_build:
         check((ROOT / "src" / "haizflow" / "desktop" / "qml" / "Main.qml").is_file(), "QML source tree", failures)
         check(importlib.metadata.version("pyinstaller") == "6.21.0", "PyInstaller 6.21.0", failures)
 

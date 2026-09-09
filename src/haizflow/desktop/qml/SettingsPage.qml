@@ -166,6 +166,55 @@ Item {
 
                 SettingRow {
                     Layout.fillWidth: true
+                    Layout.bottomMargin: Theme.space16
+                    label: qsTr("Giữ model sẵn sàng")
+                    description: qsTr("Chuẩn bị model đã cài sau khi giao diện mở; tác vụ của bạn luôn được ưu tiên.")
+                    AppSwitch {
+                        text: ""
+                        checked: AppController.keepModelsWarm
+                        Accessible.name: qsTr("Giữ model sẵn sàng")
+                        onToggled: AppController.setKeepModelsWarm(checked)
+                    }
+                }
+
+                SettingRow {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: Theme.space12
+                    label: qsTr("Cache mỗi dự án")
+                    description: qsTr("Giới hạn mềm; dữ liệu đang dùng không bị xóa.")
+                    AppSpinBox {
+                        Layout.preferredWidth: 132
+                        Layout.preferredHeight: 32
+                        from: 1
+                        to: 64
+                        value: AppController.manualProjectCacheGiB
+                        textFromValue: function (number, locale) { return number + " GiB"; }
+                        valueFromText: function (text, locale) { return parseInt(text); }
+                        onValueModified: AppController.setManualCacheLimits(
+                            value, Math.max(value, AppController.manualGlobalCacheGiB))
+                    }
+                }
+
+                SettingRow {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: Theme.space16
+                    label: qsTr("Cache toàn cục")
+                    description: qsTr("HaizFlow dọn các bản dựng cũ khi vượt giới hạn này.")
+                    AppSpinBox {
+                        Layout.preferredWidth: 132
+                        Layout.preferredHeight: 32
+                        from: 4
+                        to: 256
+                        value: AppController.manualGlobalCacheGiB
+                        textFromValue: function (number, locale) { return number + " GiB"; }
+                        valueFromText: function (text, locale) { return parseInt(text); }
+                        onValueModified: AppController.setManualCacheLimits(
+                            Math.min(value, AppController.manualProjectCacheGiB), value)
+                    }
+                }
+
+                SettingRow {
+                    Layout.fillWidth: true
                     Layout.bottomMargin: Theme.space12
                     label: qsTr("GPU")
                     description: root.hardwareInfo.activeGpuName || qsTr("Không khả dụng")
@@ -181,27 +230,6 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1
-                    color: Theme.divider
-                }
-
-                SettingRow {
-                    Layout.fillWidth: true
-                    Layout.topMargin: Theme.space16
-                    Layout.bottomMargin: Theme.space12
-                    label: qsTr("Thư mục model")
-                    description: AppController.modelSetupDirectory
-                }
-
-                InlineBanner {
-                    Layout.fillWidth: true
-                    tone: "info"
-                    message: qsTr("Model và cache ứng dụng được lưu trong thư mục dữ liệu HaizFlow.")
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    Layout.topMargin: Theme.space16
                     color: Theme.divider
                 }
 
@@ -231,6 +259,10 @@ Item {
                         variant: "secondary"
                         onClicked: AppController.clearManualCache("all")
                     }
+                }
+
+                ResourcePackSection {
+                    Layout.fillWidth: true
                 }
 
             }

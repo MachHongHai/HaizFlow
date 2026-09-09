@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib
+import json
+import stat
 from collections.abc import Mapping
 from functools import wraps
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 
@@ -18,6 +21,44 @@ _TRUSTED_LIGHTNING_INSTANTIATORS = frozenset(
     }
 )
 _GUARD_MARKER = "__haizflow_instantiator_guard__"
+
+
+def validate_checkpoint_weight_maps(model_directory: str | Path) -> tuple[Path, ...]:
+    """Reject unsafe shard paths before Accelerate can open a checkpoint.
+
+    CVE-2026-69112 affects Accelerate's handling of caller-controlled
+    ``weight_map`` values. HaizFlow only loads verified local model packs, but
+    validating every index at the process boundary also protects a damaged or
+    incorrectly assembled pack before third-party loading code sees it.
+    """
+    root = Path(model_directory).expanduser().resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError(f"Model directory is not a directory: {root}")
+
+    checked: list[Path] = []
+    for index_path in sorted(root.glob("*.index.json")):
+        if index_path.is_symlink() or not stat.S_ISREG(index_path.stat(follow_symlinks=False).st_mode):
+            raise ValueError(f"Checkpoint index must be a regular file: {index_path.name}")
+        try:
+            payload = json.loads(index_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Checkpoint index is unreadable: {index_path.name}") from exc
+        weight_map = payload.get("weight_map")
+        if not isinstance(weight_map, Mapping):
+            raise ValueError(f"Checkpoint index has no valid weight_map: {index_path.name}")
+        for shard_value in weight_map.values():
+            if not isinstance(shard_value, str) or not shard_value.strip():
+                raise ValueError(f"Checkpoint index contains an invalid shard name: {index_path.name}")
+            shard_name = Path(shard_value)
+            if shard_name.is_absolute() or shard_name.name != shard_value:
+                raise ValueError(f"Checkpoint shard escapes the model directory: {shard_value!r}")
+            shard_path = (root / shard_name).resolve(strict=True)
+            if shard_path.parent != root or shard_path.is_symlink():
+                raise ValueError(f"Checkpoint shard escapes the model directory: {shard_value!r}")
+            if not stat.S_ISREG(shard_path.stat(follow_symlinks=False).st_mode):
+                raise ValueError(f"Checkpoint shard must be a regular file: {shard_value!r}")
+            checked.append(shard_path)
+    return tuple(dict.fromkeys(checked))
 
 
 def _checkpoint_instantiators(cls: type[Any], checkpoint: Mapping[str, Any], overrides: Mapping[str, Any]):

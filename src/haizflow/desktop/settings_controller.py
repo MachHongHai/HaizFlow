@@ -43,6 +43,9 @@ class SettingsController:
                     "language": language,
                     "processing_device": processing_device,
                     "processing_device_origin": "manual",
+                    "keep_models_warm": bool(getattr(host, "_keep_models_warm", True)),
+                    "manual_project_cache_gib": int(getattr(host, "_manual_project_cache_gib", 4)),
+                    "manual_global_cache_gib": int(getattr(host, "_manual_global_cache_gib", 16)),
                 }
             )
         except OSError as exc:
@@ -52,6 +55,16 @@ class SettingsController:
         host._settings_language = settings["language"]
         host._settings_processing_device = settings["processing_device"]
         host._processing_device_origin = settings["processing_device_origin"]
+        # Test doubles and one-version migration adapters may return only the
+        # legacy keys. Preserve the active values until the normalized store
+        # supplies the new resource settings.
+        host._keep_models_warm = bool(settings.get("keep_models_warm", getattr(host, "_keep_models_warm", True)))
+        host._manual_project_cache_gib = int(
+            settings.get("manual_project_cache_gib", getattr(host, "_manual_project_cache_gib", 4))
+        )
+        host._manual_global_cache_gib = int(
+            settings.get("manual_global_cache_gib", getattr(host, "_manual_global_cache_gib", 16))
+        )
         _set_ui_language(host._settings_language)
         activity_events = getattr(host, "activity_events", None)
         if activity_events is not None:
@@ -108,6 +121,9 @@ class SettingsController:
         device_changed = settings["processing_device"] != host._settings_processing_device
         host._settings_processing_device = settings["processing_device"]
         host._processing_device_origin = settings["processing_device_origin"]
+        host._keep_models_warm = settings["keep_models_warm"]
+        host._manual_project_cache_gib = settings["manual_project_cache_gib"]
+        host._manual_global_cache_gib = settings["manual_global_cache_gib"]
         if device_changed and (pipeline_active or host._device_switching):
             host._pending_processing_device = host._settings_processing_device
             host._status_message = "Settings reset. The processing device changes after the current video."
@@ -133,3 +149,35 @@ class SettingsController:
                     "processing_device": str(host._settings_processing_device),
                 },
             )
+
+    def set_keep_models_warm(self, enabled: bool) -> None:
+        host = self._host
+        enabled = bool(enabled)
+        if enabled == bool(getattr(host, "_keep_models_warm", True)):
+            return
+        settings = desktop_settings.load_settings()
+        settings["keep_models_warm"] = enabled
+        saved = desktop_settings.save_settings(settings)
+        host._keep_models_warm = saved["keep_models_warm"]
+        host.settingsChanged.emit()
+        warmup = getattr(host, "_smart_warmup", None)
+        if warmup is None:
+            return
+        if enabled:
+            warmup.start()
+            warmup.request_project_prediction()
+        else:
+            warmup.release("setting")
+
+    def set_manual_cache_limits(self, project_gib: int, global_gib: int) -> None:
+        host = self._host
+        settings = desktop_settings.load_settings()
+        settings["manual_project_cache_gib"] = project_gib
+        settings["manual_global_cache_gib"] = max(project_gib, global_gib)
+        saved = desktop_settings.save_settings(settings)
+        host._manual_project_cache_gib = saved["manual_project_cache_gib"]
+        host._manual_global_cache_gib = max(
+            saved["manual_global_cache_gib"],
+            host._manual_project_cache_gib,
+        )
+        host.settingsChanged.emit()

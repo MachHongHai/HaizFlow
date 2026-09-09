@@ -29,7 +29,7 @@ try {
   $env:PYTHONPATH = Join-Path $Root "src"
 
   if (!$SkipCompile) {
-    & $Python -m compileall -q (Join-Path $Root "src") (Join-Path $Root "scripts") (Join-Path $Root "test")
+    & $Python -m compileall -q (Join-Path $Root "src") (Join-Path $Root "scripts") (Join-Path $Root "tests")
     if ($LASTEXITCODE -ne 0) {
       throw "Python compilation failed."
     }
@@ -47,7 +47,7 @@ try {
     throw "Python correctness lint failed."
   }
 
-  & $Python -m unittest discover -s (Join-Path $Root "test") -p "test_*.py"
+  & $Python -m unittest discover -s (Join-Path $Root "tests") -p "test_*.py"
   if ($LASTEXITCODE -ne 0) {
     throw "Test suite failed."
   }

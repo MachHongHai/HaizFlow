@@ -11,6 +11,7 @@ from pathlib import Path
 
 from haizflow.core.hardware import runtime_profile
 from haizflow.desktop.localization import QMessageBox
+from haizflow.desktop.presenters import format_memory_size
 from haizflow.pipeline.process_registry import cancel_video, pause_video
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services import project_store, video_store
@@ -63,6 +64,55 @@ class ProjectCommandsController:
         self._host = host
         self._create_video = create_video or create_desktop_video
 
+    @staticmethod
+    def _resources_ready(host, video=None) -> bool:
+        return ProjectCommandsController._resources_ready_for_videos(host, [video])
+
+    @staticmethod
+    def _resources_ready_for_videos(host, videos) -> bool:
+        resource_controller = getattr(host, "_resource_packs", None)
+        if resource_controller is None:
+            return True
+        missing = []
+        for video in videos:
+            context = {
+                "device": str(getattr(host, "_settings_processing_device", "cpu") or "cpu"),
+                "model": str(
+                    getattr(video, "speech_recognition_model", None)
+                    or getattr(host, "_speech_recognition_model", "small")
+                ),
+                "source_language": str(
+                    getattr(video, "source_language", None) or getattr(host, "_source_language", "auto")
+                ),
+                "language": str(getattr(video, "target_language", None) or getattr(host, "_target_language", "vi")),
+                "provider": str(
+                    getattr(video, "tts_provider", None) or getattr(host, "_tts_provider", "omnivoice")
+                ),
+            }
+            capabilities = ["recognition", "translation", "voice"]
+            if bool(getattr(video, "enable_audio_separation", getattr(host, "_enable_audio_separation", False))):
+                capabilities.append("separation")
+            if bool(getattr(video, "remove_original_subtitles", getattr(host, "_remove_original_subtitles", False))):
+                capabilities.append("ocr")
+            for capability in capabilities:
+                missing.extend(resource_controller.manager.missing_packs(capability, context))
+        missing = list(dict.fromkeys(missing))
+        if not missing:
+            return True
+        labels = [resource_controller.manager.definitions[pack_id].label for pack_id in missing]
+        summary = resource_controller.manager.requirement_summary(missing)
+        host.appAlertRequested.emit(
+            "Thiếu gói tài nguyên",
+            f"Cần cài: {', '.join(labels)} · tải {format_memory_size(summary['downloadBytes'])}. "
+            f"Cần {format_memory_size(summary['requiredBytes'])} trống trong lúc cài. "
+            "Mở Cài đặt → Gói tài nguyên để tiếp tục.",
+            "info",
+        )
+        signal = getattr(host, "resourcePacksRequested", None)
+        if signal is not None:
+            signal.emit(resource_controller.manager.definitions[missing[0]].group)
+        return False
+
     def start_batch(self) -> None:
         host = self._host
         pending_ids = [
@@ -72,6 +122,9 @@ class ProjectCommandsController:
         ]
         if not pending_ids:
             QMessageBox.information(None, "Batch queue", "Add at least one video to the queue.")
+            return
+        pending_videos = [video_store.get_video(video_id) for video_id in pending_ids]
+        if not self._resources_ready_for_videos(host, pending_videos):
             return
         host._batch_running = True
         host._batch_stop_requested = False
@@ -91,6 +144,9 @@ class ProjectCommandsController:
                 resumable_ids.append(video_id)
         if not resumable_ids:
             QMessageBox.information(None, "Batch queue", "There are no paused videos to resume.")
+            return
+        resumable_videos = [video_store.get_video(video_id) for video_id in resumable_ids]
+        if not self._resources_ready_for_videos(host, resumable_videos):
             return
         host._batch_running = True
         host._batch_stop_requested = False
@@ -703,6 +759,8 @@ class ProjectCommandsController:
         if not host._video_path.strip():
             QMessageBox.critical(None, "Missing video", "Please choose an input video.")
             return
+        if not self._resources_ready(host):
+            return
         try:
             video = self._create_video(host._video_path, host._build_config())
         except Exception as exc:
@@ -731,6 +789,8 @@ class ProjectCommandsController:
             QMessageBox.warning(None, "Project storage location", "Choose a location for this project.")
             return False
         selected_video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        if not self._resources_ready(host, selected_video):
+            return False
         if selected_video and host._processing_queue.contains(selected_video.video_id):
             host._status_message = "This video is already waiting or processing."
             host.statusMessageChanged.emit()
@@ -802,6 +862,8 @@ class ProjectCommandsController:
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if not video or video.status != "paused" or host._processing_queue.contains(video.video_id):
             return
+        if not self._resources_ready(host, video):
+            return
         # enqueue_video owns the paused -> queued transition because it must
         # first clear both process-registry pause and cancellation flags.
         # Pre-writing "pending" here used to skip that cleanup and strand the
@@ -823,6 +885,8 @@ class ProjectCommandsController:
             QMessageBox.information(
                 None, "Processing device", "Wait for the processing device to finish switching before restarting."
             )
+            return
+        if not self._resources_ready(host, video):
             return
         if (
             QMessageBox.question(None, "Restart video", "Apply the current dubbing setup and restart this project?")

@@ -1,4 +1,5 @@
 import os
+import json
 import sys
 from pathlib import Path
 
@@ -91,17 +92,49 @@ def legacy_runtime_data_dir() -> Path:
 
 
 def models_dir() -> Path:
-    if not runtime_overrides_allowed():
-        return app_data_dir() / "models"
     override = os.getenv("MODELS_DIR")
-    if override:
+    if override and runtime_overrides_allowed():
         path = Path(override).expanduser()
         candidate = path.resolve() if path.is_absolute() else (app_data_dir() / path).resolve()
         home_override = os.getenv("HAIZFLOW_HOME")
         if home_override and not candidate.is_relative_to(Path(home_override).expanduser().resolve()):
             return app_data_dir() / "models"
         return candidate
-    return app_data_dir() / "models"
+    return resource_storage_dir() / "models"
+
+
+def resource_storage_pointer_path() -> Path:
+    return runtime_data_dir() / "resource-storage.json"
+
+
+def resource_storage_dir() -> Path:
+    """Return the local root that owns optional engines and model packs.
+
+    The pointer lives with durable application settings, while the payload can
+    be moved to another local drive. Invalid, missing, relative, and UNC paths
+    safely fall back to the installation runtime directory.
+    """
+    override = os.getenv("HAIZFLOW_RESOURCE_ROOT")
+    if override and runtime_overrides_allowed():
+        candidate = Path(override).expanduser()
+        if candidate.is_absolute() and not str(candidate).startswith("\\\\"):
+            return candidate.resolve()
+    try:
+        payload = json.loads(resource_storage_pointer_path().read_text(encoding="utf-8"))
+        candidate = Path(str(payload.get("path") or "")).expanduser()
+        if candidate.is_absolute() and not str(candidate).startswith("\\\\"):
+            return candidate.resolve()
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+    return app_data_dir()
+
+
+def engines_dir() -> Path:
+    return resource_storage_dir() / "engines"
+
+
+def resource_packages_dir() -> Path:
+    return resource_storage_dir() / "packages"
 
 
 def storage_dir() -> Path:

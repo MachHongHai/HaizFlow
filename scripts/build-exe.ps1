@@ -21,11 +21,13 @@ $VersionResourcePath = Join-Path $BuildMetadataPath "HaizFlow-version.txt"
 $CompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-compliance"))
 $FfmpegCompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\compliance\ffmpeg"))
 $FfmpegManifestPath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\ffmpeg-manifest.json"))
+$ResourcePackManifestPath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\resource-pack-manifest.json"))
 $ReleaseTempParent = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-temp"))
 $ReleaseTemp = [System.IO.Path]::GetFullPath((Join-Path $ReleaseTempParent ([guid]::NewGuid().ToString("N"))))
 $PreviousTemp = $env:TEMP
 $PreviousTmp = $env:TMP
 $PreviousPyInstallerConfig = $env:PYINSTALLER_CONFIG_DIR
+$PreviousPath = $env:PATH
 
 function Invoke-PythonChecked {
   param([string[]]$Arguments, [string]$Label)
@@ -102,7 +104,15 @@ Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "generate-version-res
 if ($LASTEXITCODE -ne 0) {
   throw "Source test and QML lint gate failed with exit code $LASTEXITCODE."
 }
-Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-runtime.py"), "--for-build") -Label "Runtime verification"
+Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-runtime.py"), "--for-build", "--profile", "core") -Label "Core runtime verification"
+$ResourceManifestArguments = @(
+  (Join-Path $PSScriptRoot "verify-resource-pack-manifest.py"),
+  "--manifest", $ResourcePackManifestPath
+)
+if ($SignCertificatePath -and !$AllowDirtyBuild) {
+  $ResourceManifestArguments += "--strict"
+}
+Invoke-PythonChecked -Arguments $ResourceManifestArguments -Label "Resource-pack manifest verification"
 & (Join-Path $PSScriptRoot "audit-dependencies.ps1")
 if ($LASTEXITCODE -ne 0) {
   throw "Dependency vulnerability audit failed with exit code $LASTEXITCODE."
@@ -121,6 +131,7 @@ foreach ($RequiredFile in ("LICENSE", "NOTICE")) {
 }
 foreach ($RequiredFile in (
   $FfmpegManifestPath,
+  $ResourcePackManifestPath,
   (Join-Path $FfmpegCompliancePath "LICENSE.txt"),
   (Join-Path $FfmpegCompliancePath "README.txt"),
   (Join-Path $FfmpegCompliancePath "ffmpeg-8.1.2.tar.xz"),
@@ -173,7 +184,37 @@ $ExcludedModules = @(
   "tensorboard",
   "tensorflow",
   "torch.utils.tensorboard",
-  "tornado"
+  "tornado",
+  "torch",
+  "torchaudio",
+  "torchvision",
+  "whisperx",
+  "pyannote",
+  "torchcodec",
+  "transformers",
+  "accelerate",
+  "llama_cpp",
+  "ctranslate2",
+  "faster_whisper",
+  "demucs",
+  "onnxruntime",
+  "rapidocr",
+  "psutil",
+  "soundfile",
+  "rich",
+  "pygments",
+  "pandas",
+  "scipy",
+  "sklearn",
+  "matplotlib",
+  "PySide6.QtWebEngineCore",
+  "PySide6.QtWebEngineQuick",
+  "PySide6.QtWebEngineWidgets",
+  "PySide6.QtPdf",
+  "PySide6.QtPdfWidgets",
+  "PySide6.QtQuick3D",
+  "PySide6.QtCharts",
+  "PySide6.QtLocation"
 )
 
 foreach ($Module in $ExcludedModules) {
@@ -218,42 +259,141 @@ if (!(Test-Path -LiteralPath $SubtitleFontPath -PathType Leaf)) {
 }
 $ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
 
-$ArgsList += @("--collect-all", "llama_cpp")
-$ArgsList += @("--collect-all", "accelerate")
-$ArgsList += @("--collect-all", "demucs")
 $ArgsList += @("--collect-all", "yt_dlp")
-# OmniVoice's checksum-pinned SDK is installed under the user-selected runtime
-# directory on first launch.  Its imports are therefore invisible to
-# PyInstaller analysis and must be collected explicitly here.
 $ArgsList += @("--hidden-import", "haizflow.pipeline.omnivoice_tts")
-foreach ($Module in ("onnxruntime", "soxr", "tokenizers")) {
-  $ArgsList += @("--collect-all", $Module)
-}
-$RapidOcrPackagePath = & $Python -c "import pathlib, rapidocr; print(pathlib.Path(rapidocr.__file__).parent)"
-foreach ($RapidOcrDataFile in @("config.yaml", "default_models.yaml")) {
-  $RapidOcrDataPath = Join-Path $RapidOcrPackagePath $RapidOcrDataFile
-  if (!(Test-Path -LiteralPath $RapidOcrDataPath -PathType Leaf)) {
-    throw "RapidOCR package data is missing: $RapidOcrDataPath"
-  }
-  # Do not use --collect-all here: RapidOCR ships default ONNX weights which
-  # must stay out of the installer.  HaizFlow fetches pinned OCR weights on
-  # first launch into runtime\models instead.
-  $ArgsList += @("--add-data", "$RapidOcrDataPath;rapidocr")
-}
-$ArgsList += @("--collect-submodules", "rapidocr")
-$WhisperxAssetsPath = & $Python -c "import importlib.util, pathlib; spec=importlib.util.find_spec('whisperx'); print(pathlib.Path(next(iter(spec.submodule_search_locations))) / 'assets')"
-$WhisperxMelFilters = Join-Path $WhisperxAssetsPath "mel_filters.npz"
-if (!(Test-Path -LiteralPath $WhisperxMelFilters -PathType Leaf)) {
-  throw "WhisperX mel filter data is missing: $WhisperxMelFilters"
-}
-$ArgsList += @("--add-data", "$WhisperxMelFilters;whisperx\assets")
 $ArgsList += @("--hidden-import", "haizflow.services.douyin_channel_worker")
 $ArgsList += @("--hidden-import", "haizflow.vendor.douyin_xbogus")
+$ArgsList += @("--add-data", "$ResourcePackManifestPath;.")
 
-Invoke-PythonChecked -Arguments $ArgsList -Label "PyInstaller build"
+$PythonBase = (& $Python -c "import sys; print(sys.base_prefix)").Trim()
+if (!$PythonBase -or !(Test-Path -LiteralPath $PythonBase -PathType Container)) {
+  throw "Could not resolve the base Python runtime for an isolated frozen build."
+}
+$IsolatedBuildPath = @(
+  (Split-Path -Parent $Python),
+  $PythonBase,
+  (Join-Path $PythonBase "Scripts"),
+  (Join-Path $env:SystemRoot "System32"),
+  $env:SystemRoot
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) }
+try {
+  # PyInstaller searches PATH while resolving native imports. Restrict it to
+  # the selected Python and Windows runtimes so unrelated tools (for example
+  # Poppler installed by another application) cannot inject incompatible ICU
+  # or C runtime DLLs into the frozen Qt process.
+  $env:PATH = $IsolatedBuildPath -join [System.IO.Path]::PathSeparator
+  Invoke-PythonChecked -Arguments $ArgsList -Label "PyInstaller build"
+}
+finally {
+  $env:PATH = $PreviousPath
+}
 
 if (!(Test-Path -LiteralPath (Join-Path $ArtifactPath "HaizFlow.exe") -PathType Leaf)) {
   throw "PyInstaller did not create the expected artifact: $ArtifactPath"
+}
+
+# PyInstaller's generic QtQml hook copies every QML module installed beside
+# PySide, including WebEngine, Quick3D and charting stacks that HaizFlow never
+# imports. Prune only the explicitly unsupported modules before measuring or
+# signing the immutable Core artifact. The frozen smoke test below catches an
+# accidental dependency on anything in this allowlist-based removal.
+$FrozenPySideRoot = [System.IO.Path]::GetFullPath((Join-Path $ArtifactPath "_internal\PySide6"))
+$FrozenQmlRoot = [System.IO.Path]::GetFullPath((Join-Path $FrozenPySideRoot "qml"))
+$UnusedQmlModules = @(
+  "Qt3D",
+  "QtCharts",
+  "QtDataVisualization",
+  "QtGraphs",
+  "QtLocation",
+  "QtPositioning",
+  "QtQuick3D",
+  "QtWebEngine"
+)
+foreach ($Module in $UnusedQmlModules) {
+  $ModulePath = [System.IO.Path]::GetFullPath((Join-Path $FrozenQmlRoot $Module))
+  if ([System.IO.Path]::GetDirectoryName($ModulePath) -ne $FrozenQmlRoot) {
+    throw "Refusing to prune an unsafe QML module path: $ModulePath"
+  }
+  if (Test-Path -LiteralPath $ModulePath -PathType Container) {
+    Remove-Item -LiteralPath $ModulePath -Recurse -Force
+  }
+}
+$UnusedNestedQmlModules = @("QtQuick\Pdf")
+foreach ($RelativePath in $UnusedNestedQmlModules) {
+  $ModulePath = [System.IO.Path]::GetFullPath((Join-Path $FrozenQmlRoot $RelativePath))
+  if (!$ModulePath.StartsWith("$FrozenQmlRoot\", [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to prune an unsafe nested QML module path: $ModulePath"
+  }
+  if (Test-Path -LiteralPath $ModulePath -PathType Container) {
+    Remove-Item -LiteralPath $ModulePath -Recurse -Force
+  }
+}
+$UnusedQtLibraryPrefixes = @(
+  "Qt63D",
+  "Qt6Charts",
+  "Qt6DataVisualization",
+  "Qt6Graphs",
+  "Qt6Location",
+  "Qt6Pdf",
+  "Qt6Positioning",
+  "Qt6Quick3D",
+  "Qt6WebEngine"
+)
+Get-ChildItem -LiteralPath $FrozenPySideRoot -File | Where-Object {
+  $FileName = $_.Name
+  @($UnusedQtLibraryPrefixes | Where-Object {
+    $FileName.StartsWith($_, [System.StringComparison]::OrdinalIgnoreCase)
+  }).Count -gt 0
+} | ForEach-Object {
+  Remove-Item -LiteralPath $_.FullName -Force
+}
+
+$ForbiddenReleasePatterns = @(
+  "runtime\data",
+  "runtime\cache",
+  "runtime\models"
+)
+foreach ($RelativePath in $ForbiddenReleasePatterns) {
+  if (Test-Path -LiteralPath (Join-Path $ArtifactPath $RelativePath)) {
+    throw "Mutable runtime data leaked into the Core artifact: $RelativePath"
+  }
+}
+$MutableFiles = Get-ChildItem -LiteralPath $ArtifactPath -Recurse -File | Where-Object {
+  $_.Name.EndsWith(".part", [System.StringComparison]::OrdinalIgnoreCase) -or
+  $_.Name.EndsWith(".partial", [System.StringComparison]::OrdinalIgnoreCase) -or
+  $_.Name.EndsWith(".log", [System.StringComparison]::OrdinalIgnoreCase)
+}
+if ($MutableFiles) {
+  throw "Mutable files leaked into the Core artifact: $($MutableFiles[0].FullName)"
+}
+
+$ForbiddenCoreNames = @(
+  "torch", "torchaudio", "torchvision", "whisperx", "pyannote", "transformers",
+  "accelerate", "llama_cpp", "ctranslate2", "demucs", "onnxruntime", "rapidocr",
+  "psutil", "soundfile", "rich", "pygments"
+)
+foreach ($Name in $ForbiddenCoreNames) {
+  $Found = Get-ChildItem -LiteralPath (Join-Path $ArtifactPath "_internal") -Recurse -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq $Name -or $_.Name.StartsWith("$Name.", [System.StringComparison]::OrdinalIgnoreCase) } |
+    Select-Object -First 1
+  if ($Found) {
+    throw "Optional AI dependency leaked into Core: $($Found.FullName)"
+  }
+}
+$WebEngineBinary = Get-ChildItem -LiteralPath (Join-Path $ArtifactPath "_internal") -Recurse -File -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -like "*WebEngine*" } | Select-Object -First 1
+if ($WebEngineBinary) {
+  throw "Qt WebEngine leaked into Core: $($WebEngineBinary.FullName)"
+}
+
+$ForbiddenRootLibraries = @(
+  (Join-Path $ArtifactPath "_internal\icuuc.dll"),
+  (Join-Path $ArtifactPath "_internal\icudt78.dll")
+)
+foreach ($Library in $ForbiddenRootLibraries) {
+  if (Test-Path -LiteralPath $Library -PathType Leaf) {
+    throw "Frozen native dependency collision detected: $Library. Rebuild with an isolated PATH."
+  }
 }
 
 Sign-ReleaseExecutable -Executable (Join-Path $ArtifactPath "HaizFlow.exe")
@@ -263,6 +403,7 @@ Copy-Item -LiteralPath (Join-Path $Root "NOTICE") -Destination (Join-Path $Artif
 Copy-Item -LiteralPath (Join-Path $CompliancePath "THIRD_PARTY_NOTICES.md") -Destination $ArtifactPath -Force
 Copy-Item -LiteralPath (Join-Path $CompliancePath "licenses") -Destination (Join-Path $ArtifactPath "licenses") -Recurse -Force
 Copy-Item -LiteralPath $FfmpegManifestPath -Destination (Join-Path $ArtifactPath "FFMPEG-MANIFEST.json") -Force
+Copy-Item -LiteralPath $ResourcePackManifestPath -Destination (Join-Path $ArtifactPath "RESOURCE-PACKS.json") -Force
 $ArtifactSources = Join-Path $ArtifactPath "sources"
 New-Item -ItemType Directory -Path $ArtifactSources -Force | Out-Null
 Copy-Item -LiteralPath $FfmpegCompliancePath -Destination $ArtifactSources -Recurse -Force
@@ -290,11 +431,26 @@ $FinalizeArguments = @(
   "--artifact", $ArtifactPath
 )
 Invoke-PythonChecked -Arguments $FinalizeArguments -Label "Release manifest generation"
+# Finalization adds BUILD-INFO.json and SHA256SUMS.txt. Refresh the embedded
+# storage manifest from that complete artifact, then regenerate checksums so
+# the internal numbers and the installer calculation use the same payload.
+Invoke-PythonChecked -Arguments @(
+  (Join-Path $PSScriptRoot "release-preflight.py"),
+  "--artifact", $ArtifactPath,
+  "--write", (Join-Path $ArtifactPath "INSTALL-REQUIREMENTS.json")
+) -Label "Final release disk requirements"
+Invoke-PythonChecked -Arguments $FinalizeArguments -Label "Final release manifest generation"
 Invoke-PythonChecked -Arguments @(
   (Join-Path $PSScriptRoot "finalize-release.py"),
   "--artifact", $ArtifactPath,
   "--verify"
 ) -Label "Release manifest verification"
+
+$CoreBytes = (Get-ChildItem -LiteralPath $ArtifactPath -Recurse -File | Measure-Object -Property Length -Sum).Sum
+$CoreLimitBytes = [int64](1.25 * 1GB)
+if ($CoreBytes -gt $CoreLimitBytes) {
+  throw "Core artifact is $([math]::Round($CoreBytes / 1GB, 2)) GiB; limit is 1.25 GiB."
+}
 
   Write-Output "Release artifact ready: $ArtifactPath"
 }
@@ -302,6 +458,7 @@ finally {
   $env:TEMP = $PreviousTemp
   $env:TMP = $PreviousTmp
   $env:PYINSTALLER_CONFIG_DIR = $PreviousPyInstallerConfig
+  $env:PATH = $PreviousPath
   if (Test-Path -LiteralPath $ReleaseTemp) {
     $ResolvedReleaseTemp = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $ReleaseTemp).Path)
     if (![System.IO.Path]::GetDirectoryName($ResolvedReleaseTemp).Equals($ReleaseTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {

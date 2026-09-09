@@ -347,6 +347,10 @@ ApplicationWindow {
             appConfirmationDialog.open();
         }
 
+        function onResourcePacksRequested(group) {
+            root.navigate(root.routeSettings);
+        }
+
         function onProjectPrepared() {
             const returnRoute = root.workspaceReturnRoute === root.routeHome || root.workspaceReturnRoute === root.routeProjects ? root.workspaceReturnRoute : "";
             if (AppController.projectType === "batch") {

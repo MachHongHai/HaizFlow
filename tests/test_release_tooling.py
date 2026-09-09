@@ -38,7 +38,7 @@ class ReleaseToolingTests(unittest.TestCase):
                     download_ffmpeg._download(source, destination, "0" * 64)
             urlopen.assert_not_called()
 
-    def test_upgrade_space_includes_two_artifacts_first_run_models_and_headroom(self):
+    def test_upgrade_space_only_counts_core_copies_and_safety_headroom(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             artifact = Path(temp_dir) / "HaizFlow"
             artifact.mkdir()
@@ -49,18 +49,33 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertEqual(requirements["artifact_bytes"], 3072)
         self.assertEqual(
             requirements["required_free_bytes"],
-            3072 * 2
-            + release_preflight.FIRST_RUN_MODEL_BYTES
-            + release_preflight.DOWNLOAD_HEADROOM_BYTES
-            + release_preflight.WORKING_HEADROOM_BYTES,
+            3072 * 2 + release_preflight.WORKING_HEADROOM_BYTES,
         )
+        self.assertEqual(requirements["first_run_model_bytes"], 0)
+        self.assertEqual(requirements["recommended_free_bytes"], release_preflight.RECOMMENDED_HEADROOM_BYTES)
         self.assertEqual(
-            requirements["first_run_model_bytes"],
-            max(
-                release_preflight.required_download_bytes("cpu"),
-                release_preflight.required_download_bytes("gpu"),
-            ),
+            requirements["working_headroom_bytes"],
+            release_preflight.MINIMUM_OPERATIONAL_FREE_BYTES,
         )
+        self.assertEqual(requirements["cpu_first_run_model_bytes"], 0)
+        self.assertEqual(requirements["gpu_first_run_model_bytes"], 0)
+        self.assertFalse(requirements["resource_packs_included"])
+
+    def test_embedded_storage_manifest_counts_its_own_final_size(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact = Path(temp_dir) / "HaizFlow"
+            artifact.mkdir()
+            (artifact / "HaizFlow.exe").write_bytes(b"release")
+            manifest = artifact / "INSTALL-REQUIREMENTS.json"
+            payload, serialized = release_preflight.requirements_with_embedded_manifest(
+                artifact,
+                manifest,
+                upgrade=True,
+            )
+            manifest.write_text(serialized, encoding="utf-8", newline="\n")
+
+            self.assertEqual(payload["artifact_bytes"], release_preflight.directory_size(artifact))
+            self.assertEqual(json.loads(manifest.read_text(encoding="utf-8")), payload)
 
     def test_brand_icon_and_generated_version_resource_are_valid_build_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -139,6 +154,11 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertNotIn("GetSpaceOnDisk(WizardDirValue, False", installer)
         self.assertIn("RequiredBytes := {#RequiredFreshBytes}", installer)
         self.assertIn("RequiredBytes := {#RequiredFreeBytes}", installer)
+        self.assertIn("RecommendedBytes := {#RecommendedFreshBytes}", installer)
+        self.assertIn("RecommendedBytes := {#RecommendedFreeBytes}", installer)
+        self.assertNotIn("CpuModelBytes", installer)
+        self.assertNotIn("GpuModelBytes", installer)
+        self.assertIn("AI engines and models are optional", installer)
         self.assertIn("[InstallDelete]", installer)
         self.assertIn('Name: "{app}\\_internal"', installer)
         self.assertNotIn("[UninstallDelete]", installer)
@@ -169,6 +189,10 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('"/DBrandingMarkPath=$BrandingMarkPath"', build_script)
         self.assertIn('"/DOutputBaseFilename=$OutputBaseFilename"', build_script)
         self.assertIn('"/DRequiredFreshBytes=$($FreshRequirements.required_free_bytes)"', build_script)
+        self.assertIn('"/DRecommendedFreshBytes=$($FreshRequirements.recommended_free_bytes)"', build_script)
+        self.assertIn('"/DArtifactBytes=$($FreshRequirements.artifact_bytes)"', build_script)
+        self.assertNotIn("/DCpuModelBytes", build_script)
+        self.assertNotIn("/DGpuModelBytes", build_script)
         self.assertIn("function PrepareToInstall(var NeedsRestart: Boolean): String;", installer)
         self.assertIn("FileExists(AddBackslash(Path) + 'HaizFlow.exe') and", installer)
         self.assertIn("FileExists(AddBackslash(Path) + 'BUILD-INFO.json') and", installer)
@@ -199,16 +223,24 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('Join-Path $Root "build\\pyinstaller-config"', executable_build)
         self.assertIn("$env:PYINSTALLER_CONFIG_DIR = $PyInstallerConfigPath", executable_build)
         self.assertIn("$env:PYINSTALLER_CONFIG_DIR = $PreviousPyInstallerConfig", executable_build)
+        self.assertIn("$env:PATH = $IsolatedBuildPath", executable_build)
+        self.assertIn("Frozen native dependency collision detected", executable_build)
+        self.assertIn('Label "Final release disk requirements"', executable_build)
+        self.assertIn('Label "Final release manifest generation"', executable_build)
         self.assertIn('Join-Path $Root "build\\installer-temp"', installer_build)
         self.assertIn("$env:TEMP = $InstallerTemp", installer_build)
 
     def test_environment_sync_handles_exact_hash_locked_packages_across_indexes(self):
         install_script = (ROOT / "scripts" / "install-desktop-env.ps1").read_text(encoding="utf-8")
         lock_script = (ROOT / "scripts" / "lock-dependencies.ps1").read_text(encoding="utf-8")
+        engine_lock_script = (ROOT / "scripts" / "lock-engine-dependencies.ps1").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn("--index-strategy unsafe-first-match", install_script)
+        self.assertIn("pip sync --python $Python --strict $DependencyLock", install_script)
+        self.assertNotIn("--index-strategy unsafe-first-match", install_script)
         self.assertNotIn("--index-strategy unsafe-best-match", install_script)
-        self.assertIn("constrained by the lock's SHA-256 hashes", install_script)
+        self.assertIn("--index-strategy unsafe-best-match", engine_lock_script)
         self.assertIn("--write-manifest --no-installed-check", lock_script)
 
     def test_release_build_enforces_dependency_vulnerability_audit(self):
@@ -219,9 +251,18 @@ class ReleaseToolingTests(unittest.TestCase):
 
         self.assertIn('Join-Path $PSScriptRoot "test.ps1"', build_script)
         self.assertIn('Join-Path $PSScriptRoot "audit-dependencies.ps1"', build_script)
-        self.assertIn('"$WhisperxMelFilters;whisperx\\assets"', build_script)
+        self.assertNotIn("WhisperxMelFilters", build_script)
         self.assertNotIn('@("--collect-data", "whisperx")', build_script)
-        self.assertIn('@("--collect-all", "demucs")', build_script)
+        self.assertNotIn('@("--collect-all", "demucs")', build_script)
+        self.assertIn('"--profile", "core"', build_script)
+        self.assertIn('"torch", "torchaudio", "torchvision"', build_script)
+        self.assertIn('"psutil"', build_script)
+        self.assertIn('"soundfile"', build_script)
+        self.assertIn('"rich"', build_script)
+        self.assertIn('"pygments"', build_script)
+        self.assertIn('"Qt6WebEngine"', build_script)
+        self.assertIn('"Qt6Quick3D"', build_script)
+        self.assertIn("Refusing to prune an unsafe QML module path", build_script)
         self.assertNotIn('--add-data", "$ModelPath;models', build_script)
         self.assertNotIn("--demucs-model", build_script)
         self.assertNotIn("--alignment-models", build_script)
@@ -229,6 +270,8 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("$env:HAIZFLOW_HOME = $SmokeRoot", smoke_script)
         self.assertIn("$env:MODELS_DIR = $SmokeModels", smoke_script)
         self.assertIn("Wait-Process -Id $Process.Id -Timeout $TimeoutSeconds", smoke_script)
+        self.assertIn("-RedirectStandardOutput $StandardOutput", smoke_script)
+        self.assertIn("-RedirectStandardError $StandardError", smoke_script)
         self.assertNotIn('"--runtime-probe"', smoke_script)
         self.assertNotIn('"--demucs-separate"', smoke_script)
         self.assertLess(
@@ -241,7 +284,7 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('"pip-audit==2.10.1"', audit_script)
         self.assertIn("$CanonicalTorchPackages", audit_script)
         self.assertIn("Canonical PyTorch vulnerability audit found an unreviewed advisory.", audit_script)
-        self.assertIn("Dependency vulnerability audit found an unreviewed advisory.", audit_script)
+        self.assertIn("Dependency vulnerability audit found an unreviewed advisory in", audit_script)
         self.assertIn('"PYSEC-2026-3740"', audit_script)
         self.assertIn('"CVE-2026-9856"', audit_script)
         self.assertNotIn("--ignore-vuln *", audit_script)

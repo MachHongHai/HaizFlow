@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a focused product improvement
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the workflow limitation, not only the preferred control or implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Explain what should become faster, clearer, safer, or newly possible.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or examples
+      description: Note local-processing, compatibility, data, or UI constraints that matter.

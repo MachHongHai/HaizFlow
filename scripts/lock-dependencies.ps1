@@ -52,19 +52,11 @@ if ($LASTEXITCODE -ne 0) {
   throw "Dependency lock generation failed with exit code $LASTEXITCODE."
 }
 
-# uv constrains these packages to explicit indexes while resolving, but pip still
-# needs the index locations when installing the generated lock on a clean machine.
 $LockContent = [System.IO.File]::ReadAllText($LockFile)
 $PrimaryIndex = "--index-url https://pypi.org/simple"
-$InstallIndexes = @(
-  "--extra-index-url https://download.pytorch.org/whl/cu128",
-  "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu"
-)
 if (!$LockContent.Contains($PrimaryIndex)) {
   throw "Generated dependency lock does not declare the primary package index."
 }
-$SourceBlock = (@($PrimaryIndex) + $InstallIndexes) -join [Environment]::NewLine
-$LockContent = $LockContent.Replace($PrimaryIndex, $SourceBlock)
 [System.IO.File]::WriteAllText($LockFile, $LockContent, [System.Text.UTF8Encoding]::new($false))
 
 # Regenerating a lock is expected to produce versions that are not installed

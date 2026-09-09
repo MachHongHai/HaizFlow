@@ -89,6 +89,28 @@ Item {
         return selectedStageIndex;
     }
 
+    function warmTool(index) {
+        const capability = ({
+            0: "separation",
+            1: "recognition",
+            3: "ocr",
+            4: "voice"
+        })[index] || "";
+        if (capability.length === 0)
+            return;
+        AppController.warmCapabilities(capability, {
+            device: AppController.processingDevice,
+            model: AppController.speechRecognitionModel,
+            language: AppController.targetLanguage,
+            provider: AppController.ttsProvider
+        });
+        if (index === 1)
+            AppController.warmCapabilities("translation", {
+                device: AppController.processingDevice,
+                language: AppController.targetLanguage
+            });
+    }
+
     function subtitleIndexAt(seconds) {
         const time = Math.max(0, Number(seconds || 0));
         for (let index = 0; index < segments.length; ++index) {
@@ -291,7 +313,11 @@ Item {
             selectedTool: root.selectedStageIndex
             toolModel: root.toolModel
             hasVideo: AppController.hasSelectedVideo
-            onToolSelected: function(index) { root.dismissSubtitleEditor(); root.selectedStageIndex = index }
+            onToolSelected: function(index) {
+                root.dismissSubtitleEditor();
+                root.selectedStageIndex = index;
+                root.warmTool(index);
+            }
         }
 
         SourceMediaPanel {

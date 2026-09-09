@@ -1,25 +1,29 @@
 # Hướng dẫn sử dụng HaizFlow
 
-[Tài liệu](README.vi.md) · [Repository](../README.vi.md) · [English](user-guide.md)
+[Tài liệu](README.vi.md) · [Trang chính](../README.vi.md) · [English](user-guide.md)
 
-Tài liệu này trình bày ứng dụng theo thứ tự công việc. Người đọc không cần biết về model hoặc pipeline bên trong.
+Tài liệu này hướng dẫn cài đặt, tạo dự án, chỉnh video và xử lý các lỗi thường gặp. Người dùng không cần biết model hay định dạng tệp bên trong ứng dụng.
 
-## 1. Chuẩn bị
+## 1. Trước khi cài đặt
 
-HaizFlow là ứng dụng desktop cho Windows. Dự án được lưu cục bộ; các tác vụ nhận dạng, dịch, giọng local, âm thanh và video cốt lõi không cần API suy luận trả phí.
+HaizFlow hỗ trợ Windows 10 phiên bản 1809 trở lên và Windows 11 trên máy x64. RAM tối thiểu chính thức là 16 GiB. GPU NVIDIA không bắt buộc; GPU tương thích giúp model chạy nhanh hơn nhưng không cần thiết để mở và dùng ứng dụng Core.
 
-Bạn cần chuẩn bị:
+Hãy tính chỗ trống cho bốn phần riêng:
 
-- video nguồn đọc được và có track âm thanh;
-- đủ dung lượng cho video nguồn, artifact, cache và video xuất;
-- kết nối Internet khi tải model lần đầu hoặc dùng tính năng online;
-- GPU NVIDIA nếu muốn tăng tốc model local lớn.
+1. ứng dụng Core;
+2. bộ xử lý và model được chọn trong Gói tài nguyên;
+3. video nguồn và video xuất;
+4. dữ liệu tạm của trình sửa.
 
-Xử lý local không có nghĩa mọi tính năng đều offline. Edge TTS, nhập URL, cài model và đăng mạng xã hội vẫn cần mạng.
+Setup hiển thị dung lượng đo từ đúng bản đang cài. Gói Core vừa được kiểm tra có dung lượng 477 MiB và Setup khuyến nghị chừa 4 GiB. Gói tài nguyên tùy chọn cùng dữ liệu dự án được đo riêng, không nằm trong con số của Core.
 
-## 2. Cài và mở HaizFlow
+HaizFlow có thể nhận dạng, dịch, tạo giọng cục bộ, tách âm và OCR trên máy sau khi cài đủ gói. Edge TTS, nhập liên kết công khai, tải gói tài nguyên và đăng mạng xã hội cần Internet.
 
-Với repository source:
+## 2. Cài và mở ứng dụng
+
+Với bản phát hành, hãy chạy Setup và dùng vị trí Windows đề xuất nếu không có lý do chọn ổ cục bộ khác. Không đặt bộ xử lý hoặc model trên ổ mạng.
+
+Để chạy từ mã nguồn:
 
 ```powershell
 git clone https://github.com/MachHongHai/HaizFlow.git
@@ -28,236 +32,210 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-desktop-env.ps1
 .\.venv\Scripts\python.exe .\haizflow_desktop.py
 ```
 
-Lần cài đầu có thể lâu vì Torch, Qt và thư viện media có dung lượng lớn. Không đóng PowerShell khi dependency đang được đồng bộ.
+Trang chủ mở mà không phải chờ model AI. Nếu bật **Giữ model sẵn sàng**, HaizFlow chuẩn bị model đã cài bằng một tiến trình riêng sau khi giao diện phản hồi ổn định. Việc chuẩn bị này không tự xử lý video.
 
-Khi một model được dùng lần đầu, trạng thái tải hoặc chuẩn bị xuất hiện ở thanh hoạt động phía dưới. HaizFlow chỉ kích hoạt model sau khi kích thước và SHA-256 khớp metadata đã khóa.
+## 3. Cài gói tài nguyên
 
-## 3. Thanh điều hướng
+Mở **Cài đặt → Gói tài nguyên**. Các gói được chia thành Bộ xử lý, Nhận dạng, Dịch, Giọng đọc và Hình ảnh.
 
-Thanh trên cùng giữ điều hướng, Dự án, Chỉnh sửa, Cài đặt và Trợ giúp. Back và Forward chỉ thay đổi lịch sử trang. Undo và Redo thuộc lịch sử chỉnh sửa, hoàn toàn độc lập với điều hướng.
+Mỗi dòng cho biết dung lượng tải, dung lượng đã cài, phiên bản, vị trí và trạng thái. Trước khi cài, HaizFlow còn tính chỗ giải nén, bản cũ giữ lại để khôi phục và 2 GiB trống dự phòng.
 
-Các khu vực chính:
+- **Cài đặt** tải và kiểm tra gói.
+- **Tạm dừng** và **Tiếp tục** điều khiển lượt tải mà không xóa phần hợp lệ đã nhận.
+- **Sửa chữa** kiểm tra rồi thay tệp hỏng.
+- **Gỡ bỏ** xóa gói không được tác vụ nền sử dụng.
+- **Chuyển vị trí lưu** sao chép toàn bộ tài nguyên sang ổ cục bộ khác, kiểm tra bản sao rồi mới xóa dữ liệu cũ.
 
-- **Trang chủ:** dự án gần đây, thao tác chính, liên kết nhà phát triển và khung video hướng dẫn.
-- **Dự án:** toàn bộ loại dự án trong grid có filter.
-- **Tải xuống:** dự án tải video, kênh và âm thanh.
-- **Đăng mạng xã hội:** dự án đăng bài và hàng đợi.
-- **Cài đặt:** ngôn ngữ, thiết bị xử lý, runtime, thư mục model, quyền riêng tư và dọn cache Manual.
+HaizFlow không tự tải gói còn thiếu. Khi một công cụ cần tài nguyên, thông báo sẽ ghi rõ tên gói và mở đúng khu vực trong Cài đặt. Sau khi cài xong, quay lại dự án và chủ động chạy lệnh.
 
-Khi mở project, sidebar được ẩn để dành chỗ cho preview và editor. Dùng nút Home hoặc Dự án trên thanh trên để rời workspace.
+## 4. Điều hướng
 
-## 4. Chọn loại dự án
+Thanh trên gồm Trang chủ, Quay lại, Tiến tới, Dự án, Chỉnh sửa, Cài đặt và Trợ giúp.
 
-Chọn **Dự án mới**, sau đó chọn loại phù hợp.
+- **Quay lại** và **Tiến tới** dùng cho lịch sử trang.
+- **Hoàn tác** và **Làm lại** trong Chỉnh sửa dùng cho các thay đổi được hỗ trợ; chúng không chuyển trang.
+- **Trợ giúp** mở cửa sổ Giới thiệu và các liên kết hỗ trợ.
 
-### Tự động
+Thanh bên xuất hiện ở Trang chủ, Dự án, Tải xuống và Đăng mạng xã hội. Khi mở dự án, thanh này được ẩn để nhường chỗ cho video và timeline. Dùng Trang chủ hoặc Dự án trên thanh trên để rời dự án.
 
-Dùng khi muốn một cấu hình chạy trọn quy trình. Pipeline có thứ tự và hỗ trợ tạm dừng, tiếp tục, phục hồi từ checkpoint đã xác minh.
+## 5. Tạo dự án
 
-### Thủ công
+Chọn **Dự án mới**, sau đó chọn loại phù hợp:
 
-Dùng khi cần kiểm soát độc lập. Nhận dạng và dịch, chỉnh phụ đề, xử lý hình ảnh, tạo giọng, phối âm và xuất là các công cụ riêng, không phải danh sách bước bắt buộc.
+- **Tự động:** một video, một bộ thiết lập và chuỗi xử lý có thứ tự; có thể tạm dừng, tiếp tục và khôi phục từ kết quả hợp lệ.
+- **Thủ công:** các công cụ độc lập cho nguồn, dịch, phụ đề, hình ảnh, giọng đọc, âm thanh và xuất.
+- **Hàng loạt:** nhiều video dùng chung thiết lập cơ sở nhưng mỗi video có tiến trình và kết quả riêng.
+- **Tải xuống:** lấy video, kênh hoặc âm thanh từ nguồn công khai được hỗ trợ.
+- **Đăng mạng xã hội:** chuẩn bị và gửi video qua tài khoản Zernio của người dùng.
 
-### Hàng loạt
+Trang chủ liệt kê các dự án gần đây. Trang Dự án hiển thị toàn bộ dự án bằng lưới thẻ có tìm kiếm và bộ lọc.
 
-Dùng cho nhiều video có cấu hình chung. Mỗi video vẫn có trạng thái và output riêng. Override của một video không âm thầm trở thành cấu hình mặc định cho video nhập sau.
-
-### Tải xuống
-
-Dùng để lưu video, kênh hoặc âm thanh công khai vào dự án. Nền tảng nguồn có thể thay đổi chính sách truy cập và có thể yêu cầu xác thực.
-
-### Đăng mạng xã hội
-
-Dùng để chuẩn bị caption và xếp hàng đăng video qua tài khoản Zernio do bạn cấu hình.
-
-## 5. Nhập media
+## 6. Nhập video
 
 ### Từ tệp
 
 1. Chọn **Từ tệp**.
 2. Chọn video được hỗ trợ.
-3. Chờ kiểm tra toàn vẹn và tạo thumbnail.
-4. Xác nhận preview và thời lượng đã xuất hiện trước khi xử lý.
+3. Chờ thumbnail và thời lượng xuất hiện.
+4. Kiểm tra video phát được trước khi chạy tác vụ dài.
 
-Không xóa hoặc di chuyển thư mục dự án khi ứng dụng đang chạy.
+Không đổi tên, di chuyển hoặc xóa tệp bên trong thư mục dự án đang mở.
 
 ### Từ liên kết công khai
 
 1. Chọn **Từ liên kết**.
-2. Dán URL video trực tiếp. Nội dung share có chứa một URL được hỗ trợ cũng có thể dùng.
-3. Chọn **Kiểm tra**, sau đó xem tiêu đề, nền tảng, người đăng, thời lượng và thumbnail.
-4. Chọn **Tải và nhập**.
+2. Dán URL video công khai. Đoạn văn chứa một URL được hỗ trợ cũng có thể dùng.
+3. Chọn **Kiểm tra**.
+4. Xem lại tiêu đề, nền tảng, người đăng, thời lượng và thumbnail.
+5. Chọn **Tải và nhập**.
 
-HaizFlow tự retry có giới hạn khi gặp lỗi DNS, timeout, HTTP tạm thời hoặc manifest hết hạn. Video private, đã gỡ, khóa vùng hoặc yêu cầu đăng nhập được báo lỗi trực tiếp, không lặp vô hạn.
+HaizFlow thử lại các lỗi DNS, timeout, HTTP và địa chỉ media hết hạn bằng một phiên yt-dlp mới. Ứng dụng không lặp vô hạn với video riêng tư, đã xóa, giới hạn khu vực hoặc cần đăng nhập.
 
-Nếu URL lỗi:
+Nếu không kiểm tra được URL, hãy mở nó trong trình duyệt. Xác nhận nội dung vẫn công khai, cập nhật thông tin đăng nhập của nền tảng nếu cần và chờ một lúc trước khi thử lại khi dịch vụ đang giới hạn truy cập.
 
-1. Mở URL trong trình duyệt và xác nhận video còn công khai.
-2. Kiểm tra thiết lập xác thực của nền tảng nếu có.
-3. Chờ một lúc nếu nền tảng đang giới hạn tần suất.
-4. Cập nhật repository nếu trang nguồn đã đổi định dạng và yt-dlp có bản sửa.
-
-## 6. Dự án Tự động
+## 7. Dự án Tự động
 
 1. Thêm video nguồn.
-2. Chọn model nhận dạng và ngôn ngữ đích.
-3. Chọn OmniVoice để chạy local hoặc Edge TTS để dùng giọng online.
-4. Chọn cách xử lý phụ đề gốc: giữ nguyên, làm mờ hoặc vá nền.
-5. Chọn âm thanh gốc hoặc tách giọng.
-6. Thêm nhạc nền và watermark nếu cần.
-7. Chỉnh âm lượng video, giọng đọc và nhạc.
+2. Chọn ngôn ngữ nguồn, ngôn ngữ đích và model nhận dạng.
+3. Chọn OmniVoice để tạo giọng trên máy hoặc Edge TTS để dùng giọng trực tuyến.
+4. Chọn giữ nguyên, làm mờ hoặc vá vùng phụ đề gốc.
+5. Giữ âm thanh nguồn hoặc tách lời nói khỏi âm nền.
+6. Thêm nhạc hoặc watermark nếu cần.
+7. Chỉnh mức âm nguồn, giọng đọc và nhạc.
 8. Bắt đầu xử lý.
 
-Thanh lệnh hiển thị tác vụ thật đang chạy. Tạm dừng giữ lại checkpoint đã hoàn tất. Chạy lại có thể làm cũ artifact phía sau, vì vậy chỉ dùng khi cần một lượt sạch.
+Thanh lệnh phân biệt rõ việc chuẩn bị model và xử lý video. Model sẵn sàng không làm thanh tiến trình tác vụ chạy đầy. Khi tạm dừng, kết quả đã hoàn tất được giữ lại; chạy lại một công đoạn sẽ chủ động làm cũ những kết quả phụ thuộc vào nó.
 
-Sau khi dịch, mở trình sửa phụ đề để sửa text hoặc timing. Trình sửa không thêm/xóa câu. Sửa text làm cũ voice của câu đó; sửa timing chỉ đổi vị trí phát clip đã có.
+## 8. Trình sửa Thủ công
 
-## 7. Trình sửa Thủ công
-
-Các công cụ độc lập và có thể dùng không theo thứ tự tuyến tính.
+Các công cụ Thủ công không phải các bước đánh số. Có thể chọn bất kỳ công cụ nào đã có đủ dữ liệu đầu vào.
 
 ### Nguồn
 
-- Đổi video nguồn từ tệp hoặc URL.
-- Chọn **Giữ âm thanh gốc** để dùng track nguồn.
-- Chọn **Tách giọng**, sau đó chạy Demucs để tạo vocals và âm nền.
+Thay video bằng tệp hoặc liên kết. **Giữ âm thanh gốc** dùng track nguồn. **Tách giọng** chạy Demucs và lưu cả phần lời lẫn âm nền. Chuyển giữa các lựa chọn sẽ dùng kết quả hợp lệ đã lưu và không tự nhận dạng lại.
 
-Đổi chế độ âm thanh sẽ dùng cache tương ứng nếu tồn tại và không tự chạy nhận dạng.
+### Nhận dạng và dịch
 
-### Nhận dạng & dịch
+Chọn ngôn ngữ cùng model nhận dạng rồi chạy **Nhận dạng và dịch**. Kết quả là phụ đề có thời gian, chưa có giọng đọc.
 
-Chọn model nhận dạng và ngôn ngữ đích rồi chạy. Kết quả là tài liệu phụ đề có timing, chưa có giọng đọc.
-
-Chạy lại sẽ thay tài liệu dịch cũ. Style/vị trí phụ đề, hình ảnh, watermark, nhạc và âm lượng vẫn được giữ. Voice cũ bị làm mất hiệu lực vì không còn khớp text.
+Chạy lại lệnh sẽ thay nội dung phụ đề sau khi người dùng xác nhận. Kiểu chữ, vị trí, cách che phụ đề gốc, watermark, nhạc và âm lượng vẫn được giữ. Giọng đọc cũ được đánh dấu không còn khớp với nội dung mới.
 
 ### Phụ đề
 
-- Bấm clip trên timeline hoặc bấm phụ đề trong preview kết quả.
-- Sửa toàn bộ nội dung đoạn trong inspector.
-- Kéo phụ đề trực tiếp trên video để đổi vị trí chung.
-- Kéo tay nắm khung để đổi kích thước chữ chung.
-- Kéo cạnh clip timeline để đổi thời gian.
+Chọn một clip trên timeline hoặc bấm vào phụ đề trong video kết quả. Trình sửa sẽ mở toàn bộ nội dung của đoạn đó.
 
-Text tự lưu. Trạng thái đổi từ **Đang lưu** sang **Đã lưu**. Bấm vùng trống sẽ commit draft, bỏ focus nhập và ẩn khung chỉnh.
+- Nhập chữ như bình thường; phần chữ tiếng Việt đang được bộ gõ ghép dấu sẽ được chốt trước khi lưu hoặc chuyển sang ô khác.
+- Bản nháp tự lưu sau 500 ms không nhập và lưu ngay khi bấm sang nơi khác.
+- Trạng thái **Đang lưu**, **Đã lưu** hoặc nút thử lại phản ánh đúng kết quả ghi tệp.
+- Kéo phụ đề trên video để đổi vị trí chung của phụ đề.
+- Kéo tay nắm của khung để đổi cỡ chữ chung.
+- Kéo cạnh clip trên timeline để đổi thời điểm bắt đầu hoặc kết thúc.
 
-Undo/Redo áp dụng cho lịch sử chỉnh sửa, gồm text, timing, hình ảnh, âm thanh, giọng và setting dự án; chúng không phải Back/Forward.
+Bấm vào vùng trống của video sẽ lưu bản nháp, bỏ chọn ô nhập và ẩn khung căn chỉnh. Đổi nội dung chỉ làm cũ giọng của đúng đoạn đó. Đổi thời gian hoặc kiểu chữ không tạo lại giọng.
+
+Hoàn tác và Làm lại áp dụng cho những thay đổi được hỗ trợ về nội dung, thời gian, hình ảnh, giọng đọc, âm thanh và thiết lập dự án. Chúng tách biệt với Quay lại và Tiến tới.
 
 ### Hình ảnh
 
-Chọn giữ hoặc che phụ đề gốc. Nếu chọn che, hãy chọn làm mờ hoặc vá nền trước khi xử lý. Vùng OCR là layer bên dưới phụ đề dịch.
+Chọn **Giữ nguyên** để không thay hình nguồn hoặc chọn **Che**, rồi chọn **Làm mờ** hay **Vá nền**. Việc phân tích chỉ bắt đầu sau khi đã chọn cách che. Vùng che luôn nằm dưới lớp phụ đề dịch.
 
-Watermark nằm trong mục này. Nội dung, kích thước và timing phụ đề không nằm trong Hình ảnh.
+Watermark cũng được chỉnh tại đây. Nội dung và cỡ phụ đề được chỉnh trực tiếp từ phụ đề hoặc mục Phụ đề, không nằm trong Hình ảnh.
 
 ### Giọng đọc
 
-Bấm **Tạo giọng** để mở cửa sổ cấu hình. Chọn provider, giọng và phạm vi rồi xác nhận; đóng cửa sổ không thay đổi giọng hoặc cache hiện tại. Khi đã có giọng, **Đổi giọng** và **Tạo lại** mở cùng cửa sổ thay vì thay đổi project ngay lập tức.
+Khi video chưa có giọng, chọn **Tạo giọng**. Sau khi đã có giọng, dùng **Đổi giọng** hoặc **Tạo lại**. Các nút này mở hộp thoại; thay đổi trong hộp thoại chưa tác động video cho tới khi bấm xác nhận.
 
-Chọn **Toàn video** để dùng một giọng thống nhất, hoặc **Đoạn này** để chỉ tạo cho phụ đề đang chọn trên timeline. Thao tác theo đoạn giữ nguyên toàn bộ clip không bị ảnh hưởng. Chỉ câu thiếu cache hoặc đã thay đổi được tổng hợp.
+Chọn **Đoạn này** để chỉ tạo cho phụ đề đang chọn hoặc **Toàn video** để dùng một giọng cho toàn bộ video. Các đoạn không đổi giữ nguyên phần âm thanh hợp lệ. Khi không bật nhận diện nhiều người nói, đoạn được tạo lại dùng cùng cấu hình giọng với phần còn lại.
 
-- OmniVoice chạy local sau khi cài asset.
-- Edge TTS gửi text phụ đề đến dịch vụ online đã chọn.
-- Nhận diện nhiều người nói chỉ hiển thị khi provider hỗ trợ luồng này.
-
-Nếu tài liệu đã có voice, sửa một câu chỉ làm mới câu đó; câu không đổi giữ clip hợp lệ. Đổi timing không gọi TTS.
+OmniVoice chạy trên máy sau khi cài gói. Edge TTS là dịch vụ trực tuyến và nhận nội dung cần đọc. Mẫu giọng trong dự án Tự động là tệp ghi sẵn; phát mẫu không chạy model.
 
 ### Âm thanh
 
-Âm lượng nguồn/âm nền, giọng đọc và nhạc được áp dụng trực tiếp lên preview. Nhạc nền có thể lấy từ tệp hoặc URL. Chỉnh âm thanh không chạy nhận dạng, dịch, Demucs hoặc TTS.
+Các thanh âm nguồn, giọng đọc và nhạc luôn hiển thị. Thay đổi được nghe cùng video hiện tại mà không chạy lại dịch hoặc TTS. Có thể thêm nhạc từ tệp hoặc liên kết được hỗ trợ.
 
-Nếu thiếu voice clip bắt buộc, giao diện báo phần thiếu thay vì tự chạy model.
+Nếu thiếu một đoạn giọng, HaizFlow chỉ rõ phụ đề bị thiếu thay vì tự tạo mà không hỏi.
 
 ### Xuất
 
-Xuất dùng trạng thái hiện tại. OCR, giọng tổng hợp, nhạc, watermark hoặc phụ đề dịch đều có thể không tồn tại nếu người dùng không bật/tạo chúng. Lệnh xuất không tự chạy các công cụ AI còn thiếu.
+Chọn **Xuất video** để kết xuất bản chỉnh sửa hiện tại. Phụ đề dịch, che phụ đề gốc, giọng đọc, nhạc và watermark đều là tùy chọn. Lệnh xuất không tự chạy công cụ AI mà người dùng chưa chọn.
 
-Khi hoàn tất, dùng nút output hiển thị trực tiếp để phát video hoặc mở thư mục chứa.
+Khi hoàn tất, cửa sổ kết quả có **Phát video**, **Mở thư mục** và **Đóng**. Tệp xuất hiện tại vẫn được mở trực tiếp từ thanh công cụ dự án.
 
-## 8. Preview và timeline
+## 9. Xem trước và timeline
 
-- Video nguồn và kết quả có play, pause, stop, mute và fullscreen riêng.
-- **Phát cả hai** dùng để so sánh đồng bộ.
-- Kéo slider hoặc playhead để tua. UI đi theo chuột ngay và gộp request seek gửi xuống player.
-- Khi chuẩn bị preview mới, frame hợp lệ gần nhất vẫn được giữ.
-- Progress mảnh chỉ xuất hiện khi công cụ đang tạo artifact thay thế.
+Video nguồn và video kết quả có nút phát, tạm dừng, dừng, tắt tiếng và toàn màn hình riêng. **Phát cả hai** bắt đầu hai video tại cùng vị trí để so sánh.
 
-Preview dùng proxy nhẹ và layer cache để phản hồi nhanh. Video xuất cuối vẫn dùng đường render output đã cấu hình.
+Kéo thanh dưới video, bấm timeline hoặc kéo vạch phát để tua. Trong lúc kéo, nút trượt đi theo con trỏ ngay; yêu cầu tua gửi tới player được gộp để giao diện không giật. Khi thả chuột, vị trí cuối được áp dụng chính xác.
 
-## 9. Hàng loạt
+Khi nguồn xem trước thay đổi, khung hình hợp lệ gần nhất được giữ cho tới khi bản thay thế sẵn sàng. Công việc model chạy nền không được chiếm trình phát hoặc đầu ra âm thanh.
 
-1. Tạo dự án Hàng loạt.
-2. Thêm tệp hoặc nhập URL.
-3. Đặt cấu hình dùng chung.
-4. Kiểm tra override riêng nếu có.
-5. Chạy hàng đợi.
+## 10. Hàng loạt, Tải xuống và Đăng bài
 
-Mỗi dòng có trạng thái và progress riêng. Có thể retry video lỗi mà không xóa kết quả video thành công.
+### Hàng loạt
 
-## 10. Tải xuống
+Thêm video, đặt thiết lập chung rồi chạy hàng đợi. Mỗi dòng giữ trạng thái và tiến trình riêng. Có thể thử lại video lỗi mà không làm mất video đã hoàn tất. Một thiết lập tạm cho từng video không tự trở thành cấu hình chung cho lần nhập sau.
 
-Workspace có ba tab:
+### Tải xuống
 
-- **Video:** kiểm tra một URL, xem metadata rồi tải.
-- **Kênh:** kiểm tra kênh/profile công khai, chọn video rồi đưa vào queue.
-- **Âm thanh:** tải audio từ URL hoặc tách audio từ media local.
+- **Video:** kiểm tra một URL, xem thông tin rồi tải.
+- **Kênh:** kiểm tra kênh hoặc trang cá nhân công khai, chọn video và thêm vào hàng đợi.
+- **Âm thanh:** tải tệp âm thanh được hỗ trợ hoặc tách âm từ tệp trên máy.
 
-Download chạy qua queue của dự án. Tệp tạm nằm trong staging thuộc dự án và chỉ được đưa vào kết quả sau validation.
+Đổi tab không làm mất yêu cầu hoặc hàng đợi đang chạy.
 
-## 11. Đăng mạng xã hội
+### Đăng mạng xã hội
 
-1. Tạo hoặc mở dự án Đăng mạng xã hội.
-2. Kết nối Zernio và lưu API key qua ứng dụng.
-3. Đặt caption và tùy chọn mặc định.
-4. Thêm video từ tệp, thư mục hoặc dự án HaizFlow.
-5. Kiểm tra nền tảng, nội dung và queue.
-6. Xác nhận đăng.
+Kết nối Zernio, đặt nội dung và tùy chọn bài đăng, thêm video đã xuất, kiểm tra nơi đăng rồi xác nhận. Thao tác này gửi video tới dịch vụ bên thứ ba. Hãy đọc điều khoản, quy định riêng tư, hạn mức và chi phí của dịch vụ trước khi dùng. Video đã đăng có nút **Mở bài đăng**.
 
-Đăng bài sẽ upload media sang dịch vụ bên thứ ba, không phải xử lý local. Hãy đọc điều khoản, quota, quyền riêng tư và giá của Zernio/nền tảng đích. Video đã đăng chỉ giữ hành động **Mở bài đăng**.
+## 11. Dung lượng và dữ liệu tạm
 
-## 12. Lưu trữ và cache
+| Hạng mục | Giới hạn hoặc quy tắc hiện tại |
+| --- | ---: |
+| Gói Core vừa được kiểm tra | 477 MiB |
+| Cài đặt Core | Setup tự tính mức tối thiểu; bản hiện tại khuyến nghị chừa 4 GiB |
+| Phần trống giữ lại khi cài tài nguyên | 2 GiB sau khi tính tải, cài và bản khôi phục |
+| Dữ liệu tạm của trình sửa Thủ công | mặc định 4 GiB mỗi dự án; 16 GiB toàn bộ |
 
-Dự án chứa input, metadata, log, preview, cache và output. Cache Manual theo nội dung giúp quay lại voice, OCR, hình ảnh hoặc bản phối cũ còn hợp lệ.
+Các con số của Core không bao gồm bộ xử lý, model, video nguồn, video xuất hoặc tệp kết xuất tạm. Gói tài nguyên và thao tác xuất đều kiểm tra chỗ trống riêng bằng số byte đo được hoặc ước tính theo video.
 
-Dùng **Cài đặt → Dọn dữ liệu tạm** khi cần giải phóng cache Manual. Input và output của người dùng không phải cache và không được xóa bởi thao tác này. Nên đóng tác vụ đang chạy trước khi tự di chuyển thư mục dự án.
+Dùng **Cài đặt → Dọn dữ liệu tạm Thủ công** để xóa bản xem trước cũ, bản phối cũ và dữ liệu có thể dựng lại. Lệnh này không được xóa video nguồn, video xuất, bản chỉnh sửa đang dùng hoặc phiên bản cần cho Hoàn tác và Làm lại.
 
-Người chạy source có thể đặt `HAIZFLOW_HOME` trong `.env` để gom model, cache, data và temp dưới một thư mục local đã chọn.
+Người chạy từ source có thể đặt `HAIZFLOW_HOME` trong `.env` để chuyển model, cache, dữ liệu và tệp tạm tới một thư mục cục bộ khác.
 
-## 13. Xử lý lỗi thường gặp
+## 12. Lỗi thường gặp
 
 ### Ứng dụng đang chuẩn bị model
 
-Chờ thanh hoạt động phía dưới hoàn tất. Chuẩn bị model và tiến trình tác vụ là hai trạng thái khác nhau. Nếu lỗi, mở log kỹ thuật rồi kiểm tra dung lượng, mạng, checksum và bộ nhớ GPU.
+Bạn vẫn có thể dùng giao diện. Chuẩn bị model và xử lý video có trạng thái riêng. Nếu chuẩn bị thất bại, hãy mở log kỹ thuật rồi kiểm tra chỗ trống, mạng, xác minh tệp và RAM hoặc VRAM còn lại.
 
-### URL lỗi ở lần đầu
+### Không nhập được liên kết công khai
 
-Build hiện tại tự retry lỗi tạm thời bằng session yt-dlp mới. Nếu lỗi cuối nói private, unavailable, unauthorized hoặc login required, bấm lại khi chưa đổi điều kiện truy cập sẽ không giải quyết được.
+Mở liên kết trong trình duyệt và xác nhận nội dung vẫn công khai. Video riêng tư, đã xóa, bị giới hạn hoặc cần đăng nhập phải có quyền truy cập phù hợp; bấm nút nhiều lần không thể bỏ qua giới hạn đó. Với lỗi tạm thời của dịch vụ, hãy chờ một lúc rồi thử lại một lần.
 
-### Preview không có âm thanh
+### Video kết quả không có tiếng
 
-Kiểm tra track nguồn/voice/nhạc đã tồn tại, không bị mute và volume lớn hơn 0. Trong Manual, tạo voice và chọn/phối âm là thao tác độc lập.
+Kiểm tra track nguồn, giọng đọc và nhạc cần dùng đã tồn tại, không bị tắt tiếng và có mức âm lớn hơn 0. Trong dự án Thủ công, tạo giọng và chọn bản phối âm là hai thao tác riêng.
 
-### Preview khác trong vài giây đầu khi mở project
+### Video kết quả giống video nguồn trong chốc lát
 
-Chờ cache active tải xong. Preview chỉ nên swap sang artifact hoàn chỉnh. Nếu tiếp tục sai, mở log kỹ thuật và báo trạng thái dự án mà không cần gửi media riêng tư.
+Chờ bản xem trước đã lưu được nạp. Khung kết quả phải giữ hình hợp lệ gần nhất và chỉ đổi khi bản mới hoàn chỉnh. Nếu vẫn sai, mở log kỹ thuật và báo trạng thái dự án.
 
-### Nhập tiếng Việt mất từ cuối
+### Nhập tiếng Việt bị mất từ cuối
 
-Build hiện tại commit composition của Windows IME trước khi đổi focus hoặc lưu. Nếu vẫn gặp lỗi, hãy ghi rõ bản Windows, bộ gõ, ô nhập bị lỗi và câu tái hiện chính xác.
+Bản hiện tại chốt phần chữ Windows IME đang ghép trước khi lưu. Nếu lỗi vẫn xảy ra, hãy báo phiên bản Windows, bộ gõ, ô nhập và câu dùng để tái hiện.
 
 ### Ứng dụng chậm
 
-- Dừng tác vụ nền không cần thiết.
-- Kiểm tra thiết bị xử lý còn đủ RAM/VRAM.
-- Dọn variant cache Manual không active nếu ổ gần đầy.
-- Không đặt dự án đang chạy trên filesystem mạng chậm.
+Dừng tác vụ không còn cần, kiểm tra RAM/VRAM cùng chỗ trống và dọn dữ liệu tạm Thủ công nếu cache đầy. Không chỉnh dự án đang chạy từ một ổ mạng chậm.
 
-## 14. Báo lỗi
+## 13. Báo lỗi
 
 Mở [GitHub Issues](https://github.com/MachHongHai/HaizFlow/issues) và cung cấp:
 
 - thao tác đã thực hiện;
-- kết quả mong muốn và thực tế;
-- input tối giản nếu bạn có quyền chia sẻ;
-- lỗi hiển thị và đoạn log kỹ thuật liên quan;
-- phiên bản Windows, GPU và ứng dụng.
+- kết quả mong muốn và kết quả thực tế;
+- lỗi đang hiển thị và đoạn log kỹ thuật liên quan;
+- phiên bản Windows, GPU và HaizFlow;
+- tệp mẫu nhỏ chỉ khi bạn có quyền chia sẻ.
 
-Không đăng credential, link private, metadata dự án đầy đủ hoặc media có bản quyền khi chưa được phép.
+Không đăng mật khẩu, API key, liên kết riêng tư, toàn bộ thông tin dự án hoặc nội dung có bản quyền khi chưa được phép.

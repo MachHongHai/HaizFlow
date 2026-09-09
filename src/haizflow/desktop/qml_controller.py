@@ -11,7 +11,7 @@ from PySide6.QtCore import Property, QEvent, QEventLoop, QObject, QTimer, QUrl, 
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QmlNamedElement, QmlSingleton
 
-from haizflow.config import MODELS_DIR, RUNTIME_DATA_DIR
+from haizflow.config import RUNTIME_DATA_DIR
 from haizflow.core.events import subscribe_log, unsubscribe_log
 from haizflow.core.hardware import (
     basic_hardware_capabilities,
@@ -22,7 +22,6 @@ from haizflow.core.hardware import (
     runtime_profile_for,
     validate_processing_device,
 )
-from haizflow.core.model_integrity import ModelIntegrityError, verify_whisper_turbo_model
 from haizflow.desktop.activity_log import ActivityLogBuffer
 from haizflow.desktop.audio_preview_controller import AudioPreviewController
 from haizflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
@@ -68,8 +67,10 @@ from haizflow.desktop.processing_lifecycle_controller import ProcessingLifecycle
 from haizflow.desktop.project_commands_controller import ProjectCommandsController
 from haizflow.desktop.project_import_controller import ProjectImportController
 from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
+from haizflow.desktop.resource_pack_controller import ResourcePackController
 from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
 from haizflow.desktop.settings_controller import SettingsController
+from haizflow.desktop.smart_warmup_controller import SmartWarmupController
 from haizflow.desktop.social_publish_controller import SocialPublishController
 from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 from haizflow.desktop.url_import import VideoUrlImportCoordinator
@@ -82,7 +83,6 @@ from haizflow.services.desktop_videos import (
     set_desktop_background_music,
     set_desktop_voice_reference,
 )
-from haizflow.services.model_bootstrap import models_ready
 from haizflow.services.processing_queue import SerialProcessingQueue
 from haizflow.services.translation import shutdown_hymt2_worker
 
@@ -164,6 +164,7 @@ class HaizFlowController(QObject):
     # invalidate every Zernio binding on the page.
     tiktokPublishChanged = Signal()
     appAlertRequested = Signal(str, str, str)
+    resourcePacksRequested = Signal(str)
     appConfirmationRequested = Signal(str, str)
     editorPreviewChanged = Signal()
     manualToolStateChanged = Signal(str)
@@ -174,6 +175,8 @@ class HaizFlowController(QObject):
     manualVoiceRefreshStateChanged = Signal(str, int, str)
     manualEditHistoryChanged = Signal()
     editHistoryChanged = Signal()
+    warmupChanged = Signal()
+    resourcePacksChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -240,9 +243,9 @@ class HaizFlowController(QObject):
         self._warmup_thread: threading.Thread | None = None
         self._model_setup_cancel_event = threading.Event()
         self._model_setup_events = queue.Queue()
-        self._model_setup_state = "ready" if os.getenv("HAIZFLOW_SMOKE_TEST") == "1" else "checking"
+        self._model_setup_state = "ready"
         self._model_setup_component = ""
-        self._model_setup_detail = "Checking installed models"
+        self._model_setup_detail = ""
         self._model_setup_completed_bytes = 0
         self._model_setup_total_bytes = 0
         self._model_setup_target_device = ""
@@ -272,7 +275,10 @@ class HaizFlowController(QObject):
         self._log_buffer = ActivityLogBuffer()
         self._logs = ""
         self._status_message = "Ready"
-        self._runtime_state = "ready" if os.getenv("HAIZFLOW_SMOKE_TEST") == "1" else "warming"
+        self._runtime_state = "ready"
+        self._warmup_state = "idle"
+        self._warmup_capability = ""
+        self._warmup_detail = ""
         self._preview_media = PreviewMediaController(self)
         self._editor_preview = EditorPreviewController(self)
         self._edit_history_scope = "none"
@@ -321,6 +327,13 @@ class HaizFlowController(QObject):
         self._settings_language = settings["language"]
         self._settings_processing_device = settings["processing_device"]
         self._processing_device_origin = settings["processing_device_origin"]
+        self._keep_models_warm = settings["keep_models_warm"]
+        self._manual_project_cache_gib = settings["manual_project_cache_gib"]
+        self._manual_global_cache_gib = settings["manual_global_cache_gib"]
+        self._resource_packs = ResourcePackController(self)
+        self._resource_packs.changed.connect(self.resourcePacksChanged.emit)
+        self._smart_warmup = SmartWarmupController(self, self._resource_packs.manager)
+        self.selectedVideoChanged.connect(self._smart_warmup.request_project_prediction)
         _set_ui_language(self._settings_language)
         self.activity_events.set_language(self._settings_language)
         # Keep the first frame independent from Torch/CUDA initialization.  The
@@ -333,11 +346,6 @@ class HaizFlowController(QObject):
         configure_processing_device(self._settings_processing_device)
         self._active_processing_device = self._settings_processing_device
         self._whisper_turbo_model_ready = self._detect_whisper_turbo_model_ready()
-        if os.getenv("HAIZFLOW_SMOKE_TEST") != "1" and models_ready(Path(MODELS_DIR), self._active_processing_device):
-            # Integrity markers make this a small local check. A completed
-            # installation goes straight to background warm-up with no setup UI.
-            self._model_setup_state = "ready"
-            self._model_setup_detail = "Models are ready"
         self._project_directory = os.path.join(RUNTIME_DATA_DIR, "projects")
         self._project_name = ""
         self._project_type = "single"
@@ -366,12 +374,13 @@ class HaizFlowController(QObject):
         if os.getenv("HAIZFLOW_SMOKE_TEST") == "1":
             self._initial_model_warmup_done.set()
         else:
-            self._warmup_thread = threading.Thread(
-                target=self._warm_models_at_startup,
-                name="haizflow-model-warmup",
-                daemon=True,
-            )
-            self._warmup_thread.start()
+            # Render Home first. Optional engines and models warm in their own
+            # low-priority worker only after the Qt event loop is responsive.
+            QTimer.singleShot(1250, self._smart_warmup.start)
+            # Smart warm-up is speculative, never a prerequisite for a user
+            # command. Foreground work either reuses the resident model or
+            # preempts the prediction and starts with the installed engine.
+            self._initial_model_warmup_done.set()
 
         subscribe_log(self._on_video_log)
         self._log_timer = QTimer(self)
@@ -418,6 +427,8 @@ class HaizFlowController(QObject):
         self._drain_startup_maintenance_events()
         self._drain_manual_cache_events()
         self._drain_model_setup_events()
+        self._resource_packs.drain_events()
+        self._smart_warmup.drain_events()
         HaizFlowController._runtime_device_for(self).drain_hardware_events()
 
     def _refresh_selected_elapsed(self) -> None:
@@ -550,14 +561,16 @@ class HaizFlowController(QObject):
         if turbo_state_may_have_changed:
             self._refresh_whisper_turbo_model_ready()
 
-    @staticmethod
-    def _detect_whisper_turbo_model_ready() -> bool:
-        """Read the bootstrap integrity marker once, never in a QML getter."""
-        try:
-            verify_whisper_turbo_model(Path(MODELS_DIR) / "whisper" / "large-v3-turbo")
-        except (ModelIntegrityError, OSError):
+    def _detect_whisper_turbo_model_ready(self) -> bool:
+        """Use the fast pack inventory; full hashes belong to install/first use."""
+
+        resource_packs = getattr(self, "_resource_packs", None)
+        if resource_packs is None:
             return False
-        return True
+        try:
+            return resource_packs.manager.status("model-whisper-turbo") in {"installed", "bundled"}
+        except (KeyError, OSError):
+            return False
 
     def _refresh_whisper_turbo_model_ready(self) -> bool:
         """Refresh the cached integrity result after a model or device event."""
@@ -578,6 +591,12 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        smart_warmup = getattr(self, "_smart_warmup", None)
+        if smart_warmup is not None:
+            smart_warmup.stop()
+        resource_packs = getattr(self, "_resource_packs", None)
+        if resource_packs is not None:
+            resource_packs.shutdown()
         audio = getattr(self, "_manual_audio", None)
         if audio is not None:
             audio.close()
@@ -590,9 +609,13 @@ class HaizFlowController(QObject):
         editor_preview = getattr(self, "_editor_preview", None)
         if editor_preview is not None:
             editor_preview.release()
-        from haizflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice_runtime
+        # Smart warm-up owns all resident model processes in the current
+        # architecture. Keep the direct cleanup only for legacy controller
+        # doubles that do not construct that owner.
+        if smart_warmup is None:
+            from haizflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice_runtime
 
-        clear_omnivoice_runtime()
+            clear_omnivoice_runtime()
         publisher = getattr(self, "_tiktok_publisher", None)
         if publisher is not None:
             publisher.shutdown()
@@ -2128,6 +2151,30 @@ class HaizFlowController(QObject):
     def urlImporter(self):
         return self._url_importer
 
+    @Property(QObject, constant=True)
+    def resourcePackModel(self):
+        return self._resource_packs.model
+
+    @Property(QObject, constant=True)
+    def resourcePackController(self):
+        return self._resource_packs
+
+    @Property(str, notify=resourcePacksChanged)
+    def resourcePackStorageLocation(self):
+        return self._resource_packs.storageLocation
+
+    @Property(str, notify=resourcePacksChanged)
+    def resourcePackInstalledText(self):
+        return self._resource_packs.totalInstalledText
+
+    @Property(str, notify=resourcePacksChanged)
+    def resourcePackFreeSpaceText(self):
+        return self._resource_packs.freeSpaceText
+
+    @Property(bool, notify=resourcePacksChanged)
+    def resourcePackBusy(self):
+        return self._resource_packs.busy
+
     @Property(str, notify=settingsChanged)
     def settingsTheme(self):
         return self._settings_theme
@@ -2139,6 +2186,30 @@ class HaizFlowController(QObject):
     @Property(str, notify=settingsChanged)
     def processingDevice(self):
         return self._settings_processing_device
+
+    @Property(bool, notify=settingsChanged)
+    def keepModelsWarm(self):
+        return bool(self._keep_models_warm)
+
+    @Property(int, notify=settingsChanged)
+    def manualProjectCacheGiB(self):
+        return int(self._manual_project_cache_gib)
+
+    @Property(int, notify=settingsChanged)
+    def manualGlobalCacheGiB(self):
+        return int(self._manual_global_cache_gib)
+
+    @Property(str, notify=warmupChanged)
+    def warmupState(self):
+        return self._warmup_state
+
+    @Property(str, notify=warmupChanged)
+    def warmupCapability(self):
+        return self._warmup_capability
+
+    @Property(str, notify=warmupChanged)
+    def warmupDetail(self):
+        return self._warmup_detail
 
     @Property(bool, notify=settingsChanged)
     def cpuOnly(self):
@@ -2211,12 +2282,12 @@ class HaizFlowController(QObject):
                 return (
                     f"GPU cần ít nhất 5 GB VRAM trống; hiện có {capabilities.free_vram_bytes / (1024**3):.1f} GB trống."
                 )
-            if capabilities.total_ram_bytes and capabilities.total_ram_bytes < 8 * 1024**3:
-                return f"GPU cần ít nhất 8 GB RAM hệ thống; hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GB."
+            if capabilities.total_ram_bytes and capabilities.total_ram_bytes < 14 * 1024**3:
+                return f"HaizFlow cần ít nhất 16 GiB RAM; máy hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GiB."
             return f"GPU sẵn sàng: {capabilities.cuda_name}, {capabilities.total_vram_bytes / (1024**3):.0f} GB VRAM."
         if preference == "cpu":
             if not compatible:
-                return f"Chế độ CPU cần khoảng 6 GB RAM; hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GB."
+                return f"HaizFlow cần máy có 16 GB RAM; hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GiB khả dụng."
             memory_gib = capabilities.total_ram_bytes / (1024**3)
             return f"CPU sẵn sàng: {memory_gib:.0f} GB RAM, {capabilities.logical_cpu_count} luồng logic."
         if capabilities.gpu_supported:
@@ -2425,6 +2496,62 @@ class HaizFlowController(QObject):
     @Slot(str, str, str, result=bool)
     def applySettings(self, theme, language, processing_device):
         return HaizFlowController._settings_delegate_for(self).apply(theme, language, processing_device)
+
+    @Slot(bool)
+    def setKeepModelsWarm(self, enabled):
+        HaizFlowController._settings_delegate_for(self).set_keep_models_warm(bool(enabled))
+
+    @Slot(int, int)
+    def setManualCacheLimits(self, project_gib, global_gib):
+        HaizFlowController._settings_delegate_for(self).set_manual_cache_limits(
+            int(project_gib), int(global_gib)
+        )
+
+    @Slot(str, "QVariantMap")
+    def warmCapabilities(self, capability, context):
+        if getattr(self, "_smart_warmup", None) is not None:
+            self._smart_warmup.request(str(capability), dict(context or {}), priority=0)
+
+    @Slot(str)
+    def releaseWarmResources(self, reason):
+        if getattr(self, "_smart_warmup", None) is not None:
+            self._smart_warmup.release(str(reason or "manual"))
+
+    @Slot("QVariantList")
+    def installResourcePacks(self, pack_ids):
+        self._resource_packs.installResourcePacks(pack_ids)
+
+    @Slot(str)
+    def cancelResourcePackOperation(self, pack_id):
+        self._resource_packs.cancelResourcePackOperation(str(pack_id))
+
+    @Slot(str)
+    def repairResourcePack(self, pack_id):
+        self._resource_packs.repairResourcePack(str(pack_id))
+
+    @Slot(str, result=bool)
+    def removeResourcePack(self, pack_id):
+        return self._resource_packs.removeResourcePack(str(pack_id))
+
+    @Slot(result=str)
+    def cleanUnusedResourcePacks(self):
+        return self._resource_packs.cleanUnusedResourcePacks()
+
+    @Slot(str, "QVariantMap", result="QStringList")
+    def requiredPacksForCapability(self, capability, context):
+        return self._resource_packs.requiredPacksForCapability(str(capability), context)
+
+    @Slot("QVariantList", result="QVariantMap")
+    def resourceRequirementSummary(self, pack_ids):
+        return self._resource_packs.resourceRequirementSummary(pack_ids)
+
+    @Slot(str, result=bool)
+    def moveResourceStorage(self, destination):
+        return self._resource_packs.moveResourceStorage(str(destination))
+
+    @Slot()
+    def browseAndMoveResourceStorage(self):
+        self._resource_packs.browseAndMoveResourceStorage()
 
     @staticmethod
     def _settings_delegate_for(host):
@@ -2831,6 +2958,38 @@ class HaizFlowController(QObject):
             return False
         if tool_id not in allowed:
             self.appAlertRequested.emit("Thủ công", "Công cụ này không khả dụng.", "warning")
+            return False
+        capabilities = {
+            "separation": ("separation",),
+            "translation": ("recognition", "translation"),
+            "image": ("ocr",),
+            "voice": ("voice",),
+        }.get(tool_id, ())
+        pack_context = {
+            "device": str(getattr(self, "_settings_processing_device", "cpu") or "cpu"),
+            "model": str(getattr(video, "speech_recognition_model", "small") or "small"),
+            "source_language": str(getattr(video, "source_language", "auto") or "auto"),
+            "language": str(getattr(video, "target_language", "") or ""),
+            "provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
+        }
+        missing: list[str] = []
+        resource_packs = getattr(self, "_resource_packs", None)
+        resource_manager = getattr(resource_packs, "manager", None)
+        if resource_manager is not None:
+            for capability in capabilities:
+                missing.extend(resource_manager.missing_packs(capability, pack_context))
+        missing = list(dict.fromkeys(missing))
+        if missing:
+            labels = [resource_manager.definitions[pack_id].label for pack_id in missing]
+            summary = resource_manager.requirement_summary(missing)
+            self.appAlertRequested.emit(
+                "Thiếu gói tài nguyên",
+                f"Cần cài: {', '.join(labels)} · tải {format_memory_size(summary['downloadBytes'])}. "
+                f"Cần {format_memory_size(summary['requiredBytes'])} trống trong lúc cài. "
+                "Mở Cài đặt → Gói tài nguyên để cài.",
+                "info",
+            )
+            self.resourcePacksRequested.emit(resource_manager.definitions[missing[0]].group)
             return False
         if tool_id in {"subtitle", "voice", "audio", "export"}:
             ensure_current_subtitle_document(video.video_id)
@@ -4207,6 +4366,21 @@ class HaizFlowController(QObject):
         return getattr(host, "_processing_lifecycle", None) or ProcessingLifecycleController(host)
 
     def _enqueue_video(self, video_id: str) -> bool:
+        warmup = getattr(self, "_smart_warmup", None)
+        if warmup is not None:
+            video = video_store.get_video(str(video_id))
+            target = str(getattr(video, "manual_target_tool", "") or "") if video else ""
+            required = {
+                "separation": {"separation"},
+                "translation": {"recognition", "translation"},
+                "image": {"ocr"},
+                "voice": {"voice"},
+            }.get(target, set())
+            # Automatic and Batch may use several models in one processing
+            # request. Preserve all correctly warmed residents for those modes.
+            if not target:
+                required = set(warmup.resident)
+            warmup.foreground_work_requested(required)
         return HaizFlowController._processing_delegate_for(self).enqueue_video(video_id)
 
     def _enqueue_videos(self, video_ids) -> int:

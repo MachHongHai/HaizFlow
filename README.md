@@ -1,83 +1,59 @@
 <div align="center">
   <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="128" alt="HaizFlow logo">
   <h1>HaizFlow</h1>
-  <p><strong>Local-first video translation and dubbing for Windows.</strong></p>
-  <p>Transcribe, translate, create subtitles, synthesize speech, mix audio, and export without a paid inference API.</p>
+  <p><strong>Free video translation, dubbing and finishing tools for Windows.</strong></p>
+  <p>Work with subtitles, speech, picture and sound in one desktop application. Local engines do not require a paid inference API.</p>
 
   <p>
-    <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/Source-Apache%202.0-C4915E?style=flat-square"></a>
-    <a href="https://github.com/MachHongHai/HaizFlow"><img alt="Windows" src="https://img.shields.io/badge/Platform-Windows-4B5563?style=flat-square"></a>
-    <a href="https://www.python.org/"><img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-4B5563?style=flat-square"></a>
-    <img alt="Local-first" src="https://img.shields.io/badge/Processing-Local--first-587052?style=flat-square">
+    <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/License-Apache%202.0-C4915E?style=flat-square"></a>
+    <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-4B5563?style=flat-square">
+    <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-4B5563?style=flat-square">
+    <img alt="No paid inference API required" src="https://img.shields.io/badge/Local%20engines-No%20API%20fee-587052?style=flat-square">
   </p>
 
   <p>
-    <a href="https://github.com/MachHongHai/HaizFlow"><strong>Source code</strong></a> ·
-    <a href="https://github.com/MachHongHai/HaizFlow/issues"><strong>Report an issue</strong></a> ·
-    <a href="https://www.linkedin.com/in/machhonghai/"><strong>LinkedIn</strong></a> ·
-    <a href="mailto:machhonghaipr@gmail.com"><strong>Email</strong></a>
+    <a href="https://github.com/MachHongHai/HaizFlow"><strong>Source</strong></a> ·
+    <a href="docs/user-guide.md"><strong>User guide</strong></a> ·
+    <a href="https://github.com/MachHongHai/HaizFlow/issues"><strong>Issues</strong></a> ·
+    <a href="README.vi.md"><strong>Tiếng Việt</strong></a>
   </p>
-
-  <p><strong>English</strong> · <a href="README.vi.md">Tiếng Việt</a></p>
 </div>
 
 ---
 
-## Why HaizFlow
+## About HaizFlow
 
-Video localization commonly requires several subscriptions, manual file transfers, and a browser-based editor. HaizFlow brings the working set into one Windows desktop application and keeps project media on storage you control.
+HaizFlow is a Windows application for translating and finishing video. It combines transcription, translation, subtitle editing, speech synthesis, audio mixing, source-subtitle removal and export without sending the core job through a paid inference API.
 
-- **No paid inference API is required for the core workflow.** Whisper/WhisperX, HY-MT2, OmniVoice, Demucs, OCR, and FFmpeg run locally after their verified assets are installed.
-- **Your project remains local.** Source media, intermediate artifacts, settings, previews, and exports are stored in project-owned directories.
-- **Automatic and manual workflows coexist.** Run an end-to-end job when speed matters, or edit independent layers when control matters.
-- **Expensive work is reusable.** Content-addressed caches avoid repeating recognition, translation, separation, visual cleanup, or speech synthesis when inputs have not changed.
-- **The application is inspectable.** Source code is Apache-2.0, technical logs are available on demand, and model/download boundaries are documented.
+Whisper, HY-MT2, OmniVoice, Demucs and OCR can run on the user's computer after the corresponding resource packs are installed. Projects, working files and exports remain in directories controlled by the user. Features that depend on an outside service—such as Edge TTS, importing a public URL and social publishing—still require an Internet connection.
 
-> [!IMPORTANT]
-> HaizFlow is under active development. Keep a copy of irreplaceable source media and review the [release-readiness document](docs/release-readiness.md) before distributing a build.
+The project is under active development. Keep a separate copy of source material that cannot be replaced, and consult [release readiness](docs/release-readiness.md) before distributing a build.
 
-## What it can do
+## Main features
 
-| Workspace | Purpose |
+| Area | What it is for |
 | --- | --- |
-| **Automatic** | Configure one video and run recognition, translation, subtitles, speech, audio, and export as a managed job. |
-| **Manual editor** | Work non-linearly with source audio, recognition and translation, subtitle layout, visual cleanup, speech, audio mix, and export. |
-| **Batch** | Apply the shared processing configuration to several videos while retaining per-video status and recovery. |
-| **Downloads** | Import a video, channel, or audio source from a supported public link into a managed project. |
-| **Social publishing** | Prepare and publish finished media through a user-configured Zernio connection. |
+| **Automatic** | Configure one video and let HaizFlow perform the selected operations in order. Jobs can be paused and resumed. |
+| **Manual editor** | Edit subtitles, picture, voice and sound independently, in any order. Export uses the current edit. |
+| **Batch** | Apply one configuration to several videos while keeping separate progress and errors for each file. |
+| **Downloads** | Save supported public video, channel or audio links as managed projects. |
+| **Social publishing** | Prepare and submit finished videos through a Zernio account supplied by the user. |
 
-Manual editing is layer-oriented. A translated subtitle can be displayed before OCR cleanup or speech exists; image cleanup, voice generation, music, levels, watermark, and subtitle timing can be changed independently. Export uses the current valid state instead of forcing every optional tool to run.
+The Manual editor does not force every tool to run. Translated text can appear before source subtitles are concealed or a voice is generated. Changing volume does not translate the video again; changing subtitle timing does not synthesize the voice again; returning to a previously processed visual option reuses its saved result when it is still valid.
 
-## Processing model
-
-```mermaid
-flowchart LR
-    A[Source video] --> B[Recognition]
-    B --> C[Translation]
-    C --> D[Subtitle document]
-    D --> E[Local or Edge TTS]
-    A --> F[OCR and visual cleanup]
-    A --> G[Original audio or Demucs]
-    E --> H[Audio mix]
-    G --> H
-    D --> I[Preview and export]
-    F --> I
-    H --> I
-```
-
-Only the dependency needed by a command is evaluated. In the Manual editor, changing subtitle timing does not rerun TTS; changing volume does not rerun translation; switching between cached visual modes does not rerun OCR.
-
-## Quick start from source
+## Install from source
 
 ### Requirements
 
 - Windows 10 version 1809 or later, or Windows 11, x64.
-- Python 3.13 x64.
-- Git and PowerShell.
-- Sufficient free disk space for the application, models, project media, and caches.
-- An NVIDIA GPU is recommended for larger local models; supported CPU paths remain available where documented.
+- Python 3.13 x64, Git and PowerShell.
+- 16 GiB RAM or more.
+- An NVIDIA GPU is optional. Larger local models run faster on a compatible GPU; supported CPU modes remain available.
+- Enough free space for the Core application, the resource packs you choose, project media and exports.
 
-### Install
+The current verified Core artifact is 477 MiB. Setup recommends 4 GiB of free space and calculates the exact minimum from the build being installed. Optional engines, models, project media and exports are measured separately; they are not hidden inside the Core requirement.
+
+### Set up a development checkout
 
 ```powershell
 git clone https://github.com/MachHongHai/HaizFlow.git
@@ -85,91 +61,105 @@ cd HaizFlow
 powershell -ExecutionPolicy Bypass -File .\scripts\install-desktop-env.ps1
 ```
 
-The installation script creates `.venv`, synchronizes the hash-locked Windows dependency set, verifies the runtime, and installs the repository in editable mode.
-
-### Run
+### Start the application
 
 ```powershell
 .\.venv\Scripts\python.exe .\haizflow_desktop.py
 ```
 
-On first use, HaizFlow may need an Internet connection to download selected model assets. Downloads are checked against fixed size and SHA-256 metadata before they are activated. Once installed, the core local pipeline can run without a paid API.
+Open **Settings → Resource packs** to install the local engines and models you intend to use. Downloads can resume after interruption and are checked against their published size and SHA-256 digest before activation.
 
-### Verify a development checkout
+HaizFlow opens the Home page before starting model preparation. When **Keep models ready** is enabled, installed models that are likely to be needed are loaded in a separate worker after the interface is responsive. A processing command always takes priority over background preparation.
+
+### Run the checks
 
 ```powershell
 .\scripts\test.ps1
 ```
 
-This runs Python compilation, correctness linting, the unit/integration suite, and `qmllint`.
+This command compiles the Python source, runs the automated test suite and checks the QML files.
 
-## First project
+## A first project
 
-1. Open **Projects** and choose **New project**.
-2. Select **Automatic** for a managed end-to-end run, **Manual** for independent tools, or **Batch** for multiple videos.
+1. Open **Projects** and select **New project**.
+2. Choose **Automatic**, **Manual** or **Batch**.
 3. Import a local video or a supported public link.
-4. Choose the source and target language, recognition model, voice, subtitle treatment, and audio behavior relevant to the selected workspace.
-5. Start the named operation. Progress appears beside the active tool and in the activity strip.
-6. Review the preview and subtitles. Manual projects allow direct text, timing, position, size, image, voice, and audio adjustments.
-7. Export the current result and open the output from the project workspace.
+4. Select the languages and only the options needed for this job.
+5. Run the required command and follow its progress beside the active tool.
+6. Review the result. In a Manual project, subtitles, picture, voice and sound can be revised separately.
+7. Select **Export video**, then play the finished file or open its folder.
 
-For every control and recovery path, read the [English user guide](docs/user-guide.md) or [Vietnamese user guide](docs/user-guide.vi.md).
+The [user guide](docs/user-guide.md) explains every project type, the Manual editor, resource packs, storage and common recovery steps. A complete [Vietnamese guide](docs/user-guide.vi.md) is also available.
 
-## Network and privacy
+## Manual editing model
 
-The local workflow does not upload project video to a HaizFlow server; HaizFlow has no hosted processing backend. Network access is used only by features that inherently require it:
+```mermaid
+flowchart LR
+    A[Source video] --> B[Recognition and translation]
+    B --> C[Subtitle document]
+    C --> D[Voice clips]
+    A --> E[Source subtitle detection]
+    A --> F[Original audio or separated tracks]
+    C --> G[Preview and export]
+    D --> H[Audio mix]
+    F --> H
+    E --> G
+    H --> G
+```
 
-- first-run downloads of verified model assets;
-- public URL and channel inspection/download;
-- Edge TTS when that provider is selected;
-- Zernio authentication, upload, and social publishing.
+Each command performs the operation named by its tool. Saved results are identified by their inputs and settings, so changing one layer does not discard unrelated work. Export does not run missing optional tools automatically; it renders the valid state currently shown by the editor.
 
-Credentials are stored through Windows Credential Manager. Diagnostic export is bounded and redacted and does not include project media. See [Architecture: network and privacy boundary](docs/architecture.md#10-network-and-privacy-boundary).
+## Network use and privacy
+
+HaizFlow does not operate a hosted video-processing service. Local engines read project media from the user's storage. Network access is limited to features that need it:
+
+- downloading resource packs after confirmation;
+- inspecting or downloading a public URL or channel;
+- sending subtitle text to Edge TTS when that voice provider is selected;
+- authenticating, uploading and publishing through Zernio.
+
+Credentials are stored with Windows Credential Manager. Diagnostic exports exclude project media and redact known secret fields. The exact boundary is described in [Architecture: network and privacy](docs/architecture.md#10-network-and-privacy-boundary).
 
 ## Documentation
 
-| Document | Audience | Description |
+| Document | Intended reader | Contents |
 | --- | --- | --- |
-| [User guide](docs/user-guide.md) · [Tiếng Việt](docs/user-guide.vi.md) | Users | Installation, projects, editing, download, publishing, storage, and troubleshooting. |
-| [Architecture](docs/architecture.md) · [Tiếng Việt](docs/architecture.vi.md) | Engineers | Layer boundaries, persistence, artifact graph, concurrency, preview, and trust model. |
-| [Development guide](docs/development.md) · [Tiếng Việt](docs/development.vi.md) | Contributors | Environment setup, tests, code conventions, and change workflow. |
-| [Dependency security](docs/dependency-security.md) · [Tiếng Việt](docs/dependency-security.vi.md) | Security and release reviewers | Dependency audit policy, controlled exceptions, and model trust boundaries. |
-| [Release readiness](docs/release-readiness.md) · [Tiếng Việt](docs/release-readiness.vi.md) | Maintainers | Packaging, legal, installer, verification, and production gates. |
+| [User guide](docs/user-guide.md) · [Tiếng Việt](docs/user-guide.vi.md) | Users and testers | Installation, projects, editing, downloads, publishing and troubleshooting. |
+| [Architecture](docs/architecture.md) · [Tiếng Việt](docs/architecture.vi.md) | Engineers | Process boundaries, persistence, caches, concurrency and security. |
+| [Development](docs/development.md) · [Tiếng Việt](docs/development.vi.md) | Contributors | Environment setup, tests, source conventions and review requirements. |
+| [Dependency security](docs/dependency-security.md) · [Tiếng Việt](docs/dependency-security.vi.md) | Security reviewers | Pinned dependencies, advisories, mitigations and model trust. |
+| [Release readiness](docs/release-readiness.md) · [Tiếng Việt](docs/release-readiness.vi.md) | Maintainers | Build, installer, licensing and release gates. |
+| [Contributing](CONTRIBUTING.md) · [Tiếng Việt](CONTRIBUTING.vi.md) | Contributors | How to propose, test and document a change. |
+| [Security policy](SECURITY.md) · [Tiếng Việt](SECURITY.vi.md) | Security reporters | Supported releases and private reporting. |
 
-## Technology
+## Technical overview
 
-- **Desktop:** Python 3.13, PySide6, Qt Quick/QML
-- **Recognition:** WhisperX, faster-whisper, CTranslate2
-- **Translation:** HY-MT2
-- **Speech:** OmniVoice locally; Edge TTS as an optional online provider
-- **Audio:** Demucs, PyDub, SoundFile
-- **Visual processing:** RapidOCR, FFmpeg, libass-compatible subtitle rendering
-- **Acquisition:** yt-dlp with bounded retry, validation, and project-owned staging
+- **Application:** Python 3.13, PySide6 and Qt Quick/QML.
+- **Recognition:** WhisperX, faster-whisper and CTranslate2.
+- **Translation:** HY-MT2.
+- **Speech:** OmniVoice locally; Edge TTS as an online option.
+- **Audio:** Demucs, FFmpeg, PyDub and SoundFile.
+- **Picture and subtitles:** RapidOCR, FFmpeg and libass-compatible rendering.
+- **Public media import:** yt-dlp with validation and bounded retry.
 
-The detailed dependency direction and worker model are documented in [docs/architecture.md](docs/architecture.md).
+The Core application and AI engines are packaged separately. Engines run outside the interface process through a versioned protocol, keeping large inference libraries out of application startup and preventing their DLLs from changing the Qt runtime.
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Before changing persisted data, cache signatures, model loading, or the QML/controller boundary, read the [development guide](docs/development.md) and [architecture](docs/architecture.md).
+Focused issues and pull requests are welcome. Changes to saved project data, cache keys, model loading or the QML/controller interface should include a regression test and a corresponding documentation update. Start with the [development guide](docs/development.md) and [architecture](docs/architecture.md).
 
-```powershell
-.\scripts\test.ps1
-```
+## License
 
-A contribution should leave the existing workflow operational, include regression coverage for behavior changes, preserve user-owned files, and avoid silently introducing a new network or model trust boundary.
-
-## License and third-party components
-
-HaizFlow source code is licensed under the [Apache License 2.0](LICENSE). Downloaded or bundled models, fonts, codecs, and libraries remain under their respective licenses. In particular, the OmniVoice SDK and its model checkpoint do not share identical licensing terms; review [NOTICE](NOTICE), the [`licenses`](licenses) directory, and the [release gate](docs/release-readiness.md) before redistribution or commercial use.
+HaizFlow source code is available under the [Apache License 2.0](LICENSE). Models, fonts, codecs and third-party libraries retain their own licenses. The OmniVoice SDK and its model checkpoint, in particular, do not have identical licensing terms. Review [NOTICE](NOTICE), [`licenses`](licenses) and [release readiness](docs/release-readiness.md) before redistribution or commercial use.
 
 ## Developer
 
-HaizFlow is developed by **Mạch Hồng Hải**.
+HaizFlow is developed and maintained by **Mạch Hồng Hải**.
 
 <p>
-  <a href="https://github.com/MachHongHai"><img alt="GitHub profile" src="https://img.shields.io/badge/GitHub-MachHongHai-24292F?style=for-the-badge&logo=github"></a>
-  <a href="https://www.linkedin.com/in/machhonghai/"><img alt="LinkedIn profile" src="https://img.shields.io/badge/LinkedIn-M%E1%BA%A1ch%20H%E1%BB%93ng%20H%E1%BA%A3i-0A66C2?style=for-the-badge&logo=linkedin"></a>
-  <a href="mailto:machhonghaipr@gmail.com"><img alt="Email developer" src="https://img.shields.io/badge/Email-machhonghaipr%40gmail.com-6B6258?style=for-the-badge&logo=gmail"></a>
+  <a href="https://github.com/MachHongHai"><img alt="Mạch Hồng Hải on GitHub" src="https://img.shields.io/badge/GitHub-MachHongHai-24292F?style=for-the-badge&logo=github"></a>
+  <a href="https://www.linkedin.com/in/machhonghai/"><img alt="Mạch Hồng Hải on LinkedIn" src="https://img.shields.io/badge/LinkedIn-M%E1%BA%A1ch%20H%E1%BB%93ng%20H%E1%BA%A3i-0A66C2?style=for-the-badge&logo=linkedin"></a>
+  <a href="mailto:machhonghaipr@gmail.com"><img alt="Email Mạch Hồng Hải" src="https://img.shields.io/badge/Email-machhonghaipr%40gmail.com-6B6258?style=for-the-badge&logo=gmail"></a>
 </p>
 
-If HaizFlow is useful to you, consider [starring the repository](https://github.com/MachHongHai/HaizFlow) or opening a precise issue with reproduction steps.
+If HaizFlow has been useful, you can [star the repository](https://github.com/MachHongHai/HaizFlow) or help improve it by filing a concise issue with reproduction steps.

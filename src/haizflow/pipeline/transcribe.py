@@ -61,7 +61,7 @@ _VERIFIED_ALIGNMENT_MODELS = ALIGNMENT_MODELS
 
 
 def _whisper_model_source(model_name: str = "small") -> tuple[str, bool]:
-    """Resolve only the checksum-verified model installed by first-run setup."""
+    """Resolve only the checksum-verified model installed by Resource Manager."""
     normalized = str(model_name or "small").strip().lower()
     if normalized not in {"small", "large-v3-turbo"}:
         raise RuntimeError(f"Unsupported Whisper model: {model_name}")

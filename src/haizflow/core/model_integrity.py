@@ -42,7 +42,7 @@ SUBTITLE_OCR_FILES = {
     "subtitle-cls.onnx": (1_018_508, "54379ae5174d026780215fc748a7f31910dee36818e63d49e17dc598ecc82df7"),
 }
 # OmniVoice is the multilingual local TTS backend.  The complete checkpoint is
-# pinned because model loaders are deliberately offline after first-run setup.
+# pinned because model loaders are deliberately offline after pack installation.
 OMNIVOICE_REPO = "k2-fsa/OmniVoice"
 OMNIVOICE_REVISION = "c5fdb5ccb189668d56333f77ba2629f4cd7535f4"
 OMNIVOICE_SDK_VERSION = "0.2.1"

@@ -10,8 +10,8 @@
     </message>
     <message>
         <location line="+1"/>
-        <source>Ứng dụng nguồn mở dành cho Windows</source>
-        <translation>Open-source Windows application</translation>
+        <source>Miễn phí và mã nguồn mở trên Windows</source>
+        <translation>Free and open source for Windows</translation>
     </message>
     <message>
         <location line="+16"/>
@@ -24,8 +24,8 @@
     </message>
     <message>
         <location line="+19"/>
-        <source>Công cụ xử lý và lồng tiếng video trên Windows.</source>
-        <translation>Video processing and dubbing for Windows.</translation>
+        <source>Dịch, lồng tiếng và hoàn thiện video trên Windows.</source>
+        <translation>Translate, dub and finish video on Windows.</translation>
     </message>
     <message>
         <location line="+10"/>
@@ -34,8 +34,8 @@
     </message>
     <message>
         <location line="+17"/>
-        <source>HaizFlow là phần mềm nguồn mở, ưu tiên xử lý video ngay trên máy và không yêu cầu dịch vụ API trả phí cho quy trình cốt lõi.</source>
-        <translation>HaizFlow is open-source software designed to process video on your computer without requiring paid API services for its core workflow.</translation>
+        <source>HaizFlow cho phép xử lý video bằng các công cụ cục bộ mà không cần API suy luận trả phí. Dự án và video xuất được lưu tại vị trí do bạn quản lý.</source>
+        <translation>HaizFlow can process video with local tools and does not require a paid inference API. Projects and exports stay in locations you control.</translation>
     </message>
     <message>
         <location line="+11"/>
@@ -1146,8 +1146,8 @@
     </message>
     <message>
         <location line="+21"/>
-        <source>HaizFlow là dự án nguồn mở dành cho quy trình xử lý video cục bộ trên Windows.</source>
-        <translation>HaizFlow is an open-source project for local video processing workflows on Windows.</translation>
+        <source>HaizFlow miễn phí, mã nguồn mở và có thể xử lý video ngay trên máy Windows.</source>
+        <translation>HaizFlow is free, open source and can process video directly on your Windows computer.</translation>
     </message>
 </context>
 <context>

@@ -1,7 +1,12 @@
 import types
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from haizflow.core.dependency_security import _guard_lightning_saving_module
+from haizflow.core.dependency_security import (
+    _guard_lightning_saving_module,
+    validate_checkpoint_weight_maps,
+)
 
 
 class _CheckpointModel:
@@ -47,6 +52,29 @@ class DependencySecurityTests(unittest.TestCase):
 
         self.assertFalse(_guard_lightning_saving_module(module))
         self.assertIs(module._load_state, original)
+
+    def test_checkpoint_weight_map_accepts_regular_local_shards(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            shard = root / "model-00001-of-00001.safetensors"
+            shard.write_bytes(b"verified model payload")
+            (root / "model.safetensors.index.json").write_text(
+                '{"weight_map":{"layer.weight":"model-00001-of-00001.safetensors"}}',
+                encoding="utf-8",
+            )
+
+            self.assertEqual(validate_checkpoint_weight_maps(root), (shard,))
+
+    def test_checkpoint_weight_map_rejects_path_traversal(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "model.safetensors.index.json").write_text(
+                '{"weight_map":{"layer.weight":"../secret.txt"}}',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "escapes"):
+                validate_checkpoint_weight_maps(root)
 
 
 if __name__ == "__main__":

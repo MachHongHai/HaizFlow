@@ -22,11 +22,8 @@ LOCK_PATH = ROOT / "requirements-lock-py313-win64.txt"
 MANIFEST_PATH = ROOT / "dependency-lock-manifest.json"
 INPUT_PATHS = (ROOT / "pyproject.toml", ROOT / "requirements-build.in")
 HASH_PATTERN = re.compile(r"--hash=sha256:([0-9a-f]{64})(?:\s|$)")
-REQUIRED_INDEX_DIRECTIVES = (
-    "--index-url https://pypi.org/simple",
-    "--extra-index-url https://download.pytorch.org/whl/cu128",
-    "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu",
-)
+REQUIRED_INDEX_DIRECTIVES = ("--index-url https://pypi.org/simple",)
+FORBIDDEN_CORE_INDEX_PREFIXES = ("--extra-index-url", "--find-links")
 
 
 def _sha256(path: Path) -> str:
@@ -129,6 +126,11 @@ def verify(*, write_manifest: bool, check_installed: bool) -> dict[str, object]:
         raise RuntimeError(
             "Dependency lock is missing required package indexes: " + ", ".join(missing_indexes)
         )
+    forbidden_indexes = sorted(
+        line for line in lock_lines if any(line.startswith(prefix) for prefix in FORBIDDEN_CORE_INDEX_PREFIXES)
+    )
+    if forbidden_indexes:
+        raise RuntimeError("Core dependency lock contains engine-only package indexes: " + ", ".join(forbidden_indexes))
     locked = _locked_requirements()
     expected = _expected_direct_requirements()
     missing = sorted(set(expected) - set(locked))

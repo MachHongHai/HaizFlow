@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "protocol_version": 1,
+  "packs": {
+    "engine-cpu-py313": {
+      "version": "1",
+      "url": "",
+      "sha256": "",
+      "download_size": 1300000000,
+      "installed_size": 2000000000
+    },
+    "engine-cuda128-py313": {
+      "version": "1",
+      "url": "",
+      "sha256": "",
+      "download_size": 4500000000,
+      "installed_size": 5500000000
+    },
+    "engine-vision-onnx": {
+      "version": "1",
+      "url": "",
+      "sha256": "",
+      "download_size": 170000000,
+      "installed_size": 260000000
+    }
+  }
+}

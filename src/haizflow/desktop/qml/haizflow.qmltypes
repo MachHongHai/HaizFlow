@@ -32,8 +32,6 @@ Module {
         Method { name: "release" }
     }
     Component {
-        file: "D:/Du-an/HaizFlow/HaizFlow/src/haizflow/desktop/qml_controller.py"
-        lineNumber: 0
         name: "HaizFlowController"
         Property { name: "manualSubtitleModel"; type: "ManualSubtitleModel"; isPointer: true; isReadonly: true }
         Property { name: "subtitleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
@@ -42,6 +40,14 @@ Module {
         Property { name: "manualCanRedo"; type: "bool"; isReadonly: true }
         Property { name: "manualUndoLabel"; type: "string"; isReadonly: true }
         Property { name: "manualRedoLabel"; type: "string"; isReadonly: true }
+        Property { name: "resourcePackModel"; type: "QObject"; isPointer: true; isReadonly: true }
+        Property { name: "resourcePackStorageLocation"; type: "QString"; isReadonly: true }
+        Property { name: "resourcePackInstalledText"; type: "QString"; isReadonly: true }
+        Property { name: "resourcePackFreeSpaceText"; type: "QString"; isReadonly: true }
+        Property { name: "resourcePackBusy"; type: "bool"; isReadonly: true }
+        Property { name: "keepModelsWarm"; type: "bool"; isReadonly: true }
+        Property { name: "manualProjectCacheGiB"; type: "int"; isReadonly: true }
+        Property { name: "manualGlobalCacheGiB"; type: "int"; isReadonly: true }
         Property { name: "selectedStepId"; type: "QString"; isReadonly: true }
         Property { name: "canUndoEdit"; type: "bool"; isReadonly: true }
         Property { name: "canRedoEdit"; type: "bool"; isReadonly: true }
@@ -52,6 +58,15 @@ Module {
         Method { name: "redoEdit"; type: "bool" }
         Method { name: "undoManualEdit"; type: "bool" }
         Method { name: "redoManualEdit"; type: "bool" }
+        Method { name: "setKeepModelsWarm"; Parameter { name: "enabled"; type: "bool" } }
+        Method { name: "setManualCacheLimits"; Parameter { name: "projectGiB"; type: "int" } Parameter { name: "globalGiB"; type: "int" } }
+        Method { name: "warmCapabilities"; Parameter { name: "capability"; type: "string" } Parameter { name: "context"; type: "QVariantMap" } }
+        Method { name: "installResourcePacks"; Parameter { name: "packIds"; type: "QVariantList" } }
+        Method { name: "cancelResourcePackOperation"; Parameter { name: "packId"; type: "string" } }
+        Method { name: "repairResourcePack"; Parameter { name: "packId"; type: "string" } }
+        Method { name: "removeResourcePack"; type: "bool"; Parameter { name: "packId"; type: "string" } }
+        Method { name: "cleanUnusedResourcePacks"; type: "string" }
+        Method { name: "browseAndMoveResourceStorage" }
         Method { name: "loadManualSubtitles" }
         Method { name: "beginManualSubtitleEdit"; Parameter { name: "segmentId"; type: "string" } }
         Method { name: "endManualSubtitleEdit" }

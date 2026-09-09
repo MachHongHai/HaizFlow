@@ -14,14 +14,11 @@ from haizflow.core.hardware import (
     runtime_profile,
 )
 from haizflow.core.runtime_probe import probe_runtime
-from haizflow.pipeline.audio_separation import separate_audio
 from haizflow.pipeline.audio_timeline import build_audio_timeline
 from haizflow.pipeline.extract_audio import extract_audio
 from haizflow.pipeline.process_registry import check_cancellation, clean_video, is_cancelled, is_paused, start_video
 from haizflow.pipeline.render import render_video
-from haizflow.pipeline.subtitle_ocr import detect_original_subtitle_region
 from haizflow.pipeline.subtitle import generate_srt
-from haizflow.pipeline.transcribe import TIMING_SOURCE, transcribe
 from haizflow.pipeline.tts import generate_voice_parts, resolve_tts_provider
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services.video_store import get_video, log_to_video, update_video
@@ -32,6 +29,41 @@ from haizflow.services.translation import (
     warm_hymt2_worker,
 )
 from haizflow.utils.ffmpeg import validate_video_integrity
+
+
+TIMING_SOURCE = "whisperx-context-aligned-sentences-v9-semantic-source"
+
+
+def separate_audio(*args, **kwargs):
+    from haizflow.pipeline.audio_separation import separate_audio as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def detect_original_subtitle_region(*args, **kwargs):
+    from haizflow.pipeline.manual_tools import detect_original_subtitle_region as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def transcribe(*args, **kwargs):
+    from haizflow.pipeline.manual_tools import transcribe as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def _release_recognition_runtime() -> None:
+    """Release the active ASR model without importing AI packages in Core."""
+
+    from haizflow.services.external_engine import shared_external_engine_pool
+
+    if "recognition" in shared_external_engine_pool().release({"recognition"}):
+        return
+    try:
+        from haizflow.pipeline.transcribe import release_warm_whisperx_model
+    except (ImportError, ModuleNotFoundError):
+        return
+    release_warm_whisperx_model()
 
 
 def _signature(*values):
@@ -196,14 +228,12 @@ def _recover_gpu_to_cpu(video_id: str, stage: str, error: Exception) -> bool:
     log_to_video(video_id, detail)
     log_to_video(video_id, f"GPU recovery reason: {error}")
     try:
-        from haizflow.pipeline.transcribe import release_warm_whisperx_model
-
         cpu_probe = probe_runtime("cpu")
         if not cpu_probe.ok:
             log_to_video(video_id, f"CPU fallback runtime is unavailable: {cpu_probe.message}")
             return False
         shutdown_hymt2_worker()
-        release_warm_whisperx_model()
+        _release_recognition_runtime()
         configure_processing_device("cpu")
         log_to_video(video_id, "Released GPU models. CPU runtime is ready to resume from the last completed stage.")
         return True
@@ -557,9 +587,7 @@ def process_video_sync(
         )
 
         if profile.key in {"cpu_low_memory", "cpu_minimum", "cuda_low_memory"}:
-            from haizflow.pipeline.transcribe import release_warm_whisperx_model
-
-            release_warm_whisperx_model()
+            _release_recognition_runtime()
             log_to_video(
                 video_id, "Released the warmed WhisperX model before translation to conserve processing memory."
             )
@@ -758,10 +786,8 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             # isolated process, so hand the accelerator over before that
             # worker loads its own checkpoint instead of waiting for an
             # avoidable CUDA allocation failure.
-            from haizflow.pipeline.transcribe import release_warm_whisperx_model
-
             shutdown_hymt2_worker()
-            release_warm_whisperx_model()
+            _release_recognition_runtime()
             log_to_video(
                 video_id,
                 "Released translation and speech-recognition models before local TTS.",

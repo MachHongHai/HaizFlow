@@ -15,6 +15,7 @@ from haizflow.core.model_integrity import (
 from haizflow.core.paths import is_frozen
 from haizflow.services.video_store import log_to_video
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
+from haizflow.services.external_tasks import run_external_task
 
 
 def _demucs_model_directory(video_id: str) -> Path:
@@ -30,6 +31,16 @@ def _demucs_model_directory(video_id: str) -> Path:
 
 
 def _demucs_command() -> list[str]:
+    from haizflow.services.resource_packs import installed_engine_command
+
+    profile = runtime_profile()
+    external = installed_engine_command(
+        "separation",
+        "demucs",
+        {"device": "gpu" if profile.cuda_available else "cpu"},
+    )
+    if external:
+        return external
     if is_frozen():
         return [sys.executable, "--demucs-separate"]
     return [sys.executable, "-m", "demucs.separate"]
@@ -80,25 +91,38 @@ def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str
     # exact local file was full-SHA256 verified immediately above.
     demucs_environment["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
     
-    # Run Demucs separate as a subprocess
+    # Installed resource engines execute Demucs inside the same process that
+    # Smart Warm-up initialized. Development builds retain the legacy child
+    # process path so existing source environments remain usable.
     try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=demucs_environment,
-        )
-        _stdout, stderr = communicate_process(
+        external_result = run_external_task(
+            "separation",
+            "demucs_task",
+            {"arguments": cmd[len(_demucs_command()) :]},
             video_id,
-            process,
-            label="Demucs audio separation",
-            timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+            context={"device": "gpu" if profile.cuda_available else "cpu"},
         )
+        if external_result is not None:
+            process = None
+            stderr = ""
+        else:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=demucs_environment,
+            )
+            _stdout, stderr = communicate_process(
+                video_id,
+                process,
+                label="Demucs audio separation",
+                timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+            )
 
         check_cancellation(video_id)
 
-        if process.returncode != 0:
+        if process is not None and process.returncode != 0:
             log_to_video(video_id, f"Demucs separation failed with exit code {process.returncode}")
             log_to_video(video_id, f"Error details:\n{stderr}")
             raise RuntimeError(f"Demucs audio separation failed with exit code {process.returncode}: {stderr}")

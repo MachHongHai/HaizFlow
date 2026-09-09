@@ -173,7 +173,7 @@ def run_release_smoke(
         failures.append(f"Model bootstrap import failed: {type(exc).__name__}: {exc}")
     _check(
         bootstrap_manifest_valid,
-        "Pinned first-run model bootstrap manifest",
+        "Pinned resource-pack asset manifest",
         failures,
         details,
     )

@@ -55,15 +55,72 @@ def generate_srt(*args, **kwargs):
 
 
 def detect_original_subtitle_region(*args, **kwargs):
+    from haizflow.services.external_tasks import run_external_task
+
+    video_path, temp_dir, video_id = args[:3]
+    callback = kwargs.get("progress_callback")
+    result = run_external_task(
+        "ocr",
+        "subtitle_ocr",
+        {"video_path": video_path, "temp_dir": temp_dir, "video_id": video_id},
+        str(video_id),
+        progress_callback=(
+            (lambda status: callback(int(status.get("current", 0)), int(status.get("total", 0))))
+            if callback is not None
+            else None
+        ),
+    )
+    if result is not None:
+        return result.get("region")
     from haizflow.pipeline.subtitle_ocr import detect_original_subtitle_region as implementation
 
     return implementation(*args, **kwargs)
 
 
 def transcribe(*args, **kwargs):
+    from haizflow.core.hardware import processing_device_preference
+    from haizflow.services.external_tasks import run_external_task
+
+    audio_path, output_json_path, source_language, video_id = args[:4]
+    callback = kwargs.get("progress_callback")
+    model_name = str(kwargs.get("model_name") or "small")
+    result = run_external_task(
+        "recognition",
+        "transcribe",
+        {
+            "audio_path": audio_path,
+            "output_json_path": output_json_path,
+            "source_language": source_language,
+            "video_id": video_id,
+            "model_name": model_name,
+        },
+        str(video_id),
+        context={"device": processing_device_preference(), "model": model_name},
+        progress_callback=(
+            (lambda status: callback(str(status.get("stage") or "processing"), str(status.get("detail") or "")))
+            if callback is not None
+            else None
+        ),
+    )
+    if result is not None:
+        return list(result.get("segments") or []), str(result.get("detected_language") or "")
     from haizflow.pipeline.transcribe import transcribe as implementation
 
     return implementation(*args, **kwargs)
+
+
+def _release_recognition_runtime() -> None:
+    """Release ASR through its engine; source AI imports remain a fallback."""
+
+    from haizflow.services.external_engine import shared_external_engine_pool
+
+    if "recognition" in shared_external_engine_pool().release({"recognition"}):
+        return
+    try:
+        from haizflow.pipeline.transcribe import release_warm_whisperx_model
+    except (ImportError, ModuleNotFoundError):
+        return
+    release_warm_whisperx_model()
 
 
 def preprocess_text_for_tts(*args, **kwargs):
@@ -1330,8 +1387,7 @@ def _run_voice(video, reporter) -> None:
                     for provider, _voice, _indices in requested_groups
                 ):
                     shutdown_hymt2_worker()
-                    from haizflow.pipeline.transcribe import release_warm_whisperx_model
-                    release_warm_whisperx_model()
+                    _release_recognition_runtime()
 
                 completed_before = 0
 

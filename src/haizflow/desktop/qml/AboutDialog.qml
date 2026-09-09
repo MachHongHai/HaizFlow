@@ -8,7 +8,7 @@ AppDialog {
     id: root
 
     title: qsTr("Giới thiệu HaizFlow")
-    subtitle: qsTr("Ứng dụng nguồn mở dành cho Windows")
+    subtitle: qsTr("Miễn phí và mã nguồn mở trên Windows")
     preferredWidth: 580
     maximumWidth: 620
 
@@ -43,7 +43,7 @@ AppDialog {
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Công cụ xử lý và lồng tiếng video trên Windows.")
+                text: qsTr("Dịch, lồng tiếng và hoàn thiện video trên Windows.")
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.body
@@ -70,7 +70,7 @@ AppDialog {
 
     Text {
         Layout.fillWidth: true
-        text: qsTr("HaizFlow là phần mềm nguồn mở, ưu tiên xử lý video ngay trên máy và không yêu cầu dịch vụ API trả phí cho quy trình cốt lõi.")
+        text: qsTr("HaizFlow cho phép xử lý video bằng các công cụ cục bộ mà không cần API suy luận trả phí. Dự án và video xuất được lưu tại vị trí do bạn quản lý.")
         color: Theme.text
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.control

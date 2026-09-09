@@ -14,12 +14,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from haizflow.core.storage_policy import (
+    MANUAL_GLOBAL_SOFT_LIMIT_BYTES,
+    MANUAL_PROJECT_SOFT_LIMIT_BYTES,
+    MINIMUM_OPERATIONAL_FREE_BYTES,
+)
 from haizflow.services import video_store
 
 MANIFEST_SCHEMA_VERSION = 1
-PROJECT_SOFT_LIMIT_BYTES = 8 * 1024**3
-GLOBAL_SOFT_LIMIT_BYTES = 32 * 1024**3
-MINIMUM_FREE_BYTES = 10 * 1024**3
+PROJECT_SOFT_LIMIT_BYTES = MANUAL_PROJECT_SOFT_LIMIT_BYTES
+GLOBAL_SOFT_LIMIT_BYTES = MANUAL_GLOBAL_SOFT_LIMIT_BYTES
+MINIMUM_FREE_BYTES = MINIMUM_OPERATIONAL_FREE_BYTES
 STALE_PARTIAL_AGE_SECONDS = 24 * 60 * 60
 
 ARTIFACT_KINDS = {
@@ -622,7 +627,25 @@ def _active_ids(video_id: str) -> set[str]:
     return active_ids
 
 
-def _prune_unlocked(video_id: str, *, limit_bytes: int = PROJECT_SOFT_LIMIT_BYTES) -> int:
+def _configured_project_limit() -> int:
+    try:
+        from haizflow.services.desktop_settings import load_settings
+
+        return int(load_settings()["manual_project_cache_gib"]) * 1024**3
+    except (KeyError, OSError, TypeError, ValueError):
+        return PROJECT_SOFT_LIMIT_BYTES
+
+
+def _configured_global_limit() -> int:
+    try:
+        from haizflow.services.desktop_settings import load_settings
+
+        return int(load_settings()["manual_global_cache_gib"]) * 1024**3
+    except (KeyError, OSError, TypeError, ValueError):
+        return GLOBAL_SOFT_LIMIT_BYTES
+
+
+def _prune_unlocked(video_id: str, *, limit_bytes: int | None = None) -> int:
     """Remove least-recently-used inactive artifacts inside one project."""
     root = cache_root(video_id)
     root.mkdir(parents=True, exist_ok=True)
@@ -639,7 +662,8 @@ def _prune_unlocked(video_id: str, *, limit_bytes: int = PROJECT_SOFT_LIMIT_BYTE
         free_bytes = shutil.disk_usage(root).free
     except OSError:
         free_bytes = MINIMUM_FREE_BYTES
-    required = max(0, total - max(0, limit_bytes))
+    effective_limit = _configured_project_limit() if limit_bytes is None else int(limit_bytes)
+    required = max(0, total - max(0, effective_limit))
     if free_bytes < MINIMUM_FREE_BYTES:
         required = max(required, MINIMUM_FREE_BYTES - free_bytes)
     priority = {
@@ -675,7 +699,7 @@ def _prune_unlocked(video_id: str, *, limit_bytes: int = PROJECT_SOFT_LIMIT_BYTE
     return removed
 
 
-def prune(video_id: str, *, limit_bytes: int = PROJECT_SOFT_LIMIT_BYTES) -> int:
+def prune(video_id: str, *, limit_bytes: int | None = None) -> int:
     with _manifest_lock(video_id):
         return _prune_unlocked(video_id, limit_bytes=limit_bytes)
 
@@ -701,7 +725,7 @@ def clear(video_id: str, *, include_active: bool = False) -> int:
         return _clear_unlocked(video_id, include_active=include_active)
 
 
-def prune_global(*, limit_bytes: int = GLOBAL_SOFT_LIMIT_BYTES) -> int:
+def prune_global(*, limit_bytes: int | None = None) -> int:
     """Apply one LRU budget across every Manual project cache."""
     try:
         videos = [video for video in video_store.list_videos() if video.project_type == "manual"]
@@ -719,9 +743,10 @@ def prune_global(*, limit_bytes: int = GLOBAL_SOFT_LIMIT_BYTES) -> int:
             total += size
             if record.get("artifact_id") not in active_ids:
                 entries.append((video.video_id, record))
-    if total <= limit_bytes:
+    effective_limit = _configured_global_limit() if limit_bytes is None else int(limit_bytes)
+    if total <= effective_limit:
         return 0
-    required = total - limit_bytes
+    required = total - effective_limit
     removed = 0
     priority = {
         "visual_proxy": 0,

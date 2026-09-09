@@ -2,7 +2,7 @@
 
 [Tài liệu](README.vi.md) · [An toàn dependency](dependency-security.vi.md) · [English](release-readiness.md)
 
-Rà soát gần nhất: **2026-09-08**
+Rà soát gần nhất: **2026-09-09**
 
 Đây là checklist có thẩm quyền cho bản Windows công khai. Source checkout đạt unit test chưa đồng nghĩa artifact được phép phát hành.
 
@@ -25,7 +25,7 @@ Rà soát gần nhất: **2026-09-08**
 | 7 | Phục hồi project index | Hoàn tất | Lock, atomic write, backup, quarantine, rebuild manifest và chặn ghi khi không phục hồi được. |
 | 8 | Migration schema | Hoàn tất cho schema hiện tại | Migration tuần tự, backup, default, legacy root, từ chối future schema; version phải khớp source release. |
 | 9 | Dependency tái lập | Hoàn tất | Lock có hash cho Windows/Python 3.13, CUDA variant, fingerprint và verify environment. |
-| 10 | Disk và cache | Hoàn tất cho tooling | Preflight từ artifact, dự trù model, headroom, partial resume và cache Manual có giới hạn. |
+| 10 | Disk và cache | Hoàn tất cho tooling | Preflight Core từ artifact, ước tính riêng từng gói, headroom, partial resume và cache Manual có giới hạn. |
 | 11 | Offline/privacy claim | Hoàn tất | UI/tài liệu phân biệt local với tải model, Edge TTS, URL import và social publishing. |
 | 12 | Chẩn đoán | Hoàn tất | Log xoay vòng, build ID, bắt lỗi Python/thread/Qt và diagnostic redact không chứa media. |
 | 13 | Shutdown/phục hồi | Hoàn tất | Confirm, pause/cancel, chờ worker hữu hạn, child-process containment và phục hồi video gián đoạn. |
@@ -33,6 +33,7 @@ Rà soát gần nhất: **2026-09-08**
 | 15 | Source hygiene | **Chặn đến clean build** | Không còn output/source cũ, tài liệu khớp kiến trúc và `git status --porcelain` rỗng. |
 | 16 | Audit vulnerability | Hoàn tất với ngoại lệ | Chỉ còn ngoại lệ đã duyệt trong [dependency-security.vi.md](dependency-security.vi.md). |
 | 17 | Zernio | Cần hoàn tất trước production | E2E bằng tài khoản thật cho từng nền tảng, quota, recovery, consent và điều khoản hiện hành. |
+| 18 | Engine AI độc lập | **Chặn đến khi pin archive** | Archive CPU, CUDA 12.8, vision đã ký; URL/size/SHA-256 thật; profile smoke; nghiệm thu install/resume/rollback/remove. |
 
 ## License gate
 
@@ -81,7 +82,7 @@ Chỉ khi kiểm thử nội bộ trên working tree đang phát triển mới d
 
 `-AllowUnsigned` không tạo release candidate công khai. `-AllowDirtyBuild` ghi rõ provenance chưa sạch và artifact đó không đủ điều kiện đi qua public installer gate.
 
-Model là download lần đầu, không phải payload installer. `prepare-offline-models.ps1` chỉ phục vụ probe phát triển.
+Engine AI và model là các gói tài nguyên tùy chọn, không thuộc payload Core. Trình quản lý chỉ cài gói người dùng xác nhận, kiểm checksum bất biến và chỉ kích hoạt engine sau smoke test. `prepare-offline-models.ps1` chỉ phục vụ probe phát triển.
 
 ## Gate installer
 
@@ -90,6 +91,8 @@ Model là download lần đầu, không phải payload installer. `prepare-offli
 ```
 
 Installer phải tính disk từ artifact, cho chọn ổ local writable, chặn network path, giữ runtime data khi upgrade và chỉ xóa data sau lựa chọn uninstall riêng. Silent uninstall luôn giữ data.
+
+Các con số dung lượng có ý nghĩa khác nhau. Setup tính yêu cầu Core từ artifact hoàn tất, staging thực tế, bản sao tạm khi nâng cấp và 2 GiB dự phòng vận hành. Con số đó không gồm gói AI tùy chọn, media dự án, output hoặc cache. Gate từ chối Core lớn hơn 1,25 GiB, yêu cầu cài mới lớn hơn 4 GiB hoặc mức khuyến nghị lớn hơn 8 GiB. Trình quản lý gói chạy preflight riêng cho từng lượt cài đã xác nhận: byte còn phải tải, dung lượng cài, bản rollback và 2 GiB dự phòng. Export có ước tính riêng theo thời lượng, codec, bitrate và render tạm. Manifest sinh từ artifact cùng số Setup hiển thị là nguồn chính xác; tài liệu không được dùng lại số đo của một candidate cũ.
 
 Bản công khai cần certificate thật qua `-SignCertificatePath` và `HAIZFLOW_SIGN_CERT_PASSWORD`, rồi verify chữ ký. Build installer tự cài im lặng vào thư mục cô lập, chạy installed-layout smoke, gỡ cài đặt, kiểm dữ liệu runtime được giữ lại và verify checksum. `-SkipFrozenSmokeTest` và `-SkipInstallerSmokeTest` chỉ dùng chẩn đoán và làm artifact mất tư cách release candidate.
 
@@ -108,9 +111,9 @@ Tên file luôn có `UNSIGNED`. Có thể chạy lại installer smoke riêng:
 ## Ma trận Windows
 
 - Windows 10 phiên bản 1809 trở lên và Windows 11 x64 sạch.
-- CPU-only Intel/AMD với RAM đại diện 8/16/32 GB.
-- NVIDIA 6/8 GB và lớn hơn; không hỗ trợ BF16; driver thiếu/cũ.
-- Offline lần đầu, mạng chậm, download model gián đoạn, Edge TTS lỗi.
+- CPU-only Intel/AMD với RAM đại diện 16/24/32 GB.
+- NVIDIA 7/8/12 GB VRAM và lớn hơn; không hỗ trợ BF16; driver thiếu/cũ.
+- Mở Core khi offline, mạng chậm, tải gói gián đoạn và Edge TTS lỗi.
 - URL công khai, extractor đổi, cookie, rate limit và cancel.
 - Tài khoản/path/file Unicode và nhập tiếng Việt bằng IME.
 - Ổ gần đầy, ổ local khác, removable drive, sleep/hibernate, GPU gián đoạn.
@@ -118,6 +121,12 @@ Tên file luôn có `UNSIGNED`. Có thể chạy lại installer smoke riêng:
 - Upgrade mọi schema được hỗ trợ và phục hồi index hỏng.
 - Tài khoản Zernio test cho từng nền tảng trước production.
 
+## Gate gói engine
+
+Core và engine là các release unit riêng. Trước khi build Core công khai, phải build từng engine từ lock hash đã review, chạy profile smoke, ký executable, tải ZIP lên URL bất biến rồi dùng `finalize-resource-pack.py` ghi URL, dung lượng nén, dung lượng cài và SHA-256 thật. `verify-resource-pack-manifest.py --strict` phải đạt; metadata ước lượng hoặc để trống là blocker.
+
+Nghiệm thu gồm tải gián đoạn/resume, từ chối checksum sai, active atomic, rollback khi smoke lỗi, gỡ an toàn, chuyển resource sang ổ local khác và chặn gỡ engine đang dùng. Máy chỉ cài Core vẫn phải mở Home, chỉnh media, nhập URL và dùng Edge TTS mà không import package suy luận.
+
 ## Quyết định
 
-Engineering build nội bộ có thể dùng để kiểm chứng nếu ghi rõ phạm vi và trạng thái unsigned. Phát hành công khai vẫn bị chặn cho tới khi hoàn tất review pháp lý/license, clean artifact tái lập, source hygiene, nghiệm thu Windows và Authenticode. Tài liệu này ghi bằng chứng kỹ thuật, không thay tư vấn pháp lý chuyên môn.
+Engineering build nội bộ có thể dùng để kiểm chứng nếu ghi rõ phạm vi và trạng thái unsigned. Phát hành công khai vẫn bị chặn cho tới khi hoàn tất review pháp lý/license, pin archive engine, clean artifact tái lập, source hygiene, nghiệm thu Windows và Authenticode. Tài liệu này ghi bằng chứng kỹ thuật, không thay tư vấn pháp lý chuyên môn.

@@ -1,14 +1,79 @@
-# HaizFlow runtime and build artifacts. The Git root is one level above the app.
-HaizFlow/.venv/
-HaizFlow/data/
-HaizFlow/storage/
-HaizFlow/.cache/
-HaizFlow/runtime/bin/
-HaizFlow/dist/
-HaizFlow/build/
-HaizFlow/out/
-HaizFlow/__pycache__/
-HaizFlow/**/*.pyc
-/.uv-cache/
-/.ruff_cache/
-/HaizFlow/.ruff_cache/
+# HaizFlow desktop ignore rules
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+python/
+
+# Legacy Node folders, if any remain locally
+node_modules/
+frontend/node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Runtime data (models, caches, logs, jobs)
+data/
+.cache/
+**/.cache/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Large binaries
+runtime/bin/
+runtime/compliance/
+**/bin/*.exe
+**/bin/ollama/
+*.exe
+*.dll
+*.dylib
+*.so
+
+# User data and temporary media
+storage/
+**/temp/
+*.log
+
+# Local media used only for manual pipeline smoke tests
+tests/*.mp4
+tests/*.mov
+tests/*.mkv
+
+# Build artifacts
+frontend/dist/
+dist/
+build/
+out/
+
+# Environment configs
+.env
+.env*.local
+
+# Legacy paths from the old web/backend layout
+backend/
+frontend/
+
+# Python bytecode and runtime
+__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+*.egg-info/
+**/*.egg-info/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

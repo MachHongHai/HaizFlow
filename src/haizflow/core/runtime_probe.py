@@ -141,6 +141,14 @@ def run_runtime_probe(device: str) -> RuntimeProbeResult:
 
 def _probe_command(device: str) -> list[str]:
     if is_frozen():
+        from haizflow.services.resource_packs import installed_engine_command
+
+        command = installed_engine_command("recognition", "runtime_probe", {"device": device})
+        if command:
+            return [*command, device]
+        # Compatibility path for the previous all-in-one frozen build. New
+        # Core releases cannot reach this branch because Settings requires an
+        # installed engine before switching devices.
         return [sys.executable, "--runtime-probe", device]
     return [sys.executable, "-m", "haizflow.core.runtime_probe", "--child", device]
 

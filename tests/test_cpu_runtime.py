@@ -77,6 +77,21 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(minimum.whisper_batch_size, 1)
         self.assertFalse(minimum.warm_whisper_on_startup)
 
+    def test_public_processing_requirement_rejects_sub_16gb_systems(self):
+        capabilities = hardware.HardwareCapabilities(
+            cuda_available=False,
+            cuda_name="",
+            total_vram_bytes=0,
+            free_vram_bytes=0,
+            total_ram_bytes=10 * 1024**3,
+            logical_cpu_count=8,
+            ac_powered=True,
+            battery_percent=100,
+        )
+        compatible, message = hardware.validate_processing_device("cpu", capabilities)
+        self.assertFalse(compatible)
+        self.assertIn("16 GB", message)
+
     def test_basic_hardware_snapshot_never_initializes_cuda(self):
         with (
             mock.patch.object(hardware, "_cuda_details") as cuda_details,
@@ -94,6 +109,20 @@ class CpuRuntimeTests(unittest.TestCase):
         cuda_free_memory.assert_not_called()
         self.assertFalse(capabilities.cuda_available)
         self.assertEqual(capabilities.logical_cpu_count, 12)
+
+    def test_nvidia_driver_probe_does_not_require_torch(self):
+        hardware.clear_runtime_profile_cache()
+        with mock.patch.object(
+            hardware,
+            "_run_nvidia_query",
+            return_value=["NVIDIA RTX Test", "12288", "9216", "8.6"],
+        ) as query:
+            snapshot = hardware._nvidia_snapshot()
+
+        query.assert_called_once()
+        self.assertTrue(snapshot.available)
+        self.assertEqual(snapshot.total_vram_bytes, 12288 * 1024**2)
+        self.assertEqual(snapshot.compute_capability, (8, 6))
 
     def test_runtime_profile_can_use_a_cached_snapshot_without_detecting_hardware(self):
         capabilities = hardware.HardwareCapabilities(

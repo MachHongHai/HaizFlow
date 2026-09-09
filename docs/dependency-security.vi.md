@@ -13,11 +13,11 @@ Tài liệu xác định trust boundary cho Python package, native tool và mode
 .\scripts\audit-dependencies.ps1
 ```
 
-Script audit chính environment sẽ đóng gói bằng `pip-audit` đã pin. Advisory mới làm release gate thất bại nếu chưa có định danh, threat model, biện pháp giảm thiểu, thời hạn và ghi nhận tại đây. Production phải khớp `pyproject.toml`, `requirements-lock-py313-win64.txt` có SHA-256 và `dependency-lock-manifest.json`.
+Script audit lock của Core và từng engine phát hành riêng bằng `pip-audit` đã pin. Advisory mới làm release gate thất bại nếu chưa có định danh, threat model, biện pháp giảm thiểu, thời hạn và ghi nhận tại đây. Core phải khớp `pyproject.toml`, `requirements-lock-py313-win64.txt` có SHA-256 và `dependency-lock-manifest.json`; engine phải khớp `engine-dependency-lock-manifest.json`.
 
 ## Kiểm soát nền
 
-- Lock Windows cố định version và SHA-256. Khi đồng bộ environment, uv chỉ dùng `unsafe-first-match` để tìm đúng version đã khóa qua các index riêng của PyTorch, llama.cpp và PyPI; không dùng best-match không ràng buộc.
+- Mọi lock Windows cố định version và SHA-256. Core chỉ resolve từ PyPI. Lock CPU/CUDA engine khai báo index PyTorch hoặc llama.cpp cần thiết và được verify độc lập trước khi đóng gói.
 - Repository, revision bất biến, filename, size và full SHA-256 của model được khóa trong bootstrap manifest.
 - Download được staging và chỉ promote atomic sau khi verify.
 - HY-MT2 dùng `local_files_only=True`, `use_safetensors=True`, `trust_remote_code=False`.
@@ -38,6 +38,12 @@ Các lỗi nằm ở đường nạp checkpoint/config không tin cậy, Trainer
 Ngoại lệ tạm: [PYSEC-2026-3740 / CVE-2026-81726](https://github.com/advisories/GHSA-8mgp-746c-j5xp).
 
 NLTK 3.10.3 đã sửa các advisory trước đó về parser, corpus reader, recursion và từ chối dịch vụ. Finding còn lại liên quan path do caller kiểm soát trong API đọc/ghi model artifact. HaizFlow không expose các API này: wrapper alignment của WhisperX thay resource loader NLTK bằng bộ tách câu nội bộ, không tải NLTK data và không nhận đường model NLTK từ user. Xóa ngoại lệ khi có bản NLTK vá tương thích.
+
+### Accelerate 1.14.0
+
+Ngoại lệ tạm: [CVE-2026-69112](https://github.com/advisories/GHSA-4j2p-28q2-5m79).
+
+Các hàm bị ảnh hưởng tin cậy đường dẫn shard trong `weight_map` của checkpoint. HaizFlow không nhận repository model tùy ý từ người dùng: HY-MT2 và OmniVoice chỉ dùng gói tài nguyên cục bộ, bất biến và đã đối chiếu SHA-256. Ngoài ra, `validate_checkpoint_weight_maps()` chạy ngay trước khi hai provider nạp model; hàm từ chối đường dẫn tuyệt đối, path traversal, symlink, shard bị thiếu và index hoặc shard không phải tệp thường. Xóa ngoại lệ khi Accelerate có bản vá tương thích.
 
 ### DiskCache 5.6.3
 

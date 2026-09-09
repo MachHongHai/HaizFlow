@@ -45,7 +45,7 @@ src/haizflow/
   services/      projects, storage, downloads, queues, caches and integrations
   utils/         small stateless media/process helpers
   vendor/        audited compatibility code retained with upstream licensing
-test/            Python, integration, QML creation and regression tests
+tests/           Python, integration, QML creation and regression tests
 scripts/         environment, verification and release tooling
 installer/       Inno Setup definition
 licenses/        third-party notices and license texts
@@ -64,11 +64,11 @@ Dependencies point inward from presentation to application services: QML uses th
 
 ## 4. Desktop composition
 
-`haizflow_desktop.py` enters the project virtual environment when available and launches `haizflow.desktop.main`. The Qt bootstrap configures application identity, translations and runtime paths before loading `Main.qml`.
+`haizflow_desktop.py` enters the project virtual environment when available and launches `haizflow.desktop.main`. The Qt bootstrap configures application identity, translations and runtime paths before loading `Main.qml`. It does not import an inference framework or start an engine.
 
 `Main.qml` is the persistent shell. It owns route history, the top navigation bar, global dialogs and the bottom activity strip. `RouteHost.qml` loads the current page without rebuilding the shell. Project workspaces hide the navigation rail while retaining the same Back, Forward, Home, Projects, Settings and Help controls.
 
-`HaizFlowController` is registered as the QML singleton facade. Focused desktop controllers separate catalog/project state, project commands, imports, processing lifecycle, preview rendering, audio preview, downloads, publishing, settings, hardware/model bootstrap and diagnostics. List data is exposed through `QAbstractListModel` implementations in `desktop/models.py`.
+`HaizFlowController` is registered as the QML singleton facade. Focused desktop controllers separate catalog/project state, project commands, imports, processing lifecycle, preview rendering, audio preview, downloads, publishing, settings, resource packs, smart warm-up and diagnostics. List data is exposed through `QAbstractListModel` implementations in `desktop/models.py`.
 
 Background model status belongs to the persistent activity strip. Dialogs are reserved for confirmation or errors that require a decision; transient action feedback uses the toast stack.
 
@@ -175,9 +175,16 @@ The result pane keeps the last valid frame while a replacement is prepared. Mode
 
 ## 9. Model and process isolation
 
-HY-MT2 runs in a persistent JSON-lines worker. GPU mode uses verified Transformers/safetensors files; CPU mode uses the verified GGUF model through `llama-cpp-python`. OmniVoice runs in a dependency-isolated worker because its runtime dependency set differs from the main application. Demucs uses a local checksum-verified checkpoint. FFmpeg remains an external process with cancellation and timeout handling.
+Core never imports Torch, ONNX Runtime, WhisperX, Transformers, Demucs or llama.cpp. CPU, CUDA 12.8 and vision inference live in separately frozen, versioned engine processes. HY-MT2 and OmniVoice use persistent JSON-lines servers inside the selected engine. Recognition, OCR and Demucs file tasks reuse the same engine process warmed for their capability. FFmpeg remains a Core-managed external process with cancellation and timeout handling.
 
-Model bootstrap is the production path for installing model payloads. Repository, revision, filename, size and SHA-256 are fixed in source. Downloads use resumable partial files and atomic promotion. Runtime loaders accept explicit local paths and do not fall back to an unpinned network download.
+Resource Manager is the production path for installing optional engines and model payloads. Every pack declares its protocol version, immutable URL, exact size, and SHA-256. Downloads use resumable partial files; engines pass an isolated smoke test before atomic activation and retain a rollback version. Runtime loaders accept explicit local paths and never fall back to an unpinned network download.
+
+`SmartWarmupController` starts only after the Core window is responsive. It predicts the next capability from the selected project and tool, warms only installed packs in a background worker, and yields to user-requested work. Warm state is independent from task progress: a resident model may reduce first-inference latency but never marks a video task complete. Under memory pressure, speculative residents are released before active work.
+
+Startup pack inventory checks file presence and expected size only; it never hashes a multi-gigabyte checkpoint on
+the UI thread. Full SHA-256 verification occurs during installation, repair, or immediately before the first
+security-sensitive model load. Cleanup left by a cross-drive resource move also runs after the first frame in a
+background maintenance worker.
 
 Hardware policy in `core/hardware.py` selects supported CUDA precision, memory profile, warm-up behavior, inference batch size and CPU thread limits. FFmpeg hardware encoding is probed separately from AI inference; a failed hardware encode can fall back to `libx264`.
 
@@ -185,7 +192,7 @@ Hardware policy in `core/hardware.py` selects supported CUDA precision, memory p
 
 Network access is limited to features that require it:
 
-- verified first-run model downloads;
+- user-confirmed, checksum-verified resource-pack downloads;
 - URL/channel media inspection and download;
 - Edge TTS when explicitly selected;
 - Zernio authentication, upload and publishing.
@@ -200,13 +207,15 @@ HY-MT2 diagnostics are bounded and record backend, device, memory snapshots and 
 
 ## 12. Runtime containment and packaging
 
-Python 3.13 x64 is the supported source/build runtime. `pyproject.toml` declares direct dependencies. `requirements-lock-py313-win64.txt` is the hash-locked transitive production set; `uv.lock` supports deterministic developer resolution.
+Python 3.13 x64 is the supported source/build runtime. `pyproject.toml` declares direct dependencies. `requirements-lock-py313-win64.txt` is the PyPI-only, hash-locked Core set. The CPU, CUDA and vision engines each have a separate hash lock and reviewed lock manifest; `uv.lock` supports developer resolution and is not a release artifact.
 
-PyInstaller uses an `onedir` artifact because Qt, Torch and media libraries require adjacent native files. Models are not embedded in the executable distribution. The installer-selected application directory owns mutable runtime data:
+PyInstaller uses an `onedir` Core artifact because Qt and media libraries require adjacent native files. AI engines, models and mutable runtime data are not embedded in the executable distribution. Resource Manager creates and owns the selected local resource root after installation:
 
 ```text
 runtime/
+  engines/  versioned CPU, CUDA or vision engines
   models/   verified model payloads
+  packages/ resumable downloads and rollback metadata
   cache/    disposable third-party and application caches
   data/     durable settings, indexes and diagnostics
   tmp/      transient work
