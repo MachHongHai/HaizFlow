@@ -89,6 +89,36 @@ class VideoDownloadTests(unittest.TestCase):
         options = youtube_dl.call_args_list[0].args[0]
         self.assertEqual(options["extractor_args"]["tiktok"]["app_info"], [""])
 
+    def test_tiktok_challenge_response_is_retried_with_browser_impersonation(self):
+        first_downloader = mock.MagicMock()
+        first_downloader.__enter__.return_value = first_downloader
+        first_downloader.extract_info.side_effect = RuntimeError(
+            "ERROR: [TikTok] Unexpected response from webpage request"
+        )
+        second_downloader = mock.MagicMock()
+        second_downloader.__enter__.return_value = second_downloader
+        second_downloader.extract_info.return_value = {
+            "title": "Recovered TikTok clip",
+            "duration": 20,
+            "extractor_key": "TikTok",
+        }
+
+        with (
+            mock.patch(
+                "yt_dlp.YoutubeDL",
+                side_effect=[first_downloader, second_downloader],
+            ) as youtube_dl,
+            mock.patch.object(video_download, "_wait_for_retry"),
+            mock.patch.object(video_download.importlib.util, "find_spec", return_value=object()),
+        ):
+            metadata = video_download.inspect_video_url(
+                "https://www.tiktok.com/@creator/video/123"
+            )
+
+        self.assertEqual(metadata.title, "Recovered TikTok clip")
+        self.assertEqual(youtube_dl.call_count, 2)
+        self.assertEqual(youtube_dl.call_args_list[1].args[0]["impersonate"], "chrome")
+
     def test_non_transient_tiktok_metadata_errors_are_not_retried(self):
         downloader = mock.MagicMock()
         downloader.__enter__.return_value = downloader
@@ -144,6 +174,10 @@ class VideoDownloadTests(unittest.TestCase):
                 "Vimeo",
             )
         )
+
+    def test_ffprobe_postprocessing_failures_are_retried(self):
+        error = RuntimeError("Postprocessing: WARNING: unable to obtain file audio codec with ffprobe")
+        self.assertTrue(video_download._is_retryable_download_error(error, "TikTok"))
 
     def test_downloader_error_text_removes_ansi_escape_sequences(self):
         self.assertEqual(
@@ -302,17 +336,23 @@ class VideoDownloadTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "sample.m4a"
+            source = Path(directory) / "sample.source.webm"
 
             def finish(_url, download):
                 self.assertTrue(download)
-                destination.write_bytes(b"audio")
-                return {"filepath": str(destination)}
+                source.write_bytes(b"downloaded audio")
+                return {"filepath": str(source)}
+
+            def normalize(_source, target, _cancel_event):
+                self.assertEqual(_source, source)
+                target.write_bytes(b"normalized audio")
 
             second.extract_info.side_effect = finish
             with (
                 mock.patch.object(video_download, "_load_yt_dlp", return_value=yt_dlp),
                 mock.patch.object(video_download, "_wait_for_retry") as wait_for_retry,
                 mock.patch.object(video_download.importlib.util, "find_spec", return_value=object()),
+                mock.patch.object(video_download, "_normalize_downloaded_audio", side_effect=normalize),
             ):
                 result = video_download.download_audio("https://youtu.be/demo", destination)
 
@@ -320,7 +360,33 @@ class VideoDownloadTests(unittest.TestCase):
         self.assertEqual(yt_dlp.YoutubeDL.call_count, 2)
         self.assertNotIn("impersonate", yt_dlp.YoutubeDL.call_args_list[0].args[0])
         self.assertEqual(yt_dlp.YoutubeDL.call_args_list[1].args[0]["impersonate"], "chrome")
+        self.assertNotIn("postprocessors", yt_dlp.YoutubeDL.call_args_list[1].args[0])
         wait_for_retry.assert_called_once()
+
+    def test_failed_audio_download_removes_temporary_source_file(self):
+        downloader = mock.MagicMock()
+        downloader.__enter__.return_value = downloader
+        yt_dlp = mock.MagicMock()
+        yt_dlp.YoutubeDL.return_value = downloader
+
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "sample.m4a"
+            source = Path(directory) / "sample.source.webm"
+
+            def fail(_url, download):
+                self.assertTrue(download)
+                source.write_bytes(b"partial source")
+                raise RuntimeError("unsupported url")
+
+            downloader.extract_info.side_effect = fail
+            with (
+                mock.patch.object(video_download, "_load_yt_dlp", return_value=yt_dlp),
+                self.assertRaisesRegex(RuntimeError, "unsupported url"),
+            ):
+                video_download.download_audio("https://youtu.be/demo", destination)
+
+            self.assertFalse(source.exists())
+            self.assertFalse(destination.exists())
 
 
 if __name__ == "__main__":

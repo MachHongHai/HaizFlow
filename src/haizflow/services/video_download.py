@@ -6,6 +6,7 @@ import importlib.util
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -39,7 +40,9 @@ SUPPORTED_VIDEO_HOSTS = {
     "youtube.com": "YouTube",
 }
 SUPPORTED_DOWNLOAD_EXTENSIONS = {".mp4", ".mov", ".mkv"}
+SUPPORTED_AUDIO_EXTENSIONS = {".aac", ".flac", ".m4a", ".mp3", ".mp4", ".ogg", ".opus", ".wav", ".webm"}
 _TIKTOK_TRANSIENT_ERROR_MARKERS = (
+    "unexpected response from webpage request",
     "unable to extract universal data for rehydration",
     "unable to extract webpage video data",
     "unable to download api page",
@@ -56,6 +59,10 @@ _FORMAT_REFRESH_ERROR_MARKERS = (
     "no formats found",
     "unable to download video data",
     "video data is empty",
+    "postprocessing:",
+    "unable to obtain file audio codec with ffprobe",
+    "invalid data found when processing input",
+    "moov atom not found",
 )
 _NETWORK_RETRY_ERROR_MARKERS = (
     "http error 403",
@@ -236,6 +243,109 @@ def _load_yt_dlp():
     return yt_dlp
 
 
+def _downloaded_audio_path(directory: Path, info: dict, downloader) -> Path:
+    """Resolve the media file written by yt-dlp without trusting a remote filename."""
+    directory = directory.resolve()
+    candidates = [info.get("filepath"), info.get("_filename")]
+    for item in info.get("requested_downloads") or []:
+        if isinstance(item, dict):
+            candidates.extend([item.get("filepath"), item.get("filename")])
+    try:
+        candidates.append(downloader.prepare_filename(info))
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(str(candidate)).resolve()
+        try:
+            inside_directory = path.is_relative_to(directory)
+        except (OSError, ValueError):
+            inside_directory = False
+        if inside_directory and path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS:
+            return path
+
+    discovered = [
+        path for path in directory.glob("*")
+        if path.is_file() and path.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS
+    ]
+    if not discovered:
+        raise RuntimeError("The link did not produce a playable audio file.")
+    return max(discovered, key=lambda path: path.stat().st_mtime)
+
+
+def _ffmpeg_binary() -> str:
+    bundled = Path(BIN_DIR) / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    if bundled.is_file():
+        return str(bundled)
+    resolved = shutil.which("ffmpeg")
+    if resolved:
+        return resolved
+    raise RuntimeError("FFmpeg is not available to prepare the downloaded audio.")
+
+
+def _normalize_downloaded_audio(
+    source: Path,
+    target: Path,
+    cancel_event: threading.Event | None,
+) -> None:
+    """Create a predictable M4A independently of yt-dlp's FFprobe postprocessor."""
+    if "audio" not in get_media_stream_types(str(source)):
+        raise RuntimeError("The downloaded media does not contain an audio track.")
+    temporary = target.with_name(f"{target.stem}.converting.m4a")
+    temporary.unlink(missing_ok=True)
+    command = [
+        _ffmpeg_binary(),
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(source),
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        str(temporary),
+    ]
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    stderr = ""
+    try:
+        while True:
+            try:
+                _stdout, stderr = process.communicate(timeout=0.2)
+                break
+            except subprocess.TimeoutExpired:
+                if cancel_event and cancel_event.is_set():
+                    process.kill()
+                    process.communicate()
+                    raise DownloadCancelled("Audio download cancelled.")
+        if process.returncode != 0 or not temporary.is_file() or temporary.stat().st_size <= 0:
+            detail = " ".join((stderr or "").split())[-500:]
+            raise RuntimeError(
+                "FFmpeg could not prepare the downloaded audio."
+                + (f" {detail}" if detail else "")
+            )
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _friendly_error(exc: Exception) -> str:
     raw_message = _ANSI_ESCAPE.sub("", str(exc)).strip()
     message = raw_message.splitlines()[-1] if raw_message else exc.__class__.__name__
@@ -352,7 +462,7 @@ def download_audio(
     cancel_event: threading.Event | None = None,
     auth: dict | None = None,
 ) -> str:
-    """Download one link as M4A using the same network policy as video imports."""
+    """Download one link and normalize its audio with the bundled FFmpeg."""
     normalized_url, platform = validate_video_url(url)
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -369,12 +479,13 @@ def download_audio(
 
     attempts = 3
     for attempt in range(attempts):
+        for stale in target.parent.glob(f"{target.stem}.source.*"):
+            stale.unlink(missing_ok=True)
         options = _youtube_dl_options(auth, impersonate=attempt > 0)
         options.update(
             {
-                "outtmpl": str(target.with_suffix(".%(ext)s")),
+                "outtmpl": str(target.with_name(f"{target.stem}.source.%(ext)s")),
                 "format": "bestaudio/best",
-                "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
                 "progress_hooks": [hook],
                 "nopart": True,
                 "overwrites": True,
@@ -382,11 +493,13 @@ def download_audio(
         )
         try:
             with yt_dlp.YoutubeDL(options) as downloader:
-                downloader.extract_info(normalized_url, download=True)
+                info = downloader.extract_info(normalized_url, download=True)
+                source = _downloaded_audio_path(target.parent, info, downloader)
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Audio download cancelled.")
-            if not target.is_file() or target.stat().st_size <= 0:
-                raise RuntimeError("The link did not produce an audio file.")
+            _normalize_downloaded_audio(source, target, cancel_event)
+            if source != target:
+                source.unlink(missing_ok=True)
             if progress_callback:
                 progress_callback(100, "Download complete")
             return str(target)
@@ -399,6 +512,12 @@ def download_audio(
                 _wait_for_retry(cancel_event, 0.8 * (attempt + 1))
                 continue
             raise RuntimeError(_friendly_error(exc)) from exc
+        finally:
+            # yt-dlp writes its source stream beside the requested output.
+            # Never leave those implementation files in the user's download
+            # folder after cancellation, conversion failure, or a final retry.
+            for stale in target.parent.glob(f"{target.stem}.source.*"):
+                stale.unlink(missing_ok=True)
     raise RuntimeError("Audio download did not produce a result.")  # pragma: no cover
 
 

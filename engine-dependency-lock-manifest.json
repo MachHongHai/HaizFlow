@@ -3,25 +3,25 @@
   "target": "windows-x86_64-python-3.13",
   "inputs": {
     "requirements-build.in": "932925799b8ed108bdb24af228982b755cbfe077802ba2699774ea393a0dc6c5",
-    "requirements-engine-common.in": "3596d7727fbd50be2545aa15bcc8686291387120d49128e40c31465bab68e149",
-    "requirements-engine-cpu.in": "7ada7791f58b46843c2f1dfaf8d405a064361411c8e3768609ce933a3c98eacd",
-    "requirements-engine-cuda128.in": "9feb5e77268fcb5730544ccda605709eaf9c49d8eff7e918a4e91d05c2643c07",
-    "requirements-engine-vision.in": "8a023de92f8aa9d09cfe2c4f0583ea4a7c1ad19edbe71195698afc044c60bf74"
+    "requirements-engine-common.in": "454aa57709dd5907dabfa3a86b8c8512227f984ae33e37e179b76ab0cc743281",
+    "requirements-engine-cpu.in": "71f964226a818c0d461ec8d3c0c00f06cbaf6d0833e56d122a2c7c52f766a1aa",
+    "requirements-engine-cuda128.in": "114d25fc3f108017f5809d5bcfca5476caabbdd1d69e54d9927d9c710d136da4",
+    "requirements-engine-vision.in": "56c17311cc4059130743760eb3d064a221ade1af018d966b2487b73d60b81a7c"
   },
   "locks": {
     "cpu": {
       "file": "requirements-lock-engine-cpu-py313-win64.txt",
-      "sha256": "a5548e367f666c1d7989a91ea73ccc78535daa2502ef9c0dd74cd688c8b84267",
+      "sha256": "2c71abb715b5cb3dda96c40e5f36c2f853c2620405bbf2097d21f2a2cf2a0e7d",
       "packages": 130
     },
     "cuda128": {
       "file": "requirements-lock-engine-cuda128-py313-win64.txt",
-      "sha256": "cc806b299a0702fb8093b5f7136dcae9f4bf6e275cc1d24d03aca0a9c073915b",
+      "sha256": "95e4e425b49592f0f8c64c370ab19d6705698c880cd9071bca4e87eb7a78d3ef",
       "packages": 128
     },
     "vision": {
       "file": "requirements-lock-engine-vision-py313-win64.txt",
-      "sha256": "766008b778b5941d0d132508498b5bd7569c1f6bba275df0f19da76b26e494bf",
+      "sha256": "37a887a812d7db5bc5ce9fc733233aeb13da03790cf4f9af535d27e3e429e44d",
       "packages": 40
     }
   }

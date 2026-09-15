@@ -7,7 +7,8 @@ AppDialog {
 
     property string alertMessage: ""
     property string severity: "information"
-    readonly property color accentColor: severity === "critical" ? Theme.danger
+    readonly property bool isError: severity === "critical" || severity === "error" || severity === "danger"
+    readonly property color accentColor: isError ? Theme.danger
         : severity === "warning" ? Theme.warning : Theme.textMuted
 
     preferredWidth: 440
@@ -28,7 +29,7 @@ AppDialog {
             Layout.alignment: Qt.AlignTop
             Layout.preferredWidth: 20
             Layout.preferredHeight: 20
-            name: root.severity === "critical" ? "error"
+            name: root.isError ? "error"
                 : root.severity === "warning" ? "warning" : "info"
             iconColor: root.accentColor
             iconSize: 18
@@ -40,7 +41,7 @@ AppDialog {
             color: Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.control
-            lineHeight: 1.2
+            lineHeight: 1.35
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
         }
@@ -48,7 +49,7 @@ AppDialog {
 
     footerActions: [
         StudioButton {
-            text: qsTr("OK")
+            text: qsTr("Đóng")
             variant: "primary"
             onClicked: root.close()
         }

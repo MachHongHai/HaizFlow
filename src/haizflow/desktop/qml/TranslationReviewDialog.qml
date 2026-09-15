@@ -14,7 +14,7 @@ FloatingToolDialog {
     openMaximized: true
     expandedWidth: 1480
     expandedHeight: 900
-    toolTitle: root.postProcessingEdit ? qsTr("Sửa phụ đề") : qsTr("Duyệt phụ đề")
+    toolTitle: qsTr("Duyệt phụ đề")
     toolSubtitle: qsTr("%1 đoạn · %2").arg(segments.length).arg(AppController.selectedFileName)
 
     property var segments: []
@@ -65,7 +65,6 @@ FloatingToolDialog {
         0,
         Math.min(1, Number(AppController.editorPreviewProgress || 0))
     )
-    property bool postProcessingEdit: false
     readonly property bool manualEditing: AppController.projectType === "manual"
 
     function cloneSegments(value) {
@@ -461,8 +460,6 @@ FloatingToolDialog {
     }
 
     onOpened: {
-        postProcessingEdit = AppController.selectedStatus === "done"
-            || AppController.selectedStatus === "manual_ready";
         segments = cloneSegments(AppController.reviewSegments);
         undoStack = [];
         redoStack = [];
@@ -523,8 +520,7 @@ FloatingToolDialog {
         canUndo: root.undoStack.length > 0
         canRedo: root.redoStack.length > 0
         canCommit: root.segments.length > 0 && !root.approvalInProgress
-        primaryText: root.manualEditing ? qsTr("Lưu phụ đề")
-            : root.postProcessingEdit ? qsTr("Lưu và tạo lại giọng") : qsTr("Duyệt và tiếp tục")
+        primaryText: root.manualEditing ? qsTr("Lưu phụ đề") : qsTr("Duyệt và tiếp tục")
         onPlaybackToggled: root.togglePreviewPlayback()
         onScrubStarted: function(position) { root.beginPreviewScrub(position) }
         onScrubbed: function(position) { root.scrubPreview(position) }

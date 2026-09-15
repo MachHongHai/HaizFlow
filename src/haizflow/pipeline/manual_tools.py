@@ -620,7 +620,7 @@ def audio_signature(video, *, validate: bool = True) -> str:
         getattr(video, "background_music_volume", 30),
         getattr(video, "tts_volume", 100),
         (subtitle or {}).get("signature", "") if voice else "no-subtitle-audio",
-        "manual-audio-mix-v2",
+        "manual-audio-mix-v3-slot-synced-voice",
     )
 
 
@@ -757,7 +757,7 @@ def activate_cached_voice_variant(video_id: str, *, validate: bool = False) -> b
     return True
 
 
-def restore_cached_variants(video_id: str) -> list[str]:
+def restore_cached_variants(video_id: str, *, validate: bool = True) -> list[str]:
     """Activate every cached artifact matching the current Manual settings.
 
     This is a metadata/cache operation used after settings are saved.  It
@@ -770,7 +770,7 @@ def restore_cached_variants(video_id: str) -> list[str]:
     # Recover the visible/autosaved document before walking model-dependent
     # branches.  This also repairs projects whose older cache-cleanup pass
     # removed manifest metadata while leaving the user's subtitle JSON intact.
-    ensure_current_subtitle_document(video_id)
+    ensure_current_subtitle_document(video_id, validate=validate)
     video = video_store.get_video(video_id) or video
     restored: list[str] = []
     try:
@@ -778,13 +778,25 @@ def restore_cached_variants(video_id: str) -> list[str]:
     except (FileNotFoundError, OSError, ValueError):
         return restored
 
+    resolver = manual_artifacts.resolve if validate else manual_artifacts.peek
+
     def use(kind: str, expected: str) -> dict[str, Any] | None:
         if not expected:
             return None
-        record = manual_artifacts.resolve(video_id, kind, expected)
+        record = resolver(video_id, kind, expected)
         if not record:
             return None
-        manual_artifacts.activate(video_id, kind, expected)
+        # Avoid rewriting both manifest.json and video.json when the desired
+        # variant is already active.  This matters during startup, where a
+        # workspace may contain hundreds of voice clips and several large
+        # media artifacts.
+        current_video = video_store.get_video(video_id)
+        current_signature = str(
+            ((getattr(current_video, "active_artifacts", {}) or {}).get(kind) if current_video else "")
+            or ""
+        )
+        if current_signature != expected:
+            manual_artifacts.activate(video_id, kind, expected)
         restored.append(kind)
         return record
 
@@ -801,14 +813,22 @@ def restore_cached_variants(video_id: str) -> list[str]:
             )
 
     video = video_store.get_video(video_id) or video
-    if not video.enable_audio_separation or _separation_ready(video):
+    if not video.enable_audio_separation or _separation_ready(video, validate=validate):
         recognition = use("recognition", recognition_signature(video))
         if recognition:
             _update_files(video_id, source_segments=recognition["resolved_outputs"]["segments"])
 
     video = video_store.get_video(video_id) or video
-    translation = use("translation", translation_signature(video)) if _recognition_ready(video) else None
-    current_subtitle = manual_artifacts.active(video, "subtitle_document")
+    translation = (
+        use("translation", translation_signature(video))
+        if _recognition_ready(video, validate=validate)
+        else None
+    )
+    current_subtitle = (
+        manual_artifacts.active(video, "subtitle_document")
+        if validate
+        else manual_artifacts.peek_active(video, "subtitle_document")
+    )
     if current_subtitle:
         _update_files(
             video_id,
@@ -849,19 +869,23 @@ def restore_cached_variants(video_id: str) -> list[str]:
             _update_files(video_id, ocr_region=region["resolved_outputs"]["region"])
 
     video = video_store.get_video(video_id) or video
-    expected_voice = voice_signature(video)
-    voice = use("tts_manifest", expected_voice) if _subtitle_ready(video) else None
+    expected_voice = voice_signature(video, validate=validate)
+    voice = (
+        use("tts_manifest", expected_voice)
+        if _subtitle_ready(video, validate=validate)
+        else None
+    )
     if voice:
         _update_files(video_id, voice_parts_dir=str(Path(voice["resolved_outputs"]["manifest"]).parent / "parts"))
 
     video = video_store.get_video(video_id) or video
-    expected_audio = audio_signature(video)
+    expected_audio = audio_signature(video, validate=validate)
     audio = use("audio_mix", expected_audio)
     if audio:
         _update_files(video_id, voice_output=audio["resolved_outputs"]["audio"])
 
     video = video_store.get_video(video_id) or video
-    expected_export = export_signature(video)
+    expected_export = export_signature(video, validate=validate)
     use("export", expected_export)
     return list(dict.fromkeys(restored))
 
@@ -963,7 +987,10 @@ def _update_files(video_id: str, **paths: str) -> None:
     if not video:
         return
     files = dict(video.files or {})
-    files.update({name: value for name, value in paths.items() if value})
+    updates = {name: value for name, value in paths.items() if value and files.get(name) != value}
+    if not updates:
+        return
+    files.update(updates)
     video_store.update_video(video_id, files=files)
 
 
@@ -1090,11 +1117,32 @@ def publish_edited_subtitles(video_id: str, segments: list[dict[str, Any]]) -> d
         if refreshed:
             files = dict(refreshed.files or {})
             files.pop("voice_output", None)
-            video_store.update_video(video_id, files=files)
+            changes: dict[str, Any] = {"files": files}
+            # A failed voice request belongs to the subtitle revision it was
+            # generated for. Once the text changes, retaining that failure on
+            # the new document makes the Voice tool look broken before its
+            # replacement request has even started.
+            if (
+                text_changed
+                and str(getattr(refreshed, "status", "") or "") == "failed"
+                and str(getattr(refreshed, "manual_target_tool", "") or "") == "voice"
+            ):
+                changes.update(
+                    status="manual_ready",
+                    error=None,
+                    step="manual_subtitle",
+                    step_detail="Phụ đề đã cập nhật",
+                    manual_target_tool="",
+                )
+            video_store.update_video(video_id, **changes)
     return record
 
 
-def ensure_current_subtitle_document(video_id: str) -> dict[str, Any] | None:
+def ensure_current_subtitle_document(
+    video_id: str,
+    *,
+    validate: bool = True,
+) -> dict[str, Any] | None:
     """Restore a durable subtitle artifact from the document visible in Manual.
 
     Old projects and an early cache-cleanup implementation could retain
@@ -1105,7 +1153,11 @@ def ensure_current_subtitle_document(video_id: str) -> dict[str, Any] | None:
     video = video_store.get_video(video_id)
     if not video or video.project_type != "manual":
         return None
-    active = manual_artifacts.active(video, "subtitle_document")
+    active = (
+        manual_artifacts.active(video, "subtitle_document")
+        if validate
+        else manual_artifacts.peek_active(video, "subtitle_document")
+    )
     if active:
         return active
     files = dict(video.files or {})
@@ -1592,6 +1644,7 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
         tts_volume=video.tts_volume,
         require_voice_parts=bool(voice),
         require_background_audio=False,
+        fit_voice_to_slots=True,
     )
     return [value for value in input_ids if value]
 

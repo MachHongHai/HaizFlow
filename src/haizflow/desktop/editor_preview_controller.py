@@ -1358,6 +1358,7 @@ class EditorPreviewController:
             process_registry_id=process_id,
             require_voice_parts=bool(audio_segments),
             require_background_audio=not is_manual,
+            fit_voice_to_slots=is_manual,
         )
         return preview_mix
 

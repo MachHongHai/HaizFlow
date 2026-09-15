@@ -24,6 +24,7 @@ from haizflow.core.hardware import (
 )
 from haizflow.desktop.activity_log import ActivityLogBuffer
 from haizflow.desktop.audio_preview_controller import AudioPreviewController
+from haizflow.desktop.app_update_controller import AppUpdateController
 from haizflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
 from haizflow.desktop.catalog_media_controller import CatalogMediaController
 from haizflow.desktop.channel_import import ChannelImportCoordinator
@@ -177,6 +178,8 @@ class HaizFlowController(QObject):
     editHistoryChanged = Signal()
     warmupChanged = Signal()
     resourcePacksChanged = Signal()
+    appUpdateChanged = Signal()
+    appUpdateAvailable = Signal()
 
     def __init__(self):
         super().__init__()
@@ -253,6 +256,7 @@ class HaizFlowController(QObject):
         self._startup_maintenance_events = queue.Queue()
         self._manual_cache_events = queue.Queue()
         self._manual_cache_jobs: set[str] = set()
+        self._manual_cache_indexed: set[str] = set()
         self._manual_cache_jobs_lock = threading.Lock()
         self._hardware_probe_events = queue.Queue()
         self._hardware_probe_lock = threading.Lock()
@@ -332,6 +336,9 @@ class HaizFlowController(QObject):
         self._manual_global_cache_gib = settings["manual_global_cache_gib"]
         self._resource_packs = ResourcePackController(self)
         self._resource_packs.changed.connect(self.resourcePacksChanged.emit)
+        self.hardwareChanged.connect(self.resourcePacksChanged.emit)
+        self._app_updates = AppUpdateController(self)
+        self._app_updates.changed.connect(self.appUpdateChanged.emit)
         self._smart_warmup = SmartWarmupController(self, self._resource_packs.manager)
         self.selectedVideoChanged.connect(self._smart_warmup.request_project_prediction)
         _set_ui_language(self._settings_language)
@@ -377,6 +384,7 @@ class HaizFlowController(QObject):
             # Render Home first. Optional engines and models warm in their own
             # low-priority worker only after the Qt event loop is responsive.
             QTimer.singleShot(1250, self._smart_warmup.start)
+            QTimer.singleShot(2500, lambda: self._app_updates.check(manual=False))
             # Smart warm-up is speculative, never a prerequisite for a user
             # command. Foreground work either reuses the resident model or
             # preempts the prediction and starts with the installed engine.
@@ -428,6 +436,7 @@ class HaizFlowController(QObject):
         self._drain_manual_cache_events()
         self._drain_model_setup_events()
         self._resource_packs.drain_events()
+        self._app_updates.drain_events()
         self._smart_warmup.drain_events()
         HaizFlowController._runtime_device_for(self).drain_hardware_events()
 
@@ -457,6 +466,55 @@ class HaizFlowController(QObject):
             self._migrate_legacy_project_thumbnails()
             if self._background_shutdown_event.is_set():
                 return
+            # Index every Manual workspace in one low-priority background
+            # pass.  Opening a Download/Auto project first must not leave the
+            # next Manual editor dependent on a settings change to rediscover
+            # its active voice, music and separation artifacts.
+            for video in video_store.list_videos():
+                if self._background_shutdown_event.is_set():
+                    return
+                if getattr(video, "project_type", "single") != "manual":
+                    continue
+                video_id = str(video.video_id or "")
+                if not video_id:
+                    continue
+                # A legacy import can fingerprint and register several large
+                # files.  Defer that one-time conversion until its workspace
+                # has painted; modern projects still get a cheap all-project
+                # cache index during startup.
+                if int(getattr(video, "manual_artifact_migration_version", 0) or 0) < 1:
+                    continue
+                with self._manual_cache_jobs_lock:
+                    if video_id in self._manual_cache_jobs:
+                        continue
+                    self._manual_cache_jobs.add(video_id)
+                changed = False
+                restored: list[str] = []
+                error = ""
+                try:
+                    from haizflow.pipeline.manual_tools import (
+                        migrate_legacy_artifacts,
+                        restore_cached_variants,
+                    )
+
+                    changed = bool(migrate_legacy_artifacts(video_id))
+                    # Startup only needs to rediscover structurally complete
+                    # variants.  Full SHA-256 verification stays in the
+                    # worker that actually consumes an artifact; hashing
+                    # multi-gigabyte media here competes with the first editor
+                    # frame and makes Windows report the app as unresponsive.
+                    restored = restore_cached_variants(video_id, validate=False)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    error = str(exc)
+                finally:
+                    self._manual_cache_events.put(
+                        {
+                            "video_id": video_id,
+                            "changed": changed,
+                            "restored": restored,
+                            "error": error,
+                        }
+                    )
             self._startup_maintenance_events.put({"migrated": migrated, "recovered": recovered})
         except Exception as exc:
             self._startup_maintenance_events.put({"error": str(exc)})
@@ -489,23 +547,40 @@ class HaizFlowController(QObject):
         normalized_id = str(video_id or "")
         if not normalized_id or self._shutdown_started:
             return
+        video = video_store.get_video(normalized_id)
+        needs_migration = bool(
+            video
+            and int(getattr(video, "manual_artifact_migration_version", 0) or 0) < 1
+        )
         with self._manual_cache_jobs_lock:
-            if normalized_id in self._manual_cache_jobs:
+            if normalized_id in self._manual_cache_jobs or (
+                normalized_id in self._manual_cache_indexed and not needs_migration
+            ):
                 return
             self._manual_cache_jobs.add(normalized_id)
 
         def migrate() -> None:
             error = ""
             changed = False
+            restored: list[str] = []
             try:
-                from haizflow.pipeline.manual_tools import migrate_legacy_artifacts
+                from haizflow.pipeline.manual_tools import (
+                    migrate_legacy_artifacts,
+                    restore_cached_variants,
+                )
 
                 changed = bool(migrate_legacy_artifacts(normalized_id))
+                restored = restore_cached_variants(normalized_id, validate=False)
             except (OSError, RuntimeError, ValueError) as exc:
                 error = str(exc)
             finally:
                 self._manual_cache_events.put(
-                    {"video_id": normalized_id, "changed": changed, "error": error}
+                    {
+                        "video_id": normalized_id,
+                        "changed": changed,
+                        "restored": restored,
+                        "error": error,
+                    }
                 )
 
         threading.Thread(
@@ -522,9 +597,11 @@ class HaizFlowController(QObject):
             except queue.Empty:
                 break
             video_id = str(event.get("video_id") or "")
+            error = str(event.get("error") or "")
             with self._manual_cache_jobs_lock:
                 self._manual_cache_jobs.discard(video_id)
-            error = str(event.get("error") or "")
+                if not error:
+                    self._manual_cache_indexed.add(video_id)
             if error:
                 video_store.log_to_video(video_id, f"Manual cache migration deferred: {error}")
             if video_id != str(self._selected_video_id or ""):
@@ -533,9 +610,16 @@ class HaizFlowController(QObject):
             changed_selected = True
         if changed_selected:
             # One coalesced refresh is enough even if several worker messages
-            # arrived during the same dispatcher tick.
+            # arrived during the same dispatcher tick.  Do not emit the broad
+            # selectedVideoChanged signal here: it rebuilds bindings across
+            # the Manual workspace just after the user starts interacting.
             self.manualToolStateChanged.emit("")
-            self.selectedVideoChanged.emit()
+            self._manual_subtitles.load(
+                str(self._selected_video_id or ""),
+                self.reviewSegments,
+            )
+            self.manualSubtitleDocumentChanged.emit()
+            self.refreshManualPreviewAudio()
 
     def _drain_model_setup_events(self) -> None:
         changed = False
@@ -568,7 +652,7 @@ class HaizFlowController(QObject):
         if resource_packs is None:
             return False
         try:
-            return resource_packs.manager.status("model-whisper-turbo") in {"installed", "bundled"}
+            return resource_packs.manager.status("model-speech-gpu") in {"installed", "bundled"}
         except (KeyError, OSError):
             return False
 
@@ -597,6 +681,9 @@ class HaizFlowController(QObject):
         resource_packs = getattr(self, "_resource_packs", None)
         if resource_packs is not None:
             resource_packs.shutdown()
+        app_updates = getattr(self, "_app_updates", None)
+        if app_updates is not None:
+            app_updates.shutdown()
         audio = getattr(self, "_manual_audio", None)
         if audio is not None:
             audio.close()
@@ -1903,14 +1990,6 @@ class HaizFlowController(QObject):
         self.subtitleSettingsChanged.emit()
         return self.saveSelectedVideoSettings()
 
-    @Property(bool, notify=selectedVideoChanged)
-    def canEditSelectedSubtitles(self):
-        video = self._selected_video()
-        if not video or video.status not in {"awaiting_review", "manual_ready", "done"}:
-            return False
-        transcript_path = str((video.files or {}).get("transcript_json") or "")
-        return bool(transcript_path and os.path.isfile(transcript_path))
-
     @Property(str, notify=selectedVideoChanged)
     def selectedFileName(self):
         video = self._selected_video()
@@ -2155,6 +2234,10 @@ class HaizFlowController(QObject):
     def resourcePackModel(self):
         return self._resource_packs.model
 
+    @Property("QVariantList", notify=resourcePacksChanged)
+    def resourcePackageRows(self):
+        return self._resource_packs.displayRows
+
     @Property(QObject, constant=True)
     def resourcePackController(self):
         return self._resource_packs
@@ -2174,6 +2257,45 @@ class HaizFlowController(QObject):
     @Property(bool, notify=resourcePacksChanged)
     def resourcePackBusy(self):
         return self._resource_packs.busy
+
+    @Property(str, notify=resourcePacksChanged)
+    def resourcePackActivityText(self):
+        return self._resource_packs.activityText
+
+    @Property(int, notify=resourcePacksChanged)
+    def resourcePackActivityProgress(self):
+        return self._resource_packs.activityProgress
+
+    @Property(str, notify=appUpdateChanged)
+    def appUpdateState(self):
+        return self._app_updates.state
+
+    @Property(str, notify=appUpdateChanged)
+    def currentAppVersion(self):
+        return self._app_updates.current_version
+
+    @Property(str, notify=appUpdateChanged)
+    def latestAppVersion(self):
+        return self._app_updates.latest_version
+
+    @Property(str, notify=appUpdateChanged)
+    def appUpdateReleaseNotes(self):
+        return self._app_updates.release_notes
+
+    @Slot()
+    def checkForAppUpdates(self):
+        self._app_updates.check(manual=True)
+
+    @Slot()
+    def showAppUpdate(self):
+        if self._app_updates.state == "available":
+            self.appUpdateAvailable.emit()
+        else:
+            self._app_updates.check(manual=True)
+
+    @Slot(result=bool)
+    def openAppUpdatePage(self):
+        return open_external_url(self._app_updates.release_url)
 
     @Property(str, notify=settingsChanged)
     def settingsTheme(self):
@@ -2248,11 +2370,11 @@ class HaizFlowController(QObject):
             "usingGpu": profile.cuda_available,
             "gpuSafe": capabilities.gpu_supported,
             "availableGpuName": capabilities.cuda_name if capabilities.gpu_supported else "",
-            "totalVram": self._format_memory_size(capabilities.total_vram_bytes) if profile.cuda_available else "--",
-            "freeVram": self._format_memory_size(capabilities.free_vram_bytes) if profile.cuda_available else "--",
+            "totalVram": self._format_memory_size(capabilities.total_vram_bytes) if capabilities.cuda_available else "--",
+            "freeVram": self._format_memory_size(capabilities.free_vram_bytes) if capabilities.cuda_available else "--",
             "systemRam": self._format_memory_size(capabilities.total_ram_bytes),
             "logicalCpuCount": capabilities.logical_cpu_count,
-            "cpuName": capabilities.cpu_name or "CPU information loading...",
+            "cpuName": capabilities.cpu_name or "",
             "cpuPhysicalCores": capabilities.cpu_physical_cores or 0,
             "cpuMaxMhz": capabilities.cpu_max_mhz or 0,
             "acPowered": capabilities.ac_powered,
@@ -2276,6 +2398,8 @@ class HaizFlowController(QObject):
         if preference == "gpu":
             if not capabilities.cuda_available:
                 return "Không phát hiện GPU NVIDIA tương thích CUDA."
+            if capabilities.ac_powered is False:
+                return "Hãy cắm sạc trước khi dùng GPU để quá trình xử lý ổn định."
             if capabilities.total_vram_bytes < 7 * 1024**3:
                 return f"GPU cần ít nhất 7 GB VRAM; hiện có {capabilities.total_vram_bytes / (1024**3):.1f} GB."
             if capabilities.free_vram_bytes and capabilities.free_vram_bytes < 5 * 1024**3:
@@ -2980,13 +3104,19 @@ class HaizFlowController(QObject):
                 missing.extend(resource_manager.missing_packs(capability, pack_context))
         missing = list(dict.fromkeys(missing))
         if missing:
-            labels = [resource_manager.definitions[pack_id].label for pack_id in missing]
             summary = resource_manager.requirement_summary(missing)
+            feature_label = {
+                "recognition": "Nhận dạng và dịch",
+                "translation": "Nhận dạng và dịch",
+                "separation": "Tách giọng",
+                "image": "Che phụ đề gốc",
+                "voice": "Giọng đọc OmniVoice",
+            }.get(tool_id, "Công cụ này")
             self.appAlertRequested.emit(
-                "Thiếu gói tài nguyên",
-                f"Cần cài: {', '.join(labels)} · tải {format_memory_size(summary['downloadBytes'])}. "
-                f"Cần {format_memory_size(summary['requiredBytes'])} trống trong lúc cài. "
-                "Mở Cài đặt → Gói tài nguyên để cài.",
+                "Cần cài thêm gói",
+                f"{feature_label} cần tải {format_memory_size(summary['downloadBytes'])}. "
+                f"Ổ lưu cần còn trống {format_memory_size(summary['requiredBytes'])} trong lúc cài. "
+                "Mở Gói cài đặt để tiếp tục.",
                 "info",
             )
             self.resourcePacksRequested.emit(resource_manager.definitions[missing[0]].group)
@@ -3485,6 +3615,35 @@ class HaizFlowController(QObject):
             self._manual_voice_refresh_pending = False
             self._manual_voice_refresh_enabled = False
         self._manual_subtitles.load(str(self._selected_video_id or ""), self.reviewSegments)
+        # `selectedVideoChanged` can be emitted before the asynchronous Manual
+        # workspace exists.  Refresh again after the workspace becomes active
+        # so the single result-audio sink receives the persisted mix/voice
+        # immediately instead of waiting for a volume control to change.
+        selected_video_id = str(self._selected_video_id or "")
+        refresh_audio = getattr(self, "refreshManualPreviewAudio", None)
+        if callable(refresh_audio):
+            def refresh_after_first_frame() -> None:
+                if (
+                    self._manual_editor_active
+                    and str(self._selected_video_id or "") == selected_video_id
+                ):
+                    refresh_audio()
+
+            # Let Qt publish the initial video frame before decoding the audio
+            # bed, music and voice clips.  The delay is short enough to be
+            # imperceptible but prevents the three media paths from competing
+            # during workspace construction.
+            QTimer.singleShot(180, refresh_after_first_frame)
+        schedule_cache = getattr(self, "_schedule_manual_cache_migration", None)
+        if callable(schedule_cache):
+            def migrate_after_workspace_paint() -> None:
+                if (
+                    self._manual_editor_active
+                    and str(self._selected_video_id or "") == selected_video_id
+                ):
+                    schedule_cache(selected_video_id)
+
+            QTimer.singleShot(950, migrate_after_workspace_paint)
         # Leaving the workspace deliberately pauses an automatic per-segment
         # voice refresh.  Reopening the same project resumes it instead of
         # leaving the edited segment permanently silent.

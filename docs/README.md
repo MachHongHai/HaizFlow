@@ -12,6 +12,7 @@ Use the user guide if you are installing or operating HaizFlow. The engineering 
 | [Manual editor status](manual-editor-stabilization.md) | review implemented guarantees and outstanding hardware tests for the editor. |
 | [Dependency security](dependency-security.md) | audit dependencies, models and temporary security exceptions. |
 | [Release readiness](release-readiness.md) | build, sign, test and approve a distributable release. |
+| [Publishing updates](updates.md) | publish a stable version that installed copies can discover. |
 | [Contributing](../CONTRIBUTING.md) | submit a focused issue or pull request. |
 | [Security policy](../SECURITY.md) | report a vulnerability privately. |
 

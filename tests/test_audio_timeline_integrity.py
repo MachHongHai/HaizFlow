@@ -138,6 +138,44 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
             "atempo=0.5,atempo=0.500000",
         )
 
+    def test_manual_voice_is_fitted_to_the_same_slot_as_karaoke(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            voices = root / "voices"
+            voices.mkdir()
+            # Existence is checked before decoding; decoding itself is mocked
+            # so the test stays independent from MP3 codec availability.
+            (voices / "voice_0001.mp3").write_bytes(b"voice")
+            fitted = AudioSegment.silent(duration=1000, frame_rate=16000)
+            with (
+                mock.patch.object(audio_timeline, "get_video_duration", return_value=1.0),
+                mock.patch.object(audio_timeline, "log_to_video"),
+                mock.patch.object(audio_timeline, "check_cancellation"),
+                mock.patch.object(
+                    audio_timeline.AudioSegment,
+                    "from_file",
+                    return_value=AudioSegment.silent(duration=400, frame_rate=16000),
+                ),
+                mock.patch.object(
+                    audio_timeline,
+                    "fit_tempo_to_duration",
+                    return_value=fitted,
+                ) as fit,
+            ):
+                audio_timeline.build_audio_timeline(
+                    str(self._segments_file(root)),
+                    str(voices),
+                    str(root / "input.mp4"),
+                    str(root / "output.wav"),
+                    "video-1",
+                    require_background_audio=False,
+                    fit_voice_to_slots=True,
+                )
+
+            fit.assert_called_once()
+            self.assertEqual(fit.call_args.args[1], 1000)
+            self.assertTrue(fit.call_args.kwargs["allow_slowdown"])
+
     def test_atomic_audio_replace_retries_a_transient_windows_media_lock(self):
         locked = PermissionError(5, "Access is denied")
         with (

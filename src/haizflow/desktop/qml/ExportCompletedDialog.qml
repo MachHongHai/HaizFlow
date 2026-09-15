@@ -19,7 +19,6 @@ AppDialog {
     signal openFolderRequested()
 
     title: qsTr("Video đã xuất")
-    subtitle: qsTr("Tệp đã được lưu và sẵn sàng để xem")
     preferredWidth: 540
     maximumWidth: 600
 

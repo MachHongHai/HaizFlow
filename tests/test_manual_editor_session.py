@@ -1,6 +1,8 @@
 import json
 import os
+import queue
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -158,7 +160,7 @@ class ManualEditorSessionTests(unittest.TestCase):
             },
         )
 
-    def test_text_editor_commits_full_draft_once_on_dismiss(self):
+    def test_text_editor_only_commits_full_draft_when_save_is_pressed(self):
         class Controller(QObject):
             manualSubtitleSaved = Signal(str, int, str)
             manualSubtitleSaveFailed = Signal(str, str, str)
@@ -178,6 +180,9 @@ class ManualEditorSessionTests(unittest.TestCase):
         editor.setProperty("text", text)
         item.dismiss()
         QTest.qWait(550)
+        self.assertEqual(commits, [])
+        self.assertEqual(item.property("saveStatus"), "dirty")
+        item.apply()
         self.assertEqual(len(commits), 1)
         self.assertEqual(commits[0][1], text)
         controller.manualSubtitleSaved.emit("sentence-1", 1, commits[0][3])
@@ -433,11 +438,69 @@ class ManualEditorSessionTests(unittest.TestCase):
             _manual_voice_refresh_timer=timer,
             _manual_subtitles=subtitles,
             reviewSegments=[{"text": "Đã sửa", "start": 0, "end": 1}],
+            refreshManualPreviewAudio=Mock(),
+            _schedule_manual_cache_migration=Mock(),
         )
-        HaizFlowController.loadManualSubtitles(host)
+        with patch("haizflow.desktop.qml_controller.QTimer.singleShot") as single_shot:
+            HaizFlowController.loadManualSubtitles(host)
         self.assertTrue(host._manual_editor_active)
         subtitles.load.assert_called_once_with("manual-video", host.reviewSegments)
+        host.refreshManualPreviewAudio.assert_not_called()
+        self.assertEqual([call.args[0] for call in single_shot.call_args_list], [180, 950])
+        single_shot.call_args_list[0].args[1]()
+        host.refreshManualPreviewAudio.assert_called_once_with()
+        host._schedule_manual_cache_migration.assert_not_called()
+        single_shot.call_args_list[1].args[1]()
+        host._schedule_manual_cache_migration.assert_called_once_with("manual-video")
         timer.start.assert_called_once_with()
+
+    def test_startup_indexes_migrated_manual_projects_and_defers_legacy_work(self):
+        manual_a = SimpleNamespace(
+            video_id="manual-a",
+            project_type="manual",
+            manual_artifact_migration_version=1,
+        )
+        download = SimpleNamespace(video_id="download-a", project_type="download")
+        legacy = SimpleNamespace(
+            video_id="manual-legacy",
+            project_type="manual",
+            manual_artifact_migration_version=0,
+        )
+        manual_b = SimpleNamespace(
+            video_id="manual-b",
+            project_type="manual",
+            manual_artifact_migration_version=1,
+        )
+        host = SimpleNamespace(
+            _background_shutdown_event=threading.Event(),
+            _manual_cache_jobs_lock=threading.Lock(),
+            _manual_cache_jobs=set(),
+            _manual_cache_indexed=set(),
+            _manual_cache_events=queue.Queue(),
+            _startup_maintenance_events=queue.Queue(),
+            _migrate_legacy_project_thumbnails=Mock(),
+        )
+
+        with (
+            patch("haizflow.desktop.qml_controller.video_store.migrate_legacy_project_data", return_value=[]),
+            patch("haizflow.desktop.qml_controller.video_store.recover_interrupted_videos", return_value=[]),
+            patch(
+                "haizflow.desktop.qml_controller.video_store.list_videos",
+                return_value=[manual_a, download, legacy, manual_b],
+            ),
+            patch("haizflow.pipeline.manual_tools.migrate_legacy_artifacts", return_value=False) as migrate,
+            patch(
+                "haizflow.pipeline.manual_tools.restore_cached_variants",
+                side_effect=lambda video_id, **_kwargs: [f"restored:{video_id}"],
+            ) as restore,
+        ):
+            HaizFlowController._run_startup_maintenance(host)
+
+        self.assertEqual([call.args[0] for call in migrate.call_args_list], ["manual-a", "manual-b"])
+        self.assertEqual([call.args[0] for call in restore.call_args_list], ["manual-a", "manual-b"])
+        self.assertTrue(all(call.kwargs == {"validate": False} for call in restore.call_args_list))
+        events = [host._manual_cache_events.get_nowait(), host._manual_cache_events.get_nowait()]
+        self.assertEqual([event["video_id"] for event in events], ["manual-a", "manual-b"])
 
     def test_scrub_keeps_latest_target_across_source_swap(self):
         engine = QQmlEngine()

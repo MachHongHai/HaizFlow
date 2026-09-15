@@ -12,30 +12,34 @@ FloatingToolDialog {
 
     expandedWidth: 1080
     expandedHeight: 760
-    toolTitle: qsTr("Nhật ký kỹ thuật")
+    toolTitle: qsTr("Log kỹ thuật")
     toolSubtitle: root.detailText
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.space16
-        spacing: Theme.space8
+        spacing: Theme.space12
 
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.space8
 
-            Text {
+            SearchField {
+                id: logSearch
                 Layout.fillWidth: true
-                text: qsTr("Chi tiết xử lý")
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: TypeScale.metadata
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
+                Layout.maximumWidth: 520
+                placeholderText: qsTr("Tìm trong log")
+                Accessible.name: qsTr("Tìm trong log")
+            }
+
+            AppComboBox {
+                id: severityBox
+                Layout.preferredWidth: 150
+                model: [qsTr("Tất cả mức"), "Info", "Warning", "Error", "Debug"]
             }
 
             StudioButton {
-                text: qsTr("Sao chép")
+                text: qsTr("Sao chép toàn bộ")
                 iconGlyph: "\uE8C8"
                 variant: "secondary"
                 onClicked: activityLog.copyAll()
@@ -47,7 +51,18 @@ FloatingToolDialog {
             Layout.fillWidth: true
             Layout.fillHeight: true
             text: root.logText
-            emptyText: qsTr("Chưa có dữ liệu.")
+            query: logSearch.text
+            levelFilter: ["all", "INFO", "WARN", "ERROR", "DEBUG"][severityBox.currentIndex]
+            emptyText: qsTr("Không có dòng log phù hợp.")
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("%1 / %2 dòng").arg(activityLog.filteredLineCount).arg(activityLog.lineCount)
+            color: Theme.textSubtle
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.metadata
+            textFormat: Text.PlainText
         }
     }
 }

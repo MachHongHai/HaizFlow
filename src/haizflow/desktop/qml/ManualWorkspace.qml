@@ -21,6 +21,7 @@ Item {
     property bool subtitleVisualRefreshPending: false
     property bool exportCompletionArmed: false
     property string pendingExportPath: ""
+    property bool initialMediaLoad: true
     readonly property int subtitleToolIndex: 2
     readonly property int imageToolIndex: 3
     readonly property var stageIds: [
@@ -163,7 +164,22 @@ Item {
         AppController.beginManualSubtitleEdit(String(segments[index].segment_id));
         if (seek)
             comparePreview.seekTo(Number(segments[index].start || 0));
-        Qt.callLater(stageInspector.focusTextEditor);
+    }
+
+    function selectSubtitleInDialog(index) {
+        if (index < 0 || index >= segments.length)
+            return;
+        selectedSubtitleIndex = index;
+        selectedStageIndex = subtitleToolIndex;
+        subtitleTransformActive = true;
+        AppController.beginManualSubtitleEdit(String(segments[index].segment_id));
+        comparePreview.seekTo(Number(segments[index].start || 0));
+    }
+
+    function finishSubtitleDialogEditing() {
+        subtitleTransformActive = false;
+        AppController.endManualSubtitleEdit();
+        root.forceActiveFocus();
     }
 
     readonly property string overlayLayoutJson: JSON.stringify({
@@ -176,7 +192,7 @@ Item {
     onSegmentsChanged: overlayTimer.restart()
     Timer {
         id: overlayTimer
-        interval: 160
+        interval: root.initialMediaLoad ? 300 : 160
         onTriggered: {
             AppController.subtitleOverlayRenderer.configure(JSON.stringify(root.segments), root.overlayLayoutJson, true);
             AppController.subtitleOverlayRenderer.seek(comparePreview.positionSeconds);
@@ -203,11 +219,12 @@ Item {
         reloadSegments();
         syncVolumes();
         schedulePreview();
+        initialLoadTimer.start();
     }
     Component.onDestruction: {
-        // A route change can destroy the 500 ms text-save timer before it
-        // fires. Commit the active editor while its signal wiring is still
-        // alive, then detach native preview resources.
+        // Close the explicit-save editor before detaching native preview
+        // resources. Unsaved text remains a draft and is never committed by
+        // route teardown.
         stageInspector.dismissTextEditor();
         AppController.endManualSubtitleEdit();
         AppController.releaseEditorPreview();
@@ -215,9 +232,16 @@ Item {
 
     Timer {
         id: previewTimer
-        interval: 180
+        interval: root.initialMediaLoad ? 680 : 180
         repeat: false
         onTriggered: AppController.requestEditorPreview(JSON.stringify(root.segments), comparePreview.positionSeconds)
+    }
+
+    Timer {
+        id: initialLoadTimer
+        interval: 900
+        repeat: false
+        onTriggered: root.initialMediaLoad = false
     }
 
     Connections {
@@ -432,7 +456,10 @@ Item {
                     subtitleSegments: root.segments
                     selectedSubtitleIndex: root.selectedSubtitleIndex
                     onSubtitleSelected: function(index) { root.selectSubtitle(index, true); }
-                    onToolRequested: function(index) { root.dismissSubtitleEditor(); root.selectedStageIndex = index }
+                    onSubtitleDialogSelectionRequested: function(index) {
+                        root.selectSubtitleInDialog(index);
+                    }
+                    onSubtitleEditorClosed: root.finishSubtitleDialogEditing()
                     onSourceLinkRequested: root.requestUrlImport()
                     onSettingsCommitted: root.schedulePreview()
                     onExportRequested: root.exportCompletionArmed = true
@@ -455,6 +482,7 @@ Item {
                 onScrubMoved: function(seconds) { comparePreview.updateScrub(seconds); }
                 onScrubFinished: function(seconds) { comparePreview.endScrub(seconds); }
                 onSegmentSelected: function(index) { root.selectSubtitle(index, true); }
+                onSegmentFocused: function(index) { root.selectSubtitle(index, true); }
                 onSeekRequested: function(seconds) {
                     comparePreview.seekTo(seconds);
                 }

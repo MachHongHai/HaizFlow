@@ -6,9 +6,13 @@ Rectangle {
     id: root
 
     property string text: ""
-    property string emptyText: qsTr("Chưa có nhật ký.")
+    property string emptyText: qsTr("Chưa có log.")
+    property string query: ""
+    property string levelFilter: "all"
     property bool compact: false
     readonly property string renderedText: formatLogText(text)
+    readonly property int lineCount: text.length > 0 ? String(text).split(/\r?\n/).length : 0
+    readonly property int filteredLineCount: countFilteredLines(text)
 
     function escapeHtml(value) {
         return String(value || "")
@@ -41,12 +45,17 @@ Rectangle {
         const rendered = []
         for (const rawLine of String(rawText).split(/\r?\n/)) {
             const match = rawLine.match(expression)
+            const level = match && match[2] ? match[2] : "INFO"
+            if (levelFilter !== "all" && level !== levelFilter)
+                continue
+            if (query.trim().length > 0
+                    && rawLine.toLocaleLowerCase().indexOf(query.trim().toLocaleLowerCase()) < 0)
+                continue
             if (!match) {
                 rendered.push("<span style=\"color:" + Theme.textMuted + ";\">" + escapeHtml(rawLine) + "</span>")
                 continue
             }
             const timestamp = displayTime(match[1])
-            const level = match[2] || "INFO"
             const component = match[3] || "APP"
             const message = escapeHtml(match[4])
             rendered.push(
@@ -57,6 +66,24 @@ Rectangle {
             )
         }
         return rendered.join("<br>")
+    }
+
+    function countFilteredLines(rawText) {
+        if (!rawText)
+            return 0
+        const expression = /^\[([^\]]+)\]\s*(?:\[([A-Z]+)\]\s*)?/
+        let count = 0
+        for (const rawLine of String(rawText).split(/\r?\n/)) {
+            const match = rawLine.match(expression)
+            const level = match && match[2] ? match[2] : "INFO"
+            if (levelFilter !== "all" && level !== levelFilter)
+                continue
+            if (query.trim().length > 0
+                    && rawLine.toLocaleLowerCase().indexOf(query.trim().toLocaleLowerCase()) < 0)
+                continue
+            count += 1
+        }
+        return count
     }
 
     function copyAll() {
@@ -105,14 +132,14 @@ Rectangle {
             width: flick.width
             readOnly: true
             selectByMouse: true
-            text: root.text ? root.renderedText : root.emptyText
-            wrapMode: TextEdit.Wrap
-            color: root.text ? Theme.codeText : Theme.textSubtle
+            text: root.renderedText.length > 0 ? root.renderedText : root.emptyText
+            wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+            color: root.renderedText.length > 0 ? Theme.codeText : Theme.textSubtle
             selectedTextColor: Theme.textOnAccent
             selectionColor: Theme.interactive
             font.family: "Cascadia Mono"
             font.pixelSize: root.compact ? 11 : 12
-            textFormat: root.text ? TextEdit.RichText : TextEdit.PlainText
+            textFormat: root.renderedText.length > 0 ? TextEdit.RichText : TextEdit.PlainText
         }
 
         ScrollBar.vertical: ScrollBar {

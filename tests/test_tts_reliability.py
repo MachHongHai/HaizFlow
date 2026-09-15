@@ -487,6 +487,62 @@ class TtsReliabilityTests(unittest.TestCase):
             )
         )
 
+    def test_omnivoice_retries_in_isolated_worker_when_warm_channel_exits(self):
+        from haizflow.pipeline import omnivoice_tts
+
+        calls = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output = root / "voice.mp3"
+
+            def failed_warm(_request_path, _request, _video_id, _progress_callback, **_kwargs):
+                calls.append("warm")
+                return 1, "Warm OmniVoice worker exited unexpectedly (1)."
+
+            def successful_isolated(_request_path, request, _video_id, _progress_callback):
+                calls.append("isolated")
+                for item in request["items"]:
+                    Path(item["wav_path"]).write_bytes(b"RIFF" + b"\x00" * 256)
+                return 0, ""
+
+            def encode(_wav_path, output_path, _video_id):
+                _write_test_mp3(str(output_path))
+
+            with (
+                mock.patch.object(omnivoice_tts, "_prepare_isolated_runtime"),
+                mock.patch.object(omnivoice_tts, "verify_omnivoice_model", return_value=root),
+                mock.patch.object(omnivoice_tts, "_sdk_root", return_value=root),
+                mock.patch.object(omnivoice_tts, "processing_device_preference", return_value="cpu"),
+                mock.patch.object(omnivoice_tts, "_run_persistent_worker_process", side_effect=failed_warm),
+                mock.patch.object(omnivoice_tts, "_run_worker_process", side_effect=successful_isolated),
+                mock.patch.object(omnivoice_tts, "_encode_mp3", side_effect=encode),
+                mock.patch.object(omnivoice_tts, "log_to_video") as log,
+            ):
+                omnivoice_tts.synthesize_batch_to_mp3(
+                    [{"text": "Câu vừa chỉnh", "voice": "omnivoice:bright", "output_path": str(output)}],
+                    "manual-video",
+                    language_id="vi",
+                    keep_worker_warm=True,
+                )
+
+            self.assertEqual(calls, ["warm", "isolated"])
+            self.assertTrue(tts._is_valid_mp3(str(output)))
+            self.assertTrue(any("isolated worker" in str(call) for call in log.call_args_list))
+
+    def test_omnivoice_source_worker_can_import_package_without_parent_pythonpath(self):
+        from haizflow.pipeline import omnivoice_tts
+
+        with (
+            mock.patch.dict(omnivoice_tts.os.environ, {}, clear=True),
+            mock.patch.object(omnivoice_tts.sys, "frozen", False, create=True),
+        ):
+            environment = omnivoice_tts._worker_environment()
+
+        paths = [Path(value).resolve() for value in environment["PYTHONPATH"].split(omnivoice_tts.os.pathsep)]
+        self.assertIn(SRC.resolve(), paths)
+        self.assertEqual(environment["PYTHONUTF8"], "1")
+        self.assertEqual(environment["HF_HUB_OFFLINE"], "1")
+
     def test_omnivoice_presets_use_the_sdk_instruction_vocabulary(self):
         from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES
         from haizflow.pipeline.omnivoice_tts import OMNIVOICE_VOICE_INSTRUCTIONS

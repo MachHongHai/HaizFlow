@@ -64,7 +64,9 @@ Dependency đi từ presentation vào application services: QML → facade/contr
 
 `haizflow_desktop.py` cấu hình runtime boundary, chuyển vào `.venv` nếu có rồi mới import Qt. Nó không import framework suy luận hoặc khởi động engine. `Main.qml` là shell sống lâu, sở hữu route history, top bar, dialog toàn cục và activity strip. `RouteHost.qml` thay page mà không dựng lại shell.
 
-`HaizFlowController` là singleton facade cho QML. Các controller chuyên trách sở hữu catalog/project, command, import, processing lifecycle, preview video, preview audio, download, publishing, setting, gói tài nguyên, smart warm-up và diagnostics. Danh sách lớn được expose bằng `QAbstractListModel`.
+`HaizFlowController` là singleton facade cho QML. Các controller chuyên trách sở hữu catalog/project, command, import, processing lifecycle, preview video, preview audio, download, publishing, setting, gói tài nguyên, kiểm tra cập nhật, smart warm-up và diagnostics. Danh sách lớn được expose bằng `QAbstractListModel`.
+
+`AppUpdateController` gọi GitHub Releases công khai trên worker thread và chỉ chuyển kết quả đã phân tích về Qt thread. Controller chỉ chấp nhận trang phát hành thuộc repository chính thức cố định rồi so sánh version stable. Ứng dụng mở trang đó khi có bản mới; nó không tự tải hoặc chạy bộ cài.
 
 Activity ngắn nằm ở status strip; raw log chỉ mở khi cần chẩn đoán. Dialog dành cho quyết định hoặc lỗi cần hành động.
 

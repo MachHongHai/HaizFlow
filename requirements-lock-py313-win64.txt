@@ -1307,7 +1307,7 @@ yarl==1.24.2 \
     --hash=sha256:f9a1e9b622ca284143aab5d885848686dcd85453bb1ca9abcdb7503e64dc0056 \
     --hash=sha256:fecd17873a096036c1c87ab3486f1aef7f269ada7f23f7f856f93b1cc7744f14
     # via aiohttp
-yt-dlp==2026.7.4 \
-    --hash=sha256:b094813404f87a9dd2186f00815231df32e5fd8a5403be0f807b3bb2d21a4432 \
-    --hash=sha256:f11f2b11d5a8ac4059f9bdf29fa4407dc7c6bb00c5097e95ca22a7a9db518266
+yt-dlp==2026.8.19 \
+    --hash=sha256:1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf \
+    --hash=sha256:9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1
     # via haizflow (pyproject.toml)

@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import zipfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
@@ -106,14 +107,6 @@ def _assets_by_component() -> dict[str, tuple[ModelAsset, ...]]:
     return {key: tuple(sorted(values, key=lambda item: item.relative_path)) for key, values in grouped.items()}
 
 
-def _alignment_asset(language: str, assets: Iterable[ModelAsset]) -> tuple[ModelAsset, ...]:
-    try:
-        filename = ALIGNMENT_MODELS[language][1]
-    except KeyError:
-        return ()
-    return tuple(asset for asset in assets if Path(asset.relative_path).name == filename)
-
-
 def _load_release_pack_metadata() -> dict[str, dict]:
     """Read immutable release metadata without contacting the network.
 
@@ -202,39 +195,25 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             installed_size=260_000_000,
             engine_modules=("onnxruntime", "rapidocr"),
         ),
+        # Recognition and translation are one user-facing Manual tool. Keep
+        # them as one installable model pack as well: one pack id, one
+        # transactional install and one repair/remove operation. The CPU and
+        # NVIDIA variants remain separate so users never download both.
         model_pack(
-            "model-whisper-small",
-            "Whisper Small",
-            "recognition",
-            "recognition",
-            ("whisper", "whisperx-vad"),
-            (),
-            backend="cpu",
-        ),
-        model_pack(
-            "model-whisper-turbo",
-            "Whisper Large v3 Turbo",
-            "recognition",
-            "recognition",
-            ("whisper-turbo", "whisperx-vad"),
-            ("engine-cuda128-py313",),
-            backend="gpu",
-        ),
-        model_pack(
-            "model-hymt2-cpu",
-            "HY-MT2 CPU",
-            "translation",
-            "translation",
-            ("hymt2-cpu",),
+            "model-speech-cpu",
+            "Nhận dạng và dịch · CPU",
+            "tools",
+            "speech",
+            ("whisper", "whisperx-vad", "hymt2-cpu", "alignment"),
             ("engine-cpu-py313",),
             backend="cpu",
         ),
         model_pack(
-            "model-hymt2-gpu",
-            "HY-MT2 GPU",
-            "translation",
-            "translation",
-            ("hymt2-gpu",),
+            "model-speech-gpu",
+            "Nhận dạng và dịch · NVIDIA",
+            "tools",
+            "speech",
+            ("whisper", "whisper-turbo", "whisperx-vad", "hymt2-gpu", "alignment"),
             ("engine-cuda128-py313",),
             backend="gpu",
         ),
@@ -263,21 +242,6 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             ("engine-vision-onnx",),
         ),
     ]
-    for language in sorted(ALIGNMENT_MODELS):
-        assets = _alignment_asset(language, grouped.get("alignment", ()))
-        definitions.append(
-            ResourcePackDefinition(
-                pack_id=f"model-alignment-{language}",
-                label=f"Căn thời gian · {language.upper()}",
-                group="recognition",
-                version="1",
-                capability="alignment",
-                backend=language,
-                assets=assets,
-                download_size=sum(asset.size for asset in assets),
-                installed_size=sum(asset.size for asset in assets),
-            )
-        )
     release_metadata = _load_release_pack_metadata()
     resolved: list[ResourcePackDefinition] = []
     for definition in definitions:
@@ -432,6 +396,64 @@ class ResourcePackManager:
             if (root / asset.relative_path).is_file()
         )
 
+    def download_bytes(self, pack_id: str) -> int:
+        """Return bytes still needed for this install unit."""
+        definition = self.definitions[pack_id]
+        if definition.engine_modules:
+            package = resource_packages_dir() / f"{definition.pack_id}-{definition.version}.zip"
+            partial = package.with_name(package.name + ".part")
+            try:
+                if package.stat().st_size == definition.download_size:
+                    return 0
+            except FileNotFoundError:
+                pass
+            try:
+                resumed = min(definition.download_size, partial.stat().st_size)
+            except FileNotFoundError:
+                resumed = 0
+            return max(0, definition.download_size - resumed)
+        if not definition.assets:
+            return definition.download_size
+        remaining = 0
+        root = models_dir()
+        for asset in definition.assets:
+            target = root / asset.relative_path
+            try:
+                if target.stat().st_size == asset.size:
+                    continue
+            except FileNotFoundError:
+                pass
+            partial = target.with_name(target.name + ".part")
+            try:
+                resumed = min(asset.size, partial.stat().st_size)
+            except FileNotFoundError:
+                resumed = 0
+            remaining += max(0, asset.size - resumed)
+        return remaining
+
+    @staticmethod
+    def _resource_storage_bytes() -> int:
+        """Return actual bytes occupied by installed resources and downloads.
+
+        Per-pack sizes can include a shared VAD/model asset more than once.
+        The summary shown to users must count real files instead, including a
+        retained engine archive that can make a later reinstall faster.
+        """
+        total = 0
+        for root in (models_dir(), engines_dir(), resource_packages_dir()):
+            if not root.is_dir():
+                continue
+            for path in root.rglob("*"):
+                if not path.is_file():
+                    continue
+                try:
+                    total += path.stat().st_size
+                except FileNotFoundError:
+                    # A concurrent atomic promotion/removal won this race; the
+                    # next background inventory will report the new value.
+                    continue
+        return total
+
     def snapshot(self) -> list[dict]:
         storage_root = self.storage_root
         usage_path = storage_root
@@ -439,6 +461,7 @@ class ResourcePackManager:
             usage_path = usage_path.parent
         usage = shutil.disk_usage(usage_path)
         result = []
+        total_installed_bytes = self._resource_storage_bytes()
         for definition in self.definitions.values():
             status = self.status(definition.pack_id)
             missing_dependencies = [
@@ -455,15 +478,16 @@ class ResourcePackManager:
                     "capability": definition.capability,
                     "backend": definition.backend,
                     "status": status,
-                    "downloadSize": definition.download_size,
+                    "downloadSize": self.download_bytes(definition.pack_id),
                     "installedSize": self.installed_bytes(definition.pack_id),
+                    "totalInstalledBytes": total_installed_bytes,
                     "location": str(storage_root),
                     "dependencies": list(definition.dependencies),
                     "canInstall": bool(definition.assets or definition.archive_url)
                     and status in {"missing", "paused", "failed"},
                     "canRemove": status == "installed",
                     "blockedReason": (
-                        "Bộ xử lý này thuộc bản cài cũ và không thể gỡ riêng."
+                        "Đã cài cùng ứng dụng."
                         if status == "bundled"
                         else "Thiếu bộ xử lý: "
                         + ", ".join(self.definitions[item].label for item in missing_dependencies)
@@ -478,20 +502,12 @@ class ResourcePackManager:
     def required_packs(self, capability: str, context: dict | None = None) -> list[str]:
         context = context or {}
         device = "gpu" if str(context.get("device") or "cpu") == "gpu" else "cpu"
-        recognition_model = str(context.get("model") or "small").strip().lower()
-        source_language = str(context.get("source_language") or context.get("language") or "").lower().split("-")[0]
         provider = str(context.get("provider") or "omnivoice").lower()
+        engine_pack = f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}"
+        speech_pack = "model-speech-gpu" if device == "gpu" else "model-speech-cpu"
         mapping = {
-            "recognition": [
-                f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}",
-                "model-whisper-turbo"
-                if device == "gpu" and recognition_model in {"turbo", "large-v3-turbo"}
-                else "model-whisper-small",
-            ],
-            "translation": [
-                f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}",
-                "model-hymt2-gpu" if device == "gpu" else "model-hymt2-cpu",
-            ],
+            "recognition": [engine_pack, speech_pack],
+            "translation": [engine_pack, speech_pack],
             "voice": []
             if provider == "edge"
             else [f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}", "model-omnivoice"],
@@ -501,10 +517,7 @@ class ResourcePackManager:
             ],
             "ocr": ["engine-vision-onnx", "model-subtitle-ocr"],
         }
-        result = list(mapping.get(str(capability), []))
-        if capability == "recognition" and source_language in ALIGNMENT_MODELS:
-            result.append(f"model-alignment-{source_language}")
-        return result
+        return list(mapping.get(str(capability), []))
 
     def missing_packs(self, capability: str, context: dict | None = None) -> list[str]:
         ready_states = {"installed", "bundled"}
@@ -553,8 +566,14 @@ class ResourcePackManager:
     def requirement_summary(self, pack_ids: Iterable[str]) -> dict:
         definitions = [self.definitions[pack_id] for pack_id in pack_ids if pack_id in self.definitions]
         ready_states = {"installed", "bundled"}
-        download = sum(item.download_size for item in definitions if self.status(item.pack_id) not in ready_states)
-        installed = sum(item.installed_size for item in definitions if self.status(item.pack_id) not in ready_states)
+        pending = [item for item in definitions if self.status(item.pack_id) not in ready_states]
+        download = sum(self.download_bytes(item.pack_id) for item in pending)
+        installed = sum(
+            item.installed_size
+            if item.engine_modules or not item.assets
+            else self.download_bytes(item.pack_id)
+            for item in pending
+        )
         rollback = sum(
             self.installed_bytes(item.pack_id)
             for item in definitions
@@ -571,16 +590,19 @@ class ResourcePackManager:
     def _verify_model_pack(self, definition: ResourcePackDefinition) -> None:
         root = models_dir()
         pack_id = definition.pack_id
-        if pack_id == "model-whisper-small":
+        if pack_id == "model-speech-cpu":
             verify_whisper_model(root / "whisper" / "small")
             verify_whisperx_vad_model(root / "whisperx-vad")
-        elif pack_id == "model-whisper-turbo":
+            verify_cpu_model(root / "hymt2-gguf" / HYMT2_CPU_FILE)
+            for language in ALIGNMENT_MODELS:
+                verify_alignment_model(root / "alignment", language)
+        elif pack_id == "model-speech-gpu":
+            verify_whisper_model(root / "whisper" / "small")
             verify_whisper_turbo_model(root / "whisper" / "large-v3-turbo")
             verify_whisperx_vad_model(root / "whisperx-vad")
-        elif pack_id == "model-hymt2-cpu":
-            verify_cpu_model(root / "hymt2-gguf" / HYMT2_CPU_FILE)
-        elif pack_id == "model-hymt2-gpu":
             verify_gpu_model(root / "hymt2-transformers")
+            for language in ALIGNMENT_MODELS:
+                verify_alignment_model(root / "alignment", language)
         elif pack_id == "model-omnivoice":
             verify_omnivoice_model(root / "omnivoice")
             verify_omnivoice_sdk(root / "omnivoice")
@@ -588,8 +610,6 @@ class ResourcePackManager:
             verify_demucs_model(root / "demucs")
         elif pack_id == "model-subtitle-ocr":
             verify_subtitle_ocr_models(root / "subtitle-ocr")
-        elif pack_id.startswith("model-alignment-"):
-            verify_alignment_model(root / "alignment", pack_id.rsplit("-", 1)[-1])
 
     def install(self, pack_id: str, progress: Callable[[str, ModelProgress], None]) -> None:
         definition = self.definitions[pack_id]
@@ -790,8 +810,9 @@ class ResourcePackManager:
                     pass
         return removed
 
-    def clean_unused(self) -> int:
+    def clean_unused(self, *, minimum_age_seconds: int = 0) -> int:
         removed = 0
+        cutoff = time.time() - max(0, int(minimum_age_seconds))
         for root in (models_dir(), resource_packages_dir(), engines_dir()):
             if not root.exists():
                 continue
@@ -799,6 +820,8 @@ class ResourcePackManager:
                 if not path.is_file() or not path.name.endswith((".part", ".partial", ".tmp")):
                     continue
                 try:
+                    if path.stat().st_mtime > cutoff:
+                        continue
                     removed += path.stat().st_size
                     path.unlink()
                 except OSError:

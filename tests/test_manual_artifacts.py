@@ -429,6 +429,35 @@ class ManualArtifactTests(unittest.TestCase):
         self.assertIn("voice_parts_dir", self.video.files)
         self.assertNotIn("voice_output", self.video.files)
 
+    def test_text_edit_clears_voice_failure_from_previous_subtitle_revision(self):
+        self.video.subtitle_style = {}
+        self.video.files = {}
+        self.video.status = "failed"
+        self.video.error = "old worker failure"
+        self.video.manual_target_tool = "voice"
+        stage = manual_artifacts.create_staging_directory("manual-video", "subtitle_document")
+        (stage / "segments.json").write_text(
+            '[{"start":0,"end":1,"text":"Câu cũ"}]', encoding="utf-8"
+        )
+        (stage / "subtitles.srt").write_text("subtitle", encoding="utf-8")
+        manual_artifacts.publish(
+            "manual-video",
+            "subtitle_document",
+            "subtitle-before",
+            stage,
+            {"segments": "segments.json", "srt": "subtitles.srt"},
+        )
+
+        with patch.object(manual_tools, "generate_srt", side_effect=lambda _s, d, *_a: Path(d).write_text("srt")):
+            manual_tools.publish_edited_subtitles(
+                "manual-video", [{"start": 0, "end": 1, "text": "Câu mới"}]
+            )
+
+        self.assertEqual(self.video.status, "manual_ready")
+        self.assertIsNone(self.video.error)
+        self.assertEqual(self.video.manual_target_tool, "")
+        self.assertEqual(self.video.step, "manual_subtitle")
+
     def test_atomic_manifest_replace_retries_a_transient_windows_denial(self):
         destination = self.root / "manifest.json"
         real_replace = os.replace
@@ -587,6 +616,21 @@ class ManualArtifactTests(unittest.TestCase):
         self.assertIn("recognition", restored)
         self.assertEqual(self.video.active_artifacts["recognition"], first_signature)
         self.assertIn("source_segments", self.video.files)
+
+        # Startup restoration is structural and must not checksum media or
+        # rewrite metadata when the desired variants are already active.
+        with (
+            patch.object(
+                manual_tools.manual_artifacts,
+                "resolve",
+                side_effect=AssertionError("startup restoration hashed an artifact"),
+            ),
+            patch.object(manual_tools.manual_artifacts, "activate") as activate,
+        ):
+            fast_restored = manual_tools.restore_cached_variants("manual-video", validate=False)
+        self.assertIn("source_audio", fast_restored)
+        self.assertIn("recognition", fast_restored)
+        activate.assert_not_called()
 
 
 class ManualToolDispatchTests(unittest.TestCase):

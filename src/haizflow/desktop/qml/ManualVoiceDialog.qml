@@ -223,12 +223,14 @@ AppDialog {
             }
         }
 
-        InlineBanner {
+        Text {
             Layout.fillWidth: true
             visible: root.scope === "segment"
-            tone: "info"
-            title: qsTr("Các đoạn khác được giữ nguyên")
-            message: qsTr("Chỉ đoạn đang chọn được tạo bằng giọng này; cache của phần còn lại không thay đổi.")
+            text: qsTr("Chỉ tạo lại đoạn đang chọn.")
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.label
+            textFormat: Text.PlainText
         }
     }
 

@@ -365,6 +365,10 @@ window.close()
         self.assertIn('qsTr("Che · Làm mờ")', visual_tool)
         self.assertIn('qsTr("Che · Vá nền")', visual_tool)
         self.assertIn("setManualSubtitleTreatment", visual_tool)
+        self.assertIn('qsTr("Áp dụng")', visual_tool)
+        self.assertLess(visual_tool.index("onActivated:"), visual_tool.index("setManualSubtitleTreatment"))
+        activated_body = visual_tool[visual_tool.index("onActivated:"):visual_tool.index("StudioButton {")]
+        self.assertNotIn("setManualSubtitleTreatment", activated_body)
         self.assertNotIn('qsTr("Che phụ đề")', visual_tool)
         self.assertNotIn("helpText:", visual_tool)
         self.assertIn("id: subtitleInspectorComponent", inspector)
@@ -394,8 +398,14 @@ window.close()
         self.assertIn("id: audioInspectorComponent", inspector)
         self.assertIn('objectName: "manualInspectorScroll"', inspector)
         self.assertIn("Layout.maximumHeight: implicitHeight", inspector)
-        self.assertEqual(inspector.count("parent: root\n        sourceComponent:"), 4)
+        self.assertEqual(inspector.count("parent: root\n        sourceComponent:"), 5)
         self.assertNotIn('text: qsTr("Chỉnh bố cục")', inspector)
+        self.assertIn("ManualSubtitleEditorDialog", inspector)
+        self.assertIn('qsTr("Mở rộng")', inspector)
+        subtitle_dialog = (QML_DIR / "ManualSubtitleEditorDialog.qml").read_text(encoding="utf-8")
+        self.assertIn("preferredWidth: 1080", subtitle_dialog)
+        self.assertIn("preferredHeight: 760", subtitle_dialog)
+        self.assertIn("SubtitleTextEditor {", subtitle_dialog)
         compare_preview = (QML_DIR / "ManualComparePreview.qml").read_text(encoding="utf-8")
         transform_overlay = (QML_DIR / "SubtitleTransformOverlay.qml").read_text(encoding="utf-8")
         self.assertIn("SubtitleTransformOverlay {", compare_preview)
@@ -404,6 +414,7 @@ window.close()
         self.assertIn('objectName: "subtitleTransformSprite"', transform_overlay)
         self.assertIn("root.sprite.normal", transform_overlay)
         self.assertIn("root.sprite.karaoke", transform_overlay)
+
         self.assertNotIn("textMeasure", transform_overlay)
         self.assertNotIn("FontLoader", transform_overlay)
         self.assertIn("selection.rasterScale", transform_overlay)
@@ -426,7 +437,14 @@ window.close()
         self.assertNotIn("InlineBanner {", navigation_rail)
 
         workspace = (QML_DIR / "ManualWorkspace.qml").read_text(encoding="utf-8")
+        timeline = (QML_DIR / "SubtitleTimeline.qml").read_text(encoding="utf-8")
         self.assertIn("function selectSubtitle(index, seek)", workspace)
+        self.assertNotIn("onSegmentEditRequested:", workspace)
+        self.assertNotIn("openEditor", workspace)
+        self.assertIn("signal segmentFocused(int index)", timeline)
+        self.assertNotIn("signal segmentEditRequested(int index)", timeline)
+        self.assertIn("if (timingChanged)", timeline)
+        self.assertIn("else\n                                root.segmentSelected(sourceIndex);", timeline)
         self.assertIn("subtitleInteractive: root.previewSubtitleIndex >= 0", workspace)
         self.assertIn("subtitleTransformActive = true", workspace)
         self.assertIn("onSubtitleActivated:", workspace)
@@ -460,6 +478,66 @@ window.close()
 
         panel = (QML_DIR / "InspectorPanel.qml").read_text(encoding="utf-8")
         self.assertIn("Layout.fillHeight: true", panel)
+
+    def test_manual_subtitle_editor_dialog_is_large_and_responsive(self):
+        script = f"""
+from PySide6.QtCore import QObject, QUrl
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlComponent, QQmlEngine
+app = QGuiApplication([])
+engine = QQmlEngine()
+engine.addImportPath(r'{QML_DIR}')
+source = '''import QtQuick
+import QtQuick.Controls.Basic
+import "{QML_DIR.as_uri()}"
+ApplicationWindow {{
+    width: 1120
+    height: 720
+    visible: true
+    QtObject {{
+        id: fakeController
+        signal manualSubtitleSaved(string id, int revision, string requestId)
+        signal manualSubtitleSaveFailed(string id, string requestId, string message)
+    }}
+    ManualSubtitleEditorDialog {{
+        id: subtitleDialog
+        controller: fakeController
+        segment: ({{"segment_id": "segment-1", "text": "Một đoạn phụ đề dài", "revision": 1,
+            "start": 1.25, "end": 5.5}})
+        selectedIndex: 0
+        segmentCount: 8
+        Component.onCompleted: openForSelection()
+    }}
+}}'''.encode('utf-8')
+component = QQmlComponent(engine)
+component.setData(source, QUrl())
+assert component.isReady(), '\\n'.join(error.toString() for error in component.errors())
+window = component.create()
+assert window is not None, '\\n'.join(error.toString() for error in component.errors())
+for _ in range(6):
+    app.processEvents()
+dialog = window.findChild(QObject, 'manualSubtitleEditorDialog')
+editor = window.findChild(QObject, 'manualSubtitleTextInput')
+assert dialog is not None and editor is not None
+assert dialog.property('width') == 1072
+assert dialog.property('height') == 672
+assert editor.property('height') >= 440
+window.close()
+window.deleteLater()
+app.processEvents()
+"""
+        environment = os.environ.copy()
+        environment["QT_QPA_PLATFORM"] = "offscreen"
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_manual_visual_and_audio_inspectors_keep_the_full_scroll_viewport(self):
         script = f"""\
@@ -722,6 +800,48 @@ app.processEvents()
         )
         for filename in removed:
             self.assertFalse((QML_DIR / filename).exists(), filename)
+
+
+    def test_resource_packages_present_real_install_units(self):
+        page = (QML_DIR / "ResourcePacksPage.qml").read_text(encoding="utf-8")
+        raw_row = (QML_DIR / "ResourcePackRow.qml").read_text(encoding="utf-8")
+        settings = (QML_DIR / "SettingsPage.qml").read_text(encoding="utf-8")
+        shell = (QML_DIR / "SettingsPageShell.qml").read_text(encoding="utf-8")
+
+        self.assertIn("AppController.resourcePackageRows", page)
+        self.assertIn("SettingsPageShell {", page)
+        self.assertIn("SettingsPageShell {", settings)
+        self.assertIn("Layout.preferredHeight: 64", shell)
+        self.assertIn("root.horizontalInset", shell)
+        self.assertIn("AppController.setHardwareTelemetryActive(visible)", page)
+        self.assertIn("ResourcePackRow", page)
+        self.assertNotIn("ResourceBundleRow", page)
+        self.assertNotIn("installResourceBundle", page)
+        self.assertIn('qsTr("Nhận dạng và dịch · CPU")', page)
+        self.assertIn('qsTr("Giọng đọc OmniVoice")', page)
+        self.assertIn('qsTr("Tách giọng")', page)
+        self.assertIn('qsTr("Che phụ đề gốc")', page)
+        self.assertIn("AppController.installResourcePacks([root.packId])", raw_row)
+        self.assertIn("Layout.alignment: Qt.AlignRight | Qt.AlignVCenter", raw_row)
+        self.assertNotIn("Bộ xử lý này thuộc bản cài cũ", raw_row)
+
+    def test_dialogs_share_chrome_and_about_links_use_one_alignment(self):
+        about = (QML_DIR / "AboutDialog.qml").read_text(encoding="utf-8")
+        log_dialog = (QML_DIR / "ActivityLogDialog.qml").read_text(encoding="utf-8")
+        subtitle_dialog = (QML_DIR / "ManualSubtitleEditorDialog.qml").read_text(encoding="utf-8")
+        direct_dialogs = []
+        for path in QML_DIR.glob("*.qml"):
+            if re.search(r"^Dialog\s*\{", path.read_text(encoding="utf-8"), re.MULTILINE):
+                direct_dialogs.append(path.name)
+
+        self.assertEqual(sorted(direct_dialogs), ["AppDialog.qml", "FloatingToolDialog.qml"])
+        self.assertEqual(about.count("AboutLinkRow {"), 3)
+        self.assertIn('label: qsTr("Email")', about)
+        self.assertNotIn("SettingRow {", about)
+        self.assertIn("SearchField {", log_dialog)
+        self.assertIn('qsTr("Tất cả mức")', log_dialog)
+        self.assertIn('title: qsTr("Sửa phụ đề")', subtitle_dialog)
+        self.assertNotIn("Video chỉ cập nhật sau khi lưu thay đổi", subtitle_dialog)
 
 
 if __name__ == "__main__":

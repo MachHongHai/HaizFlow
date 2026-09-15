@@ -119,14 +119,18 @@ class ExternalLinkTests(unittest.TestCase):
 
     def test_about_email_is_displayed_as_non_clickable_text(self):
         about_section = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "AboutDialog.qml").read_text(encoding="utf-8")
-        self.assertIn('text: "machhonghaipr@gmail.com"', about_section)
+        link_row = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "AboutLinkRow.qml").read_text(encoding="utf-8")
+        self.assertIn('value: "machhonghaipr@gmail.com"', about_section)
+        self.assertIn("linkEnabled: false", about_section)
         self.assertNotIn("mail.google.com", about_section)
-        self.assertIn('AppController.copyText("machhonghaipr@gmail.com")', about_section)
-        self.assertIn('text: "MachHongHai/HaizFlow"', about_section)
+        self.assertNotIn("mailto:", about_section)
+        self.assertIn('copyValue: "machhonghaipr@gmail.com"', about_section)
+        self.assertIn('value: "MachHongHai/HaizFlow"', about_section)
         self.assertIn('destination: "https://github.com/MachHongHai/HaizFlow"', about_section)
-        self.assertIn('AppController.copyText("https://github.com/MachHongHai/HaizFlow")', about_section)
+        self.assertIn('copyValue: "https://github.com/MachHongHai/HaizFlow"', about_section)
         self.assertIn('destination: "https://www.linkedin.com/in/machhonghai/"', about_section)
-        self.assertIn('AppController.copyText("https://www.linkedin.com/in/machhonghai/")', about_section)
+        self.assertIn('copyValue: "https://www.linkedin.com/in/machhonghai/"', about_section)
+        self.assertIn("AppController.copyText(root.copyValue)", link_row)
         self.assertNotIn("Đại học", about_section)
 
     def test_home_introduction_links_to_github_and_linkedin(self):

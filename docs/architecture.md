@@ -68,7 +68,9 @@ Dependencies point inward from presentation to application services: QML uses th
 
 `Main.qml` is the persistent shell. It owns route history, the top navigation bar, global dialogs and the bottom activity strip. `RouteHost.qml` loads the current page without rebuilding the shell. Project workspaces hide the navigation rail while retaining the same Back, Forward, Home, Projects, Settings and Help controls.
 
-`HaizFlowController` is registered as the QML singleton facade. Focused desktop controllers separate catalog/project state, project commands, imports, processing lifecycle, preview rendering, audio preview, downloads, publishing, settings, resource packs, smart warm-up and diagnostics. List data is exposed through `QAbstractListModel` implementations in `desktop/models.py`.
+`HaizFlowController` is registered as the QML singleton facade. Focused desktop controllers separate catalog/project state, project commands, imports, processing lifecycle, preview rendering, audio preview, downloads, publishing, settings, resource packs, update checks, smart warm-up and diagnostics. List data is exposed through `QAbstractListModel` implementations in `desktop/models.py`.
+
+`AppUpdateController` performs the public GitHub Releases request on a worker thread and transfers only the parsed result to the Qt thread. It accepts release pages below the fixed official repository URL and compares stable semantic versions. The desktop application opens that page for an update; it does not download or execute an installer.
 
 Background model status belongs to the persistent activity strip. Dialogs are reserved for confirmation or errors that require a decision; transient action feedback uses the toast stack.
 

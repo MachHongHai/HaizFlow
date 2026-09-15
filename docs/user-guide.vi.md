@@ -36,7 +36,7 @@ Trang chủ mở mà không phải chờ model AI. Nếu bật **Giữ model s�
 
 ## 3. Cài gói tài nguyên
 
-Mở **Cài đặt → Gói tài nguyên**. Các gói được chia thành Bộ xử lý, Nhận dạng, Dịch, Giọng đọc và Hình ảnh.
+Mở **Cài đặt → Gói cài đặt**. Trang này đặt cấu hình NVIDIA và cấu hình CPU thành hai nhóm hoàn chỉnh, sau đó mới tới các công cụ giọng đọc và hình ảnh tùy chọn. HaizFlow đề xuất cấu hình phù hợp với phần cứng đã nhận biết. Nhận dạng, dịch và dữ liệu căn thời gian theo ngôn ngữ được cài chung nên không còn xuất hiện thành nhiều lựa chọn rời.
 
 Mỗi dòng cho biết dung lượng tải, dung lượng đã cài, phiên bản, vị trí và trạng thái. Trước khi cài, HaizFlow còn tính chỗ giải nén, bản cũ giữ lại để khôi phục và 2 GiB trống dự phòng.
 
@@ -194,11 +194,11 @@ Kết nối Zernio, đặt nội dung và tùy chọn bài đăng, thêm video �
 | Gói Core vừa được kiểm tra | 477 MiB |
 | Cài đặt Core | Setup tự tính mức tối thiểu; bản hiện tại khuyến nghị chừa 4 GiB |
 | Phần trống giữ lại khi cài tài nguyên | 2 GiB sau khi tính tải, cài và bản khôi phục |
-| Dữ liệu tạm của trình sửa Thủ công | mặc định 4 GiB mỗi dự án; 16 GiB toàn bộ |
+| Dữ liệu tạm của trình sửa Thủ công | tự điều chỉnh theo chỗ trống; ưu tiên xóa bản dựng không còn dùng |
 
 Các con số của Core không bao gồm bộ xử lý, model, video nguồn, video xuất hoặc tệp kết xuất tạm. Gói tài nguyên và thao tác xuất đều kiểm tra chỗ trống riêng bằng số byte đo được hoặc ước tính theo video.
 
-Dùng **Cài đặt → Dọn dữ liệu tạm Thủ công** để xóa bản xem trước cũ, bản phối cũ và dữ liệu có thể dựng lại. Lệnh này không được xóa video nguồn, video xuất, bản chỉnh sửa đang dùng hoặc phiên bản cần cho Hoàn tác và Làm lại.
+HaizFlow tự quản lý dữ liệu tạm của dự án Thủ công. Khi ổ đĩa gần đầy, ứng dụng hạ mức cache và xóa bản xem trước hoặc bản phối cũ trước các kết quả model có thể tái sử dụng. Video nguồn, video xuất, bản chỉnh sửa đang dùng và phiên bản cần cho Hoàn tác/Làm lại không thuộc diện dọn cache.
 
 Người chạy từ source có thể đặt `HAIZFLOW_HOME` trong `.env` để chuyển model, cache, dữ liệu và tệp tạm tới một thư mục cục bộ khác.
 
@@ -226,7 +226,7 @@ Bản hiện tại chốt phần chữ Windows IME đang ghép trước khi lưu
 
 ### Ứng dụng chậm
 
-Dừng tác vụ không còn cần, kiểm tra RAM/VRAM cùng chỗ trống và dọn dữ liệu tạm Thủ công nếu cache đầy. Không chỉnh dự án đang chạy từ một ổ mạng chậm.
+Dừng tác vụ không còn cần, kiểm tra RAM/VRAM cùng chỗ trống. HaizFlow sẽ tự giảm dữ liệu có thể dựng lại khi ổ đĩa thiếu chỗ. Không chỉnh dự án đang chạy từ một ổ mạng chậm.
 
 ## 13. Báo lỗi
 

@@ -80,12 +80,12 @@ Dialog {
 
     enter: Transition {
         ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionStandard }
-            NumberAnimation { property: "scale"; from: 0.985; to: 1; duration: Theme.motionStandard; easing.type: Easing.OutCubic }
+            OpacityAnimator { from: 0; to: 1; duration: Motion.standard }
+            ScaleAnimator { from: 0.985; to: 1; duration: Motion.standard; easing.type: Motion.enterEasing }
         }
     }
     exit: Transition {
-        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motionFast }
+        OpacityAnimator { from: 1; to: 0; duration: Motion.fast }
     }
 
     background: Rectangle {
@@ -100,7 +100,7 @@ Dialog {
 
         Item {
             Layout.fillWidth: true
-            Layout.preferredHeight: 64
+            Layout.preferredHeight: 60
 
             MouseArea {
                 anchors.fill: parent
@@ -137,7 +137,8 @@ Dialog {
                         Layout.fillWidth: true
                         text: root.toolTitle
                         color: Theme.text
-                        font.pixelSize: Theme.h3
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.section
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight
                         textFormat: Text.PlainText
@@ -148,19 +149,26 @@ Dialog {
                         visible: root.toolSubtitle.length > 0
                         text: root.toolSubtitle
                         color: Theme.textMuted
-                        font.pixelSize: Theme.caption
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.label
                         elide: Text.ElideRight
                         textFormat: Text.PlainText
                     }
                 }
 
                 IconButton {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+                    controlSize: 32
                     glyph: root.maximized ? "\uE923" : "\uE922"
                     toolTipText: root.maximized ? qsTr("Khôi phục") : qsTr("Phóng to")
                     onClicked: root.toggleMaximized()
                 }
 
                 IconButton {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+                    controlSize: 32
                     glyph: "\uE711"
                     toolTipText: qsTr("Đóng")
                     onClicked: root.close()

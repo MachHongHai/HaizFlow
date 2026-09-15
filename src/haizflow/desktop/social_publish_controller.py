@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import os
 import queue
 import re
@@ -58,6 +59,7 @@ _ZERNIO_BILLING_ERROR_MARKERS = (
     "authorization url",
 )
 _CREATE_POST_TRANSIENT_STATUSES = frozenset({0, 408, 425, 429, 500, 502, 503, 504})
+LOGGER = logging.getLogger(__name__)
 
 
 def _remote_account_id(value) -> str:
@@ -803,6 +805,18 @@ class SocialPublishController:
                     "silent": bool(silent),
                 }
             )
+        except Exception:
+            LOGGER.exception("Unexpected Zernio account worker failure")
+            self._events.put(
+                {
+                    "type": "error",
+                    "project_key": project_key,
+                    "message": "Could not finish syncing social accounts.",
+                    "api_key_verified": api_key_verified,
+                    "generation": int(generation),
+                    "silent": bool(silent),
+                }
+            )
 
     @staticmethod
     def _connection_error_message(message: str, connected_account_count: int) -> str:
@@ -960,6 +974,17 @@ class SocialPublishController:
                     "account_id": account_id,
                     "generation": generation,
                     "message": str(exc),
+                }
+            )
+        except Exception:
+            LOGGER.exception("Unexpected Zernio creator-info worker failure")
+            self._events.put(
+                {
+                    "type": "creator_error",
+                    "project_key": project_key,
+                    "account_id": account_id,
+                    "generation": generation,
+                    "message": "Could not load the publishing options for this account.",
                 }
             )
 
@@ -1573,6 +1598,17 @@ class SocialPublishController:
                     "error": str(exc),
                 }
             )
+        except Exception:
+            LOGGER.exception("Unexpected Zernio publishing worker failure")
+            self._events.put(
+                {
+                    "type": "publish_finished",
+                    "project_key": project_key,
+                    "item_id": item.get("id", ""),
+                    "status": "failed",
+                    "error": "Publishing stopped because of an unexpected response. Try again.",
+                }
+            )
 
     def refresh_post_statuses(self) -> bool:
         return self._start_status_worker(only_pending=False)
@@ -1639,6 +1675,15 @@ class SocialPublishController:
             self._events.put({"type": "statuses", "project_key": project_key, "updates": updates})
         except (OSError, ValueError, zernio.ZernioError) as exc:
             self._events.put({"type": "status_error", "project_key": project_key, "message": str(exc)})
+        except Exception:
+            LOGGER.exception("Unexpected Zernio status worker failure")
+            self._events.put(
+                {
+                    "type": "status_error",
+                    "project_key": project_key,
+                    "message": "Could not refresh social post statuses.",
+                }
+            )
 
     def drain_events(self) -> None:
         changed = False

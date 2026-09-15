@@ -46,23 +46,14 @@ Rectangle {
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
                 Accessible.name: String(modelData.label || "")
+                    + (toolState === "error" ? qsTr(" · Lỗi")
+                        : toolState === "running" ? qsTr(" · Đang chạy") : "")
 
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: Theme.space8
                     anchors.rightMargin: Theme.space8
-                    spacing: Theme.space8
-
-                    Rectangle {
-                        Layout.preferredWidth: 6
-                        Layout.preferredHeight: 6
-                        radius: 3
-                        color: toolButton.toolState === "running" ? Theme.warning
-                            : toolButton.toolState === "error" ? Theme.danger
-                            : toolButton.toolState === "cached" ? Theme.success
-                            : toolButton.toolState === "ready" ? Theme.interactive
-                            : Theme.textDisabled
-                    }
+                    spacing: Theme.space4
 
                     Text {
                         Layout.fillWidth: true
@@ -75,6 +66,27 @@ Rectangle {
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight
                     }
+
+                    FluentIcon {
+                        visible: toolButton.toolState === "error"
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        name: "error"
+                        iconSize: 14
+                        iconColor: Theme.danger
+                        Accessible.ignored: true
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.leftMargin: Theme.space8
+                    anchors.rightMargin: Theme.space8
+                    height: 2
+                    visible: toolButton.toolState === "running"
+                    color: Theme.interactive
                 }
 
                 HoverHandler {

@@ -288,7 +288,7 @@ class RuntimeDeviceController:
             host._settings_processing_device = previous_device
             host.appAlertRequested.emit(
                 "Thiếu bộ xử lý",
-                "Cài gói bộ xử lý phù hợp trong Cài đặt → Gói tài nguyên trước khi đổi thiết bị.",
+                "Cài gói bộ xử lý phù hợp trong Cài đặt → Gói cài đặt trước khi đổi thiết bị.",
                 "info",
             )
             host.settingsChanged.emit()

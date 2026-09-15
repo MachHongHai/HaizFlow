@@ -821,6 +821,65 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.assertEqual(event["type"], "oauth")
         self.assertEqual(event["profile_id"], "profile-cached")
 
+    def test_unexpected_account_worker_error_always_releases_the_ui(self):
+        client = MagicMock()
+        client.list_profiles.side_effect = RuntimeError("malformed response")
+        with patch(
+            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            return_value=client,
+        ):
+            self.controller._account_worker(
+                "refresh",
+                "sk_" + "a" * 64,
+                "publish-project",
+                generation=7,
+            )
+
+        event = self.controller._events.get_nowait()
+        self.assertEqual(event["type"], "error")
+        self.assertEqual(event["project_key"], "publish-project")
+        self.assertEqual(event["generation"], 7)
+        self.assertNotIn("malformed response", event["message"])
+
+    def test_malformed_presign_response_finishes_publish_as_failed(self):
+        client = MagicMock()
+        client.presign_video.return_value = []
+        item = {
+            "id": "item-1",
+            "file_path": "D:/video.mp4",
+            "caption": "Caption",
+            "hashtags": "#tag",
+            "request_id": "request-1",
+        }
+        settings = {
+            "platform": "tiktok",
+            "account_id": "account-1",
+            "privacy_level": "PUBLIC_TO_EVERYONE",
+            "publish_now": True,
+            "allow_comment": True,
+            "allow_duet": True,
+            "allow_stitch": True,
+            "share_to_feed": True,
+            "ai_generated": False,
+            "first_comment": "",
+        }
+        with patch(
+            "haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+            return_value=client,
+        ):
+            self.controller._publish_worker(
+                "sk_" + "a" * 64,
+                "publish-project",
+                item,
+                settings,
+            )
+
+        event = self.controller._events.get_nowait()
+        self.assertEqual(event["type"], "publish_finished")
+        self.assertEqual(event["status"], "failed")
+        self.assertEqual(event["item_id"], "item-1")
+        self.assertNotIn("list", event["error"])
+
     def test_connection_refreshes_only_when_the_cached_profile_was_deleted(self):
         client = MagicMock()
         client.list_profiles.return_value = [{"_id": "profile-new", "name": "HaizFlow"}]

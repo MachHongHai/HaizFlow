@@ -10,7 +10,7 @@ from pydub import AudioSegment
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
-from haizflow.utils.ffmpeg import get_video_duration
+from haizflow.utils.ffmpeg import _binary, get_video_duration
 
 _FINAL_AUDIO_TAIL_MARGIN_MS = 120
 _ATOMIC_REPLACE_ATTEMPTS = 8
@@ -163,7 +163,7 @@ def fit_tempo_to_duration(
         exported_audio.close()
         process = subprocess.Popen(
             [
-                "ffmpeg", "-y", "-v", "error", "-i", input_path,
+                _binary("ffmpeg"), "-y", "-v", "error", "-i", input_path,
                 "-filter:a", _atempo_filters(speed_factor),
                 "-ac", "1", "-ar", "16000", output_path,
             ],
@@ -219,13 +219,16 @@ def build_audio_timeline(
     prepared_base_audio_path: str | None = None,
     process_registry_id: str | None = None,
     require_voice_parts: bool = True,
+    fit_voice_to_slots: bool = False,
     require_background_audio: bool = True,
 ):
     """Compose cached audio layers without invoking a speech model.
 
     ``require_voice_parts`` remains true for the automatic pipeline.  Manual
     composition can set it to false to build an original/music-only mix, so
-    changing levels never becomes dependent on TTS.
+    changing levels never becomes dependent on TTS. ``fit_voice_to_slots``
+    makes Manual narration and its karaoke layer share the same start/end
+    clock without modifying the cached provider audio.
     """
     cancellation_id = process_registry_id or video_id
     log_to_video(video_id, "Starting build of the audio timeline...")
@@ -374,7 +377,7 @@ def build_audio_timeline(
             
             # Fit speech with FFmpeg's pitch-preserving atempo filter. Unlike
             # slicing an AudioSegment, this keeps the end of every spoken line.
-            if bool(seg.get("fit_voice_to_timing")):
+            if fit_voice_to_slots or bool(seg.get("fit_voice_to_timing")):
                 speed_factor = tts_dur / available_dur
                 log_to_video(
                     video_id,

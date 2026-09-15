@@ -98,13 +98,16 @@ class ManualPreviewAudioController(QObject):
             from haizflow.pipeline.audio_timeline import _atempo_filters, trim_silence
             audio = trim_silence(AudioSegment.from_file(path))
             # Use the same pitch-preserving tempo policy as exported voice.
-            target = max(1, duration - (20 if not fit and len(audio) > duration else 0))
+            # Manual narration and ASS karaoke share the subtitle slot clock.
+            # Always fit the non-destructive playback copy to that exact slot;
+            # the immutable provider clip remains unchanged in cache.
+            target = max(1, duration)
             speed = len(audio) / target
             with tempfile.TemporaryDirectory(prefix="haizflow-preview-voice-") as work:
                 source = Path(work) / "voice.wav"
                 audio.export(source, format="wav").close()
                 command = [_binary("ffmpeg"), "-v", "error", "-i", str(source)]
-                if (speed > 1 or fit) and abs(len(audio) - target) > 12:
+                if abs(len(audio) - target) > 12:
                     command += ["-af", _atempo_filters(speed)]
                 command += ["-t", str(duration / 1000), "-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
                 output = subprocess.run(command, capture_output=True, check=True, timeout=90,

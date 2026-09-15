@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -12,7 +14,7 @@ Item {
 
     readonly property bool editingBatchVideo: AppController.isSelectedBatchVideo
     readonly property bool wideLayout: width >= 980
-    property bool activityExpanded: false
+    readonly property ActivityLogDialog technicalLogDialog: technicalLogLoader.item as ActivityLogDialog
 
     onWideLayoutChanged: {
         if (wideLayout)
@@ -56,11 +58,19 @@ Item {
                 inputVideoEnabled: AppController.hasSelectedVideo
                 showOutputFolder: AppController.hasSelectedVideo
                 outputFolderEnabled: AppController.hasSelectedVideo
+                showTechnicalLog: true
+                technicalLogEnabled: AppController.hasSelectedVideo
                 deleteEnabled: AppController.hasOpenProject
                 deleteText: root.editingBatchVideo ? qsTr("Xóa video") : qsTr("Xóa dự án")
                 onProjectFolderRequested: AppController.openProjectFolder()
                 onInputVideoRequested: AppController.openInputFile()
                 onOutputFolderRequested: AppController.openOutputFolder()
+                onTechnicalLogRequested: {
+                    if (technicalLogLoader.status === Loader.Ready && root.technicalLogDialog)
+                        root.technicalLogDialog.open();
+                    else
+                        technicalLogLoader.active = true;
+                }
                 onDeleteRequested: {
                     if (root.editingBatchVideo)
                         AppController.deleteSelectedVideo()
@@ -98,9 +108,9 @@ Item {
                     Layout.columnSpan: root.wideLayout ? 1 : 2
                     Layout.fillWidth: true
                     Layout.fillHeight: false
-                    Layout.minimumWidth: root.wideLayout ? 270 : 0
-                    Layout.preferredWidth: root.wideLayout ? 286 : 600
-                    Layout.maximumWidth: root.wideLayout ? 320 : 16777215
+                    Layout.minimumWidth: root.wideLayout ? 340 : 0
+                    Layout.preferredWidth: root.wideLayout ? 380 : 600
+                    Layout.maximumWidth: root.wideLayout ? 440 : 16777215
                     Layout.minimumHeight: implicitHeight
                     Layout.preferredHeight: implicitHeight
                     compact: true
@@ -112,7 +122,7 @@ Item {
                     Layout.row: 0
                     Layout.column: root.wideLayout ? 1 : 0
                     Layout.columnSpan: root.wideLayout ? 1 : 2
-                    Layout.rowSpan: root.wideLayout ? 2 : 1
+                    Layout.rowSpan: 1
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumWidth: root.wideLayout ? 650 : 0
@@ -121,35 +131,6 @@ Item {
                     Layout.preferredHeight: root.wideLayout ? 650 : 620
                 }
 
-                ActivityFeed {
-                    Layout.row: root.wideLayout ? 1 : 2
-                    Layout.column: 0
-                    Layout.columnSpan: root.wideLayout ? 1 : 2
-                    Layout.fillWidth: true
-                    visible: root.activityExpanded
-                    Layout.fillHeight: root.wideLayout && visible
-                    Layout.minimumWidth: root.wideLayout ? 270 : 0
-                    Layout.minimumHeight: visible ? (root.wideLayout ? 132 : 180) : 0
-                    Layout.preferredWidth: root.wideLayout ? 286 : 600
-                    Layout.maximumWidth: root.wideLayout ? 320 : 16777215
-                    Layout.preferredHeight: visible ? (root.wideLayout ? 168 : 200) : 0
-                    // qmllint disable missing-property
-                    model: AppController.activityEventModel
-                    // qmllint enable missing-property
-                }
-
-                ActivityTray {
-                    Layout.row: root.wideLayout ? 2 : 3
-                    Layout.column: 0
-                    Layout.columnSpan: root.wideLayout ? 1 : 2
-                    Layout.fillWidth: true
-                    activityState: AppController.selectedStatus === "failed" ? "failed"
-                        : AppController.isProcessing ? "processing" : "ready"
-                    message: AppController.selectedStatus === "failed"
-                        ? AppController.selectedProgressDetail : I18n.runtimeStatus(AppController.statusMessage)
-                    progress: AppController.isProcessing ? AppController.selectedProgress / 100 : -1
-                    onDetailsRequested: root.activityExpanded = !root.activityExpanded
-                }
             }
 
             ScrollBar.vertical: ScrollBar {
@@ -160,6 +141,20 @@ Item {
         VideoCommandBar {
             Layout.fillWidth: true
             onRequestReviewTranslation: root.requestReviewTranslation()
+        }
+    }
+
+    Loader {
+        id: technicalLogLoader
+        active: false
+        asynchronous: false
+        onLoaded: if (status === Loader.Ready && root.technicalLogDialog) root.technicalLogDialog.open()
+        sourceComponent: Component {
+            ActivityLogDialog {
+                logText: AppController.logs
+                detailText: AppController.selectedFileName
+                onClosed: technicalLogLoader.active = false
+            }
         }
     }
 }

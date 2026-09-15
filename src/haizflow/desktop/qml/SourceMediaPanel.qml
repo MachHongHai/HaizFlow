@@ -23,30 +23,27 @@ AppSurface {
         id: videoFrame
 
         Layout.fillWidth: true
-        Layout.preferredHeight: root.compact ? Math.max(124, Math.min(168, width * 9 / 16)) : Math.max(230, Math.min(300, width * 9 / 16))
+        Layout.preferredHeight: root.compact ? Math.max(218, Math.min(276, width * 9 / 16 + 48)) : Math.max(278, Math.min(348, width * 9 / 16 + 48))
         radius: Theme.radius
         color: root.dropActive ? Theme.interactiveMuted : Theme.video
         border.width: root.dropActive || AppController.videoPath.length > 0 ? 2 : 1
         border.color: root.dropActive ? Theme.focus : AppController.videoPath.length > 0 ? Theme.outlineStrong : Theme.outline
         clip: true
 
-        Image {
-            id: sourceThumbnail
+        SourceVideoPlayer {
+            id: sourcePlayer
             anchors.fill: parent
             anchors.margins: 2
-            source: AppController.videoThumbnailSource
-            sourceSize.width: 960
-            sourceSize.height: 540
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            visible: status === Image.Ready
+            source: AppController.selectedInputSource
+            thumbnailSource: AppController.videoThumbnailSource
+            visible: AppController.videoPath.length > 0
         }
 
         Column {
             anchors.centerIn: parent
             width: Math.min(330, parent.width - 40)
             spacing: Theme.space8
-            visible: AppController.videoThumbnailSource.length === 0 || sourceThumbnail.status === Image.Error
+            visible: AppController.videoPath.length === 0
 
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter

@@ -19,6 +19,7 @@ Rectangle {
     property real pendingZoomAnchorX: 0
 
     signal segmentSelected(int index)
+    signal segmentFocused(int index)
     signal seekRequested(real seconds)
     signal scrubStarted(real seconds)
     signal scrubMoved(real seconds)
@@ -373,7 +374,9 @@ Rectangle {
                         }
 
                         function beginTiming(area, mouse) {
-                            root.segmentSelected(sourceIndex);
+                            // Press selects the clip. Editing timing and editing
+                            // text are separate actions; neither opens a dialog.
+                            root.segmentFocused(sourceIndex);
                             gestureStart = Number(modelData.start || 0);
                             gestureEnd = Number(modelData.end || 0);
                             previewStart = gestureStart;
@@ -404,8 +407,12 @@ Rectangle {
                             root.editingClip = false;
                             const oldStart = Number(modelData.start || 0);
                             const oldEnd = Number(modelData.end || 0);
-                            if (Math.abs(previewStart - oldStart) > 0.0005 || Math.abs(previewEnd - oldEnd) > 0.0005)
+                            const timingChanged = Math.abs(previewStart - oldStart) > 0.0005
+                                || Math.abs(previewEnd - oldEnd) > 0.0005;
+                            if (timingChanged)
                                 root.timingCommitted(sourceIndex, previewStart, previewEnd);
+                            else
+                                root.segmentSelected(sourceIndex);
                         }
 
                         Connections {

@@ -18,7 +18,8 @@ Button {
 
         text: root.text
         color: root.hovered || root.activeFocus ? Theme.interactiveHover : Theme.interactive
-        font.pixelSize: Theme.caption
+        font.family: Theme.fontFamily
+        font.pixelSize: TypeScale.control
         font.underline: root.hovered || root.activeFocus
         textFormat: Text.PlainText
     }

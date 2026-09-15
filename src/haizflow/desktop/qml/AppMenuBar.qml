@@ -14,6 +14,7 @@ Rectangle {
     signal newDownloadProjectRequested
     signal newPublishProjectRequested
     signal settingsRequested
+    signal packagesRequested
     signal undoRequested
     signal redoRequested
     signal aboutRequested
@@ -222,7 +223,10 @@ Rectangle {
 
         objectName: "settingsMenuPopup"
         parent: Overlay.overlay
-        menuContentWidth: Math.max(settingsItem.implicitWidth, aboutItem.implicitWidth)
+        menuContentWidth: Math.max(
+            settingsItem.implicitWidth,
+            packagesItem.implicitWidth,
+            aboutItem.implicitWidth)
 
         AppMenuItem {
             id: settingsItem
@@ -230,6 +234,15 @@ Rectangle {
             text: qsTr("Cài đặt")
             onTriggered: root.settingsRequested()
         }
+
+        AppMenuItem {
+            id: packagesItem
+
+            text: qsTr("Gói cài đặt")
+            onTriggered: root.packagesRequested()
+        }
+
+        MenuSeparator {}
 
         AppMenuItem {
             id: aboutItem

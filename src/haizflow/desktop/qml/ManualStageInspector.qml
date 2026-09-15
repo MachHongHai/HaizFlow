@@ -13,6 +13,7 @@ InspectorPanel {
     property string pendingSettingsVideoId: ""
     property var subtitleSegments: []
     property int selectedSubtitleIndex: -1
+    property var subtitleDrafts: ({})
     readonly property var toolIds: [
         "source", "translation", "subtitle", "image", "voice", "audio", "export"
     ]
@@ -32,28 +33,38 @@ InspectorPanel {
     readonly property var selectedSubtitle: selectedSubtitleIndex >= 0
         && selectedSubtitleIndex < subtitleSegments.length
         ? subtitleSegments[selectedSubtitleIndex] : null
+    readonly property ManualSubtitleEditorDialog subtitleEditorDialog:
+        subtitleEditorDialogLoader.item as ManualSubtitleEditorDialog
 
     signal subtitleSelected(int index)
-    signal subtitleTextCommitted(int index, string text)
-    signal toolRequested(int index)
+    signal subtitleDialogSelectionRequested(int index)
+    signal subtitleEditorClosed()
     signal sourceLinkRequested()
     signal settingsCommitted()
     signal exportRequested()
 
     function dismissTextEditor() {
-        const editor = stageLoader.item as ColumnLayout;
-        if (stageLoader.status === Loader.Ready && root.toolId === "subtitle") {
-            // qmllint disable missing-property
-            editor.dismissTextEditor();
-            // qmllint enable missing-property
-        }
+        if (subtitleEditorDialogLoader.status === Loader.Ready
+                && root.subtitleEditorDialog !== null)
+            root.subtitleEditorDialog.closeEditor();
     }
     function focusTextEditor() {
-        if (stageLoader.status === Loader.Ready && root.toolId === "subtitle") {
-            // qmllint disable missing-property
-            stageLoader.item.focusTextEditor();
-            // qmllint enable missing-property
-        }
+        if (root.toolId === "subtitle" && root.selectedSubtitle)
+            subtitleEditorDialogLoader.invoke("openForSelection", []);
+    }
+
+    function rememberSubtitleDraft(segmentId, text, revision) {
+        if (!segmentId)
+            return;
+        // Draft keystrokes stay in this inspector and must not invalidate QML
+        // bindings or the preview scene on every input-method composition.
+        subtitleDrafts[segmentId] = { "text": text, "revision": revision };
+    }
+
+    function clearSubtitleDraft(segmentId) {
+        if (!segmentId || subtitleDrafts[segmentId] === undefined)
+            return;
+        delete subtitleDrafts[segmentId];
     }
 
     title: String(toolState.label || "")
@@ -128,27 +139,16 @@ InspectorPanel {
         return false
     }
 
-    RowLayout {
+    Text {
         Layout.fillWidth: true
-        spacing: Theme.space8
-
-        Rectangle {
-            Layout.preferredWidth: 7
-            Layout.preferredHeight: 7
-            radius: 4
-            color: root.toolState.state === "error" ? Theme.danger
-                : root.toolState.state === "running" ? Theme.warning
-                : root.toolState.cacheHit ? Theme.success
-                : root.toolState.canRun ? Theme.interactive : Theme.textDisabled
-        }
-        Text {
-            Layout.fillWidth: true
-            text: root.stateLabel(String(root.toolState.state || "blocked"))
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.metadata
-            textFormat: Text.PlainText
-        }
+        visible: ["running", "queued", "paused", "error"].indexOf(
+            String(root.toolState.state || "")) >= 0
+        text: root.stateLabel(String(root.toolState.state || "blocked"))
+        color: root.toolState.state === "error" ? Theme.danger : Theme.textMuted
+        font.family: Theme.fontFamily
+        font.pixelSize: TypeScale.metadata
+        font.weight: root.toolState.state === "error" ? Font.DemiBold : Font.Normal
+        textFormat: Text.PlainText
     }
 
     Flickable {
@@ -292,22 +292,25 @@ InspectorPanel {
         Component {
             id: subtitleInspectorComponent
             ColumnLayout {
+                id: subtitlePane
                 spacing: Theme.space8
                 height: Math.max(300, inspectorScroll.height)
-                function dismissTextEditor() { subtitleTextEditor.dismiss(); }
-                function focusTextEditor() { subtitleTextEditor.focusEditor(); }
+                readonly property string selectedSegmentId: root.selectedSubtitle
+                    ? String(root.selectedSubtitle.segment_id || "") : ""
+                readonly property var selectedDraft: root.subtitleDrafts[selectedSegmentId] || null
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: Theme.space4
+                    spacing: Theme.space8
                     Text {
                         Layout.fillWidth: true
                         text: root.selectedSubtitle
-                            ? qsTr("Đoạn %1/%2").arg(root.selectedSubtitleIndex + 1).arg(root.subtitleSegments.length)
-                            : qsTr("Chọn một đoạn trên timeline")
-                        color: Theme.textMuted
+                            ? qsTr("%1 / %2").arg(root.selectedSubtitleIndex + 1).arg(root.subtitleSegments.length)
+                            : qsTr("Chưa chọn phụ đề")
+                        color: root.selectedSubtitle ? Theme.text : Theme.textMuted
                         font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.metadata
+                        font.pixelSize: TypeScale.control
+                        font.weight: root.selectedSubtitle ? Font.DemiBold : Font.Normal
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
                     }
@@ -325,29 +328,47 @@ InspectorPanel {
                         onClicked: root.subtitleSelected(root.selectedSubtitleIndex + 1)
                     }
                 }
-                SettingLabel {
+                Rectangle {
                     Layout.fillWidth: true
-                    text: qsTr("Nội dung")
-                }
-                SubtitleTextEditor {
-                    id: subtitleTextEditor
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    segmentId: root.selectedSubtitle ? String(root.selectedSubtitle.segment_id || "") : ""
-                    savedText: root.selectedSubtitle ? String(root.selectedSubtitle.text || "") : ""
-                    revision: root.selectedSubtitle ? Number(root.selectedSubtitle.revision || 0) : 0
-                    onCommitRequested: function(id, text, version, request) {
-                        AppController.saveManualSubtitleText(id, text, version, request);
+                    Layout.preferredHeight: 176
+                    color: Theme.input
+                    radius: Theme.radiusSmall
+                    border.width: 1
+                    border.color: Theme.outline
+
+                    Text {
+                        id: subtitleSummary
+                        anchors.fill: parent
+                        anchors.margins: Theme.space12
+                        text: subtitlePane.selectedDraft !== null
+                            ? String(subtitlePane.selectedDraft.text || "")
+                            : root.selectedSubtitle
+                                ? String(root.selectedSubtitle.text || "")
+                                : qsTr("Chọn phụ đề trên video hoặc timeline.")
+                        color: root.selectedSubtitle ? Theme.text : Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.body
+                        lineHeight: 1.35
+                        lineHeightMode: Text.ProportionalHeight
+                        wrapMode: Text.Wrap
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        maximumLineCount: 9
                     }
                 }
-                Text {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: qsTr("Kéo khung trên video để di chuyển. Kéo góc khung để đổi cỡ chữ.")
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    wrapMode: Text.Wrap
-                    textFormat: Text.PlainText
+                    spacing: Theme.space8
+
+                    Item { Layout.fillWidth: true }
+
+                    StudioButton {
+                        text: qsTr("Mở rộng")
+                        iconName: "fullscreen"
+                        variant: "secondary"
+                        enabled: root.selectedSubtitle !== null
+                        onClicked: root.focusTextEditor()
+                    }
                 }
             }
         }
@@ -355,7 +376,13 @@ InspectorPanel {
         Component {
             id: imageInspectorComponent
             ColumnLayout {
+                id: imagePane
                 spacing: Theme.space8
+                readonly property string appliedTreatment: !AppController.removeOriginalSubtitles
+                    ? "keep" : AppController.originalSubtitleRemovalMode
+                property string draftTreatment: appliedTreatment
+
+                onAppliedTreatmentChanged: draftTreatment = appliedTreatment
 
                 SettingLabel {
                     Layout.fillWidth: true
@@ -371,13 +398,22 @@ InspectorPanel {
                         { "label": qsTr("Che · Làm mờ"), "value": "blur" },
                         { "label": qsTr("Che · Vá nền"), "value": "patch" }
                     ]
-                    currentIndex: !AppController.removeOriginalSubtitles ? 0
-                        : AppController.originalSubtitleRemovalMode === "blur" ? 1 : 2
+                    currentIndex: imagePane.draftTreatment === "keep" ? 0
+                        : imagePane.draftTreatment === "blur" ? 1 : 2
                     onActivated: function(index) {
                         const selected = model[index]
                         if (selected)
-                            AppController.setManualSubtitleTreatment(String(selected.value || "keep"));
+                            imagePane.draftTreatment = String(selected.value || "keep");
                     }
+                }
+                StudioButton {
+                    Layout.fillWidth: true
+                    visible: imagePane.draftTreatment !== imagePane.appliedTreatment
+                    text: qsTr("Áp dụng")
+                    variant: "primary"
+                    enabled: root.editable && !root.taskQueued
+                        && imagePane.draftTreatment !== imagePane.appliedTreatment
+                    onClicked: AppController.setManualSubtitleTreatment(imagePane.draftTreatment)
                 }
                 SettingLabel {
                     Layout.fillWidth: true
@@ -398,22 +434,17 @@ InspectorPanel {
         Component {
             id: voiceInspectorComponent
             ColumnLayout {
-                spacing: Theme.space12
+                spacing: Theme.space8
 
-                InlineBanner {
+                Text {
                     Layout.fillWidth: true
-                    visible: root.hasPublishedVoice
-                    tone: root.hasCurrentCache("voice") ? "success"
-                        : root.hasPublishedVoice ? "warning" : "info"
-                    title: root.hasCurrentCache("voice")
-                        ? qsTr("Giọng đọc đã sẵn sàng")
-                        : root.hasPublishedVoice ? qsTr("Giọng hiện tại vẫn đang được dùng")
-                        : qsTr("Chưa tạo giọng đọc")
-                    message: root.hasCurrentCache("voice")
-                        ? qsTr("Bạn có thể đổi giọng hoặc tạo lại mà không ảnh hưởng các lớp khác.")
-                        : root.hasPublishedVoice
-                            ? qsTr("Thiết lập đã đổi. Xác nhận tạo giọng mới khi bạn sẵn sàng.")
-                        : qsTr("Chọn giọng và phạm vi trước khi bắt đầu.")
+                    visible: root.hasPublishedVoice && !root.hasCurrentCache("voice")
+                    text: qsTr("Giọng đọc chưa khớp thiết lập hiện tại.")
+                    color: Theme.warning
+                    font.family: Theme.fontFamily
+                    font.pixelSize: TypeScale.metadata
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
                 }
 
                 StudioButton {
@@ -533,26 +564,7 @@ InspectorPanel {
 
         Component {
             id: exportInspectorComponent
-            ColumnLayout {
-                spacing: Theme.space8
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Xuất trạng thái hiện tại. Chỉ các lớp đã bật và có dữ liệu mới xuất hiện trong video.")
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    wrapMode: Text.Wrap
-                    textFormat: Text.PlainText
-                }
-                StudioButton {
-                    Layout.fillWidth: true
-                    text: qsTr("Dọn dữ liệu tạm")
-                    iconName: "delete"
-                    variant: "secondary"
-                    enabled: !root.taskQueued
-                    onClicked: AppController.clearManualCache("project")
-                }
-            }
+            Item {}
         }
 
         ScrollBar.vertical: ScrollBar {
@@ -650,6 +662,31 @@ InspectorPanel {
         }
     }
 
+    LazyDialogLoader {
+        id: subtitleEditorDialogLoader
+        parent: root
+        sourceComponent: Component {
+            ManualSubtitleEditorDialog {
+                segment: root.selectedSubtitle
+                selectedIndex: root.selectedSubtitleIndex
+                segmentCount: root.subtitleSegments.length
+                hasInitialDraft: root.subtitleDrafts[segmentId] !== undefined
+                initialDraftText: hasInitialDraft
+                    ? String(root.subtitleDrafts[segmentId].text || "") : ""
+                onPreviousRequested: root.subtitleDialogSelectionRequested(root.selectedSubtitleIndex - 1)
+                onNextRequested: root.subtitleDialogSelectionRequested(root.selectedSubtitleIndex + 1)
+                onCommitRequested: function(id, text, version, request) {
+                    AppController.saveManualSubtitleText(id, text, version, request);
+                }
+                onDraftChanged: function(id, text, version) {
+                    root.rememberSubtitleDraft(id, text, version);
+                }
+                onDraftCleared: function(id) { root.clearSubtitleDraft(id); }
+                onEditingClosed: root.subtitleEditorClosed()
+                onClosed: subtitleEditorDialogLoader.release()
+            }
+        }
+    }
     LazyDialogLoader {
         id: voiceDialogLoader
         parent: root

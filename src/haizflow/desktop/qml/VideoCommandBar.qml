@@ -18,8 +18,6 @@ Rectangle {
     readonly property bool canRestart: AppController.hasSelectedVideo && !root.selectedActive
         && ["paused", "awaiting_review", "done", "failed", "cancelled"].indexOf(AppController.selectedStatus) >= 0
     readonly property bool canReview: AppController.selectedStatus === "awaiting_review"
-    readonly property bool canEditSubtitles: AppController.selectedStatus === "done"
-        && AppController.canEditSelectedSubtitles
     readonly property string headline: root.selectedActive
         ? AppController.selectedStageLabel
         : AppController.selectedProgress >= 100
@@ -123,10 +121,10 @@ Rectangle {
             spacing: Theme.space8
 
             StudioButton {
-                visible: root.canReview || root.canEditSubtitles
-                text: root.canReview ? qsTr("Duyệt phụ đề") : qsTr("Sửa lại phụ đề")
+                visible: root.canReview
+                text: qsTr("Duyệt phụ đề")
                 iconGlyph: "\uE70F"
-                variant: root.canReview ? "primary" : "secondary"
+                variant: "primary"
                 onClicked: root.requestReviewTranslation()
             }
 

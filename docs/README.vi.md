@@ -12,6 +12,7 @@ Hãy đọc hướng dẫn sử dụng nếu bạn cần cài đặt hoặc vậ
 | [Trạng thái trình sửa Thủ công](manual-editor-stabilization.vi.md) | xem những bảo đảm đã triển khai và các kiểm tra phần cứng còn thiếu. |
 | [An toàn dependency](dependency-security.vi.md) | rà dependency, model và các ngoại lệ bảo mật tạm thời. |
 | [Sẵn sàng phát hành](release-readiness.vi.md) | build, ký, kiểm thử và duyệt một bản có thể phân phối. |
+| [Phát hành cập nhật](updates.md#phát-hành-bản-cập-nhật-haizflow) | đưa bản stable mới tới người dùng đã cài HaizFlow. |
 | [Đóng góp](../CONTRIBUTING.vi.md) | gửi issue hoặc pull request có phạm vi rõ ràng. |
 | [Chính sách bảo mật](../SECURITY.vi.md) | báo lỗ hổng qua kênh riêng tư. |
 

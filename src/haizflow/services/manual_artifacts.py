@@ -627,22 +627,49 @@ def _active_ids(video_id: str) -> set[str]:
     return active_ids
 
 
-def _configured_project_limit() -> int:
+def _adaptive_cache_limit(
+    root: Path,
+    current_bytes: int,
+    *,
+    maximum_bytes: int,
+    share: float,
+    minimum_bytes: int,
+) -> int:
+    """Choose a cache budget from live disk headroom.
+
+    Existing cache bytes are added back before calculating the budget so a
+    large cache cannot repeatedly shrink its own allowance. The operational
+    reserve always wins over retaining rebuildable artifacts.
+    """
     try:
-        from haizflow.services.desktop_settings import load_settings
+        free_bytes = max(0, int(shutil.disk_usage(root).free))
+    except OSError:
+        return maximum_bytes
+    disposable_capacity = max(0, free_bytes + max(0, current_bytes) - MINIMUM_FREE_BYTES)
+    if disposable_capacity <= 0:
+        return 0
+    proportional = int(disposable_capacity * share)
+    return min(maximum_bytes, disposable_capacity, max(minimum_bytes, proportional))
 
-        return int(load_settings()["manual_project_cache_gib"]) * 1024**3
-    except (KeyError, OSError, TypeError, ValueError):
-        return PROJECT_SOFT_LIMIT_BYTES
+
+def adaptive_project_limit(root: Path, current_bytes: int) -> int:
+    return _adaptive_cache_limit(
+        root,
+        current_bytes,
+        maximum_bytes=PROJECT_SOFT_LIMIT_BYTES,
+        share=0.08,
+        minimum_bytes=512 * 1024**2,
+    )
 
 
-def _configured_global_limit() -> int:
-    try:
-        from haizflow.services.desktop_settings import load_settings
-
-        return int(load_settings()["manual_global_cache_gib"]) * 1024**3
-    except (KeyError, OSError, TypeError, ValueError):
-        return GLOBAL_SOFT_LIMIT_BYTES
+def adaptive_global_limit(root: Path, current_bytes: int) -> int:
+    return _adaptive_cache_limit(
+        root,
+        current_bytes,
+        maximum_bytes=GLOBAL_SOFT_LIMIT_BYTES,
+        share=0.20,
+        minimum_bytes=2 * 1024**3,
+    )
 
 
 def _prune_unlocked(video_id: str, *, limit_bytes: int | None = None) -> int:
@@ -662,7 +689,9 @@ def _prune_unlocked(video_id: str, *, limit_bytes: int | None = None) -> int:
         free_bytes = shutil.disk_usage(root).free
     except OSError:
         free_bytes = MINIMUM_FREE_BYTES
-    effective_limit = _configured_project_limit() if limit_bytes is None else int(limit_bytes)
+    effective_limit = (
+        adaptive_project_limit(root, total) if limit_bytes is None else int(limit_bytes)
+    )
     required = max(0, total - max(0, effective_limit))
     if free_bytes < MINIMUM_FREE_BYTES:
         required = max(required, MINIMUM_FREE_BYTES - free_bytes)
@@ -743,7 +772,10 @@ def prune_global(*, limit_bytes: int | None = None) -> int:
             total += size
             if record.get("artifact_id") not in active_ids:
                 entries.append((video.video_id, record))
-    effective_limit = _configured_global_limit() if limit_bytes is None else int(limit_bytes)
+    cache_parent = cache_root(videos[0].video_id).parent if videos else Path.cwd()
+    effective_limit = (
+        adaptive_global_limit(cache_parent, total) if limit_bytes is None else int(limit_bytes)
+    )
     if total <= effective_limit:
         return 0
     required = total - effective_limit

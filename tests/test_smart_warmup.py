@@ -69,11 +69,11 @@ class SmartWarmupTests(unittest.TestCase):
 
     def test_pack_in_use_includes_resident_model_dependencies(self):
         resources = _Resources()
-        resources.required_packs = Mock(return_value=["engine-cpu-py313", "model-whisper-small"])
+        resources.required_packs = Mock(return_value=["engine-cpu-py313", "model-speech-cpu"])
         controller = SmartWarmupController(_Host(), resources)
         controller._resident.add("recognition")
         controller._resident_contexts["recognition"] = {"device": "cpu"}
-        self.assertTrue(controller.pack_in_use("model-whisper-small"))
+        self.assertTrue(controller.pack_in_use("model-speech-cpu"))
 
 
 if __name__ == "__main__":

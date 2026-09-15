@@ -627,75 +627,82 @@ name = "haizflow"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "accelerate" },
     { name = "aiohttp" },
     { name = "audioop-lts" },
-    { name = "cffi" },
-    { name = "ctranslate2" },
-    { name = "demucs" },
     { name = "edge-tts" },
-    { name = "faster-whisper" },
-    { name = "huggingface-hub" },
-    { name = "llama-cpp-python" },
     { name = "numpy" },
     { name = "packaging" },
-    { name = "pandas" },
     { name = "pillow" },
-    { name = "pyannote-audio" },
     { name = "pydantic" },
     { name = "pydub" },
     { name = "pyside6" },
     { name = "python-dotenv" },
+    { name = "srt" },
+    { name = "websockets" },
+    { name = "yt-dlp", extra = ["curl-cffi"] },
+]
+
+[package.optional-dependencies]
+ai-runtime = [
+    { name = "accelerate" },
+    { name = "cffi" },
+    { name = "ctranslate2" },
+    { name = "demucs" },
+    { name = "faster-whisper" },
+    { name = "huggingface-hub" },
+    { name = "llama-cpp-python" },
+    { name = "nltk" },
+    { name = "pandas" },
+    { name = "pyannote-audio" },
     { name = "rapidocr" },
     { name = "soundfile" },
     { name = "soxr" },
-    { name = "srt" },
     { name = "tokenizers" },
     { name = "torch" },
     { name = "torchaudio" },
     { name = "torchcodec" },
     { name = "torchvision" },
     { name = "transformers" },
-    { name = "websockets" },
     { name = "whisperx" },
-    { name = "yt-dlp", extra = ["curl-cffi"] },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", specifier = "==1.14.0" },
+    { name = "accelerate", marker = "extra == 'ai-runtime'", specifier = "==1.14.0" },
     { name = "aiohttp", specifier = "==3.14.3" },
     { name = "audioop-lts", marker = "python_full_version >= '3.13'", specifier = "==0.2.2" },
-    { name = "cffi", specifier = "==2.0.0" },
-    { name = "ctranslate2", specifier = "==4.8.1" },
-    { name = "demucs", specifier = "==4.0.1" },
+    { name = "cffi", marker = "extra == 'ai-runtime'", specifier = "==2.0.0" },
+    { name = "ctranslate2", marker = "extra == 'ai-runtime'", specifier = "==4.8.1" },
+    { name = "demucs", marker = "extra == 'ai-runtime'", specifier = "==4.0.1" },
     { name = "edge-tts", specifier = "==7.2.8" },
-    { name = "faster-whisper", specifier = "==1.2.1" },
-    { name = "huggingface-hub", specifier = "==0.36.2" },
-    { name = "llama-cpp-python", specifier = "==0.3.34", index = "https://abetlen.github.io/llama-cpp-python/whl/cpu" },
+    { name = "faster-whisper", marker = "extra == 'ai-runtime'", specifier = "==1.2.1" },
+    { name = "huggingface-hub", marker = "extra == 'ai-runtime'", specifier = "==0.36.2" },
+    { name = "llama-cpp-python", marker = "extra == 'ai-runtime'", specifier = "==0.3.34", index = "https://abetlen.github.io/llama-cpp-python/whl/cpu" },
+    { name = "nltk", marker = "extra == 'ai-runtime'", specifier = "==3.10.3" },
     { name = "numpy", specifier = "==2.5.1" },
     { name = "packaging", specifier = "==26.2" },
-    { name = "pandas", specifier = "==3.0.3" },
+    { name = "pandas", marker = "extra == 'ai-runtime'", specifier = "==3.0.3" },
     { name = "pillow", specifier = "==12.3.0" },
-    { name = "pyannote-audio", specifier = "==4.0.7" },
+    { name = "pyannote-audio", marker = "extra == 'ai-runtime'", specifier = "==4.0.7" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "pydub", specifier = "==0.25.1" },
     { name = "pyside6", specifier = "==6.11.1" },
     { name = "python-dotenv", specifier = "==1.2.2" },
-    { name = "rapidocr", specifier = "==3.8.1" },
-    { name = "soundfile", specifier = "==0.14.0" },
-    { name = "soxr", specifier = "==1.1.0" },
+    { name = "rapidocr", marker = "extra == 'ai-runtime'", specifier = "==3.8.1" },
+    { name = "soundfile", marker = "extra == 'ai-runtime'", specifier = "==0.14.0" },
+    { name = "soxr", marker = "extra == 'ai-runtime'", specifier = "==1.1.0" },
     { name = "srt", specifier = "==3.5.3" },
-    { name = "tokenizers", specifier = "==0.22.2" },
-    { name = "torch", specifier = "==2.8.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
-    { name = "torchaudio", specifier = "==2.8.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
-    { name = "torchcodec", specifier = "==0.7.0" },
-    { name = "torchvision", specifier = "==0.23.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
-    { name = "transformers", specifier = "==4.57.6" },
+    { name = "tokenizers", marker = "extra == 'ai-runtime'", specifier = "==0.22.2" },
+    { name = "torch", marker = "extra == 'ai-runtime'", specifier = "==2.8.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "torchaudio", marker = "extra == 'ai-runtime'", specifier = "==2.8.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "torchcodec", marker = "extra == 'ai-runtime'", specifier = "==0.7.0" },
+    { name = "torchvision", marker = "extra == 'ai-runtime'", specifier = "==0.23.0+cu128", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "transformers", marker = "extra == 'ai-runtime'", specifier = "==4.57.6" },
     { name = "websockets", specifier = "==16.0" },
-    { name = "whisperx", specifier = "==3.8.6" },
-    { name = "yt-dlp", extras = ["curl-cffi"], specifier = "==2026.7.4" },
+    { name = "whisperx", marker = "extra == 'ai-runtime'", specifier = "==3.8.6" },
+    { name = "yt-dlp", extras = ["curl-cffi"], specifier = "==2026.8.19" },
 ]
+provides-extras = ["ai-runtime"]
 
 [[package]]
 name = "hf-xet"
@@ -2499,11 +2506,11 @@ wheels = [
 
 [[package]]
 name = "yt-dlp"
-version = "2026.7.4"
+version = "2026.8.19"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/c5/9972af4b472b0d55badf841ebafd2f98944cb0ae0f46e11d01f363ea5b91/yt_dlp-2026.7.4.tar.gz", hash = "sha256:b094813404f87a9dd2186f00815231df32e5fd8a5403be0f807b3bb2d21a4432", size = 3049326, upload-time = "2026-07-04T22:42:14.837Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/e0/832fa4ca334b766a06933a196066edc3dba37cdb6f14cd98d59bcc69a4b4/yt_dlp-2026.8.19.tar.gz", hash = "sha256:9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1", size = 3052025, upload-time = "2026-08-19T23:48:59.291Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/8a/cd4c9b02c10c563adfe78118310129641900e1cd6de888cfae2452072696/yt_dlp-2026.7.4-py3-none-any.whl", hash = "sha256:f11f2b11d5a8ac4059f9bdf29fa4407dc7c6bb00c5097e95ca22a7a9db518266", size = 3184705, upload-time = "2026-07-04T22:42:12.989Z" },
+    { url = "https://files.pythonhosted.org/packages/69/b2/8cd1613f56eed7ceb64fbd4df3f1c01246bfb098e6f398228bafda22b80b/yt_dlp-2026.8.19-py3-none-any.whl", hash = "sha256:1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf", size = 3185533, upload-time = "2026-08-19T23:48:56.925Z" },
 ]
 
 [package.optional-dependencies]

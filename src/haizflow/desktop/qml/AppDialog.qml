@@ -11,9 +11,10 @@ Dialog {
     property int preferredHeight: 0
     property int maximumWidth: 760
     property int maximumHeight: 720
+    property int bodySpacing: Theme.space16
     readonly property bool hasFooterActions: actionArea.children.length > 0
-    readonly property int headerHeight: 60
-    readonly property int footerHeight: hasFooterActions ? 56 : 0
+    readonly property int headerHeight: subtitle.length > 0 ? 64 : 56
+    readonly property int footerHeight: hasFooterActions ? 60 : 0
     default property alias body: bodyColumn.data
     property alias footerActions: actionArea.data
 
@@ -25,7 +26,7 @@ Dialog {
     // children's implicitHeight.  Count the complete chrome explicitly so
     // the footer can never overflow below the dialog background.
     implicitHeight: Math.min(maximumHeight, parent ? parent.height - 48 : maximumHeight,
-        headerHeight + bodyColumn.implicitHeight + Theme.space32
+        headerHeight + bodyColumn.implicitHeight + Theme.space20 * 2
             + (hasFooterActions ? footerHeight + 2 : 1))
     height: preferredHeight > 0
         ? Math.min(maximumHeight, preferredHeight, parent ? parent.height - 48 : preferredHeight)
@@ -56,7 +57,7 @@ Dialog {
             Layout.preferredHeight: root.headerHeight
             Layout.maximumHeight: root.headerHeight
             Layout.leftMargin: Theme.space20
-            Layout.rightMargin: Theme.space12
+            Layout.rightMargin: Theme.space16
             spacing: Theme.space12
 
             ColumnLayout {
@@ -84,6 +85,9 @@ Dialog {
                 }
             }
             IconButton {
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+                controlSize: 32
                 glyph: IconCatalog.glyph("close")
                 toolTipText: qsTr("Đóng")
                 onClicked: root.close()
@@ -102,11 +106,11 @@ Dialog {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 0
-            Layout.leftMargin: Theme.space20
-            Layout.rightMargin: Theme.space20
-            Layout.topMargin: Theme.space16
-            Layout.bottomMargin: Theme.space16
-            spacing: Theme.space12
+            Layout.leftMargin: Theme.space24
+            Layout.rightMargin: Theme.space24
+            Layout.topMargin: Theme.space20
+            Layout.bottomMargin: Theme.space20
+            spacing: root.bodySpacing
         }
 
         Rectangle {
@@ -124,8 +128,8 @@ Dialog {
             Layout.preferredHeight: root.footerHeight
             Layout.maximumHeight: root.footerHeight
             visible: root.hasFooterActions
-            Layout.leftMargin: Theme.space20
-            Layout.rightMargin: Theme.space20
+            Layout.leftMargin: Theme.space24
+            Layout.rightMargin: Theme.space24
             spacing: Theme.space8
             Item { Layout.fillWidth: true }
             RowLayout { id: actionArea; spacing: Theme.space8 }
@@ -134,11 +138,11 @@ Dialog {
 
     enter: Transition {
         ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Motion.standard }
-            NumberAnimation { property: "scale"; from: 0.985; to: 1; duration: Motion.standard; easing.type: Motion.enterEasing }
+            OpacityAnimator { from: 0; to: 1; duration: Motion.standard }
+            ScaleAnimator { from: 0.985; to: 1; duration: Motion.standard; easing.type: Motion.enterEasing }
         }
     }
     exit: Transition {
-        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Motion.fast }
+        OpacityAnimator { from: 1; to: 0; duration: Motion.fast }
     }
 }

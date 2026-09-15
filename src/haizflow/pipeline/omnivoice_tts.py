@@ -14,6 +14,7 @@ import threading
 import time
 import traceback
 import zipfile
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,9 @@ _PERSISTENT_WORKER_LOCK = threading.RLock()
 _PERSISTENT_OPERATION_LOCK = threading.Lock()
 _PERSISTENT_WORKER_PROCESS: subprocess.Popen[str] | None = None
 _PERSISTENT_IDLE_TIMER: threading.Timer | None = None
+_PERSISTENT_STDERR_LOCK = threading.Lock()
+_PERSISTENT_STDERR_TAIL: deque[str] = deque(maxlen=192)
+_PERSISTENT_STDERR_THREAD: threading.Thread | None = None
 _PERSISTENT_WORKER_REGISTRY_ID = "omnivoice-warm-runtime"
 _GPU_STALL_TIMEOUT_SECONDS = 15 * 60
 _CPU_STALL_TIMEOUT_SECONDS = 40 * 60
@@ -332,11 +336,28 @@ def _worker_environment() -> dict[str, str]:
     environment["PYTHONUTF8"] = "1"
     environment["HF_HUB_OFFLINE"] = "1"
     environment["TRANSFORMERS_OFFLINE"] = "1"
+    # Development/source launches do not necessarily inherit the editable
+    # install's ``src`` entry.  The long-lived worker is started with
+    # ``python -m haizflow...``; without this path both the warm worker and its
+    # isolated fallback exit before they can read a synthesis request.  Frozen
+    # builds use their embedded importer and must not be coupled to a source
+    # checkout.
+    if not getattr(sys, "frozen", False):
+        source_root = str(Path(__file__).resolve().parents[2])
+        inherited = [
+            value
+            for value in environment.get("PYTHONPATH", "").split(os.pathsep)
+            if value
+        ]
+        normalized = {os.path.normcase(os.path.abspath(value)) for value in inherited}
+        if os.path.normcase(os.path.abspath(source_root)) not in normalized:
+            inherited.insert(0, source_root)
+        environment["PYTHONPATH"] = os.pathsep.join(inherited)
     return environment
 
 
 def _stop_persistent_worker_unlocked() -> None:
-    global _PERSISTENT_WORKER_PROCESS
+    global _PERSISTENT_WORKER_PROCESS, _PERSISTENT_STDERR_THREAD
     _cancel_idle_shutdown()
     process = _PERSISTENT_WORKER_PROCESS
     _PERSISTENT_WORKER_PROCESS = None
@@ -356,7 +377,36 @@ def _stop_persistent_worker_unlocked() -> None:
             process.wait(timeout=2.0)
         except subprocess.TimeoutExpired:
             pass
+    stderr_thread = _PERSISTENT_STDERR_THREAD
+    _PERSISTENT_STDERR_THREAD = None
+    if stderr_thread is not None and stderr_thread is not threading.current_thread():
+        stderr_thread.join(timeout=0.5)
     unregister_process(_PERSISTENT_WORKER_REGISTRY_ID, process, force=True)
+
+
+def _drain_persistent_stderr(process: subprocess.Popen[str]) -> None:
+    """Drain worker diagnostics without allowing a full stderr pipe to stall inference."""
+    stream = process.stderr
+    if stream is None:
+        return
+    try:
+        while True:
+            chunk = stream.read(1024)
+            if not chunk:
+                return
+            with _PERSISTENT_STDERR_LOCK:
+                _PERSISTENT_STDERR_TAIL.append(chunk)
+    except (OSError, ValueError):
+        return
+
+
+def _persistent_worker_error_tail(process: subprocess.Popen[str]) -> str:
+    """Return the useful end of stderr after a crashed persistent worker."""
+    stderr_thread = _PERSISTENT_STDERR_THREAD
+    if process.poll() is not None and stderr_thread is not None:
+        stderr_thread.join(timeout=0.5)
+    with _PERSISTENT_STDERR_LOCK:
+        return "".join(_PERSISTENT_STDERR_TAIL).strip()[-4000:]
 
 
 def _cancel_idle_shutdown() -> None:
@@ -382,25 +432,35 @@ def _schedule_idle_shutdown() -> None:
 
 
 def _persistent_worker_unlocked() -> subprocess.Popen[str]:
-    global _PERSISTENT_WORKER_PROCESS
+    global _PERSISTENT_WORKER_PROCESS, _PERSISTENT_STDERR_THREAD
     _cancel_idle_shutdown()
     process = _PERSISTENT_WORKER_PROCESS
     if process is not None and process.poll() is None and process.stdin is not None:
         return process
     _stop_persistent_worker_unlocked()
+    with _PERSISTENT_STDERR_LOCK:
+        _PERSISTENT_STDERR_TAIL.clear()
     process = subprocess.Popen(
         _worker_server_command(),
         cwd=str(Path(__file__).resolve().parents[3]),
         env=_worker_environment(),
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         errors="replace",
         bufsize=1,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    stderr_thread = threading.Thread(
+        target=_drain_persistent_stderr,
+        args=(process,),
+        name="omnivoice-worker-stderr",
+        daemon=True,
+    )
+    _PERSISTENT_STDERR_THREAD = stderr_thread
+    stderr_thread.start()
     register_process(_PERSISTENT_WORKER_REGISTRY_ID, process)
     _PERSISTENT_WORKER_PROCESS = process
     return process
@@ -569,6 +629,9 @@ def _run_persistent_worker_process(
                     return int(response.get("return_code", 1)), str(response.get("error") or "")
                 if process.poll() is not None:
                     detail = f"Warm OmniVoice worker exited unexpectedly ({process.returncode})."
+                    stderr_tail = _persistent_worker_error_tail(process)
+                    if stderr_tail:
+                        detail = f"{detail}\n{stderr_tail}"
                     with _PERSISTENT_WORKER_LOCK:
                         if _PERSISTENT_WORKER_PROCESS is process:
                             _stop_persistent_worker_unlocked()
@@ -644,6 +707,18 @@ def _is_cuda_resource_failure(detail: str) -> bool:
             "not enough memory",
             "cuda is unavailable",
             "unable to find an engine to execute this computation",
+        )
+    )
+
+
+def _is_persistent_transport_failure(detail: str) -> bool:
+    """Identify a failed warm-worker channel, not an inference/model error response."""
+    normalized = str(detail or "").lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "warm omnivoice worker exited unexpectedly",
+            "could not start the warm omnivoice request",
         )
     )
 
@@ -798,6 +873,23 @@ def synthesize_batch_to_mp3(
         worker_runner = _run_persistent_worker_process if keep_worker_warm else _run_worker_process
         worker_kwargs = {"cancellation_id": cancellation_id} if worker_runner is _run_persistent_worker_process else {}
         return_code, stderr = worker_runner(request_path, request, video_id, progress_callback, **worker_kwargs)
+        if return_code != 0 and keep_worker_warm and _is_persistent_transport_failure(stderr):
+            # A warm server is an optimization, never a requirement for a
+            # successful edit. Retry the same request once in an isolated
+            # process so a stale stdin channel or a crashed resident worker
+            # cannot leave one edited subtitle permanently without speech.
+            log_to_video(
+                video_id,
+                "[TTS][WARN] Warm OmniVoice worker stopped; retrying this request in an isolated worker.",
+            )
+            with _PERSISTENT_WORKER_LOCK:
+                _stop_persistent_worker_unlocked()
+            return_code, stderr = _run_worker_process(
+                request_path,
+                request,
+                video_id,
+                progress_callback,
+            )
         if return_code != 0 and str(request["device"]).startswith("cuda") and _is_cuda_resource_failure(stderr):
             log_to_video(
                 video_id,
@@ -902,10 +994,14 @@ def warm_runtime(language_id: str = "vi") -> None:
                             _schedule_idle_shutdown()
                     return
                 if process.poll() is not None:
+                    detail = _persistent_worker_error_tail(process)
                     with _PERSISTENT_WORKER_LOCK:
                         if _PERSISTENT_WORKER_PROCESS is process:
                             _stop_persistent_worker_unlocked()
-                    raise RuntimeError("OmniVoice warm-up worker stopped unexpectedly.")
+                    message = "OmniVoice warm-up worker stopped unexpectedly."
+                    if detail:
+                        message = f"{message}\n{detail}"
+                    raise RuntimeError(message)
                 time.sleep(0.1)
             with _PERSISTENT_WORKER_LOCK:
                 if _PERSISTENT_WORKER_PROCESS is process:

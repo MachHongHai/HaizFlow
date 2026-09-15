@@ -184,7 +184,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         host = SimpleNamespace(_resource_packs=SimpleNamespace(manager=manager))
 
         self.assertTrue(HaizFlowController._detect_whisper_turbo_model_ready(host))
-        manager.status.assert_called_once_with("model-whisper-turbo")
+        manager.status.assert_called_once_with("model-speech-gpu")
 
     def test_download_project_source_import_uses_single_replace_and_batch_copy_flows(self):
         with tempfile.TemporaryDirectory() as temporary:

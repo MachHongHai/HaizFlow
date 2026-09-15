@@ -8,26 +8,25 @@ AppDialog {
     id: root
 
     title: qsTr("Trợ giúp")
-    subtitle: qsTr("Các thao tác chính")
     preferredWidth: 560
     maximumWidth: 600
 
     SettingRow {
         Layout.fillWidth: true
-        label: qsTr("Dự án mới")
-        description: qsTr("Mở menu Dự án và chọn loại dự án cần tạo.")
+        label: qsTr("Tạo dự án")
+        description: qsTr("Mở menu Dự án, sau đó chọn loại dự án.")
     }
 
     SettingRow {
         Layout.fillWidth: true
         label: qsTr("Tự động")
-        description: qsTr("Chạy nhận dạng, dịch, tạo giọng và xuất video trong một lần.")
+        description: qsTr("Xử lý video bằng cấu hình đã chọn.")
     }
 
     SettingRow {
         Layout.fillWidth: true
         label: qsTr("Thủ công")
-        description: qsTr("Chạy riêng từng công cụ và chỉnh trực tiếp trên khung xem trước.")
+        description: qsTr("Chạy từng công cụ và chỉnh trực tiếp trong editor.")
     }
 
     Rectangle {

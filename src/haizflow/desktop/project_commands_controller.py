@@ -99,13 +99,12 @@ class ProjectCommandsController:
         missing = list(dict.fromkeys(missing))
         if not missing:
             return True
-        labels = [resource_controller.manager.definitions[pack_id].label for pack_id in missing]
         summary = resource_controller.manager.requirement_summary(missing)
         host.appAlertRequested.emit(
-            "Thiếu gói tài nguyên",
-            f"Cần cài: {', '.join(labels)} · tải {format_memory_size(summary['downloadBytes'])}. "
-            f"Cần {format_memory_size(summary['requiredBytes'])} trống trong lúc cài. "
-            "Mở Cài đặt → Gói tài nguyên để tiếp tục.",
+            "Cần cài thêm gói",
+            f"Dự án này cần tải {format_memory_size(summary['downloadBytes'])}. "
+            f"Ổ lưu cần còn trống {format_memory_size(summary['requiredBytes'])} trong lúc cài. "
+            "Mở Gói cài đặt để tiếp tục.",
             "info",
         )
         signal = getattr(host, "resourcePacksRequested", None)

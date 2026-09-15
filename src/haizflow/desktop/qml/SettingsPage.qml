@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -58,35 +57,12 @@ Item {
         onTriggered: root.applyDraft()
     }
 
-    ColumnLayout {
+    SettingsPageShell {
         anchors.fill: parent
-        spacing: Theme.space16
+        title: qsTr("Cài đặt")
+        contentMaximumWidth: 920
 
-        PageHeader {
-            Layout.fillWidth: true
-            title: qsTr("Cài đặt")
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
-
-        ScrollView {
-            id: settingsScroll
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            contentWidth: availableWidth
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
-
-            ColumnLayout {
-                width: Math.min(860, Math.max(1, settingsScroll.availableWidth - Theme.space24 * 2))
-                x: Math.max(Theme.space24, Math.round((settingsScroll.availableWidth - width) / 2))
-                spacing: 0
-
-                SettingRow {
+        SettingRow {
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space16
@@ -158,10 +134,6 @@ Item {
                     Layout.bottomMargin: Theme.space12
                     label: qsTr("Cấu hình đang dùng")
                     description: AppController.performanceProfileDetail
-                    StatusBadge {
-                        status: "success"
-                        label: AppController.performanceProfileLabel
-                    }
                 }
 
                 SettingRow {
@@ -174,42 +146,6 @@ Item {
                         checked: AppController.keepModelsWarm
                         Accessible.name: qsTr("Giữ model sẵn sàng")
                         onToggled: AppController.setKeepModelsWarm(checked)
-                    }
-                }
-
-                SettingRow {
-                    Layout.fillWidth: true
-                    Layout.bottomMargin: Theme.space12
-                    label: qsTr("Cache mỗi dự án")
-                    description: qsTr("Giới hạn mềm; dữ liệu đang dùng không bị xóa.")
-                    AppSpinBox {
-                        Layout.preferredWidth: 132
-                        Layout.preferredHeight: 32
-                        from: 1
-                        to: 64
-                        value: AppController.manualProjectCacheGiB
-                        textFromValue: function (number, locale) { return number + " GiB"; }
-                        valueFromText: function (text, locale) { return parseInt(text); }
-                        onValueModified: AppController.setManualCacheLimits(
-                            value, Math.max(value, AppController.manualGlobalCacheGiB))
-                    }
-                }
-
-                SettingRow {
-                    Layout.fillWidth: true
-                    Layout.bottomMargin: Theme.space16
-                    label: qsTr("Cache toàn cục")
-                    description: qsTr("HaizFlow dọn các bản dựng cũ khi vượt giới hạn này.")
-                    AppSpinBox {
-                        Layout.preferredWidth: 132
-                        Layout.preferredHeight: 32
-                        from: 4
-                        to: 256
-                        value: AppController.manualGlobalCacheGiB
-                        textFromValue: function (number, locale) { return number + " GiB"; }
-                        valueFromText: function (text, locale) { return parseInt(text); }
-                        onValueModified: AppController.setManualCacheLimits(
-                            Math.min(value, AppController.manualProjectCacheGiB), value)
                     }
                 }
 
@@ -237,35 +173,21 @@ Item {
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space16
-                    label: qsTr("Xử lý cục bộ")
-                    description: qsTr("Tệp video và kết quả model nằm trong thư mục dự án đã chọn.")
-                }
+                    label: qsTr("Cập nhật HaizFlow")
+                    description: AppController.appUpdateState === "available"
+                        ? qsTr("Phiên bản %1 đã sẵn sàng.").arg(AppController.latestAppVersion)
+                        : AppController.appUpdateState === "checking"
+                            ? qsTr("Đang kiểm tra phiên bản mới…")
+                            : qsTr("Phiên bản hiện tại: %1").arg(AppController.currentAppVersion)
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.divider
-                }
-
-                SettingRow {
-                    Layout.fillWidth: true
-                    Layout.topMargin: Theme.space16
-                    Layout.bottomMargin: Theme.space16
-                    label: qsTr("Dữ liệu tạm của dự án thủ công")
-                    description: qsTr("Xóa các bản dựng cũ; dữ liệu đang dùng được giữ lại.")
                     StudioButton {
-                        text: qsTr("Dọn dữ liệu tạm")
-                        iconName: "delete"
-                        variant: "secondary"
-                        onClicked: AppController.clearManualCache("all")
+                        text: AppController.appUpdateState === "available"
+                            ? qsTr("Xem bản mới") : qsTr("Kiểm tra")
+                        iconName: AppController.appUpdateState === "available" ? "open" : "refresh"
+                        variant: AppController.appUpdateState === "available" ? "primary" : "secondary"
+                        enabled: AppController.appUpdateState !== "checking"
+                        onClicked: AppController.showAppUpdate()
                     }
-                }
-
-                ResourcePackSection {
-                    Layout.fillWidth: true
-                }
-
-            }
         }
     }
 }

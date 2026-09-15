@@ -7,8 +7,8 @@ import "."
 AppDialog {
     id: root
 
-    title: qsTr("Giới thiệu HaizFlow")
-    subtitle: qsTr("Miễn phí và mã nguồn mở trên Windows")
+    title: qsTr("Giới thiệu")
+    subtitle: "HaizFlow"
     preferredWidth: 580
     maximumWidth: 620
 
@@ -17,8 +17,8 @@ AppDialog {
         spacing: Theme.space16
 
         Image {
-            Layout.preferredWidth: 88
-            Layout.preferredHeight: 88
+            Layout.preferredWidth: 80
+            Layout.preferredHeight: 80
             source: Qt.resolvedUrl("../assets/branding/haizflow-mark.png")
             sourceSize.width: 176
             sourceSize.height: 176
@@ -43,7 +43,7 @@ AppDialog {
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Dịch, lồng tiếng và hoàn thiện video trên Windows.")
+                text: qsTr("Xử lý, dịch và lồng tiếng video trên Windows.")
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.body
@@ -53,7 +53,7 @@ AppDialog {
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Phát triển bởi Mạch Hồng Hải")
+                text: qsTr("Miễn phí · Mã nguồn mở")
                 color: Theme.textSubtle
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.label
@@ -70,7 +70,7 @@ AppDialog {
 
     Text {
         Layout.fillWidth: true
-        text: qsTr("HaizFlow cho phép xử lý video bằng các công cụ cục bộ mà không cần API suy luận trả phí. Dự án và video xuất được lưu tại vị trí do bạn quản lý.")
+        text: qsTr("Các tính năng cốt lõi chạy trên máy của bạn. HaizFlow không yêu cầu API trả phí và không tự gửi tệp dự án lên máy chủ khác.")
         color: Theme.text
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.control
@@ -79,53 +79,29 @@ AppDialog {
         lineHeight: 1.35
     }
 
-    SettingRow {
+    ColumnLayout {
         Layout.fillWidth: true
-        label: qsTr("Mã nguồn")
-        ExternalTextLink {
-            text: "MachHongHai/HaizFlow"
+        spacing: Theme.space4
+
+        AboutLinkRow {
+            label: qsTr("Mã nguồn")
+            value: "MachHongHai/HaizFlow"
             destination: "https://github.com/MachHongHai/HaizFlow"
+            copyValue: "https://github.com/MachHongHai/HaizFlow"
         }
-        IconButton {
-            controlSize: 28
-            glyph: "\uE8C8"
-            toolTipText: qsTr("Sao chép liên kết")
-            onClicked: AppController.copyText("https://github.com/MachHongHai/HaizFlow")
-        }
-    }
 
-    SettingRow {
-        Layout.fillWidth: true
-        label: qsTr("Liên hệ")
-        Text {
-            Layout.fillWidth: true
-            text: "machhonghaipr@gmail.com"
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.control
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
+        AboutLinkRow {
+            label: qsTr("Email")
+            value: "machhonghaipr@gmail.com"
+            copyValue: "machhonghaipr@gmail.com"
+            linkEnabled: false
         }
-        IconButton {
-            controlSize: 28
-            glyph: "\uE8C8"
-            toolTipText: qsTr("Sao chép email")
-            onClicked: AppController.copyText("machhonghaipr@gmail.com")
-        }
-    }
 
-    SettingRow {
-        Layout.fillWidth: true
-        label: "LinkedIn"
-        ExternalTextLink {
-            text: "linkedin.com/in/machhonghai"
+        AboutLinkRow {
+            label: "LinkedIn"
+            value: "linkedin.com/in/machhonghai"
             destination: "https://www.linkedin.com/in/machhonghai/"
-        }
-        IconButton {
-            controlSize: 28
-            glyph: "\uE8C8"
-            toolTipText: qsTr("Sao chép liên kết")
-            onClicked: AppController.copyText("https://www.linkedin.com/in/machhonghai/")
+            copyValue: "https://www.linkedin.com/in/machhonghai/"
         }
     }
 

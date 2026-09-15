@@ -36,7 +36,7 @@ The Home page opens without waiting for an AI model. If **Keep models ready** is
 
 ## 3. Install resource packs
 
-Open **Settings → Resource packs**. Packs are grouped by processor, recognition, translation, voice and picture.
+Open **Settings → Installation packages**. The page shows a complete NVIDIA profile and a complete CPU profile, followed by optional voice and picture tools. HaizFlow recommends the profile that matches the detected hardware. Speech recognition, translation and their language-alignment data are installed together, so language files do not appear as separate choices.
 
 Each row shows download size, installed size, version, location and current state. Before installation, HaizFlow also counts extraction space, the previous version retained for rollback and 2 GiB of free-space reserve.
 
@@ -194,11 +194,11 @@ Connect Zernio, set the caption and post options, add an exported video, review 
 | Current verified Core artifact | 477 MiB |
 | Core installation | Setup calculates the exact minimum; the current recommendation is 4 GiB free |
 | Free space retained during resource installation | 2 GiB after download, installation and rollback estimates |
-| Manual temporary data | 4 GiB per project; 16 GiB in total by default |
+| Manual temporary data | Adapts to available disk space; inactive rebuilds are removed first |
 
 These Core figures do not include optional engines, models, source videos, exports or render temporary files. Resource packs and exports run their own free-space check using measured or estimated bytes.
 
-Use **Settings → Clear temporary Manual data** to remove inactive previews, old mixes and other rebuildable data. The command must not remove source media, exports, the active edit or revisions required by Undo and Redo.
+HaizFlow maintains Manual temporary data automatically. It keeps an operational free-space reserve, reduces its cache allowance when the drive fills and removes inactive previews or old mixes before reusable model results. Source media, exports, active edits and revisions required by Undo and Redo are never cache-cleanup targets.
 
 Source users may set `HAIZFLOW_HOME` in `.env` to place managed models, cache, data and temporary files under another local directory.
 
@@ -226,7 +226,7 @@ Current builds commit Windows IME text before saving. If this still occurs, repo
 
 ### The application becomes slow
 
-Stop jobs you no longer need, check available RAM/VRAM and free disk space, and clear inactive Manual data if the cache is full. Avoid editing an active project from a slow network location.
+Stop jobs you no longer need and check available RAM, VRAM and disk space. HaizFlow reduces rebuildable cache automatically when space is low. Avoid editing an active project from a slow network location.
 
 ## 13. Report a problem
 

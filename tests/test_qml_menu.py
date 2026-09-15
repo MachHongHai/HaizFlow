@@ -215,6 +215,7 @@ ApplicationWindow {{
 
         self.assertIn('text: qsTr("Dự án")', title_bar)
         self.assertIn('text: qsTr("Cài đặt")', title_bar)
+        self.assertIn('text: qsTr("Gói cài đặt")', title_bar)
         self.assertIn('toolTipText: qsTr("Trợ giúp")', title_bar)
         self.assertNotIn('text: I18n.t("Single projects")', title_bar)
         self.assertNotIn('text: I18n.t("Batch projects")', title_bar)
@@ -240,6 +241,7 @@ ApplicationWindow {{
         self.assertNotIn("AppController.deleteCurrentProject()", projects_page)
         self.assertIn('readonly property string routeProjects: "projects"', main)
         self.assertIn('readonly property string routeSettings: "settings"', main)
+        self.assertIn('readonly property string routePackages: "packages"', main)
         self.assertIn('{ key: "home"', navigation_rail)
         self.assertIn('{ key: "projects"', navigation_rail)
         self.assertIn('{ key: "downloads"', navigation_rail)
@@ -451,18 +453,16 @@ ApplicationWindow {{
         self.assertIn("policy: root.wideLayout ? ScrollBar.AlwaysOff", create_page)
         self.assertIn("Flickable {", setup)
 
-    def test_workspace_prioritizes_settings_and_expands_logs_on_demand(self):
+    def test_workspace_keeps_one_progress_card_and_moves_logs_to_header_menu(self):
         create_page = (QML_DIR / "CreateVideoPage.qml").read_text(encoding="utf-8")
-        activity_feed = (QML_DIR / "ActivityFeed.qml").read_text(encoding="utf-8")
         log_dialog = (QML_DIR / "ActivityLogDialog.qml").read_text(encoding="utf-8")
 
         self.assertIn("Layout.preferredWidth: root.wideLayout ? 1040 : 600", create_page)
-        self.assertIn("Layout.rowSpan: root.wideLayout ? 2 : 1", create_page)
-        self.assertGreaterEqual(create_page.count("Layout.maximumWidth: root.wideLayout ? 320"), 2)
-        self.assertIn("ActivityFeed {", create_page)
-        self.assertIn("active: false", activity_feed)
-        self.assertIn("ActivityLogDialog", activity_feed)
-        self.assertIn('text: qsTr("Log kỹ thuật")', activity_feed)
+        self.assertIn("Layout.maximumWidth: root.wideLayout ? 440", create_page)
+        self.assertNotIn("ActivityFeed {", create_page)
+        self.assertNotIn("ActivityTray {", create_page)
+        self.assertIn("showTechnicalLog: true", create_page)
+        self.assertIn("ActivityLogDialog", create_page)
         self.assertIn("LogViewer", log_dialog)
 
     def test_translation_editor_auto_saves_and_tool_windows_have_no_minimize_control(self):
@@ -510,7 +510,8 @@ ApplicationWindow {{
         self.assertNotIn("Vùng OCR", editor)
         self.assertIn("SplitView", workspace)
         self.assertIn("property bool videoFullscreen", editor)
-        self.assertIn("root.postProcessingEdit", editor)
+        self.assertNotIn("postProcessingEdit", editor)
+        self.assertNotIn('qsTr("Sửa lại phụ đề")', (QML_DIR / "VideoCommandBar.qml").read_text(encoding="utf-8"))
         self.assertIn("SubtitleTimeline", workspace)
         self.assertIn("function commitSegmentTiming", editor)
         self.assertNotIn("function addSubtitleAtPlayhead", editor)
@@ -619,9 +620,11 @@ ApplicationWindow {{
             ],
         )
         commits = []
+        selections = []
         timeline.timingCommitted.connect(
             lambda index, start, end: commits.append((index, start, end))
         )
+        timeline.segmentSelected.connect(selections.append)
         try:
             view.show()
             QTest.qWaitForWindowExposed(view)
@@ -649,6 +652,12 @@ ApplicationWindow {{
             self.assertEqual(commits[0][0], 0)
             self.assertGreater(commits[0][1], 0.5)
             self.assertFalse(timeline.property("editingClip"))
+
+            # A click selects the clip in place. Opening the large text editor
+            # is a separate button in the inspector.
+            QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(145, 155))
+            QTest.qWait(30)
+            self.assertEqual(selections, [0])
         finally:
             view.close()
             view.deleteLater()
@@ -886,6 +895,7 @@ ApplicationWindow {{
     def test_processing_projects_can_import_from_download_projects(self):
         main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
         source_panel = (QML_DIR / "SourceMediaPanel.qml").read_text(encoding="utf-8")
+        source_player = (QML_DIR / "SourceVideoPlayer.qml").read_text(encoding="utf-8")
         batch_page = (QML_DIR / "BatchPage.qml").read_text(encoding="utf-8")
         dialog = (QML_DIR / "DownloadProjectSourceDialog.qml").read_text(encoding="utf-8")
         import_button = (QML_DIR / "MediaSourceImportButton.qml").read_text(encoding="utf-8")
@@ -893,6 +903,11 @@ ApplicationWindow {{
         self.assertIn("DownloadProjectSourceDialog", main)
         self.assertIn("requestDownloadProjectImport", source_panel)
         self.assertIn("MediaSourceImportButton", source_panel)
+        self.assertIn("SourceVideoPlayer", source_panel)
+        self.assertIn("MediaPlayer {", source_player)
+        self.assertIn("PreviewTransport {", source_player)
+        self.assertIn("id: fullscreenPopup", source_player)
+        self.assertIn("AppController.selectedInputSource", source_panel)
         self.assertIn("requestDownloadProjectImport", batch_page)
         self.assertIn("MediaSourceImportButton", batch_page)
         self.assertIn('qsTr("Tệp")', import_button)

@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 import uuid
 from collections import deque
 from pathlib import Path
@@ -24,6 +25,29 @@ from haizflow.services.video_download import (
     inspect_video_url,
 )
 from haizflow.utils.ffmpeg import _binary
+
+
+_WINDOWS_RESERVED_STEMS = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
+
+
+def _safe_output_stem(value: str, fallback: str = "media") -> str:
+    """Return a readable filename stem that is valid on Windows."""
+
+    cleaned = "".join(
+        "_" if ord(character) < 32 or character in '<>:"/\\|?*' else character
+        for character in str(value or "")
+    )
+    cleaned = " ".join(cleaned.split()).strip(" .")
+    cleaned = cleaned[:120].rstrip(" .")
+    if not cleaned:
+        cleaned = fallback
+    if cleaned.upper() in _WINDOWS_RESERVED_STEMS:
+        cleaned = f"_{cleaned}"
+    return cleaned
 
 
 class MediaDownloadController(QObject):
@@ -46,6 +70,7 @@ class MediaDownloadController(QObject):
         self._progress_value = 0
         self._cancel = threading.Event()
         self._worker_thread: threading.Thread | None = None
+        self._output_file_lock = threading.Lock()
         self._pending_tasks = deque()
         self._active_task: dict | None = None
         self._channel_starting = False
@@ -528,10 +553,13 @@ class MediaDownloadController(QObject):
                 try:
                     if mode == "video":
                         downloaded = download_video(metadata, str(workspace), self._report, self._cancel)
-                        destination = self._unique_path(output / Path(downloaded).name)
-                        shutil.move(downloaded, destination)
+                        destination = self._move_to_unique_path(
+                            Path(downloaded), output / Path(downloaded).name,
+                        )
                     else:
-                        destination = self._unique_path(output / f"{metadata.title}.m4a")
+                        destination = self._unique_path(
+                            output / f"{_safe_output_stem(metadata.title, 'audio')}.m4a"
+                        )
                         download_audio(metadata.url, destination, self._report, self._cancel)
                 finally:
                     shutil.rmtree(workspace, ignore_errors=True)
@@ -542,7 +570,9 @@ class MediaDownloadController(QObject):
             self._failed.emit(str(exc))
 
     def _extract(self, source: str, destination: Path):
-        result = subprocess.run(
+        if self._cancel.is_set():
+            raise DownloadCancelled("Audio extraction cancelled.")
+        process = subprocess.Popen(
             [
                 _binary("ffmpeg"),
                 "-y",
@@ -557,13 +587,34 @@ class MediaDownloadController(QObject):
                 "aac",
                 str(destination),
             ],
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=MEDIA_PROCESS_TIMEOUT_SECONDS,
-            check=False,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        if result.returncode or not destination.is_file():
-            raise RuntimeError((result.stderr or "Could not extract audio from this file.").strip()[:400])
+        deadline = time.monotonic() + MEDIA_PROCESS_TIMEOUT_SECONDS
+        stderr = ""
+        try:
+            while True:
+                try:
+                    _stdout, stderr = process.communicate(timeout=0.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    if self._cancel.is_set():
+                        process.kill()
+                        process.communicate()
+                        raise DownloadCancelled("Audio extraction cancelled.")
+                    if time.monotonic() >= deadline:
+                        process.kill()
+                        process.communicate()
+                        raise RuntimeError("Audio extraction took too long and was stopped.")
+            if process.returncode or not destination.is_file() or destination.stat().st_size <= 0:
+                raise RuntimeError((stderr or "Could not extract audio from this file.").strip()[:400])
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
 
     def _report(self, progress, detail):
         self._progress.emit(max(0, min(100, int(progress))), str(detail))
@@ -574,6 +625,14 @@ class MediaDownloadController(QObject):
             candidate = path.with_name(f"{path.stem} ({index}){path.suffix}")
             index += 1
         return candidate
+
+    def _move_to_unique_path(self, source: Path, requested: Path) -> Path:
+        """Choose and claim a destination while concurrent channel saves are serialized."""
+
+        with self._output_file_lock:
+            destination = self._unique_path(requested)
+            shutil.move(str(source), str(destination))
+            return destination
 
     def _reject(self, message):
         self._status = message
@@ -618,8 +677,7 @@ class MediaDownloadController(QObject):
                 if not source.is_file():
                     raise RuntimeError("The channel video download was not found.")
                 output.mkdir(parents=True, exist_ok=True)
-                destination = self._unique_path(output / source.name)
-                shutil.move(str(source), str(destination))
+                self._move_to_unique_path(source, output / source.name)
                 self._channel_file_saved.emit(str(session_id), remote_id, True, "")
             except Exception as exc:
                 self._channel_file_saved.emit(str(session_id), remote_id, False, str(exc))

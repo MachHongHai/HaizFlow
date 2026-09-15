@@ -24,6 +24,7 @@ ApplicationWindow {
     readonly property string routeHome: "home"
     readonly property string routeProjects: "projects"
     readonly property string routeSettings: "settings"
+    readonly property string routePackages: "packages"
     readonly property string routeSingleProjects: "single-projects"
     readonly property string routeSingleWorkspace: "single-workspace"
     readonly property string routeManualProjects: "manual-projects"
@@ -42,10 +43,16 @@ ApplicationWindow {
     readonly property bool compactNavigation: width < 1280
     readonly property bool modelStatusFailed: AppController.runtimeState === "failed"
     readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
+    readonly property bool selectedTaskFailed: projectWorkspaceVisible
+        && AppController.selectedStatus === "failed"
+    readonly property bool selectedTaskPaused: projectWorkspaceVisible
+        && AppController.selectedStatus === "paused"
+    readonly property bool selectedTaskQueued: projectWorkspaceVisible
+        && AppController.isSelectedVideoQueued && !AppController.isSelectedVideoProcessing
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
     readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace || currentRoute === routeManualWorkspace || currentRoute === routeBatchWorkspace || currentRoute === routeBatchVideo || currentRoute === routeDownloadWorkspace || currentRoute === routePublishWorkspace
-    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(helpDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
+    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(helpDialogLoader) || lazyDialogVisible(appUpdateDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
     readonly property bool downloadCanGoBack: routeHost.downloadCanGoBack
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
@@ -79,7 +86,7 @@ ApplicationWindow {
     function navigationSection() {
         if (currentRoute === routeProjects)
             return "projects";
-        if (currentRoute === routeSettings)
+        if (currentRoute === routeSettings || currentRoute === routePackages)
             return "settings";
         if (currentRoute === routeDownloadProjects)
             return "downloads";
@@ -100,7 +107,7 @@ ApplicationWindow {
     }
 
     function routeIsAvailable(route) {
-        if (route === routeHome || route === routeProjects || route === routeSettings || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
+        if (route === routeHome || route === routeProjects || route === routeSettings || route === routePackages || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
             return true;
         if (!AppController.hasOpenProject)
             return false;
@@ -284,6 +291,13 @@ ApplicationWindow {
         }
     }
 
+    LazyDialogLoader {
+        id: appUpdateDialogLoader
+        sourceComponent: Component {
+            AppUpdateDialog { onClosed: appUpdateDialogLoader.release() }
+        }
+    }
+
     AppAlertDialog {
         id: appAlertDialog
     }
@@ -347,8 +361,12 @@ ApplicationWindow {
             appConfirmationDialog.open();
         }
 
+        function onAppUpdateAvailable() {
+            appUpdateDialogLoader.invoke("open", []);
+        }
+
         function onResourcePacksRequested(group) {
-            root.navigate(root.routeSettings);
+            root.navigate(root.routePackages);
         }
 
         function onProjectPrepared() {
@@ -416,6 +434,7 @@ ApplicationWindow {
                 projectSetupDialogLoader.invoke("openForType", ["publish"]);
             }
             onSettingsRequested: root.navigate(root.routeSettings)
+            onPackagesRequested: root.navigate(root.routePackages)
             onAboutRequested: aboutDialogLoader.invoke("open", [])
             onHelpRequested: helpDialogLoader.invoke("open", [])
         }
@@ -481,12 +500,28 @@ ApplicationWindow {
         ActivityTray {
             Layout.fillWidth: true
             showDetails: false
-            activityState: root.modelStatusFailed ? "failed" : root.modelStatusBusy || AppController.isProcessing ? "processing" : "ready"
-            message: root.modelStatusFailed || root.modelStatusBusy ? I18n.runtimeStatus(AppController.statusMessage) : AppController.isProcessing ? AppController.processingText : ""
+            activityState: root.modelStatusFailed || root.selectedTaskFailed ? "failed"
+                : AppController.isProcessing || AppController.resourcePackBusy || root.modelStatusBusy
+                    ? "processing"
+                    : root.selectedTaskPaused ? "paused"
+                    : root.selectedTaskQueued ? "queued" : "ready"
+            message: root.modelStatusFailed ? I18n.runtimeStatus(AppController.statusMessage)
+                : root.selectedTaskFailed ? (AppController.selectedProgressDetail || AppController.selectedStep)
+                : AppController.isProcessing ? (AppController.isSelectedVideoProcessing
+                    ? (AppController.selectedProgressDetail || AppController.processingText)
+                    : AppController.processingText)
+                : AppController.resourcePackBusy ? AppController.resourcePackActivityText
+                : root.modelStatusBusy ? I18n.runtimeStatus(AppController.statusMessage)
+                : root.selectedTaskPaused || root.selectedTaskQueued
+                    ? AppController.selectedProgressDetail : ""
             progress: AppController.isSelectedVideoProcessing
                 && AppController.selectedStepId !== "waiting_for_models"
                 && AppController.selectedStepId !== "starting"
-                ? Math.max(0, Math.min(1, AppController.selectedProgress / 100)) : -1
+                ? Math.max(0, Math.min(1, AppController.selectedProgress / 100))
+                : AppController.resourcePackBusy && AppController.resourcePackActivityProgress >= 0
+                    ? Math.max(0, Math.min(1, AppController.resourcePackActivityProgress / 100))
+                    : root.selectedTaskPaused
+                        ? Math.max(0, Math.min(1, AppController.selectedProgress / 100)) : -1
         }
     }
 
