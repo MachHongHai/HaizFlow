@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import tempfile
+import unicodedata
 from functools import lru_cache
 from dataclasses import dataclass, replace
 from datetime import timedelta
@@ -27,6 +28,10 @@ from haizflow.utils.ffmpeg import (
 KARAOKE_FONT_NAME = "Bangers"
 KARAOKE_FONT_FILENAME = "Bangers-Regular.ttf"
 WATERMARK_FONT_FILENAME = "arialbi.ttf"
+_UNSPACED_KARAOKE_SCRIPT = re.compile(
+    r"[\u0e00-\u0e7f\u0e80-\u0eff\u1780-\u17ff\u2e80-\u9fff"
+    r"\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]"
+)
 
 
 def _karaoke_font_directory() -> Path:
@@ -73,18 +78,47 @@ def _karaoke_units(text: str) -> list[str]:
     words = normalized.split(" ")
     if len(words) > 1:
         return [word + (" " if index < len(words) - 1 else "") for index, word in enumerate(words)]
-    # Scripts such as Chinese, Japanese and Thai commonly arrive without
-    # spaces. Highlighting their visible characters is more natural than
-    # treating the entire sentence as one indivisible karaoke unit.
-    return list(normalized)
+    # A one-word Latin/Vietnamese phrase is still one spoken unit. The old
+    # ``len(words) == 1`` shortcut split it into characters, so a large font
+    # (which creates more one-word visual phrases) accidentally lengthened
+    # the karaoke clock. Only genuinely unspaced scripts use glyph units.
+    if _UNSPACED_KARAOKE_SCRIPT.search(normalized):
+        return list(normalized)
+    return [normalized]
 
 
 def _allocate_centiseconds(units: list[str], duration_seconds: float) -> list[int]:
-    """Allocate the complete cue duration without cumulative rounding drift."""
+    """Allocate one stable speech clock without cumulative rounding drift.
+
+    Letter count alone makes karaoke trail generated speech around spaces and
+    punctuation: the voice pauses there, while the old clock assigned those
+    characters no time at all.  These weights mirror the duration rules used
+    by the local voice engine and keep the clock independent of visual phrase
+    wrapping (and therefore independent of font size).
+    """
     if not units:
         return []
     total = max(len(units), round(max(0.01, duration_seconds) * 100))
-    weights = [max(1, sum(character.isalnum() for character in unit)) for unit in units]
+    weights = []
+    for unit in units:
+        weight = 0.0
+        for character in unit:
+            category = unicodedata.category(character)
+            if character.isspace() or category.startswith("Z"):
+                weight += 0.5
+            elif category.startswith(("P", "S")):
+                # TTS punctuation introduces a real pause.  Giving it the
+                # weight of roughly two Latin phonemes matched the generated
+                # waveform substantially better than treating it as silent.
+                weight += 2.0
+            elif category.startswith("N"):
+                # A written number is usually spoken as more than one sound.
+                weight += 3.5
+            elif category.startswith("M"):
+                continue
+            else:
+                weight += 1.0
+        weights.append(max(0.5, weight))
     remaining = total - len(units)
     weight_total = sum(weights)
     raw_extras = [remaining * weight / weight_total for weight in weights]
@@ -342,7 +376,7 @@ def _subtitle_preview_timeline_for_layout(
 ) -> tuple[tuple[str, ...], tuple[int, ...]]:
     """Cache the exact phrase geometry used by one resolved ASS layout."""
     inner_width = max(24, int(layout_width) - max(0, int(outline)) * 4)
-    display_font = max(10, min(160, int(font_size)))
+    display_font = max(10, min(240, int(font_size)))
     max_chars = max(10, int(inner_width / (display_font * 0.48)))
     parts = tuple(_split_subtitle_words(content, max_chars, strict_max_chars=True))
     if len(parts) <= 1:
@@ -1048,6 +1082,7 @@ def _watermark_filter(
     output_height: int,
     *,
     time_offset_seconds: float = 0.0,
+    scale_percent: int = 100,
 ) -> str:
     """Return a polished, continuously moving creator watermark filter."""
     normalized = " ".join(str(text or "").split())[:80]
@@ -1066,8 +1101,10 @@ def _watermark_filter(
     # Keep the mark deliberately secondary to the picture: it must remain
     # recognizable after recompression, but never read like a headline in the
     # middle of the video.
-    font_size = max(15, min(38, round(min(output_width, output_height) * 0.029)))
-    border_width = max(1, min(3, round(font_size * 0.065)))
+    base_font_size = max(15, min(38, round(min(output_width, output_height) * 0.029)))
+    normalized_scale = max(25, min(300, int(scale_percent or 100)))
+    font_size = max(8, min(114, round(base_font_size * normalized_scale / 100)))
+    border_width = max(1, min(9, round(font_size * 0.065)))
     font_path = str(_watermark_font_path()).replace("\\", "/")
     escaped_font_path = (
         font_path.replace("\\", "\\\\")
@@ -1136,6 +1173,7 @@ def render_video(
     compatibility_preview: bool = False,
     subtitle_region_override: dict | None = None,
     original_subtitle_intervals: list[tuple[float, float]] | None = None,
+    watermark_scale_percent: int = 100,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     process_key = str(process_registry_id or video_id)
@@ -1223,6 +1261,7 @@ def render_video(
         subtitle_width,
         subtitle_height,
         time_offset_seconds=source_start_seconds,
+        scale_percent=watermark_scale_percent,
     )
     filters = []
     crop_filter = _crop_filter(crop)

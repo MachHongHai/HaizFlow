@@ -18,7 +18,7 @@ if str(SRC) not in sys.path:
 
 from haizflow.pipeline import transcribe
 from haizflow.pipeline.process_video import _timing_file_is_current
-from haizflow.pipeline.subtitle import split_segment_into_cues
+from haizflow.pipeline.subtitle import generate_srt, split_segment_into_cues
 from haizflow.schemas.video import VideoConfig
 from haizflow.services import hymt2_worker, video_store, translation
 from haizflow.services.hymt2_worker import (
@@ -731,6 +731,31 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             segment["text"],
         )
         self.assertTrue(all(segment["start"] <= cue["start"] < cue["end"] <= segment["end"] for cue in cues))
+
+    def test_manual_srt_preserves_one_clock_per_editable_segment(self):
+        segment = {
+            "start": 2.25,
+            "end": 13.75,
+            "text": "Một đoạn dài vẫn dùng một clock dù cỡ chữ làm thay đổi các cụm hiển thị.",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "segments.json"
+            output = Path(temp_dir) / "subtitles.srt"
+            source.write_text(json.dumps([segment], ensure_ascii=False), encoding="utf-8")
+
+            generate_srt(
+                str(source),
+                str(output),
+                18,
+                "manual-test",
+                preserve_segment_boundaries=True,
+            )
+            parsed = list(__import__("srt").parse(output.read_text(encoding="utf-8")))
+
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0].start.total_seconds(), segment["start"])
+        self.assertEqual(parsed[0].end.total_seconds(), segment["end"])
+        self.assertEqual(parsed[0].content, segment["text"])
 
     def test_resume_accepts_only_current_aligned_timestamp_artifacts(self):
         with tempfile.TemporaryDirectory() as temp_dir:

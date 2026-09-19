@@ -271,6 +271,7 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         background_music_volume=config.background_music_volume,
         tts_volume=config.tts_volume,
         watermark_text=config.watermark_text,
+        watermark_scale_percent=config.watermark_scale_percent,
         project_name=config.project_name,
         project_directory=config.project_directory,
         project_type=config.project_type,
@@ -526,7 +527,7 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     style_value = data.get("subtitle_style")
     style_source = style_value if isinstance(style_value, dict) else {}
     style_limits = {
-        "font_size": (10, 160),
+        "font_size": (10, 240),
         "margin_bottom": (0, 1000),
         "outline": (0, 20),
         "max_chars_per_line": (12, 200),
@@ -593,6 +594,11 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     # Watermarks are always a single, bounded line. This also prevents control
     # characters from entering the FFmpeg filter expression.
     data["watermark_text"] = " ".join(watermark_value.split())[:80]
+    try:
+        watermark_scale = int(data.get("watermark_scale_percent", 100))
+    except (TypeError, ValueError):
+        watermark_scale = 100
+    data["watermark_scale_percent"] = max(25, min(300, watermark_scale))
     return data, data != original
 
 

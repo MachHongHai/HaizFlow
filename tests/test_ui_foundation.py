@@ -408,6 +408,9 @@ window.close()
         self.assertIn("SubtitleTextEditor {", subtitle_dialog)
         compare_preview = (QML_DIR / "ManualComparePreview.qml").read_text(encoding="utf-8")
         transform_overlay = (QML_DIR / "SubtitleTransformOverlay.qml").read_text(encoding="utf-8")
+        scale_handle = (QML_DIR / "CornerScaleHandle.qml").read_text(encoding="utf-8")
+        watermark_overlay = (QML_DIR / "WatermarkTransformOverlay.qml").read_text(encoding="utf-8")
+        watermark_dialog = (QML_DIR / "WatermarkDialog.qml").read_text(encoding="utf-8")
         self.assertIn("SubtitleTransformOverlay {", compare_preview)
         self.assertIn("signal layoutCommitted", transform_overlay)
         self.assertIn("signal layoutPreviewChanged", transform_overlay)
@@ -421,8 +424,15 @@ window.close()
         self.assertIn("visible: root.livePreviewVisible", transform_overlay)
         self.assertIn("signal activated()", transform_overlay)
         self.assertEqual(transform_overlay.count("ScaleHandle {"), 4)
-        self.assertIn("Qt.SizeFDiagCursor : Qt.SizeBDiagCursor", transform_overlay)
+        self.assertIn("Qt.SizeFDiagCursor : Qt.SizeBDiagCursor", scale_handle)
         self.assertIn("cursorShape: root.editing ? Qt.SizeAllCursor : Qt.PointingHandCursor", transform_overlay)
+        self.assertEqual(watermark_overlay.count("CornerScaleHandle {"), 4)
+        self.assertIn('objectName: "watermarkTransformSelection"', watermark_overlay)
+        self.assertIn("Math.sin(2 * Math.PI * root.timeSeconds / 31)", watermark_overlay)
+        self.assertIn("Math.sin(2 * Math.PI * root.timeSeconds / 43 + 1.2)", watermark_overlay)
+        self.assertIn("WatermarkTransformOverlay {", compare_preview)
+        self.assertNotIn("AppSlider", watermark_dialog)
+        self.assertNotIn("openWithSettings", watermark_dialog)
         self.assertNotIn("visible: root.currentStage", inspector)
 
         self.assertNotIn('qsTr("Cắt khung hình")', inspector)
@@ -451,6 +461,7 @@ window.close()
         self.assertIn("saveManualSubtitleTiming", workspace)
         self.assertNotIn("approveTranslationReview", workspace)
         self.assertIn("AppController.subtitleOverlayRenderer.frame", workspace)
+        self.assertIn("AppController.manualPreviewAudio.positionSeconds", workspace)
         self.assertIn("AppController.adoptSubtitlePreviewLayout()", workspace)
         self.assertIn("previewMedia.subtitleRenderLayout", workspace)
         self.assertIn("subtitleAudioRefreshPending", workspace)
@@ -467,6 +478,8 @@ window.close()
         self.assertIn("subtitleKaraokeProgress: root.previewSubtitleKaraokeProgress", workspace)
         self.assertIn("subtitleLayoutWidth: root.subtitleLayoutWidth", workspace)
         self.assertIn("subtitleLayoutHeight: root.subtitleLayoutHeight", workspace)
+        self.assertIn("watermarkScalePercent: AppController.watermarkScalePercent", workspace)
+        self.assertIn("recordManualWatermarkScaleChange", workspace)
         self.assertIn("root.subtitleTransformActive = false;", workspace)
         self.assertIn("onInteractionDismissed: root.dismissSubtitleEditor()", workspace)
         committed_block = workspace[
@@ -673,6 +686,16 @@ app.processEvents()
 assert window.property("activations") == 1
 assert overlay.property("editing")
 assert live_text.isVisible()
+resize_handle = overlay.findChild(QQuickItem, "subtitleScaleHandle_1_1")
+assert resize_handle is not None and resize_handle.isVisible()
+assert resize_handle.width() >= 24 and resize_handle.height() >= 24
+handle_point = resize_handle.mapToScene(QPointF(resize_handle.width() / 2, resize_handle.height() / 2))
+start = QPoint(round(handle_point.x()), round(handle_point.y()))
+QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, start)
+QTest.mouseMove(window, QPoint(start.x() + 120, start.y() + 120), 20)
+QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, QPoint(start.x() + 120, start.y() + 120))
+app.processEvents()
+assert float(overlay.property("draftFontSize")) > 80
 QTest.mouseClick(
     window,
     Qt.LeftButton,
@@ -720,6 +743,78 @@ app.processEvents()
         self.assertIn("id: resultSourceSwapTimer", preview)
         self.assertIn('attachedResultSource = ""', preview)
         self.assertNotIn("source: root.effectiveResultSource", preview)
+
+    def test_watermark_resizes_directly_on_the_video(self):
+        script = f"""\
+from PySide6.QtCore import QPoint, QPointF, QUrl, Qt
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlComponent, QQmlEngine
+from PySide6.QtQuick import QQuickItem
+from PySide6.QtTest import QTest
+
+app = QGuiApplication([])
+engine = QQmlEngine()
+engine.addImportPath(r'{QML_DIR}')
+component = QQmlComponent(engine)
+component.setData(b'''import QtQuick
+import QtQuick.Controls.Basic
+import "{QML_DIR.as_uri()}"
+ApplicationWindow {{
+    width: 800
+    height: 600
+    visible: true
+    WatermarkTransformOverlay {{
+        id: overlay
+        objectName: "watermarkOverlay"
+        anchors.fill: parent
+        videoRect: Qt.rect(100, 50, 600, 500)
+        watermarkText: "HaizFlow"
+        scalePercent: 100
+        referenceWidthPixels: 1080
+        referenceHeightPixels: 1920
+        interactive: true
+        onActivated: editing = true
+        onEditingDismissed: editing = false
+        onScalePreviewChanged: function(value) {{ scalePercent = value; }}
+    }}
+}}''', QUrl())
+assert component.isReady(), "\\n".join(error.toString() for error in component.errors())
+window = component.create()
+assert window is not None, "\\n".join(error.toString() for error in component.errors())
+for _ in range(4):
+    app.processEvents()
+overlay = window.findChild(QQuickItem, "watermarkOverlay")
+label = overlay.findChild(QQuickItem, "watermarkTransformText")
+point = label.mapToScene(QPointF(label.width() / 2, label.height() / 2))
+QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(round(point.x()), round(point.y())))
+app.processEvents()
+assert overlay.property("editing")
+handle = overlay.findChild(QQuickItem, "watermarkScaleHandle_1_1")
+assert handle is not None and handle.isVisible()
+point = handle.mapToScene(QPointF(handle.width() / 2, handle.height() / 2))
+start = QPoint(round(point.x()), round(point.y()))
+QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, start)
+QTest.mouseMove(window, QPoint(start.x() + 80, start.y() + 80), 20)
+QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier, QPoint(start.x() + 80, start.y() + 80))
+app.processEvents()
+assert float(overlay.property("draftScalePercent")) > 100
+window.close()
+window.deleteLater()
+engine.deleteLater()
+app.processEvents()
+"""
+        environment = os.environ.copy()
+        environment["QT_QPA_PLATFORM"] = "offscreen"
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_voice_library_uses_one_inline_preview_control_per_row(self):
         voice_picker = (QML_DIR / "VoicePicker.qml").read_text(encoding="utf-8")

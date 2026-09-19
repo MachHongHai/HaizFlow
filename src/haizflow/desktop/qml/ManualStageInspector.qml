@@ -426,7 +426,19 @@ InspectorPanel {
                     iconName: "edit"
                     variant: "secondary"
                     enabled: root.editable
-                    onClicked: watermarkDialogLoader.invoke("openWithText", [AppController.watermarkText])
+                    onClicked: watermarkDialogLoader.invoke("openWithText", [
+                        AppController.watermarkText
+                    ])
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: AppController.watermarkText.length > 0
+                    text: qsTr("Bấm watermark trên video rồi kéo góc để đổi cỡ.")
+                    color: Theme.textMuted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: TypeScale.metadata
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
                 }
             }
         }

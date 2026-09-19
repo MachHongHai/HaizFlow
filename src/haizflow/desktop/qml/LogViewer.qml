@@ -23,8 +23,15 @@ Rectangle {
     }
 
     function displayTime(timestamp) {
-        const match = String(timestamp || "").match(/T(\d\d:\d\d:\d\d)/)
-        return match ? match[1] : String(timestamp || "").slice(0, 8)
+        const raw = String(timestamp || "")
+        // Activity files are deliberately stored in UTC so they remain
+        // unambiguous when copied between machines.  Display them in the
+        // machine's current time zone instead of slicing the UTC clock text.
+        const parsed = new Date(raw)
+        if (!isNaN(parsed.getTime()))
+            return Qt.formatTime(parsed, "HH:mm:ss")
+        const match = raw.match(/T(\d\d:\d\d:\d\d)/)
+        return match ? match[1] : raw.slice(0, 8)
     }
 
     function levelColor(level) {

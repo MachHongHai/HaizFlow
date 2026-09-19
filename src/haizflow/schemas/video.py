@@ -28,7 +28,7 @@ class MediaSource(BaseModel):
 class SubtitleStyle(BaseModel):
     # Used when OCR finds no source subtitle region. 60 is legible on the
     # standard 1080x1920 vertical export without overwhelming the frame.
-    font_size: int = Field(default=60, ge=10, le=160)
+    font_size: int = Field(default=60, ge=10, le=240)
     margin_bottom: int = Field(default=40, ge=0, le=1000)
     outline: int = Field(default=2, ge=0, le=20)
     max_chars_per_line: int = Field(default=32, ge=12, le=200)
@@ -71,6 +71,9 @@ class VideoConfig(BaseModel):
     background_music_volume: int = Field(default=30, ge=0, le=100)
     tts_volume: int = Field(default=100, ge=0, le=100)
     watermark_text: str = Field(default="", max_length=80)
+    # Manual may scale the established watermark treatment. Auto and Batch
+    # keep the existing 100% size and do not expose this control.
+    watermark_scale_percent: int = Field(default=100, ge=25, le=300)
     # An import request only; the selected file is copied into the workspace.
     background_music_path: str = Field(default="", exclude=True)
     project_name: str = ""
@@ -105,6 +108,7 @@ class VideoInfo(BaseModel):
     background_music_volume: int = Field(default=30, ge=0, le=100)
     tts_volume: int = Field(default=100, ge=0, le=100)
     watermark_text: str = Field(default="", max_length=80)
+    watermark_scale_percent: int = Field(default=100, ge=25, le=300)
     project_name: str = ""
     project_directory: str = ""
     project_type: ProjectType = "single"

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from PySide6.QtCore import (
+    Property,
     QAbstractListModel,
     QModelIndex,
-    Property,
     QSortFilterProxyModel,
     Qt,
     Signal,
@@ -182,7 +183,11 @@ class ActivityEventModel(QAbstractListModel):
         suffix = ".working" if "still working" in lowered or "đang xử lý" in lowered else ".event"
         raw_timestamp = match.group("time") or match.group("iso_time") or ""
         if "T" in raw_timestamp:
-            raw_timestamp = raw_timestamp.split("T", 1)[1][:8]
+            try:
+                parsed = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+                raw_timestamp = parsed.astimezone().strftime("%H:%M:%S")
+            except ValueError:
+                raw_timestamp = raw_timestamp.split("T", 1)[1][:8]
         return {
             "timestamp": raw_timestamp,
             "severity": "error" if severity == "error" else "warning" if severity == "warning" else "info",

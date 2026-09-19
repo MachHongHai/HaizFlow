@@ -902,6 +902,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         original_subtitle_intervals,
         "watermark-bold-italic-keyline-v3",
         getattr(video, "watermark_text", ""),
+        getattr(video, "watermark_scale_percent", 100),
         manual_subtitle_layout,
     )
     if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(
@@ -938,6 +939,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             progress_callback=report_render_progress,
             original_subtitle_removal_mode=original_subtitle_removal_mode,
             original_subtitle_intervals=original_subtitle_intervals,
+            watermark_scale_percent=getattr(video, "watermark_scale_percent", 100),
         )
         _mark_checkpoint(video, "render", render_signature)
 

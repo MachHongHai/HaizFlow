@@ -403,6 +403,18 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("sin(2*PI*t/31)", watermark)
         self.assertIn("sin(2*PI*t/43+1.2)", watermark)
 
+    def test_manual_watermark_scale_preserves_the_auto_default_and_allows_larger_text(self):
+        default_watermark = render._watermark_filter("HaizFlow", 1080, 1920)
+        enlarged_watermark = render._watermark_filter(
+            "HaizFlow", 1080, 1920, scale_percent=200
+        )
+
+        self.assertIn("fontsize=31", default_watermark)
+        self.assertIn("fontsize=62", enlarged_watermark)
+        self.assertIn("borderw=4", enlarged_watermark)
+        self.assertIn("fontcolor=white@0.46", enlarged_watermark)
+        self.assertIn("sin(2*PI*t/31)", enlarged_watermark)
+
     def test_watermark_font_has_a_safe_bundled_fallback(self):
         fallback = render._karaoke_font_directory() / render.KARAOKE_FONT_FILENAME
 
@@ -654,6 +666,13 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("xin ", rendered)
         self.assertTrue(rendered.endswith("bạn"))
 
+    def test_karaoke_clock_reserves_time_for_tts_spaces_and_punctuation(self):
+        durations = render._allocate_centiseconds(["xin ", "chào, ", "bạn"], 3.0)
+
+        self.assertEqual(sum(durations), 300)
+        self.assertGreater(durations[1], durations[0])
+        self.assertGreater(durations[0], durations[2])
+
     def test_font_size_changes_visual_phrases_without_changing_word_clock(self):
         subtitle = srt.Subtitle(
             index=1,
@@ -697,6 +716,25 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertGreater(len(large_parts), len(small_parts))
         self.assertEqual(large_clock, small_clock)
         self.assertEqual(sum(large_clock), 400)
+
+    def test_large_vietnamese_font_does_not_treat_single_word_phrases_as_cjk(self):
+        text = (
+            "Lúc này trương ngọc quân hồng hải dùng phương pháp carbon "
+            "để kiểm tra nhịp karaoke theo giọng đọc"
+        )
+        duration_centiseconds = 2152
+
+        small_parts, small_boundaries = render._subtitle_preview_timeline_for_layout(
+            text, duration_centiseconds, 109, 900, 4
+        )
+        large_parts, large_boundaries = render._subtitle_preview_timeline_for_layout(
+            text, duration_centiseconds, 210, 900, 4
+        )
+
+        self.assertGreater(len(large_parts), len(small_parts))
+        self.assertEqual(render._karaoke_units("trương"), ["trương"])
+        self.assertEqual(small_boundaries[-1], duration_centiseconds)
+        self.assertEqual(large_boundaries[-1], duration_centiseconds)
 
     def test_direct_preview_returns_only_the_phrase_visible_at_the_playhead(self):
         text = (

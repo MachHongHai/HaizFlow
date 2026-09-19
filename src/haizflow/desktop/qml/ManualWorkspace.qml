@@ -17,6 +17,7 @@ Item {
     property string previewVideoId: ""
     property bool applyingSubtitleEdit: false
     property bool subtitleTransformActive: false
+    property bool watermarkTransformActive: false
     property bool subtitleAudioRefreshPending: false
     property bool subtitleVisualRefreshPending: false
     property bool exportCompletionArmed: false
@@ -84,6 +85,8 @@ Item {
     onSelectedStageIndexChanged: {
         if (selectedStageIndex !== subtitleToolIndex)
             subtitleTransformActive = false;
+        if (selectedStageIndex !== imageToolIndex)
+            watermarkTransformActive = false;
     }
 
     function nextStageIndex() {
@@ -154,11 +157,23 @@ Item {
         root.forceActiveFocus();
     }
 
+    function dismissWatermarkEditor() {
+        watermarkTransformActive = false;
+        root.forceActiveFocus();
+    }
+
+    function selectWatermark() {
+        dismissSubtitleEditor();
+        selectedStageIndex = imageToolIndex;
+        watermarkTransformActive = true;
+    }
+
     function selectSubtitle(index, seek) {
         stageInspector.dismissTextEditor();
         if (index < 0 || index >= segments.length)
             return;
         selectedSubtitleIndex = index;
+        watermarkTransformActive = false;
         selectedStageIndex = subtitleToolIndex;
         subtitleTransformActive = true;
         AppController.beginManualSubtitleEdit(String(segments[index].segment_id));
@@ -255,6 +270,7 @@ Item {
                 root.selectedStageIndex = 0;
                 root.selectedSubtitleIndex = -1;
                 root.subtitleTransformActive = false;
+                root.watermarkTransformActive = false;
                 root.subtitleAudioRefreshPending = false;
                 root.subtitleVisualRefreshPending = false;
             }
@@ -275,6 +291,18 @@ Item {
             root.showExportCompleted(outputPath);
         }
 
+    }
+
+    Connections {
+        target: AppController.manualPreviewAudio
+
+        function onPositionChanged() {
+            // Karaoke follows samples actually presented by QAudioSink, not
+            // the decoder clock that may lead it by one Windows audio buffer.
+            AppController.subtitleOverlayRenderer.seek(
+                AppController.manualPreviewAudio.positionSeconds
+            );
+        }
     }
 
     ColumnLayout {
@@ -339,6 +367,7 @@ Item {
             hasVideo: AppController.hasSelectedVideo
             onToolSelected: function(index) {
                 root.dismissSubtitleEditor();
+                root.dismissWatermarkEditor();
                 root.selectedStageIndex = index;
                 root.warmTool(index);
             }
@@ -423,9 +452,22 @@ Item {
                     suppressResultAudio: root.subtitleAudioRefreshPending
                     subtitleLivePreviewEnabled: true
                     subtitleSprite: AppController.subtitleOverlayRenderer.frame
-                    onPositionSecondsChanged: AppController.subtitleOverlayRenderer.seek(positionSeconds)
+                    watermarkText: AppController.watermarkText
+                    watermarkScalePercent: AppController.watermarkScalePercent
+                    watermarkInteractive: AppController.watermarkText.length > 0
+                    watermarkEditEnabled: root.watermarkTransformActive
                     onSubtitleActivated: root.selectSubtitle(root.previewSubtitleIndex, false)
                     onSubtitleEditingDismissed: root.dismissSubtitleEditor()
+                    onWatermarkActivated: root.selectWatermark()
+                    onWatermarkEditingDismissed: root.dismissWatermarkEditor()
+                    onWatermarkScalePreviewChanged: function(value) {
+                        AppController.watermarkScalePercent = value;
+                    }
+                    onWatermarkScaleCommitted: function(beforeValue, afterValue) {
+                        AppController.watermarkScalePercent = afterValue;
+                        AppController.saveSelectedVideoSettings();
+                        AppController.recordManualWatermarkScaleChange(beforeValue, afterValue);
+                    }
                     onSubtitleLayoutPreviewChanged: function(fontSize, positionX, positionY) {
                         if (!AppController.subtitleLayoutOverride)
                             AppController.adoptSubtitlePreviewLayout();

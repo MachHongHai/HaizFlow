@@ -26,6 +26,7 @@ Module {
         name: "ManualPreviewAudioController"
         prototype: "QObject"
         accessSemantics: "reference"
+        Property { name: "positionSeconds"; type: "double"; isReadonly: true }
         Method { name: "setVolumes"; Parameter { name: "original"; type: "int" } Parameter { name: "voice"; type: "int" } Parameter { name: "music"; type: "int" } }
         Method { name: "synchronize"; Parameter { name: "seconds"; type: "double" } Parameter { name: "playing"; type: "bool" } Parameter { name: "muted"; type: "bool" } }
         Method { name: "seek"; Parameter { name: "seconds"; type: "double" } }
@@ -83,6 +84,7 @@ Module {
         Method { name: "saveManualSubtitleText"; type: "bool"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "text"; type: "string" } Parameter { name: "expectedRevision"; type: "int" } Parameter { name: "requestId"; type: "string" } }
         Method { name: "saveManualSubtitleTiming"; type: "bool"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "start"; type: "double" } Parameter { name: "end"; type: "double" } }
         Method { name: "recordManualSubtitleLayoutChange"; Parameter { name: "beforeFontSize"; type: "int" } Parameter { name: "beforePositionX"; type: "int" } Parameter { name: "beforePositionY"; type: "int" } Parameter { name: "afterFontSize"; type: "int" } Parameter { name: "afterPositionX"; type: "int" } Parameter { name: "afterPositionY"; type: "int" } }
+        Method { name: "recordManualWatermarkScaleChange"; Parameter { name: "beforeScale"; type: "int" } Parameter { name: "afterScale"; type: "int" } }
         Signal { name: "manualSubtitleSaved"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "revision"; type: "int" } Parameter { name: "requestId"; type: "string" } }
         Signal { name: "manualSubtitleSaveFailed"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "requestId"; type: "string" } Parameter { name: "message"; type: "string" } }
         accessSemantics: "reference"
@@ -735,6 +737,13 @@ Module {
             write: "watermarkText"
             notify: "watermarkTextChanged"
             index: 66
+        }
+        Property {
+            name: "watermarkScalePercent"
+            type: "int"
+            read: "watermarkScalePercent"
+            write: "watermarkScalePercent"
+            notify: "watermarkScalePercentChanged"
         }
         Property {
             name: "removeOriginalSubtitles"
@@ -1498,6 +1507,7 @@ Module {
         Signal { name: "backgroundMusicVolumeChanged" }
         Signal { name: "ttsVolumeChanged" }
         Signal { name: "watermarkTextChanged" }
+        Signal { name: "watermarkScalePercentChanged" }
         Signal { name: "subtitleSettingsChanged" }
         Signal { name: "cropSettingsChanged" }
         Signal { name: "backgroundMusicChanged" }

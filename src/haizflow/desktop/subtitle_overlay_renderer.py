@@ -16,7 +16,6 @@ from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from haizflow.config import RUNTIME_DATA_DIR
 from haizflow.pipeline.render import SubtitleRegionLayout, _karaoke_font_directory, _write_positioned_ass
-from haizflow.pipeline.subtitle import split_segment_into_cues
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.utils.ffmpeg import _binary
 
@@ -27,12 +26,26 @@ def timestamp(value):
 
 
 def export_events(segments, layout, fixed, directory):
-    """Keep SRT phrase boundaries and ASS fitting identical to final export."""
+    """Render one segment clock with the same ASS fitting as final export."""
     style = SubtitleStyle(font_size=int(layout["fontSize"]), outline=int(layout["outline"]),
         position_x_percent=int(layout["positionXPercent"]), position_y_percent=int(layout["positionYPercent"]))
-    cues = [cue for segment in segments for cue in split_segment_into_cues(segment, style.max_chars_per_line)]
-    subtitles = [srt.Subtitle(i + 1, timedelta(seconds=c["start"]), timedelta(seconds=c["end"]), c["text"])
-                 for i, c in enumerate(cues)]
+    # Keep the editable segment intact here. _write_positioned_ass partitions
+    # it into visual phrases using the current font/layout while retaining one
+    # global word clock. Pre-splitting into SRT cues made size changes alter
+    # the apparent karaoke timing.
+    subtitles = [
+        srt.Subtitle(
+            index=i + 1,
+            start=timedelta(seconds=float(segment.get("start", 0) or 0)),
+            end=timedelta(seconds=max(
+                float(segment.get("start", 0) or 0) + 0.1,
+                float(segment.get("end", segment.get("start", 0)) or 0),
+            )),
+            content=" ".join(str(segment.get("text") or "").split()),
+        )
+        for i, segment in enumerate(segments)
+        if str(segment.get("text") or "").strip()
+    ]
     if not subtitles:
         return "", []
     source = directory / "captions.srt"

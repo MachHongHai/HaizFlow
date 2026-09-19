@@ -114,6 +114,7 @@ class HaizFlowController(QObject):
         "background_music_volume",
         "tts_volume",
         "watermark_text",
+        "watermark_scale_percent",
     )
 
     videoPathChanged = Signal()
@@ -131,6 +132,7 @@ class HaizFlowController(QObject):
     backgroundMusicVolumeChanged = Signal()
     ttsVolumeChanged = Signal()
     watermarkTextChanged = Signal()
+    watermarkScalePercentChanged = Signal()
     subtitleSettingsChanged = Signal()
     cropSettingsChanged = Signal()
     backgroundMusicChanged = Signal()
@@ -209,6 +211,7 @@ class HaizFlowController(QObject):
         self._background_music_volume = 30
         self._tts_volume = 100
         self._watermark_text = ""
+        self._watermark_scale_percent = 100
         self._remove_original_subtitles = True
         self._original_subtitle_removal_mode = "patch"
         self._subtitle_style = SubtitleStyle()
@@ -1457,6 +1460,17 @@ class HaizFlowController(QObject):
             self._watermark_text = normalized
             self.watermarkTextChanged.emit()
 
+    @Property(int, notify=watermarkScalePercentChanged)
+    def watermarkScalePercent(self):
+        return self._watermark_scale_percent
+
+    @watermarkScalePercent.setter
+    def watermarkScalePercent(self, value):
+        normalized = max(25, min(300, int(value)))
+        if self._watermark_scale_percent != normalized:
+            self._watermark_scale_percent = normalized
+            self.watermarkScalePercentChanged.emit()
+
     @Property(bool, notify=subtitleSettingsChanged)
     def removeOriginalSubtitles(self):
         return self._remove_original_subtitles
@@ -1508,7 +1522,7 @@ class HaizFlowController(QObject):
 
     @subtitleFontSize.setter
     def subtitleFontSize(self, value):
-        self._set_subtitle_style_value("font_size", value, 10, 160)
+        self._set_subtitle_style_value("font_size", value, 10, 240)
 
     @Property(bool, notify=subtitleSettingsChanged)
     def subtitleLayoutOverride(self):
@@ -3550,7 +3564,7 @@ class HaizFlowController(QObject):
             return False
         style = self._subtitle_style.model_dump()
         style.update(
-            font_size=max(10, min(160, int(font_size))),
+            font_size=max(10, min(240, int(font_size))),
             position_x_percent=max(0, min(100, int(position_x))),
             position_y_percent=max(0, min(100, int(position_y))),
         )
@@ -3585,6 +3599,34 @@ class HaizFlowController(QObject):
             lambda: apply(before),
             lambda: apply(after),
             merge_key=f"subtitle-layout:{video_id}",
+            context_id=f"video:{video_id}",
+        )
+
+    def _apply_manual_watermark_scale(self, scale_percent: int) -> bool:
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return False
+        self.watermarkScalePercent = max(25, min(300, int(scale_percent)))
+        return self.saveSelectedVideoSettings()
+
+    @Slot(int, int)
+    def recordManualWatermarkScaleChange(self, before_scale, after_scale):
+        before = max(25, min(300, int(before_scale)))
+        after = max(25, min(300, int(after_scale)))
+        if before == after or not self._selected_video_id:
+            return
+        video_id = str(self._selected_video_id)
+
+        def apply(value):
+            if str(self._selected_video_id or "") != video_id:
+                return False
+            return self._apply_manual_watermark_scale(value)
+
+        self._manual_edit_history.record(
+            "watermark_size",
+            lambda: apply(before),
+            lambda: apply(after),
+            merge_key=f"watermark-size:{video_id}",
             context_id=f"video:{video_id}",
         )
 
@@ -4168,6 +4210,7 @@ class HaizFlowController(QObject):
             "background_music_volume": video.background_music_volume,
             "tts_volume": video.tts_volume,
             "watermark_text": video.watermark_text,
+            "watermark_scale_percent": getattr(video, "watermark_scale_percent", 100),
             "project_name": video.project_name,
             "project_directory": video.project_directory,
             "project_type": video.project_type,
@@ -4386,6 +4429,7 @@ class HaizFlowController(QObject):
             background_music_volume=self._background_music_volume,
             tts_volume=self._tts_volume,
             watermark_text=self._watermark_text,
+            watermark_scale_percent=self._watermark_scale_percent,
             background_music_path=self._background_music_path,
             project_name=self._project_name,
             project_directory=self._project_directory,
@@ -4423,6 +4467,7 @@ class HaizFlowController(QObject):
             "background_music_volume": config.background_music_volume,
             "tts_volume": config.tts_volume,
             "watermark_text": config.watermark_text,
+            "watermark_scale_percent": config.watermark_scale_percent,
             "project_type": config.project_type,
         }
         if getattr(video, "project_type", "single") == "manual":
@@ -4498,6 +4543,7 @@ class HaizFlowController(QObject):
                     changed("output_format", config.output_format),
                     changed("crop", config.crop),
                     changed("watermark_text", config.watermark_text),
+                    changed("watermark_scale_percent", config.watermark_scale_percent),
                 )
             ):
                 invalidated.add("render")

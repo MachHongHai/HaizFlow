@@ -157,6 +157,7 @@ class ManualEditorSessionTests(unittest.TestCase):
                 "background_music_volume",
                 "tts_volume",
                 "watermark_text",
+                "watermark_scale_percent",
             },
         )
 
@@ -316,6 +317,44 @@ class ManualEditorSessionTests(unittest.TestCase):
         self.assertEqual(sink.stops, 1)
         self.assertEqual(sink.deleted, 1)
         self.assertIsNone(audio._sink)
+
+    def test_karaoke_clock_tracks_samples_played_not_audio_buffered_ahead(self):
+        class Device:
+            def write(self, data):
+                return len(data)
+
+        class Sink:
+            def __init__(self):
+                self.device = Device()
+
+            def reset(self):
+                return None
+
+            def start(self):
+                return self.device
+
+            def stop(self):
+                return None
+
+            def deleteLater(self):
+                return None
+
+            def bytesFree(self):
+                return 4800
+
+            def bufferSize(self):
+                return 9600
+
+        audio = ManualPreviewAudioController()
+        audio._sink = Sink()
+        audio._playing = True
+        audio.seek(5.0)
+        audio._pump()
+
+        # 1,200 stereo frames were written and exactly 1,200 are buffered;
+        # the visible karaoke clock must remain at the audible 5.0 seconds.
+        self.assertAlmostEqual(audio.positionSeconds, 5.0, places=3)
+        audio.close()
 
     def test_pending_voice_choice_does_not_replace_published_preview_audio(self):
         class PendingFuture:

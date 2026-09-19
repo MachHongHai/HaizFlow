@@ -75,15 +75,36 @@ def split_segment_into_cues(segment: dict, max_chars_per_line: int) -> list[dict
     return cues
 
 
-def generate_srt(segments_json_path: str, output_srt_path: str, max_chars_per_line: int, video_id: str):
-    """Write short, timed subtitle cues instead of keeping each transcript block on screen."""
+def generate_srt(
+    segments_json_path: str,
+    output_srt_path: str,
+    max_chars_per_line: int,
+    video_id: str,
+    *,
+    preserve_segment_boundaries: bool = False,
+):
+    """Materialize subtitle cues without changing the document clock.
+
+    Automatic projects retain their compact pre-split SRT cues.  Manual
+    projects preserve one cue per editable segment so the ASS renderer can
+    partition one word clock for the whole spoken clip.  Otherwise changing
+    font size can expose a different visual phrase split over stale SRT cue
+    boundaries and make karaoke appear to run at another speed.
+    """
     log_to_video(video_id, f"Compiling sequential SRT cues (Max characters per line: {max_chars_per_line})...")
     with open(segments_json_path, "r", encoding="utf-8") as file:
         segments = json.load(file)
 
     subtitles = []
     for segment in segments:
-        for cue in split_segment_into_cues(segment, max_chars_per_line):
+        if preserve_segment_boundaries:
+            text = " ".join(str(segment.get("text") or "").split())
+            start = float(segment.get("start", 0) or 0)
+            end = max(start + 0.1, float(segment.get("end", start) or start))
+            cues = [{"start": start, "end": end, "text": text}] if text else []
+        else:
+            cues = split_segment_into_cues(segment, max_chars_per_line)
+        for cue in cues:
             subtitles.append(srt.Subtitle(
                 index=len(subtitles) + 1,
                 start=datetime.timedelta(seconds=cue["start"]),

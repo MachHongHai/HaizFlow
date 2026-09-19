@@ -229,7 +229,7 @@ class ManualArtifactTests(unittest.TestCase):
         self.video.files = {"transcript_json": str(transcript)}
         self.video.subtitle_style = {}
 
-        def fake_srt(_source, destination, *_args):
+        def fake_srt(_source, destination, *_args, **_kwargs):
             Path(destination).write_text("1\n00:00:00,000 --> 00:00:01,000\nXin chào\n", encoding="utf-8")
 
         with patch.object(manual_tools, "generate_srt", side_effect=fake_srt):
@@ -380,7 +380,11 @@ class ManualArtifactTests(unittest.TestCase):
             export="export-current",
         )
 
-        with patch.object(manual_tools, "generate_srt", side_effect=lambda _s, d, *_a: Path(d).write_text("srt")):
+        with patch.object(
+            manual_tools,
+            "generate_srt",
+            side_effect=lambda _s, d, *_a, **_kw: Path(d).write_text("srt"),
+        ):
             manual_tools.publish_edited_subtitles(
                 "manual-video", [{"start": 2, "end": 3, "text": "Xin chào"}]
             )
@@ -417,7 +421,11 @@ class ManualArtifactTests(unittest.TestCase):
             export="export-current",
         )
 
-        with patch.object(manual_tools, "generate_srt", side_effect=lambda _s, d, *_a: Path(d).write_text("srt")):
+        with patch.object(
+            manual_tools,
+            "generate_srt",
+            side_effect=lambda _s, d, *_a, **_kw: Path(d).write_text("srt"),
+        ):
             manual_tools.publish_edited_subtitles(
                 "manual-video", [{"start": 0, "end": 1, "text": "Câu mới"}]
             )
@@ -448,7 +456,11 @@ class ManualArtifactTests(unittest.TestCase):
             {"segments": "segments.json", "srt": "subtitles.srt"},
         )
 
-        with patch.object(manual_tools, "generate_srt", side_effect=lambda _s, d, *_a: Path(d).write_text("srt")):
+        with patch.object(
+            manual_tools,
+            "generate_srt",
+            side_effect=lambda _s, d, *_a, **_kw: Path(d).write_text("srt"),
+        ):
             manual_tools.publish_edited_subtitles(
                 "manual-video", [{"start": 0, "end": 1, "text": "Câu mới"}]
             )

@@ -44,10 +44,18 @@ Rectangle {
     property int subtitleLayoutHeight: 0
     property int subtitleReferenceWidth: 0
     property int subtitleReferenceHeight: 0
+    property string watermarkText: ""
+    property int watermarkScalePercent: 100
+    property bool watermarkInteractive: false
+    property bool watermarkEditEnabled: false
     signal subtitleActivated()
     signal subtitleEditingDismissed()
     signal subtitleLayoutPreviewChanged(int fontSize, int positionX, int positionY)
     signal subtitleLayoutCommitted(int fontSize, int positionX, int positionY)
+    signal watermarkActivated()
+    signal watermarkEditingDismissed()
+    signal watermarkScalePreviewChanged(int scalePercent)
+    signal watermarkScaleCommitted(int beforeScalePercent, int afterScalePercent)
     readonly property url effectiveResultSource: subtitleLivePreviewEnabled ? resultBaseSource : resultSource
     readonly property real positionSeconds: scrubController.scrubPositionMs / 1000
     readonly property real durationSeconds: Math.max(inputPlayer.duration, resultPlayer.duration) / 1000
@@ -198,6 +206,15 @@ Rectangle {
         inputPlayer.pause();
         resultPlayer.pause();
         subtitleActivated();
+    }
+
+    function activateWatermarkEditor() {
+        finishFrameRefresh(false);
+        resultPlaybackRequested = false;
+        synchronizedPlayback = false;
+        inputPlayer.pause();
+        resultPlayer.pause();
+        watermarkActivated();
     }
 
     function refreshCurrentFrame(player, inputFrame) {
@@ -479,6 +496,32 @@ Rectangle {
                 }
                 onLayoutCommitted: function(fontSize, positionX, positionY) {
                     root.subtitleLayoutCommitted(fontSize, positionX, positionY);
+                }
+            }
+
+            WatermarkTransformOverlay {
+                objectName: "fullscreenWatermarkTransformOverlay"
+                anchors.fill: fullscreenOutput
+                z: 5
+                videoRect: fullscreenOutput.contentRect
+                watermarkText: root.watermarkText
+                scalePercent: root.watermarkScalePercent
+                timeSeconds: root.positionSeconds
+                referenceWidthPixels: root.subtitleReferenceWidth
+                referenceHeightPixels: root.subtitleReferenceHeight
+                interactive: fullscreenLayer.visible
+                    && root.fullscreenResult
+                    && root.watermarkInteractive
+                    && String(root.resultBaseSource).length > 0
+                editing: root.watermarkEditEnabled
+                livePreviewVisible: root.fullscreenResult && !root.resultSourceSwitching
+                onActivated: root.activateWatermarkEditor()
+                onEditingDismissed: root.watermarkEditingDismissed()
+                onScalePreviewChanged: function(value) {
+                    root.watermarkScalePreviewChanged(value);
+                }
+                onScaleCommitted: function(beforeValue, afterValue) {
+                    root.watermarkScaleCommitted(beforeValue, afterValue);
                 }
             }
 
@@ -781,6 +824,32 @@ Rectangle {
             }
             onLayoutCommitted: function(fontSize, positionX, positionY) {
                 root.subtitleLayoutCommitted(fontSize, positionX, positionY);
+            }
+        }
+
+        WatermarkTransformOverlay {
+            objectName: "inlineWatermarkTransformOverlay"
+            anchors.fill: parent
+            z: 5
+            videoRect: paneVideoOutput.contentRect
+            watermarkText: root.watermarkText
+            scalePercent: root.watermarkScalePercent
+            timeSeconds: root.positionSeconds
+            referenceWidthPixels: root.subtitleReferenceWidth
+            referenceHeightPixels: root.subtitleReferenceHeight
+            interactive: pane === resultPane
+                && !fullscreenLayer.visible
+                && root.watermarkInteractive
+                && String(root.resultBaseSource).length > 0
+            editing: pane === resultPane && root.watermarkEditEnabled
+            livePreviewVisible: pane === resultPane && !root.resultSourceSwitching
+            onActivated: root.activateWatermarkEditor()
+            onEditingDismissed: root.watermarkEditingDismissed()
+            onScalePreviewChanged: function(value) {
+                root.watermarkScalePreviewChanged(value);
+            }
+            onScaleCommitted: function(beforeValue, afterValue) {
+                root.watermarkScaleCommitted(beforeValue, afterValue);
             }
         }
 

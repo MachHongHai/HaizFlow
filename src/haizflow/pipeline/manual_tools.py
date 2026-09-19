@@ -643,8 +643,10 @@ def export_signature(video, *, validate: bool = True) -> str:
         getattr(video, "remove_original_subtitles", True),
         getattr(video, "original_subtitle_removal_mode", "patch"),
         getattr(video, "watermark_text", ""),
+        getattr(video, "watermark_scale_percent", 100),
         getattr(video, "subtitle_layout_override", False),
-        "manual-export-v2",
+        # v3 keeps one subtitle clock across every visual phrase and font size.
+        "manual-export-v3",
     )
 
 
@@ -1011,6 +1013,7 @@ def _publish_subtitles(video, source_path: str) -> dict[str, Any]:
             str(staging / "subtitles.srt"),
             int(style.get("max_chars_per_line", 32)),
             video.video_id,
+            preserve_segment_boundaries=True,
         )
         record = manual_artifacts.publish(
             video.video_id,
@@ -1087,6 +1090,7 @@ def publish_edited_subtitles(video_id: str, segments: list[dict[str, Any]]) -> d
             str(staging / "subtitles.srt"),
             int(style.get("max_chars_per_line", 32)),
             video_id,
+            preserve_segment_boundaries=True,
         )
         artifact_signature = _subtitle_document_signature(video, str(segments_path))
         record = manual_artifacts.publish(
@@ -1708,6 +1712,7 @@ def _run_export(video, reporter) -> None:
                     str(export_srt),
                     int(_style_dict(video).get("max_chars_per_line", 32)),
                     video.video_id,
+                    preserve_segment_boundaries=True,
                 )
             else:
                 # render_video intentionally expects a subtitle file. A
@@ -1754,6 +1759,7 @@ def _run_export(video, reporter) -> None:
                 ),
                 original_subtitle_removal_mode=video.original_subtitle_removal_mode,
                 original_subtitle_intervals=intervals,
+                watermark_scale_percent=getattr(video, "watermark_scale_percent", 100),
             )
             cached = manual_artifacts.publish(
                 video.video_id,

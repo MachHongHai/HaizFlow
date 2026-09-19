@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -99,7 +100,8 @@ class ActivityEventModelTests(unittest.TestCase):
         ])
 
         index = model.index(0, 0)
-        self.assertEqual(model.data(index, model.TimestampRole), "12:34:56")
+        expected_local_time = datetime.fromisoformat("2026-08-31T12:34:56+00:00").astimezone().strftime("%H:%M:%S")
+        self.assertEqual(model.data(index, model.TimestampRole), expected_local_time)
         self.assertEqual(model.data(index, model.StageRole), "MANUAL")
         self.assertEqual(model.data(index, model.TitleRole), "Công cụ Thủ công")
 

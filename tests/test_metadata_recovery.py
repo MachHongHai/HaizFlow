@@ -426,6 +426,17 @@ class VideoMetadataMigrationTests(unittest.TestCase):
 
         self.assertEqual(migrated.watermark_text, "HaizFlow " + ("x" * 71))
 
+    def test_current_metadata_clamps_manual_watermark_scale(self):
+        video = self._create_video()
+        path = Path(video_store.get_video_json_path(video.video_id))
+        current = json.loads(path.read_text(encoding="utf-8"))
+        current["watermark_scale_percent"] = 900
+        path.write_text(json.dumps(current), encoding="utf-8")
+
+        migrated = video_store.get_video(video.video_id)
+
+        self.assertEqual(migrated.watermark_scale_percent, 300)
+
     def test_current_metadata_accepts_nested_manual_file_metadata(self):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))

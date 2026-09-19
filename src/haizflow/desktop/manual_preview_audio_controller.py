@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QObject, QTimer, Signal, Slot
+from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtMultimedia import QAudioFormat, QAudioSink, QMediaDevices
 
 from haizflow.utils.ffmpeg import _binary
@@ -59,6 +59,7 @@ def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
 
 class ManualPreviewAudioController(QObject):
     errorChanged = Signal(str)
+    positionChanged = Signal()
     _ready = Signal(object)
 
     def __init__(self, parent=None):
@@ -72,6 +73,7 @@ class ManualPreviewAudioController(QObject):
         self._video_id = ""
         self._key = ""
         self._cursor = 0
+        self._position_seconds = 0.0
         self._playing = False
         self._muted = False
         self._volumes = {"source": .6, "voice": 1.0, "music": .3}
@@ -83,6 +85,24 @@ class ManualPreviewAudioController(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(10)
         self._timer.timeout.connect(self._pump)
+
+    @Property(float, notify=positionChanged)
+    def positionSeconds(self):
+        """Clock of the samples that have actually reached the audio device.
+
+        The Manual caption renderer follows this clock while playback is
+        active.  QMediaPlayer's video position can lead the separate QAudioSink
+        by one device buffer, which is especially visible on large karaoke
+        captions after a TTS clip has been tempo-fitted to its subtitle slot.
+        """
+        return self._position_seconds
+
+    def _publish_position(self, seconds):
+        value = max(0.0, float(seconds or 0.0))
+        if abs(value - self._position_seconds) < 0.012:
+            return
+        self._position_seconds = value
+        self.positionChanged.emit()
 
     def _decode(self, path, duration=None, fit=False):
         path = Path(path)
@@ -271,9 +291,11 @@ class ManualPreviewAudioController(QObject):
                 self._sink.reset()
                 self._device = None
             self._cursor = max(0, round(seconds * RATE))
+            self._publish_position(seconds)
             return
         if not self._playing:
             self._cursor = max(0, round(seconds * RATE))
+            self._publish_position(seconds)
             self._deferred_ids.clear()
             self._playing = True
             self._timer.start()
@@ -285,6 +307,7 @@ class ManualPreviewAudioController(QObject):
     @Slot(float)
     def seek(self, seconds):
         self._cursor = max(0, round(seconds * RATE))
+        self._publish_position(seconds)
         self._deferred_ids.clear()
         if self._sink:
             self._sink.reset()
@@ -318,6 +341,8 @@ class ManualPreviewAudioController(QObject):
         written = self._device.write(data)
         if written > 0:
             self._cursor += written // 4
+            buffered = max(0, (self._sink.bufferSize() - self._sink.bytesFree()) // 4)
+            self._publish_position(max(0, self._cursor - buffered) / RATE)
 
     @Slot()
     def release(self):
@@ -333,6 +358,7 @@ class ManualPreviewAudioController(QObject):
             self._sink.deleteLater()
             self._sink = None
         self._device = None
+        self._publish_position(0.0)
         self._tracks = []
         self._muted_ids.clear()
         self._deferred_ids.clear()

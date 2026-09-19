@@ -267,6 +267,7 @@ class EditorPreviewController:
             # Normalizing them gives "Giữ nguyên" one stable cache identity.
             "removal_mode": settings["removal_mode"] if removes_source_text else "keep",
             "watermark_text": settings["watermark_text"],
+            "watermark_scale_percent": settings["watermark_scale_percent"],
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
             "original_subtitle_intervals": settings["original_subtitle_intervals"] if removes_source_text else [],
             "preview_encoding": settings["preview_encoding"],
@@ -276,6 +277,7 @@ class EditorPreviewController:
     def _base_visual_cache_payload(settings: dict) -> dict:
         """Fingerprint source effects that do not depend on translated text."""
         removes_source_text = bool(settings["remove_original_subtitles"])
+        live_watermark = not bool(settings.get("independent_manual_preview"))
         return {
             "video_id": settings["video_id"],
             "source_identity": settings["source_identity"],
@@ -283,7 +285,11 @@ class EditorPreviewController:
             "output_format": settings["output_format"],
             "remove_original_subtitles": removes_source_text,
             "removal_mode": settings["removal_mode"] if removes_source_text else "keep",
-            "watermark_text": settings["watermark_text"],
+            # Manual preview composes the moving watermark as a direct QML
+            # layer, just like its subtitles. Text/size edits are therefore
+            # instant and do not invalidate the expensive source proxy.
+            "watermark_text": settings["watermark_text"] if live_watermark else "",
+            "watermark_scale_percent": settings["watermark_scale_percent"] if live_watermark else 100,
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
             "original_subtitle_intervals": settings["original_subtitle_intervals"] if removes_source_text else [],
             "preview_encoding": settings["preview_encoding"],
@@ -407,6 +413,9 @@ class EditorPreviewController:
             "remove_original_subtitles": bool(getattr(video, "remove_original_subtitles", True)),
             "removal_mode": str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
             "watermark_text": str(getattr(video, "watermark_text", "") or ""),
+            "watermark_scale_percent": max(
+                25, min(300, int(getattr(video, "watermark_scale_percent", 100) or 100))
+            ),
             "tts_provider": str(getattr(video, "tts_provider", "edge") or "edge"),
             "tts_voice": str(getattr(video, "tts_voice", "") or ""),
             "target_language": str(getattr(video, "target_language", "vi") or "vi"),
@@ -456,7 +465,7 @@ class EditorPreviewController:
         fingerprint_settings = dict(settings)
         if getattr(video, "project_type", "single") == "manual" and hasattr(self._host, "manualPreviewAudio"):
             settings["independent_manual_preview"] = True
-            settings["preview_encoding"] = "manual-base-pcm-libass-v1"
+            settings["preview_encoding"] = "manual-base-pcm-libass-watermark-overlay-v2"
             fingerprint_settings = self._base_visual_cache_payload(settings)
         if not settings["remove_original_subtitles"]:
             fingerprint_settings.update(
@@ -641,7 +650,7 @@ class EditorPreviewController:
                             settings["source_path"], base_output_path, base_completion_path,
                             [], settings["duration"], settings["output_format"], video.crop,
                             settings["ocr_region"] if settings["remove_original_subtitles"] else None,
-                            settings["watermark_text"], False, settings["removal_mode"], .03, .94,
+                            "", False, settings["removal_mode"], .03, .94,
                             subtitle_region_override=None,
                             original_subtitle_intervals=settings["original_subtitle_intervals"]):
                             return
@@ -878,6 +887,7 @@ class EditorPreviewController:
                 compatibility_preview=True,
                 subtitle_region_override=subtitle_region_override,
                 original_subtitle_intervals=original_subtitle_intervals,
+                watermark_scale_percent=getattr(video, "watermark_scale_percent", 100),
                 progress_callback=lambda fraction: self._set_progress(
                     generation,
                     progress_start + max(0.0, min(1.0, float(fraction))) * progress_span,

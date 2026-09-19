@@ -18,7 +18,7 @@ FloatingToolDialog {
     }
 
     function openWithLayout(fontSize, positionX, positionY, boxWidth, boxHeight) {
-        draftFontSize = root.clamp(Number(fontSize), 10, 160)
+        draftFontSize = root.clamp(Number(fontSize), 10, 240)
         draftPositionX = root.clamp(Number(positionX), 0, 100)
         draftPositionY = root.clamp(Number(positionY), 0, 100)
         draftBoxWidth = root.clamp(Number(boxWidth), 20, 100)
@@ -157,7 +157,7 @@ FloatingToolDialog {
             AppSlider {
                 Layout.fillWidth: true
                 from: 10
-                to: 160
+                to: 240
                 stepSize: 1
                 value: root.draftFontSize
                 onMoved: root.draftFontSize = Math.round(value)

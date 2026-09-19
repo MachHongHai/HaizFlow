@@ -64,6 +64,32 @@ class EditorPreviewControllerTests(unittest.TestCase):
             EditorPreviewController._audio_cache_payload(changed),
         )
 
+    def test_manual_watermark_is_a_live_layer_not_a_base_proxy_dependency(self):
+        settings = {
+            "video_id": "video-1",
+            "source_identity": {"path": "input.mp4", "size": 1},
+            "crop": {},
+            "output_format": "keep_ratio",
+            "remove_original_subtitles": True,
+            "removal_mode": "patch",
+            "watermark_text": "HaizFlow",
+            "watermark_scale_percent": 100,
+            "ocr_region": {},
+            "original_subtitle_intervals": [],
+            "preview_encoding": "manual-base-pcm-libass-watermark-overlay-v2",
+            "independent_manual_preview": True,
+        }
+        changed = dict(
+            settings,
+            watermark_text="Mạch Hồng Hải",
+            watermark_scale_percent=240,
+        )
+
+        self.assertEqual(
+            EditorPreviewController._base_visual_cache_payload(settings),
+            EditorPreviewController._base_visual_cache_payload(changed),
+        )
+
     def test_completing_manual_voice_invalidates_a_silent_preview_request(self):
         settings = {
             "video_id": "video-1",

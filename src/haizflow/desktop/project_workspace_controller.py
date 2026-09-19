@@ -93,6 +93,9 @@ class ProjectWorkspaceController:
         host._background_music_volume = getattr(video, "background_music_volume", 30)
         host._tts_volume = getattr(video, "tts_volume", 100)
         host._watermark_text = str(getattr(video, "watermark_text", "") or "")
+        host._watermark_scale_percent = max(
+            25, min(300, int(getattr(video, "watermark_scale_percent", 100) or 100))
+        )
         host._remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
         host._original_subtitle_removal_mode = str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch")
         host._subtitle_style = video.subtitle_style
@@ -148,6 +151,7 @@ class ProjectWorkspaceController:
         host.backgroundMusicVolumeChanged.emit()
         host.ttsVolumeChanged.emit()
         host.watermarkTextChanged.emit()
+        host.watermarkScalePercentChanged.emit()
         host.subtitleSettingsChanged.emit()
         host.cropSettingsChanged.emit()
         host.backgroundMusicChanged.emit()

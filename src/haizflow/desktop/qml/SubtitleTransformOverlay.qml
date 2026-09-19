@@ -68,7 +68,7 @@ Item {
 
     function commit() {
         layoutCommitted(
-            Math.round(clamp(draftFontSize, 10, 160)),
+            Math.round(clamp(draftFontSize, 10, 240)),
             Math.round(clamp(draftPositionX, 0, 100)),
             Math.round(clamp(draftPositionY, 0, 100))
         );
@@ -76,7 +76,7 @@ Item {
 
     function publishPreview() {
         layoutPreviewChanged(
-            Math.round(clamp(draftFontSize, 10, 160)),
+            Math.round(clamp(draftFontSize, 10, 240)),
             Math.round(clamp(draftPositionX, 0, 100)),
             Math.round(clamp(draftPositionY, 0, 100))
         );
@@ -190,9 +190,9 @@ Item {
                 else if (event.key === Qt.Key_Down)
                     root.draftPositionY = root.clamp(root.draftPositionY + step, 0, 100);
                 else if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal)
-                    root.draftFontSize = root.clamp(root.draftFontSize + step, 10, 160);
+                    root.draftFontSize = root.clamp(root.draftFontSize + step, 10, 240);
                 else if (event.key === Qt.Key_Minus)
-                    root.draftFontSize = root.clamp(root.draftFontSize - step, 10, 160);
+                    root.draftFontSize = root.clamp(root.draftFontSize - step, 10, 240);
                 else
                     return;
                 event.accepted = true;
@@ -268,80 +268,90 @@ Item {
                 }
             }
 
-            ScaleHandle {
+            CornerScaleHandle {
                 id: topLeftHandle
+                selectionItem: selection
+                coordinateItem: root
                 horizontalDirection: -1
                 verticalDirection: -1
+                currentValue: root.draftFontSize
+                minimumValue: 10
+                maximumValue: 240
+                objectNamePrefix: "subtitleScaleHandle"
+                visible: root.editing
+                onResizeStarted: root.activateEditor()
+                onValuePreviewed: function(value) {
+                    root.draftFontSize = value;
+                    root.publishPreview();
+                }
+                onValueCommitted: function(_beforeValue, value) {
+                    root.draftFontSize = value;
+                    root.commit();
+                }
             }
-            ScaleHandle {
+            CornerScaleHandle {
                 id: topRightHandle
+                selectionItem: selection
+                coordinateItem: root
                 horizontalDirection: 1
                 verticalDirection: -1
+                currentValue: root.draftFontSize
+                minimumValue: 10
+                maximumValue: 240
+                objectNamePrefix: "subtitleScaleHandle"
+                visible: root.editing
+                onResizeStarted: root.activateEditor()
+                onValuePreviewed: function(value) {
+                    root.draftFontSize = value;
+                    root.publishPreview();
+                }
+                onValueCommitted: function(_beforeValue, value) {
+                    root.draftFontSize = value;
+                    root.commit();
+                }
             }
-            ScaleHandle {
+            CornerScaleHandle {
                 id: bottomLeftHandle
+                selectionItem: selection
+                coordinateItem: root
                 horizontalDirection: -1
                 verticalDirection: 1
+                currentValue: root.draftFontSize
+                minimumValue: 10
+                maximumValue: 240
+                objectNamePrefix: "subtitleScaleHandle"
+                visible: root.editing
+                onResizeStarted: root.activateEditor()
+                onValuePreviewed: function(value) {
+                    root.draftFontSize = value;
+                    root.publishPreview();
+                }
+                onValueCommitted: function(_beforeValue, value) {
+                    root.draftFontSize = value;
+                    root.commit();
+                }
             }
-            ScaleHandle {
+            CornerScaleHandle {
                 id: bottomRightHandle
+                selectionItem: selection
+                coordinateItem: root
                 horizontalDirection: 1
                 verticalDirection: 1
+                currentValue: root.draftFontSize
+                minimumValue: 10
+                maximumValue: 240
+                objectNamePrefix: "subtitleScaleHandle"
+                visible: root.editing
+                onResizeStarted: root.activateEditor()
+                onValuePreviewed: function(value) {
+                    root.draftFontSize = value;
+                    root.publishPreview();
+                }
+                onValueCommitted: function(_beforeValue, value) {
+                    root.draftFontSize = value;
+                    root.commit();
+                }
             }
         }
     }
-
-    component ScaleHandle: Rectangle {
-        id: handle
-
-        required property int horizontalDirection
-        required property int verticalDirection
-        readonly property bool pressed: resizeArea.pressed
-        property real startDistance: 1
-        property int startFontSize: 60
-
-        visible: root.editing
-        z: 4
-        x: horizontalDirection < 0 ? 0 : selection.width - width
-        y: verticalDirection < 0 ? 0 : selection.height - height
-        width: 10
-        height: 10
-        radius: 2
-        color: Theme.focus
-        border.width: 2
-        border.color: Theme.surface
-
-        MouseArea {
-            id: resizeArea
-            anchors.fill: parent
-            anchors.margins: -7
-            cursorShape: handle.horizontalDirection === handle.verticalDirection
-                ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor
-
-            onPressed: function(mouse) {
-                root.activateEditor();
-                const point = mapToItem(videoCanvas, mouse.x, mouse.y);
-                const centerX = selection.x + selection.width / 2;
-                const centerY = selection.y + selection.height / 2;
-                handle.startDistance = Math.max(1, Math.hypot(point.x - centerX, point.y - centerY));
-                handle.startFontSize = root.draftFontSize;
-            }
-            onPositionChanged: function(mouse) {
-                if (!pressed)
-                    return;
-                const point = mapToItem(videoCanvas, mouse.x, mouse.y);
-                const centerX = selection.x + selection.width / 2;
-                const centerY = selection.y + selection.height / 2;
-                const distance = Math.max(1, Math.hypot(point.x - centerX, point.y - centerY));
-                root.draftFontSize = root.clamp(
-                    handle.startFontSize * distance / handle.startDistance,
-                    10,
-                    160
-                );
-                root.publishPreview();
-            }
-            onReleased: root.commit()
-        }
-    }
-
 }
