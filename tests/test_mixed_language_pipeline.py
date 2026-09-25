@@ -50,6 +50,56 @@ class _AsrModel:
 
 
 class MixedLanguagePipelineTests(unittest.TestCase):
+    def test_whisperx_vad_uses_separate_small_batch_and_recovers_from_oom(self):
+        inference = SimpleNamespace(batch_size=32)
+        pipeline = mock.Mock(_segmentation=inference)
+        model = mock.Mock(vad_model=SimpleNamespace(vad_pipeline=pipeline))
+        attempted_batches = []
+
+        def run(_audio, *, batch_size, language):
+            self.assertEqual(batch_size, 8)
+            self.assertIsNone(language)
+            attempted_batches.append(inference.batch_size)
+            if len(attempted_batches) < 3:
+                raise MemoryError(f"batch_size ({inference.batch_size: d}) is probably too large")
+            return {"segments": [{"text": "hello"}]}
+
+        model.transcribe.side_effect = run
+        profile = SimpleNamespace(whisper_batch_size=8, total_vram_bytes=8 * 1024**3)
+        with (
+            mock.patch.object(transcribe, "check_cancellation"),
+            mock.patch.object(transcribe, "log_to_video"),
+        ):
+            result = transcribe._transcribe_with_vad_recovery(model, np.zeros(16000), profile, "cuda", "video-1")
+
+        self.assertEqual(attempted_batches, [4, 2, 1])
+        self.assertEqual(result["segments"][0]["text"], "hello")
+        pipeline.to.assert_not_called()
+
+    def test_whisperx_vad_moves_to_cpu_when_gpu_batch_one_still_fails(self):
+        inference = SimpleNamespace(batch_size=32)
+        pipeline = mock.Mock(_segmentation=inference)
+        model = mock.Mock(vad_model=SimpleNamespace(vad_pipeline=pipeline))
+        attempts = 0
+
+        def run(_audio, **_kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise MemoryError("batch_size ( 1) is probably too large")
+            return {"segments": [{"text": "hello"}]}
+
+        model.transcribe.side_effect = run
+        profile = SimpleNamespace(whisper_batch_size=1, total_vram_bytes=8 * 1024**3)
+        with (
+            mock.patch.object(transcribe, "check_cancellation"),
+            mock.patch.object(transcribe, "log_to_video"),
+        ):
+            transcribe._transcribe_with_vad_recovery(model, np.zeros(16000), profile, "cuda", "video-1")
+
+        pipeline.to.assert_called_once_with(transcribe.torch.device("cpu"))
+        self.assertEqual(attempts, 2)
+
     def test_empty_whisper_result_is_rejected_before_translation(self):
         with self.assertRaisesRegex(RuntimeError, "found no speech segments"):
             transcribe._validate_timestamp_invariants([], 10.0)
@@ -294,6 +344,47 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         self.assertEqual(len(split), 1)
         self.assertEqual(split[0]["text"], text)
         self.assertEqual((split[0]["start"], split[0]["end"]), (0.0, 24.0))
+
+    def test_chinese_speech_windows_leave_real_pauses_outside_voice_slots(self):
+        windows = transcribe._speech_windows_in_segment(
+            [(1.0, 2.5), (2.7, 3.8), (5.7, 7.1), (9.0, 10.2)],
+            0.5,
+            11.0,
+        )
+
+        self.assertEqual(windows, [(1.0, 3.8), (5.7, 7.1), (9.0, 10.2)])
+
+    def test_chinese_long_segment_is_retranscribed_per_speech_window(self):
+        audio = np.zeros(16_000 * 12, dtype=np.float32)
+        original = [{"start": 0.0, "end": 11.0, "text": "第一句第二句", "language": "zh"}]
+        model = mock.Mock()
+        model.transcribe.side_effect = [
+            {"segments": [{"text": "第一句"}]},
+            {"segments": [{"text": "第二句"}]},
+        ]
+        with (
+            mock.patch.object(
+                transcribe,
+                "_speech_windows_in_segment",
+                return_value=[(1.0, 2.5), (5.0, 6.5)],
+            ),
+            mock.patch("whisperx.vads.pyannote.Binarize") as binarize,
+            mock.patch.object(transcribe, "log_to_video"),
+        ):
+            speech = mock.Mock()
+            speech.get_timeline.return_value = [
+                SimpleNamespace(start=1.0, end=2.5),
+                SimpleNamespace(start=5.0, end=6.5),
+            ]
+            binarize.return_value.return_value = speech
+            model.vad_model.preprocess_audio.return_value = audio
+            model._vad_params = {"vad_onset": 0.5, "vad_offset": 0.36}
+            output = transcribe._split_long_chinese_speech(model, audio, original, 8, "test-video")
+
+        self.assertEqual([(item["start"], item["end"], item["text"]) for item in output], [
+            (1.0, 2.5, "第一句"),
+            (5.0, 6.5, "第二句"),
+        ])
 
     def test_short_first_sentence_is_coalesced_forward(self):
         segment = {

@@ -27,7 +27,8 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: Theme.space12
+        anchors.margins: UiMetrics.pageMargin
+        spacing: Theme.space16
 
         PageHeader {
             Layout.fillWidth: true
@@ -105,16 +106,16 @@ Item {
 
         GridView {
             id: projectGrid
-            readonly property int columnCount: Math.max(1, Math.floor((width + Theme.space16) / (236 + Theme.space16)))
+            readonly property int columnCount: Math.max(1, Math.floor((width + Theme.space20) / (224 + Theme.space20)))
             readonly property real cellContentWidth: Math.floor(width / columnCount)
-            readonly property real cardWidth: Math.min(260, Math.max(190, cellContentWidth - Theme.space16))
+            readonly property real cardWidth: Math.max(1, cellContentWidth - Theme.space20)
             readonly property real cardHeight: Math.round(cardWidth * 0.56 + 64)
 
             Layout.fillWidth: true
             Layout.fillHeight: true
             model: root.projectModel
             cellWidth: cellContentWidth
-            cellHeight: cardHeight + Theme.space16
+            cellHeight: cardHeight + Theme.space20
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             reuseItems: true

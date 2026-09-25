@@ -19,6 +19,7 @@ from haizflow.pipeline.extract_audio import extract_audio
 from haizflow.pipeline.process_registry import check_cancellation, clean_video, is_cancelled, is_paused, start_video
 from haizflow.pipeline.render import render_video
 from haizflow.pipeline.subtitle import generate_srt
+from haizflow.pipeline.timing_contract import AUDIO_TIMELINE_VERSION, TIMING_SOURCE
 from haizflow.pipeline.tts import generate_voice_parts, resolve_tts_provider
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services.video_store import get_video, log_to_video, update_video
@@ -31,7 +32,6 @@ from haizflow.services.translation import (
 from haizflow.utils.ffmpeg import validate_video_integrity
 
 
-TIMING_SOURCE = "whisperx-context-aligned-sentences-v9-semantic-source"
 
 
 def separate_audio(*args, **kwargs):
@@ -523,7 +523,10 @@ def process_video_sync(
 
         clear_omnivoice_runtime()
         profile = runtime_profile()
-        if profile.warm_hymt2_on_startup and not is_hymt2_worker_warm():
+        if getattr(profile, "key", "") == "cuda_low_memory" or getattr(profile, "total_ram_gib", 24) < 24:
+            shutdown_hymt2_worker()
+            log_to_video(video_id, "Released HY-MT2 before speech recognition to preserve memory.")
+        elif profile.warm_hymt2_on_startup and not is_hymt2_worker_warm():
             _ensure_gpu_available("translation model warm-up")
             reporter.update(4, "loading_models", "Preparing HY-MT2 translation model")
             log_to_video(video_id, "Preparing HY-MT2 before WhisperX to avoid peak memory usage.")
@@ -847,6 +850,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         _file_state((video.files or {}).get("background_music") or ""),
         getattr(video, "background_music_volume", 30),
         getattr(video, "tts_volume", 100),
+        AUDIO_TIMELINE_VERSION,
         "exclusive-audio-source-v4-source-speech-window-sync",
     )
     if _checkpoint_valid(video, "timeline", timeline_signature, [voice_output]) or _recovery_checkpoint_valid(
@@ -900,9 +904,18 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         original_subtitle_removal_mode,
         original_subtitle_region,
         original_subtitle_intervals,
-        "watermark-bold-italic-keyline-v3",
+        "watermark-media-and-text-style-v4",
         getattr(video, "watermark_text", ""),
         getattr(video, "watermark_scale_percent", 100),
+        getattr(video, "watermark_kind", "text"),
+        getattr(video, "watermark_opacity_percent", 46),
+        getattr(video, "watermark_outline_percent", 100),
+        _file_state((video.files or {}).get("watermark_image") or ""),
+        _file_state((video.files or {}).get("watermark_video") or ""),
+        getattr(video, "watermark_font_family", "Arial"),
+        getattr(video, "watermark_text_color", "#FFFFFF"),
+        getattr(video, "watermark_bold", True),
+        getattr(video, "watermark_italic", True),
         manual_subtitle_layout,
     )
     if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(
@@ -940,6 +953,15 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             original_subtitle_removal_mode=original_subtitle_removal_mode,
             original_subtitle_intervals=original_subtitle_intervals,
             watermark_scale_percent=getattr(video, "watermark_scale_percent", 100),
+            watermark_kind=getattr(video, "watermark_kind", "text"),
+            watermark_image_path=str((video.files or {}).get("watermark_image") or ""),
+            watermark_video_path=str((video.files or {}).get("watermark_video") or ""),
+            watermark_opacity_percent=getattr(video, "watermark_opacity_percent", 46),
+            watermark_outline_percent=getattr(video, "watermark_outline_percent", 100),
+            watermark_font_family=getattr(video, "watermark_font_family", "Arial"),
+            watermark_text_color=getattr(video, "watermark_text_color", "#FFFFFF"),
+            watermark_bold=getattr(video, "watermark_bold", True),
+            watermark_italic=getattr(video, "watermark_italic", True),
         )
         _mark_checkpoint(video, "render", render_signature)
 

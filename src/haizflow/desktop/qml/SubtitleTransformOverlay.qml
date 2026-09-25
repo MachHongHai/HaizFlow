@@ -67,6 +67,8 @@ Item {
     }
 
     function commit() {
+        previewDebounce.stop();
+        emitPreview();
         layoutCommitted(
             Math.round(clamp(draftFontSize, 10, 240)),
             Math.round(clamp(draftPositionX, 0, 100)),
@@ -75,11 +77,22 @@ Item {
     }
 
     function publishPreview() {
+        previewDebounce.restart();
+    }
+
+    function emitPreview() {
         layoutPreviewChanged(
             Math.round(clamp(draftFontSize, 10, 240)),
             Math.round(clamp(draftPositionX, 0, 100)),
             Math.round(clamp(draftPositionY, 0, 100))
         );
+    }
+
+    Timer {
+        id: previewDebounce
+        interval: 120
+        repeat: false
+        onTriggered: root.emitPreview()
     }
 
     function activateEditor() {

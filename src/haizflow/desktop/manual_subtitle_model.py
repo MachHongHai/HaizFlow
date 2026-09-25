@@ -39,6 +39,7 @@ class ManualSubtitleModel(QAbstractListModel):
     saveFailed = Signal(str, str, str)
     published = Signal(str, int, bool)
     _completed = Signal(object)
+    _documentCompleted = Signal(object)
     _roles = ("segmentId", "text", "startMs", "endMs", "revision", "saveState", "voiceState")
 
     def __init__(self, parent=None, history=None):
@@ -51,6 +52,7 @@ class ManualSubtitleModel(QAbstractListModel):
         self._closed = False
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="subtitle-save")
         self._completed.connect(self._accept_result)
+        self._documentCompleted.connect(self._accept_document_result)
 
     def roleNames(self):
         return {Qt.UserRole + i + 1: name.encode() for i, name in enumerate(self._roles)}
@@ -92,6 +94,76 @@ class ManualSubtitleModel(QAbstractListModel):
         self._states.clear()
         self.endResetModel()
         self.changed.emit()
+
+    def replace_timeline(self, segments: list[dict]) -> bool:
+        """Persist a timeline-derived subtitle snapshot without new history.
+
+        Source ripple editing is already represented by one editor command.
+        Recording a second subtitle command would make Undo require two steps,
+        so this method only mirrors the committed editor document into the
+        working subtitle document and its immutable artifact.
+        """
+        if self._closed or not self.video_id:
+            return False
+        incoming = identify_segments(self.video_id, segments)
+        comparable = lambda values: [
+            (
+                str(item.get("segment_id") or ""),
+                str(item.get("text") or ""),
+                round(float(item.get("start") or 0), 6),
+                round(float(item.get("end") or 0), 6),
+            )
+            for item in values
+        ]
+        if comparable(incoming) == comparable(self._segments):
+            return False
+
+        self._revision += 1
+        current_by_id = {str(item.get("segment_id") or ""): item for item in self._segments}
+        for item in incoming:
+            segment_id = str(item.get("segment_id") or "")
+            previous = current_by_id.get(segment_id)
+            if previous and (
+                str(previous.get("text") or "") == str(item.get("text") or "")
+                and round(float(previous.get("start") or 0), 6) == round(float(item.get("start") or 0), 6)
+                and round(float(previous.get("end") or 0), 6) == round(float(item.get("end") or 0), 6)
+            ):
+                item["revision"] = int(previous.get("revision", 0))
+            else:
+                item["revision"] = self._revision
+
+        self.beginResetModel()
+        self._segments = incoming
+        self._states = {str(item["segment_id"]): "saving" for item in incoming}
+        self.endResetModel()
+        self.changed.emit()
+
+        video_id = self.video_id
+        revision = self._revision
+        snapshot = copy.deepcopy(incoming)
+
+        def persist():
+            try:
+                from haizflow.pipeline.manual_tools import publish_edited_subtitles
+                from haizflow.services.manual_artifacts import cache_root
+
+                path = cache_root(video_id) / "working" / "document.json"
+                write_document(path, snapshot, revision)
+                publish_edited_subtitles(video_id, snapshot)
+                return (video_id, revision, "")
+            except Exception as exc:
+                return (video_id, revision, str(exc))
+
+        def complete(future):
+            try:
+                result = future.result()
+            except CancelledError:
+                return
+            if not self._closed:
+                self._documentCompleted.emit(result)
+
+        self._executor.submit(persist).add_done_callback(complete)
+        return True
 
     @Slot(str, str, int, str, result=bool)
     def saveText(self, segment_id, text, expected_revision, request_id):
@@ -220,6 +292,21 @@ class ManualSubtitleModel(QAbstractListModel):
         else:
             self.saved.emit(segment_id, revision, request_id)
             self.published.emit(video_id, revision, text_changed)
+
+    @Slot(object)
+    def _accept_document_result(self, result):
+        video_id, revision, error = result
+        if video_id != self.video_id or revision != self._revision:
+            return
+        state = "error" if error else "saved"
+        self._states = {str(item["segment_id"]): state for item in self._segments}
+        if self._segments:
+            self.dataChanged.emit(self.index(0), self.index(len(self._segments) - 1))
+        self.changed.emit()
+        if error:
+            self.saveFailed.emit("", "timeline", error)
+        else:
+            self.published.emit(video_id, revision, False)
 
     def close(self):
         if self._closed:

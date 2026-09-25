@@ -89,6 +89,12 @@ class SmartWarmupController:
     def request(self, capability: str, context: dict | None = None, *, priority: int = 20) -> None:
         if self._stopping or self._suspended or not bool(getattr(self._host, "_keep_models_warm", True)):
             return
+        profile = runtime_profile()
+        # Speculative model loads can overlap the first foreground request.
+        # On a 16 GB / 8 GB VRAM machine even one idle speech or translation
+        # model can prevent the next model from mapping its weights on Windows.
+        if profile.total_ram_gib < 24 or (profile.cuda_available and profile.total_vram_gib < 12):
+            return
         capability = str(capability or "").strip().lower()
         if capability not in {"recognition", "translation", "voice", "separation", "ocr"}:
             return

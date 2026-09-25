@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -535,10 +536,61 @@ class ResourcePackManager:
                 return pack_id
         return ""
 
+    def warm_engine_pack(self, capability: str, context: dict | None = None) -> str:
+        """Return an engine suitable for isolated speculative warm-up.
+
+        Source checkouts may still expose AI dependencies from the application
+        virtual environment.  Those dependencies are never imported by Qt:
+        the warm-up pool hosts them through the same JSON-lines protocol used
+        by installed resource engines.  Foreground source-mode tools retain
+        their existing subprocess paths and testable command contracts.
+        """
+
+        installed = self.external_engine_pack(capability, context)
+        if installed:
+            return installed
+        for pack_id in self.required_packs(capability, context):
+            definition = self.definitions.get(pack_id)
+            if (
+                definition is not None
+                and definition.engine_modules
+                and self._bundled_engine_available(definition)
+            ):
+                return pack_id
+        return ""
+
+    @staticmethod
+    def _bundled_engine_command(definition: ResourcePackDefinition, command_name: str) -> list[str]:
+        """Run a source/development AI runtime behind the engine boundary."""
+
+        profile = ENGINE_PROFILE_BY_PACK.get(definition.pack_id, "")
+        base = [sys.executable, "-m", "haizflow.engine.main"]
+        if command_name == "smoke_command":
+            return [*base, "--smoke", "--profile", profile] if profile else []
+        if command_name == "rpc_command":
+            return [*base, "--rpc"]
+        if command_name == "hymt2_server":
+            return [*base, "--hymt2-worker", "--server"]
+        if command_name == "omnivoice_worker":
+            return [*base, "--omnivoice-worker"]
+        if command_name == "omnivoice_server":
+            return [*base, "--omnivoice-server"]
+        if command_name == "demucs":
+            return [*base, "--demucs-separate"]
+        if command_name in {"demucs_task", "transcribe", "subtitle_ocr"}:
+            return base
+        if command_name == "runtime_probe":
+            return [*base, "--runtime-probe"]
+        return []
+
     def engine_command(self, pack_id: str, command_name: str) -> list[str]:
         """Resolve a command declared by an installed engine without shell expansion."""
         definition = self.definitions.get(str(pack_id))
-        if definition is None or not definition.engine_modules or not self._engine_is_valid(definition):
+        if definition is None or not definition.engine_modules:
+            return []
+        if not self._engine_is_valid(definition):
+            if self._bundled_engine_available(definition):
+                return self._bundled_engine_command(definition, str(command_name))
             return []
         root = self._engine_marker(definition).parent.resolve()
         try:

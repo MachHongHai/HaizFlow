@@ -191,6 +191,15 @@ def translate_segments(
 def _worker_command() -> list[str]:
     from haizflow.services.resource_packs import installed_engine_command
 
+    # On an 8 GB GPU, use the installed CPU speech pack's Q4 translator when
+    # available. The CUDA engine pack does not include llama_cpp, and loading
+    # full HY-MT2 alongside Whisper can exhaust both Windows commit and VRAM.
+    if runtime_profile().key == "cuda_low_memory":
+        cpu_engine = installed_engine_command(
+            "translation", "hymt2_server", {"device": "cpu"}
+        )
+        if cpu_engine:
+            return cpu_engine
     external = installed_engine_command(
         "translation",
         "hymt2_server",
@@ -254,6 +263,17 @@ def _last_worker_stage(worker_output: list[str]) -> str:
         if event.get("event") == "status" and event.get("detail"):
             return str(event["detail"])
     return "worker startup"
+
+
+def _worker_error_message(error: str, diagnostic_path: str) -> str:
+    if "os error 1455" in error.lower() or "paging file is too small" in error.lower():
+        return (
+            "Windows không đủ bộ nhớ ảo để nạp HY-MT2 (lỗi 1455). "
+            "Đóng ứng dụng dùng nhiều bộ nhớ hoặc tăng dung lượng page file, "
+            "rồi chạy lại bước nhận dạng và dịch. Bước tạo giọng chưa bắt đầu. "
+            f"Log kỹ thuật: {diagnostic_path or 'unavailable'}"
+        )
+    return f"{error} Diagnostic log: {diagnostic_path or 'unavailable'}"
 
 
 def _format_worker_exit(
@@ -335,7 +355,7 @@ def _schedule_worker_idle_shutdown() -> None:
     global _WORKER_IDLE_TIMER
     profile = runtime_profile()
     _cancel_worker_idle_timer()
-    if not profile.is_cpu_only or profile.translation_idle_seconds <= 0:
+    if profile.translation_idle_seconds <= 0:
         return
     timer = threading.Timer(profile.translation_idle_seconds, shutdown_hymt2_worker)
     timer.name = "hymt2-idle-shutdown"
@@ -527,7 +547,7 @@ def warm_hymt2_worker(status_callback=None) -> None:
                     error = str(event["error"])
                     diagnostic_path = _worker_diagnostic_path(process)
                     _terminate_hymt2_worker(process)
-                    raise RuntimeError(f"{error} Diagnostic log: {diagnostic_path or 'unavailable'}")
+                    raise RuntimeError(_worker_error_message(error, diagnostic_path))
                 if event.get("warmed"):
                     with _WORKER_LOCK:
                         if process is not _WORKER_PROCESS or process.poll() is not None:
@@ -644,7 +664,7 @@ def _translate_with_hymt2_worker(
                     error = str(event["error"])
                     diagnostic_path = _worker_diagnostic_path(process)
                     _terminate_hymt2_worker(process)
-                    raise RuntimeError(f"{error} Diagnostic log: {diagnostic_path or 'unavailable'}")
+                    raise RuntimeError(_worker_error_message(error, diagnostic_path))
                 translations = event.get("translations")
                 if not isinstance(translations, list) or len(translations) != len(texts) or not all(isinstance(text, str) for text in translations):
                     raise RuntimeError("HY-MT2 worker returned an invalid translation result.")
@@ -653,10 +673,10 @@ def _translate_with_hymt2_worker(
                         raise RuntimeError("HY-MT2 translation worker was stopped before it completed.")
                     _WORKER_WARM = True
                     _schedule_worker_idle_shutdown()
-                if runtime_profile().is_cpu_only:
+                if runtime_profile().translation_idle_seconds > 0:
                     log_to_video(
                         video_id,
-                        f"HY-MT2 CPU model stays warm for {runtime_profile().translation_idle_seconds} seconds.",
+                        f"HY-MT2 model stays warm for {runtime_profile().translation_idle_seconds} seconds.",
                     )
                 else:
                     log_to_video(video_id, "HY-MT2 translation completed; model stays warm for the next video.")

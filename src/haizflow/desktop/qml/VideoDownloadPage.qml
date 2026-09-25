@@ -125,28 +125,22 @@ Item {
                         }
                     }
 
-                    RowLayout {
+                    DownloadDestinationRow {
                         Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.downloader.videoOutputDirectory.length > 0 ? root.downloader.videoOutputDirectory : qsTr("Chưa chọn thư mục")
-                            color: root.downloader.videoOutputDirectory.length > 0 ? Theme.text : Theme.textMuted
-                            elide: Text.ElideMiddle
-                            textFormat: Text.PlainText
-                        }
-                        StudioButton {
-                            visible: !root.downloader.outputManaged
-                            text: qsTr("Chọn thư mục")
-                            onClicked: root.downloader.chooseVideoOutputDirectory()
-                        }
+                        directory: root.downloader.videoOutputDirectory
+                        managed: root.downloader.outputManaged
+                        onChooseRequested: root.downloader.chooseVideoOutputDirectory()
                     }
 
-                    StudioButton {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: qsTr("Tải video")
-                        variant: "primary"
-                        enabled: root.downloader.videoPreviewReady && root.downloader.videoOutputDirectory.length > 0
-                        onClicked: root.downloader.downloadVideo(root.downloader.videoPreviewUrl)
+                        Item { Layout.fillWidth: true }
+                        StudioButton {
+                            text: qsTr("Tải video")
+                            variant: "primary"
+                            enabled: root.downloader.videoPreviewReady && root.downloader.videoOutputDirectory.length > 0
+                            onClicked: root.downloader.downloadVideo(root.downloader.videoPreviewUrl)
+                        }
                     }
                 }
 

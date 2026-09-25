@@ -42,11 +42,12 @@ ComboBox {
             Layout.fillHeight: true
             text: root.displayText
             color: root.enabled ? Theme.text : Theme.textDisabled
-            font: root.font
+            font.family: root.font.family
+            font.pixelSize: root.font.pixelSize
             fontSizeMode: Text.FixedSize
             verticalAlignment: Text.AlignVCenter
             textFormat: Text.PlainText
-            elide: Text.ElideNone
+            elide: Text.ElideRight
         }
     }
 
@@ -171,7 +172,7 @@ ComboBox {
                     font.weight: voiceDelegate.highlighted ? Font.DemiBold : Font.Normal
                     verticalAlignment: Text.AlignVCenter
                     textFormat: Text.PlainText
-                    elide: Text.ElideNone
+                    elide: Text.ElideRight
                 }
             }
         }

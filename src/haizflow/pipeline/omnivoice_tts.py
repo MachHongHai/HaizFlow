@@ -336,6 +336,8 @@ def _worker_environment() -> dict[str, str]:
     environment["PYTHONUTF8"] = "1"
     environment["HF_HUB_OFFLINE"] = "1"
     environment["TRANSFORMERS_OFFLINE"] = "1"
+    environment["OMP_NUM_THREADS"] = "1"
+    environment["MKL_NUM_THREADS"] = "1"
     # Development/source launches do not necessarily inherit the editable
     # install's ``src`` entry.  The long-lived worker is started with
     # ``python -m haizflow...``; without this path both the warm worker and its
@@ -473,10 +475,7 @@ def _run_worker_process(
     progress_callback=None,
 ) -> tuple[int, str]:
     """Run one isolated inference attempt and surface stage progress."""
-    environment = os.environ.copy()
-    environment["PYTHONUTF8"] = "1"
-    environment["HF_HUB_OFFLINE"] = "1"
-    environment["TRANSFORMERS_OFFLINE"] = "1"
+    environment = _worker_environment()
     process = subprocess.Popen(
         _worker_command(request_path),
         cwd=str(Path(__file__).resolve().parents[3]),
@@ -574,6 +573,9 @@ def _run_worker_process(
     detail = str(stderr or "")
     if monitor_state["abort_reason"]:
         detail = f"{detail}\n{monitor_state['abort_reason']}".strip()
+    if process.returncode and not detail:
+        code = int(process.returncode) & 0xFFFFFFFF
+        detail = f"OmniVoice worker exited during model loading (0x{code:08X})."
     return int(process.returncode or 0), detail
 
 
@@ -1027,6 +1029,15 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
         modules = (np, sf, torch, OmniVoice)
         runtime["modules"] = modules
     np, sf, torch, OmniVoice = modules
+
+    # On Windows the default CPU parallel pools can fault inside torch_cpu.dll
+    # while mapping OmniVoice's multi-gigabyte checkpoints, even for CUDA
+    # inference. Configure them before from_pretrained initializes workers.
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass
 
     items = request.get("items") or []
     status_path = Path(str(request.get("status_path") or ""))

@@ -14,6 +14,10 @@ from haizflow.schemas.video import CropSettings, SubtitleStyle
 
 
 class TimelineRenderTests(unittest.TestCase):
+    def test_registered_font_names_are_normalised_to_the_qt_family(self):
+        self.assertEqual(render._normalise_font_name("Segoe UI Bold (TrueType)"), "segoe ui")
+        self.assertEqual(render._normalise_font_name("Roboto Italic (OpenType)"), "roboto")
+
     def test_preview_subtitle_region_preserves_the_transformed_ocr_box(self):
         mapped = render.map_subtitle_region_to_output_percent(
             {
@@ -415,6 +419,24 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("fontcolor=white@0.46", enlarged_watermark)
         self.assertIn("sin(2*PI*t/31)", enlarged_watermark)
 
+    def test_watermark_opacity_and_outline_are_independent(self):
+        watermark = render._watermark_filter(
+            "HaizFlow", 1080, 1920, opacity_percent=72, outline_percent=200
+        )
+        self.assertIn("fontcolor=white@0.72", watermark)
+        self.assertIn("bordercolor=black@0.74", watermark)
+        self.assertIn("borderw=4", watermark)
+
+    def test_image_watermark_filter_keeps_motion_and_alpha(self):
+        watermark = render._image_watermark_filter(
+            "[2:v]", 1080, 1920, scale_percent=150, opacity_percent=60
+        )
+        self.assertIn("[2:v]format=rgba,scale=259:-1", watermark)
+        self.assertIn("colorchannelmixer=aa=0.60", watermark)
+        self.assertNotIn("pad=", watermark)
+        self.assertIn("[basev][watermark_image]overlay", watermark)
+        self.assertIn("sin(2*PI*t/31)", watermark)
+
     def test_watermark_font_has_a_safe_bundled_fallback(self):
         fallback = render._karaoke_font_directory() / render.KARAOKE_FONT_FILENAME
 
@@ -627,6 +649,90 @@ class TimelineRenderTests(unittest.TestCase):
         ]
         self.assertTrue(all(font_size == 36 for font_size in font_sizes))
         self.assertEqual(len(set(font_sizes)), 1)
+
+    def test_per_cue_alignment_and_letter_spacing_are_written_to_ass(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subtitle_path = root / "subtitles.srt"
+            ass_path = root / "positioned_subtitles.ass"
+            subtitle_path.write_text(
+                "1\n00:00:00,000 --> 00:00:02,000\nXin chào Việt Nam\n",
+                encoding="utf-8",
+            )
+            cue_style = SubtitleStyle(
+                font_size=48,
+                position_x_percent=50,
+                position_y_percent=70,
+                alignment="left",
+                letter_spacing=4,
+                outline=3,
+                shadow=5,
+            )
+            layout = render.SubtitleRegionLayout(200, 700, 400, 90)
+
+            render._write_positioned_ass(
+                str(subtitle_path),
+                str(ass_path),
+                SubtitleStyle(),
+                1000,
+                1000,
+                cue_styles={1: (cue_style, layout)},
+                fixed_font_size=True,
+            )
+            dialogue = next(
+                line
+                for line in ass_path.read_text(encoding="utf-8-sig").splitlines()
+                if line.startswith("Dialogue:")
+            )
+
+        # Left alignment anchors the text to the left edge of the resolved
+        # subtitle box rather than the box centre.
+        self.assertIn("\\an4\\pos(300,700)", dialogue)
+        self.assertIn("\\fsp4.0", dialogue)
+        self.assertIn(
+            f"\\bord{render._karaoke_outline(cue_style.font_size, cue_style.outline)}",
+            dialogue,
+        )
+        self.assertIn("\\shad5", dialogue)
+
+    def test_per_cue_style_without_region_does_not_fall_back_to_global_outline(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subtitle_path = root / "subtitles.srt"
+            ass_path = root / "positioned_subtitles.ass"
+            subtitle_path.write_text(
+                "1\n00:00:00,000 --> 00:00:02,000\nMột câu thử nghiệm\n",
+                encoding="utf-8",
+            )
+            cue_style = SubtitleStyle(
+                font_size=40,
+                alignment="right",
+                letter_spacing=2,
+                outline=6,
+                shadow=7,
+            )
+
+            render._write_positioned_ass(
+                str(subtitle_path),
+                str(ass_path),
+                SubtitleStyle(font_size=60, outline=1, shadow=1),
+                1080,
+                1920,
+                cue_styles={1: (cue_style, None)},
+            )
+            dialogue = next(
+                line
+                for line in ass_path.read_text(encoding="utf-8-sig").splitlines()
+                if line.startswith("Dialogue:")
+            )
+
+        self.assertIn("\\an6", dialogue)
+        self.assertIn("\\fsp2.0", dialogue)
+        self.assertIn(
+            f"\\bord{render._karaoke_outline(cue_style.font_size, cue_style.outline)}",
+            dialogue,
+        )
+        self.assertIn("\\shad7", dialogue)
 
     def test_contiguous_sentence_fragments_are_joined_before_phrase_splitting(self):
         with tempfile.TemporaryDirectory() as temp_dir:

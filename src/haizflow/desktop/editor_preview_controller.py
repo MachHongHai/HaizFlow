@@ -329,7 +329,7 @@ class EditorPreviewController:
             "audio_inputs": audio_inputs,
             "voice_state": settings.get("voice_state", {}),
             "duration": settings["duration"],
-            "audio_cache_version": "editor-audio-v4-optional-voice-layer",
+            "audio_cache_version": "editor-audio-v5-preserve-speech-pauses",
         }
 
     @classmethod

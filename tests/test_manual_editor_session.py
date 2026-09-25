@@ -158,6 +158,13 @@ class ManualEditorSessionTests(unittest.TestCase):
                 "tts_volume",
                 "watermark_text",
                 "watermark_scale_percent",
+                "watermark_kind",
+                "watermark_opacity_percent",
+                "watermark_outline_percent",
+                "watermark_font_family",
+                "watermark_text_color",
+                "watermark_bold",
+                "watermark_italic",
             },
         )
 
@@ -464,7 +471,7 @@ class ManualEditorSessionTests(unittest.TestCase):
         host._selected_video.assert_not_called()
         host._manual_audio.request.assert_not_called()
 
-    def test_reopening_editor_resumes_pending_voice_refresh(self):
+    def test_reopening_editor_does_not_run_pending_voice_refresh(self):
         timer = Mock()
         timer.isActive.return_value = False
         subtitles = Mock()
@@ -491,7 +498,7 @@ class ManualEditorSessionTests(unittest.TestCase):
         host._schedule_manual_cache_migration.assert_not_called()
         single_shot.call_args_list[1].args[1]()
         host._schedule_manual_cache_migration.assert_called_once_with("manual-video")
-        timer.start.assert_called_once_with()
+        timer.start.assert_not_called()
 
     def test_startup_indexes_migrated_manual_projects_and_defers_legacy_work(self):
         manual_a = SimpleNamespace(
@@ -540,6 +547,49 @@ class ManualEditorSessionTests(unittest.TestCase):
         self.assertTrue(all(call.kwargs == {"validate": False} for call in restore.call_args_list))
         events = [host._manual_cache_events.get_nowait(), host._manual_cache_events.get_nowait()]
         self.assertEqual([event["video_id"] for event in events], ["manual-a", "manual-b"])
+
+    def test_cache_recovery_reconciles_voice_and_music_into_open_editor(self):
+        selected = SimpleNamespace(video_id="manual-a", project_type="manual")
+        ensured_document = object()
+        synced_document = object()
+        subtitles = Mock()
+        subtitles.segments = [{"segment_id": "segment-a", "text": "Xin chào"}]
+        host = SimpleNamespace(
+            _manual_cache_events=queue.Queue(),
+            _manual_cache_jobs_lock=threading.Lock(),
+            _manual_cache_jobs={"manual-a"},
+            _manual_cache_indexed=set(),
+            _selected_video_id="manual-a",
+            _selected_video_snapshot=None,
+            manualToolStateChanged=SimpleNamespace(emit=Mock()),
+            _manual_subtitles=subtitles,
+            reviewSegments=[{"text": "Xin chào", "start": 0, "end": 1}],
+            _manual_editor_document=SimpleNamespace(set_document=Mock()),
+            _manual_preview_composition=SimpleNamespace(refresh=Mock()),
+            manualSubtitleDocumentChanged=SimpleNamespace(emit=Mock()),
+            refreshManualPreviewAudio=Mock(),
+        )
+        host._manual_cache_events.put(
+            {"video_id": "manual-a", "changed": True, "restored": ["voice", "music"], "error": ""}
+        )
+
+        with (
+            patch("haizflow.desktop.qml_controller.video_store.get_video", return_value=selected),
+            patch("haizflow.desktop.qml_controller.editor_documents.ensure", return_value=ensured_document) as ensure,
+            patch(
+                "haizflow.desktop.qml_controller.editor_documents.sync_subtitle_clips",
+                return_value=synced_document,
+            ) as sync,
+        ):
+            HaizFlowController._drain_manual_cache_events(host)
+
+        self.assertIn("manual-a", host._manual_cache_indexed)
+        subtitles.load.assert_called_once_with("manual-a", host.reviewSegments)
+        ensure.assert_called_once_with(selected)
+        sync.assert_called_once_with(selected, subtitles.segments)
+        host._manual_editor_document.set_document.assert_called_once_with(synced_document)
+        host._manual_preview_composition.refresh.assert_called_once_with()
+        host.refreshManualPreviewAudio.assert_called_once_with()
 
     def test_scrub_keeps_latest_target_across_source_swap(self):
         engine = QQmlEngine()

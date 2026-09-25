@@ -34,23 +34,12 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.space12
-        spacing: Theme.space12
+        anchors.margins: UiMetrics.pageMargin
+        spacing: Theme.space16
 
-        RowLayout {
+        PageHeader {
             Layout.fillWidth: true
-            Layout.preferredHeight: 40
-            spacing: Theme.space12
-
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("Xử lý video")
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: TypeScale.section
-                font.weight: Font.DemiBold
-                textFormat: Text.PlainText
-            }
+            title: qsTr("Xử lý video")
 
             ProjectHeaderActions {
                 projectFolderEnabled: AppController.hasOpenProject
@@ -113,6 +102,7 @@ Item {
                     Layout.maximumWidth: root.wideLayout ? 440 : 16777215
                     Layout.minimumHeight: implicitHeight
                     Layout.preferredHeight: implicitHeight
+                    Layout.alignment: Qt.AlignTop
                     compact: true
                     onRequestUrlImport: root.requestUrlImport()
                     onRequestDownloadProjectImport: root.requestDownloadProjectImport()

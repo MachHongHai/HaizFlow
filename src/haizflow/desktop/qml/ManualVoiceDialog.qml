@@ -8,16 +8,11 @@ AppDialog {
     id: root
 
     property bool replacingVoice: false
-    property string segmentId: ""
-    property string segmentText: ""
-    property string scope: "all"
     property string draftProvider: "omnivoice"
     property string draftVoice: ""
     property string draftSpeakerMode: "single"
     property string globalProvider: "omnivoice"
     property string globalVoice: ""
-    property string segmentProvider: "omnivoice"
-    property string segmentVoice: ""
     property string openedVideoId: ""
     property string referencePathSnapshot: ""
     property var voiceModel: []
@@ -26,10 +21,8 @@ AppDialog {
     signal cloneRequested()
 
     title: replacingVoice ? qsTr("Đổi hoặc tạo lại giọng") : qsTr("Tạo giọng đọc")
-    subtitle: scope === "segment" ? qsTr("Chỉ áp dụng cho đoạn đang chọn")
-        : qsTr("Áp dụng một giọng thống nhất cho toàn video")
     preferredWidth: 560
-    preferredHeight: 520
+    preferredHeight: 410
     maximumHeight: 680
 
     function providerIndex(value) {
@@ -62,25 +55,15 @@ AppDialog {
         draftVoice = firstAvailableVoice(voiceModel);
     }
 
-    function useScope(nextScope) {
-        scope = nextScope === "segment" && replacingVoice && segmentId.length > 0
-            ? "segment" : "all";
-        draftProvider = scope === "segment" ? segmentProvider : globalProvider;
-        refreshVoices(scope === "segment" ? segmentVoice : globalVoice);
-    }
-
-    function openForVoice(hasVoice, selectedSegmentId, selectedSegmentText, configuration, initialScope) {
+    function openForVoice(hasVoice, configuration) {
         openedVideoId = String(AppController.selectedVideoId || "");
         referencePathSnapshot = String(AppController.voiceCloneReferencePath || "");
         replacingVoice = Boolean(hasVoice);
-        segmentId = String(selectedSegmentId || "");
-        segmentText = String(selectedSegmentText || "");
         globalProvider = String(configuration.globalProvider || configuration.provider || "omnivoice");
         globalVoice = String(configuration.globalVoice || configuration.voice || "");
-        segmentProvider = String(configuration.provider || globalProvider);
-        segmentVoice = String(configuration.voice || globalVoice);
         draftSpeakerMode = String(configuration.speakerMode || "single");
-        useScope(initialScope);
+        draftProvider = globalProvider;
+        refreshVoices(globalVoice);
         open();
     }
 
@@ -112,47 +95,6 @@ AppDialog {
     ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.space16
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Theme.space8
-
-            SettingLabel {
-                Layout.fillWidth: true
-                text: qsTr("Phạm vi")
-            }
-
-            SegmentedControl {
-                Layout.fillWidth: true
-                options: root.replacingVoice && root.segmentId.length > 0 ? [
-                    { "label": qsTr("Toàn video"), "value": "all" },
-                    { "label": qsTr("Đoạn này"), "value": "segment" }
-                ] : [
-                    { "label": qsTr("Toàn video"), "value": "all" }
-                ]
-                currentValue: root.scope
-                onActivated: function(value) { root.useScope(value); }
-            }
-
-            Text {
-                Layout.fillWidth: true
-                visible: root.scope === "segment" && root.segmentText.length > 0
-                text: root.segmentText
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: TypeScale.metadata
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                textFormat: Text.PlainText
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: Theme.divider
-        }
 
         GridLayout {
             Layout.fillWidth: true
@@ -208,7 +150,6 @@ AppDialog {
 
             AppCheckBox {
                 Layout.fillWidth: true
-                visible: root.scope === "all"
                 text: qsTr("Nhận diện nhiều người nói")
                 checked: root.draftSpeakerMode === "multiple"
                 onToggled: root.draftSpeakerMode = checked ? "multiple" : "single"
@@ -223,15 +164,6 @@ AppDialog {
             }
         }
 
-        Text {
-            Layout.fillWidth: true
-            visible: root.scope === "segment"
-            text: qsTr("Chỉ tạo lại đoạn đang chọn.")
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.label
-            textFormat: Text.PlainText
-        }
     }
 
     footerActions: [
@@ -241,7 +173,7 @@ AppDialog {
             onClicked: root.close()
         },
         StudioButton {
-            text: root.scope === "segment" ? qsTr("Tạo cho đoạn này") : qsTr("Tạo cho toàn video")
+            text: qsTr("Tạo giọng")
             iconName: "play"
             variant: "primary"
             enabled: root.draftVoice.length > 0
@@ -249,8 +181,8 @@ AppDialog {
                 root.confirmed(
                     root.draftProvider,
                     root.draftVoice,
-                    root.scope,
-                    root.segmentId,
+                    "all",
+                    "",
                     root.draftSpeakerMode
                 );
                 root.close();

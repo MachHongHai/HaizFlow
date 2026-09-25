@@ -945,6 +945,24 @@
     </message>
 </context>
 <context>
+    <name>DownloadDestinationRow</name>
+    <message>
+        <location filename="../qml/DownloadDestinationRow.qml" line="+15"/>
+        <source>Lưu vào</source>
+        <translation>Save to</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>Chưa chọn thư mục</source>
+        <translation>No folder selected</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Chọn thư mục</source>
+        <translation>Choose folder</translation>
+    </message>
+</context>
+<context>
     <name>DownloadProjectSourceDialog</name>
     <message>
         <location filename="../qml/DownloadProjectSourceDialog.qml" line="+14"/>
@@ -1501,13 +1519,13 @@
     </message>
     <message>
         <location line="+4"/>
-        <source>Tạo lại phụ đề</source>
-        <translation>Regenerate subtitles</translation>
+        <source>Nhận dạng &amp; dịch lại</source>
+        <translation>Recognize and translate again</translation>
     </message>
     <message>
         <location line="+0"/>
-        <source>Tạo phụ đề</source>
-        <translation>Generate subtitles</translation>
+        <source>Nhận dạng &amp; dịch</source>
+        <translation>Recognize and translate</translation>
     </message>
     <message>
         <location line="+76"/>
@@ -4503,6 +4521,14 @@
         <location line="+15"/>
         <source>Đóng</source>
         <translation>Close</translation>
+    </message>
+</context>
+<context>
+    <name>ManualExportToolPanel</name>
+    <message>
+        <location filename="../qml/ManualExportToolPanel.qml" line="15"/>
+        <source>Sẵn sàng xuất</source>
+        <translation>Ready to export</translation>
     </message>
 </context>
 </TS>

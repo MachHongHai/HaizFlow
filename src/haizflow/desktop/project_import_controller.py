@@ -16,12 +16,14 @@ from haizflow.core.paths import app_data_dir
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import collect_batch_video_paths, create_video_thumbnail_path, normalize_video_path
 from haizflow.schemas.video import SubtitleStyle, VideoConfig
-from haizflow.services import project_store, social_publish, video_store
+from haizflow.services import manual_artifacts, project_store, social_publish, video_store
 from haizflow.services.channel_import import normalize_remote_url
 from haizflow.services.desktop_videos import (
     create_desktop_video,
     prepare_desktop_voice_recording,
     set_desktop_background_music,
+    set_desktop_watermark_image,
+    set_desktop_watermark_video,
     set_desktop_voice_reference,
 )
 from haizflow.services.video_download import DownloadCancelled, download_audio, validate_video_url
@@ -810,6 +812,92 @@ class ProjectImportController:
         if path:
             self.set_background_music(path)
 
+    def choose_watermark_image(self) -> str:
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Choose watermark image",
+            self._media_dialog_directory(),
+            "Image files (*.png *.jpg *.jpeg *.webp *.bmp);;All files (*.*)",
+        )
+        return os.path.abspath(path) if path else ""
+
+    def choose_watermark_video(self) -> str:
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Choose thumbnail video",
+            self._media_dialog_directory(),
+            "Video files (*.mp4 *.mov *.mkv *.webm);;All files (*.*)",
+        )
+        return os.path.abspath(path) if path else ""
+
+    def set_watermark_image(self, path: str) -> bool:
+        host = self._host
+        source = str(path or "").strip()
+        if source.startswith("file:"):
+            from PySide6.QtCore import QUrl
+
+            source = QUrl(source).toLocalFile()
+        source = os.path.abspath(source) if source else ""
+        selected = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        if not selected:
+            host._show_app_alert("Watermark", "Import a source video before adding an image.", "warning")
+            return False
+        if host._processing_queue.contains(selected.video_id):
+            host._show_app_alert("Watermark", "Pause or finish this video before changing its watermark.", "warning")
+            return False
+        history_before = host._capture_video_asset_snapshot(selected, preserve=True)
+        try:
+            stored = set_desktop_watermark_image(selected, source)
+        except (OSError, RuntimeError, ValueError) as exc:
+            host._show_app_alert("Watermark", str(exc), "warning")
+            return False
+        manual_artifacts.deactivate(selected.video_id, {"visual_proxy", "export"})
+        refreshed = video_store.get_video(selected.video_id) or selected
+        host._record_video_asset_change(
+            selected.video_id,
+            history_before,
+            host._capture_video_asset_snapshot(refreshed, preserve=True),
+            "Ảnh watermark",
+        )
+        host._watermark_image_path = stored
+        host.watermarkImageChanged.emit()
+        host.refreshVideos()
+        return True
+
+    def set_watermark_video(self, path: str) -> bool:
+        host = self._host
+        source = str(path or "").strip()
+        if source.startswith("file:"):
+            from PySide6.QtCore import QUrl
+
+            source = QUrl(source).toLocalFile()
+        source = os.path.abspath(source) if source else ""
+        selected = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        if not selected:
+            host._show_app_alert("Video thumbnail", "Import a source video first.", "warning")
+            return False
+        if host._processing_queue.contains(selected.video_id):
+            host._show_app_alert("Video thumbnail", "Pause or finish this video before changing its layers.", "warning")
+            return False
+        history_before = host._capture_video_asset_snapshot(selected, preserve=True)
+        try:
+            stored = set_desktop_watermark_video(selected, source)
+        except (OSError, RuntimeError, ValueError) as exc:
+            host._show_app_alert("Video thumbnail", str(exc), "warning")
+            return False
+        manual_artifacts.deactivate(selected.video_id, {"visual_proxy", "export"})
+        refreshed = video_store.get_video(selected.video_id) or selected
+        host._record_video_asset_change(
+            selected.video_id,
+            history_before,
+            host._capture_video_asset_snapshot(refreshed, preserve=True),
+            "Video thumbnail",
+        )
+        host._watermark_video_path = stored
+        host.watermarkVideoChanged.emit()
+        host.refreshVideos()
+        return True
+
     def choose_voice_reference(self) -> str:
         path, _ = QFileDialog.getOpenFileName(
             None,
@@ -1049,6 +1137,15 @@ class ProjectImportController:
             "_tts_volume": 100,
             "_watermark_text": "",
             "_watermark_scale_percent": 100,
+            "_watermark_kind": "text",
+            "_watermark_opacity_percent": 46,
+            "_watermark_outline_percent": 100,
+            "_watermark_image_path": "",
+            "_watermark_video_path": "",
+            "_watermark_font_family": "Arial",
+            "_watermark_text_color": "#FFFFFF",
+            "_watermark_bold": True,
+            "_watermark_italic": True,
             "_remove_original_subtitles": True,
             "_original_subtitle_removal_mode": "patch",
             "_subtitle_style": SubtitleStyle(),
@@ -1068,6 +1165,15 @@ class ProjectImportController:
             "_tts_volume": "ttsVolumeChanged",
             "_watermark_text": "watermarkTextChanged",
             "_watermark_scale_percent": "watermarkScalePercentChanged",
+            "_watermark_kind": "watermarkKindChanged",
+            "_watermark_opacity_percent": "watermarkOpacityPercentChanged",
+            "_watermark_outline_percent": "watermarkOutlinePercentChanged",
+            "_watermark_image_path": "watermarkImageChanged",
+            "_watermark_video_path": "watermarkVideoChanged",
+            "_watermark_font_family": "watermarkStyleChanged",
+            "_watermark_text_color": "watermarkStyleChanged",
+            "_watermark_bold": "watermarkStyleChanged",
+            "_watermark_italic": "watermarkStyleChanged",
             "_remove_original_subtitles": "subtitleSettingsChanged",
             "_original_subtitle_removal_mode": "subtitleSettingsChanged",
             "_subtitle_style": "subtitleSettingsChanged",

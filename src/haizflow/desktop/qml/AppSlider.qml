@@ -28,8 +28,9 @@ Slider {
     handle: Rectangle {
         x: root.leftPadding + root.visualPosition * (root.availableWidth - width)
         y: root.topPadding + root.availableHeight / 2 - height / 2
-        implicitWidth: root.pressed || root.hovered ? 18 : 16
-        implicitHeight: implicitWidth
+        implicitWidth: 18
+        implicitHeight: 18
+        scale: root.pressed || root.hovered ? 1.08 : 1
         radius: width / 2
         color: root.enabled ? Theme.text : Theme.textDisabled
         border.width: root.activeFocus ? 3 : 2

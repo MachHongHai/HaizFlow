@@ -14,15 +14,13 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: Theme.space12
+        anchors.margins: UiMetrics.pageMargin
+        spacing: Theme.space16
 
         PageHeader {
+            id: pageHeader
             Layout.fillWidth: true
             title: AppController.projectName
-            subtitle: qsTr("%1 / %2 %3")
-                .arg(AppController.tiktokPostedCount)
-                .arg(AppController.tiktokPublishCount)
-                .arg(qsTr("đã đăng"))
 
             StudioButton {
                 text: AppController.tiktokPublishBusy ? qsTr("Hủy") : qsTr("Đăng tất cả")
@@ -48,153 +46,88 @@ Item {
             }
         }
 
-        SocialConnectionBar {
-            id: zernioSetupPanel
-            Layout.fillWidth: true
-            onSetupGuideRequested: zernioGuideLoader.invoke("open", [])
-            onApiKeyManagementRequested: apiKeyDialogLoader.invoke("openForConfiguration", [])
-            onConnectionPickerRequested: connectionDialogLoader.invoke("openForSelection", [])
-        }
-
         Rectangle {
+            id: setupPanel
             Layout.fillWidth: true
-            Layout.preferredHeight: 58
+            Layout.maximumWidth: 1680
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredHeight: setupContent.implicitHeight + Theme.space16 * 2
             radius: Theme.radiusSmall
             color: Theme.surface
-            border.width: 1
-            border.color: Theme.outline
+            border.width: 0
 
-            RowLayout {
+            ColumnLayout {
+                id: setupContent
                 anchors.fill: parent
-                anchors.margins: Theme.space12
-                spacing: Theme.space12
+                anchors.margins: Theme.space16
+                spacing: Theme.space8
 
-                ColumnLayout {
+                SocialConnectionBar {
+                    id: zernioSetupPanel
                     Layout.fillWidth: true
-                    spacing: 1
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: qsTr("Nội dung mặc định")
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.control
-                        font.weight: Font.DemiBold
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: AppController.tiktokDefaultCaption.length > 0 || AppController.tiktokDefaultHashtags.length > 0
-                            ? (AppController.tiktokDefaultCaption + "  " + AppController.tiktokDefaultHashtags).trim()
-                            : qsTr("Chưa có nội dung hoặc hashtag")
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.label
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                    }
+                    onSetupGuideRequested: zernioGuideLoader.invoke("open", [])
+                    onApiKeyManagementRequested: apiKeyDialogLoader.invoke("openForConfiguration", [])
+                    onConnectionPickerRequested: connectionDialogLoader.invoke("openForSelection", [])
                 }
 
-                StudioButton {
-                    text: qsTr("Chỉnh nội dung")
-                    onClicked: defaultsDialogLoader.invoke("openForDefaults", [])
-                }
-
-                StudioButton {
-                    text: qsTr("Tùy chọn bài đăng")
-                    iconGlyph: "\uE713"
-                    enabled: zernioSetupPanel.setupComplete && !AppController.tiktokPublishBusy
-                    onClicked: zernioSetupPanel.openPostOptions()
-                }
-
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 52
-            radius: Theme.radiusSmall
-            color: Theme.surface
-            border.width: 1
-            border.color: Theme.outline
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.space12
-                anchors.rightMargin: Theme.space12
-                spacing: Theme.space12
-
-                FluentIcon {
-                    Layout.preferredWidth: 18
-                    Layout.preferredHeight: 18
-                    name: "video"
-                    iconColor: Theme.interactive
-                    iconSize: 17
-                }
-                Text {
+                Rectangle {
                     Layout.fillWidth: true
-                    text: qsTr("Nguồn video")
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.control
-                    font.weight: Font.DemiBold
-                    textFormat: Text.PlainText
+                    Layout.preferredHeight: 1
+                    color: Theme.divider
                 }
 
-                StudioButton {
-                    id: addVideosButton
-                    property bool menuWasOpenOnPress: false
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space12
 
-                    text: qsTr("Thêm video")
-                    iconGlyph: "\uE710"
-                    variant: "primary"
-                    enabled: !AppController.tiktokPublishBusy
-                    onPressed: menuWasOpenOnPress = addSourceMenu.visible
-                    onClicked: {
-                        if (menuWasOpenOnPress || addSourceMenu.visible)
-                            addSourceMenu.close()
-                        else
-                            addSourceMenu.open()
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        spacing: Theme.space4
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Nội dung mặc định")
+                            color: Theme.text
+                            font.family: Theme.fontFamily
+                            font.pixelSize: TypeScale.control
+                            font.weight: Font.DemiBold
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: AppController.tiktokDefaultCaption.length > 0 || AppController.tiktokDefaultHashtags.length > 0
+                                ? (AppController.tiktokDefaultCaption + "  " + AppController.tiktokDefaultHashtags).trim()
+                                : qsTr("Chưa có nội dung hoặc hashtag")
+                            color: Theme.textMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: TypeScale.label
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                        }
                     }
 
-                    Menu {
-                        id: addSourceMenu
-                        width: 210
-                        x: parent.width - width
-                        y: parent.height + Theme.space4
-                        padding: Theme.space4
-                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+                    StudioButton {
+                        text: qsTr("Chỉnh nội dung")
+                        onClicked: defaultsDialogLoader.invoke("openForDefaults", [])
+                    }
 
-                        background: Rectangle {
-                            radius: Theme.radiusSmall
-                            color: Theme.surfaceElevated
-                            border.width: 1
-                            border.color: Theme.outlineStrong
-                        }
-
-                        AppMenuItem {
-                            text: qsTr("Từ tệp")
-                            iconGlyph: "\uE8B7"
-                            onTriggered: AppController.browseSocialPublishVideos()
-                        }
-                        AppMenuItem {
-                            text: qsTr("Từ thư mục")
-                            iconGlyph: "\uE8B7"
-                            onTriggered: AppController.browseSocialPublishFolder()
-                        }
-                        AppMenuItem {
-                            text: qsTr("Từ dự án")
-                            iconGlyph: "\uE7C3"
-                            onTriggered: projectSourceDialogLoader.invoke("openForSelection", [])
-                        }
+                    StudioButton {
+                        text: qsTr("Tùy chọn bài đăng")
+                        variant: "ghost"
+                        enabled: zernioSetupPanel.setupComplete && !AppController.tiktokPublishBusy
+                        onClicked: zernioSetupPanel.openPostOptions()
                     }
                 }
             }
         }
 
         RowLayout {
+            id: queueHeader
             Layout.fillWidth: true
+            Layout.maximumWidth: 1680
+            Layout.alignment: Qt.AlignHCenter
             spacing: Theme.space8
 
             Text {
@@ -207,6 +140,17 @@ Item {
             }
 
             Text {
+                visible: !AppController.tiktokPublishBusy
+                text: qsTr("%1/%2 video đã đăng")
+                    .arg(AppController.tiktokPostedCount)
+                    .arg(AppController.tiktokPublishCount)
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.label
+                textFormat: Text.PlainText
+            }
+
+            Text {
                 Layout.maximumWidth: 520
                 text: AppController.tiktokPublishStatus
                 color: Theme.textMuted
@@ -215,11 +159,65 @@ Item {
                 elide: Text.ElideRight
                 visible: AppController.tiktokPublishBusy && text.length > 0
             }
+
+            StudioButton {
+                id: addVideosButton
+                property bool menuWasOpenOnPress: false
+
+                text: qsTr("Thêm video")
+                iconGlyph: "\uE710"
+                variant: "secondary"
+                enabled: !AppController.tiktokPublishBusy
+                onPressed: menuWasOpenOnPress = addSourceMenu.visible
+                onClicked: {
+                    if (menuWasOpenOnPress || addSourceMenu.visible)
+                        addSourceMenu.close()
+                    else
+                        addSourceMenu.open()
+                }
+
+                Menu {
+                    id: addSourceMenu
+                    width: 210
+                    x: parent.width - width
+                    y: parent.height + Theme.space4
+                    padding: Theme.space4
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+
+                    background: Rectangle {
+                        radius: Theme.radiusSmall
+                        color: Theme.surfaceElevated
+                        border.width: 1
+                        border.color: Theme.outlineStrong
+                    }
+
+                    AppMenuItem {
+                        text: qsTr("Từ tệp")
+                        iconGlyph: "\uE8B7"
+                        onTriggered: AppController.browseSocialPublishVideos()
+                    }
+                    AppMenuItem {
+                        text: qsTr("Từ thư mục")
+                        iconGlyph: "\uE8B7"
+                        onTriggered: AppController.browseSocialPublishFolder()
+                    }
+                    AppMenuItem {
+                        text: qsTr("Từ dự án")
+                        iconGlyph: "\uE7C3"
+                        onTriggered: projectSourceDialogLoader.invoke("openForSelection", [])
+                    }
+                }
+            }
         }
 
         AppSurface {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.maximumWidth: 1680
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredHeight: Math.min(Math.max(queueList.count * 64, 72),
+                Math.max(72, root.height
+                    - pageHeader.height - setupPanel.height - queueHeader.height
+                    - Theme.space16 * 3))
             padding: 0
 
             ListView {
@@ -227,6 +225,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 model: AppController.tiktokPublishModel
+                visible: count > 0
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 reuseItems: true
@@ -244,7 +243,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: queueList.count === 0
-                text: qsTr("Thêm video vào hàng đợi đăng.")
+                text: qsTr("Chưa có video để đăng")
                 color: Theme.textMuted
                 font.pixelSize: TypeScale.control
                 horizontalAlignment: Text.AlignHCenter

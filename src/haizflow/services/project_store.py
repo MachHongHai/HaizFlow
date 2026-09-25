@@ -799,6 +799,13 @@ def _validated_deletion_record(records: list[dict[str, Any]], key: str) -> tuple
     if duplicate_owners:
         raise RuntimeError("Deletion was blocked because another project references the same folder.")
 
+    # A failed or interrupted scratch-project cleanup can leave an index entry
+    # after its directory has gone. There is no filesystem target to delete in
+    # that case; removing the stale record is safe. A directory that still
+    # exists must continue to pass the ownership checks below.
+    if not os.path.lexists(root):
+        return record, root
+
     manifest_path = os.path.join(root, PROJECT_MANIFEST_NAME)
     if os.path.isfile(manifest_path):
         try:

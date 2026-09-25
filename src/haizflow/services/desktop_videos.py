@@ -177,6 +177,103 @@ def set_desktop_background_music(video_info, source_path: str) -> str:
     return destination
 
 
+def _remove_stale_watermark_images(workspace: str, keep_path: str = "") -> list[str]:
+    input_directory = Path(workspace) / "input"
+    retained = os.path.abspath(keep_path) if keep_path else ""
+    errors: list[str] = []
+    for entry in input_directory.glob("watermark_image.*"):
+        if not entry.is_file() or (retained and _same_path(str(entry), retained)):
+            continue
+        try:
+            entry.unlink(missing_ok=True)
+        except OSError as exc:
+            errors.append(f"{entry.name}: {exc}")
+    return errors
+
+
+def set_desktop_watermark_image(video_info, source_path: str) -> str:
+    """Validate and copy an optional still watermark into the video workspace."""
+    source_path = os.path.abspath(str(source_path or "").strip()) if source_path else ""
+    files = dict(video_info.files or {})
+    workspace = os.path.abspath(video_store.get_video_dir(video_info.video_id))
+    previous_path = str(files.get("watermark_image") or "")
+
+    if not source_path:
+        files.pop("watermark_image", None)
+        video_info.files = files
+        video_store.save_video(video_info)
+        _remove_stale_watermark_images(workspace)
+        return ""
+    if not os.path.isfile(source_path) or os.path.getsize(source_path) <= 0:
+        raise ValueError("Choose an available, non-empty watermark image.")
+    extension = Path(source_path).suffix.lower()
+    if extension not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+        raise ValueError("Watermark images must be PNG, JPG, WebP, or BMP files.")
+    try:
+        from PIL import Image
+
+        with Image.open(source_path) as image:
+            image.verify()
+    except Exception as exc:
+        raise ValueError("The selected watermark image could not be read.") from exc
+
+    destination = os.path.join(workspace, "input", f"watermark_image{extension}")
+    if not _same_path(source_path, destination):
+        _copy_file_atomically(source_path, destination)
+    files["watermark_image"] = destination
+    video_info.files = files
+    video_store.save_video(video_info)
+    for error in _remove_stale_watermark_images(workspace, destination):
+        video_store.log_to_video(video_info.video_id, f"Deferred watermark cleanup: {error}")
+    if previous_path and not _same_path(previous_path, destination):
+        try:
+            if os.path.commonpath([os.path.abspath(previous_path), workspace]) == workspace:
+                os.remove(previous_path)
+        except (FileNotFoundError, OSError, ValueError):
+            pass
+    return destination
+
+
+def set_desktop_watermark_video(video_info, source_path: str) -> str:
+    """Validate and copy an optional silent picture-in-picture clip."""
+    source_path = os.path.abspath(str(source_path or "").strip()) if source_path else ""
+    files = dict(video_info.files or {})
+    workspace = os.path.abspath(video_store.get_video_dir(video_info.video_id))
+    previous_path = str(files.get("watermark_video") or "")
+    if not source_path:
+        files.pop("watermark_video", None)
+        video_info.files = files
+        video_store.save_video(video_info)
+        for entry in (Path(workspace) / "input").glob("watermark_video.*"):
+            entry.unlink(missing_ok=True)
+        return ""
+    extension = Path(source_path).suffix.lower()
+    if extension not in {".mp4", ".mov", ".mkv", ".webm"}:
+        raise ValueError("Thumbnail videos must be MP4, MOV, MKV, or WebM files.")
+    try:
+        width, height = get_video_dimensions(source_path)
+        if width <= 0 or height <= 0:
+            raise RuntimeError("No video stream")
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("The selected thumbnail video could not be read.") from exc
+    destination = os.path.join(workspace, "input", f"watermark_video{extension}")
+    if not _same_path(source_path, destination):
+        _copy_file_atomically(source_path, destination)
+    files["watermark_video"] = destination
+    video_info.files = files
+    video_store.save_video(video_info)
+    for entry in (Path(workspace) / "input").glob("watermark_video.*"):
+        if not _same_path(str(entry), destination):
+            entry.unlink(missing_ok=True)
+    if previous_path and not _same_path(previous_path, destination):
+        try:
+            if os.path.commonpath([os.path.abspath(previous_path), workspace]) == workspace:
+                os.remove(previous_path)
+        except (FileNotFoundError, OSError, ValueError):
+            pass
+    return destination
+
+
 def prepare_desktop_voice_recording(video_info) -> str:
     """Reserve a project-owned location for an in-app voice-clone recording."""
     workspace = os.path.abspath(video_store.get_video_dir(video_info.video_id))

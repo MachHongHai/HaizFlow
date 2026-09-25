@@ -7,6 +7,7 @@ AppSurface {
 
     property string title: ""
     property string subtitle: ""
+    property bool showTitle: true
     default property alias inspectorContent: inspectorBody.data
 
     tone: "default"
@@ -15,6 +16,7 @@ AppSurface {
 
     SectionHeader {
         Layout.fillWidth: true
+        visible: root.showTitle
         title: root.title
         subtitle: root.subtitle
     }
@@ -22,6 +24,7 @@ AppSurface {
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 1
+        visible: root.showTitle
         color: Theme.divider
     }
 

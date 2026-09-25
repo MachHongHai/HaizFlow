@@ -54,7 +54,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Layout.minimumHeight: 78
+        Layout.minimumHeight: 72
         Layout.leftMargin: Theme.space4
         Layout.rightMargin: Theme.space4
         Layout.topMargin: Theme.space8
@@ -91,10 +91,11 @@ ColumnLayout {
 
             Text {
                 Layout.fillWidth: true
+                visible: text.length > 0
                 text: root.detail.length > 0 ? root.detail
                     : !root.hardwareCompatible ? root.hardwareWarning
+                    : root.status === "bundled" ? ""
                     : root.blockedReason.length > 0 ? root.blockedReason
-                    : root.status === "bundled" ? qsTr("Có sẵn trong bản cài đặt")
                     : root.status === "installed" ? qsTr("Đã dùng %1").arg(root.installedSizeText)
                     : qsTr("Dung lượng tải %1").arg(root.downloadSizeText)
                 color: root.status === "failed" || !root.hardwareCompatible
@@ -115,67 +116,63 @@ ColumnLayout {
 
         RowLayout {
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+            Layout.preferredWidth: 220
             spacing: Theme.space8
 
-            RowLayout {
-                Layout.minimumWidth: 76
-                Layout.alignment: Qt.AlignVCenter
-                spacing: Theme.space4
+            Item {
+                Layout.preferredWidth: 116
+                Layout.preferredHeight: 32
 
-                FluentIcon {
-                    visible: root.status === "installed" || root.status === "bundled"
-                    Layout.preferredWidth: 14
-                    Layout.preferredHeight: 14
-                    Layout.alignment: Qt.AlignVCenter
-                    name: "check"
-                    iconSize: 14
-                    iconColor: Theme.success
+                StatusBadge {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    status: root.status === "installed" ? "success"
+                        : root.status === "failed" ? "error"
+                        : ["checking", "downloading", "verifying", "paused", "removing"].indexOf(root.status) >= 0
+                            ? "processing" : "ready"
+                    label: root.statusLabel(root.status)
+                    iconName: root.status === "installed" ? "success" : ""
+                }
+            }
+
+            Item {
+                Layout.preferredWidth: 96
+                Layout.preferredHeight: 36
+
+                StudioButton {
+                    anchors.fill: parent
+                    visible: ["checking", "downloading", "verifying"].indexOf(root.status) >= 0
+                    text: qsTr("Tạm dừng")
+                    iconName: "pause"
+                    variant: "secondary"
+                    onClicked: AppController.cancelResourcePackOperation(root.packId)
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-                    text: root.statusLabel(root.status)
-                    color: root.status === "failed" ? Theme.danger : Theme.textMuted
-                    font {
-                        family: Theme.fontFamily
-                        pixelSize: TypeScale.metadata
-                        weight: root.status === "failed" ? Font.DemiBold : Font.Normal
+                StudioButton {
+                    anchors.fill: parent
+                    visible: ["missing", "paused", "failed"].indexOf(root.status) >= 0
+                    text: root.status === "paused" ? qsTr("Tiếp tục")
+                        : root.status === "failed" ? qsTr("Thử lại") : qsTr("Cài đặt")
+                    iconName: "download"
+                    variant: "primary"
+                    enabled: root.canInstall
+                    onClicked: AppController.installResourcePacks([root.packId])
+                }
+
+                StudioIconButton {
+                    id: moreButton
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.status === "installed"
+                    controlSize: 36
+                    iconName: "more"
+                    toolTipText: qsTr("Tùy chọn gói")
+                    onClicked: {
+                        const point = moreButton.mapToItem(Overlay.overlay, 0, moreButton.height);
+                        maintenanceMenu.x = Math.round(point.x - maintenanceMenu.width + moreButton.width);
+                        maintenanceMenu.y = Math.round(point.y + Theme.space4);
+                        maintenanceMenu.open();
                     }
-                    horizontalAlignment: Text.AlignRight
-                    verticalAlignment: Text.AlignVCenter
-                    textFormat: Text.PlainText
-                }
-            }
-
-            StudioButton {
-                visible: root.status === "checking" || root.status === "downloading" || root.status === "verifying"
-                text: qsTr("Tạm dừng")
-                iconName: "pause"
-                variant: "secondary"
-                onClicked: AppController.cancelResourcePackOperation(root.packId)
-            }
-
-            StudioButton {
-                visible: ["missing", "paused", "failed"].indexOf(root.status) >= 0
-                text: root.status === "paused" ? qsTr("Tiếp tục")
-                    : root.status === "failed" ? qsTr("Thử lại") : qsTr("Cài đặt")
-                iconName: "download"
-                variant: "primary"
-                enabled: root.canInstall
-                onClicked: AppController.installResourcePacks([root.packId])
-            }
-
-            StudioIconButton {
-                id: moreButton
-                visible: root.status === "installed"
-                iconName: "more"
-                toolTipText: qsTr("Tùy chọn gói")
-                onClicked: {
-                    const point = moreButton.mapToItem(Overlay.overlay, 0, moreButton.height);
-                    maintenanceMenu.x = Math.round(point.x - maintenanceMenu.width + moreButton.width);
-                    maintenanceMenu.y = Math.round(point.y + Theme.space4);
-                    maintenanceMenu.open();
                 }
             }
         }

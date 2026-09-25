@@ -11,23 +11,18 @@ AppDialog {
     signal watermarkAccepted(string text)
 
     preferredWidth: 460
-    maximumWidth: 500
+    maximumWidth: 520
     title: qsTr("Watermark chữ")
 
     function openWithText(text) {
-        initialText = text || ""
-        open()
-    }
-
-    function applyWatermark() {
-        root.watermarkAccepted(watermarkField.text.trim())
-        root.close()
+        initialText = text || "";
+        open();
     }
 
     onOpened: {
-        watermarkField.text = initialText
-        watermarkField.forceActiveFocus()
-        watermarkField.selectAll()
+        watermarkField.text = initialText;
+        watermarkField.forceActiveFocus();
+        watermarkField.selectAll();
     }
 
     SettingLabel {
@@ -42,7 +37,10 @@ AppDialog {
         placeholderText: qsTr("Nhập nội dung watermark")
         accessibleName: qsTr("Nội dung watermark")
         selectByMouse: true
-        Keys.onReturnPressed: root.applyWatermark()
+        Keys.onReturnPressed: {
+            root.watermarkAccepted(text.trim());
+            root.close();
+        }
     }
 
     Text {
@@ -62,9 +60,12 @@ AppDialog {
             onClicked: root.close()
         },
         StudioButton {
-            text: qsTr("Áp dụng")
+            text: qsTr("Lưu")
             variant: "primary"
-            onClicked: root.applyWatermark()
+            onClicked: {
+                root.watermarkAccepted(watermarkField.text.trim());
+                root.close();
+            }
         }
     ]
 }

@@ -1,4 +1,5 @@
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -720,6 +721,38 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertFalse(removed_project_root_exists)
         self.assertTrue(sibling_project_root_exists)
         self.assertEqual([item["key"] for item in remaining], [sibling["key"]])
+
+    def test_delete_project_with_missing_root_clears_only_stale_index_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                orphan = project_store.ensure_project("Orphan", str(root / "exports"), "single")
+                sibling = project_store.ensure_project("Keep", str(root / "exports"), "single")
+                shutil.rmtree(orphan["project_root"])
+
+                self.assertTrue(project_store.validate_project_deletion_by_key(orphan["key"]))
+                self.assertTrue(project_store.delete_project_by_key(orphan["key"]))
+                self.assertEqual([item["key"] for item in project_store.list_projects()], [sibling["key"]])
+                self.assertTrue(Path(sibling["project_root"]).is_dir())
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
+
+    def test_delete_project_with_existing_root_and_missing_manifest_stays_blocked(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_index = project_store.PROJECT_INDEX_PATH
+            project_store.PROJECT_INDEX_PATH = str(root / "runtime" / "projects.json")
+            try:
+                project = project_store.ensure_project("Unverified", str(root / "exports"), "single")
+                (Path(project["project_root"]) / project_store.PROJECT_MANIFEST_NAME).unlink()
+                with self.assertRaisesRegex(RuntimeError, "manifest is missing"):
+                    project_store.delete_project_by_key(project["key"])
+                self.assertTrue(Path(project["project_root"]).is_dir())
+                self.assertEqual(len(project_store.list_projects()), 1)
+            finally:
+                project_store.PROJECT_INDEX_PATH = original_index
 
     def test_delete_project_removes_all_project_owned_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 
 from haizflow.services.resource_packs import PACK_PROTOCOL_VERSION, ResourcePackManager
 
@@ -61,9 +62,16 @@ class ExternalEngineClient:
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+        engine_root = self._manager._engine_marker(self._manager.definitions[self.pack_id]).parent
+        # Installed packs run from their immutable version directory.  During
+        # source development the same protocol is hosted by the current
+        # virtual environment and no installed-engine directory exists yet.
+        # In that case use the interpreter directory instead of passing an
+        # invalid cwd to Popen.
+        working_directory = engine_root if engine_root.is_dir() else Path(command[0]).resolve().parent
         process = subprocess.Popen(
             command,
-            cwd=str(self._manager._engine_marker(self._manager.definitions[self.pack_id]).parent),
+            cwd=str(working_directory),
             env=environment,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -190,6 +198,9 @@ class ExternalEnginePool:
         self._capability_packs: dict[str, str] = {}
 
     def engine_pack(self, capability: str, context: dict | None = None) -> str:
+        resolver = getattr(self._manager, "warm_engine_pack", None)
+        if callable(resolver):
+            return resolver(capability, context)
         return self._manager.external_engine_pack(capability, context)
 
     def _client(self, pack_id: str) -> ExternalEngineClient:

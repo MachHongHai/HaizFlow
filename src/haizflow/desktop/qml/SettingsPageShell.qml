@@ -10,27 +10,18 @@ Item {
 
     property string title: ""
     property int contentMaximumWidth: 920
-    readonly property int horizontalInset: UiMetrics.compact ? Theme.space16 : Theme.space24
+    readonly property int horizontalInset: UiMetrics.pageMargin
     default property alias content: contentColumn.data
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: UiMetrics.pageMargin
         spacing: 0
 
-        Item {
+        PageHeader {
             Layout.fillWidth: true
-            Layout.preferredHeight: 64
-
-            PageHeader {
-                anchors {
-                    left: parent.left
-                    right: parent.right
-                    leftMargin: root.horizontalInset
-                    rightMargin: root.horizontalInset
-                    verticalCenter: parent.verticalCenter
-                }
-                title: root.title
-            }
+            Layout.bottomMargin: Theme.space12
+            title: root.title
         }
 
         Rectangle {
@@ -44,6 +35,7 @@ Item {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.topMargin: Theme.space12
             contentWidth: availableWidth
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ScrollBar.vertical.policy: ScrollBar.AsNeeded

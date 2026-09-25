@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Any, Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 17
+VIDEO_METADATA_SCHEMA_VERSION = 18
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2"]
@@ -12,6 +12,7 @@ OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
 ProjectType = Literal["single", "manual", "batch"]
 OriginalSubtitleRemovalMode = Literal["blur", "patch"]
 SpeakerMode = Literal["single", "multiple"]
+WatermarkKind = Literal["text", "image", "video"]
 
 
 class MediaSource(BaseModel):
@@ -28,14 +29,24 @@ class MediaSource(BaseModel):
 class SubtitleStyle(BaseModel):
     # Used when OCR finds no source subtitle region. 60 is legible on the
     # standard 1080x1920 vertical export without overwhelming the frame.
-    font_size: int = Field(default=60, ge=10, le=240)
+    font_size: int = Field(default=60, ge=10, le=600)
     margin_bottom: int = Field(default=40, ge=0, le=1000)
-    outline: int = Field(default=2, ge=0, le=20)
+    outline: int = Field(default=2, ge=0, le=40)
     max_chars_per_line: int = Field(default=32, ge=12, le=200)
     position_x_percent: int = Field(default=51, ge=0, le=100)
     position_y_percent: int = Field(default=96, ge=0, le=100)
     box_width_percent: int = Field(default=72, ge=20, le=100)
     box_height_percent: int = Field(default=6, ge=1, le=100)
+    font_family: str = Field(default="Bangers", max_length=80)
+    text_color: str = Field(default="#FFFFFF", pattern=r"^#[0-9A-Fa-f]{6}$")
+    karaoke_color: str = Field(default="#FFEF00", pattern=r"^#[0-9A-Fa-f]{6}$")
+    outline_color: str = Field(default="#000000", pattern=r"^#[0-9A-Fa-f]{6}$")
+    bold: bool = False
+    italic: bool = False
+    uppercase: bool = False
+    shadow: int = Field(default=2, ge=0, le=100)
+    letter_spacing: float = Field(default=0.0, ge=-20, le=100)
+    alignment: Literal["left", "center", "right"] = "center"
 
 
 class CropSettings(BaseModel):
@@ -74,6 +85,13 @@ class VideoConfig(BaseModel):
     # Manual may scale the established watermark treatment. Auto and Batch
     # keep the existing 100% size and do not expose this control.
     watermark_scale_percent: int = Field(default=100, ge=25, le=300)
+    watermark_kind: WatermarkKind = "text"
+    watermark_opacity_percent: int = Field(default=46, ge=0, le=100)
+    watermark_outline_percent: int = Field(default=100, ge=0, le=300)
+    watermark_font_family: str = Field(default="Arial", max_length=80)
+    watermark_text_color: str = Field(default="#FFFFFF", pattern=r"^#[0-9A-Fa-f]{6}$")
+    watermark_bold: bool = True
+    watermark_italic: bool = True
     # An import request only; the selected file is copied into the workspace.
     background_music_path: str = Field(default="", exclude=True)
     project_name: str = ""
@@ -109,6 +127,13 @@ class VideoInfo(BaseModel):
     tts_volume: int = Field(default=100, ge=0, le=100)
     watermark_text: str = Field(default="", max_length=80)
     watermark_scale_percent: int = Field(default=100, ge=25, le=300)
+    watermark_kind: WatermarkKind = "text"
+    watermark_opacity_percent: int = Field(default=46, ge=0, le=100)
+    watermark_outline_percent: int = Field(default=100, ge=0, le=300)
+    watermark_font_family: str = Field(default="Arial", max_length=80)
+    watermark_text_color: str = Field(default="#FFFFFF", pattern=r"^#[0-9A-Fa-f]{6}$")
+    watermark_bold: bool = True
+    watermark_italic: bool = True
     project_name: str = ""
     project_directory: str = ""
     project_type: ProjectType = "single"
@@ -127,7 +152,13 @@ class VideoInfo(BaseModel):
     # Visual work and voice/audio work may therefore be complete independently.
     manual_completed_stages: list[str] = Field(default_factory=list)
     active_artifacts: Dict[str, str] = Field(default_factory=dict)
+    # Explicit Manual reruns advance only the requested cache branch. Older
+    # artifact directories remain available until normal cache cleanup.
+    manual_tool_generations: Dict[str, int] = Field(default_factory=dict)
     manual_artifact_migration_version: int = 0
+    editor_document_schema_version: int = 0
+    editor_document_revision: int = 0
+    editor_document_path: str = ""
     # A stable, project-local position for batch cards.  Processing updates
     # must never affect this, otherwise the queue appears to shuffle.
     batch_import_order: int = 0

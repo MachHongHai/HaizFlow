@@ -1,6 +1,8 @@
+import copy
 import json
 import os
 import queue
+import re
 import shutil
 import threading
 import uuid
@@ -19,12 +21,13 @@ from haizflow.core.hardware import (
     configure_processing_device,
     detect_hardware_capabilities,
     recommended_processing_device,
+    runtime_profile,
     runtime_profile_for,
     validate_processing_device,
 )
 from haizflow.desktop.activity_log import ActivityLogBuffer
-from haizflow.desktop.audio_preview_controller import AudioPreviewController
 from haizflow.desktop.app_update_controller import AppUpdateController
+from haizflow.desktop.audio_preview_controller import AudioPreviewController
 from haizflow.desktop.catalog import POPULAR_TARGET_LANGUAGES
 from haizflow.desktop.catalog_media_controller import CatalogMediaController
 from haizflow.desktop.channel_import import ChannelImportCoordinator
@@ -33,7 +36,9 @@ from haizflow.desktop.editor_preview_controller import EditorPreviewController
 from haizflow.desktop.external_links import open_external_url
 from haizflow.desktop.localization import QMessageBox, _set_ui_language
 from haizflow.desktop.manual_edit_history import AppEditHistory
+from haizflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
 from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
+from haizflow.desktop.manual_preview_composition_controller import ManualPreviewCompositionController
 from haizflow.desktop.manual_subtitle_model import ManualSubtitleModel
 from haizflow.desktop.media import (
     collect_batch_video_paths,
@@ -76,13 +81,23 @@ from haizflow.desktop.social_publish_controller import SocialPublishController
 from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 from haizflow.desktop.url_import import VideoUrlImportCoordinator
 from haizflow.pipeline.process_registry import pause_video
+from haizflow.schemas.editor import (
+    EditorClip,
+    EditorDocument,
+    EditorKeyframe,
+    EditorMarker,
+    EditorTextStyle,
+    SourceEditDecision,
+)
 from haizflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig
-from haizflow.services import desktop_settings, manual_artifacts, project_store, video_store
+from haizflow.services import desktop_settings, editor_documents, manual_artifacts, project_store, video_store
 from haizflow.services.desktop_videos import (
     create_desktop_video,
     migrate_legacy_single_export,
     set_desktop_background_music,
     set_desktop_voice_reference,
+    set_desktop_watermark_image,
+    set_desktop_watermark_video,
 )
 from haizflow.services.processing_queue import SerialProcessingQueue
 from haizflow.services.translation import shutdown_hymt2_worker
@@ -115,6 +130,13 @@ class HaizFlowController(QObject):
         "tts_volume",
         "watermark_text",
         "watermark_scale_percent",
+        "watermark_kind",
+        "watermark_opacity_percent",
+        "watermark_outline_percent",
+        "watermark_font_family",
+        "watermark_text_color",
+        "watermark_bold",
+        "watermark_italic",
     )
 
     videoPathChanged = Signal()
@@ -133,6 +155,12 @@ class HaizFlowController(QObject):
     ttsVolumeChanged = Signal()
     watermarkTextChanged = Signal()
     watermarkScalePercentChanged = Signal()
+    watermarkKindChanged = Signal()
+    watermarkOpacityPercentChanged = Signal()
+    watermarkOutlinePercentChanged = Signal()
+    watermarkImageChanged = Signal()
+    watermarkVideoChanged = Signal()
+    watermarkStyleChanged = Signal()
     subtitleSettingsChanged = Signal()
     cropSettingsChanged = Signal()
     backgroundMusicChanged = Signal()
@@ -175,9 +203,11 @@ class HaizFlowController(QObject):
     manualSubtitleSaved = Signal(str, int, str)
     manualSubtitleSaveFailed = Signal(str, str, str)
     manualSubtitleDocumentChanged = Signal()
+    manualEditorDocumentChanged = Signal()
     manualVoiceRefreshStateChanged = Signal(str, int, str)
     manualEditHistoryChanged = Signal()
     editHistoryChanged = Signal()
+    editorKeyframeClipboardChanged = Signal()
     warmupChanged = Signal()
     resourcePacksChanged = Signal()
     appUpdateChanged = Signal()
@@ -212,6 +242,15 @@ class HaizFlowController(QObject):
         self._tts_volume = 100
         self._watermark_text = ""
         self._watermark_scale_percent = 100
+        self._watermark_kind = "text"
+        self._watermark_opacity_percent = 46
+        self._watermark_outline_percent = 100
+        self._watermark_image_path = ""
+        self._watermark_video_path = ""
+        self._watermark_font_family = "Arial"
+        self._watermark_text_color = "#FFFFFF"
+        self._watermark_bold = True
+        self._watermark_italic = True
         self._remove_original_subtitles = True
         self._original_subtitle_removal_mode = "patch"
         self._subtitle_style = SubtitleStyle()
@@ -297,9 +336,21 @@ class HaizFlowController(QObject):
         self.selectedVideoChanged.connect(self._sync_edit_history_context)
         self.projectSetupChanged.connect(self._sync_edit_history_context)
         self._manual_subtitles = ManualSubtitleModel(self, self._manual_edit_history)
+        self._manual_editor_document = ManualEditorDocumentModel(self)
+        self._manual_preview_composition = ManualPreviewCompositionController(
+            self._manual_editor_document,
+            self,
+        )
+        self._manual_editor_document.changed.connect(self.manualEditorDocumentChanged)
+        self._editor_transform_drafts: dict[str, dict] = {}
+        self._editor_keyframe_clipboard: list[dict] = []
         self._subtitle_overlay = SubtitleOverlayRenderer(self)
         self._manual_audio = ManualPreviewAudioController(self)
+        self._last_manual_preview_audio_error = ""
+        self._manual_audio.errorChanged.connect(self._report_manual_preview_audio_error)
+        self.selectedVideoChanged.connect(self._clear_manual_preview_audio_error)
         self._manual_subtitles.changed.connect(self.refreshManualPreviewAudio)
+        self._manual_editor_document.changed.connect(self.refreshManualPreviewAudio)
         self.selectedVideoChanged.connect(self.refreshManualPreviewAudio)
         self._manual_subtitles.saved.connect(self.manualSubtitleSaved)
         self._manual_subtitles.saveFailed.connect(self.manualSubtitleSaveFailed)
@@ -337,6 +388,12 @@ class HaizFlowController(QObject):
         self._keep_models_warm = settings["keep_models_warm"]
         self._manual_project_cache_gib = settings["manual_project_cache_gib"]
         self._manual_global_cache_gib = settings["manual_global_cache_gib"]
+        self._manual_editor_layout = {
+            "inspectorWidth": int(settings.get("manual_editor_inspector_width", 356)),
+            "timelineHeight": int(settings.get("manual_editor_timeline_height", 280)),
+            "compare": bool(settings.get("manual_editor_compare", False)),
+        }
+        self._manual_editor_workspace = dict(settings.get("manual_editor_workspace") or {})
         self._resource_packs = ResourcePackController(self)
         self._resource_packs.changed.connect(self.resourcePacksChanged.emit)
         self.hardwareChanged.connect(self.resourcePacksChanged.emit)
@@ -621,6 +678,20 @@ class HaizFlowController(QObject):
                 str(self._selected_video_id or ""),
                 self.reviewSegments,
             )
+            selected = self._selected_video_snapshot
+            if selected and getattr(selected, "project_type", "") == "manual":
+                try:
+                    document = editor_documents.ensure(selected)
+                    document = editor_documents.sync_subtitle_clips(
+                        selected,
+                        self._manual_subtitles.segments,
+                    )
+                    self._manual_editor_document.set_document(document)
+                    self._manual_preview_composition.refresh()
+                except (OSError, RuntimeError, TypeError, ValueError):
+                    # Cache recovery must not make the workspace unusable. The
+                    # next explicit project load retries the same reconciliation.
+                    pass
             self.manualSubtitleDocumentChanged.emit()
             self.refreshManualPreviewAudio()
 
@@ -696,6 +767,12 @@ class HaizFlowController(QObject):
         subtitles = getattr(self, "_manual_subtitles", None)
         if subtitles is not None:
             subtitles.close()
+        editor_document = getattr(self, "_manual_editor_document", None)
+        if editor_document is not None:
+            editor_document.close()
+        composition = getattr(self, "_manual_preview_composition", None)
+        if composition is not None:
+            composition.close()
         editor_preview = getattr(self, "_editor_preview", None)
         if editor_preview is not None:
             editor_preview.release()
@@ -1471,6 +1548,104 @@ class HaizFlowController(QObject):
             self._watermark_scale_percent = normalized
             self.watermarkScalePercentChanged.emit()
 
+    @Property(str, notify=watermarkKindChanged)
+    def watermarkKind(self):
+        return self._watermark_kind
+
+    @watermarkKind.setter
+    def watermarkKind(self, value):
+        requested = str(value or "").strip().lower()
+        normalized = requested if requested in {"text", "image", "video"} else "text"
+        if self._watermark_kind != normalized:
+            self._watermark_kind = normalized
+            self.watermarkKindChanged.emit()
+
+    @Property(int, notify=watermarkOpacityPercentChanged)
+    def watermarkOpacityPercent(self):
+        return self._watermark_opacity_percent
+
+    @watermarkOpacityPercent.setter
+    def watermarkOpacityPercent(self, value):
+        normalized = max(0, min(100, int(value)))
+        if self._watermark_opacity_percent != normalized:
+            self._watermark_opacity_percent = normalized
+            self.watermarkOpacityPercentChanged.emit()
+
+    @Property(int, notify=watermarkOutlinePercentChanged)
+    def watermarkOutlinePercent(self):
+        return self._watermark_outline_percent
+
+    @watermarkOutlinePercent.setter
+    def watermarkOutlinePercent(self, value):
+        normalized = max(0, min(300, int(value)))
+        if self._watermark_outline_percent != normalized:
+            self._watermark_outline_percent = normalized
+            self.watermarkOutlinePercentChanged.emit()
+
+    @Property(str, notify=watermarkImageChanged)
+    def watermarkImagePath(self):
+        return self._watermark_image_path
+
+    @Property(QUrl, notify=watermarkImageChanged)
+    def watermarkImageSource(self):
+        path = str(self._watermark_image_path or "")
+        return QUrl.fromLocalFile(path) if path and os.path.isfile(path) else QUrl()
+
+    @Property(str, notify=watermarkVideoChanged)
+    def watermarkVideoPath(self):
+        return self._watermark_video_path
+
+    @Property(QUrl, notify=watermarkVideoChanged)
+    def watermarkVideoSource(self):
+        path = str(self._watermark_video_path or "")
+        return QUrl.fromLocalFile(path) if path and os.path.isfile(path) else QUrl()
+
+    @Property(str, notify=watermarkStyleChanged)
+    def watermarkFontFamily(self):
+        return self._watermark_font_family
+
+    @watermarkFontFamily.setter
+    def watermarkFontFamily(self, value):
+        normalized = str(value or "Arial").strip()[:80] or "Arial"
+        if self._watermark_font_family != normalized:
+            self._watermark_font_family = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property(str, notify=watermarkStyleChanged)
+    def watermarkTextColor(self):
+        return self._watermark_text_color
+
+    @watermarkTextColor.setter
+    def watermarkTextColor(self, value):
+        normalized = str(value or "#FFFFFF").upper()
+        if not re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            return
+        if self._watermark_text_color != normalized:
+            self._watermark_text_color = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property(bool, notify=watermarkStyleChanged)
+    def watermarkBold(self):
+        return self._watermark_bold
+
+    @watermarkBold.setter
+    def watermarkBold(self, value):
+        normalized = bool(value)
+        if self._watermark_bold != normalized:
+            self._watermark_bold = normalized
+            self.watermarkStyleChanged.emit()
+
+    @Property(bool, notify=watermarkStyleChanged)
+    def watermarkItalic(self):
+        return self._watermark_italic
+
+    @watermarkItalic.setter
+    def watermarkItalic(self, value):
+        normalized = bool(value)
+        if self._watermark_italic != normalized:
+            self._watermark_italic = normalized
+            self.watermarkStyleChanged.emit()
+
     @Property(bool, notify=subtitleSettingsChanged)
     def removeOriginalSubtitles(self):
         return self._remove_original_subtitles
@@ -1523,6 +1698,85 @@ class HaizFlowController(QObject):
     @subtitleFontSize.setter
     def subtitleFontSize(self, value):
         self._set_subtitle_style_value("font_size", value, 10, 240)
+
+    def _set_subtitle_style_option(self, key: str, value) -> None:
+        if getattr(self._subtitle_style, key) == value:
+            return
+        style = self._subtitle_style.model_dump()
+        style[key] = value
+        self._subtitle_style = SubtitleStyle(**style)
+        self._subtitle_layout_override = True
+        self.subtitleSettingsChanged.emit()
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def subtitleFontFamily(self):
+        return self._subtitle_style.font_family
+
+    @subtitleFontFamily.setter
+    def subtitleFontFamily(self, value):
+        self._set_subtitle_style_option("font_family", str(value or "Bangers").strip()[:80] or "Bangers")
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def subtitleTextColor(self):
+        return self._subtitle_style.text_color
+
+    @subtitleTextColor.setter
+    def subtitleTextColor(self, value):
+        normalized = str(value or "").upper()
+        if re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            self._set_subtitle_style_option("text_color", normalized)
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def subtitleKaraokeColor(self):
+        return self._subtitle_style.karaoke_color
+
+    @subtitleKaraokeColor.setter
+    def subtitleKaraokeColor(self, value):
+        normalized = str(value or "").upper()
+        if re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            self._set_subtitle_style_option("karaoke_color", normalized)
+
+    @Property(str, notify=subtitleSettingsChanged)
+    def subtitleOutlineColor(self):
+        return self._subtitle_style.outline_color
+
+    @subtitleOutlineColor.setter
+    def subtitleOutlineColor(self, value):
+        normalized = str(value or "").upper()
+        if re.fullmatch(r"#[0-9A-F]{6}", normalized):
+            self._set_subtitle_style_option("outline_color", normalized)
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def subtitleBold(self):
+        return self._subtitle_style.bold
+
+    @subtitleBold.setter
+    def subtitleBold(self, value):
+        self._set_subtitle_style_option("bold", bool(value))
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def subtitleItalic(self):
+        return self._subtitle_style.italic
+
+    @subtitleItalic.setter
+    def subtitleItalic(self, value):
+        self._set_subtitle_style_option("italic", bool(value))
+
+    @Property(bool, notify=subtitleSettingsChanged)
+    def subtitleUppercase(self):
+        return self._subtitle_style.uppercase
+
+    @subtitleUppercase.setter
+    def subtitleUppercase(self, value):
+        self._set_subtitle_style_option("uppercase", bool(value))
+
+    @Property(int, notify=subtitleSettingsChanged)
+    def subtitleShadow(self):
+        return self._subtitle_style.shadow
+
+    @subtitleShadow.setter
+    def subtitleShadow(self, value):
+        self._set_subtitle_style_value("shadow", value, 0, 10)
 
     @Property(bool, notify=subtitleSettingsChanged)
     def subtitleLayoutOverride(self):
@@ -2335,6 +2589,38 @@ class HaizFlowController(QObject):
     def manualGlobalCacheGiB(self):
         return int(self._manual_global_cache_gib)
 
+    @Property("QVariantMap", notify=settingsChanged)
+    def manualEditorLayout(self):
+        return dict(self._manual_editor_layout)
+
+    @Property("QVariantMap", notify=settingsChanged)
+    def manualEditorWorkspace(self):
+        return dict(self._manual_editor_workspace)
+
+    @Slot("QVariantMap")
+    def saveManualEditorWorkspace(self, workspace):
+        saved = desktop_settings.save_settings({"manual_editor_workspace": dict(workspace or {})})
+        normalized = dict(saved["manual_editor_workspace"])
+        if normalized != self._manual_editor_workspace:
+            self._manual_editor_workspace = normalized
+            self.settingsChanged.emit()
+
+    @Slot(int, int, bool)
+    def saveManualEditorLayout(self, inspector_width, timeline_height, compare):
+        layout = {
+            "inspectorWidth": max(300, min(520, int(inspector_width))),
+            "timelineHeight": max(200, min(520, int(timeline_height))),
+            "compare": bool(compare),
+        }
+        if layout == self._manual_editor_layout:
+            return
+        desktop_settings.save_settings({
+            "manual_editor_inspector_width": layout["inspectorWidth"],
+            "manual_editor_timeline_height": layout["timelineHeight"],
+            "manual_editor_compare": layout["compare"],
+        })
+        self._manual_editor_layout = layout
+
     @Property(str, notify=warmupChanged)
     def warmupState(self):
         return self._warmup_state
@@ -2384,8 +2670,16 @@ class HaizFlowController(QObject):
             "usingGpu": profile.cuda_available,
             "gpuSafe": capabilities.gpu_supported,
             "availableGpuName": capabilities.cuda_name if capabilities.gpu_supported else "",
-            "totalVram": self._format_memory_size(capabilities.total_vram_bytes) if capabilities.cuda_available else "--",
-            "freeVram": self._format_memory_size(capabilities.free_vram_bytes) if capabilities.cuda_available else "--",
+            "totalVram": (
+                self._format_memory_size(capabilities.total_vram_bytes)
+                if capabilities.cuda_available
+                else "--"
+            ),
+            "freeVram": (
+                self._format_memory_size(capabilities.free_vram_bytes)
+                if capabilities.cuda_available
+                else "--"
+            ),
             "systemRam": self._format_memory_size(capabilities.total_ram_bytes),
             "logicalCpuCount": capabilities.logical_cpu_count,
             "cpuName": capabilities.cpu_name or "",
@@ -2421,11 +2715,13 @@ class HaizFlowController(QObject):
                     f"GPU cần ít nhất 5 GB VRAM trống; hiện có {capabilities.free_vram_bytes / (1024**3):.1f} GB trống."
                 )
             if capabilities.total_ram_bytes and capabilities.total_ram_bytes < 14 * 1024**3:
-                return f"HaizFlow cần ít nhất 16 GiB RAM; máy hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GiB."
+                memory_gib = capabilities.total_ram_bytes / (1024**3)
+                return f"HaizFlow cần ít nhất 16 GiB RAM; máy hiện có {memory_gib:.1f} GiB."
             return f"GPU sẵn sàng: {capabilities.cuda_name}, {capabilities.total_vram_bytes / (1024**3):.0f} GB VRAM."
         if preference == "cpu":
             if not compatible:
-                return f"HaizFlow cần máy có 16 GB RAM; hiện có {capabilities.total_ram_bytes / (1024**3):.1f} GiB khả dụng."
+                memory_gib = capabilities.total_ram_bytes / (1024**3)
+                return f"HaizFlow cần máy có 16 GB RAM; hiện có {memory_gib:.1f} GiB khả dụng."
             memory_gib = capabilities.total_ram_bytes / (1024**3)
             return f"CPU sẵn sàng: {memory_gib:.0f} GB RAM, {capabilities.logical_cpu_count} luồng logic."
         if capabilities.gpu_supported:
@@ -2508,6 +2804,22 @@ class HaizFlowController(QObject):
     @Slot()
     def browseBackgroundMusic(self):
         HaizFlowController._project_import_for(self).browse_background_music()
+
+    @Slot(result=str)
+    def chooseWatermarkImage(self):
+        return HaizFlowController._project_import_for(self).choose_watermark_image()
+
+    @Slot(str, result=bool)
+    def setWatermarkImage(self, path):
+        return HaizFlowController._project_import_for(self).set_watermark_image(path)
+
+    @Slot(result=str)
+    def chooseWatermarkVideo(self):
+        return HaizFlowController._project_import_for(self).choose_watermark_video()
+
+    @Slot(str, result=bool)
+    def setWatermarkVideo(self, path):
+        return HaizFlowController._project_import_for(self).set_watermark_video(path)
 
     @Slot(result=str)
     def chooseVoiceCloneReference(self):
@@ -3084,9 +3396,31 @@ class HaizFlowController(QObject):
             self.refreshVideos()
         return queued
 
+    @Slot(result="QVariantMap")
+    def manualExportPreflight(self):
+        from haizflow.pipeline.sequence_compiler import export_preflight
+
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return {"canExport": False, "issues": [], "requiredBytes": 0, "availableBytes": 0}
+        document = editor_documents.ensure(video)
+        input_path = self._resolve_video_file(
+            video, ("video_input", "input_video"), ("input", "video.mp4")
+        )
+        output_path = self._resolve_video_file(
+            video, ("final_video", "output_video"), ("output", "final.mp4")
+        )
+        output_directory = str(
+            Path(output_path).parent
+            if output_path else Path(video_store.get_video_dir(video.video_id)) / "output"
+        )
+        return export_preflight(document, input_path, output_directory)
+
     @Slot(str, result=bool)
     def runManualTool(self, tool_id):
-        from haizflow.pipeline.manual_tools import ensure_current_subtitle_document, tool_states
+        from haizflow.pipeline.manual_tools import (
+            ensure_current_subtitle_document, prepare_manual_rerun, tool_states,
+        )
 
         tool_id = str(tool_id or "").strip().lower()
         allowed = {"source", "separation", "translation", "subtitle", "image", "voice", "audio", "export"}
@@ -3138,6 +3472,19 @@ class HaizFlowController(QObject):
         if tool_id in {"subtitle", "voice", "audio", "export"}:
             ensure_current_subtitle_document(video.video_id)
             video = video_store.get_video(video.video_id) or video
+        if tool_id == "export":
+            preflight = self.manualExportPreflight()
+            blocking = [
+                item for item in preflight.get("issues", [])
+                if item.get("severity") == "error"
+            ]
+            if blocking:
+                detail = "\n".join(
+                    f"{item.get('title', '')}: {item.get('detail', '')}".strip(": ")
+                    for item in blocking
+                )
+                self.appAlertRequested.emit("Chưa thể xuất video", detail, "warning")
+                return False
         if (
             video.status in {"pending", "processing"}
             and getattr(video, "manual_target_tool", "")
@@ -3194,6 +3541,7 @@ class HaizFlowController(QObject):
             self._manual_voice_refresh_pending = False
             self._manual_voice_refresh_enabled = False
         self._apply_setup_to_video(video, review_approved=True)
+        prepare_manual_rerun(video.video_id, tool_id)
         video_store.update_video(
             video.video_id,
             manual_target_tool=tool_id,
@@ -3416,7 +3764,8 @@ class HaizFlowController(QObject):
     @Slot(str, result=bool)
     def clearManualCache(self, scope):
         scope = str(scope or "project").strip().lower()
-        selected = self._selected_video()
+        selected_video = getattr(self, "_selected_video", None)
+        selected = selected_video() if callable(selected_video) else None
         if scope == "project" and selected and selected.project_type == "manual":
             from haizflow.pipeline.manual_tools import ensure_current_subtitle_document
 
@@ -3469,6 +3818,8 @@ class HaizFlowController(QObject):
         self._manual_audio.release()
         self._subtitle_overlay.release()
         self._manual_voice_refresh_timer.stop()
+        self._editor_transform_drafts.clear()
+        self._manual_editor_document.clear()
 
     @Property(QObject, constant=True)
     def manualSubtitleModel(self):
@@ -3506,6 +3857,10 @@ class HaizFlowController(QObject):
     @Property(str, notify=editHistoryChanged)
     def redoEditLabel(self):
         return self._manual_edit_history.redoLabel
+
+    @Property(bool, notify=editorKeyframeClipboardChanged)
+    def hasCopiedKeyframes(self):
+        return bool(self._editor_keyframe_clipboard)
 
     @Slot(result=bool)
     def undoEdit(self):
@@ -3635,8 +3990,1080 @@ class HaizFlowController(QObject):
         return self._subtitle_overlay
 
     @Property(QObject, constant=True)
+    def manualEditorDocumentModel(self):
+        return self._manual_editor_document
+
+    @Property(QObject, constant=True)
+    def manualPreviewComposition(self):
+        return self._manual_preview_composition
+
+    @Property(QObject, constant=True)
     def manualPreviewAudio(self):
         return self._manual_audio
+
+    @Slot()
+    def _clear_manual_preview_audio_error(self):
+        self._last_manual_preview_audio_error = ""
+
+    @Slot(str)
+    def _report_manual_preview_audio_error(self, message):
+        detail = str(message or "").strip()
+        if not detail or detail == self._last_manual_preview_audio_error:
+            return
+        self._last_manual_preview_audio_error = detail
+        self.appAlertRequested.emit("Không phát được âm thanh xem trước", detail, "warning")
+
+    def _editor_video(self):
+        video = self._selected_video()
+        if not video or video.project_type != "manual":
+            return None
+        return video
+
+    def _subtitle_segments_for_editor_document(self, document: EditorDocument) -> list[dict]:
+        current = {
+            str(item.get("segment_id") or item.get("id") or ""): item
+            for item in self._manual_subtitles.segments
+        }
+        result: list[dict] = []
+        subtitle_clips = sorted(
+            (
+                clip
+                for clip in document.clips
+                if clip.track_id == "subtitles" and clip.enabled and clip.segment_id
+            ),
+            key=lambda clip: (clip.start_ms, clip.clip_id),
+        )
+        for clip in subtitle_clips:
+            stored = clip.metadata.get("segment_payload")
+            base = stored if isinstance(stored, dict) else current.get(clip.segment_id, {})
+            segment = copy.deepcopy(base)
+            segment["segment_id"] = clip.segment_id
+            segment["text"] = clip.name
+            segment["start"] = round(clip.start_ms / 1000, 6)
+            segment["end"] = round((clip.start_ms + clip.duration_ms) / 1000, 6)
+            if clip.style_override:
+                segment["_style"] = editor_documents.resolved_text_style(document, clip).model_dump()
+            else:
+                segment.pop("_style", None)
+            result.append(segment)
+        return result
+
+    def _sync_subtitle_model_from_editor_document(self, document: EditorDocument) -> None:
+        if self._manual_subtitles.video_id != document.video_id:
+            return
+        self._manual_subtitles.replace_timeline(
+            self._subtitle_segments_for_editor_document(document)
+        )
+
+    def _set_editor_document_payload(self, video_id: str, payload: dict) -> bool:
+        video = video_store.get_video(video_id)
+        if not video:
+            return False
+        try:
+            restored = editor_documents.restore(video, payload)
+        except (OSError, ValueError):
+            return False
+        if str(self._selected_video_id or "") == video_id:
+            self._selected_video_snapshot = video_store.get_video(video_id)
+            self._manual_editor_document.set_document(restored)
+            self._sync_subtitle_model_from_editor_document(restored)
+        return True
+
+    def _apply_editor_mutation(self, label: str, callback, *, merge_key: str = "") -> bool:
+        # Retired NLE commands remain loadable in existing documents, but the
+        # localization editor must not create new instances of them.
+        if label in {
+            "split_source", "duplicate_clip", "ripple_delete",
+            "add_overlay", "add_overlay_from_asset",
+            "set_keyframe", "remove_keyframe", "move_keyframe",
+            "copy_transform_keyframes", "paste_keyframes",
+            "remove_keyframes", "keyframe_interpolation",
+            "add_marker", "move_marker", "update_marker", "remove_marker",
+        }:
+            return False
+        video = self._editor_video()
+        if not video:
+            return False
+        if self._manual_editor_document.video_id != video.video_id:
+            self._manual_editor_document.load(video)
+        try:
+            document, before, after = editor_documents.mutate(video, callback)
+        except (OSError, ValueError):
+            return False
+        if before == after:
+            return False
+        video_id = video.video_id
+        self._selected_video_snapshot = video_store.get_video(video_id)
+        self._manual_editor_document.set_document(document)
+        self._sync_subtitle_model_from_editor_document(document)
+        self._manual_edit_history.record(
+            label,
+            lambda: self._set_editor_document_payload(video_id, before),
+            lambda: self._set_editor_document_payload(video_id, after),
+            merge_key=merge_key,
+            context_id=f"video:{video_id}",
+        )
+        return True
+
+    @staticmethod
+    def _editor_track_locked(document, track_id: str) -> bool:
+        track = next((item for item in document.tracks if item.track_id == track_id), None)
+        return bool(track and track.locked)
+
+    @staticmethod
+    def _refresh_source_sequence(document) -> None:
+        source_clips = sorted(
+            (clip for clip in document.clips if clip.track_id == "source-video" and clip.enabled),
+            key=lambda item: item.start_ms,
+        )
+        decisions = []
+        sequence_position = 0
+        for clip in source_clips:
+            clip.start_ms = sequence_position
+            clip.duration_ms = max(1, clip.duration_ms)
+            clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+            decisions.append(
+                {
+                    "decision_id": f"decision-{clip.clip_id}",
+                    "source_start_ms": clip.source_in_ms,
+                    "source_end_ms": clip.source_in_ms + clip.duration_ms,
+                    "sequence_start_ms": sequence_position,
+                }
+            )
+            sequence_position += clip.duration_ms
+        document.sequence.edit_decisions = [SourceEditDecision.model_validate(item) for item in decisions]
+        document.sequence.duration_ms = sequence_position
+
+    @Slot(int, result=bool)
+    def splitSourceAt(self, time_ms: int) -> bool:
+        position = max(0, int(time_ms))
+
+        def split(document):
+            if self._editor_track_locked(document, "source-video"):
+                return
+            clip = next(
+                (
+                    item
+                    for item in document.clips
+                    if item.track_id == "source-video"
+                    and item.start_ms + 80 < position < item.start_ms + item.duration_ms - 80
+                ),
+                None,
+            )
+            if clip is None:
+                return
+            left_duration = position - clip.start_ms
+            right_duration = clip.duration_ms - left_duration
+            right = clip.model_copy(deep=True)
+            right.clip_id = editor_documents.new_id("source")
+            right.start_ms = position
+            right.duration_ms = right_duration
+            right.source_in_ms = clip.source_in_ms + left_duration
+            right.source_out_ms = right.source_in_ms + right_duration
+            clip.duration_ms = left_duration
+            clip.source_out_ms = clip.source_in_ms + left_duration
+            document.clips.append(right)
+            self._refresh_source_sequence(document)
+
+        return self._apply_editor_mutation("split_source", split)
+
+    @Slot(str, int, result=bool)
+    def trimSourceBoundary(self, edge: str, time_ms: int) -> bool:
+        """Trim a single-source sequence without re-running any AI stage."""
+        edge = str(edge or "").lower()
+        if edge not in {"left", "right"}:
+            return False
+        position = int(time_ms)
+
+        def trim(document):
+            if self._editor_track_locked(document, "source-video"):
+                return
+            source_clips = [
+                clip for clip in document.clips
+                if clip.track_id == "source-video" and clip.enabled
+            ]
+            # A multi-decision sequence is a legacy edit. Keep it renderable,
+            # but do not reinterpret its timing through the simplified tool.
+            if len(source_clips) != 1 or len(document.sequence.edit_decisions) != 1:
+                return
+            source = source_clips[0]
+            duration = source.duration_ms
+            if not 80 <= position <= duration - 80:
+                return
+            if edge == "left":
+                source.source_in_ms += position
+                source.duration_ms -= position
+                for clip in document.clips:
+                    if clip is source or not clip.enabled:
+                        continue
+                    end = clip.start_ms + clip.duration_ms
+                    if end <= position:
+                        clip.enabled = False
+                    elif clip.start_ms < position:
+                        removed = position - clip.start_ms
+                        clip.start_ms = 0
+                        clip.duration_ms -= removed
+                        clip.source_in_ms += removed
+                        clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+                    else:
+                        clip.start_ms -= position
+            else:
+                source.duration_ms = position
+                for clip in document.clips:
+                    if clip is source or not clip.enabled:
+                        continue
+                    if clip.start_ms >= position:
+                        clip.enabled = False
+                    elif clip.start_ms + clip.duration_ms > position:
+                        clip.duration_ms = position - clip.start_ms
+                        clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+            self._refresh_source_sequence(document)
+
+        return self._apply_editor_mutation("trim_source_boundary", trim)
+
+    @Slot(str, str, int, result=bool)
+    def trimClip(self, clip_id: str, edge: str, time_ms: int) -> bool:
+        clip_id = str(clip_id or "")
+        edge = str(edge or "").lower()
+        position = max(0, int(time_ms))
+        if edge not in {"left", "right"}:
+            return False
+        current = self._manual_editor_document.document_object
+        current_clip = editor_documents.clip_by_id(current, clip_id) if current else None
+        if current_clip is None or current_clip.track_id in {"source-video", "overlays"}:
+            return False
+
+        def trim(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            old_end = clip.start_ms + clip.duration_ms
+            asset = editor_documents.asset_by_id(document, clip.asset_id) if clip.asset_id else None
+            asset_duration = int(getattr(asset, "duration_ms", 0) or 0)
+            if edge == "left":
+                earliest = max(0, clip.start_ms - clip.source_in_ms)
+                next_start = max(earliest, min(position, old_end - 80))
+                delta = next_start - clip.start_ms
+                clip.start_ms = next_start
+                clip.duration_ms -= delta
+                clip.source_in_ms = max(0, clip.source_in_ms + delta)
+            else:
+                maximum_end = document.sequence.duration_ms
+                if asset_duration:
+                    maximum_end = min(
+                        maximum_end,
+                        clip.start_ms + max(80, asset_duration - clip.source_in_ms),
+                    ) if clip.track_id != "source-video" else (
+                        clip.start_ms + max(80, asset_duration - clip.source_in_ms)
+                    )
+                maximum_end = max(clip.start_ms + 80, maximum_end)
+                next_end = min(maximum_end, max(clip.start_ms + 80, position))
+                clip.duration_ms = next_end - clip.start_ms
+            if clip.source_out_ms or clip.asset_id:
+                clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+            if clip.track_id == "source-video":
+                self._refresh_source_sequence(document)
+
+        return self._apply_editor_mutation("trim_clip", trim, merge_key=f"trim:{clip_id}:{edge}")
+
+    @Slot(str, int, str, result=bool)
+    def moveClip(self, clip_id: str, start_ms: int, track_id: str = "") -> bool:
+        clip_id = str(clip_id or "")
+        target_start = max(0, int(start_ms))
+        target_track = str(track_id or "")
+        current = self._manual_editor_document.document_object
+        current_clip = editor_documents.clip_by_id(current, clip_id) if current else None
+        if current_clip is None or current_clip.track_id in {"source-video", "overlays"}:
+            return False
+
+        def move(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            if clip.track_id == "source-video":
+                return
+            if target_track:
+                candidate = next((track for track in document.tracks if track.track_id == target_track), None)
+                if candidate and candidate.kind == next(
+                    (track.kind for track in document.tracks if track.track_id == clip.track_id),
+                    candidate.kind,
+                ):
+                    clip.track_id = target_track
+            clip.start_ms = min(target_start, max(0, document.sequence.duration_ms - clip.duration_ms))
+
+        return self._apply_editor_mutation("move_clip", move, merge_key=f"move:{clip_id}")
+
+    @Slot(str, result=bool)
+    def duplicateClip(self, clip_id: str) -> bool:
+        clip_id = str(clip_id or "")
+
+        def duplicate(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or clip.track_id == "source-video" or self._editor_track_locked(document, clip.track_id):
+                return
+            copy = clip.model_copy(deep=True)
+            copy.clip_id = editor_documents.new_id("clip")
+            copy.name = f"{clip.name} · bản sao" if clip.name else "Bản sao"
+            copy.start_ms = min(
+                clip.start_ms + 250,
+                max(0, document.sequence.duration_ms - clip.duration_ms),
+            )
+            document.clips.append(copy)
+
+        return self._apply_editor_mutation("duplicate_clip", duplicate)
+
+    @Slot("QVariantList", bool, result=bool)
+    def removeClips(self, clip_ids, ripple: bool = False) -> bool:
+        selected = {str(value) for value in (clip_ids or []) if str(value or "")}
+        current = self._manual_editor_document.document_object
+        if not selected or ripple or current is None:
+            return False
+        selected_clips = [clip for clip in current.clips if clip.clip_id in selected]
+        if any(clip.track_id in {"source-video", "overlays"} for clip in selected_clips):
+            return False
+
+        def remove(document):
+            targets = [clip for clip in document.clips if clip.clip_id in selected]
+            if not targets or any(self._editor_track_locked(document, clip.track_id) for clip in targets):
+                return
+            source_targets = sorted(
+                (clip for clip in targets if clip.track_id == "source-video"),
+                key=lambda item: item.start_ms,
+                reverse=True,
+            )
+            # Source removal is always ripple-based.  Leaving a gap in the
+            # single-source edit map would make preview and export disagree.
+            if source_targets and not ripple:
+                return
+            document.clips = [clip for clip in document.clips if clip.clip_id not in selected]
+            if ripple:
+                for removed in source_targets:
+                    cut_start = removed.start_ms
+                    cut_end = removed.start_ms + removed.duration_ms
+                    cut_duration = removed.duration_ms
+                    retained = []
+                    for clip in document.clips:
+                        if clip.track_id == "source-video":
+                            if clip.start_ms >= cut_end:
+                                clip.start_ms -= cut_duration
+                            retained.append(clip)
+                            continue
+                        clip_end = clip.start_ms + clip.duration_ms
+                        if clip.start_ms >= cut_end:
+                            clip.start_ms -= cut_duration
+                            retained.append(clip)
+                        elif clip_end <= cut_start:
+                            retained.append(clip)
+                        elif clip.start_ms >= cut_start and clip_end <= cut_end:
+                            continue
+                        elif clip.start_ms < cut_start < clip_end <= cut_end:
+                            clip.duration_ms = max(1, cut_start - clip.start_ms)
+                            retained.append(clip)
+                        elif cut_start <= clip.start_ms < cut_end < clip_end:
+                            delta = cut_end - clip.start_ms
+                            clip.start_ms = cut_start
+                            clip.duration_ms = max(1, clip_end - cut_end)
+                            clip.source_in_ms += delta
+                            retained.append(clip)
+                        else:
+                            clip.duration_ms = max(1, clip.duration_ms - cut_duration)
+                            retained.append(clip)
+                    document.clips = retained
+                self._refresh_source_sequence(document)
+
+        accepted = self._apply_editor_mutation("ripple_delete" if ripple else "delete_clip", remove)
+        if accepted:
+            self._manual_editor_document.clearSelection()
+        return accepted
+
+    @Slot(str, str, int, result=str)
+    def addOverlay(self, kind: str, source: str, start_ms: int) -> str:
+        # Existing overlay clips remain readable by preview/export only.
+        return ""
+
+    @Slot(str, int, result=str)
+    def addOverlayFromAsset(self, asset_id: str, start_ms: int) -> str:
+        return ""
+
+    @Slot(int, result=str)
+    def addSubtitleSegment(self, time_ms: int) -> str:
+        segment_id = editor_documents.new_id("segment")
+
+        def add(document):
+            if self._editor_track_locked(document, "subtitles"):
+                return
+            start = max(0, min(int(time_ms), max(0, document.sequence.duration_ms - 1)))
+            duration = max(1, min(2000, document.sequence.duration_ms - start))
+            document.clips.extend([
+                EditorClip(
+                    clip_id=f"subtitle-{segment_id}",
+                    track_id="subtitles",
+                    kind="subtitle",
+                    segment_id=segment_id,
+                    name="Phụ đề mới",
+                    start_ms=start,
+                    duration_ms=duration,
+                    source_out_ms=duration,
+                    style_id=document.default_subtitle_style_id,
+                    metadata={"segment_payload": {"segment_id": segment_id, "revision": 0}},
+                ),
+                EditorClip(
+                    clip_id=f"voice-{segment_id}",
+                    track_id="voice",
+                    kind="voice",
+                    segment_id=segment_id,
+                    name="Phụ đề mới",
+                    start_ms=start,
+                    duration_ms=duration,
+                    source_out_ms=duration,
+                    enabled=False,
+                    metadata={"state": "stale", "text_revision": 0},
+                ),
+            ])
+
+        if not self._apply_editor_mutation("add_subtitle", add):
+            return ""
+        self._manual_editor_document.selectClip(f"subtitle-{segment_id}", False)
+        return segment_id
+
+    @staticmethod
+    def _split_subtitle_text(text: str, progress: float) -> tuple[str, str]:
+        content = str(text or "")
+        if not content:
+            return "", ""
+        target = max(1, min(len(content) - 1, round(len(content) * progress)))
+        boundaries = [index for index, character in enumerate(content) if character.isspace()]
+        split_at = min(boundaries, key=lambda value: abs(value - target)) if boundaries else target
+        return content[:split_at].rstrip(), content[split_at:].lstrip()
+
+    @Slot(str, int, result=str)
+    def splitSubtitleSegment(self, segment_id: str, time_ms: int) -> str:
+        segment_id = str(segment_id or "")
+        second_segment_id = editor_documents.new_id("segment")
+
+        def split(document):
+            if self._editor_track_locked(document, "subtitles"):
+                return
+            subtitle = next(
+                (clip for clip in document.clips
+                 if clip.track_id == "subtitles" and clip.segment_id == segment_id),
+                None,
+            )
+            if subtitle is None:
+                return
+            split_at = int(time_ms)
+            if not subtitle.start_ms + 120 <= split_at <= subtitle.start_ms + subtitle.duration_ms - 120:
+                return
+            original_end = subtitle.start_ms + subtitle.duration_ms
+            progress = (split_at - subtitle.start_ms) / max(1, subtitle.duration_ms)
+            first_text, second_text = self._split_subtitle_text(subtitle.name, progress)
+            second = subtitle.model_copy(deep=True)
+            second.clip_id = f"subtitle-{second_segment_id}"
+            second.segment_id = second_segment_id
+            second.name = second_text
+            second.start_ms = split_at
+            second.duration_ms = original_end - split_at
+            second.source_in_ms = 0
+            second.source_out_ms = second.duration_ms
+            second.metadata["segment_payload"] = {
+                "segment_id": second_segment_id, "revision": 0,
+            }
+            subtitle.name = first_text
+            subtitle.duration_ms = split_at - subtitle.start_ms
+            subtitle.source_out_ms = subtitle.duration_ms
+            voice = next(
+                (clip for clip in document.clips
+                 if clip.track_id == "voice" and clip.segment_id == segment_id),
+                None,
+            )
+            if voice is not None:
+                voice.name = first_text
+                voice.duration_ms = subtitle.duration_ms
+                voice.source_out_ms = voice.duration_ms
+                voice.enabled = False
+                voice.metadata.update(state="stale", text_revision=0)
+            document.clips.extend([
+                second,
+                EditorClip(
+                    clip_id=f"voice-{second_segment_id}",
+                    track_id="voice",
+                    kind="voice",
+                    segment_id=second_segment_id,
+                    name=second_text,
+                    start_ms=split_at,
+                    duration_ms=second.duration_ms,
+                    source_out_ms=second.duration_ms,
+                    enabled=False,
+                    metadata={"state": "stale", "text_revision": 0},
+                ),
+            ])
+
+        return second_segment_id if self._apply_editor_mutation("split_subtitle", split) else ""
+
+    @Slot(str, result=bool)
+    def mergeSubtitleWithNext(self, segment_id: str) -> bool:
+        segment_id = str(segment_id or "")
+
+        def merge(document):
+            if self._editor_track_locked(document, "subtitles"):
+                return
+            subtitles = sorted(
+                (clip for clip in document.clips if clip.track_id == "subtitles" and clip.enabled),
+                key=lambda clip: (clip.start_ms, clip.clip_id),
+            )
+            index = next((i for i, clip in enumerate(subtitles) if clip.segment_id == segment_id), -1)
+            if index < 0 or index + 1 >= len(subtitles):
+                return
+            current, following = subtitles[index], subtitles[index + 1]
+            current.name = (current.name.rstrip() + " " + following.name.lstrip()).strip()
+            current.duration_ms = max(1, following.start_ms + following.duration_ms - current.start_ms)
+            current.source_out_ms = current.duration_ms
+            removed_ids = {following.clip_id}
+            for clip in document.clips:
+                if clip.track_id == "voice" and clip.segment_id == following.segment_id:
+                    removed_ids.add(clip.clip_id)
+                elif clip.track_id == "voice" and clip.segment_id == current.segment_id:
+                    clip.name = current.name
+                    clip.duration_ms = current.duration_ms
+                    clip.source_out_ms = clip.duration_ms
+                    clip.enabled = False
+                    clip.metadata.update(state="stale", text_revision=0)
+            document.clips = [clip for clip in document.clips if clip.clip_id not in removed_ids]
+
+        return self._apply_editor_mutation("merge_subtitle", merge)
+
+    @Slot(str, result=bool)
+    def deleteSubtitleSegment(self, segment_id: str) -> bool:
+        segment_id = str(segment_id or "")
+
+        def remove(document):
+            if self._editor_track_locked(document, "subtitles"):
+                return
+            document.clips = [
+                clip for clip in document.clips
+                if not (clip.segment_id == segment_id and clip.track_id in {"subtitles", "voice"})
+            ]
+
+        accepted = self._apply_editor_mutation("delete_subtitle", remove)
+        if accepted:
+            self._manual_editor_document.clearSelection()
+        return accepted
+
+    @Slot(str, "QVariantMap", bool, result=bool)
+    def updateClipTransform(self, clip_id: str, patch, commit: bool) -> bool:
+        # Existing transforms remain in the document and render unchanged.
+        return False
+
+    @Slot(str, "QVariantMap", result=bool)
+    def updateClipProperties(self, clip_id: str, patch) -> bool:
+        clip_id = str(clip_id or "")
+        values = dict(patch or {})
+        allowed = {
+            "start_ms",
+            "duration_ms",
+            "source_in_ms",
+            "source_out_ms",
+            "enabled",
+            "volume_percent",
+            "fade_in_ms",
+            "fade_out_ms",
+            "loop",
+            "muted",
+            "fit_mode",
+            "border_width",
+            "corner_radius",
+            "shadow_strength",
+            "name",
+        }
+        values = {key: value for key, value in values.items() if key in allowed}
+        if not values:
+            return False
+
+        def update(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if (
+                clip is None
+                or clip.track_id in {"source-video", "overlays"}
+                or self._editor_track_locked(document, clip.track_id)
+            ):
+                return
+            payload = clip.model_dump()
+            payload.update(values)
+            replacement = EditorClip.model_validate(payload)
+            document.clips = [replacement if item.clip_id == clip_id else item for item in document.clips]
+
+        return self._apply_editor_mutation(
+            "clip_properties",
+            update,
+            merge_key=f"clip-properties:{clip_id}:{','.join(sorted(values))}",
+        )
+
+    @Slot(str, str, int, float, str, result=bool)
+    def setClipKeyframe(
+        self,
+        clip_id: str,
+        property_name: str,
+        time_ms: int,
+        value: float,
+        interpolation: str,
+    ) -> bool:
+        property_name = str(property_name or "")
+        interpolation = str(interpolation or "ease_in_out")
+        if property_name not in {"position_x", "position_y", "scale", "rotation", "opacity"}:
+            return False
+        if interpolation not in {"linear", "ease_in", "ease_out", "ease_in_out"}:
+            interpolation = "ease_in_out"
+
+        def set_keyframe(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            existing = next(
+                (
+                    frame
+                    for frame in clip.keyframes
+                    if frame.property_name == property_name and abs(frame.time_ms - local_time) <= 1
+                ),
+                None,
+            )
+            if existing:
+                existing.value = float(value)
+                existing.interpolation = interpolation
+            else:
+                clip.keyframes.append(
+                    EditorKeyframe(
+                        keyframe_id=editor_documents.new_id("keyframe"),
+                        property_name=property_name,
+                        time_ms=local_time,
+                        value=float(value),
+                        interpolation=interpolation,
+                    )
+                )
+            clip.keyframes.sort(key=lambda frame: (frame.time_ms, frame.property_name))
+
+        return self._apply_editor_mutation(
+            "set_keyframe",
+            set_keyframe,
+            merge_key=f"keyframe:{clip_id}:{property_name}:{int(time_ms)}",
+        )
+
+    @Slot(str, str, int, result=bool)
+    def removeClipKeyframe(self, clip_id: str, property_name: str, time_ms: int) -> bool:
+        property_name = str(property_name or "")
+        if property_name not in {"position_x", "position_y", "scale", "rotation", "opacity"}:
+            return False
+
+        def remove(document):
+            clip = editor_documents.clip_by_id(document, str(clip_id or ""))
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            clip.keyframes = [
+                frame
+                for frame in clip.keyframes
+                if not (
+                    frame.property_name == property_name
+                    and abs(frame.time_ms - local_time) <= 1
+                )
+            ]
+
+        return self._apply_editor_mutation("remove_keyframe", remove)
+
+    @Slot(str, str, int, result=bool)
+    def moveClipKeyframe(self, clip_id: str, keyframe_id: str, time_ms: int) -> bool:
+        clip_id = str(clip_id or "")
+        keyframe_id = str(keyframe_id or "")
+
+        def move(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            frame = next(
+                (item for item in clip.keyframes if item.keyframe_id == keyframe_id),
+                None,
+            )
+            if frame is None:
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            clip.keyframes = [
+                item
+                for item in clip.keyframes
+                if item.keyframe_id == keyframe_id
+                or item.property_name != frame.property_name
+                or abs(item.time_ms - local_time) > 1
+            ]
+            frame.time_ms = local_time
+            clip.keyframes.sort(key=lambda item: (item.time_ms, item.property_name))
+
+        return self._apply_editor_mutation(
+            "move_keyframe",
+            move,
+            merge_key=f"keyframe-move:{clip_id}:{keyframe_id}",
+        )
+
+    @Slot(str, int, str, result=bool)
+    def setClipTransformKeyframes(self, clip_id: str, time_ms: int, interpolation: str) -> bool:
+        clip_id = str(clip_id or "")
+        interpolation = str(interpolation or "ease_in_out")
+        if interpolation not in {"linear", "ease_in", "ease_out", "ease_in_out"}:
+            interpolation = "ease_in_out"
+
+        def add(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            absolute_time = max(clip.start_ms, min(int(time_ms), clip.start_ms + clip.duration_ms))
+            local_time = absolute_time - clip.start_ms
+            defaults = {
+                "position_x": clip.transform.position_x_percent,
+                "position_y": clip.transform.position_y_percent,
+                "scale": clip.transform.scale_x_percent,
+                "rotation": clip.transform.rotation_degrees,
+                "opacity": clip.transform.opacity_percent,
+            }
+            for property_name, default in defaults.items():
+                value = editor_documents.evaluate_keyframes(
+                    clip, property_name, absolute_time, default
+                )
+                frame = next(
+                    (
+                        item for item in clip.keyframes
+                        if item.property_name == property_name
+                        and abs(item.time_ms - local_time) <= 1
+                    ),
+                    None,
+                )
+                if frame is None:
+                    clip.keyframes.append(EditorKeyframe(
+                        keyframe_id=editor_documents.new_id("keyframe"),
+                        property_name=property_name,
+                        time_ms=local_time,
+                        value=float(value),
+                        interpolation=interpolation,
+                    ))
+                else:
+                    frame.value = float(value)
+                    frame.interpolation = interpolation
+            clip.keyframes.sort(key=lambda item: (item.time_ms, item.property_name))
+
+        return self._apply_editor_mutation(
+            "copy_transform_keyframes",
+            add,
+            merge_key=f"keyframe-copy:{clip_id}:{int(time_ms)}",
+        )
+
+    @Slot(str, int, result=bool)
+    def copyClipKeyframes(self, clip_id: str, time_ms: int) -> bool:
+        # Keep the slot for older integrations, but no longer expose keyframe
+        # authoring in the localization editor.
+        return False
+
+    @Slot(str, int, result=bool)
+    def pasteClipKeyframes(self, clip_id: str, time_ms: int) -> bool:
+        clip_id = str(clip_id or "")
+        copied = [dict(item) for item in self._editor_keyframe_clipboard]
+        if not copied:
+            return False
+
+        def paste(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            properties = {str(item.get("property_name") or "") for item in copied}
+            clip.keyframes = [
+                frame for frame in clip.keyframes
+                if frame.property_name not in properties or abs(frame.time_ms - local_time) > 1
+            ]
+            for payload in copied:
+                clip.keyframes.append(EditorKeyframe(
+                    keyframe_id=editor_documents.new_id("keyframe"),
+                    property_name=str(payload.get("property_name") or ""),
+                    time_ms=local_time,
+                    value=float(payload.get("value") or 0),
+                    interpolation=str(payload.get("interpolation") or "ease_in_out"),
+                ))
+            clip.keyframes.sort(key=lambda item: (item.time_ms, item.property_name))
+
+        return self._apply_editor_mutation(
+            "paste_keyframes",
+            paste,
+            merge_key=f"keyframe-paste:{clip_id}:{int(time_ms)}",
+        )
+
+    @Slot(str, int, result=bool)
+    def removeClipKeyframesAt(self, clip_id: str, time_ms: int) -> bool:
+        clip_id = str(clip_id or "")
+
+        def remove(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            clip.keyframes = [
+                frame for frame in clip.keyframes
+                if abs(frame.time_ms - local_time) > 1
+            ]
+
+        return self._apply_editor_mutation("remove_keyframes", remove)
+
+    @Slot(str, int, str, result=bool)
+    def setClipKeyframeInterpolation(self, clip_id: str, time_ms: int, interpolation: str) -> bool:
+        clip_id = str(clip_id or "")
+        interpolation = str(interpolation or "ease_in_out")
+        if interpolation not in {"linear", "ease_in", "ease_out", "ease_in_out"}:
+            return False
+
+        def update(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip is None or self._editor_track_locked(document, clip.track_id):
+                return
+            local_time = max(0, min(int(time_ms) - clip.start_ms, clip.duration_ms))
+            for frame in clip.keyframes:
+                if abs(frame.time_ms - local_time) <= 1:
+                    frame.interpolation = interpolation
+
+        return self._apply_editor_mutation(
+            "keyframe_interpolation",
+            update,
+            merge_key=f"keyframe-easing:{clip_id}:{int(time_ms)}",
+        )
+
+    @Slot(bool, float, int, int, result=bool)
+    def setAudioDucking(self, enabled: bool, reduction_db: float, attack_ms: int, release_ms: int) -> bool:
+        def update(document):
+            document.audio_ducking_enabled = bool(enabled)
+            document.audio_ducking_reduction_db = max(-60.0, min(0.0, float(reduction_db)))
+            document.audio_ducking_attack_ms = max(0, min(10000, int(attack_ms)))
+            document.audio_ducking_release_ms = max(0, min(10000, int(release_ms)))
+
+        return self._apply_editor_mutation("audio_ducking", update, merge_key="audio-ducking")
+
+    @Slot(str, str, "QVariant", result=bool)
+    def setTrackState(self, track_id: str, property_name: str, value) -> bool:
+        property_name = str(property_name or "")
+        if track_id == "overlays" or property_name not in {"visible", "locked", "muted", "solo"}:
+            return False
+
+        def update(document):
+            track = next((item for item in document.tracks if item.track_id == track_id), None)
+            if track is None:
+                return
+            setattr(track, property_name, bool(value))
+            if property_name == "solo" and bool(value):
+                for other in document.tracks:
+                    if other.track_id != track.track_id and other.kind in {"voice", "source_audio", "music"}:
+                        other.solo = False
+
+        return self._apply_editor_mutation("track_state", update, merge_key=f"track:{track_id}:{property_name}")
+
+    @Slot("QVariantList", "QVariantMap", str, result=bool)
+    def applyTextStyle(self, target_ids, style, scope: str) -> bool:
+        targets = {str(value) for value in (target_ids or []) if str(value or "")}
+        patch = dict(style or {})
+        scope = str(scope or "project")
+
+        def with_font_fingerprint(payload: dict) -> dict:
+            if "font_family" not in patch:
+                return payload
+            from haizflow.pipeline.render import font_file_fingerprint
+
+            payload["font_fingerprint"] = font_file_fingerprint(
+                str(payload.get("font_family") or ""),
+                int(payload.get("font_weight") or 400) >= 600,
+                bool(payload.get("italic")),
+            )
+            return payload
+
+        def apply(document):
+            if scope == "project":
+                target = next(
+                    (item for item in document.styles if item.style_id == document.default_subtitle_style_id),
+                    None,
+                )
+                if target is None:
+                    return
+                payload = target.model_dump()
+                payload.update(patch)
+                with_font_fingerprint(payload)
+                replacement = EditorTextStyle.model_validate(payload)
+                document.styles = [
+                    replacement if item.style_id == target.style_id else item
+                    for item in document.styles
+                ]
+                # The current editor exposes one style for the whole video.
+                # Older per-cue overrides may still exist in migrated projects;
+                # remove only fields the user just changed so the edit reaches
+                # every subtitle without flattening unrelated legacy values.
+                for clip in document.clips:
+                    if clip.track_id != "subtitles" or not clip.style_override:
+                        continue
+                    for key in patch:
+                        clip.style_override.pop(key, None)
+                    if "font_family" in patch:
+                        clip.style_override.pop("font_fingerprint", None)
+                return
+            for clip in document.clips:
+                if clip.track_id == "subtitles" and (
+                    clip.clip_id in targets or (clip.segment_id and clip.segment_id in targets)
+                ):
+                    resolved = editor_documents.resolved_text_style(document, clip).model_dump()
+                    resolved.update(patch)
+                    with_font_fingerprint(resolved)
+                    clip.style_override.update(patch)
+                    if "font_family" in patch:
+                        clip.style_override["font_fingerprint"] = resolved["font_fingerprint"]
+
+        return self._apply_editor_mutation("apply_text_style", apply)
+
+    @Slot("QVariantList", result=bool)
+    def resetTextStyleOverrides(self, target_ids) -> bool:
+        targets = {str(value) for value in (target_ids or []) if str(value or "")}
+
+        def reset(document):
+            for clip in document.clips:
+                if clip.track_id == "subtitles" and (
+                    clip.clip_id in targets or (clip.segment_id and clip.segment_id in targets)
+                ):
+                    clip.style_override.clear()
+
+        return self._apply_editor_mutation("reset_text_style", reset)
+
+    @Slot(int, str, str, result=str)
+    def addEditorMarker(self, time_ms: int, name: str, color: str = "#C4915E") -> str:
+        marker_id = editor_documents.new_id("marker")
+
+        def add(document):
+            document.markers.append(
+                EditorMarker(
+                    marker_id=marker_id,
+                    time_ms=max(0, min(int(time_ms), document.sequence.duration_ms)),
+                    name=str(name or "Đánh dấu"),
+                    color=str(color or "#C4915E"),
+                )
+            )
+            document.markers.sort(key=lambda marker: marker.time_ms)
+
+        return marker_id if self._apply_editor_mutation("add_marker", add) else ""
+
+    @Slot(str, int, str, str, result=bool)
+    def updateEditorMarker(
+        self,
+        marker_id: str,
+        time_ms: int,
+        name: str = "",
+        color: str = "",
+    ) -> bool:
+        marker_id = str(marker_id or "")
+
+        def update(document):
+            marker = next(
+                (item for item in document.markers if item.marker_id == marker_id),
+                None,
+            )
+            if marker is None:
+                return
+            marker.time_ms = max(0, min(int(time_ms), document.sequence.duration_ms))
+            if str(name or ""):
+                marker.name = str(name)
+            if str(color or ""):
+                marker.color = str(color)
+            document.markers.sort(key=lambda item: item.time_ms)
+
+        return self._apply_editor_mutation(
+            "move_marker",
+            update,
+            merge_key=f"marker:{marker_id}",
+        )
+
+    @Slot(str, result=bool)
+    def removeEditorMarker(self, marker_id: str) -> bool:
+        marker_id = str(marker_id or "")
+
+        def remove(document):
+            document.markers = [
+                item for item in document.markers if item.marker_id != marker_id
+            ]
+
+        return self._apply_editor_mutation("remove_marker", remove)
+
+    @Slot(str, str, bool, bool, str, result=int)
+    def replaceSubtitleText(
+        self,
+        search_text: str,
+        replacement: str,
+        case_sensitive: bool,
+        replace_all: bool,
+        segment_id: str = "",
+    ) -> int:
+        """Replace subtitle text as one editor command.
+
+        The operation deliberately updates only the subtitle and matching
+        voice clips.  Style, position, OCR, music, overlays and source edits
+        remain untouched.  Existing speech is disabled immediately so a new
+        sentence can never be played with stale audio.
+        """
+        needle = str(search_text or "")
+        if not needle:
+            return 0
+        target_segment = str(segment_id or "")
+        changed_count = 0
+
+        def replace(document):
+            nonlocal changed_count
+            for subtitle in sorted(
+                (
+                    item for item in document.clips
+                    if item.track_id == "subtitles" and item.segment_id
+                ),
+                key=lambda item: (item.start_ms, item.clip_id),
+            ):
+                if target_segment and subtitle.segment_id != target_segment:
+                    continue
+                source = str(subtitle.name or "")
+                if case_sensitive:
+                    if needle not in source:
+                        continue
+                    updated = source.replace(needle, str(replacement))
+                else:
+                    import re
+
+                    updated = re.sub(
+                        re.escape(needle),
+                        lambda _match: str(replacement),
+                        source,
+                        flags=re.IGNORECASE,
+                    )
+                if updated == source:
+                    continue
+                subtitle.name = updated
+                payload = subtitle.metadata.get("segment_payload")
+                if not isinstance(payload, dict):
+                    payload = {}
+                    subtitle.metadata["segment_payload"] = payload
+                payload["text"] = updated
+                payload["revision"] = int(payload.get("revision") or 0) + 1
+                voice = next(
+                    (
+                        item for item in document.clips
+                        if item.track_id == "voice"
+                        and item.segment_id == subtitle.segment_id
+                    ),
+                    None,
+                )
+                if voice is not None:
+                    voice.name = updated
+                    voice.enabled = False
+                    voice.asset_id = ""
+                    voice.metadata["state"] = "stale"
+                    voice.metadata["text_revision"] = payload["revision"]
+                changed_count += 1
+                if not replace_all:
+                    break
+
+        accepted = self._apply_editor_mutation("replace_subtitle_text", replace)
+        return changed_count if accepted else 0
 
     @Slot()
     def refreshManualPreviewAudio(self):
@@ -3657,6 +5084,21 @@ class HaizFlowController(QObject):
             self._manual_voice_refresh_pending = False
             self._manual_voice_refresh_enabled = False
         self._manual_subtitles.load(str(self._selected_video_id or ""), self.reviewSegments)
+        selected_video = getattr(self, "_selected_video", None)
+        selected = selected_video() if callable(selected_video) else None
+        if selected and selected.project_type == "manual":
+            try:
+                document = editor_documents.ensure(selected)
+                document = editor_documents.sync_subtitle_clips(
+                    selected,
+                    self._manual_subtitles.segments,
+                )
+                self._manual_editor_document.set_document(document)
+                self._manual_preview_composition.refresh()
+            except (OSError, RuntimeError, TypeError, ValueError):
+                # The legacy workspace remains usable when migration cannot be
+                # completed.  The backup created by ``ensure`` is untouched.
+                self._manual_editor_document.clear()
         # `selectedVideoChanged` can be emitted before the asynchronous Manual
         # workspace exists.  Refresh again after the workspace becomes active
         # so the single result-audio sink receives the persisted mix/voice
@@ -3686,15 +5128,6 @@ class HaizFlowController(QObject):
                     schedule_cache(selected_video_id)
 
             QTimer.singleShot(950, migrate_after_workspace_paint)
-        # Leaving the workspace deliberately pauses an automatic per-segment
-        # voice refresh.  Reopening the same project resumes it instead of
-        # leaving the edited segment permanently silent.
-        if (
-            self._manual_voice_refresh_pending
-            and self._manual_voice_refresh_enabled
-            and not self._manual_voice_refresh_timer.isActive()
-        ):
-            self._manual_voice_refresh_timer.start()
 
     @Slot(str)
     def beginManualSubtitleEdit(self, segment_id):
@@ -3730,19 +5163,20 @@ class HaizFlowController(QObject):
         self._refresh_selected_video_snapshot()
         self.manualToolStateChanged.emit("subtitle")
         self.manualSubtitleDocumentChanged.emit()
-        if text_changed and self._manual_voice_refresh_pending:
-            self._manual_voice_refresh_timer.start()
+        video = video_store.get_video(video_id)
+        if video:
+            try:
+                document = editor_documents.sync_subtitle_clips(video, self._manual_subtitles.segments)
+                self._manual_editor_document.set_document(document)
+                self._manual_preview_composition.refresh()
+            except (OSError, RuntimeError, TypeError, ValueError):
+                pass
 
     @Slot()
     def _refresh_manual_voice(self):
-        if not self._manual_voice_refresh_pending:
-            return
-        if self._processing_queue.has_work or any(
-                state == "saving" for state in self._manual_subtitles._states.values()):
-            self._manual_voice_refresh_timer.start()
-            return
-        self._manual_voice_refresh_pending = False
-        self.runManualTool("voice")
+        # Kept as a compatibility slot for older QML.  Editing text only marks
+        # the matching voice clip stale; TTS is started explicitly by the user.
+        self._manual_voice_refresh_timer.stop()
 
     @Slot(int)
     def selectVideo(self, row: int):
@@ -4211,6 +5645,13 @@ class HaizFlowController(QObject):
             "tts_volume": video.tts_volume,
             "watermark_text": video.watermark_text,
             "watermark_scale_percent": getattr(video, "watermark_scale_percent", 100),
+            "watermark_kind": getattr(video, "watermark_kind", "text"),
+            "watermark_opacity_percent": getattr(video, "watermark_opacity_percent", 46),
+            "watermark_outline_percent": getattr(video, "watermark_outline_percent", 100),
+            "watermark_font_family": getattr(video, "watermark_font_family", "Arial"),
+            "watermark_text_color": getattr(video, "watermark_text_color", "#FFFFFF"),
+            "watermark_bold": getattr(video, "watermark_bold", True),
+            "watermark_italic": getattr(video, "watermark_italic", True),
             "project_name": video.project_name,
             "project_directory": video.project_directory,
             "project_type": video.project_type,
@@ -4278,14 +5719,20 @@ class HaizFlowController(QObject):
         files = dict(video.files or {})
         background_music = str(files.get("background_music") or "")
         voice_reference = str(files.get("voice_reference") or "")
+        watermark_image = str(files.get("watermark_image") or "")
+        watermark_video = str(files.get("watermark_video") or "")
         if preserve:
             background_music = self._preserve_edit_asset(video.video_id, background_music)
             voice_reference = self._preserve_edit_asset(video.video_id, voice_reference)
+            watermark_image = self._preserve_edit_asset(video.video_id, watermark_image)
+            watermark_video = self._preserve_edit_asset(video.video_id, watermark_video)
         return {
             "settings": self._video_settings_snapshot(video),
             "background_music": background_music,
             "voice_reference": voice_reference,
             "voice_reference_transcript": str(files.get("voice_reference_transcript") or ""),
+            "watermark_image": watermark_image,
+            "watermark_video": watermark_video,
         }
 
     def _restore_video_asset_snapshot(self, video_id: str, snapshot: dict[str, object]) -> bool:
@@ -4302,6 +5749,10 @@ class HaizFlowController(QObject):
             str(snapshot.get("voice_reference") or ""),
             str(snapshot.get("voice_reference_transcript") or ""),
         )
+        video = video_store.get_video(video_id) or video
+        set_desktop_watermark_image(video, str(snapshot.get("watermark_image") or ""))
+        video = video_store.get_video(video_id) or video
+        set_desktop_watermark_video(video, str(snapshot.get("watermark_video") or ""))
         if video.project_type == "manual":
             manual_artifacts.deactivate(video_id, {"tts_manifest", "audio_mix", "visual_proxy", "export"})
         return bool(video_store.get_video(video_id))
@@ -4430,6 +5881,13 @@ class HaizFlowController(QObject):
             tts_volume=self._tts_volume,
             watermark_text=self._watermark_text,
             watermark_scale_percent=self._watermark_scale_percent,
+            watermark_kind=self._watermark_kind,
+            watermark_opacity_percent=self._watermark_opacity_percent,
+            watermark_outline_percent=self._watermark_outline_percent,
+            watermark_font_family=self._watermark_font_family,
+            watermark_text_color=self._watermark_text_color,
+            watermark_bold=self._watermark_bold,
+            watermark_italic=self._watermark_italic,
             background_music_path=self._background_music_path,
             project_name=self._project_name,
             project_directory=self._project_directory,
@@ -4446,8 +5904,120 @@ class HaizFlowController(QObject):
             review_approved,
         )
 
+    def _sync_legacy_editor_audio_levels(self, video, track_ids: set[str]) -> None:
+        """Mirror the always-visible Manual level controls into document v2."""
+        if not video or getattr(video, "project_type", "") != "manual":
+            return
+        document = editor_documents.load(video.video_id)
+        if document is None:
+            return
+        changed = document.model_copy(deep=True)
+        did_change = False
+        target_by_track = {
+            "source-audio": int(video.original_video_volume),
+            "voice": int(video.tts_volume),
+            "music": int(video.background_music_volume),
+        }
+        for clip in changed.clips:
+            if clip.track_id not in track_ids:
+                continue
+            target = target_by_track.get(clip.track_id)
+            if target is None or clip.volume_percent == target:
+                continue
+            clip.volume_percent = target
+            did_change = True
+        if not did_change:
+            return
+        try:
+            stored = editor_documents.save(video, changed)
+        except (OSError, ValueError):
+            return
+        model = getattr(self, "_manual_editor_document", None)
+        if model is not None and str(getattr(self, "_selected_video_id", "") or "") == video.video_id:
+            model.set_document(stored)
+
+    def _sync_legacy_editor_visual_settings(self, video, sections: set[str]) -> None:
+        if not video or getattr(video, "project_type", "") != "manual" or not sections:
+            return
+        document = editor_documents.load(video.video_id)
+        if document is None:
+            return
+        changed = document.model_copy(deep=True)
+        did_change = False
+        if "subtitle" in sections:
+            style = next(
+                (item for item in changed.styles if item.style_id == changed.default_subtitle_style_id),
+                None,
+            )
+            if style is not None:
+                legacy = video.subtitle_style
+                patch = {
+                    "font_family": legacy.font_family,
+                    "font_weight": 700 if legacy.bold else 400,
+                    "italic": legacy.italic,
+                    "uppercase": legacy.uppercase,
+                    "font_size": legacy.font_size,
+                    "text_color": legacy.text_color,
+                    "karaoke_color": legacy.karaoke_color,
+                    "outline_color": legacy.outline_color,
+                    "outline_width": legacy.outline,
+                    "shadow_offset_x": legacy.shadow,
+                    "shadow_offset_y": legacy.shadow,
+                    "position_x_percent": legacy.position_x_percent,
+                    "position_y_percent": legacy.position_y_percent,
+                    "max_width_percent": legacy.box_width_percent,
+                    "box_height_percent": legacy.box_height_percent,
+                }
+                for name, value in patch.items():
+                    if getattr(style, name) != value:
+                        setattr(style, name, value)
+                        did_change = True
+        if "watermark" in sections:
+            style = next((item for item in changed.styles if item.style_id == "watermark-default"), None)
+            if style is not None:
+                patch = {
+                    "font_family": video.watermark_font_family,
+                    "font_weight": 700 if video.watermark_bold else 400,
+                    "italic": video.watermark_italic,
+                    "text_color": video.watermark_text_color,
+                    "karaoke_color": video.watermark_text_color,
+                    "outline_width": max(0.0, float(video.watermark_outline_percent) / 50.0),
+                }
+                for name, value in patch.items():
+                    if getattr(style, name) != value:
+                        setattr(style, name, value)
+                        did_change = True
+            clip = next((item for item in changed.clips if item.clip_id == "watermark-1"), None)
+            if clip is not None:
+                values = {
+                    "name": video.watermark_text or clip.name,
+                    "kind": video.watermark_kind,
+                }
+                for name, value in values.items():
+                    if getattr(clip, name) != value:
+                        setattr(clip, name, value)
+                        did_change = True
+                if clip.transform.scale_x_percent != video.watermark_scale_percent:
+                    clip.transform.scale_x_percent = video.watermark_scale_percent
+                    clip.transform.scale_y_percent = video.watermark_scale_percent
+                    did_change = True
+                if clip.transform.opacity_percent != video.watermark_opacity_percent:
+                    clip.transform.opacity_percent = video.watermark_opacity_percent
+                    did_change = True
+        if not did_change:
+            return
+        try:
+            stored = editor_documents.save(video, changed)
+        except (OSError, ValueError):
+            return
+        model = getattr(self, "_manual_editor_document", None)
+        if model is not None and str(getattr(self, "_selected_video_id", "") or "") == video.video_id:
+            model.set_document(stored)
+
     def _apply_config_to_video(self, video, config, review_approved=None):
         manual_artifacts_to_deactivate: set[str] = set()
+        manual_audio_tracks_to_sync: set[str] = set()
+        manual_visual_sections_to_sync: set[str] = set()
         changes = {
             "mode": config.mode,
             "source_language": config.source_language,
@@ -4468,6 +6038,13 @@ class HaizFlowController(QObject):
             "tts_volume": config.tts_volume,
             "watermark_text": config.watermark_text,
             "watermark_scale_percent": config.watermark_scale_percent,
+            "watermark_kind": config.watermark_kind,
+            "watermark_opacity_percent": config.watermark_opacity_percent,
+            "watermark_outline_percent": config.watermark_outline_percent,
+            "watermark_font_family": config.watermark_font_family,
+            "watermark_text_color": config.watermark_text_color,
+            "watermark_bold": config.watermark_bold,
+            "watermark_italic": config.watermark_italic,
             "project_type": config.project_type,
         }
         if getattr(video, "project_type", "single") == "manual":
@@ -4516,6 +6093,8 @@ class HaizFlowController(QObject):
                 # only the visual proxy/SRT whose signature actually changed.
                 invalidated.add("render")
                 manual_artifacts_to_deactivate.update({"visual_proxy", "export"})
+                if changed("subtitle_style", config.subtitle_style):
+                    manual_visual_sections_to_sync.add("subtitle")
             if any(
                 (
                     changed("tts_provider", config.tts_provider),
@@ -4538,16 +6117,30 @@ class HaizFlowController(QObject):
             ):
                 invalidated.update({"timeline", "render"})
                 manual_artifacts_to_deactivate.update({"audio_mix", "export"})
+                if changed("original_video_volume", config.original_video_volume):
+                    manual_audio_tracks_to_sync.add("source-audio")
+                if changed("background_music_volume", config.background_music_volume):
+                    manual_audio_tracks_to_sync.add("music")
+                if changed("tts_volume", config.tts_volume):
+                    manual_audio_tracks_to_sync.add("voice")
             if any(
                 (
                     changed("output_format", config.output_format),
                     changed("crop", config.crop),
                     changed("watermark_text", config.watermark_text),
                     changed("watermark_scale_percent", config.watermark_scale_percent),
+                    changed("watermark_kind", config.watermark_kind),
+                    changed("watermark_opacity_percent", config.watermark_opacity_percent),
+                    changed("watermark_outline_percent", config.watermark_outline_percent),
+                    changed("watermark_font_family", config.watermark_font_family),
+                    changed("watermark_text_color", config.watermark_text_color),
+                    changed("watermark_bold", config.watermark_bold),
+                    changed("watermark_italic", config.watermark_italic),
                 )
             ):
                 invalidated.add("render")
                 manual_artifacts_to_deactivate.update({"visual_proxy", "export"})
+                manual_visual_sections_to_sync.add("watermark")
             if completed.intersection(invalidated):
                 remaining = [stage for stage in stage_order if stage in completed and stage not in invalidated]
                 changes["manual_completed_stages"] = remaining
@@ -4563,6 +6156,18 @@ class HaizFlowController(QObject):
         if review_approved is not None:
             changes["review_approved"] = review_approved
         video_store.update_video(video.video_id, **changes)
+        if manual_audio_tracks_to_sync:
+            HaizFlowController._sync_legacy_editor_audio_levels(
+                self,
+                video_store.get_video(video.video_id) or video,
+                manual_audio_tracks_to_sync,
+            )
+        if manual_visual_sections_to_sync:
+            HaizFlowController._sync_legacy_editor_visual_settings(
+                self,
+                video_store.get_video(video.video_id) or video,
+                manual_visual_sections_to_sync,
+            )
         if manual_artifacts_to_deactivate:
             manual_artifacts.deactivate(video.video_id, manual_artifacts_to_deactivate)
 
@@ -4577,13 +6182,19 @@ class HaizFlowController(QObject):
             target = str(getattr(video, "manual_target_tool", "") or "") if video else ""
             required = {
                 "separation": {"separation"},
-                "translation": {"recognition", "translation"},
+                "translation": {"recognition"},
                 "image": {"ocr"},
                 "voice": {"voice"},
             }.get(target, set())
-            # Automatic and Batch may use several models in one processing
-            # request. Preserve all correctly warmed residents for those modes.
-            if not target:
+            profile = runtime_profile()
+            constrained = profile.total_ram_gib < 24 or (
+                profile.cuda_available and profile.total_vram_gib < 12
+            )
+            # A multi-stage Auto/Batch job cannot retain every model on a
+            # constrained machine. Each stage loads only what it needs.
+            if constrained:
+                required = set()
+            elif not target:
                 required = set(warmup.resident)
             warmup.foreground_work_requested(required)
         return HaizFlowController._processing_delegate_for(self).enqueue_video(video_id)

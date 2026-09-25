@@ -13,7 +13,10 @@ InspectorPanel {
     property string pendingSettingsVideoId: ""
     property var subtitleSegments: []
     property int selectedSubtitleIndex: -1
+    property var selectedEditorClip: ({})
     property var subtitleDrafts: ({})
+    property var exportPreflight: ({ "canExport": false, "issues": [],
+        "requiredBytes": 0, "availableBytes": 0 })
     readonly property var toolIds: [
         "source", "translation", "subtitle", "image", "voice", "audio", "export"
     ]
@@ -35,6 +38,7 @@ InspectorPanel {
         ? subtitleSegments[selectedSubtitleIndex] : null
     readonly property ManualSubtitleEditorDialog subtitleEditorDialog:
         subtitleEditorDialogLoader.item as ManualSubtitleEditorDialog
+    readonly property real panelBodyHeight: inspectorScroll.height
 
     signal subtitleSelected(int index)
     signal subtitleDialogSelectionRequested(int index)
@@ -42,6 +46,8 @@ InspectorPanel {
     signal sourceLinkRequested()
     signal settingsCommitted()
     signal exportRequested()
+    signal editorSeekRequested(real seconds)
+    signal toolSelected(int index)
 
     function dismissTextEditor() {
         if (subtitleEditorDialogLoader.status === Loader.Ready
@@ -68,7 +74,33 @@ InspectorPanel {
     }
 
     title: String(toolState.label || "")
-    onCurrentStageChanged: inspectorScroll.contentY = 0
+    showTitle: false
+    padding: Theme.space16
+    border.width: 0
+    radius: 0
+    onCurrentStageChanged: {
+        inspectorScroll.contentY = 0;
+        if (root.toolId === "export")
+            root.refreshExportPreflight();
+    }
+    Component.onCompleted: {
+        if (root.toolId === "export")
+            root.refreshExportPreflight();
+    }
+
+    function formatBytes(value) {
+        const bytes = Math.max(0, Number(value || 0));
+        if (bytes >= 1073741824)
+            return (bytes / 1073741824).toFixed(1) + " GiB";
+        if (bytes >= 1048576)
+            return Math.round(bytes / 1048576) + " MiB";
+        return Math.round(bytes / 1024) + " KiB";
+    }
+
+    function refreshExportPreflight() {
+        if (root.toolId === "export" && AppController.hasSelectedVideo)
+            root.exportPreflight = AppController.manualExportPreflight();
+    }
 
     Component.onDestruction: {
         // Persist the latest control value when navigation tears down this
@@ -98,36 +130,25 @@ InspectorPanel {
         pendingSettingsVideoId = "";
     }
 
-    function stateLabel(state) {
-        if (state === "cached") return qsTr("Đã lưu");
-        if (state === "ready") return qsTr("Sẵn sàng");
-        if (state === "running") return qsTr("Đang chạy");
-        if (state === "queued") return qsTr("Đang chờ");
-        if (state === "paused") return qsTr("Đã tạm dừng");
-        if (state === "error") return qsTr("Có lỗi");
-        return qsTr("Thiếu dữ liệu");
-    }
-
     function runLabel() {
-        if (toolId === "translation") return toolState.cacheHit ? qsTr("Tạo lại phụ đề") : qsTr("Tạo phụ đề");
+        if (toolId === "translation") return toolState.cacheHit ? qsTr("Nhận dạng & dịch lại") : qsTr("Nhận dạng & dịch");
+        if (toolId === "image") return toolState.cacheHit ? qsTr("Quét lại phụ đề gốc") : qsTr("Tìm vùng phụ đề gốc");
         if (toolId === "voice") return toolState.cacheHit ? qsTr("Tạo lại giọng") : qsTr("Tạo giọng");
         if (toolId === "audio") return toolState.cacheHit ? qsTr("Tạo lại bản phối") : qsTr("Tạo bản phối");
         if (toolId === "export") return toolState.cacheHit ? qsTr("Xuất lại video") : qsTr("Xuất video");
         return qsTr("Chạy công cụ");
     }
 
-    function openVoiceDialog(initialScope) {
-        const segment = root.selectedSubtitle;
-        const segmentId = segment ? String(segment.segment_id || "") : "";
-        const segmentText = segment ? String(segment.text || "") : "";
-        const configuration = AppController.manualVoiceConfiguration(segmentId);
+    function openVoiceDialog() {
+        const configuration = AppController.manualVoiceConfiguration("");
         voiceDialogLoader.invoke("openForVoice", [
             Boolean(configuration.hasPublishedVoice),
-            segmentId,
-            segmentText,
-            configuration,
-            initialScope || "all"
+            configuration
         ]);
+    }
+
+    function openBackgroundMusicLinkDialog() {
+        backgroundMusicLinkDialogLoader.invoke("open", []);
     }
 
     function hasCurrentCache(requestedToolId) {
@@ -141,14 +162,30 @@ InspectorPanel {
 
     Text {
         Layout.fillWidth: true
-        visible: ["running", "queued", "paused", "error"].indexOf(
-            String(root.toolState.state || "")) >= 0
-        text: root.stateLabel(String(root.toolState.state || "blocked"))
-        color: root.toolState.state === "error" ? Theme.danger : Theme.textMuted
+        text: String(root.toolState.label || "")
+        color: Theme.text
+        font.family: Theme.fontFamily
+        font.pixelSize: TypeScale.section
+        font.weight: Font.DemiBold
+        textFormat: Text.PlainText
+    }
+
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 1
+        color: Theme.divider
+    }
+
+    Text {
+        Layout.fillWidth: true
+        visible: root.toolState.state === "error"
+        text: qsTr("Tác vụ gặp lỗi. Mở log kỹ thuật để xem chi tiết.")
+        color: Theme.danger
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.metadata
-        font.weight: root.toolState.state === "error" ? Font.DemiBold : Font.Normal
+        font.weight: Font.DemiBold
         textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
     }
 
     Flickable {
@@ -180,403 +217,37 @@ InspectorPanel {
 
         Component {
             id: sourceInspectorComponent
-            ColumnLayout {
-                spacing: Theme.space8
-
-                SettingLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("Video nguồn")
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.space4
-                    StudioButton {
-                        Layout.fillWidth: true
-                        text: qsTr("Từ tệp")
-                        iconName: "folder"
-                        variant: "secondary"
-                        enabled: root.editable && !root.taskQueued
-                        onClicked: AppController.browseVideo()
-                    }
-                    StudioButton {
-                        Layout.fillWidth: true
-                        text: qsTr("Từ liên kết")
-                        iconName: "link"
-                        variant: "secondary"
-                        enabled: root.editable && !root.taskQueued
-                        onClicked: root.sourceLinkRequested()
-                    }
-                }
-                SettingLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("Âm thanh")
-                }
-                SegmentedControl {
-                    Layout.fillWidth: true
-                    enabled: root.editable && !root.taskQueued
-                    currentValue: AppController.enableAudioSeparation ? "separated" : "original"
-                    options: [
-                        { "label": qsTr("Giữ âm thanh gốc"), "value": "original" },
-                        { "label": qsTr("Tách giọng"), "value": "separated" }
-                    ]
-                    onActivated: function(value) {
-                        AppController.enableAudioSeparation = value === "separated";
-                        root.scheduleSave();
-                    }
-                }
-                StudioButton {
-                    Layout.fillWidth: true
-                    visible: AppController.enableAudioSeparation
-                    text: root.toolState.cacheHit
-                        ? qsTr("Tách lại giọng") : qsTr("Chạy tách giọng")
-                    iconName: "volume"
-                    variant: "primary"
-                    enabled: root.editable && !root.taskQueued && root.toolState.canRun
-                    onClicked: {
-                        root.saveNow();
-                        AppController.runManualTool("separation");
-                    }
-                }
-            }
+            ManualSourceToolPanel { inspector: root }
         }
 
         Component {
             id: translationInspectorComponent
-            ColumnLayout {
-                spacing: Theme.space8
-                SettingLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("Model nhận dạng")
-                    helpText: qsTr("Turbo cần GPU. Small dùng ít bộ nhớ hơn và hỗ trợ CPU.")
-                }
-                AppComboBox {
-                    Layout.fillWidth: true
-                    enabled: root.editable
-                    textRole: "label"
-                    valueRole: "value"
-                    model: AppController.speechRecognitionModelOptions
-                    currentIndex: AppController.speechRecognitionModelIndex
-                    onActivated: {
-                        AppController.speechRecognitionModel = currentValue;
-                        root.scheduleSave();
-                    }
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: AppController.enableAudioSeparation
-                        ? qsTr("Nguồn nhận dạng: track giọng đã tách")
-                        : qsTr("Nguồn nhận dạng: âm thanh gốc")
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    wrapMode: Text.Wrap
-                    textFormat: Text.PlainText
-                }
-                SettingLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("Dịch sang")
-                }
-                SearchableLanguageCombo {
-                    Layout.fillWidth: true
-                    enabled: root.editable
-                    options: AppController.targetLanguageOptions
-                    selectedCode: AppController.targetLanguage
-                    onSelected: function(code) {
-                        AppController.targetLanguage = code;
-                        root.scheduleSave();
-                    }
-                }
-            }
+            ManualTranslationToolPanel { inspector: root }
         }
 
         Component {
             id: subtitleInspectorComponent
-            ColumnLayout {
-                id: subtitlePane
-                spacing: Theme.space8
-                height: Math.max(300, inspectorScroll.height)
-                readonly property string selectedSegmentId: root.selectedSubtitle
-                    ? String(root.selectedSubtitle.segment_id || "") : ""
-                readonly property var selectedDraft: root.subtitleDrafts[selectedSegmentId] || null
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.space8
-                    Text {
-                        Layout.fillWidth: true
-                        text: root.selectedSubtitle
-                            ? qsTr("%1 / %2").arg(root.selectedSubtitleIndex + 1).arg(root.subtitleSegments.length)
-                            : qsTr("Chưa chọn phụ đề")
-                        color: root.selectedSubtitle ? Theme.text : Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.control
-                        font.weight: root.selectedSubtitle ? Font.DemiBold : Font.Normal
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                    }
-                    IconButton {
-                        glyph: "\uE72B"
-                        toolTipText: qsTr("Phụ đề trước")
-                        enabled: root.selectedSubtitleIndex > 0
-                        onClicked: root.subtitleSelected(root.selectedSubtitleIndex - 1)
-                    }
-                    IconButton {
-                        glyph: "\uE72A"
-                        toolTipText: qsTr("Phụ đề sau")
-                        enabled: root.selectedSubtitleIndex >= 0
-                            && root.selectedSubtitleIndex < root.subtitleSegments.length - 1
-                        onClicked: root.subtitleSelected(root.selectedSubtitleIndex + 1)
-                    }
-                }
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 176
-                    color: Theme.input
-                    radius: Theme.radiusSmall
-                    border.width: 1
-                    border.color: Theme.outline
-
-                    Text {
-                        id: subtitleSummary
-                        anchors.fill: parent
-                        anchors.margins: Theme.space12
-                        text: subtitlePane.selectedDraft !== null
-                            ? String(subtitlePane.selectedDraft.text || "")
-                            : root.selectedSubtitle
-                                ? String(root.selectedSubtitle.text || "")
-                                : qsTr("Chọn phụ đề trên video hoặc timeline.")
-                        color: root.selectedSubtitle ? Theme.text : Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.body
-                        lineHeight: 1.35
-                        lineHeightMode: Text.ProportionalHeight
-                        wrapMode: Text.Wrap
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        maximumLineCount: 9
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.space8
-
-                    Item { Layout.fillWidth: true }
-
-                    StudioButton {
-                        text: qsTr("Mở rộng")
-                        iconName: "fullscreen"
-                        variant: "secondary"
-                        enabled: root.selectedSubtitle !== null
-                        onClicked: root.focusTextEditor()
-                    }
-                }
-            }
+            ManualSubtitleToolPanel { inspector: root }
         }
 
         Component {
             id: imageInspectorComponent
-            ColumnLayout {
-                id: imagePane
-                spacing: Theme.space8
-                readonly property string appliedTreatment: !AppController.removeOriginalSubtitles
-                    ? "keep" : AppController.originalSubtitleRemovalMode
-                property string draftTreatment: appliedTreatment
-
-                onAppliedTreatmentChanged: draftTreatment = appliedTreatment
-
-                SettingLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("Phụ đề gốc")
-                }
-                AppComboBox {
-                    Layout.fillWidth: true
-                    enabled: root.editable
-                    textRole: "label"
-                    valueRole: "value"
-                    model: [
-                        { "label": qsTr("Giữ nguyên"), "value": "keep" },
-                        { "label": qsTr("Che · Làm mờ"), "value": "blur" },
-                        { "label": qsTr("Che · Vá nền"), "value": "patch" }
-                    ]
-                    currentIndex: imagePane.draftTreatment === "keep" ? 0
-                        : imagePane.draftTreatment === "blur" ? 1 : 2
-                    onActivated: function(index) {
-                        const selected = model[index]
-                        if (selected)
-                            imagePane.draftTreatment = String(selected.value || "keep");
-                    }
-                }
-                StudioButton {
-                    Layout.fillWidth: true
-                    visible: imagePane.draftTreatment !== imagePane.appliedTreatment
-                    text: qsTr("Áp dụng")
-                    variant: "primary"
-                    enabled: root.editable && !root.taskQueued
-                        && imagePane.draftTreatment !== imagePane.appliedTreatment
-                    onClicked: AppController.setManualSubtitleTreatment(imagePane.draftTreatment)
-                }
-                SettingLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("Watermark")
-                }
-                StudioButton {
-                    Layout.fillWidth: true
-                    text: AppController.watermarkText.length > 0
-                        ? AppController.watermarkText : qsTr("Đặt watermark")
-                    iconName: "edit"
-                    variant: "secondary"
-                    enabled: root.editable
-                    onClicked: watermarkDialogLoader.invoke("openWithText", [
-                        AppController.watermarkText
-                    ])
-                }
-                Text {
-                    Layout.fillWidth: true
-                    visible: AppController.watermarkText.length > 0
-                    text: qsTr("Bấm watermark trên video rồi kéo góc để đổi cỡ.")
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    wrapMode: Text.Wrap
-                    textFormat: Text.PlainText
-                }
-            }
+            ManualImageToolPanel { inspector: root }
         }
 
         Component {
             id: voiceInspectorComponent
-            ColumnLayout {
-                spacing: Theme.space8
-
-                Text {
-                    Layout.fillWidth: true
-                    visible: root.hasPublishedVoice && !root.hasCurrentCache("voice")
-                    text: qsTr("Giọng đọc chưa khớp thiết lập hiện tại.")
-                    color: Theme.warning
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    wrapMode: Text.Wrap
-                    textFormat: Text.PlainText
-                }
-
-                StudioButton {
-                    Layout.fillWidth: true
-                    visible: !root.hasPublishedVoice
-                    text: qsTr("Tạo giọng")
-                    iconName: "volume"
-                    variant: "primary"
-                    enabled: root.editable && !root.taskQueued && root.toolState.canRun
-                    onClicked: root.openVoiceDialog("all")
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: root.hasPublishedVoice
-                    spacing: Theme.space8
-
-                    StudioButton {
-                        Layout.fillWidth: true
-                        text: qsTr("Đổi giọng")
-                        iconName: "edit"
-                        variant: "primary"
-                        enabled: root.editable && !root.taskQueued
-                        onClicked: root.openVoiceDialog("all")
-                    }
-
-                    StudioButton {
-                        Layout.fillWidth: true
-                        text: qsTr("Tạo lại")
-                        iconName: "refresh"
-                        variant: "secondary"
-                        enabled: root.editable && !root.taskQueued
-                        onClicked: root.openVoiceDialog("all")
-                    }
-                }
-            }
+            ManualVoiceToolPanel { inspector: root }
         }
 
         Component {
             id: audioInspectorComponent
-            ColumnLayout {
-                spacing: Theme.space8
-
-                AudioLevelControl {
-                    Layout.fillWidth: true
-                    label: AppController.enableAudioSeparation && root.hasCurrentCache("source")
-                        ? qsTr("Âm nền") : qsTr("Âm thanh gốc")
-                    volume: AppController.originalVolume
-                    adjustable: root.editable
-                    onVolumeEdited: function(value) {
-                        AppController.originalVolume = value;
-                        root.scheduleSave();
-                    }
-                }
-                AudioLevelControl {
-                    Layout.fillWidth: true
-                    label: qsTr("Giọng đọc")
-                    volume: AppController.ttsVolume
-                    adjustable: root.editable && root.hasCurrentCache("voice")
-                    disabledHint: qsTr("Chưa tạo giọng đọc")
-                    onVolumeEdited: function(value) {
-                        AppController.ttsVolume = value;
-                        root.scheduleSave();
-                    }
-                }
-                AudioLevelControl {
-                    Layout.fillWidth: true
-                    label: qsTr("Nhạc nền")
-                    volume: AppController.backgroundMusicVolume
-                    adjustable: root.editable && AppController.backgroundMusicPath.length > 0
-                    disabledHint: qsTr("Chưa chọn nhạc nền")
-                    onVolumeEdited: function(value) {
-                        AppController.backgroundMusicVolume = value;
-                        root.scheduleSave();
-                    }
-                }
-                SettingLabel {
-                    Layout.fillWidth: true
-                    text: qsTr("Nhạc nền")
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: AppController.backgroundMusicPath || qsTr("Chưa có nhạc nền")
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    textFormat: Text.PlainText
-                    elide: Text.ElideMiddle
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.space4
-                    StudioButton {
-                        Layout.fillWidth: true
-                        text: qsTr("Chọn tệp")
-                        variant: "secondary"
-                        enabled: root.editable
-                        onClicked: AppController.browseBackgroundMusic()
-                    }
-                    StudioButton {
-                        Layout.fillWidth: true
-                        text: qsTr("Từ liên kết")
-                        variant: "secondary"
-                        enabled: root.editable
-                        onClicked: backgroundMusicLinkDialogLoader.invoke("open", [])
-                    }
-                    IconButton {
-                        visible: AppController.backgroundMusicPath.length > 0
-                        glyph: "\uE74D"
-                        toolTipText: qsTr("Xóa nhạc nền")
-                        enabled: root.editable
-                        onClicked: AppController.clearBackgroundMusic()
-                    }
-                }
-            }
+            ManualAudioToolPanel { inspector: root }
         }
 
         Component {
             id: exportInspectorComponent
-            Item {}
+            ManualExportToolPanel { inspector: root }
         }
 
         ScrollBar.vertical: ScrollBar {
@@ -593,8 +264,9 @@ InspectorPanel {
         Layout.fillHeight: false
         Layout.preferredHeight: implicitHeight
         Layout.maximumHeight: implicitHeight
-        visible: (root.taskBelongsToTool && (root.taskQueued || root.taskPaused))
-            || ["translation", "voice", "export"].indexOf(root.toolId) >= 0
+        visible: (
+            (root.taskBelongsToTool && (root.taskQueued || root.taskPaused))
+            || ["translation", "image", "voice", "export"].indexOf(root.toolId) >= 0)
         spacing: Theme.space8
 
         ColumnLayout {
@@ -625,7 +297,7 @@ InspectorPanel {
         StudioButton {
             Layout.fillWidth: true
             visible: (root.taskBelongsToTool && (root.taskQueued || root.taskPaused))
-                || ["translation", "export"].indexOf(root.toolId) >= 0
+                || ["translation", "image", "export"].indexOf(root.toolId) >= 0
             text: root.taskProcessing && root.taskBelongsToTool ? qsTr("Tạm dừng")
                 : root.taskQueued && root.taskBelongsToTool ? qsTr("Hủy tác vụ")
                 : root.taskPaused && root.taskBelongsToTool ? qsTr("Tiếp tục") : root.runLabel()
@@ -636,7 +308,8 @@ InspectorPanel {
             enabled: root.taskProcessing && root.taskBelongsToTool
                 || root.taskQueued && root.taskBelongsToTool
                 || root.taskPaused && root.taskBelongsToTool
-                || (root.editable && !root.taskQueued && root.toolState.canRun)
+                || (root.editable && !root.taskQueued && root.toolState.canRun
+                    && (root.toolId !== "export" || Boolean(root.exportPreflight.canExport)))
             onClicked: {
                 if ((root.taskProcessing || root.taskQueued) && root.taskBelongsToTool)
                     AppController.cancelManualTool(AppController.manualTargetTool);
@@ -644,6 +317,8 @@ InspectorPanel {
                     AppController.resumeSelectedVideo();
                 else {
                     root.saveNow();
+                    if (root.toolId === "export")
+                        root.refreshExportPreflight();
                     const started = AppController.runManualTool(root.toolId);
                     if (root.toolId === "export" && started)
                         root.exportRequested();
@@ -671,6 +346,16 @@ InspectorPanel {
                 AppController.persistVideoSettingsFor(root.pendingSettingsVideoId);
                 root.pendingSettingsVideoId = "";
             }
+            if (root.toolId === "export")
+                root.refreshExportPreflight();
+        }
+    }
+
+    Connections {
+        target: AppController.manualEditorDocumentModel
+        function onChanged() {
+            if (root.toolId === "export")
+                root.refreshExportPreflight();
         }
     }
 
@@ -687,6 +372,7 @@ InspectorPanel {
                     ? String(root.subtitleDrafts[segmentId].text || "") : ""
                 onPreviousRequested: root.subtitleDialogSelectionRequested(root.selectedSubtitleIndex - 1)
                 onNextRequested: root.subtitleDialogSelectionRequested(root.selectedSubtitleIndex + 1)
+                onSelectionRequested: function(index) { root.subtitleDialogSelectionRequested(index); }
                 onCommitRequested: function(id, text, version, request) {
                     AppController.saveManualSubtitleText(id, text, version, request);
                 }
@@ -694,6 +380,9 @@ InspectorPanel {
                     root.rememberSubtitleDraft(id, text, version);
                 }
                 onDraftCleared: function(id) { root.clearSubtitleDraft(id); }
+                onDeleteRequested: function(id) {
+                    AppController.deleteSubtitleSegment(id);
+                }
                 onEditingClosed: root.subtitleEditorClosed()
                 onClosed: subtitleEditorDialogLoader.release()
             }
@@ -723,18 +412,5 @@ InspectorPanel {
         id: voiceCloneDialogLoader
         parent: root
         sourceComponent: Component { VoiceCloneDialog { onClosed: voiceCloneDialogLoader.release() } }
-    }
-    LazyDialogLoader {
-        id: watermarkDialogLoader
-        parent: root
-        sourceComponent: Component {
-            WatermarkDialog {
-                onClosed: watermarkDialogLoader.release()
-                onWatermarkAccepted: function(text) {
-                    AppController.watermarkText = text;
-                    root.scheduleSave();
-                }
-            }
-        }
     }
 }

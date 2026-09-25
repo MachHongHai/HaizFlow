@@ -119,6 +119,25 @@ class ResourcePackManifestTests(unittest.TestCase):
 
 
 class ResourcePackManagerTests(unittest.TestCase):
+    def test_bundled_development_engine_still_runs_out_of_process(self):
+        definition = ResourcePackDefinition(
+            "engine-test",
+            "Test engine",
+            "processor",
+            "1",
+            "engine",
+            "cpu",
+            engine_modules=("json",),
+        )
+        manager = ResourcePackManager((definition,))
+        manager.required_packs = lambda *_args, **_kwargs: ["engine-test"]
+
+        self.assertEqual(manager.external_engine_pack("recognition"), "")
+        self.assertEqual(manager.warm_engine_pack("recognition"), "engine-test")
+        command = manager.engine_command("engine-test", "rpc_command")
+        self.assertEqual(command[:3], [sys.executable, "-m", "haizflow.engine.main"])
+        self.assertEqual(command[-1], "--rpc")
+
     def test_controller_presents_cpu_and_gpu_profiles_as_real_install_units(self):
         from haizflow.desktop.resource_pack_controller import ResourcePackController
 

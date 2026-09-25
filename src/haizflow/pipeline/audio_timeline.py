@@ -50,6 +50,70 @@ def _fit_to_duration(audio: AudioSegment, duration_ms: int) -> AudioSegment:
     return (audio * max(1, math.ceil(duration_ms / len(audio))))[:duration_ms]
 
 
+def _fade_clip(audio: AudioSegment, fade_in_ms: int, fade_out_ms: int) -> AudioSegment:
+    fade_in = min(len(audio), max(0, int(fade_in_ms)))
+    fade_out = min(len(audio), max(0, int(fade_out_ms)))
+    if fade_in:
+        audio = audio.fade_in(fade_in)
+    if fade_out:
+        audio = audio.fade_out(fade_out)
+    return audio
+
+
+def _duck_music(
+    music: AudioSegment,
+    voice_ranges: list[tuple[int, int]],
+    reduction_db: float,
+    attack_ms: int,
+    release_ms: int,
+) -> AudioSegment:
+    """Apply deterministic range ducking without an effect-chain dependency."""
+    if not voice_ranges or reduction_db >= 0:
+        return music
+    expanded = sorted(
+        (
+            max(0, int(start) - max(0, int(attack_ms))),
+            min(len(music), int(end) + max(0, int(release_ms))),
+        )
+        for start, end in voice_ranges
+        if int(end) > int(start)
+    )
+    merged: list[list[int]] = []
+    for start, end in expanded:
+        if end <= start:
+            continue
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    result = music
+    for start, end in merged:
+        section = result[start:end]
+        attack = min(max(0, int(attack_ms)), len(section))
+        release = min(max(0, int(release_ms)), max(0, len(section) - attack))
+        body_end = len(section) - release
+        pieces: list[AudioSegment] = []
+        if attack:
+            pieces.append(section[:attack].fade(
+                from_gain=0,
+                to_gain=float(reduction_db),
+                start=0,
+                duration=attack,
+            ))
+        if body_end > attack:
+            pieces.append(section[attack:body_end] + float(reduction_db))
+        if release:
+            pieces.append(section[body_end:].fade(
+                from_gain=float(reduction_db),
+                to_gain=0,
+                start=0,
+                duration=release,
+            ))
+        lowered = sum(pieces[1:], pieces[0]) if pieces else section
+        result = result[:start] + lowered + result[end:]
+    return result
+
+
 def _segment_slot_end_ms(
     start_ms: int,
     segment_end_ms: int,
@@ -143,9 +207,9 @@ def fit_tempo_to_duration(
 ) -> AudioSegment:
     """Fit speech to a timeline slot without changing pitch.
 
-    Automatic projects only compress overruns. A subtitle timing edit may also
-    lengthen a spoken window; in that case ``allow_slowdown`` keeps the audible
-    line aligned with both handles the user placed on the timeline.
+    Automatic projects only compress overruns. The optional slowdown mode is
+    retained for callers that explicitly request it; normal dubbing must not
+    stretch a short utterance across silence in a subtitle slot.
     """
     target_duration_ms = max(1, int(target_duration_ms))
     speed_factor = len(audio) / target_duration_ms
@@ -213,6 +277,8 @@ def build_audio_timeline(
     video_id: str,
     background_audio_path: str | None = None,
     original_video_volume: int = 60,
+    original_audio_fade_in_ms: int = 0,
+    original_audio_fade_out_ms: int = 0,
     background_music_path: str | None = None,
     background_music_volume: int = 30,
     tts_volume: int = 100,
@@ -221,14 +287,24 @@ def build_audio_timeline(
     require_voice_parts: bool = True,
     fit_voice_to_slots: bool = False,
     require_background_audio: bool = True,
+    background_music_start_ms: int = 0,
+    background_music_duration_ms: int | None = None,
+    background_music_source_in_ms: int = 0,
+    background_music_loop: bool = True,
+    background_music_fade_in_ms: int = 0,
+    background_music_fade_out_ms: int = 0,
+    ducking_enabled: bool = False,
+    ducking_reduction_db: float = -12.0,
+    ducking_attack_ms: int = 180,
+    ducking_release_ms: int = 420,
 ):
     """Compose cached audio layers without invoking a speech model.
 
     ``require_voice_parts`` remains true for the automatic pipeline.  Manual
     composition can set it to false to build an original/music-only mix, so
     changing levels never becomes dependent on TTS. ``fit_voice_to_slots``
-    makes Manual narration and its karaoke layer share the same start/end
-    clock without modifying the cached provider audio.
+    keeps legacy callers compatible, but never lengthens a short voice clip
+    into source pauses; recognition must create separate spoken windows.
     """
     cancellation_id = process_registry_id or video_id
     log_to_video(video_id, "Starting build of the audio timeline...")
@@ -266,6 +342,11 @@ def build_audio_timeline(
         try:
             bg_audio = AudioSegment.from_file(background_audio_path)
             bg_audio = _apply_volume(bg_audio, original_video_volume, "Source audio", video_id)
+            bg_audio = _fade_clip(
+                bg_audio,
+                original_audio_fade_in_ms,
+                original_audio_fade_out_ms,
+            )
             # Convert background audio to mono and 16000Hz (the format whisperX/edge-tts uses)
             base_audio = bg_audio.set_frame_rate(16000).set_channels(1)
             log_to_video(video_id, f"Original/background audio loaded and pre-processed. Duration: {len(base_audio)}ms")
@@ -294,9 +375,50 @@ def build_audio_timeline(
             raise FileNotFoundError(f"Required background music track is missing: {background_music_path}")
         try:
             music = AudioSegment.from_file(background_music_path)
-            music = _fit_to_duration(music, video_dur_ms).set_frame_rate(16000).set_channels(1)
+            music = music[max(0, int(background_music_source_in_ms)):]
+            music_duration = max(
+                0,
+                min(
+                    video_dur_ms - max(0, int(background_music_start_ms)),
+                    int(background_music_duration_ms)
+                    if background_music_duration_ms is not None
+                    else video_dur_ms,
+                ),
+            )
+            if background_music_loop:
+                music = _fit_to_duration(music, music_duration)
+            else:
+                music = music[:music_duration]
+            music = music.set_frame_rate(16000).set_channels(1)
             music = _apply_volume(music, background_music_volume, "Background music", video_id)
-            base_audio = base_audio.overlay(music)
+            music = _fade_clip(
+                music,
+                background_music_fade_in_ms,
+                background_music_fade_out_ms,
+            )
+            if ducking_enabled:
+                voice_ranges = [
+                    (
+                        max(0, int(float(item.get("start", 0) or 0) * 1000)),
+                        max(0, int(float(item.get("end", 0) or 0) * 1000)),
+                    )
+                    for item in segments
+                    if bool(item.get("_voice_enabled", True))
+                ]
+                # The envelope is expressed in sequence time; translate it to
+                # the local music clip before applying it.
+                offset = max(0, int(background_music_start_ms))
+                music = _duck_music(
+                    music,
+                    [(start - offset, end - offset) for start, end in voice_ranges],
+                    ducking_reduction_db,
+                    ducking_attack_ms,
+                    ducking_release_ms,
+                )
+            base_audio = base_audio.overlay(
+                music,
+                position=max(0, int(background_music_start_ms)),
+            )
             log_to_video(video_id, f"Mixed background music: {background_music_path}")
         except Exception as exc:
             raise RuntimeError(f"Could not load background music: {exc}") from exc
@@ -331,6 +453,8 @@ def build_audio_timeline(
     
     total = len(segments)
     for idx, seg in enumerate(segments, 1):
+        if not bool(seg.get("_voice_enabled", True)):
+            continue
         part_filename = f"voice_{idx:04d}.mp3"
         part_path = os.path.join(voice_parts_dir, part_filename)
         
@@ -372,25 +496,13 @@ def build_audio_timeline(
             tts_segment = AudioSegment.from_file(part_path)
             # Trim leading/trailing silence from the generated TTS audio to remove delay/gaps
             tts_segment = trim_silence(tts_segment)
-            tts_segment = _apply_volume(tts_segment, tts_volume, "TTS", video_id)
+            clip_volume = int(seg.get("_voice_volume_percent", tts_volume))
+            tts_segment = _apply_volume(tts_segment, clip_volume, "TTS", video_id)
             tts_dur = len(tts_segment)
             
             # Fit speech with FFmpeg's pitch-preserving atempo filter. Unlike
             # slicing an AudioSegment, this keeps the end of every spoken line.
-            if fit_voice_to_slots or bool(seg.get("fit_voice_to_timing")):
-                speed_factor = tts_dur / available_dur
-                log_to_video(
-                    video_id,
-                    f"[{idx}/{total}] Fitting edited speech timing at {speed_factor:.2f}x tempo.",
-                )
-                tts_segment = fit_tempo_to_duration(
-                    tts_segment,
-                    available_dur,
-                    voice_parts_dir,
-                    cancellation_id,
-                    allow_slowdown=True,
-                )
-            elif tts_dur > available_dur:
+            if tts_dur > available_dur:
                 speed_factor = tts_dur / available_dur
                 log_to_video(
                     video_id,
@@ -399,6 +511,11 @@ def build_audio_timeline(
                 )
                 tts_segment = compress_to_fit(tts_segment, available_dur, voice_parts_dir, cancellation_id)
 
+            tts_segment = _fade_clip(
+                tts_segment,
+                int(seg.get("_voice_fade_in_ms", 0) or 0),
+                int(seg.get("_voice_fade_out_ms", 0) or 0),
+            )
             base_audio = base_audio.overlay(tts_segment, position=start_ms)
         except Exception as exc:
             raise RuntimeError(f"Failed to overlay required voice segment {idx} ({part_filename}): {exc}") from exc

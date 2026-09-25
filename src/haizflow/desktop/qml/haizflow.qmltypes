@@ -7,6 +7,36 @@ import QtQuick.tooling 1.2
 
 Module {
     Component {
+        name: "ManualEditorDocumentModel"
+        prototype: "QObject"
+        accessSemantics: "reference"
+        Property { name: "videoId"; type: "string"; isReadonly: true }
+        Property { name: "document"; type: "QVariantMap"; isReadonly: true }
+        Property { name: "tracks"; type: "QVariantList"; isReadonly: true }
+        Property { name: "clips"; type: "QVariantList"; isReadonly: true }
+        Property { name: "assets"; type: "QVariantList"; isReadonly: true }
+        Property { name: "styles"; type: "QVariantList"; isReadonly: true }
+        Property { name: "defaultSubtitleStyle"; type: "QVariantMap"; isReadonly: true }
+        Property { name: "subtitleSegments"; type: "QVariantList"; isReadonly: true }
+        Property { name: "markers"; type: "QVariantList"; isReadonly: true }
+        Property { name: "durationMs"; type: "int"; isReadonly: true }
+        Property { name: "selectedClipIds"; type: "QVariantList"; isReadonly: true }
+        Property { name: "selectedTrackId"; type: "string"; isReadonly: true }
+        Property { name: "selectedClip"; type: "QVariantMap"; isReadonly: true }
+        Method { name: "selectClip"; Parameter { name: "clipId"; type: "string" } Parameter { name: "additive"; type: "bool" } }
+        Method { name: "selectTrack"; Parameter { name: "trackId"; type: "string" } }
+        Method { name: "clearSelection" }
+    }
+    Component {
+        name: "ManualPreviewCompositionController"
+        prototype: "QObject"
+        accessSemantics: "reference"
+        Property { name: "frame"; type: "QVariantMap"; isReadonly: true }
+        Property { name: "timeMs"; type: "int"; isReadonly: true }
+        Method { name: "setTime"; Parameter { name: "seconds"; type: "double" } }
+        Method { name: "refresh" }
+    }
+    Component {
         name: "ManualSubtitleModel"
         prototype: "QObject"
         accessSemantics: "reference"
@@ -37,6 +67,8 @@ Module {
         Property { name: "manualSubtitleModel"; type: "ManualSubtitleModel"; isPointer: true; isReadonly: true }
         Property { name: "subtitleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
         Property { name: "manualPreviewAudio"; type: "ManualPreviewAudioController"; isPointer: true; isReadonly: true }
+        Property { name: "manualEditorDocumentModel"; type: "ManualEditorDocumentModel"; isPointer: true; isReadonly: true }
+        Property { name: "manualPreviewComposition"; type: "ManualPreviewCompositionController"; isPointer: true; isReadonly: true }
         Property { name: "manualCanUndo"; type: "bool"; isReadonly: true }
         Property { name: "manualCanRedo"; type: "bool"; isReadonly: true }
         Property { name: "manualUndoLabel"; type: "string"; isReadonly: true }
@@ -59,8 +91,9 @@ Module {
         Property { name: "selectedStepId"; type: "QString"; isReadonly: true }
         Property { name: "canUndoEdit"; type: "bool"; isReadonly: true }
         Property { name: "canRedoEdit"; type: "bool"; isReadonly: true }
-        Property { name: "undoEditLabel"; type: "string"; isReadonly: true }
-        Property { name: "redoEditLabel"; type: "string"; isReadonly: true }
+        Property { name: "undoEditLabel"; type: "QString"; isReadonly: true }
+        Property { name: "redoEditLabel"; type: "QString"; isReadonly: true }
+        Property { name: "hasCopiedKeyframes"; type: "bool"; isReadonly: true }
         Method { name: "setEditHistoryScope"; Parameter { name: "scope"; type: "string" } }
         Method { name: "undoEdit"; type: "bool" }
         Method { name: "redoEdit"; type: "bool" }
@@ -85,6 +118,36 @@ Module {
         Method { name: "saveManualSubtitleTiming"; type: "bool"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "start"; type: "double" } Parameter { name: "end"; type: "double" } }
         Method { name: "recordManualSubtitleLayoutChange"; Parameter { name: "beforeFontSize"; type: "int" } Parameter { name: "beforePositionX"; type: "int" } Parameter { name: "beforePositionY"; type: "int" } Parameter { name: "afterFontSize"; type: "int" } Parameter { name: "afterPositionX"; type: "int" } Parameter { name: "afterPositionY"; type: "int" } }
         Method { name: "recordManualWatermarkScaleChange"; Parameter { name: "beforeScale"; type: "int" } Parameter { name: "afterScale"; type: "int" } }
+        Method { name: "manualExportPreflight"; type: "QVariantMap" }
+        Method { name: "splitSourceAt"; type: "bool"; Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "trimClip"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "edge"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "moveClip"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "startMs"; type: "int" } Parameter { name: "trackId"; type: "string" } }
+        Method { name: "duplicateClip"; type: "bool"; Parameter { name: "clipId"; type: "string" } }
+        Method { name: "removeClips"; type: "bool"; Parameter { name: "clipIds"; type: "QVariantList" } Parameter { name: "ripple"; type: "bool" } }
+        Method { name: "addOverlay"; type: "string"; Parameter { name: "kind"; type: "string" } Parameter { name: "source"; type: "string" } Parameter { name: "startMs"; type: "int" } }
+        Method { name: "addOverlayFromAsset"; type: "string"; Parameter { name: "assetId"; type: "string" } Parameter { name: "startMs"; type: "int" } }
+        Method { name: "addSubtitleSegment"; type: "string"; Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "splitSubtitleSegment"; type: "string"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "mergeSubtitleWithNext"; type: "bool"; Parameter { name: "segmentId"; type: "string" } }
+        Method { name: "deleteSubtitleSegment"; type: "bool"; Parameter { name: "segmentId"; type: "string" } }
+        Method { name: "updateClipTransform"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "patch"; type: "QVariantMap" } Parameter { name: "commit"; type: "bool" } }
+        Method { name: "updateClipProperties"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "patch"; type: "QVariantMap" } }
+        Method { name: "setAudioDucking"; type: "bool"; Parameter { name: "enabled"; type: "bool" } Parameter { name: "reductionDb"; type: "double" } Parameter { name: "attackMs"; type: "int" } Parameter { name: "releaseMs"; type: "int" } }
+        Method { name: "setClipKeyframe"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "propertyName"; type: "string" } Parameter { name: "timeMs"; type: "int" } Parameter { name: "value"; type: "double" } Parameter { name: "interpolation"; type: "string" } }
+        Method { name: "removeClipKeyframe"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "propertyName"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "moveClipKeyframe"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "keyframeId"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "setClipTransformKeyframes"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "timeMs"; type: "int" } Parameter { name: "interpolation"; type: "string" } }
+        Method { name: "copyClipKeyframes"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "pasteClipKeyframes"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "removeClipKeyframesAt"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "setClipKeyframeInterpolation"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "timeMs"; type: "int" } Parameter { name: "interpolation"; type: "string" } }
+        Method { name: "setTrackState"; type: "bool"; Parameter { name: "trackId"; type: "string" } Parameter { name: "propertyName"; type: "string" } Parameter { name: "value"; type: "QVariant" } }
+        Method { name: "applyTextStyle"; type: "bool"; Parameter { name: "targetIds"; type: "QVariantList" } Parameter { name: "style"; type: "QVariantMap" } Parameter { name: "scope"; type: "string" } }
+        Method { name: "resetTextStyleOverrides"; type: "bool"; Parameter { name: "targetIds"; type: "QVariantList" } }
+        Method { name: "addEditorMarker"; type: "string"; Parameter { name: "timeMs"; type: "int" } Parameter { name: "name"; type: "string" } Parameter { name: "color"; type: "string" } }
+        Method { name: "updateEditorMarker"; type: "bool"; Parameter { name: "markerId"; type: "string" } Parameter { name: "timeMs"; type: "int" } Parameter { name: "name"; type: "string" } Parameter { name: "color"; type: "string" } }
+        Method { name: "removeEditorMarker"; type: "bool"; Parameter { name: "markerId"; type: "string" } }
+        Method { name: "replaceSubtitleText"; type: "int"; Parameter { name: "searchText"; type: "string" } Parameter { name: "replacement"; type: "string" } Parameter { name: "caseSensitive"; type: "bool" } Parameter { name: "replaceAll"; type: "bool" } Parameter { name: "segmentId"; type: "string" } }
         Signal { name: "manualSubtitleSaved"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "revision"; type: "int" } Parameter { name: "requestId"; type: "string" } }
         Signal { name: "manualSubtitleSaveFailed"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "requestId"; type: "string" } Parameter { name: "message"; type: "string" } }
         accessSemantics: "reference"
@@ -746,6 +809,47 @@ Module {
             notify: "watermarkScalePercentChanged"
         }
         Property {
+            name: "watermarkKind"
+            type: "QString"
+            read: "watermarkKind"
+            write: "watermarkKind"
+            notify: "watermarkKindChanged"
+        }
+        Property {
+            name: "watermarkOpacityPercent"
+            type: "int"
+            read: "watermarkOpacityPercent"
+            write: "watermarkOpacityPercent"
+            notify: "watermarkOpacityPercentChanged"
+        }
+        Property {
+            name: "watermarkOutlinePercent"
+            type: "int"
+            read: "watermarkOutlinePercent"
+            write: "watermarkOutlinePercent"
+            notify: "watermarkOutlinePercentChanged"
+        }
+        Property {
+            name: "watermarkImagePath"
+            type: "QString"
+            read: "watermarkImagePath"
+            notify: "watermarkImageChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "watermarkImageSource"
+            type: "QUrl"
+            read: "watermarkImageSource"
+            notify: "watermarkImageChanged"
+            isReadonly: true
+        }
+        Property { name: "watermarkVideoPath"; type: "QString"; read: "watermarkVideoPath"; notify: "watermarkVideoChanged"; isReadonly: true }
+        Property { name: "watermarkVideoSource"; type: "QUrl"; read: "watermarkVideoSource"; notify: "watermarkVideoChanged"; isReadonly: true }
+        Property { name: "watermarkFontFamily"; type: "QString"; read: "watermarkFontFamily"; write: "watermarkFontFamily"; notify: "watermarkStyleChanged" }
+        Property { name: "watermarkTextColor"; type: "QString"; read: "watermarkTextColor"; write: "watermarkTextColor"; notify: "watermarkStyleChanged" }
+        Property { name: "watermarkBold"; type: "bool"; read: "watermarkBold"; write: "watermarkBold"; notify: "watermarkStyleChanged" }
+        Property { name: "watermarkItalic"; type: "bool"; read: "watermarkItalic"; write: "watermarkItalic"; notify: "watermarkStyleChanged" }
+        Property {
             name: "removeOriginalSubtitles"
             type: "bool"
             read: "removeOriginalSubtitles"
@@ -769,6 +873,14 @@ Module {
             notify: "subtitleSettingsChanged"
             index: 68
         }
+        Property { name: "subtitleFontFamily"; type: "QString"; read: "subtitleFontFamily"; write: "subtitleFontFamily"; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitleTextColor"; type: "QString"; read: "subtitleTextColor"; write: "subtitleTextColor"; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitleKaraokeColor"; type: "QString"; read: "subtitleKaraokeColor"; write: "subtitleKaraokeColor"; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitleOutlineColor"; type: "QString"; read: "subtitleOutlineColor"; write: "subtitleOutlineColor"; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitleBold"; type: "bool"; read: "subtitleBold"; write: "subtitleBold"; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitleItalic"; type: "bool"; read: "subtitleItalic"; write: "subtitleItalic"; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitleUppercase"; type: "bool"; read: "subtitleUppercase"; write: "subtitleUppercase"; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitleShadow"; type: "int"; read: "subtitleShadow"; write: "subtitleShadow"; notify: "subtitleSettingsChanged" }
         Property {
             name: "subtitleLayoutOverride"
             type: "bool"
@@ -1508,6 +1620,12 @@ Module {
         Signal { name: "ttsVolumeChanged" }
         Signal { name: "watermarkTextChanged" }
         Signal { name: "watermarkScalePercentChanged" }
+        Signal { name: "watermarkKindChanged" }
+        Signal { name: "watermarkOpacityPercentChanged" }
+        Signal { name: "watermarkOutlinePercentChanged" }
+        Signal { name: "watermarkImageChanged" }
+        Signal { name: "watermarkVideoChanged" }
+        Signal { name: "watermarkStyleChanged" }
         Signal { name: "subtitleSettingsChanged" }
         Signal { name: "cropSettingsChanged" }
         Signal { name: "backgroundMusicChanged" }
@@ -1624,6 +1742,18 @@ Module {
         }
         Method { name: "browseVideo" }
         Method { name: "browseBackgroundMusic" }
+        Method { name: "chooseWatermarkImage"; type: "QString" }
+        Method {
+            name: "setWatermarkImage"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
+        Method { name: "chooseWatermarkVideo"; type: "QString" }
+        Method {
+            name: "setWatermarkVideo"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+        }
         Method { name: "chooseBatchBackgroundMusic"; type: "QString" }
         Method {
             name: "importBackgroundMusicFromLink"
@@ -1769,6 +1899,10 @@ Module {
             name: "runManualTool"
             type: "bool"
             Parameter { name: "tool_id"; type: "QString" }
+        }
+        Method {
+            name: "manualExportPreflight"
+            type: "QVariantMap"
         }
         Method {
             name: "manualVoiceConfiguration"

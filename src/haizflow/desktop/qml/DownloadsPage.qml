@@ -21,16 +21,12 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: Theme.space12
+        anchors.margins: UiMetrics.pageMargin
+        spacing: Theme.space16
 
-        RowLayout {
+        PageHeader {
             Layout.fillWidth: true
-            spacing: Theme.space12
-
-            SectionHeader {
-                Layout.fillWidth: true
-                title: qsTr("Tải xuống")
-            }
+            title: qsTr("Tải xuống")
 
             ProjectHeaderActions {
                 projectFolderText: qsTr("Mở thư mục đầu ra")
@@ -42,10 +38,12 @@ Item {
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.maximumWidth: 1120
+            Layout.alignment: Qt.AlignHCenter
             spacing: Theme.space12
 
             AppTabBar {
-                Layout.preferredWidth: Math.min(520, root.width * 0.45)
+                Layout.preferredWidth: Math.min(420, root.width * 0.5)
                 currentIndex: root.currentPage
                 tabs: [qsTr("Video"), qsTr("Kênh"), qsTr("Âm thanh")]
                 onActivated: function(index) {
@@ -63,6 +61,8 @@ Item {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.maximumWidth: 1120
+            Layout.alignment: Qt.AlignHCenter
             currentIndex: root.currentPage
 
             VideoDownloadPage { downloader: root.downloader }
@@ -72,6 +72,8 @@ Item {
 
         DownloadQueueStatus {
             Layout.fillWidth: true
+            Layout.maximumWidth: 1120
+            Layout.alignment: Qt.AlignHCenter
             downloader: root.downloader
         }
     }

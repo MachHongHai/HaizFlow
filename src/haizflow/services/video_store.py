@@ -272,6 +272,13 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         tts_volume=config.tts_volume,
         watermark_text=config.watermark_text,
         watermark_scale_percent=config.watermark_scale_percent,
+        watermark_kind=config.watermark_kind,
+        watermark_opacity_percent=config.watermark_opacity_percent,
+        watermark_outline_percent=config.watermark_outline_percent,
+        watermark_font_family=config.watermark_font_family,
+        watermark_text_color=config.watermark_text_color,
+        watermark_bold=config.watermark_bold,
+        watermark_italic=config.watermark_italic,
         project_name=config.project_name,
         project_directory=config.project_directory,
         project_type=config.project_type,
@@ -475,9 +482,19 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("manual_artifact_migration_version", 0)
             version = 17
             continue
+        if version == 17:
+            data["schema_version"] = 18
+            data.setdefault("editor_document_schema_version", 0)
+            data.setdefault("editor_document_revision", 0)
+            data.setdefault("editor_document_path", "")
+            version = 18
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
+    data.setdefault("editor_document_schema_version", 0)
+    data.setdefault("editor_document_revision", 0)
+    data.setdefault("editor_document_path", "")
     # Canonicalize fields even for an already-current schema. Older builds
     # could write legacy provider/layout values without bumping the schema;
     # strict production models must remain able to open and repair them.
@@ -599,6 +616,22 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     except (TypeError, ValueError):
         watermark_scale = 100
     data["watermark_scale_percent"] = max(25, min(300, watermark_scale))
+    watermark_kind = str(data.get("watermark_kind") or "text").strip().lower()
+    data["watermark_kind"] = watermark_kind if watermark_kind in {"text", "image", "video"} else "text"
+    for key, default, maximum in (
+        ("watermark_opacity_percent", 46, 100),
+        ("watermark_outline_percent", 100, 300),
+    ):
+        try:
+            value = int(data.get(key, default))
+        except (TypeError, ValueError):
+            value = default
+        data[key] = max(0, min(maximum, value))
+    data["watermark_font_family"] = str(data.get("watermark_font_family") or "Arial").strip()[:80] or "Arial"
+    watermark_color = str(data.get("watermark_text_color") or "#FFFFFF").upper()
+    data["watermark_text_color"] = watermark_color if re.fullmatch(r"#[0-9A-F]{6}", watermark_color) else "#FFFFFF"
+    data["watermark_bold"] = bool(data.get("watermark_bold", True))
+    data["watermark_italic"] = bool(data.get("watermark_italic", True))
     return data, data != original
 
 

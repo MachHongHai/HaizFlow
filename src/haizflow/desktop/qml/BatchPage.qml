@@ -34,15 +34,20 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.space20
+        anchors.margins: UiMetrics.pageMargin
         spacing: root.compactHeight ? Theme.space12 : Theme.space16
 
         PageHeader {
             Layout.fillWidth: true
-            Layout.minimumHeight: root.compactHeight ? 52 : 58
-            Layout.preferredHeight: root.compactHeight ? 52 : 58
             title: AppController.projectName || qsTr("Dự án hàng loạt")
-            subtitle: qsTr("%1 %2").arg(AppController.batchCount).arg(qsTr("video"))
+
+            Text {
+                text: qsTr("%1 %2").arg(AppController.batchCount).arg(qsTr("video"))
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.label
+                textFormat: Text.PlainText
+            }
 
             ProjectHeaderActions {
                 projectFolderEnabled: AppController.hasOpenProject

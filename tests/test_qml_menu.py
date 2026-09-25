@@ -259,16 +259,17 @@ ApplicationWindow {{
         self.assertNotIn('I18n.t("Recent projects")', projects_page)
         self.assertIn('objectName: "newProjectButton"', projects_page)
         self.assertIn("StudioButton {", projects_page)
-        self.assertIn("Math.min(220", projects_page)
+        self.assertIn("readonly property real cardWidth: Math.max(1, cellContentWidth - Theme.space20)", projects_page)
         self.assertIn('return qsTr("Dự án mới")', projects_page)
         self.assertNotIn("newProjectCardDelegate", projects_page)
         self.assertNotIn('I18n.t("Process one video")', projects_page)
         self.assertNotIn('I18n.t("Process videos in batch")', projects_page)
         create_page = (QML_DIR / "CreateVideoPage.qml").read_text(encoding="utf-8")
-        self.assertIn("anchors.margins: Theme.space12", create_page)
+        self.assertIn("PageHeader {", create_page)
         for filename in ("BatchPage.qml",):
             page = (QML_DIR / filename).read_text(encoding="utf-8")
-            self.assertIn("anchors.margins: Theme.space20", page, filename)
+            self.assertIn("PageHeader {", page, filename)
+            self.assertNotIn("anchors.margins: Theme.space20", page, filename)
         downloads = (QML_DIR / "DownloadsPage.qml").read_text(encoding="utf-8")
         self.assertIn("AppTabBar {", downloads)
         self.assertIn("focusPolicy: Qt.TabFocus", navigation_button)
@@ -369,7 +370,10 @@ ApplicationWindow {{
         self.assertIn("function navigateBack()", downloads)
         self.assertIn("function navigateForward()", downloads)
         self.assertIn("RouteHost {", main)
-        self.assertIn("Layout.margins: UiMetrics.pageMargin", route_host)
+        self.assertIn("Layout.margins: 0", route_host)
+        for filename in ("CreateVideoPage.qml", "BatchPage.qml", "DownloadsPage.qml"):
+            page = (QML_DIR / filename).read_text(encoding="utf-8")
+            self.assertIn("anchors.margins: UiMetrics.pageMargin", page, filename)
         self.assertNotIn("Layout.topMargin: root.width < 1400 ? 30 : 36", main)
 
     def test_main_uses_the_branded_window_chrome(self):
@@ -574,6 +578,10 @@ ApplicationWindow {{
 
     def test_subtitle_timeline_component_loads_with_editable_segments(self):
         engine = QQmlEngine()
+        warnings = []
+        engine.warnings.connect(
+            lambda messages: warnings.extend(message.toString() for message in messages)
+        )
         component = QQmlComponent(
             engine, QUrl.fromLocalFile(str(QML_DIR / "SubtitleTimeline.qml"))
         )
@@ -590,6 +598,22 @@ ApplicationWindow {{
                     {"start": 0.5, "end": 2.4, "text": "First subtitle"},
                     {"start": 3.0, "end": 5.2, "text": "Second subtitle"},
                 ],
+                "editorTracks": [
+                    {"track_id": "source-video", "kind": "source_video", "name": "Video"},
+                    {"track_id": "subtitles", "kind": "subtitle", "name": "Subtitles"},
+                    {"track_id": "music", "kind": "music", "name": "Music"},
+                ],
+                "editorClips": [
+                    {
+                        "clip_id": "music-1",
+                        "track_id": "music",
+                        "kind": "audio",
+                        "name": "Music",
+                        "start_ms": 0,
+                        "duration_ms": 8000,
+                        "waveform": [0.1, 0.8, 0.4, 1.0],
+                    }
+                ],
             }
         )
         self.assertIsNotNone(
@@ -599,12 +623,18 @@ ApplicationWindow {{
             self.app.processEvents()
             self.assertEqual(timeline.property("zoomFactor"), 1.0)
             self.assertGreater(timeline.property("pixelsPerSecond"), 0)
+            timeline.setProperty("editorClips", [])
+            self.app.processEvents()
+            self.assertFalse(
+                [message for message in warnings if "TypeError" in message],
+                "\n".join(warnings),
+            )
         finally:
             timeline.deleteLater()
             engine.deleteLater()
             self.app.processEvents()
 
-    def test_subtitle_timeline_wheel_zoom_keeps_clip_dragging_available(self):
+    def test_subtitle_timeline_control_wheel_zoom_keeps_clip_dragging_available(self):
         view = QQuickView()
         view.setResizeMode(QQuickView.SizeRootObjectToView)
         view.setSource(QUrl.fromLocalFile(str(QML_DIR / "SubtitleTimeline.qml")))
@@ -635,18 +665,39 @@ ApplicationWindow {{
                 QPoint(180, 150),
                 QPoint(0, 120),
                 QPoint(),
-                Qt.NoModifier,
+                Qt.ControlModifier,
                 Qt.ScrollUpdate,
             )
-            QTest.qWait(30)
+            QTest.qWait(60)
             self.assertGreater(timeline.property("zoomFactor"), 1.0)
 
             # Drag the body of the first subtitle after zooming. A transparent
             # wheel overlay used to steal this gesture and made clips appear
             # editable only at the initial zoom level.
-            QTest.mousePress(view, Qt.LeftButton, Qt.NoModifier, QPoint(145, 155))
-            QTest.mouseMove(view, QPoint(205, 155), 20)
-            QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, QPoint(205, 155))
+            # Use the rendered clip's scene coordinates. Fixed Y coordinates
+            # can hit the combined voice lane under a different font/DPI.
+            def find_visual(item, name):
+                if item.objectName() == name:
+                    return item
+                for child in item.childItems():
+                    match = find_visual(child, name)
+                    if match is not None:
+                        return match
+                return None
+
+            clip = find_visual(timeline, "subtitleTimelineClip-0")
+            for _ in range(10):
+                if clip is not None:
+                    break
+                QTest.qWait(50)
+                clip = find_visual(timeline, "subtitleTimelineClip-0")
+            self.assertIsNotNone(clip)
+            scene_point = clip.mapToScene(QPointF(clip.width() / 2, clip.height() / 2))
+            clip_x = round(scene_point.x())
+            clip_y = round(scene_point.y())
+            QTest.mousePress(view, Qt.LeftButton, Qt.NoModifier, QPoint(clip_x, clip_y))
+            QTest.mouseMove(view, QPoint(clip_x + 60, clip_y), 20)
+            QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, QPoint(clip_x + 60, clip_y))
             QTest.qWait(30)
             self.assertEqual(len(commits), 1)
             self.assertEqual(commits[0][0], 0)
@@ -655,7 +706,9 @@ ApplicationWindow {{
 
             # A click selects the clip in place. Opening the large text editor
             # is a separate button in the inspector.
-            QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(145, 155))
+            QTest.mouseClick(
+                view, Qt.LeftButton, Qt.NoModifier, QPoint(clip_x + 60, clip_y)
+            )
             QTest.qWait(30)
             self.assertEqual(selections, [0])
         finally:
@@ -710,6 +763,22 @@ ApplicationWindow {{
             self.assertNotIn("PageHeader {", child_page)
             self.assertNotIn("Panel {", child_page)
             self.assertNotIn("DownloadQueueStatus {", child_page)
+
+    def test_primary_pages_share_title_alignment_and_download_destination(self):
+        route_host = (QML_DIR / "RouteHost.qml").read_text(encoding="utf-8")
+        header = (QML_DIR / "PageHeader.qml").read_text(encoding="utf-8")
+        settings_shell = (QML_DIR / "SettingsPageShell.qml").read_text(encoding="utf-8")
+        self.assertIn("implicitHeight: Math.max(48", header)
+        self.assertIn("PageHeader {", settings_shell)
+        self.assertIn("readonly property int horizontalInset: UiMetrics.pageMargin", settings_shell)
+        home_route = route_host.split("    HomePage {", 1)[1].split("    ProjectsHubPage {", 1)[0]
+        self.assertIn("Layout.margins: 0", home_route)
+        self.assertIn("anchors.margins: UiMetrics.pageMargin", (QML_DIR / "HomePage.qml").read_text(encoding="utf-8"))
+        self.assertNotIn("UiMetrics.pageMargin + Theme.space12", home_route)
+        for filename in ("HomePage.qml", "ProjectsPage.qml", "ProjectsHubPage.qml", "DownloadsPage.qml", "SocialPublishPage.qml"):
+            self.assertIn("PageHeader {", (QML_DIR / filename).read_text(encoding="utf-8"), filename)
+        for filename in ("VideoDownloadPage.qml", "AudioDownloadPage.qml", "ChannelDownloadPage.qml"):
+            self.assertIn("DownloadDestinationRow {", (QML_DIR / filename).read_text(encoding="utf-8"), filename)
 
     def test_downloads_are_project_backed_and_available_from_the_project_menu(self):
         main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
@@ -803,7 +872,6 @@ ApplicationWindow {{
         self.assertIn("ZernioSetupStep", guide)
         self.assertIn("zernioConnectedAccountCount", connection_bar)
         self.assertNotIn('I18n.t("Zernio setup")', connection_bar)
-        self.assertIn('qsTr("Nguồn video")', page)
         self.assertIn('qsTr("Thêm video")', page)
         self.assertIn('qsTr("Từ dự án")', page)
         self.assertIn('projectSourceDialogLoader.invoke("openForSelection", [])', page)
@@ -817,9 +885,9 @@ ApplicationWindow {{
         self.assertLess(page.index("SocialConnectionBar"), page.index('qsTr("Nội dung mặc định")'))
         self.assertLess(page.index('qsTr("Nội dung mặc định")'), page.index('qsTr("Hàng đợi đăng")'))
         self.assertNotIn("Layout.preferredWidth: 3", page)
-        self.assertLess(page.index('qsTr("Nội dung mặc định")'), page.index('qsTr("Nguồn video")'))
+        self.assertLess(page.index('qsTr("Nội dung mặc định")'), page.index('qsTr("Hàng đợi đăng")'))
         self.assertNotIn("Layout.fillHeight: true\n                Layout.preferredWidth", page)
-        self.assertNotIn("Menu {", connection_bar)
+        self.assertIn("Menu {", connection_bar)
         self.assertIn("apiKeyManagementRequested", connection_bar)
         self.assertIn("disconnectZernioConnection", connections)
         self.assertIn('qsTr("Ngắt kết nối")', connections)

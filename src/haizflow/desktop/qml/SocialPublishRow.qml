@@ -38,28 +38,29 @@ Rectangle {
         && !AppController.tiktokPublishBusy && !AppController.zernioAccountSyncing
         && AppController.zernioApiKeyVerified && AppController.zernioAccountReady
     readonly property string statusLabel: published ? (awaitingUrl ? qsTr("Đang hoàn tất") : qsTr("Đã đăng"))
-        : working ? qsTr("Đang đăng")
+        : working ? (uploadProgress > 0 ? qsTr("Đang đăng %1%").arg(uploadProgress) : qsTr("Đang đăng"))
         : publishStatus === "failed" || publishStatus === "partial" ? qsTr("Lỗi")
         : publishStatus === "scheduled" ? qsTr("Đã hẹn giờ")
         : publishStatus === "missing" ? qsTr("Thiếu tệp") : qsTr("Sẵn sàng")
 
-    implicitHeight: 68
+    implicitHeight: 64
     color: hoverHandler.hovered ? Theme.surfaceMuted : "transparent"
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: Theme.space12
-        anchors.rightMargin: Theme.space8
+        anchors.leftMargin: Theme.space16
+        anchors.rightMargin: Theme.space12
         spacing: Theme.space12
 
         MediaThumbnail {
-            Layout.preferredWidth: 76
-            Layout.preferredHeight: 48
+            Layout.preferredWidth: 70
+            Layout.preferredHeight: 42
             source: root.thumbnailSource
         }
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             spacing: 2
             Text {
                 Layout.fillWidth: true
@@ -81,7 +82,8 @@ Rectangle {
         }
 
         RowLayout {
-            Layout.preferredWidth: 112
+            visible: root.targetPlatform !== AppController.zernioSelectedPlatform
+            Layout.preferredWidth: visible ? 100 : 0
             spacing: Theme.space4
             PlatformLogo {
                 Layout.preferredWidth: 17
@@ -101,21 +103,11 @@ Rectangle {
         }
 
         StatusBadge {
-            Layout.preferredWidth: 104
+            Layout.preferredWidth: implicitWidth
             status: root.published ? "done"
                 : root.publishStatus === "failed" || root.publishStatus === "partial" ? "failed"
                 : root.working ? "processing" : "ready"
             label: root.statusLabel
-        }
-
-        Text {
-            Layout.preferredWidth: 42
-            visible: root.working
-            text: qsTr("%1%").arg(root.uploadProgress)
-            color: Theme.interactive
-            font.pixelSize: TypeScale.metadata
-            horizontalAlignment: Text.AlignRight
-            textFormat: Text.PlainText
         }
 
         StudioButton {
@@ -174,5 +166,5 @@ Rectangle {
         }
     }
 
-    HoverHandler { id: hoverHandler; cursorShape: Qt.PointingHandCursor }
+    HoverHandler { id: hoverHandler }
 }

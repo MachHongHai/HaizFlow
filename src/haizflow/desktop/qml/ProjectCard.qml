@@ -172,7 +172,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: 3
-                visible: root.projectType !== "download" && root.projectType !== "publish"
+                visible: root.status === "processing" && root.projectType !== "download" && root.projectType !== "publish"
                 color: Theme.surfaceStrong
 
                 Rectangle {
@@ -206,13 +206,6 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: Theme.space8
 
-                Rectangle {
-                    Layout.preferredWidth: 7
-                    Layout.preferredHeight: 7
-                    radius: 4
-                    color: root.statusColor
-                }
-
                 Text {
                     Layout.fillWidth: true
                     text: root.projectType === "batch"
@@ -220,14 +213,14 @@ Rectangle {
                         : root.projectType === "publish"
                             ? qsTr("%1 - %2").arg(root.videoCount).arg(qsTr("bài đăng"))
                             : root.statusLabel
-                    color: Theme.textMuted
+                    color: root.status === "failed" ? Theme.danger : Theme.textMuted
                     font.pixelSize: Theme.caption
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
 
                 Text {
-                    visible: root.projectType !== "download" && root.projectType !== "publish"
+                    visible: root.status === "processing" && root.projectType !== "download" && root.projectType !== "publish"
                     text: qsTr("%1%").arg(root.progress)
                     color: root.statusColor
                     font.pixelSize: Theme.caption

@@ -1,5 +1,6 @@
 import argparse
 import gc
+import importlib.util
 import json
 import os
 import re
@@ -431,22 +432,37 @@ def _local_transformers_model_source(model_name: str) -> tuple[str, bool]:
 def _load_model(model_name: str):
     from haizflow.config import HYMT2_MODEL_REVISION
 
-    # Configure Torch before runtime_profile() probes CUDA. CUDA telemetry can
-    # initialize Torch's parallel runtime, after which interop threads are
-    # immutable for the lifetime of this worker process.
-    torch_runtime = _prepare_torch_runtime() if processing_device_preference() == "gpu" else None
     profile = runtime_profile()
+    backend = profile.hymt2_backend
+    cpu_model_path = None
+    if profile.key == "cuda_low_memory" and importlib.util.find_spec("llama_cpp") is not None:
+        # Prefer the installed Q4 model on 8 GB GPUs. The full GPU model
+        # stages a 3.8 GB checkpoint in system RAM before moving it to CUDA;
+        # Windows can fail with paging-file error 1455 even with free VRAM.
+        try:
+            cpu_model_path = _cpu_model_path()
+        except RuntimeError:
+            pass  # A GPU-only installation can still use its GPU model.
+        else:
+            backend = "llama_cpp"
+    # The Q4 path must not import Torch; it leaves GPU memory to Whisper.
+    # Only initialize Torch's threads when falling back to full weights.
+    torch_runtime = (
+        _prepare_torch_runtime()
+        if backend != "llama_cpp" and processing_device_preference() == "gpu"
+        else None
+    )
     _emit_diagnostic(
         "runtime_profile_selected",
         torch_runtime,
         profile=profile.key,
-        backend=profile.hymt2_backend,
+        backend=backend,
         model=model_name,
     )
-    if profile.hymt2_backend == "llama_cpp":
+    if backend == "llama_cpp":
         from llama_cpp import Llama
 
-        model_path = _cpu_model_path()
+        model_path = cpu_model_path or _cpu_model_path()
         _emit_event(
             {
                 "event": "status",

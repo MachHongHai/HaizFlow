@@ -16,8 +16,37 @@ DEFAULT_SETTINGS = {
     "keep_models_warm": True,
     "manual_project_cache_gib": 4,
     "manual_global_cache_gib": 16,
+    "manual_editor_inspector_width": 356,
+    "manual_editor_timeline_height": 280,
+    "manual_editor_compare": False,
+    "manual_editor_workspace": {
+        "placements": {
+            "tools": "left",
+            "properties": "right", "tasks": "right",
+        },
+        "leftActive": "tools", "rightActive": "tasks",
+        "leftWidth": 240, "monitor": "result",
+    },
 }
 _SETTINGS_LOCK = threading.RLock()
+
+
+def _normalize_manual_workspace(value) -> dict:
+    workspace = value if isinstance(value, dict) else {}
+    placements = dict(DEFAULT_SETTINGS["manual_editor_workspace"]["placements"])
+    try:
+        left_width = int(workspace.get("leftWidth", 240))
+    except (TypeError, ValueError):
+        left_width = 240
+    return {
+        "placements": placements,
+        "leftActive": "tools",
+        "rightActive": workspace.get("rightActive")
+        if workspace.get("rightActive") in {"properties", "tasks"} else "tasks",
+        "leftWidth": max(180, min(480, left_width)),
+        "monitor": workspace.get("monitor")
+        if workspace.get("monitor") in {"source", "result"} else "result",
+    }
 
 
 def load_settings() -> dict:
@@ -38,6 +67,9 @@ def load_settings() -> dict:
     if settings.get("theme") != "graphite":
         settings["theme"] = "graphite"
         migrate_legacy_settings = True
+    settings["manual_editor_workspace"] = _normalize_manual_workspace(
+        settings.get("manual_editor_workspace")
+    )
     if migrate_legacy_settings:
         try:
             save_settings(settings)
@@ -68,6 +100,8 @@ def save_settings(settings: dict) -> dict:
             value = default
         return max(minimum, min(maximum, value))
 
+    workspace = _normalize_manual_workspace(merged.get("manual_editor_workspace"))
+
     normalized = {
         # Theme switching was removed in favour of one production palette.
         # Always normalize legacy dark/light preferences so old installations
@@ -87,6 +121,10 @@ def save_settings(settings: dict) -> dict:
         "keep_models_warm": bool(merged.get("keep_models_warm", True)),
         "manual_project_cache_gib": bounded_integer("manual_project_cache_gib", 4, 1, 64),
         "manual_global_cache_gib": bounded_integer("manual_global_cache_gib", 16, 4, 256),
+        "manual_editor_inspector_width": bounded_integer("manual_editor_inspector_width", 356, 300, 520),
+        "manual_editor_timeline_height": bounded_integer("manual_editor_timeline_height", 280, 200, 520),
+        "manual_editor_compare": bool(merged.get("manual_editor_compare", False)),
+        "manual_editor_workspace": workspace,
     }
     with _SETTINGS_LOCK:
         if isinstance(existing, dict) and all(existing.get(key) == value for key, value in normalized.items()):

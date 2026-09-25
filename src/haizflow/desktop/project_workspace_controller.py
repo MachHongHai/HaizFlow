@@ -96,6 +96,18 @@ class ProjectWorkspaceController:
         host._watermark_scale_percent = max(
             25, min(300, int(getattr(video, "watermark_scale_percent", 100) or 100))
         )
+        stored_watermark_kind = str(getattr(video, "watermark_kind", "text") or "text").lower()
+        host._watermark_kind = stored_watermark_kind if stored_watermark_kind in {"text", "image", "video"} else "text"
+        host._watermark_opacity_percent = max(
+            0, min(100, int(getattr(video, "watermark_opacity_percent", 46) or 0))
+        )
+        host._watermark_outline_percent = max(
+            0, min(300, int(getattr(video, "watermark_outline_percent", 100) or 0))
+        )
+        host._watermark_font_family = str(getattr(video, "watermark_font_family", "Arial") or "Arial")
+        host._watermark_text_color = str(getattr(video, "watermark_text_color", "#FFFFFF") or "#FFFFFF")
+        host._watermark_bold = bool(getattr(video, "watermark_bold", True))
+        host._watermark_italic = bool(getattr(video, "watermark_italic", True))
         host._remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
         host._original_subtitle_removal_mode = str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch")
         host._subtitle_style = video.subtitle_style
@@ -133,6 +145,8 @@ class ProjectWorkspaceController:
                 bottom_percent=max(0, round(hidden - top)),
             )
         host._background_music_path = str((video.files or {}).get("background_music") or "")
+        host._watermark_image_path = str((video.files or {}).get("watermark_image") or "")
+        host._watermark_video_path = str((video.files or {}).get("watermark_video") or "")
         input_path = host._resolve_video_file(video, ("video_input", "input_video"), ("input", "video.mp4"))
         host._video_path = input_path
         host._video_thumbnail_source = thumbnail_source(video.files.get("thumbnail") or "")
@@ -152,6 +166,12 @@ class ProjectWorkspaceController:
         host.ttsVolumeChanged.emit()
         host.watermarkTextChanged.emit()
         host.watermarkScalePercentChanged.emit()
+        host.watermarkKindChanged.emit()
+        host.watermarkOpacityPercentChanged.emit()
+        host.watermarkOutlinePercentChanged.emit()
+        host.watermarkImageChanged.emit()
+        host.watermarkVideoChanged.emit()
+        host.watermarkStyleChanged.emit()
         host.subtitleSettingsChanged.emit()
         host.cropSettingsChanged.emit()
         host.backgroundMusicChanged.emit()

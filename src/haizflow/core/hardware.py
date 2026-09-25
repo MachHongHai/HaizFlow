@@ -533,6 +533,7 @@ def runtime_profile_for(
 
     if use_cuda:
         low_vram = capabilities.total_vram_bytes < _FULL_GPU_VRAM_BYTES
+        constrained_memory = low_vram or (total_ram > 0 and total_ram < 24 * _GIB)
         return RuntimeProfile(
             key="cuda_low_memory" if low_vram else "cuda",
             label="GPU low memory" if low_vram else "GPU accelerated",
@@ -547,9 +548,11 @@ def runtime_profile_for(
             # CUDA keeps the official checkpoint. Precision is selected from
             # the active GPU architecture without changing model quality.
             hymt2_backend="transformers",
-            warm_whisper_on_startup=True,
-            warm_hymt2_on_startup=True,
-            translation_idle_seconds=0,
+            warm_whisper_on_startup=not constrained_memory,
+            warm_hymt2_on_startup=not constrained_memory,
+            # Low-memory workers are loaded on demand and released shortly
+            # after use instead of pinning model weights for the whole session.
+            translation_idle_seconds=30 if constrained_memory else 0,
             hymt2_dtype="bfloat16" if capabilities.cuda_bf16_supported else "float16",
         )
 

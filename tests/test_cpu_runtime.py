@@ -216,13 +216,14 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(profile.key, "cuda")
         self.assertEqual(profile.hymt2_backend, "transformers")
         self.assertEqual(profile.whisper_batch_size, 16)
-        self.assertTrue(profile.warm_hymt2_on_startup)
+        self.assertFalse(profile.warm_hymt2_on_startup)
         self.assertEqual(profile.hymt2_dtype, "bfloat16")
 
         marketed_eight_gib = self._profile(cuda=True, vram_gib=8, ram_gib=16, cpu_count=12)
         self.assertEqual(marketed_eight_gib.key, "cuda_low_memory")
         self.assertEqual(marketed_eight_gib.hymt2_backend, "transformers")
-        self.assertTrue(marketed_eight_gib.warm_hymt2_on_startup)
+        self.assertFalse(marketed_eight_gib.warm_hymt2_on_startup)
+        self.assertEqual(marketed_eight_gib.translation_idle_seconds, 30)
 
         older_gpu = self._profile(cuda=True, vram_gib=8, ram_gib=16, cpu_count=12, bf16=False)
         self.assertEqual(older_gpu.hymt2_dtype, "float16")

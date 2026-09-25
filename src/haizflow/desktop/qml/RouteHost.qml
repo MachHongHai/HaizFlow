@@ -78,15 +78,16 @@ StackLayout {
         // qmllint enable stale-property-read
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         onRequestNewProject: root.newProjectRequested("single", "single-projects")
         onOpenProject: root.workspaceRequested("single-projects", "single-workspace")
     }
 
     Loader {
+        id: manualWorkspaceLoader
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         active: root.currentRoute === "single-workspace"
         asynchronous: true
         sourceComponent: Component {
@@ -109,7 +110,7 @@ StackLayout {
         // qmllint enable missing-property
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         onRequestNewProject: root.newProjectRequested("manual", "manual-projects")
         onOpenProject: root.workspaceRequested("manual-projects", "manual-workspace")
     }
@@ -129,6 +130,20 @@ StackLayout {
                 onRequestDownloadProjectImport: root.downloadProjectImportRequested("manual")
             }
         }
+        Rectangle {
+            anchors.fill: parent
+            visible: manualWorkspaceLoader.active
+                && manualWorkspaceLoader.status !== Loader.Ready
+            color: Theme.window
+
+            Text {
+                anchors.centerIn: parent
+                text: qsTr("Đang mở editor…")
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.control
+            }
+        }
     }
 
     ProjectsPage {
@@ -138,7 +153,7 @@ StackLayout {
         // qmllint enable stale-property-read
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         onRequestNewProject: root.newProjectRequested("batch", "batch-projects")
         onOpenProject: root.workspaceRequested("batch-projects", "batch-workspace")
     }
@@ -146,7 +161,7 @@ StackLayout {
     Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         active: root.currentRoute === "batch-workspace"
         asynchronous: true
         sourceComponent: Component {
@@ -162,7 +177,7 @@ StackLayout {
     Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         active: root.currentRoute === "batch-video"
         asynchronous: true
         sourceComponent: Component {
@@ -181,7 +196,7 @@ StackLayout {
         // qmllint enable stale-property-read
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         onRequestNewProject: root.newProjectRequested("download", "download-projects")
         onOpenProject: root.workspaceRequested("download-projects", "download-workspace")
     }
@@ -190,7 +205,7 @@ StackLayout {
         id: downloadWorkspaceLoader
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         active: root.currentRoute === "download-workspace"
         asynchronous: true
         sourceComponent: Component {
@@ -208,7 +223,7 @@ StackLayout {
         // qmllint enable stale-property-read
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         onRequestNewProject: root.newProjectRequested("publish", "publish-projects")
         onOpenProject: root.workspaceRequested("publish-projects", "publish-workspace")
     }
@@ -216,7 +231,7 @@ StackLayout {
     Loader {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         active: root.currentRoute === "publish-workspace"
         asynchronous: true
         sourceComponent: Component {
@@ -230,10 +245,7 @@ StackLayout {
         // qmllint enable stale-property-read
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.leftMargin: UiMetrics.pageMargin + Theme.space12
-        Layout.rightMargin: UiMetrics.pageMargin + Theme.space12
-        Layout.topMargin: UiMetrics.pageMargin
-        Layout.bottomMargin: UiMetrics.pageMargin
+        Layout.margins: 0
         onNewProjectRequested: function (projectType) {
             root.newProjectRequested(projectType, "home");
         }
@@ -252,7 +264,7 @@ StackLayout {
         // qmllint enable missing-property stale-property-read
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
         onRequestNewProject: function (projectType) {
             root.newProjectRequested(projectType, "projects");
         }
@@ -267,12 +279,12 @@ StackLayout {
     SettingsPage {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
     }
 
     ResourcePacksPage {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.margins: UiMetrics.pageMargin
+        Layout.margins: 0
     }
 }

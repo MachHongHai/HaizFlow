@@ -26,6 +26,7 @@ from haizflow.core.model_integrity import (
     verify_whisperx_vad_model,
 )
 from haizflow.pipeline.process_registry import check_cancellation, is_cancelled
+from haizflow.pipeline.timing_contract import TIMING_SOURCE
 from haizflow.services.video_store import log_to_video
 
 
@@ -47,7 +48,6 @@ _ALIGNMENT_GROUP_PADDING_SECONDS = 2.5
 _ALIGNMENT_GROUP_SPLIT_GAP_SECONDS = 3.0
 _ALIGNMENT_GROUP_MAX_SECONDS = 75.0
 _MIN_SENTENCE_SPAN_SECONDS = 0.45
-TIMING_SOURCE = "whisperx-context-aligned-sentences-v9-semantic-source"
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 _CJK_LANGUAGE_CODES = frozenset({"zh", "ja", "ko"})
 _SENTENCE_END_CHARS = frozenset(".!?\u2026\u3002\uff01\uff1f")
@@ -138,6 +138,59 @@ def _release_cuda(video_id: str, stage: str) -> None:
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         log_to_video(video_id, f"Released WhisperX VRAM after {stage}.")
+
+
+def _transcribe_with_vad_recovery(asr_model, audio, profile, device: str, video_id: str):
+    """Keep Pyannote's separate VAD batch within the available memory.
+
+    WhisperX's ``batch_size`` only controls ASR; its Pyannote VAD otherwise
+    retains an independent default of 32. That default can exhaust an 8 GiB
+    GPU before transcription even starts. Pyannote exposes the inference batch
+    on the loaded pipeline, so reduce it without altering ASR model quality.
+    """
+    vad_pipeline = getattr(getattr(asr_model, "vad_model", None), "vad_pipeline", None)
+    vad_inference = getattr(vad_pipeline, "_segmentation", None)
+    if vad_inference is None:
+        return asr_model.transcribe(audio, batch_size=profile.whisper_batch_size, language=None)
+
+    vram_bytes = int(getattr(profile, "total_vram_bytes", 0) or 0)
+    low_vram = device == "cuda" and (not vram_bytes or vram_bytes <= 8 * 1024**3)
+    initial_batch = min(int(profile.whisper_batch_size), 4 if low_vram else 8)
+    vad_inference.batch_size = max(1, min(int(vad_inference.batch_size), initial_batch))
+    log_to_video(video_id, f"WhisperX VAD batch size: {vad_inference.batch_size}.")
+    vad_on_cpu = device != "cuda"
+
+    while True:
+        check_cancellation(video_id)
+        try:
+            return asr_model.transcribe(audio, batch_size=profile.whisper_batch_size, language=None)
+        except MemoryError as exc:
+            # Pyannote wraps its CUDA OOM in a batch-size MemoryError. Other
+            # memory failures must not be masked as recoverable VAD errors.
+            if "batch_size" not in str(exc):
+                raise
+            current_batch = int(vad_inference.batch_size)
+            if current_batch > 1:
+                vad_inference.batch_size = max(1, current_batch // 2)
+                log_to_video(
+                    video_id,
+                    f"WhisperX VAD ran out of memory; retrying batch size {vad_inference.batch_size}.",
+                )
+            elif not vad_on_cpu and vad_pipeline is not None:
+                log_to_video(video_id, "WhisperX VAD still lacks GPU memory; moving VAD to CPU.")
+                vad_pipeline.to(torch.device("cpu"))
+                vad_on_cpu = True
+                vad_inference.batch_size = max(1, min(int(profile.whisper_batch_size), 4))
+            else:
+                raise RuntimeError(
+                    "Không đủ bộ nhớ để nhận dạng lời thoại, kể cả khi VAD chạy với batch 1. "
+                    "Hãy đóng ứng dụng đang dùng nhiều bộ nhớ rồi thử lại."
+                ) from exc
+        # Let the failed inference traceback release its tensors before
+        # clearing the allocator and starting the next attempt.
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 def _value(item, name: str, default=None):
@@ -425,6 +478,93 @@ def _split_segment_proportionally(segment: dict) -> list[dict]:
     # Punctuation-only sentence splitting can otherwise create impossible
     # 100ms voice slots from a perfectly valid multi-second Whisper span.
     return _coalesce_short_sentence_segments(fallback_segments)
+
+
+def _speech_windows_in_segment(
+    speech_regions: list[tuple[float, float]], start: float, end: float,
+) -> list[tuple[float, float]]:
+    """Keep real pauses between short utterances in a long ASR segment."""
+    windows: list[list[float]] = []
+    for region_start, region_end in speech_regions:
+        left = max(start, region_start)
+        right = min(end, region_end)
+        if right - left < 0.25:
+            continue
+        if windows and left - windows[-1][1] <= 0.35 and right - windows[-1][0] <= 8.0:
+            windows[-1][1] = right
+        else:
+            windows.append([left, right])
+    return [(round(left, 3), round(right, 3)) for left, right in windows]
+
+
+def _split_long_chinese_speech(asr_model, audio, segments, batch_size, video_id):
+    """Re-transcribe bounded VAD utterances instead of translating long pauses.
+
+    WhisperX merges VAD regions into up-to-30-second transcription chunks.
+    Chinese has no verified word aligner here, so a single unpunctuated chunk
+    would otherwise become one TTS/subtitle slot including every internal gap.
+    """
+    if not any(
+        str(segment.get("language")) == "zh"
+        and float(segment["end"]) - float(segment["start"]) > 8.0
+        for segment in segments
+    ):
+        return segments
+    try:
+        from whisperx.vads.pyannote import Binarize
+
+        vad = asr_model.vad_model
+        scores = vad({"waveform": vad.preprocess_audio(audio), "sample_rate": _AUDIO_SAMPLE_RATE})
+        speech = Binarize(
+            max_duration=8.0,
+            onset=asr_model._vad_params["vad_onset"],
+            offset=asr_model._vad_params["vad_offset"],
+        )(scores)
+        regions = [(float(region.start), float(region.end)) for region in speech.get_timeline()]
+    except Exception as exc:
+        log_to_video(video_id, f"WARNING: Could not resolve Chinese speech pauses: {exc}")
+        return segments
+
+    result = []
+    for segment in segments:
+        check_cancellation(video_id)
+        if str(segment.get("language")) != "zh":
+            result.append(segment)
+            continue
+        start = float(segment["start"])
+        end = float(segment["end"])
+        if end - start <= 8.0:
+            result.append(segment)
+            continue
+        windows = _speech_windows_in_segment(regions, start, end)
+        if len(windows) < 2:
+            result.append(segment)
+            continue
+        utterances = []
+        for left, right in windows:
+            clip = audio[int(left * _AUDIO_SAMPLE_RATE):int(right * _AUDIO_SAMPLE_RATE)]
+            if len(clip) < int(0.25 * _AUDIO_SAMPLE_RATE):
+                continue
+            try:
+                recognized = asr_model.transcribe(clip, batch_size=batch_size, language="zh")
+            except Exception as exc:
+                log_to_video(video_id, f"WARNING: Chinese utterance {left:.2f}-{right:.2f}s failed: {exc}")
+                utterances = []
+                break
+            text = " ".join(
+                str(item.get("text") or "").strip()
+                for item in recognized.get("segments", [])
+                if str(item.get("text") or "").strip()
+            ).strip()
+            if text:
+                utterances.append({**segment, "start": left, "end": right, "text": text})
+        if len(utterances) < 2:
+            log_to_video(video_id, "WARNING: Chinese pause split was incomplete; preserving the original transcript.")
+            result.append(segment)
+        else:
+            log_to_video(video_id, f"Split Chinese {end - start:.1f}s speech span into {len(utterances)} utterances.")
+            result.extend(utterances)
+    return result
 
 
 def _alignment_groups(segments: list[dict]) -> list[list[dict]]:
@@ -893,11 +1033,7 @@ def transcribe(
         log_to_video(video_id, "Running WhisperX batched transcription with automatic language detection.")
         if progress_callback:
             progress_callback("transcribing", "Transcribing speech")
-        result = asr_model.transcribe(
-            audio,
-            batch_size=profile.whisper_batch_size,
-            language=None,
-        )
+        result = _transcribe_with_vad_recovery(asr_model, audio, profile, device, video_id)
         detected_language = result.get("language")
         initial_segments = [
             {
@@ -913,6 +1049,11 @@ def transcribe(
         log_to_video(video_id, f"Transcription completed. Primary detected language: '{detected_language}'.")
         if progress_callback:
             progress_callback("transcribed", f"Detected {detected_language or 'unknown'} speech")
+
+        if detected_language == "zh":
+            initial_segments = _split_long_chinese_speech(
+                asr_model, audio, initial_segments, profile.whisper_batch_size, video_id,
+            )
 
         sentence_segments = _align_segments_by_language(
             audio,
@@ -962,6 +1103,13 @@ def transcribe(
             # neighbouring sentence's language after a legitimate time shift.
             language = segment.get("language") or detected_language or "en"
             confidence = float(segment.get("language_confidence", 0.0))
+            if float(segment["end"]) - float(segment["start"]) < 0.25:
+                log_to_video(
+                    video_id,
+                    "WARNING: Discarded an implausibly short speech timestamp "
+                    "that cannot contain its recognized sentence.",
+                )
+                continue
             output_segments.append(
                 {
                     "start": round(float(segment["start"]), 3),

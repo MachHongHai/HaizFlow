@@ -129,59 +129,6 @@ ColumnLayout {
             }
         }
     }
-    RowLayout {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 36
-        spacing: Theme.space8
-
-        Rectangle {
-            Layout.preferredWidth: 7
-            Layout.preferredHeight: 7
-            radius: 4
-            color: root.saveStatus === "error" ? Theme.danger
-                : root.saveStatus === "saving" ? Theme.warning
-                : root.saveStatus === "dirty" ? Theme.interactive : Theme.success
-        }
-        Text {
-            color: root.saveStatus === "error" ? Theme.danger : Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.metadata
-            text: root.saveStatus === "saving" ? qsTr("Đang lưu…")
-                : root.saveStatus === "dirty" ? qsTr("Chưa lưu")
-                : root.saveStatus === "error" ? qsTr("Không lưu được") : qsTr("Đã lưu")
-        }
-        Text {
-            text: qsTr("%1 ký tự").arg(editor.length)
-            color: Theme.textSubtle
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.metadata
-        }
-        Text {
-            Layout.fillWidth: true
-            text: root.errorMessage
-            visible: root.errorMessage.length > 0
-            color: Theme.danger
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.metadata
-            elide: Text.ElideRight
-            textFormat: Text.PlainText
-        }
-        StudioButton {
-            text: qsTr("Bỏ thay đổi")
-            variant: "ghost"
-            enabled: root.saveStatus === "dirty" || root.saveStatus === "error"
-            onClicked: root.discard()
-        }
-        StudioButton {
-            objectName: "manualSubtitleSaveButton"
-            text: root.saveStatus === "error" ? qsTr("Thử lưu lại") : qsTr("Lưu thay đổi")
-            variant: "primary"
-            enabled: root.editingId.length > 0
-                && root.saveStatus !== "saving"
-                && root.saveStatus !== "saved"
-            onClicked: root.apply()
-        }
-    }
     Connections {
         target: root.controller
         function onManualSubtitleSaved(id, version, request) {

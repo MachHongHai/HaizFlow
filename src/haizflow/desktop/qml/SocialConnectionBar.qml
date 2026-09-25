@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -39,8 +40,9 @@ AppSurface {
         optionsDialog.open()
     }
 
-    padding: Theme.space8
+    padding: 0
     spacing: 0
+    border.width: 0
 
     RowLayout {
         Layout.fillWidth: true
@@ -64,6 +66,7 @@ AppSurface {
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             spacing: 0
 
             Text {
@@ -91,23 +94,43 @@ AppSurface {
         }
 
         StudioButton {
-            variant: "ghost"
-            text: qsTr("Hướng dẫn")
-            onClicked: root.setupGuideRequested()
-        }
-
-        StudioButton {
-            variant: "ghost"
-            text: qsTr("API key")
-            enabled: !AppController.tiktokPublishBusy && !AppController.zernioAccountSyncing
-            onClicked: root.apiKeyManagementRequested()
-        }
-
-        StudioButton {
             variant: "secondary"
-            text: root.hasSelectedPlatform ? qsTr("Đổi nền tảng") : qsTr("Chọn nền tảng")
+            text: root.hasSelectedPlatform ? qsTr("Đổi tài khoản") : qsTr("Chọn tài khoản")
             enabled: AppController.zernioApiKeyVerified && !AppController.tiktokPublishBusy
             onClicked: root.connectionPickerRequested()
+        }
+
+        StudioIconButton {
+            id: setupMoreButton
+            iconName: "more"
+            toolTipText: qsTr("Thiết lập đăng bài")
+            onClicked: setupMenu.open()
+
+            Menu {
+                id: setupMenu
+                width: 180
+                x: parent.width - width
+                y: parent.height + Theme.space4
+                padding: Theme.space4
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+
+                background: Rectangle {
+                    radius: Theme.radiusSmall
+                    color: Theme.surfaceElevated
+                    border.width: 1
+                    border.color: Theme.outlineStrong
+                }
+
+                AppMenuItem {
+                    text: qsTr("API key")
+                    enabled: !AppController.tiktokPublishBusy && !AppController.zernioAccountSyncing
+                    onTriggered: root.apiKeyManagementRequested()
+                }
+                AppMenuItem {
+                    text: qsTr("Hướng dẫn")
+                    onTriggered: root.setupGuideRequested()
+                }
+            }
         }
     }
 

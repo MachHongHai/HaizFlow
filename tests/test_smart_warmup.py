@@ -42,9 +42,23 @@ class SmartWarmupTests(unittest.TestCase):
 
     def test_startup_prediction_prioritizes_recognition_before_translation(self):
         controller = SmartWarmupController(_Host(), _Resources())
-        controller.request_startup_prediction()
+        profile = type("Profile", (), {
+            "total_ram_gib": 32, "cuda_available": True, "total_vram_gib": 16,
+        })()
+        with patch("haizflow.desktop.smart_warmup_controller.runtime_profile", return_value=profile):
+            controller.request_startup_prediction()
         ordered = sorted(controller._requests)
         self.assertEqual([item.capability for item in ordered], ["recognition", "translation"])
+
+    def test_constrained_machine_never_queues_speculative_model_loads(self):
+        controller = SmartWarmupController(_Host(), _Resources())
+        profile = type("Profile", (), {
+            "total_ram_gib": 16, "cuda_available": True, "total_vram_gib": 8,
+        })()
+        with patch("haizflow.desktop.smart_warmup_controller.runtime_profile", return_value=profile):
+            controller.request_startup_prediction()
+            controller.request_project_prediction()
+        self.assertEqual(controller._requests, [])
 
     def test_disabled_warmup_does_not_start_a_worker(self):
         host = _Host()

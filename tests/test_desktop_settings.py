@@ -47,6 +47,23 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertEqual(saved["manual_project_cache_gib"], 4)
         self.assertEqual(saved["manual_global_cache_gib"], 4)
 
+    def test_obsolete_font_picker_preferences_are_not_saved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "desktop-settings.json"
+            with patch.object(desktop_settings, "SETTINGS_PATH", path):
+                desktop_settings.save_settings(
+                    {
+                        "editor_recent_fonts": ["Segoe UI", "Bangers"],
+                        "editor_favorite_fonts": ["Bangers", "Arial"],
+                    }
+                )
+                desktop_settings.save_settings({"language": "vi"})
+                loaded = desktop_settings.load_settings()
+
+        self.assertNotIn("editor_recent_fonts", loaded)
+        self.assertNotIn("editor_favorite_fonts", loaded)
+        self.assertEqual(loaded["language"], "vi")
+
 
 if __name__ == "__main__":
     unittest.main()

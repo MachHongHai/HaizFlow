@@ -173,22 +173,18 @@ Item {
                         }
                     }
 
+                    DownloadDestinationRow {
+                        Layout.fillWidth: true
+                        directory: root.downloader.channelOutputDirectory
+                        managed: root.downloader.outputManaged
+                        selectionEnabled: !root.channelActive
+                        onChooseRequested: root.downloader.chooseChannelOutputDirectory()
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.space12
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.downloader.channelOutputDirectory.length > 0 ? root.downloader.channelOutputDirectory : qsTr("Chưa chọn thư mục")
-                            color: root.downloader.channelOutputDirectory.length > 0 ? Theme.text : Theme.textMuted
-                            elide: Text.ElideMiddle
-                            textFormat: Text.PlainText
-                        }
-                        StudioButton {
-                            visible: !root.downloader.outputManaged
-                            text: qsTr("Chọn thư mục")
-                            enabled: !root.channelActive
-                            onClicked: root.downloader.chooseChannelOutputDirectory()
-                        }
+                        Item { Layout.fillWidth: true }
                         StudioButton {
                             text: root.hasResults ? qsTr("Quét lại") : qsTr("Xem trước")
                             variant: "primary"

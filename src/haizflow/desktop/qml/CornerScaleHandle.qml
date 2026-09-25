@@ -85,4 +85,13 @@ Item {
         onReleased: root.valueCommitted(root.startValue, root.previewValue)
         onCanceled: root.valuePreviewed(root.startValue)
     }
+
+    // Pointer handlers win cursor arbitration even when the selection's move
+    // MouseArea overlaps this enlarged hit target. This keeps subtitle and
+    // watermark handles identical on Windows.
+    HoverHandler {
+        enabled: root.visible
+        cursorShape: root.horizontalDirection === root.verticalDirection
+            ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor
+    }
 }

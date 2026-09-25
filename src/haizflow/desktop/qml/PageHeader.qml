@@ -4,14 +4,17 @@ import "."
 
 RowLayout {
     id: root
+    objectName: "pageHeader"
 
     property string title: ""
     property string subtitle: ""
     default property alias actions: actionArea.data
 
     spacing: Theme.space24
+    implicitHeight: Math.max(48, titleArea.implicitHeight, actionArea.implicitHeight)
 
     ColumnLayout {
+        id: titleArea
         Layout.fillWidth: true
         Layout.minimumWidth: 0
         spacing: Theme.space4

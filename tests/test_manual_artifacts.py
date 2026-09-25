@@ -11,10 +11,36 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from haizflow.pipeline import manual_tools
+from haizflow.pipeline.timing_contract import TIMING_SOURCE
 from haizflow.services import manual_artifacts
 
 
 class ManualArtifactTests(unittest.TestCase):
+    def test_manual_recognition_uses_current_timing_contract(self):
+        self.assertEqual(manual_tools.TIMING_SOURCE, TIMING_SOURCE)
+        self.video.enable_audio_separation = True
+        self.video.speech_recognition_model = "large-v3-turbo"
+        self.video.source_language = "auto"
+        with patch.object(manual_tools, "separation_signature", return_value="existing-stems"):
+            current = manual_tools.recognition_signature(self.video)
+        old = manual_artifacts.signature(
+            "existing-stems", "large-v3-turbo", "auto",
+            "whisperx-context-aligned-sentences-v9-semantic-source",
+            "manual-recognition-v1",
+        )
+        self.assertNotEqual(current, old)
+
+    def test_zero_generation_preserves_unchanged_separation_cache_key(self):
+        self.video.manual_tool_generations = {}
+        with patch.object(manual_tools, "source_signature", return_value="existing-source"):
+            self.assertEqual(
+                manual_tools.separation_signature(self.video),
+                manual_artifacts.signature(
+                    "existing-source", manual_tools.DEMUCS_MODEL_SIGNATURE,
+                    "two-stems-vocals-v1",
+                ),
+            )
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
@@ -61,6 +87,68 @@ class ManualArtifactTests(unittest.TestCase):
                 / "complete.json"
             ).is_file()
         )
+
+    def test_old_voice_manifest_is_not_a_current_cache_hit(self):
+        self.video.active_artifacts = {"tts_manifest": "old-voice-signature"}
+        with (
+            patch.object(manual_tools, "active_voice_record", return_value={"signature": "old-voice-signature"}),
+            patch.object(manual_tools, "voice_signature", return_value="stable-narrator-signature"),
+        ):
+            self.assertFalse(manual_tools._voice_ready(self.video, validate=False))
+
+    def test_explicit_translation_rerun_advances_recognition_and_preserves_old_cache(self):
+        self.video.enable_audio_separation = True
+        self.video.manual_tool_generations = {}
+        with (
+            patch.object(manual_tools, "separation_signature", return_value="stems-v1"),
+            patch.object(manual_tools, "_requested_artifact", return_value=("translation", "cached-translation")),
+            patch.object(manual_artifacts, "peek", return_value={"signature": "cached-translation"}),
+            patch.object(manual_tools.video_store, "log_to_video"),
+        ):
+            before = manual_tools.recognition_signature(self.video)
+            self.assertTrue(manual_tools.prepare_manual_rerun("manual-video", "translation"))
+            after = manual_tools.recognition_signature(self.video)
+
+        self.assertNotEqual(before, after)
+        self.assertEqual(self.video.manual_tool_generations, {"recognition": 1})
+        self.assertEqual(self.video.active_artifacts, {})
+
+    def test_uncached_manual_tool_does_not_advance_generation(self):
+        self.video.manual_tool_generations = {}
+        with (
+            patch.object(manual_tools, "_requested_artifact", return_value=("separation", "new-contract")),
+            patch.object(manual_artifacts, "peek", return_value=None),
+        ):
+            self.assertFalse(manual_tools.prepare_manual_rerun("manual-video", "separation"))
+        self.assertEqual(self.video.manual_tool_generations, {})
+
+    def test_translation_rerun_refreshes_cached_recognition_when_translation_missing(self):
+        self.video.manual_tool_generations = {}
+        with (
+            patch.object(manual_tools, "_requested_artifact", return_value=("translation", "missing")),
+            patch.object(manual_tools, "recognition_signature", return_value="cached-asr"),
+            patch.object(manual_artifacts, "peek", side_effect=[None, {"signature": "cached-asr"}]) as peek,
+            patch.object(manual_tools.video_store, "log_to_video"),
+        ):
+            self.assertTrue(manual_tools.prepare_manual_rerun("manual-video", "translation"))
+        self.assertEqual(self.video.manual_tool_generations, {"recognition": 1})
+        self.assertEqual(peek.call_args_list[-1].args, ("manual-video", "recognition", "cached-asr"))
+
+    def test_explicit_separation_rerun_invalidates_only_dependent_stages(self):
+        self.video.enable_audio_separation = True
+        self.video.manual_tool_generations = {}
+        with (
+            patch.object(manual_tools, "source_signature", return_value="unchanged-source"),
+            patch.object(manual_tools, "_requested_artifact", return_value=("separation", "old-stems")),
+            patch.object(manual_artifacts, "peek", return_value={"signature": "old-stems"}),
+            patch.object(manual_tools.video_store, "log_to_video"),
+        ):
+            old_separation = manual_tools.separation_signature(self.video)
+            old_recognition = manual_tools.recognition_signature(self.video)
+            self.assertTrue(manual_tools.prepare_manual_rerun("manual-video", "separation"))
+            self.assertNotEqual(old_separation, manual_tools.separation_signature(self.video))
+            self.assertNotEqual(old_recognition, manual_tools.recognition_signature(self.video))
+        self.assertEqual(self.video.manual_tool_generations, {"separation": 1})
 
     def test_corrupted_cache_is_rejected(self):
         record = self.publish_text("broken", "[]")
@@ -745,6 +833,31 @@ assert not (blocked & set(sys.modules)), blocked & set(sys.modules)
         self.assertEqual(states["audio"]["state"], "ready")
         self.assertTrue(states["export"]["canRun"])
         self.assertEqual(states["export"]["state"], "ready")
+
+    def test_voice_notice_distinguishes_changed_subtitles_from_voice_settings(self):
+        video = SimpleNamespace(
+            video_id="manual-video", status="manual_ready", manual_target_tool="",
+            active_artifacts={}, files={"video_input": "input.mp4"},
+            enable_audio_separation=False, remove_original_subtitles=True,
+        )
+        published = {"signature": "voice-published"}
+        with (
+            patch.object(manual_tools, "_translation_ready", return_value=True),
+            patch.object(manual_tools, "_subtitle_ready", return_value=True),
+            patch.object(manual_tools, "_image_ready", return_value=True),
+            patch.object(manual_tools, "_voice_ready", return_value=False),
+            patch.object(manual_tools, "_audio_ready", return_value=False),
+            patch.object(manual_tools, "_artifact_ready", return_value=False),
+            patch.object(manual_tools, "export_signature", return_value="export-current"),
+            patch.object(manual_tools, "published_voice_record", return_value=published),
+            patch.object(manual_tools, "active_voice_record", return_value=None) as active_record,
+        ):
+            states = {row["toolId"]: row for row in manual_tools.tool_states(video)}
+            self.assertIn("Phụ đề đã đổi", states["voice"]["voiceNotice"])
+            self.assertTrue(states["voice"]["hasPublishedArtifact"])
+            active_record.return_value = published
+            states = {row["toolId"]: row for row in manual_tools.tool_states(video)}
+            self.assertIn("Lựa chọn giọng mới", states["voice"]["voiceNotice"])
 
     def test_dispatch_runs_only_the_selected_tool(self):
         video = SimpleNamespace(

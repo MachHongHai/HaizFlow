@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 
@@ -6,7 +7,7 @@ import haizflow.config as _runtime_config  # noqa: F401
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from haizflow.core.logging_config import configure_app_logging
 from haizflow.desktop.input_method_commit_filter import InputMethodCommitFilter
@@ -146,6 +147,7 @@ def main(*, smoke_test: bool = False) -> None:
     engine = None
     native_icon_handles: tuple[int, ...] = ()
     activation_pending = False
+    qml_errors: list[str] = []
 
     def activate_window() -> None:
         nonlocal activation_pending
@@ -167,11 +169,15 @@ def main(*, smoke_test: bool = False) -> None:
 
     try:
         engine = QQmlApplicationEngine()
+        engine.warnings.connect(
+            lambda warnings: qml_errors.extend(str(warning.toString()) for warning in warnings)
+        )
         qml_dir = Path(__file__).resolve().parent / "qml"
         engine.addImportPath(str(qml_dir))
         engine.load(str(qml_dir / "Main.qml"))
         if not engine.rootObjects():
-            raise SystemExit(1)
+            detail = "\n".join(qml_errors[-8:]) or "Qt could not create the main window."
+            raise RuntimeError(detail)
         window = engine.rootObjects()[0]
         app.installEventFilter(input_method_commit_filter)
         if not app_icon.isNull():
@@ -219,6 +225,16 @@ def main(*, smoke_test: bool = False) -> None:
         if smoke_test:
             QTimer.singleShot(1500, app.quit)
         exit_code = app.exec()
+    except Exception as exc:
+        logging.getLogger(__name__).exception("HaizFlow desktop startup failed")
+        if not smoke_test:
+            QMessageBox.critical(
+                None,
+                "HaizFlow",
+                "HaizFlow không thể mở giao diện. Chi tiết đã được lưu trong log kỹ thuật.\n\n"
+                + str(exc),
+            )
+        raise
     finally:
         if controller is not None:
             controller.shutdown()

@@ -11,15 +11,18 @@ from typing import Any
 
 from haizflow.config import HYMT2_MODEL_REVISION
 from haizflow.core.model_integrity import DEMUCS_MODEL_SIGNATURE
-from haizflow.services import manual_artifacts, video_store
+from haizflow.pipeline.timing_contract import TIMING_SOURCE
+from haizflow.services import editor_documents, manual_artifacts, video_store
 
 # Cache-contract versions are intentionally available without importing the
 # model runtimes that implement them. Importing WhisperX/torch from a QML
 # property getter used to stall the first Manual workspace paint for 20+ s.
-TIMING_SOURCE = "whisperx-context-aligned-sentences-v9-semantic-source"
 DETECTOR_CACHE_VERSION = 21
-VOICE_CLIP_CACHE_VERSION = "manual-tts-clip-v1"
-VOICE_MANIFEST_CACHE_VERSION = "manual-tts-manifest-v1"
+# v1 clips may have been generated before OmniVoice used a stable narrator
+# anchor. Mixing those clips with newly synthesized sentences changes timbre
+# even when every segment declares the same voice ID.
+VOICE_CLIP_CACHE_VERSION = "manual-tts-clip-v2-stable-narrator"
+VOICE_MANIFEST_CACHE_VERSION = "manual-tts-manifest-v2-stable-narrator"
 
 
 # Keep these names patchable for unit tests while loading every heavyweight
@@ -225,6 +228,15 @@ def _active_signature(video, kind: str) -> str:
     return str((getattr(video, "active_artifacts", {}) or {}).get(kind) or "")
 
 
+def _tool_generation(video, kind: str) -> int:
+    return int((getattr(video, "manual_tool_generations", {}) or {}).get(kind, 0) or 0)
+
+
+def _generation_token(video, kind: str) -> tuple:
+    generation = _tool_generation(video, kind)
+    return ("manual-rerun", generation) if generation > 0 else ()
+
+
 def _record_exists(video, kind: str, artifact_signature: str, *, validate: bool = True) -> bool:
     if not artifact_signature:
         return False
@@ -238,12 +250,16 @@ def _record_exists(video, kind: str, artifact_signature: str, *, validate: bool 
 def source_signature(video) -> str:
     return manual_artifacts.signature(
         manual_artifacts.file_state(_video_input(video)),
+        *_generation_token(video, "source"),
         "source-audio-pcm-v1",
     )
 
 
 def separation_signature(video) -> str:
-    return manual_artifacts.signature(source_signature(video), DEMUCS_MODEL_SIGNATURE, "two-stems-vocals-v1")
+    return manual_artifacts.signature(
+        source_signature(video), DEMUCS_MODEL_SIGNATURE,
+        *_generation_token(video, "separation"), "two-stems-vocals-v1",
+    )
 
 
 def recognition_signature(video) -> str:
@@ -253,6 +269,7 @@ def recognition_signature(video) -> str:
         getattr(video, "speech_recognition_model", "small"),
         getattr(video, "source_language", "auto"),
         TIMING_SOURCE,
+        *_generation_token(video, "recognition"),
         "manual-recognition-v1",
     )
 
@@ -264,6 +281,7 @@ def translation_signature(video) -> str:
         "hymt2",
         HYMT2_MODEL_REVISION,
         "hymt2-semantic-source-context-retry-v21",
+        *_generation_token(video, "translation"),
         "manual-translation-v1",
     )
 
@@ -272,6 +290,7 @@ def ocr_signature(video) -> str:
     return manual_artifacts.signature(
         manual_artifacts.file_state(_video_input(video)),
         DETECTOR_CACHE_VERSION,
+        *_generation_token(video, "image"),
         "manual-ocr-region-v1",
     )
 
@@ -360,6 +379,7 @@ def _voice_clip_signatures(video, segments: list[dict[str, Any]]) -> list[str]:
                 reference_text,
                 recognition,
                 index if speaker_mode == "multiple" else 0,
+                *_generation_token(video, "voice"),
                 VOICE_CLIP_CACHE_VERSION,
             )
         )
@@ -607,10 +627,33 @@ def _audio_background(video, *, validate: bool = True) -> tuple[str, str, list[s
 
 def audio_signature(video, *, validate: bool = True) -> str:
     subtitle = _current_subtitle_record(video, validate=validate)
-    voice = _current_voice_record(video, validate=validate)
-    segments = _load_segments(video, validate=validate) if voice else []
+    voice = published_voice_record(video, validate=validate)
+    segments = _load_segments(video, validate=validate) if subtitle else []
     timing = [(float(item.get("start") or 0), float(item.get("end") or 0)) for item in segments]
     _background_path, background_token, _inputs = _audio_background(video, validate=validate)
+    editor_document = editor_documents.load(video.video_id)
+    audio_document = {}
+    if editor_document:
+        audio_tracks = {
+            track.track_id: track.model_dump()
+            for track in editor_document.tracks
+            if track.kind in {"source_audio", "voice", "music"}
+        }
+        audio_document = {
+            "sequence": editor_document.sequence.model_dump(),
+            "tracks": audio_tracks,
+            "clips": [
+                clip.model_dump()
+                for clip in editor_document.clips
+                if clip.track_id in audio_tracks or clip.track_id == "subtitles"
+            ],
+            "ducking": {
+                "enabled": editor_document.audio_ducking_enabled,
+                "reduction_db": editor_document.audio_ducking_reduction_db,
+                "attack_ms": editor_document.audio_ducking_attack_ms,
+                "release_ms": editor_document.audio_ducking_release_ms,
+            },
+        }
     return manual_artifacts.signature(
         str((voice or {}).get("signature") or "no-voice"),
         background_token,
@@ -620,7 +663,9 @@ def audio_signature(video, *, validate: bool = True) -> str:
         getattr(video, "background_music_volume", 30),
         getattr(video, "tts_volume", 100),
         (subtitle or {}).get("signature", "") if voice else "no-subtitle-audio",
-        "manual-audio-mix-v3-slot-synced-voice",
+        audio_document,
+        *_generation_token(video, "audio"),
+        "manual-audio-mix-v5-preserve-speech-pauses",
     )
 
 
@@ -632,6 +677,7 @@ def export_signature(video, *, validate: bool = True) -> str:
         and _artifact_ready(video, "ocr_region", ocr_signature(video), validate=validate)
         else "no-cleanup-layer"
     )
+    editor_document = editor_documents.load(video.video_id)
     return manual_artifacts.signature(
         manual_artifacts.file_state(_video_input(video)),
         audio_signature(video, validate=validate),
@@ -644,9 +690,19 @@ def export_signature(video, *, validate: bool = True) -> str:
         getattr(video, "original_subtitle_removal_mode", "patch"),
         getattr(video, "watermark_text", ""),
         getattr(video, "watermark_scale_percent", 100),
+        getattr(video, "watermark_kind", "text"),
+        getattr(video, "watermark_opacity_percent", 46),
+        getattr(video, "watermark_outline_percent", 100),
+        manual_artifacts.file_state((video.files or {}).get("watermark_image")),
+        manual_artifacts.file_state((video.files or {}).get("watermark_video")),
+        getattr(video, "watermark_font_family", "Arial"),
+        getattr(video, "watermark_text_color", "#FFFFFF"),
+        getattr(video, "watermark_bold", True),
+        getattr(video, "watermark_italic", True),
         getattr(video, "subtitle_layout_override", False),
-        # v3 keeps one subtitle clock across every visual phrase and font size.
-        "manual-export-v3",
+        editor_document.model_dump() if editor_document else {},
+        *_generation_token(video, "export"),
+        "manual-export-v6-editor-document",
     )
 
 
@@ -682,6 +738,10 @@ def _voice_ready(video, *, validate: bool = True) -> bool:
     if not validate:
         active = active_voice_record(video, validate=False)
         if not active:
+            return False
+        # A published clip can remain audible while a new voice is pending,
+        # but it is not a cache hit for the current TTS algorithm or settings.
+        if _active_signature(video, "tts_manifest") != voice_signature(video, validate=False):
             return False
         segments = _load_segments(video, validate=False)
         desired_groups = [
@@ -931,6 +991,43 @@ def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
     }
     current = str(getattr(video, "manual_target_tool", "") or "")
     busy = bool(current) and video.status in {"pending", "processing", "paused"}
+    published_voice = published_voice_record(video, validate=False)
+    voice_notice = ""
+    if published_voice and not voice_ok:
+        if active_voice_record(video, validate=False) is None:
+            voice_notice = (
+                "Phụ đề đã đổi sau lần tạo giọng gần nhất. Giọng cũ vẫn được lưu; "
+                "tạo lại để khớp nội dung mới."
+                if vi else
+                "Subtitles changed since the last voice generation. The previous voice is saved; "
+                "regenerate to match the new text."
+            )
+        else:
+            published_payload = _voice_manifest_payload(published_voice)
+            published_groups = published_payload.get("voice_configs")
+            same_global_voice = (
+                isinstance(published_groups, list)
+                and len(published_groups) == 1
+                and str(published_groups[0].get("provider") or "")
+                == str(getattr(video, "tts_provider", "omnivoice") or "omnivoice")
+                and str(published_groups[0].get("voice") or "")
+                == str(getattr(video, "tts_voice", "") or "")
+                and str(published_payload.get("speaker_mode") or "single")
+                == str(getattr(video, "speaker_mode", "single") or "single")
+                and not dict(getattr(video, "files", {}) or {}).get("manual_voice_overrides")
+            )
+            if same_global_voice:
+                voice_notice = (
+                    "Giọng cũ vẫn được dùng. Tạo lại để các đoạn có cùng chất giọng."
+                    if vi else
+                    "The previous voice remains in use. Regenerate to give all segments the same voice."
+                )
+            else:
+                voice_notice = (
+                    "Lựa chọn giọng mới chưa được áp dụng. Giọng đã tạo vẫn được dùng."
+                    if vi else
+                    "The new voice selection has not been applied. The existing voice remains in use."
+                )
     rows = []
     for tool_id in MANUAL_TOOL_IDS:
         can_run, cached, blocked = requirements[tool_id]
@@ -962,8 +1059,9 @@ def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
             # surfaced stale persisted state as a false error.
             "blockedReason": "" if another_tool_busy or can_run else blocked,
             "cacheHit": bool(cached),
+            "voiceNotice": voice_notice if tool_id == "voice" else "",
             "hasPublishedArtifact": bool(
-                published_voice_record(video, validate=False)
+                published_voice
                 if tool_id == "voice"
                 else _active_signature(video, {
                     "source": "separation" if video.enable_audio_separation else "source_audio",
@@ -1287,6 +1385,9 @@ def _run_recognition(video, reporter) -> None:
     if not cached:
         staging = manual_artifacts.create_staging_directory(video.video_id, "recognition")
         try:
+            # Translation may have left HY-MT2 resident from an earlier run.
+            # Whisper Turbo needs that VRAM/commit back before model loading.
+            shutdown_hymt2_worker()
             reporter.update(5, "manual_recognition", "Đang nhận dạng lời thoại")
             transcribe(
                 audio_path,
@@ -1327,6 +1428,10 @@ def _run_translation(video, reporter) -> None:
         staging = manual_artifacts.create_staging_directory(video.video_id, "translation")
         try:
             reporter.update(5, "manual_translation", "Đang dịch phụ đề")
+            # Recognition has already published its immutable output. On 16 GB
+            # systems retaining Whisper while HY-MT2 maps its weights can
+            # exhaust Windows commit even though CUDA VRAM was released.
+            _release_recognition_runtime()
             translate_segments(
                 recognition["resolved_outputs"]["segments"],
                 str(staging / "translated-segments.json"),
@@ -1550,6 +1655,16 @@ def _run_voice(video, reporter) -> None:
     manual_artifacts.activate(video.video_id, "tts_manifest", expected)
     manifest_path = cached["resolved_outputs"]["manifest"]
     _update_files(video.video_id, voice_parts_dir=str(Path(manifest_path).parent / "parts"))
+    current = video_store.get_video(video.video_id) or video
+    if getattr(current, "project_type", "") == "manual":
+        resolved_outputs = dict(cached.get("resolved_outputs") or {})
+        clip_paths = {
+            str(segment.get("segment_id") or segment.get("id") or f"index:{index}"): str(
+                resolved_outputs.get(f"clip_{index}") or ""
+            )
+            for index, segment in enumerate(segments, 1)
+        }
+        editor_documents.mark_voice_clips_ready(current, segments, clip_paths)
 
 
 def _publish_completed_voice_clips(video, subtitle, parts_dir: Path, clip_signatures: list[str]) -> None:
@@ -1622,33 +1737,159 @@ def _register_voice_manifest_from_parts(video, parts_dir: Path) -> dict[str, Any
 
 def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=None) -> list[str]:
     """Materialize the current optional audio layers without invoking AI."""
-    voice = _current_voice_record(video)
+    from haizflow.pipeline.sequence_compiler import materialize_source_sequence
+
+    document = editor_documents.ensure(video)
+    tracks = {track.track_id: track for track in document.tracks}
+    audio_track_ids = {"source-audio", "voice", "music"}
+    solo_tracks = {
+        track.track_id
+        for track in document.tracks
+        if track.track_id in audio_track_ids and track.solo
+    }
+
+    def track_audible(track_id: str) -> bool:
+        track = tracks.get(track_id)
+        if track is None:
+            return False
+        return bool(
+            track.visible
+            and not track.muted
+            and (not solo_tracks or track_id in solo_tracks)
+        )
+
+    voice = published_voice_record(video, validate=True)
     background, _background_token, input_ids = _audio_background(video)
     segments_path = work_dir / "audio-segments.json"
-    voice_parts = work_dir / "no-voice-parts"
+    voice_parts = work_dir / "editor-voice-parts"
     voice_parts.mkdir(parents=True, exist_ok=True)
-    if voice:
-        segments_path.write_text(json.dumps(_load_segments(video), ensure_ascii=False), encoding="utf-8")
-        voice_parts = Path(voice["resolved_outputs"]["manifest"]).parent / "parts"
-        input_ids.append(str(voice.get("artifact_id") or ""))
-    else:
-        segments_path.write_text("[]", encoding="utf-8")
+    subtitle_clips = sorted(
+        (
+            clip for clip in document.clips
+            if clip.track_id == "subtitles" and clip.enabled and clip.segment_id
+        ),
+        key=lambda clip: (clip.start_ms, clip.clip_id),
+    )
+    voice_by_segment = {
+        clip.segment_id: clip
+        for clip in document.clips
+        if clip.track_id == "voice" and clip.segment_id
+    }
+    segments: list[dict[str, Any]] = []
+    for subtitle_clip in subtitle_clips:
+        stored = subtitle_clip.metadata.get("segment_payload")
+        segment = dict(stored) if isinstance(stored, dict) else {}
+        segment.update(
+            segment_id=subtitle_clip.segment_id,
+            text=subtitle_clip.name,
+            start=subtitle_clip.start_ms / 1000,
+            end=(subtitle_clip.start_ms + subtitle_clip.duration_ms) / 1000,
+        )
+        voice_clip = voice_by_segment.get(subtitle_clip.segment_id)
+        voice_enabled = bool(
+            track_audible("voice")
+            and voice_clip
+            and voice_clip.enabled
+            and not voice_clip.muted
+        )
+        segment["_voice_enabled"] = voice_enabled
+        if voice_clip:
+            segment["_voice_volume_percent"] = voice_clip.volume_percent
+            segment["_voice_fade_in_ms"] = voice_clip.fade_in_ms
+            segment["_voice_fade_out_ms"] = voice_clip.fade_out_ms
+            if bool(segment.get("timeline_edited")) or voice_clip.duration_ms != subtitle_clip.duration_ms:
+                segment["fit_voice_to_timing"] = True
+        segments.append(segment)
+
+    published_segments = published_voice_source_segments(video, voice, validate=True) if voice else []
+    published_by_id = {
+        str(item.get("segment_id") or item.get("id") or ""): index
+        for index, item in enumerate(published_segments, start=1)
+    }
+    published_parts = (
+        Path(voice["resolved_outputs"]["manifest"]).parent / "parts"
+        if voice else None
+    )
+    clip_signatures = _voice_clip_signatures(video, segments)
+    usable_voice = False
+    for index, (segment, signature) in enumerate(zip(segments, clip_signatures), start=1):
+        if not segment.get("_voice_enabled"):
+            continue
+        source = ""
+        clip_record = manual_artifacts.resolve(video.video_id, "tts_clip", signature)
+        if clip_record:
+            source = str(clip_record["resolved_outputs"].get("audio") or "")
+            input_ids.append(str(clip_record.get("artifact_id") or ""))
+        if not source and published_parts:
+            source_index = published_by_id.get(str(segment.get("segment_id") or ""), 0)
+            candidate = published_parts / f"voice_{source_index:04d}.mp3"
+            if source_index and candidate.is_file() and candidate.stat().st_size > 0:
+                source = str(candidate)
+                input_ids.append(str(voice.get("artifact_id") or ""))
+        if not source:
+            segment["_voice_enabled"] = False
+            continue
+        destination = voice_parts / f"voice_{index:04d}.mp3"
+        try:
+            os.link(source, destination)
+        except OSError:
+            shutil.copy2(source, destination)
+        usable_voice = True
+
+    segments_path.write_text(json.dumps(segments, ensure_ascii=False), encoding="utf-8")
+
+    source_clip = next(
+        (clip for clip in document.clips if clip.track_id == "source-audio" and clip.enabled),
+        None,
+    )
+    source_volume = source_clip.volume_percent if source_clip else video.original_video_volume
+    source_enabled = bool(
+        track_audible("source-audio") and source_clip and not source_clip.muted
+    )
+    music_clip = next(
+        (clip for clip in document.clips if clip.track_id == "music" and clip.enabled),
+        None,
+    )
+    music_asset = editor_documents.asset_by_id(document, music_clip.asset_id) if music_clip else None
+    music_path = str(music_asset.path) if music_asset and track_audible("music") and not music_clip.muted else ""
+
+    # Edit the source bed first. Voice and music use sequence timestamps and
+    # must never be trimmed again with source-file coordinates.
+    mix_video, mix_background = materialize_source_sequence(
+        _video_input(video),
+        background,
+        document,
+        work_dir,
+        video.video_id,
+    )
     if reporter:
         reporter.update(5, "manual_audio", "Đang cập nhật các lớp âm thanh")
     build_audio_timeline(
         str(segments_path),
         str(voice_parts),
-        _video_input(video),
+        mix_video,
         str(output_path),
         video.video_id,
-        background_audio_path=background,
-        original_video_volume=video.original_video_volume,
-        background_music_path=(video.files or {}).get("background_music") or None,
-        background_music_volume=video.background_music_volume,
+        background_audio_path=mix_background if source_enabled else None,
+        original_video_volume=source_volume,
+        original_audio_fade_in_ms=source_clip.fade_in_ms if source_clip else 0,
+        original_audio_fade_out_ms=source_clip.fade_out_ms if source_clip else 0,
+        background_music_path=music_path or None,
+        background_music_volume=music_clip.volume_percent if music_clip else video.background_music_volume,
         tts_volume=video.tts_volume,
-        require_voice_parts=bool(voice),
+        require_voice_parts=usable_voice,
         require_background_audio=False,
         fit_voice_to_slots=True,
+        background_music_start_ms=music_clip.start_ms if music_clip else 0,
+        background_music_duration_ms=music_clip.duration_ms if music_clip else None,
+        background_music_source_in_ms=music_clip.source_in_ms if music_clip else 0,
+        background_music_loop=music_clip.loop if music_clip else True,
+        background_music_fade_in_ms=music_clip.fade_in_ms if music_clip else 0,
+        background_music_fade_out_ms=music_clip.fade_out_ms if music_clip else 0,
+        ducking_enabled=document.audio_ducking_enabled,
+        ducking_reduction_db=document.audio_ducking_reduction_db,
+        ducking_attack_ms=document.audio_ducking_attack_ms,
+        ducking_release_ms=document.audio_ducking_release_ms,
     )
     return [value for value in input_ids if value]
 
@@ -1696,6 +1937,15 @@ def _ocr_region(video) -> dict[str, Any] | None:
 
 
 def _run_export(video, reporter) -> None:
+    from haizflow.pipeline.sequence_compiler import (
+        apply_overlays,
+        map_source_intervals,
+        materialize_source_video,
+        resolved_subtitle_style,
+        subtitle_style_overrides,
+        write_subtitles,
+    )
+
     subtitle = _current_subtitle_record(video)
     audio = manual_artifacts.resolve(video.video_id, "audio_mix", audio_signature(video))
     expected = export_signature(video)
@@ -1704,8 +1954,11 @@ def _run_export(video, reporter) -> None:
         staging = manual_artifacts.create_staging_directory(video.video_id, "export")
         try:
             reporter.update(5, "manual_export", "Đang xuất video")
+            editor_document = editor_documents.ensure(video)
             export_srt = staging / "subtitles.srt"
-            if subtitle:
+            if write_subtitles(editor_document, export_srt):
+                pass
+            elif subtitle:
                 outputs = subtitle["resolved_outputs"]
                 generate_srt(
                     outputs["segments"],
@@ -1729,6 +1982,13 @@ def _run_export(video, reporter) -> None:
             else:
                 audio_path = str(staging / "current-audio.wav")
                 export_inputs.extend(_compose_manual_audio(video, Path(audio_path), staging))
+            render_input = materialize_source_video(
+                _video_input(video),
+                editor_document,
+                staging,
+                video.video_id,
+            )
+            render_audio = audio_path
             source_segments = manual_artifacts.active(video, "recognition")
             intervals: list[tuple[float, float]] = []
             if source_segments:
@@ -1742,24 +2002,42 @@ def _run_export(video, reporter) -> None:
                     ]
                 except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
                     intervals = []
+            intervals = map_source_intervals(editor_document, intervals)
             render_video(
-                _video_input(video),
-                audio_path,
+                render_input,
+                render_audio,
                 str(export_srt),
-                str(staging / "video.mp4"),
+                str(staging / "video-base.mp4"),
                 video.output_format,
-                video.subtitle_style,
+                resolved_subtitle_style(editor_document, video.subtitle_style),
                 video.crop,
                 video.video_id,
                 _ocr_region(video),
                 video.watermark_text,
                 subtitle_layout_override=bool(video.subtitle_layout_override),
                 progress_callback=lambda fraction: reporter.update(
-                    5 + round(94 * fraction), "manual_export", f"Đang xuất video {round(100 * fraction)}%"
+                    5 + round(84 * fraction), "manual_export", f"Đang xuất video {round(100 * fraction)}%"
                 ),
                 original_subtitle_removal_mode=video.original_subtitle_removal_mode,
                 original_subtitle_intervals=intervals,
                 watermark_scale_percent=getattr(video, "watermark_scale_percent", 100),
+                watermark_kind=getattr(video, "watermark_kind", "text"),
+                watermark_image_path=str((video.files or {}).get("watermark_image") or ""),
+                watermark_video_path=str((video.files or {}).get("watermark_video") or ""),
+                watermark_opacity_percent=getattr(video, "watermark_opacity_percent", 46),
+                watermark_outline_percent=getattr(video, "watermark_outline_percent", 100),
+                watermark_font_family=getattr(video, "watermark_font_family", "Arial"),
+                watermark_text_color=getattr(video, "watermark_text_color", "#FFFFFF"),
+                watermark_bold=getattr(video, "watermark_bold", True),
+                watermark_italic=getattr(video, "watermark_italic", True),
+                subtitle_style_overrides=subtitle_style_overrides(editor_document),
+            )
+            reporter.update(91, "manual_export", "Đang ghép các lớp hình ảnh")
+            apply_overlays(
+                str(staging / "video-base.mp4"),
+                str(staging / "video.mp4"),
+                editor_document,
+                video.video_id,
             )
             cached = manual_artifacts.publish(
                 video.video_id,
@@ -1807,7 +2085,7 @@ _RUNNERS = {
 }
 
 
-def _requested_artifact(video, tool_id: str) -> tuple[str, str]:
+def _requested_artifact(video, tool_id: str, *, validate: bool = True) -> tuple[str, str]:
     kind = {
         "source": "source_audio",
         "separation": "separation",
@@ -1824,13 +2102,59 @@ def _requested_artifact(video, tool_id: str) -> tuple[str, str]:
         "separation": separation_signature,
         "recognition": recognition_signature,
         "translation": translation_signature,
-        "subtitle": lambda current: str((_current_subtitle_record(current) or {}).get("signature") or ""),
+        "subtitle": lambda current: str((_current_subtitle_record(current, validate=validate) or {}).get("signature") or ""),
         "image": ocr_signature,
-        "voice": voice_signature,
-        "audio": audio_signature,
-        "export": export_signature,
+        "voice": lambda current: voice_signature(current, validate=validate),
+        "audio": lambda current: audio_signature(current, validate=validate),
+        "export": lambda current: export_signature(current, validate=validate),
     }[tool_id](video)
     return kind, expected
+
+
+def prepare_manual_rerun(video_id: str, tool_id: str) -> bool:
+    """Make an explicit rerun miss its prior immutable artifact safely.
+
+    The translation button owns both recognition and translation. Advancing
+    recognition invalidates both branches and every dependent voice variant,
+    while a separation rerun additionally invalidates the recognition input.
+    No old cache directory is deleted or overwritten before the new run ends.
+    """
+    generation_key = {
+        "source": "source",
+        "separation": "separation",
+        "recognition": "recognition",
+        "translation": "recognition",
+        "image": "image",
+        "voice": "voice",
+        "audio": "audio",
+        "export": "export",
+    }.get(tool_id)
+    if not generation_key:
+        return False
+    video = video_store.get_video(video_id)
+    if not video or video.project_type != "manual":
+        return False
+    try:
+        kind, expected = _requested_artifact(video, tool_id, validate=False)
+        cached = bool(expected and manual_artifacts.peek(video_id, kind, expected))
+        if tool_id == "translation" and not cached:
+            # Translation is the visible action for both ASR and translation.
+            # A missing translation must not silently reuse a cached ASR run.
+            recognition = recognition_signature(video)
+            cached = bool(manual_artifacts.peek(video_id, "recognition", recognition))
+    except (AttributeError, FileNotFoundError, OSError, RuntimeError, TypeError, ValueError):
+        return False
+    if not cached:
+        return False
+    generations = dict(getattr(video, "manual_tool_generations", {}) or {})
+    generations[generation_key] = int(generations.get(generation_key, 0) or 0) + 1
+    video_store.update_video(video_id, manual_tool_generations=generations)
+    video_store.log_to_video(
+        video_id,
+        f"Explicit rerun invalidated cached {tool_id} branch (generation {generations[generation_key]}).",
+        component="MANUAL",
+    )
+    return True
 
 
 def migrate_legacy_artifacts(video_id: str) -> bool:
@@ -1904,7 +2228,7 @@ def migrate_legacy_artifacts(video_id: str) -> bool:
     video = video_store.get_video(video_id) or video
     completed = set(getattr(video, "manual_completed_stages", []) or [])
     legacy_parts = Path(str(files.get("voice_parts_dir") or video_dir / "temp" / "voice_parts"))
-    if "voice" in completed and legacy_parts.is_dir():
+    if "voice" in completed and legacy_parts.is_dir() and not published_voice_record(video):
         voice = _register_voice_manifest_from_parts(video, legacy_parts)
         if voice:
             changed = True

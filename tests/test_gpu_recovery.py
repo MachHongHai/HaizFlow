@@ -5,7 +5,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest import mock
 
 
@@ -15,10 +15,43 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from haizflow.pipeline import process_video
-from haizflow.services import translation
+from haizflow.services import hymt2_worker, translation
 
 
 class GpuRecoveryTests(unittest.TestCase):
+    def test_low_vram_translation_prefers_installed_cpu_engine(self):
+        profile = SimpleNamespace(key="cuda_low_memory")
+        def engine_command(_capability, _command, context):
+            return ["cpu-engine.exe"] if context["device"] == "cpu" else ["gpu-engine.exe"]
+
+        with (
+            mock.patch.object(translation, "runtime_profile", return_value=profile),
+            mock.patch("haizflow.services.resource_packs.installed_engine_command", side_effect=engine_command),
+        ):
+            self.assertEqual(translation._worker_command(), ["cpu-engine.exe"])
+
+    def test_low_vram_worker_uses_q4_without_importing_torch(self):
+        profile = SimpleNamespace(
+            key="cuda_low_memory", hymt2_backend="transformers",
+            cuda_available=True, cpu_threads=8,
+        )
+        fake_llama = ModuleType("llama_cpp")
+        fake_llama.Llama = mock.Mock(return_value=object())
+        with (
+            mock.patch.object(hymt2_worker, "runtime_profile", return_value=profile),
+            mock.patch.object(hymt2_worker.importlib.util, "find_spec", return_value=object()),
+            mock.patch.object(hymt2_worker, "_cpu_model_path", return_value="Q4.gguf"),
+            mock.patch.object(hymt2_worker, "_prepare_torch_runtime", side_effect=AssertionError("Torch loaded")),
+            mock.patch.object(hymt2_worker, "_emit_diagnostic"),
+            mock.patch.object(hymt2_worker, "_emit_event"),
+            mock.patch.dict(sys.modules, {"llama_cpp": fake_llama}),
+        ):
+            _model, tokenizer, torch_runtime, device = hymt2_worker._load_model("HY-MT2")
+        self.assertIsNone(tokenizer)
+        self.assertIsNone(torch_runtime)
+        self.assertEqual(device, "cpu-gguf")
+        self.assertEqual(fake_llama.Llama.call_args.kwargs["n_gpu_layers"], 0)
+
     def test_recovery_checkpoint_is_not_a_pause_resume_checkpoint(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             artifact = Path(temp_dir) / "timeline.wav"
@@ -80,6 +113,15 @@ class GpuRecoveryTests(unittest.TestCase):
                     OSError("The paging file is too small for this operation to complete. (os error 1455)")
                 )
             )
+
+        message = translation._worker_error_message(
+            "HY-MT2 worker failed: The paging file is too small (os error 1455)",
+            r"D:\logs\worker.log",
+        )
+        self.assertIn("bộ nhớ ảo", message)
+        self.assertIn("nhận dạng và dịch", message)
+        self.assertIn("Bước tạo giọng chưa bắt đầu", message)
+        self.assertIn("worker.log", message)
 
     def test_native_torch_crash_is_reported_without_automatic_fallback(self):
         profile = SimpleNamespace(cuda_available=True)
@@ -186,7 +228,7 @@ class GpuRecoveryTests(unittest.TestCase):
         output.put(
             '{"event":"response","request_id":"request-1","translations":["Xin chào"]}\n'
         )
-        profile = SimpleNamespace(is_cpu_only=False)
+        profile = SimpleNamespace(is_cpu_only=False, translation_idle_seconds=0)
 
         with (
             mock.patch.object(translation, "_ensure_hymt2_worker", return_value=(process, output)),

@@ -47,7 +47,8 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: Theme.space12
+        anchors.margins: UiMetrics.pageMargin
+        spacing: Theme.space16
 
         PageHeader {
             Layout.fillWidth: true

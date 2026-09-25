@@ -4,6 +4,7 @@ import re
 import subprocess
 import tempfile
 import unicodedata
+import hashlib
 from functools import lru_cache
 from dataclasses import dataclass, replace
 from datetime import timedelta
@@ -42,15 +43,134 @@ def _karaoke_font_directory() -> Path:
     return directory
 
 
-def _watermark_font_path() -> Path:
-    """Prefer Windows' clean bold-italic face, with a bundled fallback."""
+def _watermark_font_path(
+    font_family: str = "Arial",
+    bold: bool = True,
+    italic: bool = True,
+) -> Path:
+    """Resolve the font selected by the editor, with a bundled safe fallback."""
+    return _font_path_details(font_family, bold, italic)[0]
+
+
+def _normalise_font_name(value: str) -> str:
+    value = re.sub(r"\s*\([^)]*\)\s*$", "", str(value or ""))
+    value = re.sub(
+        r"\s+(regular|normal|medium|semibold|semi bold|demibold|demi bold|"
+        r"bold|italic|oblique|bold italic|bold oblique)$",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    return " ".join(value.casefold().split())
+
+
+@lru_cache(maxsize=1)
+def _windows_font_registry_entries() -> tuple[tuple[str, bool, bool, str], ...]:
+    """Return Windows font registrations without importing Qt in workers."""
+    if os.name != "nt":
+        return ()
+    try:
+        import winreg
+    except ImportError:
+        return ()
+    entries: list[tuple[str, bool, bool, str]] = []
+    keys = (
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"),
+    )
+    windows_fonts = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Fonts"
+    for hive, key_name in keys:
+        try:
+            key = winreg.OpenKey(hive, key_name)
+        except OSError:
+            continue
+        try:
+            index = 0
+            while True:
+                try:
+                    display_name, registered_path, _kind = winreg.EnumValue(key, index)
+                except OSError:
+                    break
+                index += 1
+                candidate = Path(str(registered_path or ""))
+                if not candidate.is_absolute():
+                    candidate = windows_fonts / candidate
+                if not candidate.is_file():
+                    continue
+                lowered = str(display_name or "").casefold()
+                entries.append(
+                    (
+                        _normalise_font_name(display_name),
+                        "bold" in lowered or "semibold" in lowered or "demibold" in lowered,
+                        "italic" in lowered or "oblique" in lowered,
+                        str(candidate),
+                    )
+                )
+        finally:
+            winreg.CloseKey(key)
+    return tuple(entries)
+
+
+def _font_path_details(
+    font_family: str = "Arial",
+    bold: bool = True,
+    italic: bool = True,
+) -> tuple[Path, bool]:
+    """Return ``(path, exact_match)`` for preview/export font parity."""
     windows_directory = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Fonts"
-    bold_italic = windows_directory / WATERMARK_FONT_FILENAME
-    if bold_italic.is_file():
-        return bold_italic
+    family = str(font_family or "Arial").strip().lower()
+    if family == "bangers":
+        return _karaoke_font_directory() / KARAOKE_FONT_FILENAME, True
+    variants = {
+        "arial": {
+            (False, False): "arial.ttf", (True, False): "arialbd.ttf",
+            (False, True): "ariali.ttf", (True, True): "arialbi.ttf",
+        },
+        "segoe ui": {
+            (False, False): "segoeui.ttf", (True, False): "segoeuib.ttf",
+            (False, True): "segoeuii.ttf", (True, True): "segoeuiz.ttf",
+        },
+        "times new roman": {
+            (False, False): "times.ttf", (True, False): "timesbd.ttf",
+            (False, True): "timesi.ttf", (True, True): "timesbi.ttf",
+        },
+        "impact": {(False, False): "impact.ttf", (True, False): "impact.ttf",
+                   (False, True): "impact.ttf", (True, True): "impact.ttf"},
+    }
+    if family in variants:
+        candidate = windows_directory / variants[family][(bool(bold), bool(italic))]
+        if candidate.is_file():
+            return candidate, True
+    requested = _normalise_font_name(font_family)
+    matches = [item for item in _windows_font_registry_entries() if item[0] == requested]
+    if matches:
+        selected = min(
+            matches,
+            key=lambda item: (item[1] != bool(bold)) + (item[2] != bool(italic)),
+        )
+        return Path(selected[3]), True
     # The frozen application is Windows-first, but retaining a bundled font
     # keeps command-line renders usable on a machine without Arial installed.
-    return _karaoke_font_directory() / KARAOKE_FONT_FILENAME
+    return _karaoke_font_directory() / KARAOKE_FONT_FILENAME, False
+
+
+def font_file_fingerprint(font_family: str, bold: bool = False, italic: bool = False) -> str:
+    path, exact = _font_path_details(font_family, bold, italic)
+    if not exact or not path.is_file():
+        return ""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _ass_color(rgb: str) -> str:
+    """Convert #RRGGBB into opaque ASS AABBGGRR form."""
+    value = str(rgb or "#FFFFFF").lstrip("#")
+    if not re.fullmatch(r"[0-9A-Fa-f]{6}", value):
+        value = "FFFFFF"
+    return f"&H00{value[4:6]}{value[2:4]}{value[0:2]}".upper()
 
 
 def _karaoke_outline(font_size: int, configured_outline: int) -> int:
@@ -529,6 +649,7 @@ def _write_positioned_ass(
     height: int,
     region_layout: SubtitleRegionLayout | None = None,
     fixed_font_size: bool = False,
+    cue_styles: dict[int, tuple[SubtitleStyle, SubtitleRegionLayout]] | None = None,
 ):
     """Convert SRT to ASS so a dragged preview position is reproduced exactly in FFmpeg."""
     with open(srt_path, "r", encoding="utf-8") as file:
@@ -552,23 +673,40 @@ def _write_positioned_ass(
             # ASS karaoke renders not-yet-spoken glyphs with SecondaryColour and
             # sweeps PrimaryColour across each word. Bangers supplies the chunky,
             # naturally slanted display shape used by modern short-video captions.
-            f"Style: Default,{KARAOKE_FONT_NAME},{subtitle_style.font_size},&H0000EFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,1,0,1,{style_outline},2,5,0,0,{subtitle_style.margin_bottom},1",
+            f"Style: Default,{subtitle_style.font_family},{subtitle_style.font_size},"
+            f"{_ass_color(subtitle_style.karaoke_color)},{_ass_color(subtitle_style.text_color)},"
+            f"{_ass_color(subtitle_style.outline_color)},&H80000000,"
+            f"{-1 if subtitle_style.bold else 0},{-1 if subtitle_style.italic else 0},0,0,"
+            f"100,100,{subtitle_style.letter_spacing},0,1,{style_outline},{subtitle_style.shadow},5,0,0,{subtitle_style.margin_bottom},1",
             "",
             "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
         ]
     )
     lines = [header]
-    if region_layout:
+    if region_layout and not cue_styles:
         subtitles = _merge_contiguous_subtitles(subtitles)
     for subtitle in subtitles:
-        x = round(width * subtitle_style.position_x_percent / 100)
-        y = round(height * subtitle_style.position_y_percent / 100)
-        if region_layout:
+        cue_style, cue_layout = (cue_styles or {}).get(
+            subtitle.index,
+            (subtitle_style, region_layout),
+        )
+        x = round(width * cue_style.position_x_percent / 100)
+        y = round(height * cue_style.position_y_percent / 100)
+        alignment_tag = (
+            4 if cue_style.alignment == "left"
+            else 6 if cue_style.alignment == "right"
+            else 5
+        )
+        if cue_layout:
+            if cue_style.alignment == "left":
+                x = round(x - cue_layout.width / 2)
+            elif cue_style.alignment == "right":
+                x = round(x + cue_layout.width / 2)
             visual_parts = _subtitle_parts_for_region(
                 subtitle,
-                region_layout,
-                subtitle_style,
+                cue_layout,
+                cue_style,
                 fixed_font_size=fixed_font_size,
             )
             timelines = _karaoke_part_timelines(
@@ -580,22 +718,39 @@ def _write_positioned_ass(
                 visual_parts,
                 timelines,
             ):
+                if cue_style.uppercase:
+                    units = [unit.upper() for unit in units]
                 karaoke = _karaoke_ass_from_units(units, durations)
-                cue_outline = _karaoke_outline(font_size, subtitle_style.outline)
+                cue_outline = _karaoke_outline(font_size, cue_style.outline)
+                inline_style = (
+                    f"\\fn{cue_style.font_family}"
+                    f"\\1c{_ass_color(cue_style.karaoke_color)}"
+                    f"\\2c{_ass_color(cue_style.text_color)}"
+                    f"\\3c{_ass_color(cue_style.outline_color)}"
+                    f"\\b{1 if cue_style.bold else 0}"
+                    f"\\i{1 if cue_style.italic else 0}"
+                    f"\\fsp{cue_style.letter_spacing}"
+                )
                 lines.append(
                     f"Dialogue: 0,{_ass_timestamp(start_time)},{_ass_timestamp(end_time)},Default,,0,0,0,,"
-                    f"{{\\an5\\pos({x},{y})\\fs{font_size}\\fscx{scale_x}\\bord{cue_outline}\\shad2}}{karaoke}"
+                    f"{{\\an{alignment_tag}\\pos({x},{y})\\fs{font_size}\\fscx{scale_x}{inline_style}\\bord{cue_outline}"
+                    f"\\shad{cue_style.shadow}}}{karaoke}"
                 )
         else:
             start_time = _ass_timestamp(subtitle.start)
             end_time = _ass_timestamp(subtitle.end)
             karaoke = _karaoke_ass_text(
-                subtitle.content,
+                subtitle.content.upper() if cue_style.uppercase else subtitle.content,
                 (subtitle.end - subtitle.start).total_seconds(),
+            )
+            cue_outline = _karaoke_outline(
+                cue_style.font_size,
+                cue_style.outline,
             )
             lines.append(
                 f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,"
-                f"{{\\an5\\pos({x},{y})\\bord{style_outline}\\shad2}}{karaoke}"
+                f"{{\\an{alignment_tag}\\pos({x},{y})\\fsp{cue_style.letter_spacing}"
+                f"\\bord{cue_outline}\\shad{cue_style.shadow}}}{karaoke}"
             )
     with open(ass_path, "w", encoding="utf-8-sig") as file:
         file.write("\n".join(lines))
@@ -873,6 +1028,16 @@ def resolve_subtitle_preview_layout(
         "positionYPercent": int(effective_style.position_y_percent),
         "boxWidthPercent": max(20, min(100, round(layout.width * 100 / output_width))),
         "boxHeightPercent": max(1, min(100, round(layout.height * 100 / output_height))),
+        "fontFamily": effective_style.font_family,
+        "textColor": effective_style.text_color,
+        "karaokeColor": effective_style.karaoke_color,
+        "outlineColor": effective_style.outline_color,
+        "bold": effective_style.bold,
+        "italic": effective_style.italic,
+        "uppercase": effective_style.uppercase,
+        "shadow": effective_style.shadow,
+        "letterSpacing": effective_style.letter_spacing,
+        "alignment": effective_style.alignment,
     }
 
 
@@ -1083,6 +1248,12 @@ def _watermark_filter(
     *,
     time_offset_seconds: float = 0.0,
     scale_percent: int = 100,
+    opacity_percent: int = 46,
+    outline_percent: int = 100,
+    font_family: str = "Arial",
+    text_color: str = "#FFFFFF",
+    bold: bool = True,
+    italic: bool = True,
 ) -> str:
     """Return a polished, continuously moving creator watermark filter."""
     normalized = " ".join(str(text or "").split())[:80]
@@ -1104,8 +1275,14 @@ def _watermark_filter(
     base_font_size = max(15, min(38, round(min(output_width, output_height) * 0.029)))
     normalized_scale = max(25, min(300, int(scale_percent or 100)))
     font_size = max(8, min(114, round(base_font_size * normalized_scale / 100)))
-    border_width = max(1, min(9, round(font_size * 0.065)))
-    font_path = str(_watermark_font_path()).replace("\\", "/")
+    normalized_opacity = max(0, min(100, int(opacity_percent)))
+    normalized_outline = max(0, min(300, int(outline_percent)))
+    border_width = max(0, min(27, round(font_size * 0.065 * normalized_outline / 100)))
+    fill_alpha = normalized_opacity / 100
+    border_alpha = min(1.0, fill_alpha + 0.02)
+    normalized_text_color = str(text_color or "#FFFFFF").upper()
+    ffmpeg_text_color = "white" if normalized_text_color == "#FFFFFF" else f"0x{normalized_text_color.lstrip('#')}"
+    font_path = str(_watermark_font_path(font_family, bold, italic)).replace("\\", "/")
     escaped_font_path = (
         font_path.replace("\\", "\\\\")
         .replace("'", "\\'")
@@ -1121,9 +1298,32 @@ def _watermark_filter(
     y = f"(H-text_h)*(0.10+0.80*(0.5+0.5*sin(2*PI*{timeline}/43+1.2)))"
     return (
         f"drawtext=fontfile='{escaped_font_path}':text='{escaped}':"
-        f"fontsize={font_size}:fontcolor=white@0.46:borderw={border_width}:"
-        f"bordercolor=black@0.48:shadowx=1:shadowy=1:shadowcolor=black@0.22:"
+        f"fontsize={font_size}:fontcolor={ffmpeg_text_color}@{fill_alpha:.2f}:borderw={border_width}:"
+        f"bordercolor=black@{border_alpha:.2f}:shadowx=1:shadowy=1:shadowcolor=black@0.22:"
         f"x='{x}':y='{y}'"
+    )
+
+
+def _image_watermark_filter(
+    input_label: str,
+    output_width: int,
+    output_height: int,
+    *,
+    time_offset_seconds: float = 0.0,
+    scale_percent: int = 100,
+    opacity_percent: int = 46,
+) -> str:
+    """Build the still-image watermark branch for a complex FFmpeg graph."""
+    normalized_scale = max(25, min(300, int(scale_percent or 100)))
+    normalized_opacity = max(0, min(100, int(opacity_percent)))
+    target_width = max(24, min(round(output_width * 0.72), round(output_width * 0.16 * normalized_scale / 100)))
+    timeline = "t" if abs(time_offset_seconds) < 0.0005 else f"(t+{time_offset_seconds:.6f})"
+    x = f"(W-w)*(0.08+0.84*(0.5+0.5*sin(2*PI*{timeline}/31)))"
+    y = f"(H-h)*(0.10+0.80*(0.5+0.5*sin(2*PI*{timeline}/43+1.2)))"
+    return (
+        f"{input_label}format=rgba,scale={target_width}:-1:force_original_aspect_ratio=decrease"
+        f",colorchannelmixer=aa={normalized_opacity / 100:.2f}[watermark_image];"
+        f"[basev][watermark_image]overlay=x='{x}':y='{y}':shortest=1[outv]"
     )
 
 
@@ -1174,6 +1374,16 @@ def render_video(
     subtitle_region_override: dict | None = None,
     original_subtitle_intervals: list[tuple[float, float]] | None = None,
     watermark_scale_percent: int = 100,
+    watermark_kind: str = "text",
+    watermark_image_path: str = "",
+    watermark_video_path: str = "",
+    watermark_opacity_percent: int = 46,
+    watermark_outline_percent: int = 100,
+    watermark_font_family: str = "Arial",
+    watermark_text_color: str = "#FFFFFF",
+    watermark_bold: bool = True,
+    watermark_italic: bool = True,
+    subtitle_style_overrides: dict[int, dict] | None = None,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     process_key = str(process_registry_id or video_id)
@@ -1224,6 +1434,38 @@ def render_video(
         if subtitle_layout_override
         else region_layout or _default_subtitle_layout(effective_style, subtitle_width, subtitle_height)
     )
+    cue_styles: dict[int, tuple[SubtitleStyle, SubtitleRegionLayout]] = {}
+    for index, raw in (subtitle_style_overrides or {}).items():
+        if not isinstance(raw, dict):
+            continue
+        payload = effective_style.model_dump()
+        payload.update(
+            font_family=raw.get("font_family", payload["font_family"]),
+            font_size=round(float(raw.get("font_size", payload["font_size"]))),
+            text_color=raw.get("text_color", payload["text_color"]),
+            karaoke_color=raw.get("karaoke_color", payload["karaoke_color"]),
+            outline_color=raw.get("outline_color", payload["outline_color"]),
+            outline=round(float(raw.get("outline_width", payload["outline"]))),
+            bold=int(raw.get("font_weight", 700 if payload["bold"] else 400)) >= 600,
+            italic=bool(raw.get("italic", payload["italic"])),
+            uppercase=bool(raw.get("uppercase", payload["uppercase"])),
+            shadow=round(max(
+                abs(float(raw.get("shadow_offset_x", payload["shadow"]))),
+                abs(float(raw.get("shadow_offset_y", payload["shadow"]))),
+            )),
+            letter_spacing=float(raw.get("letter_spacing", payload.get("letter_spacing", 0))),
+            alignment=str(raw.get("alignment", payload.get("alignment", "center"))),
+            position_x_percent=round(float(raw.get("position_x_percent", payload["position_x_percent"]))),
+            position_y_percent=round(float(raw.get("position_y_percent", payload["position_y_percent"]))),
+        )
+        cue_style = SubtitleStyle.model_validate(payload)
+        cue_layout = SubtitleRegionLayout(
+            0,
+            0,
+            max(24, round(subtitle_width * float(raw.get("max_width_percent", 72)) / 100)),
+            max(20, round(subtitle_height * float(raw.get("box_height_percent", 12)) / 100)),
+        )
+        cue_styles[int(index)] = (cue_style, cue_layout)
     _write_positioned_ass(
         srt_path,
         ass_path,
@@ -1234,6 +1476,7 @@ def render_video(
         # One style is shared by every cue. Long translations are divided into
         # sequential phrases instead of changing font size or aspect ratio.
         fixed_font_size=True,
+        cue_styles=cue_styles or None,
     )
     rel_video = _ffmpeg_path(video_path, video_temp_dir)
     rel_voice = _ffmpeg_path(voice_wav_path, video_temp_dir)
@@ -1256,12 +1499,29 @@ def render_video(
     font_filter_path = rel_font_directory.replace(":", "\\:").replace("'", "'\\\\''")
     ass_filter = f"ass='{ass_filter_path}':fontsdir='{font_filter_path}'"
     source_start_seconds = max(0.0, float(source_start_seconds or 0.0))
+    requested_watermark_kind = str(watermark_kind or "").lower()
+    normalized_watermark_kind = (
+        requested_watermark_kind if requested_watermark_kind in {"text", "image", "video"} else "text"
+    )
+    use_image_watermark = normalized_watermark_kind == "image" and bool(
+        watermark_image_path and os.path.isfile(watermark_image_path) and os.path.getsize(watermark_image_path) > 0
+    )
+    use_video_watermark = normalized_watermark_kind == "video" and bool(
+        watermark_video_path and os.path.isfile(watermark_video_path) and os.path.getsize(watermark_video_path) > 0
+    )
+    use_media_watermark = use_image_watermark or use_video_watermark
     watermark_filter = _watermark_filter(
-        watermark_text,
+        watermark_text if not use_media_watermark else "",
         subtitle_width,
         subtitle_height,
         time_offset_seconds=source_start_seconds,
         scale_percent=watermark_scale_percent,
+        opacity_percent=watermark_opacity_percent,
+        outline_percent=watermark_outline_percent,
+        font_family=watermark_font_family,
+        text_color=watermark_text_color,
+        bold=watermark_bold,
+        italic=watermark_italic,
     )
     filters = []
     crop_filter = _crop_filter(crop)
@@ -1342,6 +1602,21 @@ def render_video(
         else:
             vf_filter = ",".join(filters)
 
+    if use_media_watermark:
+        if vf_filter.endswith("[outv]"):
+            vf_filter = f"{vf_filter[:-6]}[basev]"
+        else:
+            vf_filter = f"[0:v]{vf_filter}[basev]"
+        image_filter = _image_watermark_filter(
+            "[2:v]",
+            subtitle_width,
+            subtitle_height,
+            time_offset_seconds=source_start_seconds,
+            scale_percent=watermark_scale_percent,
+            opacity_percent=watermark_opacity_percent,
+        )
+        vf_filter = f"{vf_filter};{image_filter}"
+
     if compatibility_preview:
         # Qt Multimedia on Windows can decode some AMF preview outputs with an
         # incorrect channel/range interpretation.  Editor proxies prioritize
@@ -1386,7 +1661,14 @@ def render_video(
     if source_start_seconds > 0:
         cmd_prefix.extend(["-ss", f"{source_start_seconds:.6f}"])
     cmd_prefix.extend(["-i", rel_video, "-i", rel_voice])
-    if removal_region or output_format == "blur_background_9_16":
+    if use_media_watermark:
+        watermark_media_path = watermark_image_path if use_image_watermark else watermark_video_path
+        rel_watermark_media = _ffmpeg_path(watermark_media_path, video_temp_dir)
+        if use_image_watermark:
+            cmd_prefix.extend(["-loop", "1", "-i", rel_watermark_media])
+        else:
+            cmd_prefix.extend(["-stream_loop", "-1", "-i", rel_watermark_media])
+    if use_media_watermark or removal_region or output_format == "blur_background_9_16":
         cmd_prefix.extend(["-filter_complex", vf_filter, "-map", "[outv]"])
     else:
         cmd_prefix.extend(["-map", "0:v:0", "-vf", vf_filter])

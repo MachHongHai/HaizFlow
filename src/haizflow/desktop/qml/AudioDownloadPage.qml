@@ -36,7 +36,7 @@ Item {
 
                     SegmentedControl {
                         id: audioSource
-                        Layout.fillWidth: true
+                        Layout.preferredWidth: 248
                         currentValue: root.sourceMode
                         options: [{ "label": qsTr("Liên kết"), "value": "link" }, { "label": qsTr("Tệp"), "value": "file" }]
                         onActivated: function(value) {
@@ -66,29 +66,23 @@ Item {
                         StudioButton { text: qsTr("Chọn tệp"); onClicked: root.downloader.chooseAudioSource() }
                     }
 
-                    RowLayout {
+                    DownloadDestinationRow {
                         Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.downloader.audioOutputDirectory.length > 0 ? root.downloader.audioOutputDirectory : qsTr("Chưa chọn thư mục")
-                            color: root.downloader.audioOutputDirectory.length > 0 ? Theme.text : Theme.textMuted
-                            elide: Text.ElideMiddle
-                            textFormat: Text.PlainText
-                        }
-                        StudioButton {
-                            visible: !root.downloader.outputManaged
-                            text: qsTr("Chọn thư mục")
-                            onClicked: root.downloader.chooseAudioOutputDirectory()
-                        }
+                        directory: root.downloader.audioOutputDirectory
+                        managed: root.downloader.outputManaged
+                        onChooseRequested: root.downloader.chooseAudioOutputDirectory()
                     }
 
-                    StudioButton {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: root.fromLink ? qsTr("Tải âm thanh") : qsTr("Tách âm thanh")
-                        variant: "primary"
-                        enabled: root.downloader.audioOutputDirectory.length > 0
-                            && (root.fromLink ? audioLink.text.trim().length > 0 : root.downloader.audioSource.length > 0)
-                        onClicked: root.fromLink ? root.downloader.downloadAudio(audioLink.text.trim()) : root.downloader.extractAudio()
+                        Item { Layout.fillWidth: true }
+                        StudioButton {
+                            text: root.fromLink ? qsTr("Tải âm thanh") : qsTr("Tách âm thanh")
+                            variant: "primary"
+                            enabled: root.downloader.audioOutputDirectory.length > 0
+                                && (root.fromLink ? audioLink.text.trim().length > 0 : root.downloader.audioSource.length > 0)
+                            onClicked: root.fromLink ? root.downloader.downloadAudio(audioLink.text.trim()) : root.downloader.extractAudio()
+                        }
                     }
                 }
 
