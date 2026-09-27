@@ -207,6 +207,39 @@ class TtsReliabilityTests(unittest.TestCase):
             self.assertEqual(progress[-1], (3, 3))
             self.assertTrue(all(tts._is_valid_mp3(str(path)) for path in voice_dir.glob("*.mp3")))
 
+    def test_edge_no_audio_recovers_same_voice_with_shorter_fragments(self):
+        calls = []
+
+        async def fake_synthesize(text, voice, output_path, _retries, **kwargs):
+            calls.append((text, voice, kwargs.get("chunk_limit")))
+            if kwargs.get("chunk_limit") is None or kwargs.get("chunk_limit") == 96:
+                raise RuntimeError("No audio was received")
+            _write_test_mp3(output_path)
+            return 2
+
+        async def no_wait(*_args, **_kwargs):
+            return None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            segments_path = Path(temp_dir) / "segments.json"
+            segments_path.write_text(
+                json.dumps([{"text": "Ông chủ nấu một phần bún với lửa lớn"}], ensure_ascii=False),
+                encoding="utf-8",
+            )
+            voice_dir = Path(temp_dir) / "voice"
+            logs = []
+            with (
+                mock.patch.object(tts, "_tts_text_with_retry", side_effect=fake_synthesize),
+                mock.patch.object(tts, "_sleep_with_cancellation", no_wait),
+                mock.patch.object(tts, "log_to_video", lambda _video, line: logs.append(line)),
+            ):
+                tts.generate_voice_parts(str(segments_path), str(voice_dir), "vi-VN-NamMinhNeural", "video")
+
+            self.assertTrue(tts._is_valid_mp3(str(voice_dir / "voice_0001.mp3")))
+            self.assertTrue(any(limit is not None and limit <= 28 for _, _, limit in calls))
+            self.assertTrue(all(voice == "vi-VN-NamMinhNeural" for _, voice, _ in calls))
+            self.assertTrue(any("[TTS][FRAGMENT_RECOVERY]" in line for line in logs))
+
     def test_parallel_tts_logs_distinguish_segment_order_from_overall_progress(self):
         async def fake_synthesize(text, _voice, output_path, retries=3, **_kwargs):
             if text == "second":
@@ -542,6 +575,8 @@ class TtsReliabilityTests(unittest.TestCase):
         self.assertIn(SRC.resolve(), paths)
         self.assertEqual(environment["PYTHONUTF8"], "1")
         self.assertEqual(environment["HF_HUB_OFFLINE"], "1")
+        self.assertEqual(environment["OMP_NUM_THREADS"], "1")
+        self.assertEqual(environment["MKL_NUM_THREADS"], "1")
 
     def test_omnivoice_presets_use_the_sdk_instruction_vocabulary(self):
         from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES

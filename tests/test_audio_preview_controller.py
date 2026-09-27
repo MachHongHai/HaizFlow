@@ -229,6 +229,93 @@ class AudioPreviewControllerTests(unittest.TestCase):
 
         self.assertEqual(host._audio_preview_source, voice.resolve().as_uri())
 
+    def test_mix_preview_uses_aligned_voice_track_even_if_voice_setting_changed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            voice = root / "voice_final.wav"
+            voice.write_bytes(b"completed aligned voice track")
+            video = SimpleNamespace(
+                video_id="video-1",
+                tts_provider="omnivoice",
+                tts_voice="omnivoice:male",
+                checkpoints={"voice": "verified"},
+                files={"voice_output": str(voice)},
+            )
+            host = _host(_selected_video_id="video-1", _tts_voice="omnivoice:female")
+            preview = AudioPreviewController(host)
+            with patch(
+                "haizflow.desktop.audio_preview_controller.video_store.get_video",
+                return_value=video,
+            ):
+                self.assertTrue(preview.start())
+            self.assertEqual(host._audio_preview_source, voice.resolve().as_uri())
+
+    def test_completed_mix_fallback_does_not_play_source_twice(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            voice = root / "voice_final.wav"
+            source = root / "video.mp4"
+            music = root / "music.mp3"
+            for path in (voice, source, music):
+                path.write_bytes(b"existing media")
+            video = SimpleNamespace(
+                video_id="video-1", checkpoints={"voice": "verified"},
+                files={"voice_output": str(voice), "video_input": str(source)},
+            )
+            host = _host(
+                _selected_video_id="video-1", _video_path=str(source),
+                _background_music_path=str(music),
+            )
+            preview = AudioPreviewController(host)
+            with (
+                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch("haizflow.desktop.audio_preview_controller.video_store.get_video_dir", return_value=root),
+            ):
+                self.assertTrue(preview.start())
+            self.assertEqual(host._audio_preview_source, voice.resolve().as_uri())
+            self.assertEqual(host._audio_preview_original_source, "")
+            self.assertEqual(host._audio_preview_background_music_source, "")
+
+    def test_auto_mix_preview_uses_packaged_voice_instead_of_video_voice(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            sample = root / "sample.mp3"
+            existing_mix = root / "voice_final.wav"
+            source = root / "video.mp4"
+            for path in (sample, existing_mix, source):
+                path.write_bytes(b"existing media")
+            video = SimpleNamespace(
+                video_id="video-1", project_type="single", checkpoints={"voice": "verified"},
+                files={"voice_output": str(existing_mix), "video_input": str(source)},
+            )
+            host = _host(_selected_video_id="video-1", _video_path=str(source))
+            preview = AudioPreviewController(host)
+            with (
+                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch.object(preview, "voice_sample_path", return_value=str(sample)),
+            ):
+                self.assertTrue(preview.start())
+            self.assertEqual(host._audio_preview_source, sample.resolve().as_uri())
+            self.assertEqual(host._audio_preview_original_source, source.resolve().as_uri())
+
+    def test_auto_mix_preview_does_not_play_only_source_when_voice_sample_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "video.mp4"
+            source.write_bytes(b"source audio")
+            video = SimpleNamespace(
+                video_id="video-1", project_type="single",
+                files={"video_input": str(source)}, checkpoints={},
+            )
+            host = _host(_selected_video_id="video-1", _video_path=str(source))
+            preview = AudioPreviewController(host)
+            with (
+                patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video),
+                patch.object(preview, "voice_sample_path", return_value=""),
+            ):
+                self.assertFalse(preview.start())
+            self.assertEqual(host._audio_preview_state, "failed")
+            self.assertEqual(host._audio_preview_original_source, "")
+
     def test_separation_preview_never_falls_back_to_complete_source_audio(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

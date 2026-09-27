@@ -25,7 +25,7 @@ ColumnLayout {
             ? (stepId === "waiting_for_models"
                 ? qsTr("Đang nạp model cần cho công cụ này.")
                 : qsTr("Đang khởi tạo công cụ."))
-            : detail
+            : I18n.progressDetail(detail)
 
     spacing: Theme.space4
 
@@ -77,25 +77,9 @@ ColumnLayout {
 
     AppProgressBar {
         Layout.fillWidth: true
-        visible: root.measured
+        visible: root.phase !== "queued"
         value: Math.max(0, Math.min(100, root.progress))
-    }
-
-    RowLayout {
-        Layout.fillWidth: true
-        visible: !root.measured
-        spacing: Theme.space4
-
-        Repeater {
-            model: 3
-            delegate: Rectangle {
-                required property int index
-                Layout.fillWidth: true
-                Layout.preferredHeight: 3
-                radius: 2
-                color: index < (root.phase === "queued" ? 1 : 2)
-                    ? Theme.interactive : Theme.surfaceStrong
-            }
-        }
+        indeterminate: !root.measured
+        active: root.phase !== "queued"
     }
 }

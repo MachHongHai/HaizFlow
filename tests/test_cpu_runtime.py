@@ -17,8 +17,10 @@ from haizflow.core import hardware
 from haizflow.desktop import qml_controller
 from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
 from haizflow.pipeline import audio_separation
+from haizflow.pipeline import manual_tools
 from haizflow.services import hymt2_worker
 from haizflow.services import desktop_settings
+from haizflow.services import translation
 from haizflow.utils import ffmpeg
 
 
@@ -269,35 +271,28 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertFalse(compatible)
         self.assertIn("not detected", message)
 
-    def test_invalid_gpu_setting_warns_and_is_rejected_without_saving(self):
+    def test_invalid_translation_model_is_rejected_without_saving(self):
         controller = SimpleNamespace(
             _settings_processing_device="cpu",
             _is_processing=False,
             _device_switching=False,
             _pipeline_is_active=lambda: False,
         )
-        hardware.clear_runtime_profile_cache()
-        with (
-            mock.patch.object(hardware, "_cuda_details", return_value=(True, "Low VRAM GPU")),
-            mock.patch.object(hardware, "_cuda_memory_bytes", return_value=4 * 1024**3),
-            mock.patch.object(hardware, "_cuda_free_memory_bytes", return_value=4 * 1024**3),
-            mock.patch.object(hardware, "_total_memory_bytes", return_value=16 * 1024**3),
-            mock.patch.object(hardware.os, "cpu_count", return_value=8),
-            mock.patch.object(qml_controller.QMessageBox, "warning") as warning,
-        ):
+        with mock.patch.object(qml_controller.desktop_settings, "save_settings") as save:
             applied = qml_controller.HaizFlowController.applySettings(controller, "dark", "en", "gpu")
 
         self.assertFalse(applied)
-        warning.assert_called_once()
+        save.assert_not_called()
 
-    def test_device_change_is_deferred_while_a_video_is_processing(self):
+    def test_translation_model_change_is_rejected_while_a_video_is_processing(self):
         signal = mock.Mock()
         switch_runtime = mock.Mock()
         controller = SimpleNamespace(
             _settings_processing_device="gpu",
             _settings_theme="dark",
             _settings_language="en",
-            _processing_device_origin="manual",
+            _settings_translation_model="auto",
+            _processing_device_origin="detected",
             _pending_processing_device="",
             _device_switching=False,
             _pipeline_is_active=lambda: True,
@@ -306,23 +301,90 @@ class CpuRuntimeTests(unittest.TestCase):
             statusMessageChanged=signal,
             _switch_processing_device=switch_runtime,
         )
+        with (
+            mock.patch.object(qml_controller.desktop_settings, "save_settings") as save,
+            mock.patch.object(qml_controller.QMessageBox, "warning") as warning,
+        ):
+            applied = qml_controller.HaizFlowController.applySettings(controller, "dark", "en", "q4")
+
+        self.assertFalse(applied)
+        self.assertEqual(controller._settings_translation_model, "auto")
+        save.assert_not_called()
+        warning.assert_called_once()
+        switch_runtime.assert_not_called()
+
+    def test_translation_model_change_is_saved_globally_without_device_switch(self):
+        signal = mock.Mock()
+        controller = SimpleNamespace(
+            _settings_processing_device="gpu",
+            _settings_translation_model="auto",
+            _settings_language="vi",
+            _pipeline_is_active=lambda: False,
+            _switch_processing_device=mock.Mock(),
+            settingsChanged=signal,
+            languageOptionsChanged=signal,
+            statusMessageChanged=signal,
+        )
         saved = {
-            "theme": "dark",
-            "language": "en",
-            "processing_device": "cpu",
-            "processing_device_origin": "manual",
+            "theme": "graphite", "language": "vi", "processing_device": "gpu",
+            "processing_device_origin": "detected", "translation_model": "q4",
         }
         with (
-            mock.patch.object(qml_controller, "validate_processing_device", return_value=(True, "CPU ready")),
-            mock.patch.object(qml_controller.desktop_settings, "save_settings", return_value=saved),
+            mock.patch.object(qml_controller.desktop_settings, "save_settings", return_value=saved) as save,
+            mock.patch.object(translation, "shutdown_hymt2_worker") as shutdown,
+            mock.patch("haizflow.desktop.settings_controller._set_ui_language"),
+            mock.patch.dict(hardware.os.environ, {}, clear=False),
         ):
-            applied = qml_controller.HaizFlowController.applySettings(controller, "dark", "en", "cpu")
+            self.assertTrue(qml_controller.HaizFlowController.applySettings(controller, "graphite", "vi", "q4"))
+            self.assertEqual(hardware.translation_model_preference(), "q4")
+        self.assertEqual(save.call_args.args[0]["translation_model"], "q4")
+        self.assertEqual(save.call_args.args[0]["processing_device_origin"], "detected")
+        controller._switch_processing_device.assert_not_called()
+        shutdown.assert_called_once()
 
-        self.assertTrue(applied)
-        self.assertEqual(controller._settings_processing_device, "cpu")
-        self.assertEqual(controller._pending_processing_device, "cpu")
-        self.assertIn("current video", controller._status_message)
-        switch_runtime.assert_not_called()
+    def test_q4_translation_uses_cpu_engine_on_gpu_profile(self):
+        with (
+            mock.patch.object(translation, "translation_model_preference", return_value="q4"),
+            mock.patch("haizflow.services.resource_packs.installed_engine_command", return_value=["cpu-engine"]) as engine,
+        ):
+            self.assertEqual(translation._worker_command(), ["cpu-engine"])
+        self.assertEqual(engine.call_args.args[2], {"device": "cpu"})
+
+    def test_full_translation_uses_gpu_engine(self):
+        with (
+            mock.patch.object(translation, "translation_model_preference", return_value="full"),
+            mock.patch("haizflow.services.resource_packs.installed_engine_command", return_value=["gpu-engine"]) as engine,
+        ):
+            self.assertEqual(translation._worker_command(), ["gpu-engine"])
+        self.assertEqual(engine.call_args.args[2], {"device": "gpu"})
+
+    def test_q4_model_selection_does_not_import_torch(self):
+        profile = SimpleNamespace(key="cuda_low_memory", hymt2_backend="transformers", cuda_available=True, cpu_threads=4)
+        llama = mock.Mock(return_value="loaded-q4")
+        with (
+            mock.patch.object(hymt2_worker, "runtime_profile", return_value=profile),
+            mock.patch.object(hymt2_worker, "translation_model_preference", return_value="q4"),
+            mock.patch.object(hymt2_worker.importlib.util, "find_spec", return_value=object()),
+            mock.patch.object(hymt2_worker, "_cpu_model_path", return_value="model.gguf"),
+            mock.patch.object(hymt2_worker, "_prepare_torch_runtime", side_effect=AssertionError("Torch must stay unloaded")),
+            mock.patch.object(hymt2_worker, "_emit_diagnostic"),
+            mock.patch.object(hymt2_worker, "_emit_event"),
+            mock.patch.dict(sys.modules, {"llama_cpp": SimpleNamespace(Llama=llama)}),
+        ):
+            self.assertEqual(hymt2_worker._load_model("HY-MT2"), ("loaded-q4", None, None, "cpu-gguf"))
+
+    def test_manual_translation_cache_changes_with_global_model(self):
+        video = SimpleNamespace(target_language="vi")
+        with mock.patch.object(manual_tools, "recognition_signature", return_value="same-source"):
+            with mock.patch.object(manual_tools, "translation_model_signature_parts", return_value=("translation-model:q4",)):
+                q4 = manual_tools.translation_signature(video)
+            with mock.patch.object(manual_tools, "translation_model_signature_parts", return_value=("translation-model:full",)):
+                full = manual_tools.translation_signature(video)
+        self.assertNotEqual(q4, full)
+
+    def test_default_translation_model_keeps_legacy_cache_signature(self):
+        with mock.patch.dict(hardware.os.environ, {"HAIZFLOW_TRANSLATION_MODEL": "auto"}):
+            self.assertEqual(hardware.translation_model_signature_parts(), ())
 
     def test_desktop_settings_persist_processing_device(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -372,7 +434,7 @@ class CpuRuntimeTests(unittest.TestCase):
 
         self.assertEqual(loaded["processing_device"], "cpu")
         self.assertEqual(loaded["processing_device_origin"], "detected")
-        self.assertNotIn('"auto"', persisted)
+        self.assertNotIn('"processing_device": "auto"', persisted)
         self.assertEqual(loaded["theme"], "graphite")
         self.assertIn('"graphite"', persisted)
 

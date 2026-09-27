@@ -122,8 +122,14 @@ def test_manual_layout_has_one_toolbar_and_on_demand_comparison():
     assert "RotationHandle {" not in (QML_DIR / "EditorOverlayLayer.qml").read_text(encoding="utf-8")
     assert "model: root.visibleTicks" in timeline
     assert "model: root.visibleSegments" in timeline
-    assert "function toggleTrackCollapsed(trackId)" in timeline
-    assert "SplitView.preferredHeight: root.height < 780 ? 210" in workspace
+    assert "function toggleTrackCollapsed(trackId)" not in timeline
+    assert 'qsTr("Dòng thời gian")' not in timeline
+    assert 'qsTr("Đoạn đã chọn' not in timeline
+    assert "timelineDuration" in timeline
+    assert "id: timelineResizeGrip" in workspace
+    assert "projectTitle: AppController.projectName" in workspace
+    assert 'iconName: "zoomOut"' not in (QML_DIR / "ManualEditorToolbar.qml").read_text(encoding="utf-8")
+    assert "root.zoomAt(event.x" in timeline
 
 
 def test_voice_and_subtitles_share_one_timeline_lane_without_merging_data():
@@ -135,7 +141,10 @@ def test_voice_and_subtitles_share_one_timeline_lane_without_merging_data():
     assert 'title: qsTr("Phụ đề · Giọng đọc")' in timeline
     assert 'onSecondaryMuteToggled: root.trackStateRequested("voice", "muted", !secondaryMuted)' in timeline
     assert 'root.clipSelected(editorClip.clipId,' in timeline
-    assert 'text: qsTr("Tắt tiếng giọng đọc")' in header
+    assert 'qsTr("Tắt giọng đọc")' in header
+    assert 'qsTr("Khóa chỉnh sửa")' not in header
+    assert 'qsTr("Solo")' not in header
+    assert 'qsTr("Thu gọn track")' not in header
 
 
 def test_text_style_controls_are_inline_in_both_editor_tools():

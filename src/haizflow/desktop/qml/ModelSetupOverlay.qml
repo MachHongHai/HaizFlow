@@ -108,6 +108,7 @@ FocusScope {
                 }
 
                 Text {
+                    visible: AppController.modelSetupProgress > 0
                     text: AppController.modelSetupProgress + "%"
                     color: Theme.text
                     font.pixelSize: Theme.caption
@@ -119,6 +120,8 @@ FocusScope {
             AppProgressBar {
                 Layout.fillWidth: true
                 value: AppController.modelSetupProgress
+                indeterminate: AppController.modelSetupProgress <= 0
+                active: AppController.modelSetupBusy
             }
 
             Text {

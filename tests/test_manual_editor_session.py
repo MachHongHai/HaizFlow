@@ -143,6 +143,7 @@ class ManualEditorSessionTests(unittest.TestCase):
             {
                 "target_language",
                 "speech_recognition_model",
+                "translation_model",
                 "tts_provider",
                 "tts_voice",
                 "speaker_mode",
@@ -271,6 +272,67 @@ class ManualEditorSessionTests(unittest.TestCase):
         output = np.frombuffer(mix_frames(tracks, 1, 4, {"source": .5, "voice": 1, "music": .2},
                                          {"voice-1"}), dtype="<i2")
         self.assertTrue(np.all(output == 700))
+
+    def test_source_volume_change_never_changes_voice_gain(self):
+        samples = np.full((4, 2), 1000, dtype=np.int16)
+        tracks = [
+            {"id": "source", "kind": "source", "samples": samples, "start": 0},
+            {"id": "voice-a", "kind": "voice", "samples": samples, "start": 0},
+        ]
+        quiet = np.frombuffer(mix_frames(
+            tracks, 0, 4, {"source": 0.0, "voice": 1.0},
+        ), dtype="<i2")
+        loud = np.frombuffer(mix_frames(
+            tracks, 0, 4, {"source": 0.8, "voice": 1.0},
+        ), dtype="<i2")
+        self.assertTrue(np.all(quiet == 1000))
+        self.assertTrue(np.all(loud == 1800))
+
+    def test_level_controls_keep_legacy_video_overlay_audio_mixable(self):
+        audio = ManualPreviewAudioController()
+        try:
+            audio.setVolumes(45, 100, 30)
+            samples = np.full((2, 2), 1000, dtype=np.int16)
+            tracks = [
+                {"id": "voice-a", "kind": "voice", "samples": samples, "start": 0},
+                {"id": "overlay-a", "kind": "overlay", "samples": samples, "start": 0},
+            ]
+            mixed = np.frombuffer(mix_frames(tracks, 0, 2, audio._volumes), dtype="<i2")
+            self.assertTrue(np.all(mixed == 2000))
+        finally:
+            audio.close()
+
+    def test_preview_repairs_disabled_voice_clips_when_manifest_is_published(self):
+        from haizflow.schemas.editor import EditorClip, EditorDocument
+        from haizflow.services import editor_documents
+
+        stale = EditorDocument(video_id="manual-video", clips=[EditorClip(
+            clip_id="voice-a", track_id="voice", kind="voice",
+            segment_id="a", enabled=False,
+        )])
+        repaired = stale.model_copy(deep=True)
+        repaired.clips[0].enabled = True
+        video = SimpleNamespace(
+            video_id="manual-video", project_type="manual",
+            enable_audio_separation=False, files={}, active_artifacts={},
+        )
+        audio = ManualPreviewAudioController()
+        try:
+            with (
+                patch.object(editor_documents, "load", side_effect=[stale, repaired]),
+                patch.object(editor_documents, "ensure", return_value=repaired) as ensure,
+                patch("haizflow.pipeline.manual_tools.published_voice_record", return_value={
+                    "signature": "published-voice", "resolved_outputs": {},
+                }),
+                patch.object(audio._executor, "submit") as submit,
+            ):
+                audio.request(video, [{"segment_id": "a", "text": "Xin chào", "start": 0, "end": 1}])
+                audio.setVolumes(45, 100, 30)
+                audio.request(video, [{"segment_id": "a", "text": "Xin chào", "start": 0, "end": 1}])
+            ensure.assert_called_once_with(video)
+            submit.assert_called_once()
+        finally:
+            audio.close()
 
     def test_voice_preview_keeps_only_sentences_matching_the_published_manifest(self):
         source = {"text": "Câu chưa đổi", "start": 1, "end": 2}

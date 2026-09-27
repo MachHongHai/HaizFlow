@@ -12,6 +12,7 @@ from haizflow.core.hardware import (
     configure_processing_device,
     detect_hardware_capabilities,
     runtime_profile,
+    translation_model_signature_parts,
 )
 from haizflow.core.runtime_probe import probe_runtime
 from haizflow.pipeline.audio_timeline import build_audio_timeline
@@ -258,11 +259,8 @@ def _resolve_audio_mix(video, fallback_audio_path: str) -> tuple[str, int]:
 
 
 def _manual_subtitle_layout_for_render(video) -> bool:
-    """Keep Manual caption placement independent from source cleanup."""
-    override = bool(getattr(video, "subtitle_layout_override", False))
-    if getattr(video, "project_type", "single") == "manual":
-        return override
-    return bool(override and not bool(getattr(video, "remove_original_subtitles", True)))
+    """Use OCR placement by default, but honor an explicitly edited layout."""
+    return bool(getattr(video, "subtitle_layout_override", False))
 
 
 def _prepare_audio_mix(video, reporter, video_dir: str, fallback_audio_path: str) -> tuple[str, int]:
@@ -368,6 +366,7 @@ def _finish_recovered_translation(
         video.target_language,
         source_language="en",
         provider="hymt2",
+        translation_model=getattr(video, "translation_model", "auto"),
         progress_callback=report_translation_progress,
     )
     _mark_checkpoint(video, "translation", translation_signature)
@@ -467,6 +466,7 @@ def process_video_sync(
             getattr(video, "speech_recognition_model", "small"),
             "hymt2",
             HYMT2_MODEL_REVISION,
+            *translation_model_signature_parts(getattr(video, "translation_model", "auto")),
         )
 
         # Clicking Dịch is an explicit recomputation request. Downstream
@@ -610,6 +610,7 @@ def process_video_sync(
             video.target_language,
             source_language=detected_language or "en",
             provider="hymt2",
+            translation_model=getattr(video, "translation_model", "auto"),
             progress_callback=report_translation_progress,
         )
         _mark_checkpoint(video, "translation", translation_signature)
@@ -877,6 +878,12 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         _complete_manual_stage(video_id, "timeline", 87)
         return
 
+    # Only presentation timing follows speech; editable source windows stay intact.
+    generate_srt(
+        transcript_json, srt_output, subtitle_style.max_chars_per_line, video_id,
+        preserve_segment_boundaries=True, voice_parts_dir=voice_parts_dir,
+    )
+
     check_cancellation(video_id)
     style_data = subtitle_style.model_dump() if hasattr(subtitle_style, "model_dump") else subtitle_style.dict()
     crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
@@ -900,6 +907,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         # Bump when changing the visual treatment so a previously rendered
         # luma-only result is never reused as a valid final export.
         "static-largest-original-subtitle-ocr-v19-temporal-visibility",
+        "captions-follow-generated-speech-v1",
         remove_original_subtitles,
         original_subtitle_removal_mode,
         original_subtitle_region,

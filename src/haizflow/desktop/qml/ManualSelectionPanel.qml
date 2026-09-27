@@ -9,13 +9,10 @@ Flickable {
     id: root
 
     property var clipData: ({})
-    property var subtitleSegment: ({})
-    property bool legacySequence: false
     readonly property string trackId: String(clipData.track_id || "")
-    readonly property bool audioClip: ["voice", "source-audio", "music"].indexOf(trackId) >= 0
+    readonly property bool audioClip: trackId === "voice"
     readonly property bool watermarkClip: String(clipData.clip_id || "") === "watermark-1"
     signal openImageToolRequested()
-    signal settingsCommitted()
     signal watermarkSettingsEdited()
 
     contentWidth: width
@@ -45,27 +42,6 @@ Flickable {
             Layout.fillWidth: true
             Layout.preferredHeight: root.audioClip ? Math.max(100, root.height - Theme.space24) : 0
             clipData: root.clipData
-        }
-
-        ColumnLayout {
-            visible: root.trackId === "source-video"
-            Layout.fillWidth: true
-            Text {
-                text: qsTr("Video nguồn")
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: TypeScale.section
-            }
-            Text {
-                Layout.fillWidth: true
-                text: root.legacySequence
-                    ? qsTr("Không thể cắt video nguồn trong project này.")
-                    : qsTr("Kéo hai đầu clip để cắt đầu hoặc cuối video.")
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: TypeScale.control
-                wrapMode: Text.WordWrap
-            }
         }
 
         ColumnLayout {

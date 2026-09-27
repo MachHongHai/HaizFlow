@@ -9,21 +9,16 @@ Rectangle {
     property string title: ""
     property string kind: ""
     property bool trackVisible: true
-    property bool locked: false
     property bool muted: false
-    property bool solo: false
-    property bool collapsed: false
     property bool selected: false
     property bool legacyReadOnly: false
     property bool secondaryAudioTrack: false
     property bool secondaryMuted: false
     readonly property bool audioTrack: ["voice", "source_audio", "music"].indexOf(kind) >= 0
+    readonly property bool menuAvailable: !legacyReadOnly || audioTrack || secondaryAudioTrack
 
     signal visibilityToggled()
-    signal lockToggled()
     signal muteToggled()
-    signal soloToggled()
-    signal collapsedToggled()
     signal selectedRequested()
     signal secondaryMuteToggled()
 
@@ -51,12 +46,10 @@ Rectangle {
         }
 
         StudioIconButton {
+            visible: root.menuAvailable
             controlSize: 28
             iconName: !root.trackVisible ? "hide"
-                : root.locked ? "lock"
-                : root.muted ? "muted"
-                : root.solo ? "solo"
-                : root.secondaryMuted ? "muted" : "more"
+                : root.muted || root.secondaryMuted ? "muted" : "more"
             toolTipText: qsTr("Tùy chọn track")
             onClicked: trackMenu.popup()
         }
@@ -64,47 +57,24 @@ Rectangle {
 
     TopBarPopupMenu {
         id: trackMenu
-        menuContentWidth: 176
+        menuContentWidth: 188
 
         AppMenuItem {
-            text: qsTr("Thu gọn track")
-            checkable: true
-            checked: root.collapsed
-            onTriggered: root.collapsedToggled()
-        }
-        AppMenuItem {
-            text: qsTr("Hiển thị")
+            text: root.trackVisible ? qsTr("Ẩn layer") : qsTr("Hiện layer")
             collapsed: root.legacyReadOnly
-            checkable: true
-            checked: root.trackVisible
+            iconGlyph: root.trackVisible ? "\uED1A" : "\uE890"
             onTriggered: root.visibilityToggled()
         }
         AppMenuItem {
-            text: qsTr("Khóa chỉnh sửa")
-            collapsed: root.legacyReadOnly
-            checkable: true
-            checked: root.locked
-            onTriggered: root.lockToggled()
-        }
-        AppMenuItem {
             collapsed: !root.audioTrack
-            text: qsTr("Tắt tiếng")
-            checkable: true
-            checked: root.muted
+            text: root.muted ? qsTr("Bật tiếng") : qsTr("Tắt tiếng")
+            iconGlyph: root.muted ? "\uE767" : "\uE74F"
             onTriggered: root.muteToggled()
         }
         AppMenuItem {
-            collapsed: !root.audioTrack
-            text: qsTr("Solo")
-            checkable: true
-            checked: root.solo
-            onTriggered: root.soloToggled()
-        }
-        AppMenuItem {
             collapsed: !root.secondaryAudioTrack
-            text: qsTr("Tắt tiếng giọng đọc")
-            checkable: true
-            checked: root.secondaryMuted
+            text: root.secondaryMuted ? qsTr("Bật giọng đọc") : qsTr("Tắt giọng đọc")
+            iconGlyph: root.secondaryMuted ? "\uE767" : "\uE74F"
             onTriggered: root.secondaryMuteToggled()
         }
     }

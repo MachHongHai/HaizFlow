@@ -8,7 +8,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from haizflow.core.hardware import processing_device_preference, runtime_profile
+from haizflow.core.hardware import processing_device_preference, runtime_profile, translation_model_preference
 
 
 _INFERENCE_BATCH_SIZE = max(1, min(8, int(os.getenv("HYMT2_INFERENCE_BATCH_SIZE", "4"))))
@@ -434,8 +434,17 @@ def _load_model(model_name: str):
 
     profile = runtime_profile()
     backend = profile.hymt2_backend
+    preference = translation_model_preference()
+    if preference == "full":
+        if not profile.cuda_available:
+            raise RuntimeError("HY-MT2 đầy đủ cần GPU NVIDIA tương thích. Hãy chọn Q4 hoặc Tự động trong Cài đặt.")
+        backend = "transformers"
+    elif preference == "q4":
+        if importlib.util.find_spec("llama_cpp") is None:
+            raise RuntimeError("HY-MT2 Q4 cần gói nhận dạng và dịch CPU. Hãy cài gói này hoặc chọn Tự động trong Cài đặt.")
+        backend = "llama_cpp"
     cpu_model_path = None
-    if profile.key == "cuda_low_memory" and importlib.util.find_spec("llama_cpp") is not None:
+    if preference == "auto" and profile.key == "cuda_low_memory" and importlib.util.find_spec("llama_cpp") is not None:
         # Prefer the installed Q4 model on 8 GB GPUs. The full GPU model
         # stages a 3.8 GB checkpoint in system RAM before moving it to CUDA;
         # Windows can fail with paging-file error 1455 even with free VRAM.

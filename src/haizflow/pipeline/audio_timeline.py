@@ -279,6 +279,8 @@ def build_audio_timeline(
     original_video_volume: int = 60,
     original_audio_fade_in_ms: int = 0,
     original_audio_fade_out_ms: int = 0,
+    original_audio_start_ms: int = 0,
+    original_audio_duration_ms: int | None = None,
     background_music_path: str | None = None,
     background_music_volume: int = 30,
     tts_volume: int = 100,
@@ -357,6 +359,14 @@ def build_audio_timeline(
             log_to_video(video_id, "Source has no decodable audio; using a silent base layer.")
     else:
         base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=16000)
+
+    if background_audio_path and not base_cache_hit:
+        if original_audio_duration_ms is not None:
+            base_audio = base_audio[:max(0, int(original_audio_duration_ms))]
+        if original_audio_start_ms > 0:
+            base_audio = AudioSegment.silent(
+                duration=int(original_audio_start_ms), frame_rate=16000,
+            ) + base_audio
 
     # The final audio must always match the video. Source tracks can occasionally
     # be a few milliseconds longer than the video container reports.

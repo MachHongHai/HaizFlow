@@ -257,6 +257,7 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
         source_language=config.source_language,
         target_language=config.target_language,
         translator_provider=config.translator_provider,
+        translation_model=config.translation_model,
         tts_provider=config.tts_provider,
         tts_voice=config.tts_voice,
         speaker_mode=config.speaker_mode,
@@ -506,6 +507,8 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
         data["tts_provider"] = "omnivoice"
     if data.get("speech_recognition_model") not in {"small", "large-v3-turbo"}:
         data["speech_recognition_model"] = "small"
+    if data.get("translation_model") not in {"auto", "q4", "full"}:
+        data["translation_model"] = "auto"
     if data.get("speaker_mode") not in {"single", "multiple"}:
         data["speaker_mode"] = "single"
     data["output_format"] = (

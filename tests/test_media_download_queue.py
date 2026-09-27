@@ -19,6 +19,16 @@ from haizflow.services.video_download import DownloadCancelled
 
 
 class MediaDownloadQueueTests(unittest.TestCase):
+    def test_download_state_distinguishes_idle_and_validation_error(self):
+        controller = MediaDownloadController()
+        try:
+            self.assertEqual(controller.state, "idle")
+            controller._reject("Invalid link")
+            self.assertEqual(controller.state, "error")
+            self.assertEqual(controller.status, "Invalid link")
+        finally:
+            controller.shutdown()
+
     def test_audio_title_is_safe_for_windows_filenames(self):
         self.assertEqual(
             _safe_output_stem('Review: "A/B" | final?*'),

@@ -171,6 +171,8 @@ AppDialog {
         Layout.fillWidth: true
         visible: root.importer.state === "downloading" || root.importer.state === "importing"
         value: root.importer.progress
+        indeterminate: root.importer.state === "importing" || root.importer.progress <= 0
+        active: root.importer.busy
     }
 
     footerActions: [

@@ -224,6 +224,10 @@ class MediaDownloadController(QObject):
     def status(self):
         return self._status
 
+    @Property(str, notify=changed)
+    def state(self):
+        return self._state
+
     def attach_project(self, project_key: str, project_root: str) -> None:
         key = str(project_key or "").strip()
         root = os.path.abspath(str(project_root or "").strip()) if project_root else ""
@@ -635,6 +639,7 @@ class MediaDownloadController(QObject):
             return destination
 
     def _reject(self, message):
+        self._state = "error"
         self._status = message
         self.changed.emit()
 

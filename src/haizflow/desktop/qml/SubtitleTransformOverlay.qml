@@ -8,6 +8,12 @@ Item {
 
     property rect videoRect: Qt.rect(0, 0, 0, 0)
     property string subtitleText: ""
+    property string sampleText: ""
+    property string sampleFontFamily: Theme.fontFamily
+    property color sampleTextColor: "white"
+    property color sampleOutlineColor: "black"
+    property bool sampleBold: false
+    property bool sampleItalic: false
     property var sprite: ({})
     property real karaokeProgress: 0
     property int fontSize: 60
@@ -46,8 +52,10 @@ Item {
     )
     readonly property real previewLetterSpacing: Math.max(0, previewScale)
 
+    readonly property bool sampleMode: String(sampleText).length > 0
+        && String(sprite.normal || "").length === 0
     visible: (interactive || livePreviewVisible)
-        && String(sprite.normal || "").length > 0
+        && (String(sprite.normal || "").length > 0 || sampleMode)
         && videoRect.width > 0
         && videoRect.height > 0
 
@@ -140,12 +148,18 @@ Item {
             id: selection
             objectName: "subtitleTransformSelection"
             readonly property real rasterScale: root.previewScale * root.draftFontSize / Math.max(1, Number(root.sprite.fontSize || root.fontSize))
-            width: Math.max(1, Number(root.sprite.width || 1) * rasterScale)
-            height: Math.max(1, Number(root.sprite.height || 1) * rasterScale)
-            x: videoCanvas.width * root.draftPositionX / 100
+            width: root.sampleMode ? sampleLabel.implicitWidth + Theme.space12
+                : Math.max(1, Number(root.sprite.width || 1) * rasterScale)
+            height: root.sampleMode ? sampleLabel.implicitHeight + Theme.space8
+                : Math.max(1, Number(root.sprite.height || 1) * rasterScale)
+            x: root.sampleMode
+                ? videoCanvas.width * root.draftPositionX / 100 - width / 2
+                : videoCanvas.width * root.draftPositionX / 100
                 + (Number(root.sprite.x || 0) - Number(root.sprite.outputWidth || 1)
                    * Number(root.sprite.positionXPercent || 50) / 100) * rasterScale
-            y: videoCanvas.height * root.draftPositionY / 100
+            y: root.sampleMode
+                ? videoCanvas.height * root.draftPositionY / 100 - height / 2
+                : videoCanvas.height * root.draftPositionY / 100
                 + (Number(root.sprite.y || 0) - Number(root.sprite.outputHeight || 1)
                    * Number(root.sprite.positionYPercent || 88) / 100) * rasterScale
             color: "transparent"
@@ -155,6 +169,20 @@ Item {
             activeFocusOnTab: root.interactive
             Accessible.role: Accessible.Slider
             Accessible.name: qsTr("Vị trí và cỡ phụ đề")
+            Text {
+                id: sampleLabel
+                anchors.centerIn: parent
+                visible: root.sampleMode
+                text: root.sampleText
+                color: root.sampleTextColor
+                style: Text.Outline
+                styleColor: root.sampleOutlineColor
+                font.family: root.sampleFontFamily
+                font.pixelSize: root.previewFontSize
+                font.bold: root.sampleBold
+                font.italic: root.sampleItalic
+                textFormat: Text.PlainText
+            }
             Item {
                 anchors.fill: parent
                 visible: root.livePreviewVisible
@@ -166,6 +194,7 @@ Item {
                     width: Number(root.sprite.outputWidth || 1) * selection.rasterScale
                     height: Number(root.sprite.outputHeight || 1) * selection.rasterScale
                     source: root.sprite.normal || ""
+                    visible: !root.sampleMode
                     sourceSize: Qt.size(Number(root.sprite.outputWidth || 1), Number(root.sprite.outputHeight || 1))
                     asynchronous: true
                 }
@@ -367,4 +396,5 @@ Item {
             }
         }
     }
+
 }

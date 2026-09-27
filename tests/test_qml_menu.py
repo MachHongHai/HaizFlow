@@ -703,14 +703,63 @@ ApplicationWindow {{
             self.assertEqual(commits[0][0], 0)
             self.assertGreater(commits[0][1], 0.5)
             self.assertFalse(timeline.property("editingClip"))
+            # No document controller is attached in this isolated QML test;
+            # reject the edit so the clip returns to its original position.
+            timeline.resolveTimingCommit(0, False)
+            QTest.qWait(20)
 
             # A click selects the clip in place. Opening the large text editor
             # is a separate button in the inspector.
             QTest.mouseClick(
-                view, Qt.LeftButton, Qt.NoModifier, QPoint(clip_x + 60, clip_y)
+                view, Qt.LeftButton, Qt.NoModifier, QPoint(clip_x, clip_y)
             )
             QTest.qWait(30)
             self.assertEqual(selections, [0])
+        finally:
+            view.close()
+            view.deleteLater()
+            self.app.processEvents()
+
+    def test_subtitle_can_move_past_the_source_video_end(self):
+        view = QQuickView()
+        view.setResizeMode(QQuickView.SizeRootObjectToView)
+        view.setSource(QUrl.fromLocalFile(str(QML_DIR / "SubtitleTimeline.qml")))
+        self.assertEqual(view.status(), QQuickView.Ready)
+        view.resize(900, 250)
+        timeline = view.rootObject()
+        timeline.setProperty("duration", 4.0)
+        timeline.setProperty("segments", [
+            {"start": 2.0, "end": 3.0, "text": "Last line"},
+        ])
+        commits = []
+        timeline.timingCommitted.connect(
+            lambda index, start, end: commits.append((index, start, end))
+        )
+        try:
+            view.show()
+            QTest.qWaitForWindowExposed(view)
+            QTest.qWait(60)
+
+            def find_clip(item):
+                if item.objectName() == "subtitleTimelineClip-0":
+                    return item
+                for child in item.childItems():
+                    found = find_clip(child)
+                    if found is not None:
+                        return found
+                return None
+
+            clip = find_clip(timeline)
+            self.assertIsNotNone(clip)
+            center = clip.mapToScene(QPointF(clip.width() / 2, clip.height() / 2))
+            start = QPoint(round(center.x()), round(center.y()))
+            finish = QPoint(start.x() + 300, start.y())
+            QTest.mousePress(view, Qt.LeftButton, Qt.NoModifier, start)
+            QTest.mouseMove(view, finish, 20)
+            QTest.mouseRelease(view, Qt.LeftButton, Qt.NoModifier, finish)
+            QTest.qWait(30)
+            self.assertEqual(len(commits), 1)
+            self.assertGreater(commits[0][2], 4.0)
         finally:
             view.close()
             view.deleteLater()

@@ -17,6 +17,7 @@ FloatingToolDialog {
     property var baselineSettings: ({})
     property string draftTargetLanguage: "vi"
     property string draftSpeechRecognitionModel: "small"
+    property string draftTranslationModel: "auto"
     property string draftTtsProvider: "omnivoice"
     property string draftTtsVoice: ""
     property string draftSpeakerMode: "single"
@@ -81,6 +82,7 @@ FloatingToolDialog {
         baselineSettings = settings
         draftTargetLanguage = settings.targetLanguage || "vi"
         draftSpeechRecognitionModel = settings.speechRecognitionModel || "small"
+        draftTranslationModel = settings.translationModel || "auto"
         draftTtsProvider = settings.ttsProvider || "omnivoice"
         draftTtsVoice = normalizedDraftVoice(draftTargetLanguage, draftTtsProvider, settings.ttsVoice || "")
         draftSpeakerMode = draftTtsProvider === "omnivoice" && settings.speakerMode === "multiple"
@@ -112,6 +114,7 @@ FloatingToolDialog {
             "workflowMode": "A",
             "targetLanguage": draftTargetLanguage,
             "speechRecognitionModel": draftSpeechRecognitionModel,
+            "translationModel": draftTranslationModel,
             "ttsProvider": draftTtsProvider,
             "ttsVoice": draftTtsVoice,
             "speakerMode": draftSpeakerMode,
@@ -147,7 +150,8 @@ FloatingToolDialog {
                 draftTtsProvider, draftTtsVoice, draftEnableAudioSeparation,
                 draftOriginalVolume, draftBackgroundMusicVolume, draftTtsVolume,
                 draftWatermarkText, draftBackgroundMusicPath, draftRemoveOriginalSubtitles,
-                currentDraft().subtitleStyle, draftOriginalSubtitleRemovalMode, draftSpeakerMode)) {
+                currentDraft().subtitleStyle, draftOriginalSubtitleRemovalMode,
+                draftSpeakerMode, draftTranslationModel)) {
             baselineSettings = currentDraft()
             settingOverrides = AppController.batchSettingOverrides()
         }
@@ -215,6 +219,7 @@ FloatingToolDialog {
                 hasSource: AppController.batchCount > 0 && AppController.videoPath.length > 0
                 showCloneAction: false
                 speechRecognitionModel: root.draftSpeechRecognitionModel
+                translationModel: root.draftTranslationModel
                 speechRecognitionOptions: AppController.speechRecognitionModelOptions
                 speechRecognitionIndex: root.draftSpeechRecognitionIndex
                 targetLanguage: root.draftTargetLanguage
@@ -234,6 +239,7 @@ FloatingToolDialog {
                 watermarkText: root.draftWatermarkText
 
                 onSpeechRecognitionEdited: function(value) { root.draftSpeechRecognitionModel = value }
+                onTranslationModelEdited: function(value) { root.draftTranslationModel = value }
                 onTargetLanguageEdited: function(value) {
                     root.draftTargetLanguage = value
                     root.draftTtsVoice = root.normalizedDraftVoice(value, root.draftTtsProvider, root.draftTtsVoice)

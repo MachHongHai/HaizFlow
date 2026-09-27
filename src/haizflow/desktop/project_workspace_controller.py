@@ -58,6 +58,7 @@ class ProjectWorkspaceController:
         host._workflow_mode = video.mode
         host._target_language = str(video.target_language or "vi")
         host._speech_recognition_model = str(getattr(video, "speech_recognition_model", "small") or "small")
+        host._translation_model = str(getattr(video, "translation_model", "auto") or "auto")
         host._tts_provider = host._normalized_tts_provider(
             host._target_language, getattr(video, "tts_provider", "edge")
         )
@@ -155,6 +156,7 @@ class ProjectWorkspaceController:
         host.videoThumbnailChanged.emit()
         host.targetLanguageChanged.emit()
         host.speechRecognitionModelChanged.emit()
+        host.translationModelChanged.emit()
         host.ttsProviderChanged.emit()
         host.ttsProviderOptionsChanged.emit()
         host.ttsVoiceChanged.emit()

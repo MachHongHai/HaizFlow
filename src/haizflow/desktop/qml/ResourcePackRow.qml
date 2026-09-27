@@ -66,17 +66,28 @@ ColumnLayout {
             Layout.minimumWidth: 0
             spacing: 3
 
-            Text {
+            RowLayout {
                 Layout.fillWidth: true
-                text: root.label
-                color: Theme.text
-                font {
-                    family: Theme.fontFamily
-                    pixelSize: TypeScale.control
-                    weight: Font.DemiBold
+                spacing: Theme.space8
+                Text {
+                    Layout.fillWidth: true
+                    text: root.label
+                    color: Theme.text
+                    font {
+                        family: Theme.fontFamily
+                        pixelSize: TypeScale.control
+                        weight: Font.DemiBold
+                    }
+                    elide: Text.ElideRight
+                    textFormat: Text.PlainText
                 }
-                elide: Text.ElideRight
-                textFormat: Text.PlainText
+                Text {
+                    visible: root.recommended
+                    text: qsTr("Phù hợp máy này")
+                    color: Theme.interactive
+                    font.pixelSize: TypeScale.metadata
+                    textFormat: Text.PlainText
+                }
             }
 
             Text {
@@ -111,6 +122,8 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 2
                 value: Math.max(0, root.progress)
+                indeterminate: root.status !== "downloading" || root.progress <= 0
+                active: true
             }
         }
 

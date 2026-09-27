@@ -106,6 +106,7 @@ def apply_source_decisions(samples, decisions):
 class ManualPreviewAudioController(QObject):
     errorChanged = Signal(str)
     positionChanged = Signal()
+    voiceTimingsChanged = Signal()
     _ready = Signal(object)
 
     def __init__(self, parent=None):
@@ -118,6 +119,7 @@ class ManualPreviewAudioController(QObject):
         self._generation = 0
         self._video_id = ""
         self._key = ""
+        self._reconciled_voice_state = None
         self._cursor = 0
         self._position_seconds = 0.0
         self._playing = False
@@ -143,6 +145,17 @@ class ManualPreviewAudioController(QObject):
         """
         return self._position_seconds
 
+    @Property("QVariantMap", notify=voiceTimingsChanged)
+    def voiceTimings(self):
+        return {
+            str(track["id"]): {
+                "start": track["start"] / RATE,
+                "end": (track["start"] + len(track["samples"])) / RATE,
+                "text": track.get("text", ""),
+            }
+            for track in self._tracks if track["kind"] == "voice"
+        }
+
     def _publish_position(self, seconds):
         value = max(0.0, float(seconds or 0.0))
         if abs(value - self._position_seconds) < 0.012:
@@ -165,15 +178,17 @@ class ManualPreviewAudioController(QObject):
             audio = trim_silence(AudioSegment.from_file(path))
             # Match export: compress only an overrun. A shorter narration must
             # end naturally and leave the remainder of its slot silent.
-            target = max(1, duration)
+            from haizflow.pipeline.speech_timing import fitted_speech_duration_ms
+
+            target = max(1, fitted_speech_duration_ms(len(audio), duration))
             speed = len(audio) / target
             with tempfile.TemporaryDirectory(prefix="haizflow-preview-voice-") as work:
                 source = Path(work) / "voice.wav"
                 audio.export(source, format="wav").close()
                 command = [_binary("ffmpeg"), "-v", "error", "-i", str(source)]
-                if len(audio) > target + 12:
+                if len(audio) > duration:
                     command += ["-af", _atempo_filters(speed)]
-                command += ["-t", str(duration / 1000), "-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
+                command += ["-t", str(target / 1000), "-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
                 output = subprocess.run(command, capture_output=True, check=True, timeout=90,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
         else:
@@ -196,6 +211,25 @@ class ManualPreviewAudioController(QObject):
         from haizflow.services import editor_documents
 
         document = editor_documents.load(video.video_id)
+        # A completed TTS manifest can arrive while the editor is open.  The
+        # worker publishes its files independently of document.json, and a
+        # settings save may race that publication.  Repair only when voice
+        # clips are still disabled; otherwise every volume drag would rescan
+        # all media assets and could make the preview stutter.
+        active_voice = manual_tools.published_voice_record(video, validate=False) if voice_enabled else None
+        disabled_voices = tuple(
+            (clip.segment_id, clip.name, clip.metadata.get("text_revision"))
+            for clip in document.clips
+            if clip.track_id == "voice" and not clip.enabled
+        ) if document is not None else ()
+        reconcile_state = (
+            video.video_id,
+            str((active_voice or {}).get("signature") or ""),
+            disabled_voices,
+        )
+        if active_voice and disabled_voices and reconcile_state != self._reconciled_voice_state:
+            document = editor_documents.ensure(video)
+            self._reconciled_voice_state = reconcile_state
         if document:
             subtitle_clips = sorted(
                 (
@@ -217,7 +251,6 @@ class ManualPreviewAudioController(QObject):
                 timeline_segments.append(item)
             segments = timeline_segments
 
-        active_voice = manual_tools.published_voice_record(video, validate=False) if voice_enabled else None
         active_voice_signature = str((active_voice or {}).get("signature") or "")
         # The picker contains a draft voice until the user confirms generation.
         # Key playback by the published manifest, never by that draft, so merely
@@ -285,13 +318,11 @@ class ManualPreviewAudioController(QObject):
                     return generation, [], ""
                 tracks = []
                 editor_tracks = {track.track_id: track for track in document.tracks} if document else {}
-                solo = {track.track_id for track in editor_tracks.values() if track.solo}
-
                 def audible(track_id):
                     track = editor_tracks.get(track_id)
                     if track is None:
                         return True
-                    return track.visible and not track.muted and (not solo or track_id in solo)
+                    return track.visible and not track.muted
 
                 source_clip = next(
                     (clip for clip in document.clips if clip.track_id == "source-audio" and clip.enabled),
@@ -309,7 +340,11 @@ class ManualPreviewAudioController(QObject):
                         tracks.append({
                             "id": "source",
                             "kind": "source",
-                            "start": 0,
+                            "start": int((source_clip.start_ms if source_clip else 0) * RATE / 1000),
+                            "duration_frames": int(
+                                (source_clip.duration_ms if source_clip else len(source_samples) * 1000 // RATE)
+                                * RATE / 1000
+                            ),
                             "gain": (source_clip.volume_percent / baseline) if source_clip else 1.0,
                             "fade_in_frames": int(
                                 (source_clip.fade_in_ms if source_clip else 0) * RATE / 1000
@@ -418,14 +453,18 @@ class ManualPreviewAudioController(QObject):
                     if not clip_path:
                         continue
                     from haizflow.pipeline.audio_timeline import _segment_slot_end_ms
-                    start = int(segment["start"] * 1000)
-                    end = int(segment["end"] * 1000)
-                    next_start = int(segments[index + 1]["start"] * 1000) if index + 1 < len(segments) else end
-                    source_track = next((t for t in tracks if t["kind"] == "source"), None)
-                    video_end = (len(source_track["samples"]) * 1000 // RATE if source_track
+                    start = voice_clip.start_ms if voice_clip else int(segment["start"] * 1000)
+                    end = start + (voice_clip.duration_ms if voice_clip else int(
+                        (segment["end"] - segment["start"]) * 1000))
+                    video_end = (document.sequence.duration_ms if document
                                  else int(max(s["end"] for s in segments) * 1000))
+                    next_start = min(
+                        (clip.start_ms for clip in voice_by_segment.values()
+                         if clip.enabled and clip.start_ms > start),
+                        default=video_end,
+                    )
                     duration = _segment_slot_end_ms(start, end, next_start, video_end,
-                                                   is_last=index + 1 == len(segments)) - start
+                                                   is_last=next_start >= video_end) - start
                     if duration <= 0:
                         continue
                     baseline = max(1, int(video.tts_volume or 100))
@@ -468,6 +507,10 @@ class ManualPreviewAudioController(QObject):
         if generation != self._generation:
             return
         if error:
+            # A transient decode failure must not pin this request key forever.
+            # The next refresh should retry rather than returning the stale
+            # (possibly silent) track list.
+            self._key = ""
             self.errorChanged.emit(error)
             return
         previous = {t["id"]: t.get("signature") for t in self._tracks}
@@ -477,11 +520,19 @@ class ManualPreviewAudioController(QObject):
                 and t["start"] < self._cursor < t["start"] + len(t["samples"]))
         self._tracks = tracks
         self._muted_ids.clear()
+        self.voiceTimingsChanged.emit()
 
     @Slot(int, int, int)
     def setVolumes(self, original, voice, music):
-        self._volumes = {k: max(0, min(100, v))/100 for k, v in
-                         (("source", original), ("voice", voice), ("music", music))}
+        self._volumes = {
+            "source": max(0, min(100, original)) / 100,
+            "voice": max(0, min(100, voice)) / 100,
+            "music": max(0, min(100, music)) / 100,
+            # Video watermark/legacy overlay audio has per-clip gain only.
+            # Dropping this key on a volume edit made the audio pump raise a
+            # KeyError and silenced every track, including narration.
+            "overlay": 1.0,
+        }
 
     @Slot(float, bool, bool)
     def synchronize(self, seconds, playing, muted):
@@ -553,6 +604,7 @@ class ManualPreviewAudioController(QObject):
             self._future.cancel()
             self._future = None
         self._key = ""
+        self._reconciled_voice_state = None
         self._playing = False
         self._timer.stop()
         if self._sink:
@@ -564,6 +616,7 @@ class ManualPreviewAudioController(QObject):
         self._tracks = []
         self._muted_ids.clear()
         self._deferred_ids.clear()
+        self.voiceTimingsChanged.emit()
 
     def close(self):
         self._closed = True

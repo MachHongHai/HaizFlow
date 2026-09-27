@@ -1,11 +1,11 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
 ColumnLayout {
+    id: root
     property var inspector
     spacing: Theme.space8
     SettingLabel {
@@ -15,14 +15,14 @@ ColumnLayout {
     }
     AppComboBox {
         Layout.fillWidth: true
-        enabled: inspector.editable
+        enabled: root.inspector.editable
         textRole: "label"
         valueRole: "value"
         model: AppController.speechRecognitionModelOptions
         currentIndex: AppController.speechRecognitionModelIndex
         onActivated: {
             AppController.speechRecognitionModel = currentValue;
-            inspector.scheduleSave();
+            root.inspector.scheduleSave();
         }
     }
     Text {
@@ -38,17 +38,31 @@ ColumnLayout {
     }
     SettingLabel {
         Layout.fillWidth: true
+        text: qsTr("Model dịch")
+        helpText: qsTr("Áp dụng cho tất cả dự án. Q4 dùng ít bộ nhớ hơn.")
+    }
+    TranslationModelCombo {
+        Layout.fillWidth: true
+        enabled: root.inspector.editable && !AppController.isProcessing
+        selectedModel: AppController.translationModel
+        onEdited: function(value) {
+            AppController.translationModel = value;
+            if (AppController.translationModel === value)
+                root.inspector.scheduleSave();
+        }
+    }
+    SettingLabel {
+        Layout.fillWidth: true
         text: qsTr("Dịch sang")
     }
     SearchableLanguageCombo {
         Layout.fillWidth: true
-        enabled: inspector.editable
+        enabled: root.inspector.editable
         options: AppController.targetLanguageOptions
         selectedCode: AppController.targetLanguage
         onSelected: function(code) {
             AppController.targetLanguage = code;
-            inspector.scheduleSave();
+            root.inspector.scheduleSave();
         }
     }
 }
-

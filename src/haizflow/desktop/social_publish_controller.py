@@ -2013,9 +2013,20 @@ class SocialPublishController:
         item = self._host.tiktok_publish_items.item_at(row)
         if not item or not self._ensure_publish_project() or self._busy:
             return False
+        vietnamese = getattr(self._host, "_settings_language", "vi") == "vi"
+        title = "Xóa khỏi danh sách" if vietnamese else "Remove from list"
+        message = (
+            f"Xóa '{item['file_name']}' khỏi danh sách của dự án? "
+            "Tệp video và bài đã đăng trên mạng xã hội sẽ được giữ nguyên."
+            if vietnamese else
+            f"Remove '{item['file_name']}' from this project list? "
+            "The video file and any published social post will remain unchanged."
+        )
         if (
             QMessageBox.question(
-                None, "Remove publishing item", f"Remove '{item['file_name']}' and its project-owned copy?"
+                None,
+                title,
+                message,
             )
             != QMessageBox.StandardButton.Yes
         ):
@@ -2024,13 +2035,6 @@ class SocialPublishController:
         if removed is None:
             return False
         self._consent_confirmed = False
-        for key in ("file_path", "thumbnail_path"):
-            path = str(removed.get(key) or "")
-            if self._is_owned_file(path):
-                try:
-                    os.remove(path)
-                except FileNotFoundError:
-                    pass
         self._reload()
         self._host.refreshVideos()
         return True

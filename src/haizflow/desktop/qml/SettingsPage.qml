@@ -8,27 +8,18 @@ Item {
     id: root
 
     property string draftLanguage: ""
-    property string draftDevice: ""
     property bool localEditsPending: false
-    readonly property bool draftDirty: draftLanguage !== AppController.settingsLanguage || draftDevice !== AppController.processingDevice
-    readonly property var hardwareInfo: AppController.hardwareInfo
+    readonly property bool draftDirty: draftLanguage !== AppController.settingsLanguage
 
     function loadDraft() {
         draftLanguage = AppController.settingsLanguage;
-        draftDevice = AppController.processingDevice;
         localEditsPending = false;
-    }
-
-    function deviceStatus(device, hardwareSnapshot, interfaceLanguage) {
-        // Both extra arguments are deliberate QML dependencies for the slot's
-        // otherwise opaque hardware and localization reads.
-        return AppController.processingDeviceStatus(device);
     }
 
     function applyDraft() {
         if (!localEditsPending || !draftDirty)
             return;
-        if (AppController.applySettings("graphite", draftLanguage, draftDevice))
+        if (AppController.applySettings("graphite", draftLanguage))
             loadDraft();
     }
 
@@ -98,39 +89,6 @@ Item {
                 SettingRow {
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
-                    Layout.bottomMargin: Theme.space16
-                    label: qsTr("Thiết bị xử lý")
-                    description: root.deviceStatus(root.draftDevice, root.hardwareInfo, AppController.settingsLanguage)
-                    SegmentedControl {
-                        Layout.preferredWidth: 220
-                        currentValue: root.draftDevice
-                        options: [
-                            {
-                                label: qsTr("GPU"),
-                                value: "gpu"
-                            },
-                            {
-                                label: qsTr("CPU"),
-                                value: "cpu"
-                            }
-                        ]
-                        onActivated: function (value) {
-                            root.draftDevice = value;
-                            root.localEditsPending = true;
-                            applyTimer.restart();
-                        }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.divider
-                }
-
-                SettingRow {
-                    Layout.fillWidth: true
-                    Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space12
                     label: qsTr("Cấu hình đang dùng")
                     description: AppController.performanceProfileDetail
@@ -147,20 +105,6 @@ Item {
                         Accessible.name: qsTr("Giữ model sẵn sàng")
                         onToggled: AppController.setKeepModelsWarm(checked)
                     }
-                }
-
-                SettingRow {
-                    Layout.fillWidth: true
-                    Layout.bottomMargin: Theme.space12
-                    label: qsTr("GPU")
-                    description: root.hardwareInfo.activeGpuName || qsTr("Không khả dụng")
-                }
-
-                SettingRow {
-                    Layout.fillWidth: true
-                    Layout.bottomMargin: Theme.space16
-                    label: qsTr("CPU")
-                    description: root.hardwareInfo.cpuName || qsTr("Đang tải")
                 }
 
                 Rectangle {

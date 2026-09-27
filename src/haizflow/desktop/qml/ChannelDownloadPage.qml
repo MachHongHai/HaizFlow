@@ -205,7 +205,13 @@ Item {
                         }
                         StudioButton { visible: root.channelActive; text: qsTr("Hủy tải"); variant: "danger"; onClicked: root.downloader.cancel() }
                     }
-                    AppProgressBar { Layout.fillWidth: true; visible: root.channelActive; value: root.downloader.channelProgress }
+                    AppProgressBar {
+                        Layout.fillWidth: true
+                        visible: root.channelActive
+                        value: root.downloader.channelProgress
+                        indeterminate: root.downloader.channelProgress <= 0
+                        active: root.channelActive
+                    }
                 }
 
                 AppSurface {

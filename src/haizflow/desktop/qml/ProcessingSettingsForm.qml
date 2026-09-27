@@ -11,6 +11,7 @@ GridLayout {
     property bool showCloneAction: false
     property bool cloneActive: false
     property string speechRecognitionModel: "small"
+    property string translationModel: "auto"
     property var speechRecognitionOptions: []
     property int speechRecognitionIndex: 0
     property string targetLanguage: "vi"
@@ -28,8 +29,12 @@ GridLayout {
     property bool enableAudioSeparation: true
     property string backgroundMusicPath: ""
     property string watermarkText: ""
+    property string watermarkKind: "text"
+    property string watermarkImagePath: ""
+    property string watermarkVideoPath: ""
 
     signal speechRecognitionEdited(string value)
+    signal translationModelEdited(string value)
     signal targetLanguageEdited(string value)
     signal ttsProviderEdited(string value)
     signal ttsVoiceEdited(string value)
@@ -44,6 +49,7 @@ GridLayout {
     signal backgroundMusicFileRequested()
     signal backgroundMusicLinkRequested()
     signal backgroundMusicClearRequested()
+    signal watermarkKindEdited(string value)
     signal watermarkRequested()
 
     columns: width >= 760 ? 2 : 1
@@ -88,6 +94,18 @@ GridLayout {
                 model: root.speechRecognitionOptions
                 currentIndex: root.speechRecognitionIndex
                 onActivated: root.speechRecognitionEdited(currentValue)
+            }
+
+            SettingLabel {
+                Layout.fillWidth: true
+                text: qsTr("Model dịch")
+                helpText: qsTr("Áp dụng cho tất cả dự án. Q4 dùng ít bộ nhớ hơn.")
+            }
+            TranslationModelCombo {
+                Layout.fillWidth: true
+                enabled: root.editable && !AppController.isProcessing
+                selectedModel: root.translationModel
+                onEdited: function(value) { root.translationModelEdited(value) }
             }
 
             SettingLabel {
@@ -298,18 +316,36 @@ GridLayout {
                 Layout.fillWidth: true
                 text: qsTr("Watermark")
             }
+            SegmentedControl {
+                Layout.fillWidth: true
+                enabled: root.editable
+                currentValue: root.watermarkKind
+                options: [
+                    { "label": qsTr("Chữ"), "value": "text" },
+                    { "label": qsTr("Ảnh"), "value": "image" },
+                    { "label": qsTr("Video"), "value": "video" }
+                ]
+                onActivated: function(value) { root.watermarkKindEdited(value) }
+            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8
                 Text {
                     Layout.fillWidth: true
-                    text: root.watermarkText.length > 0 ? root.watermarkText : qsTr("Không có watermark")
-                    color: root.watermarkText.length > 0 ? Theme.text : Theme.textMuted
+                    text: root.watermarkKind === "image"
+                        ? (root.watermarkImagePath.length > 0 ? qsTr("Ảnh watermark") : qsTr("Chưa chọn ảnh"))
+                        : root.watermarkKind === "video"
+                            ? (root.watermarkVideoPath.length > 0 ? qsTr("Video watermark") : qsTr("Chưa chọn video"))
+                            : (root.watermarkText.length > 0 ? root.watermarkText : qsTr("Không có watermark"))
+                    color: (root.watermarkKind === "image" && root.watermarkImagePath.length > 0)
+                        || (root.watermarkKind === "video" && root.watermarkVideoPath.length > 0)
+                        || (root.watermarkKind === "text" && root.watermarkText.length > 0)
+                        ? Theme.text : Theme.textMuted
                     font.pixelSize: Theme.label
                     elide: Text.ElideRight
                 }
                 StudioButton {
-                    text: root.watermarkText.length > 0 ? qsTr("Chỉnh sửa") : qsTr("Thêm")
+                    text: qsTr("Chỉnh sửa")
                     compact: true
                     enabled: root.editable
                     onClicked: root.watermarkRequested()

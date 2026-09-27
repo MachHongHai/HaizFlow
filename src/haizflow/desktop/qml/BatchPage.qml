@@ -403,6 +403,7 @@ Item {
                     AppProgressBar {
                         Layout.fillWidth: true
                         value: AppController.batchProgress
+                        active: AppController.isBatchRunning
                     }
                 }
             }

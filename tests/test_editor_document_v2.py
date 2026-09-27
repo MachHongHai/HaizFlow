@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -14,6 +15,8 @@ from haizflow.pipeline.sequence_compiler import (
     apply_overlays,
     export_preflight,
     map_source_intervals,
+    materialize_source_sequence,
+    materialize_source_video,
     subtitle_style_overrides,
     write_subtitles,
 )
@@ -29,6 +32,86 @@ from haizflow.schemas.editor import (
 )
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services import editor_documents
+from haizflow.utils.ffmpeg import _binary, get_video_duration
+
+
+def test_moving_audio_beyond_source_extends_sequence_and_export_tail(tmp_path):
+    document = EditorDocument(
+        video_id="manual-tail",
+        sequence=EditorSequence(
+            duration_ms=6000,
+            edit_decisions=[SourceEditDecision(
+                decision_id="source", source_start_ms=0,
+                source_end_ms=6000, sequence_start_ms=0,
+            )],
+        ),
+        tracks=[EditorTrack(track_id="music", kind="music", name="Nhạc")],
+        clips=[EditorClip(
+            clip_id="music-1", track_id="music", kind="audio",
+            start_ms=4000, duration_ms=2000,
+        )],
+    )
+    host = SimpleNamespace(
+        _manual_editor_document=SimpleNamespace(document_object=document),
+        _editor_track_locked=lambda _document, _track: False,
+    )
+
+    def mutate(_label, callback, **_kwargs):
+        callback(document)
+        return True
+
+    host._apply_editor_mutation = mutate
+    assert HaizFlowController.moveClip(host, "music-1", 7000, "music")
+    assert document.clips[0].start_ms == 7000
+    assert document.sequence.duration_ms == 9000
+
+    with patch("haizflow.pipeline.sequence_compiler._run") as run:
+        materialize_source_video("source.mp4", document, tmp_path, "manual-tail")
+        command = run.call_args.args[0]
+        assert "tpad=stop_mode=clone:stop_duration=3.000000" in command[command.index("-filter_complex") + 1]
+
+    with patch("haizflow.pipeline.sequence_compiler._run") as run:
+        materialize_source_sequence("source.mp4", "source.wav", document, tmp_path, "manual-tail")
+        command = run.call_args.args[0]
+        filters = command[command.index("-filter_complex") + 1]
+        assert "tpad=stop_mode=clone:stop_duration=3.000000" in filters
+        assert "apad=whole_dur=9.000000" in filters
+
+    assert HaizFlowController.moveClip(host, "music-1", 1000, "music")
+    assert document.sequence.duration_ms == 6000
+
+
+def test_extended_source_sequence_renders_a_real_tail(tmp_path):
+    source_video = tmp_path / "source.mp4"
+    source_audio = tmp_path / "source.wav"
+    ffmpeg = _binary("ffmpeg")
+    subprocess.run([
+        ffmpeg, "-y", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10:d=1",
+        "-c:v", "mpeg4", str(source_video),
+    ], check=True, capture_output=True)
+    subprocess.run([
+        ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+        str(source_audio),
+    ], check=True, capture_output=True)
+    document = EditorDocument(
+        video_id="tail",
+        sequence=EditorSequence(
+            duration_ms=1500,
+            edit_decisions=[SourceEditDecision(
+                decision_id="source", source_start_ms=0,
+                source_end_ms=1000, sequence_start_ms=0,
+            )],
+        ),
+    )
+    extended_video, extended_audio = materialize_source_sequence(
+        str(source_video), str(source_audio), document, tmp_path / "output", "test-tail",
+    )
+    assert 1.4 <= get_video_duration(extended_video) <= 1.65
+    assert Path(extended_audio).stat().st_size > source_audio.stat().st_size
+    exported_video = materialize_source_video(
+        str(source_video), document, tmp_path / "export", "test-tail-export",
+    )
+    assert 1.4 <= get_video_duration(exported_video) <= 1.65
 
 
 def test_source_boundary_trim_shifts_layers_without_changing_text_or_voice_state():
@@ -578,7 +661,7 @@ def test_legacy_split_source_cannot_be_ripple_deleted_in_new_editor():
     assert document.model_dump() == before
 
 
-def test_solo_audio_track_clears_other_audio_solos():
+def test_retired_solo_and_lock_track_controls_cannot_be_reenabled():
     document = EditorDocument(
         video_id="manual-1",
         tracks=[
@@ -593,9 +676,10 @@ def test_solo_audio_track_clears_other_audio_solos():
         return True
 
     host = SimpleNamespace(_apply_editor_mutation=mutate)
-    assert HaizFlowController.setTrackState(host, "music", "solo", True)
+    assert not HaizFlowController.setTrackState(host, "music", "solo", True)
+    assert not HaizFlowController.setTrackState(host, "music", "locked", True)
     states = {item.track_id: item.solo for item in document.tracks}
-    assert states == {"voice": False, "music": True, "overlays": False}
+    assert states == {"voice": True, "music": False, "overlays": False}
 
 
 def _video(tmp_path: Path):
@@ -735,6 +819,31 @@ def test_source_decisions_share_the_same_clock_for_preview_and_export(tmp_path):
     text = output.read_text(encoding="utf-8")
     assert "00:00:00,100 --> 00:00:00,600" in text
     assert "00:00:01,300 --> 00:00:01,700" in text
+
+
+def test_retired_solo_flag_does_not_suppress_voice_aligned_subtitles(tmp_path):
+    document = EditorDocument(
+        video_id="manual-1",
+        sequence=EditorSequence(duration_ms=1000),
+        tracks=[
+            EditorTrack(track_id="subtitles", kind="subtitle", name="Phụ đề"),
+            EditorTrack(track_id="voice", kind="voice", name="Giọng đọc"),
+            EditorTrack(track_id="music", kind="music", name="Nhạc nền", solo=True),
+        ],
+        assets=[EditorAsset(asset_id="voice-a", kind="audio", path="voice-a.wav")],
+        clips=[
+            EditorClip(clip_id="subtitle-a", track_id="subtitles", kind="subtitle",
+                       segment_id="a", name="Xin chào", start_ms=0, duration_ms=900),
+            EditorClip(clip_id="voice-a", track_id="voice", kind="voice",
+                       asset_id="voice-a", segment_id="a", name="Xin chào",
+                       start_ms=0, duration_ms=900),
+        ],
+    )
+    output = tmp_path / "subtitles.srt"
+    with patch("haizflow.pipeline.speech_timing.voiced_subtitle_segments") as align:
+        align.side_effect = lambda segments, paths: segments
+        assert write_subtitles(document, output)
+    assert align.call_args.args[1] == ["voice-a.wav"]
 
 
 def test_keyframe_easing_uses_clip_local_time():

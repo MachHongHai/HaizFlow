@@ -362,20 +362,25 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("crop=1152:76:384:842", filter_graph)
         self.assertIn("overlay=384:842", filter_graph)
 
-    def test_ocr_cover_mode_ignores_a_stale_manual_subtitle_layout(self):
+    def test_ocr_cover_mode_uses_default_until_caption_layout_is_edited(self):
         from haizflow.pipeline.process_video import _manual_subtitle_layout_for_render
 
-        stale_video = SimpleNamespace(
+        default_video = SimpleNamespace(
             remove_original_subtitles=True,
-            subtitle_layout_override=True,
+            subtitle_layout_override=False,
         )
         manual_video = SimpleNamespace(
             remove_original_subtitles=False,
             subtitle_layout_override=True,
         )
 
-        self.assertFalse(_manual_subtitle_layout_for_render(stale_video))
+        self.assertFalse(_manual_subtitle_layout_for_render(default_video))
         self.assertTrue(_manual_subtitle_layout_for_render(manual_video))
+        edited_cover_video = SimpleNamespace(
+            remove_original_subtitles=True,
+            subtitle_layout_override=True,
+        )
+        self.assertTrue(_manual_subtitle_layout_for_render(edited_cover_video))
 
     def test_bundled_karaoke_font_is_available_to_ffmpeg(self):
         font_directory = render._karaoke_font_directory()

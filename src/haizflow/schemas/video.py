@@ -68,6 +68,7 @@ class VideoConfig(BaseModel):
     target_language: str = "vi"
     translator_provider: TranslatorProvider = "hymt2"
     speech_recognition_model: SpeechRecognitionModel = "small"
+    translation_model: Literal["auto", "q4", "full"] = "auto"
     tts_provider: TTSProvider = "omnivoice"
     tts_voice: str = "omnivoice:female"
     speaker_mode: SpeakerMode = "single"
@@ -82,8 +83,7 @@ class VideoConfig(BaseModel):
     background_music_volume: int = Field(default=30, ge=0, le=100)
     tts_volume: int = Field(default=100, ge=0, le=100)
     watermark_text: str = Field(default="", max_length=80)
-    # Manual may scale the established watermark treatment. Auto and Batch
-    # keep the existing 100% size and do not expose this control.
+    # Manual and Auto share the preview transform for watermark sizing.
     watermark_scale_percent: int = Field(default=100, ge=25, le=300)
     watermark_kind: WatermarkKind = "text"
     watermark_opacity_percent: int = Field(default=46, ge=0, le=100)
@@ -112,6 +112,7 @@ class VideoInfo(BaseModel):
     target_language: str
     translator_provider: TranslatorProvider = "hymt2"
     speech_recognition_model: SpeechRecognitionModel = "small"
+    translation_model: Literal["auto", "q4", "full"] = "auto"
     tts_provider: TTSProvider = "omnivoice"
     tts_voice: str
     speaker_mode: SpeakerMode = "single"

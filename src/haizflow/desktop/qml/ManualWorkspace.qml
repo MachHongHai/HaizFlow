@@ -20,6 +20,7 @@ Item {
     readonly property var dockPlacements: ({ "tools": "left", "properties": "right", "tasks": "right" })
     property string rightActivePanel: String(AppController.manualEditorWorkspace.rightActive || "tasks")
     property int leftDockWidth: Number(AppController.manualEditorWorkspace.leftWidth || 240)
+    property int timelineDesiredHeight: Number(AppController.manualEditorLayout.timelineHeight || 280)
     property string activeMonitor: String(AppController.manualEditorWorkspace.monitor || "result")
     readonly property var dockOrder: ["tools", "properties", "tasks"]
     property bool layoutReady: false
@@ -67,8 +68,15 @@ Item {
     }
     readonly property var segments: AppController.manualSubtitleModel.segments
     readonly property var editorModel: AppController.manualEditorDocumentModel
-    readonly property var rendererSegments: editorModel.subtitleSegments.length > 0
+    readonly property var captionSegments: editorModel.subtitleSegments.length > 0
         ? editorModel.subtitleSegments : segments
+    readonly property var voiceTimings: AppController.manualPreviewAudio.voiceTimings
+    readonly property var rendererSegments: captionSegments.map(function(segment) {
+        const timing = root.voiceTimings[String(segment.segment_id || segment.id || "")];
+        if (!timing || timing.text !== segment.text || Math.abs(timing.start - segment.start) > 0.02)
+            return segment;
+        return Object.assign({}, segment, { end: Math.min(segment.end, timing.end) });
+    })
     readonly property var editorSubtitleStyle: editorModel.defaultSubtitleStyle || ({})
     readonly property var selectedEditorClip: editorModel.selectedClip || ({})
     readonly property var selectedEditorClipIds: editorModel.selectedClipIds || []
@@ -226,11 +234,12 @@ Item {
         selectedStageIndex = imageToolIndex;
         watermarkTransformActive = true;
         AppController.manualEditorDocumentModel.selectClip("watermark-1", false);
-        activatePanel("properties", "right");
+        activatePanel("tasks", "right");
     }
 
     function selectEditorClip(clipId) {
-        AppController.manualEditorDocumentModel.selectClip(clipId, false);
+        if (AppController.manualEditorDocumentModel.selectedClipIds.indexOf(clipId) < 0)
+            AppController.manualEditorDocumentModel.selectClip(clipId, false);
         const selected = AppController.manualEditorDocumentModel.selectedClip;
         const trackId = String(selected.track_id || "");
         const stageByTrack = {
@@ -239,7 +248,9 @@ Item {
         };
         if (stageByTrack[trackId] !== undefined)
             selectedStageIndex = stageByTrack[trackId];
-        activatePanel(trackId === "subtitles" ? "tasks" : "properties", "right");
+        activatePanel(["subtitles", "source-video", "source-audio", "music"].indexOf(trackId) >= 0
+            || clipId === "watermark-1"
+            ? "tasks" : "properties", "right");
         root.forceActiveFocus();
     }
 
@@ -389,9 +400,9 @@ Item {
                 root.watermarkTransformActive = false;
                 root.subtitleAudioRefreshPending = false;
                 root.subtitleVisualRefreshPending = false;
+                root.reloadSegments();
             }
             // qmllint enable missing-property
-            root.reloadSegments();
             root.schedulePreview();
         }
 
@@ -467,7 +478,7 @@ Item {
         ManualEditorToolbar {
             Layout.fillWidth: true
             Layout.preferredHeight: 42
-            fileName: AppController.selectedFileName
+            projectTitle: AppController.projectName
             hasVideo: AppController.hasSelectedVideo
             hasOutput: AppController.hasSelectedOutput
             hasProject: AppController.hasOpenProject
@@ -476,12 +487,8 @@ Item {
             hasSelection: root.editorHasSelection
             sourceSelected: root.editorSourceSelected
             comparing: root.comparing
-            zoomFactor: manualSubtitleTimeline.zoomFactor
             onUndoRequested: AppController.undoEdit()
             onRedoRequested: AppController.redoEdit()
-            onZoomChanged: function(value) {
-                manualSubtitleTimeline.zoomAt(manualSubtitleTimeline.width / 2, value);
-            }
             onCompareToggled: root.comparing = !root.comparing
             onOutputRequested: AppController.openOutputFile()
             onExportRequested: {
@@ -499,7 +506,6 @@ Item {
                     technicalLogLoader.active = true;
             }
             onProjectDeleteRequested: AppController.deleteCurrentProject()
-            onResetWorkspaceRequested: root.resetWorkspaceLayout()
         }
 
         SourceMediaPanel {
@@ -519,17 +525,8 @@ Item {
             orientation: Qt.Vertical
 
             handle: Rectangle {
-                implicitHeight: 16
-                color: SplitHandle.hovered || SplitHandle.pressed ? Theme.interactiveMuted : "transparent"
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 52
-                    height: 3
-                    radius: 2
-                    color: parent.SplitHandle.hovered || parent.SplitHandle.pressed
-                        ? Theme.focus : Theme.outlineStrong
-                }
+                implicitHeight: 4
+                color: Theme.divider
             }
 
             SplitView {
@@ -677,9 +674,9 @@ Item {
                 id: manualSubtitleTimeline
                 visible: AppController.hasSelectedVideo
                 SplitView.fillWidth: true
-                SplitView.preferredHeight: root.height < 780 ? 210
-                    : Math.max(220, Math.min(520,
-                        Number(AppController.manualEditorLayout.timelineHeight || 280)))
+                SplitView.preferredHeight: root.height < 780
+                    ? Math.max(200, Math.min(220, root.timelineDesiredHeight))
+                    : Math.max(220, Math.min(520, root.timelineDesiredHeight))
                 SplitView.minimumHeight: 200
                 SplitView.maximumHeight: 520
                 onHeightChanged: {
@@ -721,6 +718,8 @@ Item {
                     };
                     if (stageByTrack[trackId] !== undefined)
                         root.selectedStageIndex = stageByTrack[trackId];
+                    if (["source-video", "source-audio", "music"].indexOf(trackId) >= 0)
+                        root.activatePanel("tasks", "right");
                     root.forceActiveFocus();
                 }
                 onTrackStateRequested: function(trackId, propertyName, value) {
@@ -748,6 +747,43 @@ Item {
                 }
             }
         }
+
+        Item {
+            id: timelineResizeGrip
+            visible: AppController.hasSelectedVideo
+            Layout.fillWidth: true
+            Layout.preferredHeight: 12
+            property real dragStartY: 0
+            property real dragStartHeight: 0
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: 36
+                height: 3
+                radius: 2
+                color: resizeArea.containsMouse || resizeArea.pressed
+                    ? Theme.focus : Theme.outlineStrong
+            }
+            MouseArea {
+                id: resizeArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.SizeVerCursor
+                onPressed: function(mouse) {
+                    timelineResizeGrip.dragStartY = timelineResizeGrip.mapToItem(root, mouse.x, mouse.y).y;
+                    timelineResizeGrip.dragStartHeight = manualSubtitleTimeline.height;
+                }
+                onPositionChanged: function(mouse) {
+                    if (!pressed)
+                        return;
+                    const currentY = timelineResizeGrip.mapToItem(root, mouse.x, mouse.y).y;
+                    root.timelineDesiredHeight = Math.max(200, Math.min(520,
+                        Math.round(timelineResizeGrip.dragStartHeight
+                            + timelineResizeGrip.dragStartY - currentY)));
+                }
+                onReleased: layoutSaveTimer.restart()
+            }
+        }
     }
 
     ManualToolNavigator {
@@ -768,16 +804,10 @@ Item {
         anchors.fill: parent
         visible: root.isPanelActive("properties")
         clipData: root.selectedEditorClip
-        subtitleSegment: root.selectedSubtitleIndex >= 0
-            && root.selectedSubtitleIndex < root.segments.length
-            ? root.segments[root.selectedSubtitleIndex] : ({})
-        legacySequence: Boolean(root.editorModel.document.sequence)
-            && (root.editorModel.document.sequence.edit_decisions || []).length > 1
         onOpenImageToolRequested: {
             root.selectedStageIndex = root.imageToolIndex;
             root.activatePanel("tasks", "right");
         }
-        onSettingsCommitted: root.schedulePreview()
         onWatermarkSettingsEdited: stageInspector.scheduleSave()
     }
 

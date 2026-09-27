@@ -280,8 +280,8 @@ class ResourcePackController(QObject):
         cpu_compatible, cpu_warning = self._hardware_compatibility("engine-cpu-py313")
         ordered_ids = [
             "engine-cuda128-py313",
-            "model-speech-gpu",
             "engine-cpu-py313",
+            "model-speech-gpu",
             "model-speech-cpu",
             "model-omnivoice",
             "model-demucs",
@@ -293,8 +293,8 @@ class ResourcePackController(QObject):
             "engine-cpu-py313": "Môi trường chạy model trên bộ xử lý chính.",
             "engine-cuda128-py313": "Môi trường tăng tốc dành cho GPU NVIDIA.",
             "engine-vision-onnx": "Môi trường nhận biết vùng chữ trong khung hình.",
-            "model-speech-cpu": "Whisper Small, HY-MT2 và căn thời gian lời thoại.",
-            "model-speech-gpu": "Whisper Small/Turbo, HY-MT2 và căn thời gian lời thoại.",
+            "model-speech-cpu": "Nhận dạng Whisper, dịch HY-MT2 Q4 và căn thời gian · CPU.",
+            "model-speech-gpu": "Nhận dạng Whisper Small/Turbo, dịch HY-MT2 và căn thời gian · NVIDIA.",
             "model-omnivoice": "Tạo giọng đọc cục bộ.",
             "model-demucs": "Tách lời thoại và âm thanh nền.",
             "model-subtitle-ocr": "Nhận biết vị trí phụ đề gốc.",
@@ -305,16 +305,21 @@ class ResourcePackController(QObject):
             if pack_id not in source_rows:
                 continue
             source = dict(source_rows[pack_id])
-            if pack_id in {"engine-cuda128-py313", "model-speech-gpu"}:
-                group = "gpu"
-                title = "NVIDIA · Khuyên dùng" if device == "gpu" and gpu_compatible else "NVIDIA"
-                compatible, warning = gpu_compatible, "" if gpu_compatible else gpu_warning
-            elif pack_id in {"engine-cpu-py313", "model-speech-cpu"}:
-                group = "cpu"
-                title = "CPU · Khuyên dùng" if device == "cpu" or not gpu_compatible else "CPU · Tùy chọn"
-                compatible, warning = cpu_compatible, "" if cpu_compatible else cpu_warning
+            if pack_id in {"engine-cuda128-py313", "engine-cpu-py313"}:
+                group = "runtime"
+                title = "Môi trường xử lý"
+                compatible, warning = (gpu_compatible, gpu_warning) if pack_id == "engine-cuda128-py313" else (cpu_compatible, cpu_warning)
+                backend = "gpu" if pack_id == "engine-cuda128-py313" else "cpu"
+            elif pack_id in {"model-speech-gpu", "model-speech-cpu"}:
+                group = "language"
+                title = "Nhận dạng và dịch"
+                backend = "gpu" if pack_id == "model-speech-gpu" else "cpu"
+                compatible, warning = (gpu_compatible, gpu_warning) if backend == "gpu" else (cpu_compatible, cpu_warning)
+            elif pack_id in {"model-omnivoice", "model-demucs"}:
+                group, title, backend = "audio", "Giọng đọc và âm thanh", ""
+                compatible, warning = True, ""
             else:
-                group, title = "tools", "Công cụ bổ sung"
+                group, title, backend = "image", "Hình ảnh và phụ đề gốc", ""
                 compatible, warning = True, ""
             source.update(
                 {
@@ -324,7 +329,7 @@ class ResourcePackController(QObject):
                     "summary": descriptions.get(pack_id, ""),
                     "hardwareCompatible": compatible,
                     "hardwareWarning": warning,
-                    "recommended": (group == device and compatible),
+                    "recommended": (backend == device and compatible),
                     "canInstall": bool(source.get("canInstall")) and compatible,
                 }
             )

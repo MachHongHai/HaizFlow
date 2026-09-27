@@ -3,6 +3,7 @@ import tempfile
 from queue import Empty
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from PySide6.QtWidgets import QMessageBox
 
 from haizflow.services import social_publish as tiktok_publish, zernio
 from haizflow.desktop.social_publish_controller import (
@@ -66,6 +67,32 @@ class SocialPublishControllerTests(unittest.TestCase):
     def setUp(self):
         self.host = _Host()
         self.controller = SocialPublishController(self.host)
+
+    def test_removing_post_only_removes_local_list_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            video = Path(directory) / "post.mp4"
+            thumbnail = Path(directory) / "thumb.png"
+            video.write_bytes(b"video")
+            thumbnail.write_bytes(b"image")
+            item = {
+                "id": "post-1",
+                "file_name": video.name,
+                "file_path": str(video),
+                "thumbnail_path": str(thumbnail),
+                "zernio_post_id": "remote-1",
+            }
+            self.host.tiktok_publish_items.set_items([item])
+            self.controller._project_root = directory
+            with (
+                patch.object(self.controller, "_ensure_publish_project", return_value=True),
+                patch.object(self.controller, "_reload"),
+                patch("haizflow.desktop.social_publish_controller.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes),
+                patch("haizflow.desktop.social_publish_controller.tiktok_publish.remove_item", return_value=item) as remove,
+            ):
+                self.assertTrue(self.controller.remove_item(0))
+            remove.assert_called_once_with(directory, "post-1")
+            self.assertTrue(video.exists())
+            self.assertTrue(thumbnail.exists())
 
     def test_onboarding_links_open_their_dedicated_zernio_pages(self):
         with patch(

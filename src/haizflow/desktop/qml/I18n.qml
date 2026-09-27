@@ -157,6 +157,26 @@ QtObject {
         return source
     }
 
+    function downloadStatus(source) {
+        if (language !== "vi" || !source)
+            return source
+        const direct = fixedText(source)
+        if (direct !== source)
+            return direct
+        let match = source.match(/^Saved to (.+)$/)
+        if (match)
+            return "Đã lưu tại " + match[1]
+        match = source.match(/^Queued (.+)$/)
+        if (match)
+            return "Đang chờ tải: " + match[1]
+        match = source.match(/^Preparing (.+)$/)
+        if (match)
+            return "Đang chuẩn bị: " + match[1]
+        if (source === "Refreshing video stream and retrying")
+            return "Đang làm mới luồng video để thử lại"
+        return source
+    }
+
     // Only backend-generated runtime messages remain here. Static UI copy is
     // translated through qsTr() and the compiled Qt catalog.
     readonly property var fixedVietnamese: ({

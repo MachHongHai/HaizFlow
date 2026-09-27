@@ -146,6 +146,58 @@ class ManualWorkflowTests(unittest.TestCase):
                 str(output_path),
             )
 
+    def test_completed_manual_voice_reconciles_document_before_preview_refresh(self):
+        video = SimpleNamespace(
+            video_id="manual-video", project_type="manual",
+            status="manual_ready", step="manual_voice", manual_target_tool="",
+        )
+        document_model = Mock()
+        host = SimpleNamespace(
+            _log_queue=queue.Queue(),
+            _selected_video_id=video.video_id,
+            _manual_editor_document=document_model,
+            refreshVideos=Mock(),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()),
+            _refresh_batch_model=Mock(),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+        host._log_queue.put(f"__QUEUE_FINISHED__:{video.video_id}")
+        with (
+            patch("haizflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video),
+            patch("haizflow.services.editor_documents.ensure", return_value="repaired-document") as ensure,
+        ):
+            ProcessingLifecycleController(host).drain_log_queue()
+        ensure.assert_called_once_with(video)
+        document_model.set_document.assert_called_once_with("repaired-document")
+        host.selectedVideoChanged.emit.assert_called_once()
+
+    def test_completed_translation_reloads_subtitles_before_syncing_voice(self):
+        video = SimpleNamespace(
+            video_id="manual-video", project_type="manual",
+            status="manual_ready", step="manual_translation", manual_target_tool="",
+        )
+        subtitles = SimpleNamespace(
+            load=Mock(), segments=[{"segment_id": "new", "text": "Câu vừa dịch"}], _states={},
+        )
+        host = SimpleNamespace(
+            _log_queue=queue.Queue(), _selected_video_id=video.video_id,
+            _manual_editor_document=Mock(), _manual_subtitles=subtitles,
+            _manual_editing_segment_id="", _refresh_selected_video_snapshot=Mock(),
+            reviewSegments=[{"text": "Câu vừa dịch"}],
+            refreshVideos=Mock(), selectedVideoChanged=SimpleNamespace(emit=Mock()),
+            _refresh_batch_model=Mock(), batchChanged=SimpleNamespace(emit=Mock()),
+        )
+        host._log_queue.put(f"__QUEUE_FINISHED__:{video.video_id}")
+        with (
+            patch("haizflow.desktop.processing_lifecycle_controller.video_store.get_video", return_value=video),
+            patch("haizflow.services.editor_documents.sync_subtitle_clips", return_value="updated") as sync,
+        ):
+            ProcessingLifecycleController(host).drain_log_queue()
+        host._refresh_selected_video_snapshot.assert_called_once()
+        subtitles.load.assert_called_once_with(video.video_id, host.reviewSegments)
+        sync.assert_called_once_with(video, subtitles.segments)
+        host._manual_editor_document.set_document.assert_called_once_with("updated")
+
     def test_retranslation_requires_confirmation_when_voice_is_active(self):
         video = SimpleNamespace(
             video_id="manual-video",
@@ -361,7 +413,7 @@ class ManualWorkflowTests(unittest.TestCase):
         self.assertEqual(changes["status"], "manual_ready")
         self.assertEqual(changes["step"], "manual_ready")
 
-    def test_manual_subtitle_layout_is_independent_from_original_subtitle_cleanup(self):
+    def test_explicit_subtitle_layout_is_independent_from_original_subtitle_cleanup(self):
         manual_video = SimpleNamespace(
             project_type="manual",
             subtitle_layout_override=True,
@@ -374,7 +426,7 @@ class ManualWorkflowTests(unittest.TestCase):
         )
 
         self.assertTrue(process_video._manual_subtitle_layout_for_render(manual_video))
-        self.assertFalse(process_video._manual_subtitle_layout_for_render(automatic_video))
+        self.assertTrue(process_video._manual_subtitle_layout_for_render(automatic_video))
 
     def test_voice_module_does_not_run_subtitle_formatting(self):
         with tempfile.TemporaryDirectory() as temporary:

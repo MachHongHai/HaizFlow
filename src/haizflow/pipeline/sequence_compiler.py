@@ -109,6 +109,23 @@ def materialize_source_sequence(
     filters.append(
         f"{''.join(concat_inputs)}concat=n={len(concat_inputs)}:v=1:a=1[sequence_v][sequence_a]"
     )
+    source_end_ms = max(
+        decision.sequence_start_ms + decision.source_end_ms - decision.source_start_ms
+        for decision in decisions
+    )
+    tail_seconds = max(0, document.sequence.duration_ms - source_end_ms) / 1000
+    video_label = "[sequence_v]"
+    audio_label = "[sequence_a]"
+    if tail_seconds > 0:
+        filters.append(
+            f"[sequence_v]tpad=stop_mode=clone:stop_duration={tail_seconds:.6f}[padded_v]"
+        )
+        filters.append(
+            f"[sequence_a]apad=whole_dur={document.sequence.duration_ms / 1000:.6f}"
+            f",atrim=duration={document.sequence.duration_ms / 1000:.6f}[padded_a]"
+        )
+        video_label = "[padded_v]"
+        audio_label = "[padded_a]"
     command = [
         _binary("ffmpeg"),
         "-y",
@@ -119,7 +136,7 @@ def materialize_source_sequence(
         "-filter_complex",
         ";".join(filters),
         "-map",
-        "[sequence_v]",
+        video_label,
         "-an",
         "-c:v",
         "libx264",
@@ -131,7 +148,7 @@ def materialize_source_sequence(
         "yuv420p",
         str(edited_video),
         "-map",
-        "[sequence_a]",
+        audio_label,
         "-vn",
         "-c:a",
         "pcm_s16le",
@@ -173,6 +190,17 @@ def materialize_source_video(
     if not inputs:
         raise RuntimeError("The editor sequence contains only empty source ranges.")
     filters.append(f"{''.join(inputs)}concat=n={len(inputs)}:v=1:a=0[sequence_v]")
+    source_end_ms = max(
+        decision.sequence_start_ms + decision.source_end_ms - decision.source_start_ms
+        for decision in decisions
+    )
+    tail_seconds = max(0, document.sequence.duration_ms - source_end_ms) / 1000
+    video_label = "[sequence_v]"
+    if tail_seconds > 0:
+        filters.append(
+            f"[sequence_v]tpad=stop_mode=clone:stop_duration={tail_seconds:.6f}[padded_v]"
+        )
+        video_label = "[padded_v]"
     command = [
         _binary("ffmpeg"),
         "-y",
@@ -181,7 +209,7 @@ def materialize_source_video(
         "-filter_complex",
         ";".join(filters),
         "-map",
-        "[sequence_v]",
+        video_label,
         "-an",
         "-c:v",
         "libx264",
@@ -215,14 +243,30 @@ def write_subtitles(document: EditorDocument | None, destination: str | Path) ->
     )
     if not clips:
         return False
+    from haizflow.pipeline.speech_timing import voiced_subtitle_segments
+
+    voice_track = next((track for track in document.tracks if track.track_id == "voice"), None)
+    voice_audible = bool(voice_track and voice_track.visible and not voice_track.muted)
+    voices = {clip.segment_id: clip for clip in document.clips
+              if clip.track_id == "voice" and clip.enabled and not clip.muted}
+    assets = {asset.asset_id: asset.path for asset in document.assets}
+    paths = []
+    for clip in clips:
+        voice = voices.get(clip.segment_id)
+        compatible = bool(voice and " ".join(voice.name.split()) == " ".join(clip.name.split()))
+        paths.append(assets.get(voice.asset_id, "") if voice_audible and compatible else "")
+    segments = voiced_subtitle_segments([
+        {"start": clip.start_ms / 1000, "end": (clip.start_ms + clip.duration_ms) / 1000, "text": clip.name}
+        for clip in clips
+    ], paths)
     subtitles = [
         srt.Subtitle(
             index=index,
-            start=timedelta(milliseconds=clip.start_ms),
-            end=timedelta(milliseconds=clip.start_ms + clip.duration_ms),
-            content=clip.name,
+            start=timedelta(seconds=segment["start"]),
+            end=timedelta(seconds=segment["end"]),
+            content=segment["text"],
         )
-        for index, clip in enumerate(clips, start=1)
+        for index, segment in enumerate(segments, start=1)
     ]
     Path(destination).write_text(srt.compose(subtitles), encoding="utf-8")
     return True

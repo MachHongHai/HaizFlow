@@ -79,10 +79,12 @@ Rectangle {
             textFormat: Text.PlainText
             elide: Text.ElideRight
         }
-        PreviewProgress {
-            visible: root.progress >= 0
+        AppProgressBar {
+            visible: root.activityState === "processing" || root.progress >= 0
             Layout.preferredWidth: 140
-            value: root.progress
+            value: Math.max(0, root.progress * 100)
+            indeterminate: root.progress < 0
+            active: root.activityState === "processing"
         }
         Text {
             visible: root.progress >= 0

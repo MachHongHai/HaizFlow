@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from haizflow.core.hardware import (
-    basic_hardware_capabilities,
-    clear_runtime_profile_cache,
+    configure_translation_model,
     recommended_processing_device,
-    validate_processing_device,
 )
 from haizflow.desktop.localization import QMessageBox, _set_ui_language
 from haizflow.services import desktop_settings
@@ -16,33 +14,32 @@ class SettingsController:
     def __init__(self, host):
         self._host = host
 
-    def apply(self, theme, language, processing_device) -> bool:
+    def apply(self, theme, language, translation_model) -> bool:
         host = self._host
         theme = "graphite"
-        processing_device = str(processing_device).lower()
+        translation_model = str(translation_model).lower()
+        if translation_model not in {"auto", "q4", "full"}:
+            return False
         pipeline_active = host._pipeline_is_active()
-        if processing_device != host._settings_processing_device and not (pipeline_active or host._device_switching):
-            clear_runtime_profile_cache()
-        capabilities = getattr(host, "_hardware_capabilities", None) or basic_hardware_capabilities()
-        compatible, compatibility_message = validate_processing_device(
-            processing_device,
-            capabilities,
-        )
-        if not compatible:
-            QMessageBox.warning(None, "Processing device", compatibility_message)
+        model_changed = translation_model != getattr(host, "_settings_translation_model", "auto")
+        if model_changed and pipeline_active:
+            QMessageBox.warning(None, "Translation model", "Wait until the current task finishes before changing the translation model.")
+            return False
+        if model_changed and translation_model == "full" and host._settings_processing_device != "gpu":
+            QMessageBox.warning(None, "Translation model", "HY-MT2 đầy đủ cần GPU NVIDIA tương thích. Hãy chọn Tự động hoặc Q4.")
             return False
         history_before = {
             "language": str(host._settings_language),
-            "processing_device": str(host._settings_processing_device),
+            "translation_model": str(getattr(host, "_settings_translation_model", "auto")),
         }
-        device_changed = processing_device != host._settings_processing_device
         try:
             settings = desktop_settings.save_settings(
                 {
                     "theme": theme,
                     "language": language,
-                    "processing_device": processing_device,
-                    "processing_device_origin": "manual",
+                    "processing_device": host._settings_processing_device,
+                    "processing_device_origin": "detected",
+                    "translation_model": translation_model,
                     "keep_models_warm": bool(getattr(host, "_keep_models_warm", True)),
                     "manual_project_cache_gib": int(getattr(host, "_manual_project_cache_gib", 4)),
                     "manual_global_cache_gib": int(getattr(host, "_manual_global_cache_gib", 16)),
@@ -55,6 +52,8 @@ class SettingsController:
         host._settings_language = settings["language"]
         host._settings_processing_device = settings["processing_device"]
         host._processing_device_origin = settings["processing_device_origin"]
+        host._settings_translation_model = settings.get("translation_model", "auto")
+        configure_translation_model(host._settings_translation_model)
         # Test doubles and one-version migration adapters may return only the
         # legacy keys. Preserve the active values until the normalized store
         # supplies the new resource settings.
@@ -69,11 +68,7 @@ class SettingsController:
         activity_events = getattr(host, "activity_events", None)
         if activity_events is not None:
             activity_events.set_language(host._settings_language)
-        if device_changed and (pipeline_active or host._device_switching):
-            host._pending_processing_device = host._settings_processing_device
-            host._status_message = "Settings applied. The current video keeps its processing device."
-        else:
-            host._status_message = "Settings applied"
+        host._status_message = "Settings applied"
         host.settingsChanged.emit()
         options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
         if options_changed:
@@ -83,26 +78,33 @@ class SettingsController:
         if voice_options_changed:
             voice_options_changed.emit()
         host.statusMessageChanged.emit()
-        if device_changed and not (pipeline_active or host._device_switching):
-            host._switch_processing_device(host._settings_processing_device)
+        if model_changed:
+            from haizflow.services.translation import shutdown_hymt2_worker
+
+            shutdown_hymt2_worker()
         record = getattr(host, "_record_app_settings_change", None)
         if callable(record):
             record(
                 history_before,
                 {
                     "language": str(host._settings_language),
-                    "processing_device": str(host._settings_processing_device),
+                    "translation_model": str(host._settings_translation_model),
                 },
             )
         return True
 
     def reset(self) -> None:
         host = self._host
+        if host._pipeline_is_active():
+            QMessageBox.warning(None, "Settings", "Wait until the current task finishes before restoring defaults.")
+            return
         history_before = {
             "language": str(host._settings_language),
-            "processing_device": str(host._settings_processing_device),
+            "translation_model": str(getattr(host, "_settings_translation_model", "auto")),
         }
         pipeline_active = host._pipeline_is_active()
+        from haizflow.core.hardware import basic_hardware_capabilities
+
         capabilities = getattr(host, "_hardware_capabilities", None) or basic_hardware_capabilities()
         try:
             settings = desktop_settings.reset_settings()
@@ -121,6 +123,9 @@ class SettingsController:
         device_changed = settings["processing_device"] != host._settings_processing_device
         host._settings_processing_device = settings["processing_device"]
         host._processing_device_origin = settings["processing_device_origin"]
+        model_changed = settings["translation_model"] != getattr(host, "_settings_translation_model", "auto")
+        host._settings_translation_model = settings["translation_model"]
+        configure_translation_model(host._settings_translation_model)
         host._keep_models_warm = settings["keep_models_warm"]
         host._manual_project_cache_gib = settings["manual_project_cache_gib"]
         host._manual_global_cache_gib = settings["manual_global_cache_gib"]
@@ -140,13 +145,17 @@ class SettingsController:
         host.statusMessageChanged.emit()
         if device_changed and not (pipeline_active or host._device_switching):
             host._switch_processing_device(host._settings_processing_device)
+        if model_changed and not pipeline_active:
+            from haizflow.services.translation import shutdown_hymt2_worker
+
+            shutdown_hymt2_worker()
         record = getattr(host, "_record_app_settings_change", None)
         if callable(record):
             record(
                 history_before,
                 {
                     "language": str(host._settings_language),
-                    "processing_device": str(host._settings_processing_device),
+                    "translation_model": str(host._settings_translation_model),
                 },
             )
 

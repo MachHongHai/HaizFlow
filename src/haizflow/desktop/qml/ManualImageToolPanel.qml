@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -12,8 +11,11 @@ ColumnLayout {
     readonly property string appliedTreatment: !AppController.removeOriginalSubtitles
         ? "keep" : AppController.originalSubtitleRemovalMode
     property string draftTreatment: appliedTreatment
+    readonly property string appliedWatermarkKind: AppController.watermarkKind
+    property string draftWatermarkKind: appliedWatermarkKind
 
     onAppliedTreatmentChanged: draftTreatment = appliedTreatment
+    onAppliedWatermarkKindChanged: draftWatermarkKind = appliedWatermarkKind
 
     SettingLabel {
         Layout.fillWidth: true
@@ -21,7 +23,7 @@ ColumnLayout {
     }
     AppComboBox {
         Layout.fillWidth: true
-        enabled: inspector.editable
+        enabled: imagePane.inspector.editable
         textRole: "label"
         valueRole: "value"
         model: [
@@ -42,7 +44,7 @@ ColumnLayout {
         visible: imagePane.draftTreatment !== imagePane.appliedTreatment
         text: qsTr("Áp dụng")
         variant: "primary"
-        enabled: inspector.editable && !inspector.taskQueued
+        enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
             && imagePane.draftTreatment !== imagePane.appliedTreatment
         onClicked: AppController.setManualSubtitleTreatment(imagePane.draftTreatment)
     }
@@ -52,78 +54,95 @@ ColumnLayout {
     }
     SegmentedControl {
         Layout.fillWidth: true
-        enabled: inspector.editable
+        enabled: imagePane.inspector.editable
         options: [
             { "label": qsTr("Chữ"), "value": "text" },
             { "label": qsTr("Ảnh"), "value": "image" },
             { "label": qsTr("Video"), "value": "video" }
         ]
-        currentValue: AppController.watermarkKind
+        currentValue: imagePane.draftWatermarkKind
         onActivated: function(value) {
-            AppController.watermarkKind = value;
-            inspector.scheduleSave();
+            imagePane.draftWatermarkKind = value;
+        }
+    }
+    StudioButton {
+        Layout.fillWidth: true
+        visible: imagePane.draftWatermarkKind !== imagePane.appliedWatermarkKind
+        text: qsTr("Áp dụng watermark")
+        variant: "primary"
+        enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
+        onClicked: {
+            AppController.watermarkKind = imagePane.draftWatermarkKind;
+            imagePane.inspector.scheduleSave();
         }
     }
     StudioField {
         Layout.fillWidth: true
-        visible: AppController.watermarkKind === "text"
-        enabled: inspector.editable
+        visible: imagePane.draftWatermarkKind === "text"
+            && imagePane.draftWatermarkKind === imagePane.appliedWatermarkKind
+        enabled: imagePane.inspector.editable
         placeholderText: qsTr("Nhập watermark")
         text: AppController.watermarkText
         maximumLength: 80
         onEditingFinished: {
             AppController.watermarkText = text;
-            inspector.scheduleSave();
+            imagePane.inspector.scheduleSave();
         }
     }
     StudioButton {
         Layout.fillWidth: true
-        visible: AppController.watermarkKind === "image"
+        visible: imagePane.draftWatermarkKind === "image"
         text: AppController.watermarkImagePath.length > 0
             ? qsTr("Đổi ảnh") : qsTr("Chọn ảnh")
         iconName: "folder"
         variant: "secondary"
-        enabled: inspector.editable
+        enabled: imagePane.inspector.editable
         onClicked: {
             const path = AppController.chooseWatermarkImage();
             if (path.length > 0 && AppController.setWatermarkImage(path)) {
                 AppController.watermarkKind = "image";
-                inspector.saveNow();
+                imagePane.draftWatermarkKind = "image";
+                imagePane.inspector.saveNow();
             }
         }
     }
     StudioButton {
         Layout.fillWidth: true
-        visible: AppController.watermarkKind === "video"
+        visible: imagePane.draftWatermarkKind === "video"
         text: AppController.watermarkVideoPath.length > 0
             ? qsTr("Đổi video thu nhỏ") : qsTr("Chọn video thu nhỏ")
         iconName: "video"
         variant: "secondary"
-        enabled: inspector.editable
+        enabled: imagePane.inspector.editable
         onClicked: {
             const path = AppController.chooseWatermarkVideo();
             if (path.length > 0 && AppController.setWatermarkVideo(path)) {
                 AppController.watermarkKind = "video";
-                inspector.saveNow();
+                imagePane.draftWatermarkKind = "video";
+                imagePane.inspector.saveNow();
             }
         }
     }
     SettingLabel {
         Layout.fillWidth: true
-        text: qsTr("Độ mờ · %1%").arg(AppController.watermarkOpacityPercent)
+        visible: imagePane.draftWatermarkKind === imagePane.appliedWatermarkKind
+        text: qsTr("Độ hiển thị · %1%").arg(AppController.watermarkOpacityPercent)
     }
     StudioSlider {
         Layout.fillWidth: true
-        enabled: inspector.editable
+        visible: imagePane.draftWatermarkKind === imagePane.appliedWatermarkKind
+        enabled: imagePane.inspector.editable
         from: 0; to: 100; stepSize: 1
         value: AppController.watermarkOpacityPercent
+        Accessible.name: qsTr("Độ hiển thị watermark")
         onMoved: AppController.watermarkOpacityPercent = Math.round(value)
-        onPressedChanged: if (!pressed) inspector.saveNow()
+        onPressedChanged: if (!pressed) imagePane.inspector.saveNow()
     }
     ManualWatermarkStyleControls {
         Layout.fillWidth: true
-        visible: AppController.watermarkKind === "text"
-        enabled: inspector.editable
-        onWatermarkStyleEdited: inspector.scheduleSave()
+        visible: imagePane.draftWatermarkKind === "text"
+            && imagePane.draftWatermarkKind === imagePane.appliedWatermarkKind
+        enabled: imagePane.inspector.editable
+        onWatermarkStyleEdited: imagePane.inspector.scheduleSave()
     }
 }

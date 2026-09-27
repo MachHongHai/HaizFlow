@@ -253,21 +253,22 @@ Popup {
                 Repeater {
                     model: ["R", "G", "B"]
                     delegate: RowLayout {
+                        id: channelRow
                         required property int index
                         required property string modelData
                         Layout.fillWidth: true
                         spacing: Theme.space4
-                        SettingLabel { text: modelData }
+                        SettingLabel { text: channelRow.modelData }
                         NumericField {
-                            objectName: "rgbChannel" + index
+                            objectName: "rgbChannel" + channelRow.index
                             Layout.fillWidth: true
                             from: 0
                             to: 255
-                            value: index === 0 ? root.red : index === 1 ? root.green : root.blue
+                            value: channelRow.index === 0 ? root.red : channelRow.index === 1 ? root.green : root.blue
                             onValueModified: {
-                                root.setRgb(index === 0 ? value : root.red,
-                                    index === 1 ? value : root.green,
-                                    index === 2 ? value : root.blue);
+                                root.setRgb(channelRow.index === 0 ? value : root.red,
+                                    channelRow.index === 1 ? value : root.green,
+                                    channelRow.index === 2 ? value : root.blue);
                                 hexField.text = root.draftColor;
                             }
                         }

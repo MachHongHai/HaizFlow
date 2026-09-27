@@ -7,7 +7,7 @@ import "."
 Rectangle {
     id: root
 
-    property string fileName: ""
+    property string projectTitle: ""
     property bool hasVideo: false
     property bool hasOutput: false
     property bool hasProject: false
@@ -16,11 +16,9 @@ Rectangle {
     property bool hasSelection: false
     property bool sourceSelected: false
     property bool comparing: false
-    property real zoomFactor: 1
 
     signal undoRequested()
     signal redoRequested()
-    signal zoomChanged(real value)
     signal compareToggled()
     signal outputRequested()
     signal exportRequested()
@@ -52,21 +50,14 @@ Rectangle {
             Layout.fillWidth: true
             Layout.minimumWidth: 100
             Layout.maximumWidth: Math.max(140, root.width * 0.28)
-            text: root.fileName
+            text: root.projectTitle
             color: Theme.text
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.control
             font.weight: Font.DemiBold
             elide: Text.ElideMiddle
             textFormat: Text.PlainText
-            Accessible.name: root.fileName
-        }
-
-        Rectangle {
-            Layout.preferredWidth: 1
-            Layout.preferredHeight: 22
-            color: Theme.divider
-            visible: root.hasVideo
+            Accessible.name: root.projectTitle
         }
 
         StudioIconButton {
@@ -86,42 +77,7 @@ Rectangle {
             onClicked: root.redoRequested()
         }
 
-        Rectangle {
-            Layout.preferredWidth: 1
-            Layout.preferredHeight: 22
-            color: Theme.divider
-            visible: root.hasVideo
-        }
-
         Item { Layout.fillWidth: true }
-
-        StudioIconButton {
-            visible: root.hasVideo && root.width >= 1180
-            controlSize: 40
-            iconName: "zoomOut"
-            enabled: root.zoomFactor > 1.001
-            toolTipText: qsTr("Thu nhỏ dòng thời gian")
-            onClicked: root.zoomChanged(Math.max(1, root.zoomFactor / 1.25))
-        }
-        Text {
-            visible: root.hasVideo && root.width >= 1180
-            Layout.preferredWidth: 42
-            text: Math.round(root.zoomFactor * 100) + "%"
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.metadata
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            textFormat: Text.PlainText
-        }
-        StudioIconButton {
-            visible: root.hasVideo && root.width >= 1180
-            controlSize: 40
-            iconName: "zoomIn"
-            enabled: root.zoomFactor < 23.999
-            toolTipText: qsTr("Phóng to dòng thời gian")
-            onClicked: root.zoomChanged(Math.min(24, root.zoomFactor * 1.25))
-        }
 
         StudioButton {
             visible: root.hasVideo
@@ -166,13 +122,6 @@ Rectangle {
             onVideoFolderRequested: root.videoFolderRequested()
             onTechnicalLogRequested: root.technicalLogRequested()
             onDeleteRequested: root.projectDeleteRequested()
-        }
-        StudioIconButton {
-            visible: root.hasVideo
-            controlSize: 40
-            iconName: "reset"
-            toolTipText: qsTr("Đặt lại bố cục editor")
-            onClicked: root.resetWorkspaceRequested()
         }
     }
 }

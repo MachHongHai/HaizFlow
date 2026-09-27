@@ -9,6 +9,7 @@ from pathlib import Path
 
 from haizflow.config import HF_HOME, MODELS_DIR
 
+import numpy as np
 import torch
 import torchaudio
 import whisperx
@@ -498,18 +499,12 @@ def _speech_windows_in_segment(
 
 
 def _split_long_chinese_speech(asr_model, audio, segments, batch_size, video_id):
-    """Re-transcribe bounded VAD utterances instead of translating long pauses.
+    """Split long Chinese spans and recheck speech omitted by the first pass.
 
     WhisperX merges VAD regions into up-to-30-second transcription chunks.
     Chinese has no verified word aligner here, so a single unpunctuated chunk
     would otherwise become one TTS/subtitle slot including every internal gap.
     """
-    if not any(
-        str(segment.get("language")) == "zh"
-        and float(segment["end"]) - float(segment["start"]) > 8.0
-        for segment in segments
-    ):
-        return segments
     try:
         from whisperx.vads.pyannote import Binarize
 
@@ -564,7 +559,144 @@ def _split_long_chinese_speech(asr_model, audio, segments, batch_size, video_id)
         else:
             log_to_video(video_id, f"Split Chinese {end - start:.1f}s speech span into {len(utterances)} utterances.")
             result.extend(utterances)
-    return result
+    # VAD can identify a short, isolated utterance which the full-video ASR
+    # omitted.  Recheck only uncovered speech windows, especially the tail of
+    # short-form videos; a gap in the transcript otherwise becomes a gap in
+    # translation, captions and narration alike.
+    recovered = _recover_uncovered_speech(asr_model, audio, result, regions, batch_size, video_id)
+    return sorted([*result, *recovered], key=lambda item: (float(item["start"]), float(item["end"])))
+
+
+def _recover_uncovered_speech(asr_model, audio, segments, regions, batch_size, video_id):
+    recovered = []
+    for left, right in regions:
+        check_cancellation(video_id)
+        if not 0.35 <= right - left <= 8.0:
+            continue
+        overlap = sum(max(0.0, min(right, float(item["end"])) - max(left, float(item["start"])))
+                      for item in [*segments, *recovered])
+        if overlap > 0.1 or overlap >= (right - left) * 0.2:
+            continue
+        clip = audio[int(left * _AUDIO_SAMPLE_RATE):int(right * _AUDIO_SAMPLE_RATE)]
+        if len(clip) < int(0.35 * _AUDIO_SAMPLE_RATE):
+            continue
+        try:
+            recognized = asr_model.transcribe(clip, batch_size=min(batch_size, 2), language="zh")
+        except Exception as exc:
+            log_to_video(video_id, f"WARNING: Uncovered speech {left:.2f}-{right:.2f}s could not be checked: {exc}")
+            continue
+        text = " ".join(str(item.get("text") or "").strip()
+                        for item in recognized.get("segments", []) if str(item.get("text") or "").strip()).strip()
+        if not text:
+            continue
+        log_to_video(video_id, f"Recovered omitted speech at {left:.2f}-{right:.2f}s: {text}")
+        recovered.append({"start": left, "end": right, "text": text,
+                          "language": "zh", "language_confidence": 1.0})
+    return recovered
+
+
+def _energetic_spans(audio, start: float, end: float) -> list[tuple[float, float]]:
+    """Find sustained foreground sound in uncovered gaps of a vocal stem."""
+    frame_samples = int(0.1 * _AUDIO_SAMPLE_RATE)
+    left = int(start * _AUDIO_SAMPLE_RATE)
+    right = int(end * _AUDIO_SAMPLE_RATE)
+    levels = np.asarray([
+        float(np.sqrt(np.mean(np.square(audio[offset:min(offset + frame_samples, right)]))))
+        for offset in range(left, right, frame_samples)
+        if min(offset + frame_samples, right) - offset >= frame_samples // 2
+    ])
+    if len(levels) == 0 or float(np.max(levels)) < 0.03:
+        return []
+    threshold = max(0.012, float(np.median(levels)) * 2.4, float(np.max(levels)) * 0.3)
+    active = np.flatnonzero(levels >= threshold)
+    if len(active) == 0:
+        return []
+    spans = []
+    first = previous = int(active[0])
+    for index in map(int, active[1:]):
+        if index - previous > 5:
+            if (previous - first + 1) * 0.1 >= 0.5:
+                spans.append((round(start + first * 0.1, 3), round(start + (previous + 1) * 0.1, 3)))
+            first = index
+        previous = index
+    if (previous - first + 1) * 0.1 >= 0.5:
+        spans.append((round(start + first * 0.1, 3), round(start + (previous + 1) * 0.1, 3)))
+    return spans
+
+
+def _recover_speech_without_vad(asr_model, audio, segments, language: str, video_id: str):
+    """Check the final uncovered speech, including gaps before a tiny last VAD hit."""
+    stable = [item for item in segments if float(item["end"]) - float(item["start"]) >= 0.25]
+    rejected = len(segments) - len(stable)
+    if rejected:
+        log_to_video(video_id, f"Ignored {rejected} sub-250ms ASR timestamp artifact(s); checking the audio directly.")
+    raw_model = getattr(getattr(asr_model, "model", None), "transcribe", None)
+    if not callable(raw_model):
+        return stable
+
+    duration = len(audio) / _AUDIO_SAMPLE_RATE
+    recovered = []
+    # The last VAD result may itself be a short word after a missed sentence.
+    # Searching only after its end misses that sentence (observed on Chinese
+    # speech at 155s followed by a 320ms result at 156s). Restrict the direct
+    # check to the outro and to energetic spans mostly outside known speech.
+    tail_start = max(0.0, duration - (12.0 if stable else 20.0))
+    candidates = _energetic_spans(audio, tail_start, duration)
+    for left, right in sorted(candidates, reverse=True)[:8]:
+        check_cancellation(video_id)
+        covered = sum(max(0.0, min(right, float(item["end"])) - max(left, float(item["start"])))
+                      for item in stable)
+        if covered >= (right - left) * 0.45:
+            continue
+        clip_start = max(tail_start, left - 0.3)
+        clip_end = min(duration, right + 0.3)
+        clip = audio[int(clip_start * _AUDIO_SAMPLE_RATE):int(clip_end * _AUDIO_SAMPLE_RATE)]
+        if len(clip) < int(0.5 * _AUDIO_SAMPLE_RATE):
+            continue
+        try:
+            result, _info = raw_model(
+                clip, language=language, vad_filter=False, beam_size=5,
+                condition_on_previous_text=False,
+            )
+            proposals = list(result)
+        except Exception as exc:
+            log_to_video(video_id, f"Direct speech check at {left:.2f}-{right:.2f}s failed: {exc}")
+            continue
+        if not proposals or any(
+            float(getattr(item, "avg_logprob", -10.0)) < -0.9
+            or float(getattr(item, "no_speech_prob", 1.0)) > 0.35
+            for item in proposals
+        ):
+            continue
+        text = ""
+        for item in proposals:
+            text = _merge_transcript_text(text, str(getattr(item, "text", "") or ""))
+        text = text.strip()
+        if len(text) < 2:
+            continue
+        if any(text == str(item.get("text") or "").strip() for item in stable):
+            continue
+        recovered_start = max(tail_start, left - 0.15)
+        recovered_end = min(duration, right + 0.15)
+        # Do not turn a recovered sentence and the following short reply into
+        # overlapping subtitle/voice slots. Keep the existing reply intact.
+        for item in stable:
+            known_start, known_end = float(item["start"]), float(item["end"])
+            if recovered_start < known_start < recovered_end:
+                recovered_end = known_start
+            elif known_start <= recovered_start < known_end:
+                recovered_start = known_end
+        if recovered_end - recovered_start < 0.35:
+            continue
+        log_to_video(video_id, f"Recovered speech missed by VAD at {left:.2f}-{right:.2f}s: {text}")
+        recovered.append({
+            "start": recovered_start,
+            "end": recovered_end,
+            "text": text,
+            "language": language,
+            "language_confidence": 1.0,
+        })
+    return sorted([*stable, *recovered], key=lambda item: float(item["start"]))
 
 
 def _alignment_groups(segments: list[dict]) -> list[list[dict]]:
@@ -1053,6 +1185,9 @@ def transcribe(
         if detected_language == "zh":
             initial_segments = _split_long_chinese_speech(
                 asr_model, audio, initial_segments, profile.whisper_batch_size, video_id,
+            )
+            initial_segments = _recover_speech_without_vad(
+                asr_model, audio, initial_segments, detected_language, video_id,
             )
 
         sentence_segments = _align_segments_by_language(

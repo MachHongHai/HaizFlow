@@ -250,6 +250,7 @@ class EditorPreviewController:
         return {
             "video_id": settings["video_id"],
             "source_identity": settings["source_identity"],
+            "editor_sequence": settings.get("editor_sequence", {}),
             "segments": [
                 {
                     "start": item.get("start", 0),
@@ -281,6 +282,7 @@ class EditorPreviewController:
         return {
             "video_id": settings["video_id"],
             "source_identity": settings["source_identity"],
+            "editor_sequence": settings.get("editor_sequence", {}),
             "crop": settings["crop"],
             "output_format": settings["output_format"],
             "remove_original_subtitles": removes_source_text,
@@ -461,6 +463,13 @@ class EditorPreviewController:
             # Version the proxy cache when its encoding contract changes.
             "preview_encoding": "layered-full-timeline-sdr-yuv420p-v5",
         }
+        if getattr(video, "project_type", "single") == "manual":
+            from haizflow.services import editor_documents
+
+            editor_document = editor_documents.load(video.video_id)
+            settings["editor_sequence"] = (
+                editor_document.sequence.model_dump() if editor_document else {}
+            )
         preview_dir = video_dir / "temp" / "editor-preview"
         fingerprint_settings = dict(settings)
         if getattr(video, "project_type", "single") == "manual" and hasattr(self._host, "manualPreviewAudio"):
@@ -600,6 +609,35 @@ class EditorPreviewController:
         try:
             # FFprobe can block on a damaged file.  It must never run on the
             # GUI thread; every request enters this worker before probing.
+            sequence_payload = settings.get("editor_sequence") or {}
+            if sequence_payload:
+                from haizflow.pipeline.sequence_compiler import (
+                    has_source_edits, materialize_source_video,
+                )
+                from haizflow.schemas.editor import EditorDocument, EditorSequence
+
+                editor_document = EditorDocument(
+                    video_id=video.video_id,
+                    sequence=EditorSequence.model_validate(sequence_payload),
+                )
+                if has_source_edits(editor_document):
+                    sequence_key = hashlib.sha256(json.dumps(
+                        {"source": settings["source_identity"], "sequence": sequence_payload},
+                        sort_keys=True, separators=(",", ":"),
+                    ).encode("utf-8")).hexdigest()[:20]
+                    source_dir = preview_dir / f"source-sequence-{sequence_key}"
+                    source_output = source_dir / "sequence-source.mp4"
+                    expected_seconds = editor_document.sequence.duration_ms / 1000
+                    if not source_output.is_file() or self._source_duration(str(source_output)) < expected_seconds - 0.25:
+                        start_video(process_id)
+                        try:
+                            materialize_source_video(
+                                settings["source_path"], editor_document,
+                                source_dir, process_id,
+                            )
+                        finally:
+                            clean_video(process_id)
+                    settings["source_path"] = str(source_output)
             total_duration = self._source_duration(settings["source_path"])
             if not self._request_is_current(generation, process_id):
                 return

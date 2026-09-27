@@ -55,13 +55,6 @@ Item {
             title: qsTr("Trang chủ")
 
             StudioButton {
-                text: qsTr("Dự án")
-                variant: "ghost"
-                iconName: "projects"
-                onClicked: root.projectsRequested()
-            }
-
-            StudioButton {
                 text: qsTr("Dự án mới")
                 variant: "primary"
                 iconName: "add"

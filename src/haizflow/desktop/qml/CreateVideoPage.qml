@@ -39,7 +39,7 @@ Item {
 
         PageHeader {
             Layout.fillWidth: true
-            title: qsTr("Xử lý video")
+            title: AppController.projectName || qsTr("Xử lý video")
 
             ProjectHeaderActions {
                 projectFolderEnabled: AppController.hasOpenProject

@@ -23,6 +23,7 @@ _MIN_GPU_VRAM_BYTES = 7 * _GIB
 _MIN_GPU_FREE_VRAM_BYTES = 5 * _GIB
 _FULL_GPU_VRAM_BYTES = 12 * _GIB
 _DEVICE_PREFERENCES = {"cpu", "gpu"}
+_TRANSLATION_MODELS = {"auto", "q4", "full"}
 _WINDOWS_INFO_CACHE: dict = {}
 _WINDOWS_INFO_REFRESHING = False
 _WINDOWS_INFO_LOCK = threading.Lock()
@@ -457,6 +458,23 @@ def processing_device_preference() -> str:
         return "cpu"
     preference = os.getenv("HAIZFLOW_PROCESSING_DEVICE", "cpu").strip().lower()
     return preference if preference in _DEVICE_PREFERENCES else "cpu"
+
+
+def translation_model_preference() -> str:
+    preference = os.getenv("HAIZFLOW_TRANSLATION_MODEL", "auto").strip().lower()
+    return preference if preference in _TRANSLATION_MODELS else "auto"
+
+
+def translation_model_signature_parts(preference: str | None = None) -> tuple[str, ...]:
+    """Keep legacy automatic caches valid; explicit model choices get distinct caches."""
+    preference = preference or translation_model_preference()
+    return () if preference == "auto" else (f"translation-model:{preference}",)
+
+
+def configure_translation_model(preference: str) -> str:
+    normalized = preference if preference in _TRANSLATION_MODELS else "auto"
+    os.environ["HAIZFLOW_TRANSLATION_MODEL"] = normalized
+    return normalized
 
 
 @lru_cache(maxsize=1)

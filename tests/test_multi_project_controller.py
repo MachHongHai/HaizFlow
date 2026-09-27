@@ -858,6 +858,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             source_language="auto",
             target_language="en",
             speech_recognition_model="small",
+            translation_model="auto",
             tts_provider="edge",
             tts_voice="en-US-JennyNeural",
             speaker_mode="single",

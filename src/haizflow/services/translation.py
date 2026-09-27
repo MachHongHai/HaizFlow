@@ -13,7 +13,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from haizflow.config import HYMT2_REQUEST_TIMEOUT_SECONDS, HYMT2_WARM_TIMEOUT_SECONDS
-from haizflow.core.hardware import processing_device_preference, runtime_profile
+from haizflow.core.hardware import processing_device_preference, runtime_profile, translation_model_preference
 from haizflow.core.paths import is_frozen, project_root
 from haizflow.pipeline.process_registry import register_process, release_process_job, unregister_process
 from haizflow.services.video_store import log_to_video
@@ -68,9 +68,18 @@ def translate_segments(
     source_language: str = "auto",
     provider: str = "hymt2",
     progress_callback=None,
+    translation_model: str = "auto",
 ):
     if provider != "hymt2":
         raise ValueError("HY-MT2 is the only supported translation provider.")
+    from haizflow.core.hardware import configure_translation_model
+
+    requested_model = str(translation_model or "auto").lower()
+    if requested_model not in {"auto", "q4", "full"}:
+        raise ValueError(f"Unsupported translation model: {translation_model}")
+    if translation_model_preference() != requested_model:
+        shutdown_hymt2_worker()
+        configure_translation_model(requested_model)
 
     target_language_name = language_name(target_language)
     log_to_video(video_id, f"Initializing HY-MT2 translation | target: {target_language_name}.")
@@ -194,7 +203,8 @@ def _worker_command() -> list[str]:
     # On an 8 GB GPU, use the installed CPU speech pack's Q4 translator when
     # available. The CUDA engine pack does not include llama_cpp, and loading
     # full HY-MT2 alongside Whisper can exhaust both Windows commit and VRAM.
-    if runtime_profile().key == "cuda_low_memory":
+    preference = translation_model_preference()
+    if preference == "q4" or (preference == "auto" and runtime_profile().key == "cuda_low_memory"):
         cpu_engine = installed_engine_command(
             "translation", "hymt2_server", {"device": "cpu"}
         )
@@ -203,7 +213,7 @@ def _worker_command() -> list[str]:
     external = installed_engine_command(
         "translation",
         "hymt2_server",
-        {"device": processing_device_preference()},
+        {"device": "gpu" if preference == "full" else "cpu" if preference == "q4" else processing_device_preference()},
     )
     if external:
         return external

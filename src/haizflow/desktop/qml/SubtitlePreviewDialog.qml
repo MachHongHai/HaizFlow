@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import "."
@@ -14,51 +16,27 @@ FloatingToolDialog {
     property int draftBoxHeight: 6
 
     function clamp(value, minimum, maximum) {
-        return Math.max(minimum, Math.min(maximum, value))
+        return Math.max(minimum, Math.min(maximum, value));
     }
 
     function openWithLayout(fontSize, positionX, positionY, boxWidth, boxHeight) {
-        draftFontSize = root.clamp(Number(fontSize), 10, 240)
-        draftPositionX = root.clamp(Number(positionX), 0, 100)
-        draftPositionY = root.clamp(Number(positionY), 0, 100)
-        draftBoxWidth = root.clamp(Number(boxWidth), 20, 100)
-        draftBoxHeight = root.clamp(Number(boxHeight), 1, 100)
-        open()
-        Qt.callLater(syncEditorPosition)
-    }
-
-    function syncEditorPosition() {
-        if (editorCanvas.width <= 0 || editorCanvas.height <= 0)
-            return
-        subtitleSample.x = root.clamp(
-            editorCanvas.width * draftPositionX / 100 - subtitleSample.width / 2,
-            0,
-            editorCanvas.width - subtitleSample.width
-        )
-        subtitleSample.y = root.clamp(
-            editorCanvas.height * draftPositionY / 100 - subtitleSample.height / 2,
-            0,
-            editorCanvas.height - subtitleSample.height
-        )
-    }
-
-    function commitEditorPosition() {
-        if (editorCanvas.width <= 0 || editorCanvas.height <= 0)
-            return
-        draftPositionX = Math.round(root.clamp((subtitleSample.x + subtitleSample.width / 2) / editorCanvas.width * 100, 0, 100))
-        draftPositionY = Math.round(root.clamp((subtitleSample.y + subtitleSample.height / 2) / editorCanvas.height * 100, 0, 100))
-        subtitleLayoutEdited(draftFontSize, draftPositionX, draftPositionY, draftBoxWidth, draftBoxHeight)
+        draftFontSize = clamp(Number(fontSize), 10, 240);
+        draftPositionX = clamp(Number(positionX), 0, 100);
+        draftPositionY = clamp(Number(positionY), 0, 100);
+        draftBoxWidth = clamp(Number(boxWidth), 20, 100);
+        draftBoxHeight = clamp(Number(boxHeight), 1, 100);
+        open();
     }
 
     expandedWidth: 920
-    expandedHeight: 760
-    toolTitle: qsTr("Xem trước phụ đề mới")
-    toolSubtitle: qsTr("Kéo phụ đề để di chuyển; dùng thanh trượt để đổi cỡ chữ")
+    expandedHeight: 700
+    toolTitle: qsTr("Xem trước phụ đề")
+    toolSubtitle: qsTr("Kéo chữ để di chuyển · Kéo góc để đổi cỡ")
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.space16
-        spacing: Theme.space16
+        spacing: Theme.space12
 
         Rectangle {
             Layout.fillWidth: true
@@ -72,7 +50,6 @@ FloatingToolDialog {
 
             Image {
                 id: previewImage
-
                 anchors.fill: parent
                 anchors.margins: 1
                 source: AppController.videoThumbnailSource
@@ -82,122 +59,53 @@ FloatingToolDialog {
                 asynchronous: true
             }
 
-            Item {
-                id: editorCanvas
-
-                anchors.centerIn: parent
-                width: previewImage.status === Image.Ready ? previewImage.paintedWidth : parent.width
-                height: previewImage.status === Image.Ready ? previewImage.paintedHeight : parent.height
-
-                onWidthChanged: if (root.visible) Qt.callLater(root.syncEditorPosition)
-                onHeightChanged: if (root.visible) Qt.callLater(root.syncEditorPosition)
-
-                Item {
-                    id: subtitleSample
-
-                    width: karaokeRow.implicitWidth + Theme.space12
-                    height: karaokeRow.implicitHeight + Theme.space8
-                    onWidthChanged: if (root.visible) Qt.callLater(root.syncEditorPosition)
-                    onHeightChanged: if (root.visible) Qt.callLater(root.syncEditorPosition)
-
-                    Row {
-                        id: karaokeRow
-
-                        anchors.centerIn: parent
-                        spacing: 0
-
-                        Text {
-                            text: qsTr("PHỤ ĐỀ ")
-                            color: "white"
-                            style: Text.Outline
-                            styleColor: "black"
-                            font.family: karaokeFont.name
-                            font.pixelSize: Math.max(12, root.draftFontSize * editorCanvas.height / (editorCanvas.height > editorCanvas.width ? 1920 : 1080))
-                            font.bold: true
-                            textFormat: Text.PlainText
-                        }
-
-                        Text {
-                            text: qsTr("MẪU")
-                            color: "#FFF200"
-                            style: Text.Outline
-                            styleColor: "black"
-                            font.family: karaokeFont.name
-                            font.pixelSize: Math.max(12, root.draftFontSize * editorCanvas.height / (editorCanvas.height > editorCanvas.width ? 1920 : 1080))
-                            font.bold: true
-                            textFormat: Text.PlainText
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.SizeAllCursor
-                        drag.target: subtitleSample
-                        drag.minimumX: 0
-                        drag.maximumX: editorCanvas.width - subtitleSample.width
-                        drag.minimumY: 0
-                        drag.maximumY: editorCanvas.height - subtitleSample.height
-                        onReleased: root.commitEditorPosition()
-                    }
+            SubtitleTransformOverlay {
+                anchors.fill: parent
+                videoRect: Qt.rect(
+                    previewImage.x + (previewImage.width - previewImage.paintedWidth) / 2,
+                    previewImage.y + (previewImage.height - previewImage.paintedHeight) / 2,
+                    previewImage.paintedWidth,
+                    previewImage.paintedHeight)
+                sampleText: qsTr("PHỤ ĐỀ MẪU")
+                sampleFontFamily: sampleFont.name
+                sampleTextColor: AppController.subtitleTextColor
+                sampleOutlineColor: AppController.subtitleOutlineColor
+                sampleBold: AppController.subtitleBold
+                sampleItalic: AppController.subtitleItalic
+                fontSize: root.draftFontSize
+                positionXPercent: root.draftPositionX
+                positionYPercent: root.draftPositionY
+                boxWidthPercent: root.draftBoxWidth
+                interactive: true
+                editing: true
+                onLayoutCommitted: function(fontSize, positionX, positionY) {
+                    root.draftFontSize = fontSize;
+                    root.draftPositionX = positionX;
+                    root.draftPositionY = positionY;
+                    root.subtitleLayoutEdited(fontSize, positionX, positionY,
+                        root.draftBoxWidth, root.draftBoxHeight);
                 }
             }
         }
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: Theme.space12
-
-            Text {
-                text: qsTr("Cỡ chữ")
-                color: Theme.textMuted
-                font.pixelSize: Theme.caption
-                textFormat: Text.PlainText
-            }
-
-            AppSlider {
-                Layout.fillWidth: true
-                from: 10
-                to: 240
-                stepSize: 1
-                value: root.draftFontSize
-                onMoved: root.draftFontSize = Math.round(value)
-                onPressedChanged: {
-                    if (!pressed)
-                        root.subtitleLayoutEdited(root.draftFontSize, root.draftPositionX, root.draftPositionY, root.draftBoxWidth, root.draftBoxHeight)
-                }
-            }
-
-            Text {
-                Layout.preferredWidth: 48
-                text: qsTr("%1 px").arg(root.draftFontSize)
-                color: Theme.text
-                font.pixelSize: Theme.caption
-                horizontalAlignment: Text.AlignRight
-                textFormat: Text.PlainText
-            }
-
             StudioButton {
-                text: qsTr("Đặt lại vị trí")
+                text: qsTr("Đặt lại")
+                variant: "secondary"
                 onClicked: {
-                    root.draftPositionX = 51
-                    root.draftPositionY = 96
-                    root.syncEditorPosition()
-                    root.subtitleLayoutEdited(
-                        root.draftFontSize,
-                        51,
-                        96,
-                        root.draftBoxWidth,
-                        root.draftBoxHeight
-                    )
+                    root.draftPositionX = 51;
+                    root.draftPositionY = 96;
+                    root.subtitleLayoutEdited(root.draftFontSize, 51, 96,
+                        root.draftBoxWidth, root.draftBoxHeight);
                 }
             }
+            Item { Layout.fillWidth: true }
         }
-
-        Item { Layout.preferredHeight: Theme.space8 }
     }
 
     FontLoader {
-        id: karaokeFont
+        id: sampleFont
         source: "../../assets/fonts/Bangers-Regular.ttf"
     }
 }

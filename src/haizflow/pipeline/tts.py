@@ -97,7 +97,7 @@ def _split_edge_request(text: str, limit: int = _EDGE_MAX_REQUEST_CHARACTERS) ->
                 remaining.rfind(" ", 0, limit + 1),
             )
             boundary = boundary + (1 if boundary >= 0 else 0)
-            if boundary < max(40, limit // 2):
+            if boundary < max(8, min(40, limit // 2)):
                 boundary = limit
             prefix, remaining = remaining[:boundary].strip(), remaining[boundary:].strip()
             if current:
@@ -507,6 +507,33 @@ def _generate_edge_voice_parts(
                 except Exception as exc:
                     if is_cancelled(video_id):
                         check_cancellation(video_id)
+                    if _tts_error_code(exc) == "edge_no_audio" and len(preprocess_text_for_tts(text)) >= 24:
+                        # Edge occasionally returns no audio for a complete
+                        # sentence while accepting its shorter clauses. Keep
+                        # the same voice and every word; never replace it with
+                        # silence or an unrelated packaged sample.
+                        fragment_limit = max(12, min(28, len(text) // 2))
+                        log_to_video(
+                            video_id,
+                            f"[TTS][FRAGMENT_RECOVERY] segment={index}/{document_total} "
+                            f"max_characters={fragment_limit}",
+                        )
+                        try:
+                            attempts = await _tts_text_with_retry(
+                                text,
+                                voice,
+                                part_path,
+                                _RECOVERY_RETRIES,
+                                video_id=video_id,
+                                base_delay=2.5,
+                                retry_callback=retry_logger(index, "fragment", text),
+                                chunk_limit=fragment_limit,
+                            )
+                        except Exception as fragment_exc:
+                            exc = fragment_exc
+                        else:
+                            report_completed(index, phase="fragment", attempts=attempts)
+                            continue
                     permanent_failures.append((index, initial_error, exc))
                     _remove_file(part_path)
                     log_to_video(

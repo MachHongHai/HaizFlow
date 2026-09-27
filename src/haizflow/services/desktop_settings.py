@@ -13,6 +13,7 @@ DEFAULT_SETTINGS = {
     "language": "en",
     "processing_device": "cpu",
     "processing_device_origin": "detected",
+    "translation_model": "auto",
     "keep_models_warm": True,
     "manual_project_cache_gib": 4,
     "manual_global_cache_gib": 16,
@@ -62,10 +63,18 @@ def load_settings() -> dict:
                 settings["processing_device"] = "cpu"
                 settings["processing_device_origin"] = "detected"
                 migrate_legacy_settings = True
+            # The device toggle was removed. Old manual choices must no longer
+            # pin this installation to CPU or GPU without a visible control.
+            if settings.get("processing_device_origin") == "manual":
+                settings["processing_device_origin"] = "detected"
+                migrate_legacy_settings = True
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     if settings.get("theme") != "graphite":
         settings["theme"] = "graphite"
+        migrate_legacy_settings = True
+    if settings.get("translation_model") not in {"auto", "q4", "full"}:
+        settings["translation_model"] = "auto"
         migrate_legacy_settings = True
     settings["manual_editor_workspace"] = _normalize_manual_workspace(
         settings.get("manual_editor_workspace")
@@ -117,6 +126,11 @@ def save_settings(settings: dict) -> dict:
             merged.get("processing_device_origin")
             if merged.get("processing_device_origin") in {"detected", "manual"}
             else "detected"
+        ),
+        "translation_model": (
+            merged.get("translation_model")
+            if merged.get("translation_model") in {"auto", "q4", "full"}
+            else "auto"
         ),
         "keep_models_warm": bool(merged.get("keep_models_warm", True)),
         "manual_project_cache_gib": bounded_integer("manual_project_cache_gib", 4, 1, 64),

@@ -115,6 +115,7 @@ class HaizFlowController(QObject):
     _EDITABLE_VIDEO_SETTING_FIELDS = (
         "target_language",
         "speech_recognition_model",
+        "translation_model",
         "tts_provider",
         "tts_voice",
         "speaker_mode",
@@ -143,6 +144,7 @@ class HaizFlowController(QObject):
     videoThumbnailChanged = Signal()
     targetLanguageChanged = Signal()
     speechRecognitionModelChanged = Signal()
+    translationModelChanged = Signal()
     speechRecognitionModelOptionsChanged = Signal()
     ttsProviderChanged = Signal()
     ttsProviderOptionsChanged = Signal()
@@ -233,6 +235,7 @@ class HaizFlowController(QObject):
         self._video_thumbnail_source = ""
         self._target_language = "vi"
         self._speech_recognition_model = "small"
+        self._translation_model = "auto"
         self._tts_provider = "omnivoice"
         self._tts_voice = "omnivoice:female"
         self._speaker_mode = "single"
@@ -385,6 +388,10 @@ class HaizFlowController(QObject):
         self._settings_language = settings["language"]
         self._settings_processing_device = settings["processing_device"]
         self._processing_device_origin = settings["processing_device_origin"]
+        self._settings_translation_model = settings["translation_model"]
+        from haizflow.core.hardware import configure_translation_model
+
+        configure_translation_model(self._settings_translation_model)
         self._keep_models_warm = settings["keep_models_warm"]
         self._manual_project_cache_gib = settings["manual_project_cache_gib"]
         self._manual_global_cache_gib = settings["manual_global_cache_gib"]
@@ -1654,15 +1661,11 @@ class HaizFlowController(QObject):
     def removeOriginalSubtitles(self, value):
         normalized = bool(value)
         changed = self._remove_original_subtitles != normalized
-        # Manual exposes source cleanup and translated-caption placement as
-        # independent visual tools. Auto/Batch keep their established compact
-        # behaviour where OCR placement owns the replacement subtitle region.
-        layout_changed = (
-            normalized and self._subtitle_layout_override and getattr(self, "_project_type", "single") != "manual"
-        )
-        if changed or layout_changed:
+        # Choosing cover resets Auto to its OCR-derived placement. The user
+        # can then drag or resize the translated subtitle explicitly.
+        if changed:
             self._remove_original_subtitles = normalized
-            if layout_changed:
+            if normalized and getattr(self, "_project_type", "single") != "manual":
                 self._subtitle_layout_override = False
             self.subtitleSettingsChanged.emit()
 
@@ -2577,6 +2580,22 @@ class HaizFlowController(QObject):
     def processingDevice(self):
         return self._settings_processing_device
 
+    @Property(str, notify=translationModelChanged)
+    def translationModel(self):
+        return self._translation_model
+
+    @translationModel.setter
+    def translationModel(self, value):
+        normalized = str(value or "auto").lower()
+        if normalized not in {"auto", "q4", "full"}:
+            return
+        if normalized == "full" and self._settings_processing_device != "gpu":
+            self._show_app_alert("Model dịch", "HY-MT2 đầy đủ cần GPU NVIDIA tương thích.", "warning")
+            return
+        if normalized != self._translation_model:
+            self._translation_model = normalized
+            self.translationModelChanged.emit()
+
     @Property(bool, notify=settingsChanged)
     def keepModelsWarm(self):
         return bool(self._keep_models_warm)
@@ -2943,9 +2962,12 @@ class HaizFlowController(QObject):
             project_name, project_directory, project_type
         )
 
+    @Slot(str, str, result=bool)
     @Slot(str, str, str, result=bool)
-    def applySettings(self, theme, language, processing_device):
-        return HaizFlowController._settings_delegate_for(self).apply(theme, language, processing_device)
+    def applySettings(self, theme, language, translation_model=None):
+        if translation_model is None:
+            translation_model = self._settings_translation_model
+        return HaizFlowController._settings_delegate_for(self).apply(theme, language, translation_model)
 
     @Slot(bool)
     def setKeepModelsWarm(self, enabled):
@@ -3115,6 +3137,7 @@ class HaizFlowController(QObject):
         subtitle_style=None,
         original_subtitle_removal_mode=None,
         speaker_mode=None,
+        translation_model=None,
     ) -> bool:
         return HaizFlowController._project_commands_for(self).apply_batch_settings(
             workflow_mode,
@@ -3132,6 +3155,7 @@ class HaizFlowController(QObject):
             original_subtitle_removal_mode,
             speech_recognition_model=speech_recognition_model,
             speaker_mode=speaker_mode,
+            translation_model=translation_model,
         )
 
     @Slot(result=bool)
@@ -3152,9 +3176,10 @@ class HaizFlowController(QObject):
             self._subtitle_style.model_dump(),
             self._original_subtitle_removal_mode,
             self._speaker_mode,
+            self._translation_model,
         )
 
-    @Slot(str, str, str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, str, result=bool)
+    @Slot(str, str, str, str, str, bool, int, int, int, str, str, bool, "QVariantMap", str, str, str, result=bool)
     def applyBatchSettingsDraft(
         self,
         workflow_mode: str,
@@ -3172,6 +3197,7 @@ class HaizFlowController(QObject):
         subtitle_style=None,
         original_subtitle_removal_mode: str | None = None,
         speaker_mode: str | None = None,
+        translation_model: str | None = None,
     ):
         # Keep direct Python callers from older integrations working while the
         # QML-facing signature carries the new ASR model field.
@@ -3207,6 +3233,7 @@ class HaizFlowController(QObject):
             subtitle_style,
             original_subtitle_removal_mode,
             speaker_mode,
+            translation_model,
         )
 
     @Slot()
@@ -3874,7 +3901,7 @@ class HaizFlowController(QObject):
         return self._settings_controller.apply(
             "graphite",
             str(values.get("language") or "vi"),
-            str(values.get("processing_device") or "cpu"),
+            str(values.get("translation_model") or "auto"),
         )
 
     def _record_app_settings_change(self, before: dict[str, str], after: dict[str, str]) -> None:
@@ -4107,8 +4134,9 @@ class HaizFlowController(QObject):
 
     @staticmethod
     def _editor_track_locked(document, track_id: str) -> bool:
-        track = next((item for item in document.tracks if item.track_id == track_id), None)
-        return bool(track and track.locked)
+        # Legacy documents may still contain the retired lock flag. It must
+        # not make a track uneditable after its unlock control was removed.
+        return False
 
     @staticmethod
     def _refresh_source_sequence(document) -> None:
@@ -4132,7 +4160,7 @@ class HaizFlowController(QObject):
             )
             sequence_position += clip.duration_ms
         document.sequence.edit_decisions = [SourceEditDecision.model_validate(item) for item in decisions]
-        document.sequence.duration_ms = sequence_position
+        editor_documents.refresh_sequence_duration(document)
 
     @Slot(int, result=bool)
     def splitSourceAt(self, time_ms: int) -> bool:
@@ -4248,19 +4276,18 @@ class HaizFlowController(QObject):
                 clip.duration_ms -= delta
                 clip.source_in_ms = max(0, clip.source_in_ms + delta)
             else:
-                maximum_end = document.sequence.duration_ms
+                maximum_end = 86_400_000
                 if asset_duration:
                     maximum_end = min(
                         maximum_end,
                         clip.start_ms + max(80, asset_duration - clip.source_in_ms),
-                    ) if clip.track_id != "source-video" else (
-                        clip.start_ms + max(80, asset_duration - clip.source_in_ms)
-                    )
+                    ) if not clip.loop else maximum_end
                 maximum_end = max(clip.start_ms + 80, maximum_end)
                 next_end = min(maximum_end, max(clip.start_ms + 80, position))
                 clip.duration_ms = next_end - clip.start_ms
             if clip.source_out_ms or clip.asset_id:
                 clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+            editor_documents.refresh_sequence_duration(document)
             if clip.track_id == "source-video":
                 self._refresh_source_sequence(document)
 
@@ -4289,7 +4316,8 @@ class HaizFlowController(QObject):
                     candidate.kind,
                 ):
                     clip.track_id = target_track
-            clip.start_ms = min(target_start, max(0, document.sequence.duration_ms - clip.duration_ms))
+            clip.start_ms = target_start
+            editor_documents.refresh_sequence_duration(document)
 
         return self._apply_editor_mutation("move_clip", move, merge_key=f"move:{clip_id}")
 
@@ -4843,7 +4871,7 @@ class HaizFlowController(QObject):
     @Slot(str, str, "QVariant", result=bool)
     def setTrackState(self, track_id: str, property_name: str, value) -> bool:
         property_name = str(property_name or "")
-        if track_id == "overlays" or property_name not in {"visible", "locked", "muted", "solo"}:
+        if track_id == "overlays" or property_name not in {"visible", "muted"}:
             return False
 
         def update(document):
@@ -4851,10 +4879,6 @@ class HaizFlowController(QObject):
             if track is None:
                 return
             setattr(track, property_name, bool(value))
-            if property_name == "solo" and bool(value):
-                for other in document.tracks:
-                    if other.track_id != track.track_id and other.kind in {"voice", "source_audio", "music"}:
-                        other.solo = False
 
         return self._apply_editor_mutation("track_state", update, merge_key=f"track:{track_id}:{property_name}")
 
@@ -5855,9 +5879,7 @@ class HaizFlowController(QObject):
         )
 
     def _build_config(self):
-        manual_subtitle_layout = bool(
-            self._subtitle_layout_override and (self._project_type == "manual" or not self._remove_original_subtitles)
-        )
+        manual_subtitle_layout = bool(self._subtitle_layout_override)
         return VideoConfig(
             # Auto and Batch no longer expose the legacy pre-TTS review mode.
             # Manual projects provide the explicit, checkpointed editing flow.
@@ -5865,6 +5887,7 @@ class HaizFlowController(QObject):
             source_language="auto",
             target_language=self._target_language,
             speech_recognition_model=self._speech_recognition_model,
+            translation_model=self._translation_model,
             translator_provider="hymt2",
             tts_provider=self._tts_provider,
             tts_voice=self._tts_voice,
@@ -6023,6 +6046,7 @@ class HaizFlowController(QObject):
             "source_language": config.source_language,
             "target_language": config.target_language,
             "speech_recognition_model": config.speech_recognition_model,
+            "translation_model": config.translation_model,
             "tts_provider": config.tts_provider,
             "tts_voice": config.tts_voice,
             "speaker_mode": config.speaker_mode,
@@ -6063,7 +6087,8 @@ class HaizFlowController(QObject):
                 )
             )
             target_language_changed = changed("target_language", config.target_language)
-            if recognition_changed or target_language_changed:
+            translation_model_changed = changed("translation_model", config.translation_model)
+            if recognition_changed or target_language_changed or translation_model_changed:
                 # Recognition and translation controls describe the next
                 # explicit translation request.  The current subtitle, voice,
                 # mix and export remain the published editor state until that
@@ -6075,6 +6100,7 @@ class HaizFlowController(QObject):
                 (
                     changed("source_language", config.source_language),
                     changed("target_language", config.target_language),
+                    translation_model_changed,
                     changed("speech_recognition_model", config.speech_recognition_model),
                     changed("enable_audio_separation", config.enable_audio_separation),
                 )
@@ -6155,6 +6181,10 @@ class HaizFlowController(QObject):
                 changes["step"] = f"manual_{remaining[-1]}" if remaining else "manual_ready"
         if review_approved is not None:
             changes["review_approved"] = review_approved
+        changes = {name: value for name, value in changes.items()
+                   if getattr(video, name, None) != value}
+        if not changes:
+            return
         video_store.update_video(video.video_id, **changes)
         if manual_audio_tracks_to_sync:
             HaizFlowController._sync_legacy_editor_audio_levels(

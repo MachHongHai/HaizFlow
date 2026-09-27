@@ -57,6 +57,7 @@ Module {
         prototype: "QObject"
         accessSemantics: "reference"
         Property { name: "positionSeconds"; type: "double"; isReadonly: true }
+        Property { name: "voiceTimings"; type: "QVariantMap"; isReadonly: true }
         Method { name: "setVolumes"; Parameter { name: "original"; type: "int" } Parameter { name: "voice"; type: "int" } Parameter { name: "music"; type: "int" } }
         Method { name: "synchronize"; Parameter { name: "seconds"; type: "double" } Parameter { name: "playing"; type: "bool" } Parameter { name: "muted"; type: "bool" } }
         Method { name: "seek"; Parameter { name: "seconds"; type: "double" } }
@@ -1477,6 +1478,13 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "translationModel"
+            type: "QString"
+            read: "translationModel"
+            write: "setTranslationModel"
+            notify: "translationModelChanged"
+        }
+        Property {
             name: "cpuOnly"
             type: "bool"
             read: "cpuOnly"
@@ -1608,6 +1616,7 @@ Module {
         Signal { name: "videoThumbnailChanged" }
         Signal { name: "targetLanguageChanged" }
         Signal { name: "speechRecognitionModelChanged" }
+        Signal { name: "translationModelChanged" }
         Signal { name: "speechRecognitionModelOptionsChanged" }
         Signal { name: "ttsVoiceChanged" }
         Signal { name: "ttsVoiceOptionsChanged" }
@@ -1810,6 +1819,12 @@ Module {
             Parameter { name: "a2"; type: "QString" }
             Parameter { name: "a3"; type: "QString" }
         }
+        Method {
+            name: "applySettings"
+            type: "bool"
+            Parameter { name: "a1"; type: "QString" }
+            Parameter { name: "a2"; type: "QString" }
+        }
         Method { name: "resetSettings" }
         Method { name: "exportDiagnostics"; type: "bool" }
         Method {
@@ -1859,6 +1874,7 @@ Module {
             Parameter { name: "a13"; type: "QVariantMap" }
             Parameter { name: "a14"; type: "QString" }
             Parameter { name: "a15"; type: "QString" }
+            Parameter { name: "a16"; type: "QString" }
         }
         Method { name: "loadBatchSettings" }
         Method { name: "saveSelectedVideoSettings"; type: "bool" }

@@ -43,12 +43,19 @@ ApplicationWindow {
     readonly property bool compactNavigation: width < 1280
     readonly property bool modelStatusFailed: AppController.runtimeState === "failed"
     readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
+    // qmllint disable stale-property-read
+    readonly property var downloader: AppController.mediaDownloader
+    // qmllint enable stale-property-read
     readonly property bool selectedTaskFailed: projectWorkspaceVisible
         && AppController.selectedStatus === "failed"
     readonly property bool selectedTaskPaused: projectWorkspaceVisible
         && AppController.selectedStatus === "paused"
     readonly property bool selectedTaskQueued: projectWorkspaceVisible
         && AppController.isSelectedVideoQueued && !AppController.isSelectedVideoProcessing
+    readonly property bool selectedProgressMeasured: [
+        "extracting_audio", "separating_audio", "transcribing",
+        "creating_subtitle", "building_audio_timeline"
+    ].indexOf(AppController.selectedStepId) < 0
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
     readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace || currentRoute === routeManualWorkspace || currentRoute === routeBatchWorkspace || currentRoute === routeBatchVideo || currentRoute === routeDownloadWorkspace || currentRoute === routePublishWorkspace
@@ -502,19 +509,26 @@ ApplicationWindow {
             showDetails: false
             activityState: root.modelStatusFailed || root.selectedTaskFailed ? "failed"
                 : AppController.isProcessing || AppController.resourcePackBusy || root.modelStatusBusy
+                    || (root.currentRoute === root.routeDownloadWorkspace && root.downloader.currentProjectHasWork)
+                    || (root.currentRoute === root.routePublishWorkspace && AppController.tiktokPublishBusy)
                     ? "processing"
                     : root.selectedTaskPaused ? "paused"
                     : root.selectedTaskQueued ? "queued" : "ready"
             message: root.modelStatusFailed ? I18n.runtimeStatus(AppController.statusMessage)
-                : root.selectedTaskFailed ? (AppController.selectedProgressDetail || AppController.selectedStep)
+                : root.selectedTaskFailed ? qsTr("Tác vụ thất bại · Mở log kỹ thuật để xem chi tiết")
                 : AppController.isProcessing ? (AppController.isSelectedVideoProcessing
-                    ? (AppController.selectedProgressDetail || AppController.processingText)
-                    : AppController.processingText)
+                    ? AppController.selectedStageLabel
+                    : qsTr("Đang xử lý video khác"))
                 : AppController.resourcePackBusy ? AppController.resourcePackActivityText
                 : root.modelStatusBusy ? I18n.runtimeStatus(AppController.statusMessage)
+                : root.currentRoute === root.routeDownloadWorkspace && root.downloader.currentProjectHasWork
+                    ? qsTr("Đang tải nội dung")
+                : root.currentRoute === root.routePublishWorkspace && AppController.tiktokPublishBusy
+                    ? qsTr("Đang đăng bài")
                 : root.selectedTaskPaused || root.selectedTaskQueued
-                    ? AppController.selectedProgressDetail : ""
+                    ? I18n.progressDetail(AppController.selectedProgressDetail) : ""
             progress: AppController.isSelectedVideoProcessing
+                && root.selectedProgressMeasured
                 && AppController.selectedStepId !== "waiting_for_models"
                 && AppController.selectedStepId !== "starting"
                 ? Math.max(0, Math.min(1, AppController.selectedProgress / 100))

@@ -37,8 +37,12 @@ Rectangle {
         && (!hasRemotePost || ["failed", "partial", "draft"].includes(publishStatus))
         && !AppController.tiktokPublishBusy && !AppController.zernioAccountSyncing
         && AppController.zernioApiKeyVerified && AppController.zernioAccountReady
-    readonly property string statusLabel: published ? (awaitingUrl ? qsTr("Đang hoàn tất") : qsTr("Đã đăng"))
-        : working ? (uploadProgress > 0 ? qsTr("Đang đăng %1%").arg(uploadProgress) : qsTr("Đang đăng"))
+    readonly property string statusLabel: published ? (awaitingUrl ? qsTr("Đang lấy liên kết") : qsTr("Đã đăng"))
+        : working ? (publishStatus === "uploading" && uploadProgress > 0
+            ? qsTr("Đang tải lên %1%").arg(uploadProgress)
+            : publishStatus === "uploading" ? qsTr("Đang bắt đầu tải lên")
+            : publishStatus === "queued" || publishStatus === "pending" ? qsTr("Đang chờ lượt đăng")
+            : qsTr("Đang chờ nền tảng"))
         : publishStatus === "failed" || publishStatus === "partial" ? qsTr("Lỗi")
         : publishStatus === "scheduled" ? qsTr("Đã hẹn giờ")
         : publishStatus === "missing" ? qsTr("Thiếu tệp") : qsTr("Sẵn sàng")
@@ -73,7 +77,8 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
-                text: root.publishError.length > 0 ? root.publishError : root.postText
+                text: root.publishError.length > 0
+                    ? qsTr("Đăng thất bại · Xem chi tiết lỗi") : root.postText
                 color: root.publishError.length > 0 ? Theme.danger : Theme.textMuted
                 font.pixelSize: TypeScale.metadata
                 textFormat: Text.PlainText
@@ -110,6 +115,20 @@ Rectangle {
             label: root.statusLabel
         }
 
+        StudioIconButton {
+            visible: root.publishError.length > 0
+            iconName: "info"
+            toolTipText: qsTr("Xem chi tiết lỗi")
+            onClicked: AppController.showAppAlert(qsTr("Lỗi đăng bài"), root.publishError, "warning")
+        }
+
+        StudioIconButton {
+            iconName: "delete"
+            toolTipText: qsTr("Xóa khỏi danh sách (không xóa bài trên mạng xã hội)")
+            enabled: !AppController.tiktokPublishBusy && !root.working
+            onClicked: AppController.removeTikTokPublishItem(root.index)
+        }
+
         StudioButton {
             text: root.published ? (root.awaitingUrl ? qsTr("Đang hoàn tất") : qsTr("Mở bài đăng"))
                 : root.publishStatus === "failed" || root.publishStatus === "partial" ? qsTr("Đăng lại") : qsTr("Đăng")
@@ -142,6 +161,16 @@ Rectangle {
         color: Theme.divider
     }
 
+    AppProgressBar {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        visible: root.working
+        value: root.uploadProgress
+        indeterminate: root.publishStatus !== "uploading" || root.uploadProgress <= 0
+        active: root.working
+    }
+
     Menu {
         id: actionMenu
         width: 200
@@ -156,13 +185,6 @@ Rectangle {
             text: qsTr("Sao chép caption")
             iconGlyph: "\uE8C8"
             onTriggered: AppController.copyTikTokPublishCaption(root.index)
-        }
-        AppMenuItem {
-            text: qsTr("Xóa khỏi hàng đợi")
-            iconGlyph: "\uE74D"
-            tone: "danger"
-            enabled: !root.working
-            onTriggered: AppController.removeTikTokPublishItem(root.index)
         }
     }
 

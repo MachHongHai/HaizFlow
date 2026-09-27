@@ -224,7 +224,7 @@ Item {
             border.width: root.editing ? 1 : 0
             border.color: Theme.focus
             radius: Theme.radiusTiny
-            visible: root.editing && !root.mediaMode
+            visible: root.editing
             activeFocusOnTab: root.interactive
             Accessible.role: Accessible.Slider
             Accessible.name: qsTr("Kích thước watermark")

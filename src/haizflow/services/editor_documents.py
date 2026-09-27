@@ -664,9 +664,28 @@ def sync_subtitle_clips(video, segments: list[dict]) -> EditorDocument:
         voice_clips.append(voice)
 
     changed.clips = retained + subtitle_clips + voice_clips
+    refresh_sequence_duration(changed)
     if changed.model_dump() == document.model_dump():
         return document
     return save(video, changed)
+
+
+def refresh_sequence_duration(document: EditorDocument) -> None:
+    """Keep the output as long as its source picture or enabled layers need."""
+    source_end = max(
+        (decision.sequence_start_ms + decision.source_end_ms - decision.source_start_ms
+         for decision in document.sequence.edit_decisions),
+        default=0,
+    )
+    if not document.sequence.edit_decisions and not any(
+        clip.track_id == "source-video" and clip.enabled for clip in document.clips
+    ):
+        source_end = document.sequence.duration_ms
+    clip_end = max(
+        (clip.start_ms + clip.duration_ms for clip in document.clips if clip.enabled),
+        default=0,
+    )
+    document.sequence.duration_ms = max(source_end, clip_end)
 
 
 def mark_voice_clips_ready(

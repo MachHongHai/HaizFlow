@@ -82,6 +82,7 @@ def generate_srt(
     video_id: str,
     *,
     preserve_segment_boundaries: bool = False,
+    voice_parts_dir: str = "",
 ):
     """Materialize subtitle cues without changing the document clock.
 
@@ -94,6 +95,13 @@ def generate_srt(
     log_to_video(video_id, f"Compiling sequential SRT cues (Max characters per line: {max_chars_per_line})...")
     with open(segments_json_path, "r", encoding="utf-8") as file:
         segments = json.load(file)
+    if voice_parts_dir:
+        from haizflow.pipeline.speech_timing import voiced_subtitle_segments
+
+        segments = voiced_subtitle_segments(segments, [
+            os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3")
+            for index in range(1, len(segments) + 1)
+        ])
 
     subtitles = []
     for segment in segments:

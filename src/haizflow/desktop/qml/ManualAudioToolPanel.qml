@@ -42,16 +42,15 @@ ColumnLayout {
             inspector.scheduleSave();
         }
     }
-    InspectorSection {
+    ColumnLayout {
         id: duckingSection
         Layout.fillWidth: true
-        title: qsTr("Tự giảm nhạc khi có lời")
-        collapsible: true
+        spacing: Theme.space8
         readonly property var editorDocument: AppController.manualEditorDocumentModel.document || ({})
         readonly property bool duckingEnabled: Boolean(editorDocument.audio_ducking_enabled)
 
         PropertyRow {
-            label: qsTr("Bật tự giảm")
+            label: qsTr("Tự giảm nhạc khi có lời")
             AppSwitch {
                 checked: duckingSection.duckingEnabled
                 enabled: inspector.editable && AppController.backgroundMusicPath.length > 0
@@ -73,33 +72,6 @@ ColumnLayout {
                     true, value,
                     Number(duckingSection.editorDocument.audio_ducking_attack_ms || 180),
                     Number(duckingSection.editorDocument.audio_ducking_release_ms || 420))
-            }
-        }
-        PropertyRow {
-            visible: duckingSection.duckingEnabled
-            label: qsTr("Vào / ra")
-            RowLayout {
-                spacing: Theme.space8
-                NumericField {
-                    from: 0; to: 3000
-                    value: Math.round(Number(duckingSection.editorDocument.audio_ducking_attack_ms || 180))
-                    suffix: " ms"
-                    onValueModified: AppController.setAudioDucking(
-                        true,
-                        Number(duckingSection.editorDocument.audio_ducking_reduction_db || -12),
-                        value,
-                        Number(duckingSection.editorDocument.audio_ducking_release_ms || 420))
-                }
-                NumericField {
-                    from: 0; to: 3000
-                    value: Math.round(Number(duckingSection.editorDocument.audio_ducking_release_ms || 420))
-                    suffix: " ms"
-                    onValueModified: AppController.setAudioDucking(
-                        true,
-                        Number(duckingSection.editorDocument.audio_ducking_reduction_db || -12),
-                        Number(duckingSection.editorDocument.audio_ducking_attack_ms || 180),
-                        value)
-                }
             }
         }
     }
@@ -142,4 +114,3 @@ ColumnLayout {
         }
     }
 }
-

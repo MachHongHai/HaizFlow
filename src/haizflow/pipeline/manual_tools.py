@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from haizflow.config import HYMT2_MODEL_REVISION
+from haizflow.core.hardware import translation_model_signature_parts
 from haizflow.core.model_integrity import DEMUCS_MODEL_SIGNATURE
 from haizflow.pipeline.timing_contract import TIMING_SOURCE
 from haizflow.services import editor_documents, manual_artifacts, video_store
@@ -280,6 +281,7 @@ def translation_signature(video) -> str:
         getattr(video, "target_language", "vi"),
         "hymt2",
         HYMT2_MODEL_REVISION,
+        *translation_model_signature_parts(getattr(video, "translation_model", "auto")),
         "hymt2-semantic-source-context-retry-v21",
         *_generation_token(video, "translation"),
         "manual-translation-v1",
@@ -702,7 +704,7 @@ def export_signature(video, *, validate: bool = True) -> str:
         getattr(video, "subtitle_layout_override", False),
         editor_document.model_dump() if editor_document else {},
         *_generation_token(video, "export"),
-        "manual-export-v6-editor-document",
+        "manual-export-v7-voice-caption-clock",
     )
 
 
@@ -1439,6 +1441,7 @@ def _run_translation(video, reporter) -> None:
                 getattr(video, "target_language", "vi"),
                 source_language="auto",
                 provider="hymt2",
+                translation_model=getattr(video, "translation_model", "auto"),
                 progress_callback=lambda current, total, detail: reporter.update(
                     5 + round(90 * current / max(1, total)), "manual_translation", detail, current, total
                 ),
@@ -1741,13 +1744,6 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
 
     document = editor_documents.ensure(video)
     tracks = {track.track_id: track for track in document.tracks}
-    audio_track_ids = {"source-audio", "voice", "music"}
-    solo_tracks = {
-        track.track_id
-        for track in document.tracks
-        if track.track_id in audio_track_ids and track.solo
-    }
-
     def track_audible(track_id: str) -> bool:
         track = tracks.get(track_id)
         if track is None:
@@ -1755,7 +1751,6 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
         return bool(
             track.visible
             and not track.muted
-            and (not solo_tracks or track_id in solo_tracks)
         )
 
     voice = published_voice_record(video, validate=True)
@@ -1794,12 +1789,16 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
         )
         segment["_voice_enabled"] = voice_enabled
         if voice_clip:
+            segment["start"] = voice_clip.start_ms / 1000
+            segment["end"] = (voice_clip.start_ms + voice_clip.duration_ms) / 1000
             segment["_voice_volume_percent"] = voice_clip.volume_percent
             segment["_voice_fade_in_ms"] = voice_clip.fade_in_ms
             segment["_voice_fade_out_ms"] = voice_clip.fade_out_ms
             if bool(segment.get("timeline_edited")) or voice_clip.duration_ms != subtitle_clip.duration_ms:
                 segment["fit_voice_to_timing"] = True
         segments.append(segment)
+
+    segments.sort(key=lambda item: (float(item["start"]), str(item["segment_id"])))
 
     published_segments = published_voice_source_segments(video, voice, validate=True) if voice else []
     published_by_id = {
@@ -1874,6 +1873,8 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
         original_video_volume=source_volume,
         original_audio_fade_in_ms=source_clip.fade_in_ms if source_clip else 0,
         original_audio_fade_out_ms=source_clip.fade_out_ms if source_clip else 0,
+        original_audio_start_ms=source_clip.start_ms if source_clip else 0,
+        original_audio_duration_ms=source_clip.duration_ms if source_clip else None,
         background_music_path=music_path or None,
         background_music_volume=music_clip.volume_percent if music_clip else video.background_music_volume,
         tts_volume=video.tts_volume,

@@ -92,6 +92,40 @@ for width, height in ((1120, 720), (1440, 900), (1920, 1080), (2560, 1440)):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_auto_visual_editors_compile_and_share_manual_overlays(self):
+        watermark = (QML_DIR / "AutoWatermarkPreviewDialog.qml").read_text(encoding="utf-8")
+        subtitle = (QML_DIR / "SubtitlePreviewDialog.qml").read_text(encoding="utf-8")
+        home = (QML_DIR / "HomePage.qml").read_text(encoding="utf-8")
+        manual_workspace = (QML_DIR / "ManualWorkspace.qml").read_text(encoding="utf-8")
+        manual_audio = (QML_DIR / "ManualAudioToolPanel.qml").read_text(encoding="utf-8")
+        self.assertIn("WatermarkTransformOverlay {", watermark)
+        self.assertIn("SubtitleTransformOverlay {", subtitle)
+        self.assertNotIn("AppSlider {", subtitle)
+        self.assertIn("selectedClipIds.indexOf(clipId) < 0", manual_workspace)
+        self.assertNotIn('text: qsTr("Dự án")\n                variant: "ghost"', home)
+        self.assertIn('label: qsTr("Tự giảm nhạc khi có lời")', manual_audio)
+        self.assertNotIn('label: qsTr("Vào / ra")', manual_audio)
+
+        script = f"""
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlComponent, QQmlEngine
+app = QGuiApplication([])
+engine = QQmlEngine()
+engine.addImportPath(r'{QML_DIR}')
+for name in ('AutoWatermarkPreviewDialog.qml', 'SubtitlePreviewDialog.qml',
+             'DubbingSetupPanel.qml'):
+    component = QQmlComponent(engine, QUrl.fromLocalFile(r'{QML_DIR}' + '/' + name))
+    assert component.isReady(), name + ': ' + '\\n'.join(error.toString() for error in component.errors())
+"""
+        environment = os.environ.copy()
+        environment["QT_QPA_PLATFORM"] = "offscreen"
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=ROOT, env=environment,
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_home_uses_real_actions_and_an_empty_tutorial_frame(self):
         home = (QML_DIR / "HomePage.qml").read_text(encoding="utf-8")
         hero = (QML_DIR / "HomeHero.qml").read_text(encoding="utf-8")
@@ -435,7 +469,7 @@ window.close()
         self.assertIn("WatermarkTransformOverlay {", compare_preview)
         self.assertNotIn("draftOpacity", watermark_dialog)
         self.assertNotIn("openWithSettings", watermark_dialog)
-        self.assertIn('text: qsTr("Độ mờ · %1%")', image_tool)
+        self.assertIn('text: qsTr("Độ hiển thị · %1%")', image_tool)
         self.assertIn("ManualWatermarkStyleControls {", image_tool)
         self.assertNotIn('text: qsTr("Kích thước · %1%")', image_tool)
         self.assertNotIn('text: qsTr("Viền · %1%")', image_tool)
@@ -937,13 +971,33 @@ app.processEvents()
         self.assertIn("ResourcePackRow", page)
         self.assertNotIn("ResourceBundleRow", page)
         self.assertNotIn("installResourceBundle", page)
-        self.assertIn('qsTr("Nhận dạng và dịch · CPU")', page)
+        self.assertIn('qsTr("Bộ ngôn ngữ · CPU")', page)
+        self.assertIn('qsTr("Nhận dạng và dịch")', page)
+        self.assertIn('qsTr("Giọng đọc và âm thanh")', page)
         self.assertIn('qsTr("Giọng đọc OmniVoice")', page)
         self.assertIn('qsTr("Tách giọng")', page)
         self.assertIn('qsTr("Che phụ đề gốc")', page)
         self.assertIn("AppController.installResourcePacks([root.packId])", raw_row)
         self.assertIn("Layout.alignment: Qt.AlignRight | Qt.AlignVCenter", raw_row)
         self.assertNotIn("Bộ xử lý này thuộc bản cài cũ", raw_row)
+
+    def test_auto_watermark_choice_and_progress_are_visible_in_context(self):
+        form = (QML_DIR / "ProcessingSettingsForm.qml").read_text(encoding="utf-8")
+        preview = (QML_DIR / "AutoWatermarkPreviewDialog.qml").read_text(encoding="utf-8")
+        translation = (QML_DIR / "TranslationModelCombo.qml").read_text(encoding="utf-8")
+        progress = (QML_DIR / "AppProgressBar.qml").read_text(encoding="utf-8")
+        social = (QML_DIR / "SocialPublishRow.qml").read_text(encoding="utf-8")
+
+        self.assertIn("signal watermarkKindEdited(string value)", form)
+        self.assertIn('"value": "image"', form)
+        self.assertIn('"value": "video"', form)
+        self.assertNotIn("SegmentedControl {", preview)
+        self.assertNotIn('value: "auto"', translation)
+        self.assertIn('value: "q4"', translation)
+        self.assertIn('value: "full"', translation)
+        self.assertIn("property bool stalled: false", progress)
+        self.assertIn("indeterminate:", social)
+        self.assertIn("AppController.removeTikTokPublishItem(root.index)", social)
 
     def test_dialogs_share_chrome_and_about_links_use_one_alignment(self):
         about = (QML_DIR / "AboutDialog.qml").read_text(encoding="utf-8")

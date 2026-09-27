@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from pydub import AudioSegment
+from pydub.generators import Sine
 
 from haizflow.pipeline import audio_timeline
 
@@ -87,6 +88,29 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
 
             self.assertTrue(output.is_file())
             self.assertGreater(output.stat().st_size, 44)
+
+    def test_source_audio_can_start_after_a_silent_timeline_gap(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            segments = root / "segments.json"
+            segments.write_text("[]", encoding="utf-8")
+            source = root / "source.wav"
+            Sine(440).to_audio_segment(duration=1000).export(source, format="wav")
+            output = root / "output.wav"
+            with (
+                mock.patch.object(audio_timeline, "get_video_duration", return_value=2.0),
+                mock.patch.object(audio_timeline, "log_to_video"),
+                mock.patch.object(audio_timeline, "check_cancellation"),
+            ):
+                audio_timeline.build_audio_timeline(
+                    str(segments), str(root / "voices"), str(root / "input.mp4"),
+                    str(output), "video-1", background_audio_path=str(source),
+                    original_audio_start_ms=1000, original_audio_duration_ms=1000,
+                    require_voice_parts=False,
+                )
+            mixed = AudioSegment.from_file(output)
+            self.assertEqual(mixed[:800].rms, 0)
+            self.assertGreater(mixed[1200:1800].rms, 0)
 
     def test_missing_required_background_track_fails_the_timeline(self):
         with tempfile.TemporaryDirectory() as temporary:

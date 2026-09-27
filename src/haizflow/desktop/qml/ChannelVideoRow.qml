@@ -158,6 +158,8 @@ Rectangle {
                 Layout.maximumWidth: 360
                 visible: root.candidateStatus === "downloading" || root.candidateStatus === "importing"
                 value: root.candidateProgress
+                indeterminate: root.candidateStatus === "importing" || root.candidateProgress <= 0
+                active: visible
             }
 
             Text {

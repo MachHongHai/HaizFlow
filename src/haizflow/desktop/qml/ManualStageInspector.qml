@@ -329,7 +329,7 @@ InspectorPanel {
 
     Timer {
         id: settingsSaveTimer
-        interval: 220
+        interval: 450
         repeat: false
         onTriggered: {
             AppController.persistVideoSettingsFor(root.pendingSettingsVideoId);

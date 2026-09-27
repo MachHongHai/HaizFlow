@@ -386,6 +386,109 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             (5.0, 6.5, "第二句"),
         ])
 
+    def test_uncovered_tail_speech_is_recovered_without_retranscribing_covered_windows(self):
+        audio = np.zeros(16_000 * 160, dtype=np.float32)
+        recognized = [{"start": 140.0, "end": 146.0, "text": "前一句", "language": "zh"}]
+        model = mock.Mock()
+        model.transcribe.return_value = {"segments": [{"text": "两百万"}]}
+
+        with mock.patch.object(transcribe, "log_to_video"):
+            recovered = transcribe._recover_uncovered_speech(
+                model, audio, recognized,
+                [(140.0, 146.0), (153.5, 154.3)], 8, "test-video",
+            )
+
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual((recovered[0]["start"], recovered[0]["end"]), (153.5, 154.3))
+        self.assertEqual(recovered[0]["text"], "两百万")
+        model.transcribe.assert_called_once()
+
+    def test_short_chinese_segments_still_check_for_an_omitted_tail(self):
+        audio = np.zeros(16_000 * 160, dtype=np.float32)
+        recognized = [{"start": 140.0, "end": 146.0, "text": "前一句", "language": "zh"}]
+        model = mock.Mock()
+        model.transcribe.return_value = {"segments": [{"text": "两百万"}]}
+        with (
+            mock.patch("whisperx.vads.pyannote.Binarize") as binarize,
+            mock.patch.object(transcribe, "log_to_video"),
+        ):
+            speech = mock.Mock()
+            speech.get_timeline.return_value = [
+                SimpleNamespace(start=140.0, end=146.0),
+                SimpleNamespace(start=153.5, end=154.3),
+            ]
+            binarize.return_value.return_value = speech
+            model.vad_model.preprocess_audio.return_value = audio
+            model._vad_params = {"vad_onset": 0.5, "vad_offset": 0.36}
+            output = transcribe._split_long_chinese_speech(model, audio, recognized, 8, "test-video")
+
+        self.assertEqual([item["text"] for item in output], ["前一句", "两百万"])
+
+    def test_uncovered_speech_does_not_create_empty_segment(self):
+        model = mock.Mock()
+        model.transcribe.return_value = {"segments": []}
+        with mock.patch.object(transcribe, "log_to_video"):
+            recovered = transcribe._recover_uncovered_speech(
+                model, np.zeros(16_000 * 4, dtype=np.float32), [],
+                [(1.0, 2.0)], 8, "test-video",
+            )
+        self.assertEqual(recovered, [])
+
+    def test_direct_tail_recovery_bypasses_vad_and_replaces_tiny_timestamp_artifact(self):
+        audio = np.zeros(16_000 * 10, dtype=np.float32)
+        audio[8 * 16_000:9 * 16_000] = 0.12
+        segments = [
+            {"start": 1.0, "end": 2.0, "text": "前一句", "language": "zh"},
+            {"start": 9.8, "end": 9.88, "text": "错误识别", "language": "zh"},
+        ]
+        model = mock.Mock()
+        model.model.transcribe.return_value = (
+            [SimpleNamespace(text="多少钱八千万", avg_logprob=-0.4, no_speech_prob=0.02)],
+            None,
+        )
+        with mock.patch.object(transcribe, "log_to_video"):
+            output = transcribe._recover_speech_without_vad(model, audio, segments, "zh", "test-video")
+
+        self.assertEqual([item["text"] for item in output], ["前一句", "多少钱八千万"])
+        self.assertGreaterEqual(output[-1]["start"], 7.8)
+        self.assertLessEqual(output[-1]["end"], 9.3)
+        self.assertFalse(model.model.transcribe.call_args.kwargs["vad_filter"])
+
+    def test_direct_tail_recovery_rejects_low_confidence_noise(self):
+        audio = np.zeros(16_000 * 10, dtype=np.float32)
+        audio[8 * 16_000:9 * 16_000] = 0.12
+        model = mock.Mock()
+        model.model.transcribe.return_value = (
+            [SimpleNamespace(text="感谢观看", avg_logprob=-1.4, no_speech_prob=0.7)],
+            None,
+        )
+        with mock.patch.object(transcribe, "log_to_video"):
+            output = transcribe._recover_speech_without_vad(
+                model, audio, [{"start": 1.0, "end": 2.0, "text": "前一句", "language": "zh"}],
+                "zh", "test-video",
+            )
+        self.assertEqual([item["text"] for item in output], ["前一句"])
+
+    def test_direct_outro_recovery_checks_gap_before_short_final_reply(self):
+        audio = np.zeros(16_000 * 160, dtype=np.float32)
+        audio[155 * 16_000:int(156.4 * 16_000)] = 0.12
+        segments = [
+            {"start": 145.3, "end": 147.5, "text": "前一句", "language": "zh"},
+            {"start": 156.28, "end": 156.6, "text": "好", "language": "zh"},
+        ]
+        model = mock.Mock()
+        model.model.transcribe.return_value = (
+            [SimpleNamespace(text="多少钱八千万", avg_logprob=-0.3, no_speech_prob=0.02)],
+            None,
+        )
+        with mock.patch.object(transcribe, "log_to_video"):
+            output = transcribe._recover_speech_without_vad(
+                model, audio, segments, "zh", "test-video",
+            )
+
+        self.assertEqual([item["text"] for item in output], ["前一句", "多少钱八千万", "好"])
+        self.assertLessEqual(output[1]["end"], output[2]["start"])
+
     def test_short_first_sentence_is_coalesced_forward(self):
         segment = {
             "start": 10.0,

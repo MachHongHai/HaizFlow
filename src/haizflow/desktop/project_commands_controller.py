@@ -167,6 +167,7 @@ class ProjectCommandsController:
                 "workflowMode": "A",
                 "targetLanguage": host._target_language,
                 "speechRecognitionModel": getattr(host, "_speech_recognition_model", "small"),
+                "translationModel": getattr(host, "_translation_model", "auto"),
                 "ttsProvider": host._tts_provider,
                 "ttsVoice": host._tts_voice,
                 "speakerMode": getattr(host, "_speaker_mode", "single"),
@@ -190,6 +191,7 @@ class ProjectCommandsController:
                 video.mode,
                 video.target_language,
                 getattr(video, "speech_recognition_model", "small"),
+                getattr(video, "translation_model", "auto"),
                 getattr(video, "tts_provider", "edge"),
                 video.tts_voice,
                 getattr(video, "speaker_mode", "single"),
@@ -208,6 +210,7 @@ class ProjectCommandsController:
             workflow_mode,
             target_language,
             speech_recognition_model,
+            translation_model,
             tts_provider,
             tts_voice,
             speaker_mode,
@@ -228,6 +231,7 @@ class ProjectCommandsController:
                     video.mode,
                     video.target_language,
                     getattr(video, "speech_recognition_model", "small"),
+                    getattr(video, "translation_model", "auto"),
                     getattr(video, "tts_provider", "edge"),
                     video.tts_voice,
                     getattr(video, "speaker_mode", "single"),
@@ -253,6 +257,7 @@ class ProjectCommandsController:
             "workflowMode": "A",
             "targetLanguage": target_language,
             "speechRecognitionModel": str(speech_recognition_model or "small"),
+            "translationModel": str(translation_model or "auto"),
             "ttsProvider": tts_provider,
             "ttsVoice": host._normalized_voice_for_language(target_language, tts_voice, tts_provider),
             "speakerMode": "multiple" if speaker_mode == "multiple" else "single",
@@ -290,6 +295,7 @@ class ProjectCommandsController:
                 "A",
                 str(video.target_language or "vi"),
                 str(getattr(video, "speech_recognition_model", "small") or "small"),
+                str(getattr(video, "translation_model", "auto") or "auto"),
                 str(getattr(video, "tts_provider", "edge") or "edge"),
                 str(video.tts_voice or ""),
                 str(getattr(video, "speaker_mode", "single") or "single"),
@@ -308,6 +314,7 @@ class ProjectCommandsController:
             "workflow",
             "targetLanguage",
             "speechRecognitionModel",
+            "translationModel",
             "ttsProvider",
             "voice",
             "speakers",
@@ -352,6 +359,7 @@ class ProjectCommandsController:
         original_subtitle_removal_mode=None,
         speech_recognition_model=None,
         speaker_mode=None,
+        translation_model=None,
     ) -> bool:
         host = self._host
         mode = "A"
@@ -369,6 +377,9 @@ class ProjectCommandsController:
         )
         if asr_model not in {"small", "large-v3-turbo"}:
             asr_model = "small"
+        selected_translation_model = str(translation_model or getattr(host, "_translation_model", "auto")).lower()
+        if selected_translation_model not in {"auto", "q4", "full"}:
+            return False
         capabilities = getattr(host, "_hardware_capabilities", None)
         turbo_gpu_available = bool(
             (capabilities and capabilities.cuda_available)
@@ -376,6 +387,15 @@ class ProjectCommandsController:
             or getattr(host, "_settings_processing_device", "") == "gpu"
             or runtime_profile().cuda_available
         )
+        if selected_translation_model == "full" and not turbo_gpu_available:
+            show_alert = getattr(host, "_show_app_alert", None)
+            if callable(show_alert):
+                show_alert(
+                    "Translation model",
+                    "The full HY-MT2 model requires a compatible NVIDIA CUDA GPU.",
+                    "warning",
+                )
+            return False
         turbo_model_ready = bool(getattr(host, "_whisper_turbo_model_ready", False))
         if asr_model == "large-v3-turbo" and (not turbo_gpu_available or not turbo_model_ready):
             show_alert = getattr(host, "_show_app_alert", None)
@@ -471,6 +491,7 @@ class ProjectCommandsController:
                 "source_language": "auto",
                 "target_language": language,
                 "speech_recognition_model": asr_model,
+                "translation_model": selected_translation_model,
                 "tts_provider": provider,
                 "tts_voice": voice,
                 "speaker_mode": normalized_speaker_mode,
@@ -544,6 +565,7 @@ class ProjectCommandsController:
         host._workflow_mode = values["workflowMode"]
         host._target_language = values["targetLanguage"]
         host._speech_recognition_model = values["speechRecognitionModel"]
+        host._translation_model = values["translationModel"]
         host._tts_provider = values["ttsProvider"]
         host._tts_voice = values["ttsVoice"]
         host._speaker_mode = values["speakerMode"]
@@ -561,6 +583,7 @@ class ProjectCommandsController:
         host.workflowModeChanged.emit()
         host.targetLanguageChanged.emit()
         host.speechRecognitionModelChanged.emit()
+        host.translationModelChanged.emit()
         host.ttsProviderChanged.emit()
         host.ttsProviderOptionsChanged.emit()
         host.ttsVoiceChanged.emit()
@@ -603,13 +626,16 @@ class ProjectCommandsController:
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if not video or host._processing_queue.contains(video.video_id):
             return False
-        snapshot = getattr(host, "_video_settings_snapshot", lambda _video: {})(video)
+        snapshot_for = getattr(host, "_video_settings_snapshot", None)
+        snapshot = snapshot_for(video) if callable(snapshot_for) else {}
         host._apply_setup_to_video(video)
         refreshed = video_store.get_video(video.video_id)
+        if refreshed and callable(snapshot_for) and snapshot == snapshot_for(refreshed):
+            return True
         if refreshed:
             record = getattr(host, "_record_video_settings_change", None)
             if callable(record):
-                record(video.video_id, snapshot, host._video_settings_snapshot(refreshed))
+                record(video.video_id, snapshot, snapshot_for(refreshed) if callable(snapshot_for) else {})
         if log_change:
             video_store.log_to_video(video.video_id, "Per-video dubbing settings saved.")
         host.refreshVideos()

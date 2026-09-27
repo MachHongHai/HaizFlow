@@ -20,7 +20,6 @@ Rectangle {
     property var editorClips: []
     property bool sourceTrimEnabled: true
     property var selectedClipIds: []
-    property var collapsedTrackIds: ({})
     property var visibleSegments: []
     property var visibleTicks: []
     property real visibleStartSeconds: 0
@@ -45,9 +44,23 @@ Rectangle {
 
     readonly property real trackLeft: 140
     readonly property real usableWidth: Math.max(1, timelineFlick.width - trackLeft - 8)
-    readonly property real fitPixelsPerSecond: usableWidth / Math.max(0.1, duration)
+    readonly property real latestClipEnd: editorClips.reduce(function(latest, clip) {
+        return Math.max(latest, (Number(clip.start_ms || 0)
+            + Number(clip.duration_ms || 0)) / 1000);
+    }, 0)
+    readonly property real sourcePictureEnd: editorClips.reduce(function(latest, clip) {
+        if (String(clip.track_id || "") !== "source-video")
+            return latest;
+        return Math.max(latest, (Number(clip.start_ms || 0)
+            + Number(clip.duration_ms || 0)) / 1000);
+    }, 0)
+    // Leave a work area after the source so the last subtitle/audio layer can
+    // be moved later without first shortening it. Extend again as edits grow.
+    readonly property real timelineDuration: Math.max(duration, latestClipEnd)
+        + Math.max(10, duration * 0.2)
+    readonly property real fitPixelsPerSecond: usableWidth / Math.max(0.1, timelineDuration)
     readonly property real pixelsPerSecond: fitPixelsPerSecond * zoomFactor
-    readonly property real trackWidth: Math.max(usableWidth, duration * pixelsPerSecond)
+    readonly property real trackWidth: Math.max(usableWidth, timelineDuration * pixelsPerSecond)
     readonly property real snapDistanceSeconds: Math.min(0.16, 8 / Math.max(1, pixelsPerSecond))
     readonly property real tickStep: pixelsPerSecond >= 240 ? 0.25 : pixelsPerSecond >= 120 ? 0.5 : pixelsPerSecond >= 58 ? 1 : pixelsPerSecond >= 28 ? 2 : 5
     readonly property real minimumSegmentDuration: 0.12
@@ -72,23 +85,13 @@ Rectangle {
         return Math.max(lower, Math.min(upper, value));
     }
 
-    function isTrackCollapsed(trackId) {
-        return Boolean(collapsedTrackIds[String(trackId || "")]);
-    }
-
-    function toggleTrackCollapsed(trackId) {
-        const next = Object.assign({}, collapsedTrackIds);
-        next[trackId] = !Boolean(next[trackId]);
-        collapsedTrackIds = next;
-    }
-
     function trackY(index) {
         let top = 128;
         for (let trackIndex = 0; trackIndex < index; ++trackIndex) {
             const track = extraTracks[trackIndex];
             if (String(track.track_id || "") === "voice")
                 continue;
-            top += isTrackCollapsed(track.track_id) ? 28 : 36;
+            top += 36;
         }
         return top;
     }
@@ -116,7 +119,7 @@ Rectangle {
     }
 
     function nextStart(index) {
-        return index + 1 < segments.length ? Number(segments[index + 1].start || duration) : duration;
+        return index + 1 < segments.length ? Number(segments[index + 1].start || timelineDuration) : timelineDuration;
     }
 
     function snapTime(value, index, includePrevious, includeNext) {
@@ -143,7 +146,7 @@ Rectangle {
     }
 
     function snapTargets() {
-        const targets = [0, duration, position];
+        const targets = [0, duration, timelineDuration, position];
         for (let index = 0; index < segments.length; ++index) {
             targets.push(Number(segments[index].start || 0));
             targets.push(Number(segments[index].end || 0));
@@ -176,7 +179,7 @@ Rectangle {
     function zoomAt(viewX, requestedFactor) {
         const oldScale = Math.max(0.001, pixelsPerSecond);
         const anchorX = clamp(viewX, trackLeft, timelineFlick.width);
-        const anchorTime = clamp((timelineFlick.contentX + anchorX - trackLeft) / oldScale, 0, duration);
+        const anchorTime = clamp((timelineFlick.contentX + anchorX - trackLeft) / oldScale, 0, timelineDuration);
         pendingZoomAnchorX = anchorX;
         pendingZoomAnchorTime = anchorTime;
         zoomFactor = clamp(requestedFactor, 1, 24);
@@ -222,7 +225,7 @@ Rectangle {
         }
         visibleSegments = next;
         const firstTick = Math.max(0, Math.floor(left / tickStep));
-        const lastTick = Math.min(Math.ceil(duration / tickStep),
+        const lastTick = Math.min(Math.ceil(timelineDuration / tickStep),
             Math.ceil(right / tickStep));
         const ticks = [];
         for (let index = firstTick; index <= lastTick; ++index)
@@ -238,6 +241,7 @@ Rectangle {
     onZoomFactorChanged: visibleRefreshTimer.restart()
     onWidthChanged: visibleRefreshTimer.restart()
     onDurationChanged: visibleRefreshTimer.restart()
+    onTimelineDurationChanged: visibleRefreshTimer.restart()
     onEditingClipChanged: if (!editingClip) visibleRefreshTimer.restart()
     Component.onCompleted: visibleRefreshTimer.restart()
 
@@ -268,33 +272,6 @@ Rectangle {
         anchors.margins: 0
         spacing: Theme.space4
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 28
-            Layout.leftMargin: Theme.space8
-            Layout.rightMargin: Theme.space8
-            spacing: Theme.space8
-
-            Text {
-                text: qsTr("Dòng thời gian")
-                color: Theme.text
-                font.pixelSize: Theme.body
-                font.weight: Font.DemiBold
-            }
-
-            Text {
-                text: root.selectedIndex >= 0 && root.selectedIndex < root.segments.length
-                    ? qsTr("Đoạn đã chọn · %1").arg(root.formatShortTime(
-                        Number(root.segments[root.selectedIndex].end || 0)
-                        - Number(root.segments[root.selectedIndex].start || 0))) : ""
-                color: Theme.textMuted
-                font.pixelSize: Theme.caption
-                elide: Text.ElideRight
-                Layout.fillWidth: true
-            }
-
-        }
-
         Flickable {
             id: timelineFlick
             onContentXChanged: visibleRefreshTimer.restart()
@@ -322,17 +299,11 @@ Rectangle {
                     const delta = angle !== 0 ? angle : pixel;
                     if (delta === 0)
                         return;
-                    if ((event.modifiers & Qt.ControlModifier) !== 0) {
+                    if ((event.modifiers & Qt.ShiftModifier) === 0) {
                         const steps = angle !== 0 ? delta / 120 : delta / 80;
                         root.zoomAt(event.x, root.zoomFactor * Math.pow(1.2, steps));
-                    } else if ((event.modifiers & Qt.ShiftModifier) !== 0 && root.zoomFactor > 1.001) {
+                    } else if (root.zoomFactor > 1.001) {
                         root.panByPixels(-delta);
-                    } else {
-                        timelineFlick.contentY = root.clamp(
-                            timelineFlick.contentY - delta,
-                            0,
-                            Math.max(0, timelineFlick.contentHeight - timelineFlick.height)
-                        );
                     }
                     event.accepted = true;
                 }
@@ -402,13 +373,11 @@ Rectangle {
                     readonly property var track: root.trackById("source-video")
                     title: String(track.name || qsTr("Video nguồn"))
                     kind: "source_video"
-                    legacyReadOnly: !root.sourceTrimEnabled
+                    legacyReadOnly: true
                     trackVisible: Boolean(track.visible)
-                    locked: Boolean(track.locked)
                     selected: String(AppController.manualEditorDocumentModel.selectedTrackId || "") === "source-video"
                     onSelectedRequested: root.trackSelected("source-video")
                     onVisibilityToggled: root.trackStateRequested("source-video", "visible", !trackVisible)
-                    onLockToggled: root.trackStateRequested("source-video", "locked", !locked)
                 }
 
                 Repeater {
@@ -421,7 +390,6 @@ Rectangle {
                         readonly property string trackId: String(modelData.track_id || "")
                         readonly property bool combinedVoice: trackId === "voice"
                         readonly property bool canEditClips: trackId !== "overlays"
-                            && !Boolean(modelData.locked)
                         readonly property var clips: root.editorClips.filter(function(clip) {
                             const start = Number(clip.start_ms || 0) / 1000;
                             const end = start + Number(clip.duration_ms || 0) / 1000;
@@ -434,7 +402,7 @@ Rectangle {
                         x: 0
                         y: combinedVoice ? 104 : root.trackY(index)
                         width: root.trackLeft + root.trackWidth
-                        height: combinedVoice ? 16 : root.isTrackCollapsed(trackId) ? 24 : 32
+                        height: combinedVoice ? 16 : 32
                         z: combinedVoice ? 6 : 0
 
                         TrackHeader {
@@ -449,22 +417,14 @@ Rectangle {
                             legacyReadOnly: layerTrack.trackId === "overlays"
                             kind: String(layerTrack.modelData.kind || "")
                             trackVisible: Boolean(layerTrack.modelData.visible)
-                            locked: Boolean(layerTrack.modelData.locked)
                             muted: Boolean(layerTrack.modelData.muted)
-                            solo: Boolean(layerTrack.modelData.solo)
-                            collapsed: root.isTrackCollapsed(layerTrack.trackId)
                             selected: String(AppController.manualEditorDocumentModel.selectedTrackId || "")
                                 === layerTrack.trackId
                             onSelectedRequested: root.trackSelected(layerTrack.trackId)
                             onVisibilityToggled: root.trackStateRequested(
                                 layerTrack.trackId, "visible", !trackVisible)
-                            onLockToggled: root.trackStateRequested(
-                                layerTrack.trackId, "locked", !locked)
                             onMuteToggled: root.trackStateRequested(
                                 layerTrack.trackId, "muted", !muted)
-                            onSoloToggled: root.trackStateRequested(
-                                layerTrack.trackId, "solo", !solo)
-                            onCollapsedToggled: root.toggleTrackCollapsed(layerTrack.trackId)
                         }
 
                         Rectangle {
@@ -477,7 +437,7 @@ Rectangle {
                         }
 
                         Repeater {
-                            visible: layerTrack.combinedVoice || !root.isTrackCollapsed(layerTrack.trackId)
+                            visible: true
                             model: layerTrack.clips
                             delegate: Rectangle {
                                 id: editorClip
@@ -583,7 +543,7 @@ Rectangle {
                                         const deltaMs = Math.round((point.x - editorClip.gesturePointerX)
                                             / root.pixelsPerSecond * 1000);
                                         editorClip.previewStartMs = Math.max(0, Math.min(
-                                            Math.round(root.duration * 1000) - editorClip.gestureDurationMs,
+                                            Math.round(root.timelineDuration * 1000) - editorClip.gestureDurationMs,
                                             editorClip.gestureStartMs + deltaMs));
                                     }
                                     onReleased: {
@@ -697,7 +657,7 @@ Rectangle {
                     id: videoTrack
                     x: root.trackLeft
                     y: 30
-                    width: root.trackWidth
+                    width: (root.sourcePictureEnd || root.duration) * root.pixelsPerSecond
                     height: 40
                     color: Theme.video
                     border.width: 1
@@ -759,7 +719,7 @@ Rectangle {
                                 anchors.fill: parent
                                 anchors.leftMargin: 8
                                 anchors.rightMargin: 8
-                                cursorShape: sourceTrackHeader.locked ? Qt.ForbiddenCursor : Qt.PointingHandCursor
+                                cursorShape: Qt.PointingHandCursor
                                 onClicked: function(mouse) {
                                     root.clipSelected(sourceClip.clipId,
                                         (mouse.modifiers & Qt.ControlModifier) !== 0);
@@ -778,10 +738,9 @@ Rectangle {
                                     id: sourceLeftHandle
                                     anchors.fill: parent
                                     hoverEnabled: true
-                                    cursorShape: sourceTrackHeader.locked ? Qt.ForbiddenCursor : Qt.SizeHorCursor
+                                    cursorShape: Qt.SizeHorCursor
                                     preventStealing: true
                                     onPressed: function(mouse) {
-                                        if (sourceTrackHeader.locked) return;
                                         sourceClip.gestureStartMs = Number(sourceClip.modelData.start_ms || 0);
                                         sourceClip.gestureDurationMs = Number(sourceClip.modelData.duration_ms || 0);
                                         sourceClip.gesturePointerX = mapToItem(timelineCanvas, mouse.x, mouse.y).x;
@@ -789,7 +748,7 @@ Rectangle {
                                         root.editingClip = true;
                                     }
                                     onPositionChanged: function(mouse) {
-                                        if (!pressed || sourceTrackHeader.locked) return;
+                                        if (!pressed) return;
                                         const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
                                         const deltaMs = Math.round((point.x - sourceClip.gesturePointerX)
                                             / root.pixelsPerSecond * 1000);
@@ -802,8 +761,7 @@ Rectangle {
                                             - (nextStart - sourceClip.gestureStartMs);
                                     }
                                     onReleased: {
-                                        if (!sourceTrackHeader.locked)
-                                            root.clipTrimCommitted(sourceClip.clipId, "left", sourceClip.previewStartMs);
+                                        root.clipTrimCommitted(sourceClip.clipId, "left", sourceClip.previewStartMs);
                                         sourceClip.trimming = false;
                                         root.editingClip = false;
                                     }
@@ -821,10 +779,9 @@ Rectangle {
                                     id: sourceRightHandle
                                     anchors.fill: parent
                                     hoverEnabled: true
-                                    cursorShape: sourceTrackHeader.locked ? Qt.ForbiddenCursor : Qt.SizeHorCursor
+                                    cursorShape: Qt.SizeHorCursor
                                     preventStealing: true
                                     onPressed: function(mouse) {
-                                        if (sourceTrackHeader.locked) return;
                                         sourceClip.gestureStartMs = Number(sourceClip.modelData.start_ms || 0);
                                         sourceClip.gestureDurationMs = Number(sourceClip.modelData.duration_ms || 0);
                                         sourceClip.gesturePointerX = mapToItem(timelineCanvas, mouse.x, mouse.y).x;
@@ -832,7 +789,7 @@ Rectangle {
                                         root.editingClip = true;
                                     }
                                     onPositionChanged: function(mouse) {
-                                        if (!pressed || sourceTrackHeader.locked) return;
+                                        if (!pressed) return;
                                         const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
                                         const deltaMs = Math.round((point.x - sourceClip.gesturePointerX)
                                             / root.pixelsPerSecond * 1000);
@@ -840,9 +797,8 @@ Rectangle {
                                             sourceClip.gestureDurationMs + deltaMs);
                                     }
                                     onReleased: {
-                                        if (!sourceTrackHeader.locked)
-                                            root.clipTrimCommitted(sourceClip.clipId, "right",
-                                                sourceClip.previewStartMs + sourceClip.previewDurationMs);
+                                        root.clipTrimCommitted(sourceClip.clipId, "right",
+                                            sourceClip.previewStartMs + sourceClip.previewDurationMs);
                                         sourceClip.trimming = false;
                                         root.editingClip = false;
                                     }
@@ -865,12 +821,10 @@ Rectangle {
                     secondaryAudioTrack: true
                     secondaryMuted: Boolean(root.trackById("voice").muted)
                     trackVisible: Boolean(track.visible)
-                    locked: Boolean(track.locked)
                     selected: ["subtitles", "voice"].indexOf(
                         String(AppController.manualEditorDocumentModel.selectedTrackId || "")) >= 0
                     onSelectedRequested: root.trackSelected("subtitles")
                     onVisibilityToggled: root.trackStateRequested("subtitles", "visible", !trackVisible)
-                    onLockToggled: root.trackStateRequested("subtitles", "locked", !locked)
                     onSecondaryMuteToggled: root.trackStateRequested("voice", "muted", !secondaryMuted)
                 }
 
@@ -910,7 +864,7 @@ Rectangle {
                             (timelineFlick.contentX - root.trackLeft)
                                 / Math.max(1, root.pixelsPerSecond) - 2
                         ) && previewStart <= Math.min(
-                            root.duration,
+                            root.timelineDuration,
                             (timelineFlick.contentX + timelineFlick.width - root.trackLeft)
                                 / Math.max(1, root.pixelsPerSecond) + 2
                         )
@@ -1026,8 +980,8 @@ Rectangle {
                                     return;
                                 const delta = (clip.pointerInCanvas(moveArea, mouse) - clip.pointerStartX) / root.pixelsPerSecond;
                                 const duration = clip.gestureEnd - clip.gestureStart;
-                                const lower = root.previousEnd(clip.sourceIndex);
-                                const upper = Math.max(lower, root.nextStart(clip.sourceIndex) - duration);
+                                const lower = 0;
+                                const upper = Math.max(0, root.timelineDuration - duration);
                                 let nextStart = root.clamp(clip.gestureStart + delta, lower, upper);
                                 const startSnapped = root.snapTime(nextStart, clip.sourceIndex, true, false);
                                 const endSnapped = root.snapTime(nextStart + duration, clip.sourceIndex, false, true);

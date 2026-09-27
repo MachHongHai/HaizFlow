@@ -152,7 +152,7 @@ Item {
 
             Text {
                 Layout.maximumWidth: 520
-                text: AppController.tiktokPublishStatus
+                text: AppController.tiktokPublishBusy ? qsTr("Đang xử lý bài đăng") : ""
                 color: Theme.textMuted
                 font.pixelSize: Theme.caption
                 textFormat: Text.PlainText

@@ -15,8 +15,8 @@ Item {
         case "engine-cpu-py313": return qsTr("Bộ xử lý CPU");
         case "engine-cuda128-py313": return qsTr("Bộ xử lý NVIDIA");
         case "engine-vision-onnx": return qsTr("Bộ xử lý hình ảnh");
-        case "model-speech-cpu": return qsTr("Nhận dạng và dịch · CPU");
-        case "model-speech-gpu": return qsTr("Nhận dạng và dịch · NVIDIA");
+        case "model-speech-cpu": return qsTr("Bộ ngôn ngữ · CPU");
+        case "model-speech-gpu": return qsTr("Bộ ngôn ngữ · NVIDIA");
         case "model-omnivoice": return qsTr("Giọng đọc OmniVoice");
         case "model-demucs": return qsTr("Tách giọng");
         case "model-subtitle-ocr": return qsTr("Che phụ đề gốc");
@@ -24,13 +24,23 @@ Item {
         }
     }
     function packageGroupTitle(group) {
-        if (group === "gpu")
-            return AppController.hardwareInfo.recommendedDevice === "gpu"
-                ? qsTr("NVIDIA · Khuyên dùng") : qsTr("NVIDIA");
-        if (group === "cpu")
-            return AppController.hardwareInfo.recommendedDevice === "cpu"
-                ? qsTr("CPU · Khuyên dùng") : qsTr("CPU · Tùy chọn");
-        return qsTr("Công cụ bổ sung");
+        if (group === "runtime") return qsTr("Môi trường xử lý");
+        if (group === "language") return qsTr("Nhận dạng và dịch");
+        if (group === "audio") return qsTr("Giọng đọc và âm thanh");
+        return qsTr("Hình ảnh và phụ đề gốc");
+    }
+    function packageSummary(packId, fallback) {
+        switch (packId) {
+        case "engine-cpu-py313": return qsTr("Môi trường chạy model bằng CPU");
+        case "engine-cuda128-py313": return qsTr("Tăng tốc xử lý bằng GPU NVIDIA");
+        case "model-speech-cpu": return qsTr("Whisper nhận dạng · HY-MT2 Q4 dịch · căn thời gian");
+        case "model-speech-gpu": return qsTr("Whisper Small/Turbo nhận dạng · HY-MT2 dịch · căn thời gian");
+        case "model-omnivoice": return qsTr("Tạo giọng đọc cục bộ");
+        case "model-demucs": return qsTr("Tách giọng nói khỏi âm thanh nền");
+        case "engine-vision-onnx": return qsTr("Môi trường xử lý hình ảnh");
+        case "model-subtitle-ocr": return qsTr("Nhận dạng vị trí phụ đề gốc");
+        default: return fallback;
+        }
     }
     readonly property var packageRows: {
         // Re-evaluate when the selected device or package inventory changes.
@@ -42,7 +52,7 @@ Item {
 
     SettingsPageShell {
         anchors.fill: parent
-        title: qsTr("Gói cài đặt")
+        title: qsTr("Gói tài nguyên")
         contentMaximumWidth: 920
 
         SettingRow {
@@ -108,7 +118,7 @@ Item {
                             status: String(modelData.status || "missing")
                             progress: Number(modelData.progress ?? -1)
                             detail: String(modelData.detail || "")
-                            summary: String(modelData.summary || "")
+                            summary: root.packageSummary(String(modelData.packId || ""), String(modelData.summary || ""))
                             downloadSizeText: String(modelData.downloadSizeText || "")
                             installedSizeText: String(modelData.installedSizeText || "")
                             canInstall: Boolean(modelData.canInstall)

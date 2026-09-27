@@ -12,10 +12,9 @@ from haizflow.services import video_store
 class AudioPreviewController:
     """Expose existing media tracks without invoking translation or TTS.
 
-    Voice rows use only packaged, sentence-locked samples.  Mix preview may
-    reuse a verified voice part from the *selected* video so it represents the
-    current edit, but it never searches another project. No model is loaded by
-    this class.
+    Voice rows and automatic-project mix preview use packaged, sentence-locked
+    samples. Manual-project mix preview may use the selected video's completed
+    voice track. No model is loaded by this class.
     """
 
     _PACKAGED_SAMPLE_DIR = Path(__file__).resolve().parent / "assets" / "voice_samples"
@@ -67,7 +66,15 @@ class AudioPreviewController:
         if voice_only:
             return self._publish_sources(voice_path=packaged_voice_path, voice_only=True)
 
-        voice_path = self._sample_from_video(video, effective_provider, effective_voice) or packaged_voice_path
+        project_type = str(getattr(video, "project_type", getattr(host, "_project_type", "")) or "")
+        if project_type == "single":
+            if not packaged_voice_path:
+                return self._publish_sources(voice_only=True)
+            voice_path, mixed_voice = packaged_voice_path, False
+        else:
+            voice_path, mixed_voice = self._sample_from_video(video, effective_provider, effective_voice)
+            if not voice_path:
+                voice_path = packaged_voice_path
 
         use_audio_separation = (
             bool(getattr(host, "_enable_audio_separation", False))
@@ -86,6 +93,11 @@ class AudioPreviewController:
             getattr(host, "_background_music_path", "") if background_music_path is None else background_music_path
         )
         music_path = requested_music if self._valid_media(requested_music) else ""
+        if mixed_voice:
+            # A legacy voice_output is already the final mix. Do not replay
+            # its source and music layers on top of it.
+            source_path = ""
+            music_path = ""
         return self._publish_sources(
             voice_path=voice_path,
             source_path=source_path,
@@ -169,21 +181,29 @@ class AudioPreviewController:
         return True
 
     @classmethod
-    def _sample_from_video(cls, video, provider: str, voice: str) -> str:
+    def _sample_from_video(cls, video, provider: str, voice: str) -> tuple[str, bool]:
         if video is None:
-            return ""
-        if str(getattr(video, "tts_provider", "") or "").strip().lower() != provider:
-            return ""
-        if str(getattr(video, "tts_voice", "") or "").strip() != voice:
-            return ""
+            return "", False
         checkpoints = dict(getattr(video, "checkpoints", {}) or {})
         if not checkpoints.get("voice"):
-            return ""
-        parts_dir = Path(video_store.get_video_dir(video.video_id)) / "temp" / "voice_parts"
+            return "", False
+        files = dict(getattr(video, "files", {}) or {})
+        video_dir = Path(video_store.get_video_dir(video.video_id))
+        parts_dir = video_dir / "temp" / "voice_parts"
+        aligned_voice = str(files.get("voice_output") or "")
+        if cls._valid_media(aligned_voice):
+            return aligned_voice, True
+        aligned_voice = video_dir / "temp" / "voice_final.wav"
+        if cls._valid_media(str(aligned_voice)):
+            return str(aligned_voice), True
+        if str(getattr(video, "tts_provider", "") or "").strip().lower() != provider:
+            return "", False
+        if str(getattr(video, "tts_voice", "") or "").strip() != voice:
+            return "", False
         for candidate in sorted(parts_dir.glob("voice_*.mp3")):
             if cls._valid_media(str(candidate)):
-                return str(candidate)
-        return ""
+                return str(candidate), False
+        return "", False
 
     @classmethod
     def _packaged_sample_path(cls, provider: str, voice: str, language: str) -> str:

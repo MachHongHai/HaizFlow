@@ -245,10 +245,49 @@ class ProcessingLifecycleController:
             elif item.startswith("__QUEUE_FINISHED__:"):
                 finished_video_id = item.partition(":")[2]
                 host.refreshVideos()
+                # Voice artifacts are published by the worker, while the
+                # editor document and its QML model live on the GUI thread.
+                # Reconcile them at the completed-task boundary so a newly
+                # generated voice is audible immediately, without waiting for
+                # a later volume edit or reopening the project.
+                finished_video = video_store.get_video(finished_video_id)
+                if (
+                    finished_video_id == str(host._selected_video_id or "")
+                    and finished_video
+                    and getattr(finished_video, "project_type", "") == "manual"
+                    and getattr(finished_video, "status", "") in {"manual_ready", "done"}
+                    and str(getattr(finished_video, "manual_target_tool", "") or "") == ""
+                    and getattr(host, "_manual_editor_document", None) is not None
+                ):
+                    try:
+                        from haizflow.services import editor_documents
+
+                        refresh_snapshot = getattr(host, "_refresh_selected_video_snapshot", None)
+                        if callable(refresh_snapshot):
+                            refresh_snapshot()
+                        subtitles = getattr(host, "_manual_subtitles", None)
+                        if (
+                            subtitles is not None
+                            and not str(getattr(host, "_manual_editing_segment_id", "") or "")
+                            and not any(
+                                state in {"saving", "error"}
+                                for state in getattr(subtitles, "_states", {}).values()
+                            )
+                        ):
+                            subtitles.load(finished_video_id, host.reviewSegments)
+                            document = editor_documents.sync_subtitle_clips(
+                                finished_video, subtitles.segments,
+                            )
+                        else:
+                            document = editor_documents.ensure(finished_video)
+                        host._manual_editor_document.set_document(document)
+                    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                        video_store.log_to_video(
+                            finished_video_id, f"Editor voice reconciliation failed: {exc}"
+                        )
                 host.selectedVideoChanged.emit()
                 host._refresh_batch_model()
                 host.batchChanged.emit()
-                finished_video = video_store.get_video(finished_video_id)
                 if (
                     finished_video
                     and getattr(finished_video, "project_type", "single") == "manual"

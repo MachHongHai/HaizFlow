@@ -38,6 +38,7 @@ InspectorPanel {
             showCloneAction: AppController.ttsProvider === "omnivoice"
             cloneActive: AppController.ttsVoice === "omnivoice:clone"
             speechRecognitionModel: AppController.speechRecognitionModel
+            translationModel: AppController.translationModel
             speechRecognitionOptions: AppController.speechRecognitionModelOptions
             speechRecognitionIndex: AppController.speechRecognitionModelIndex
             targetLanguage: AppController.targetLanguage
@@ -55,8 +56,16 @@ InspectorPanel {
             enableAudioSeparation: AppController.enableAudioSeparation
             backgroundMusicPath: AppController.backgroundMusicPath
             watermarkText: AppController.watermarkText
+            watermarkKind: AppController.watermarkKind
+            watermarkImagePath: AppController.watermarkImagePath
+            watermarkVideoPath: AppController.watermarkVideoPath
 
             onSpeechRecognitionEdited: function(value) { AppController.speechRecognitionModel = value; root.scheduleVideoSettingsSave() }
+            onTranslationModelEdited: function(value) {
+                AppController.translationModel = value
+                if (AppController.translationModel === value)
+                    root.scheduleVideoSettingsSave()
+            }
             onTargetLanguageEdited: function(value) { AppController.targetLanguage = value; root.scheduleVideoSettingsSave() }
             onTtsProviderEdited: function(value) { AppController.ttsProvider = value; root.scheduleVideoSettingsSave() }
             onTtsVoiceEdited: function(value) { AppController.ttsVoice = value; root.scheduleVideoSettingsSave() }
@@ -78,7 +87,11 @@ InspectorPanel {
             onBackgroundMusicFileRequested: AppController.browseBackgroundMusic()
             onBackgroundMusicLinkRequested: backgroundMusicLinkDialogLoader.invoke("open", [])
             onBackgroundMusicClearRequested: AppController.clearBackgroundMusic()
-            onWatermarkRequested: watermarkDialogLoader.invoke("openWithText", [AppController.watermarkText])
+            onWatermarkKindEdited: function(value) {
+                AppController.watermarkKind = value
+                root.scheduleVideoSettingsSave()
+            }
+            onWatermarkRequested: watermarkDialogLoader.invoke("openForSelectedVideo", [])
         }
 
         ScrollBar.vertical: ScrollBar {
@@ -110,12 +123,9 @@ InspectorPanel {
     LazyDialogLoader {
         id: watermarkDialogLoader
         sourceComponent: Component {
-            WatermarkDialog {
+            AutoWatermarkPreviewDialog {
                 onClosed: watermarkDialogLoader.release()
-                onWatermarkAccepted: function(text) {
-                    AppController.watermarkText = text
-                    root.scheduleVideoSettingsSave()
-                }
+                onWatermarkSettingsEdited: root.scheduleVideoSettingsSave()
             }
         }
     }
@@ -149,7 +159,7 @@ InspectorPanel {
 
     Timer {
         id: videoSettingsSaveTimer
-        interval: 250
+        interval: 450
         repeat: false
         onTriggered: {
             AppController.persistVideoSettingsFor(root.pendingSettingsVideoId)
