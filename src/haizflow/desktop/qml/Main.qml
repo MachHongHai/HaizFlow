@@ -59,7 +59,7 @@ ApplicationWindow {
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
     readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace || currentRoute === routeManualWorkspace || currentRoute === routeBatchWorkspace || currentRoute === routeBatchVideo || currentRoute === routeDownloadWorkspace || currentRoute === routePublishWorkspace
-    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(helpDialogLoader) || lazyDialogVisible(appUpdateDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
+    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(appUpdateDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
     readonly property bool downloadCanGoBack: routeHost.downloadCanGoBack
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
@@ -292,13 +292,6 @@ ApplicationWindow {
     }
 
     LazyDialogLoader {
-        id: helpDialogLoader
-        sourceComponent: Component {
-            HelpDialog { onClosed: helpDialogLoader.release() }
-        }
-    }
-
-    LazyDialogLoader {
         id: appUpdateDialogLoader
         sourceComponent: Component {
             AppUpdateDialog { onClosed: appUpdateDialogLoader.release() }
@@ -443,7 +436,6 @@ ApplicationWindow {
             onSettingsRequested: root.navigate(root.routeSettings)
             onPackagesRequested: root.navigate(root.routePackages)
             onAboutRequested: aboutDialogLoader.invoke("open", [])
-            onHelpRequested: helpDialogLoader.invoke("open", [])
         }
 
         RowLayout {

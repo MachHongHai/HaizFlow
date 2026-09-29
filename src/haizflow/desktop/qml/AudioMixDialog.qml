@@ -21,12 +21,12 @@ AppDialog {
         || sourcePreviewPlayer.playbackState === MediaPlayer.PlayingState
         || musicPreviewPlayer.playbackState === MediaPlayer.PlayingState
 
-    title: qsTr("Âm lượng")
+    title: qsTr("Âm thanh")
     subtitle: qsTr("Cân bằng âm thanh gốc, giọng đọc và nhạc nền")
     preferredWidth: 480
-    preferredHeight: 430
+    preferredHeight: 0
     maximumWidth: 520
-    maximumHeight: 560
+    maximumHeight: 720
 
     function stopPreview() {
         previewStopTimer.stop()
@@ -120,6 +120,48 @@ AppDialog {
         }
     }
 
+    PropertyRow {
+        Layout.fillWidth: true
+        label: qsTr("Lặp nhạc nền")
+        contentItem: AppSwitch {
+            enabled: root.backgroundMusicAdjustable
+            checked: AppController.backgroundMusicLoop
+            onToggled: {
+                AppController.backgroundMusicLoop = checked;
+                root.scheduleVideoSettingsSave();
+            }
+        }
+    }
+
+    PropertyRow {
+        Layout.fillWidth: true
+        label: qsTr("Tự giảm nhạc khi có lời")
+        contentItem: AppSwitch {
+            enabled: root.backgroundMusicAdjustable
+            checked: AppController.audioDuckingEnabled
+            onToggled: {
+                AppController.audioDuckingEnabled = checked;
+                root.scheduleVideoSettingsSave();
+            }
+        }
+    }
+
+    PropertyRow {
+        Layout.fillWidth: true
+        visible: AppController.audioDuckingEnabled
+        label: qsTr("Mức giảm")
+        contentItem: NumericField {
+            enabled: root.backgroundMusicAdjustable
+            from: -36; to: 0
+            suffix: " dB"
+            value: AppController.audioDuckingReductionDb
+            onValueModified: {
+                AppController.audioDuckingReductionDb = value;
+                root.scheduleVideoSettingsSave();
+            }
+        }
+    }
+
     RowLayout {
         Layout.fillWidth: true
         Layout.topMargin: Theme.space4
@@ -179,6 +221,7 @@ AppDialog {
     MediaPlayer {
         id: musicPreviewPlayer
         source: AppController.audioPreviewBackgroundMusicSource
+        loops: AppController.backgroundMusicLoop ? MediaPlayer.Infinite : 1
         audioOutput: AudioOutput { volume: AppController.backgroundMusicVolume / 100.0 }
     }
 

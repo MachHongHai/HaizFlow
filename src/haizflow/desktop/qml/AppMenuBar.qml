@@ -18,7 +18,6 @@ Rectangle {
     signal undoRequested
     signal redoRequested
     signal aboutRequested
-    signal helpRequested
     signal backRequested
     signal forwardRequested
     signal homeRequested
@@ -118,12 +117,12 @@ Rectangle {
 
             objectName: "helpButton"
             glyph: "\uE897"
-            toolTipText: qsTr("Trợ giúp")
+            toolTipText: qsTr("Giới thiệu")
             onClicked: {
                 projectMenu.close();
                 editMenu.close();
                 settingsMenu.close();
-                root.helpRequested();
+                root.aboutRequested();
             }
         }
     }
@@ -226,6 +225,8 @@ Rectangle {
         menuContentWidth: Math.max(
             settingsItem.implicitWidth,
             packagesItem.implicitWidth,
+            guideItem.implicitWidth,
+            reportIssueItem.implicitWidth,
             aboutItem.implicitWidth)
 
         AppMenuItem {
@@ -238,8 +239,24 @@ Rectangle {
         AppMenuItem {
             id: packagesItem
 
-            text: qsTr("Gói cài đặt")
+            text: qsTr("Gói tài nguyên")
             onTriggered: root.packagesRequested()
+        }
+
+        MenuSeparator {}
+
+        AppMenuItem {
+            id: guideItem
+
+            text: qsTr("Hướng dẫn sử dụng")
+            onTriggered: Qt.openUrlExternally("https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.vi.md")
+        }
+
+        AppMenuItem {
+            id: reportIssueItem
+
+            text: qsTr("Báo lỗi")
+            onTriggered: Qt.openUrlExternally("https://github.com/MachHongHai/HaizFlow/issues/new")
         }
 
         MenuSeparator {}

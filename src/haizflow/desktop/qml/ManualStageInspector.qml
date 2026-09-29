@@ -132,7 +132,7 @@ InspectorPanel {
 
     function runLabel() {
         if (toolId === "translation") return toolState.cacheHit ? qsTr("Nhận dạng & dịch lại") : qsTr("Nhận dạng & dịch");
-        if (toolId === "image") return toolState.cacheHit ? qsTr("Quét lại phụ đề gốc") : qsTr("Tìm vùng phụ đề gốc");
+        if (toolId === "image") return qsTr("Áp dụng");
         if (toolId === "voice") return toolState.cacheHit ? qsTr("Tạo lại giọng") : qsTr("Tạo giọng");
         if (toolId === "audio") return toolState.cacheHit ? qsTr("Tạo lại bản phối") : qsTr("Tạo bản phối");
         if (toolId === "export") return toolState.cacheHit ? qsTr("Xuất lại video") : qsTr("Xuất video");
@@ -308,7 +308,7 @@ InspectorPanel {
             enabled: root.taskProcessing && root.taskBelongsToTool
                 || root.taskQueued && root.taskBelongsToTool
                 || root.taskPaused && root.taskBelongsToTool
-                || (root.editable && !root.taskQueued && root.toolState.canRun
+                || (root.editable && !root.taskQueued && (root.toolId === "image" || root.toolState.canRun)
                     && (root.toolId !== "export" || Boolean(root.exportPreflight.canExport)))
             onClicked: {
                 if ((root.taskProcessing || root.taskQueued) && root.taskBelongsToTool)
@@ -317,6 +317,12 @@ InspectorPanel {
                     AppController.resumeSelectedVideo();
                 else {
                     root.saveNow();
+                    if (root.toolId === "image") {
+                        const imagePane = stageLoader.item as ManualImageToolPanel;
+                        if (imagePane)
+                            imagePane.applyTreatment();
+                        return;
+                    }
                     if (root.toolId === "export")
                         root.refreshExportPreflight();
                     const started = AppController.runManualTool(root.toolId);

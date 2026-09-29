@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import shutil
 import threading
+import time
 
 from haizflow.core.events import unsubscribe_log
 from haizflow.core.hardware import (
@@ -185,6 +186,20 @@ class RuntimeDeviceController:
                 host._hardware_probe_running = True
         try:
             capabilities = self._detect_hardware()
+            likely_nvidia = (
+                str(getattr(host, "_settings_processing_device", "cpu")) == "gpu"
+                or "nvidia" in str(capabilities.active_display_gpu_name).lower()
+                or any("nvidia" in str(name).lower() for name in capabilities.detected_graphics)
+            )
+            if likely_nvidia and not capabilities.cuda_available:
+                # Windows may expose the adapter before nvidia-smi can talk to
+                # the driver. Retry off the GUI thread instead of persisting
+                # a transient CPU fallback as the machine's capability.
+                for delay in (0.75, 1.5):
+                    time.sleep(delay)
+                    capabilities = self._detect_hardware()
+                    if capabilities.cuda_available:
+                        break
         finally:
             if probe_lock is not None:
                 with probe_lock:
@@ -288,7 +303,7 @@ class RuntimeDeviceController:
             host._settings_processing_device = previous_device
             host.appAlertRequested.emit(
                 "Thiếu bộ xử lý",
-                "Cài gói bộ xử lý phù hợp trong Cài đặt → Gói cài đặt trước khi đổi thiết bị.",
+                "Cài Whisper Turbo hoặc HY-MT2 GPU trong Gói tài nguyên để thiết lập môi trường NVIDIA.",
                 "info",
             )
             host.settingsChanged.emit()
@@ -553,6 +568,9 @@ class RuntimeDeviceController:
                     host.settingsChanged.emit()
                 if event.get("status_message"):
                     host.statusMessageChanged.emit()
+            elif kind == "error":
+                host._status_message = f"Không thể kiểm tra GPU: {event.get('message', '')}"
+                host.statusMessageChanged.emit()
 
     def setHardwareTelemetryActive(self, active: bool):
         host = self._host

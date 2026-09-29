@@ -143,6 +143,14 @@ class AudioTimelineIntegrityTests(unittest.TestCase):
 
         self.assertEqual(muted.rms, 0)
 
+    def test_ducking_lowers_music_only_around_voice(self):
+        music = Sine(440, sample_rate=16000).to_audio_segment(duration=3000)
+        ducked = audio_timeline._duck_music(music, [(1000, 1800)], -12, 180, 420)
+        self.assertEqual(len(ducked), len(music))
+        self.assertAlmostEqual(ducked[1200:1600].rms / music[1200:1600].rms, 0.251, delta=0.02)
+        self.assertAlmostEqual(ducked[100:500].rms / music[100:500].rms, 1.0, delta=0.01)
+        self.assertAlmostEqual(ducked[2600:2900].rms / music[2600:2900].rms, 1.0, delta=0.01)
+
     def test_tempo_rounding_tail_is_trimmed_to_the_exact_slot(self):
         audio = AudioSegment.silent(duration=1002, frame_rate=16000)
 

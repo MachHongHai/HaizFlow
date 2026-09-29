@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import queue
 
+from haizflow.core.hardware import runtime_profile
 from haizflow.desktop.activity_log import ActivityLogBuffer
 from haizflow.pipeline.process_registry import is_cancelled, is_paused, prepare_video_resume
 from haizflow.services import project_store, video_store
@@ -96,6 +97,9 @@ class ProcessingLifecycleController:
         self._host._log_queue.put(f"__QUEUE_FINISHED__:{video_id}")
 
     def on_processing_queue_idle(self) -> None:
+        warmup = getattr(self._host, "_smart_warmup", None)
+        if warmup is not None:
+            warmup.resume_after_foreground()
         self._host._log_queue.put("__QUEUE_IDLE__")
 
     def on_processing_queue_error(self, video_id: str, exc: Exception) -> None:
@@ -151,6 +155,14 @@ class ProcessingLifecycleController:
             if not current_video or current_video.status in {"paused", "cancelled"}:
                 return
             if requires_model_runtime:
+                profile = runtime_profile()
+                if profile.total_ram_gib < 24 or (
+                    profile.cuda_available and profile.total_vram_gib < 12
+                ):
+                    warmup = getattr(host, "_smart_warmup", None)
+                    if warmup is not None:
+                        video_store.log_to_video(video_id, "Releasing speculative models before foreground processing.")
+                        warmup.quiesce_for_foreground()
                 runtime_probe_error = getattr(host, "_runtime_probe_error", "")
                 if runtime_probe_error:
                     raise RuntimeError(f"Model runtime validation failed: {runtime_probe_error}")
@@ -207,12 +219,12 @@ class ProcessingLifecycleController:
         context = {
             "device": str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu"),
             "model": str(getattr(video, "speech_recognition_model", "small") or "small"),
+            "translation_model": str(getattr(video, "translation_model", "auto") or "auto"),
             "source_language": str(getattr(video, "source_language", "auto") or "auto"),
             "language": str(getattr(video, "target_language", "") or ""),
         }
         self._host._smart_warmup.request("recognition", context, priority=8)
-        self._host._smart_warmup.request("translation", context, priority=9)
-        video_store.log_to_video(video_id, "Batch models were queued for background preparation.")
+        video_store.log_to_video(video_id, "Recognition model queued for background preparation.")
 
     def on_video_log(self, video_id: str, line: str) -> None:
         host = self._host

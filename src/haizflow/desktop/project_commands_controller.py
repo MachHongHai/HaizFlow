@@ -70,6 +70,9 @@ class ProjectCommandsController:
 
     @staticmethod
     def _resources_ready_for_videos(host, videos) -> bool:
+        ensure_hardware = getattr(host, "_ensure_hardware_ready_for_action", None)
+        if callable(ensure_hardware) and not ensure_hardware():
+            return False
         resource_controller = getattr(host, "_resource_packs", None)
         if resource_controller is None:
             return True
@@ -80,6 +83,10 @@ class ProjectCommandsController:
                 "model": str(
                     getattr(video, "speech_recognition_model", None)
                     or getattr(host, "_speech_recognition_model", "small")
+                ),
+                "translation_model": str(
+                    getattr(video, "translation_model", None)
+                    or getattr(host, "_translation_model", "auto")
                 ),
                 "source_language": str(
                     getattr(video, "source_language", None) or getattr(host, "_source_language", "auto")
@@ -95,16 +102,37 @@ class ProjectCommandsController:
             if bool(getattr(video, "remove_original_subtitles", getattr(host, "_remove_original_subtitles", False))):
                 capabilities.append("ocr")
             for capability in capabilities:
+                for pack_id in resource_controller.manager.required_packs(capability, context):
+                    compatible, reason = resource_controller._hardware_compatibility(pack_id)
+                    if not compatible:
+                        host.appAlertRequested.emit("Máy không đáp ứng", reason, "warning")
+                        return False
                 missing.extend(resource_controller.manager.missing_packs(capability, context))
         missing = list(dict.fromkeys(missing))
         if not missing:
             return True
+        support = [item for item in missing if item in {"model-demucs", "model-subtitle-ocr", "engine-vision-onnx"}]
+        support_models = {item for item in support if item in {"model-demucs", "model-subtitle-ocr"}}
+        if "engine-vision-onnx" in support:
+            support_models.add("model-subtitle-ocr")
+        if support_models:
+            resource_controller.installResourcePacks(sorted(support_models))
+        visible_missing = [item for item in missing if item not in support]
+        if not visible_missing:
+            host.appAlertRequested.emit(
+                "Đang chuẩn bị thành phần hỗ trợ",
+                "Ứng dụng đang cài thành phần tách giọng hoặc xử lý phụ đề. Hãy chạy lại khi hoàn tất.",
+                "info",
+            )
+            return False
+        missing = visible_missing
         summary = resource_controller.manager.requirement_summary(missing)
+        missing_labels = ", ".join(resource_controller.manager.definitions[item].label for item in missing)
         host.appAlertRequested.emit(
             "Cần cài thêm gói",
-            f"Dự án này cần tải {format_memory_size(summary['downloadBytes'])}. "
+            f"Thiếu {missing_labels}. Cần tải {format_memory_size(summary['downloadBytes'])}. "
             f"Ổ lưu cần còn trống {format_memory_size(summary['requiredBytes'])} trong lúc cài. "
-            "Mở Gói cài đặt để tiếp tục.",
+            "Mở Gói tài nguyên để tiếp tục.",
             "info",
         )
         signal = getattr(host, "resourcePacksRequested", None)
@@ -362,6 +390,9 @@ class ProjectCommandsController:
         translation_model=None,
     ) -> bool:
         host = self._host
+        ensure_hardware = getattr(host, "_ensure_hardware_ready_for_action", None)
+        if callable(ensure_hardware) and not ensure_hardware():
+            return False
         mode = "A"
         language = str(target_language or "vi")
         normalize_provider = getattr(host, "_normalized_tts_provider", None)
@@ -382,17 +413,19 @@ class ProjectCommandsController:
             return False
         capabilities = getattr(host, "_hardware_capabilities", None)
         turbo_gpu_available = bool(
-            (capabilities and capabilities.cuda_available)
-            or getattr(host, "_active_processing_device", "") == "gpu"
-            or getattr(host, "_settings_processing_device", "") == "gpu"
-            or runtime_profile().cuda_available
+            getattr(host, "_settings_processing_device", "") == "gpu"
+            and (
+                (capabilities and capabilities.cuda_available)
+                or getattr(host, "_active_processing_device", "") == "gpu"
+                or runtime_profile().cuda_available
+            )
         )
         if selected_translation_model == "full" and not turbo_gpu_available:
             show_alert = getattr(host, "_show_app_alert", None)
             if callable(show_alert):
                 show_alert(
-                    "Translation model",
-                    "The full HY-MT2 model requires a compatible NVIDIA CUDA GPU.",
+                    "Máy không đáp ứng",
+                    "HY-MT2 GPU cần GPU NVIDIA tương thích. Hãy chọn HY-MT2 CPU.",
                     "warning",
                 )
             return False
@@ -400,21 +433,21 @@ class ProjectCommandsController:
         if asr_model == "large-v3-turbo" and (not turbo_gpu_available or not turbo_model_ready):
             show_alert = getattr(host, "_show_app_alert", None)
             message = (
-                "Whisper large-v3-turbo has not finished downloading or integrity verification. "
-                "Wait for model setup to finish, or select WhisperX small."
+                "Chưa cài Whisper Turbo hoặc gói chưa xác minh xong. "
+                "Hãy cài trong Gói tài nguyên hoặc chọn Whisper Small."
                 if turbo_gpu_available and not turbo_model_ready
-                else "Whisper large-v3-turbo requires an NVIDIA CUDA GPU. Select WhisperX small for this device."
+                else "Whisper Turbo cần GPU NVIDIA tương thích. Hãy chọn Whisper Small."
             )
             if callable(show_alert):
                 show_alert(
-                    "Speech recognition",
+                    "Model nhận dạng",
                     message,
                     "warning",
                 )
             else:
                 QMessageBox.warning(
                     None,
-                    "Speech recognition",
+                    "Model nhận dạng",
                     message,
                 )
             return False

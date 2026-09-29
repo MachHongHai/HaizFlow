@@ -283,6 +283,17 @@ def _worker_error_message(error: str, diagnostic_path: str) -> str:
             "rồi chạy lại bước nhận dạng và dịch. Bước tạo giọng chưa bắt đầu. "
             f"Log kỹ thuật: {diagnostic_path or 'unavailable'}"
         )
+    if "CUDA error: unknown error" in error and diagnostic_path:
+        try:
+            diagnostic = Path(diagnostic_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            diagnostic = ""
+        if "Memory allocation failure" in diagnostic:
+            return (
+                "Không đủ bộ nhớ hệ thống để HY-MT2 tiếp tục dịch trên GPU. "
+                "Hãy đóng ứng dụng đang dùng nhiều bộ nhớ rồi chạy lại bước dịch. "
+                f"Log kỹ thuật: {diagnostic_path}"
+            )
     return f"{error} Diagnostic log: {diagnostic_path or 'unavailable'}"
 
 
@@ -516,10 +527,19 @@ def shutdown_hymt2_worker(*, permanent: bool = False) -> None:
             _discard_hymt2_worker(process)
 
 
-def warm_hymt2_worker(status_callback=None) -> None:
+def warm_hymt2_worker(status_callback=None, *, model_preference: str | None = None) -> None:
     """Load HY-MT2 once in the persistent worker before the first video arrives."""
     global _WORKER_WARM
     with _WORKER_OPERATION_LOCK:
+        if model_preference is not None:
+            requested = str(model_preference).lower()
+            if requested not in {"auto", "q4", "full"}:
+                raise ValueError(f"Unsupported translation model: {model_preference}")
+            if requested != translation_model_preference():
+                from haizflow.core.hardware import configure_translation_model
+
+                shutdown_hymt2_worker()
+                configure_translation_model(requested)
         process, output_queue = _ensure_hymt2_worker()
         request_id = uuid.uuid4().hex
         worker_output = []

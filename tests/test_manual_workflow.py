@@ -413,7 +413,7 @@ class ManualWorkflowTests(unittest.TestCase):
         self.assertEqual(changes["status"], "manual_ready")
         self.assertEqual(changes["step"], "manual_ready")
 
-    def test_explicit_subtitle_layout_is_independent_from_original_subtitle_cleanup(self):
+    def test_auto_cover_uses_detected_box_but_manual_keeps_explicit_layout(self):
         manual_video = SimpleNamespace(
             project_type="manual",
             subtitle_layout_override=True,
@@ -426,6 +426,8 @@ class ManualWorkflowTests(unittest.TestCase):
         )
 
         self.assertTrue(process_video._manual_subtitle_layout_for_render(manual_video))
+        self.assertFalse(process_video._manual_subtitle_layout_for_render(automatic_video))
+        automatic_video.remove_original_subtitles = False
         self.assertTrue(process_video._manual_subtitle_layout_for_render(automatic_video))
 
     def test_voice_module_does_not_run_subtitle_formatting(self):

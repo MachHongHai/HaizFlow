@@ -259,7 +259,9 @@ def _resolve_audio_mix(video, fallback_audio_path: str) -> tuple[str, int]:
 
 
 def _manual_subtitle_layout_for_render(video) -> bool:
-    """Use OCR placement by default, but honor an explicitly edited layout."""
+    """Auto cover owns subtitle placement, including older saved overrides."""
+    if getattr(video, "project_type", "single") != "manual" and getattr(video, "remove_original_subtitles", False):
+        return False
     return bool(getattr(video, "subtitle_layout_override", False))
 
 
@@ -850,6 +852,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         mix_audio_volume,
         _file_state((video.files or {}).get("background_music") or ""),
         getattr(video, "background_music_volume", 30),
+        video.background_music_loop,
+        video.audio_ducking_enabled,
+        video.audio_ducking_reduction_db,
         getattr(video, "tts_volume", 100),
         AUDIO_TIMELINE_VERSION,
         "exclusive-audio-source-v4-source-speech-window-sync",
@@ -870,6 +875,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             original_video_volume=mix_audio_volume,
             background_music_path=(video.files or {}).get("background_music") or None,
             background_music_volume=getattr(video, "background_music_volume", 30),
+            background_music_loop=video.background_music_loop,
+            ducking_enabled=video.audio_ducking_enabled,
+            ducking_reduction_db=video.audio_ducking_reduction_db,
             tts_volume=getattr(video, "tts_volume", 100),
         )
         _mark_checkpoint(video, "timeline", timeline_signature)

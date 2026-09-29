@@ -60,10 +60,8 @@ class SmartWarmupController:
     def request_startup_prediction(self) -> None:
         device = str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu")
         model = str(getattr(self._host, "_speech_recognition_model", "small") or "small")
-        # Recognition is the first expensive action in both automatic and
-        # manual translation flows. Translation follows at a lower priority.
+        # A single speculative load is enough, especially on 16 GB systems.
         self.request("recognition", {"device": device, "model": model}, priority=30)
-        self.request("translation", {"device": device}, priority=40)
 
     def request_project_prediction(self) -> None:
         video = self._host._selected_video()
@@ -75,25 +73,14 @@ class SmartWarmupController:
             "source_language": str(getattr(video, "source_language", "auto") or "auto"),
             "language": str(getattr(video, "target_language", "") or ""),
             "provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
+            "translation_model": str(getattr(video, "translation_model", "auto") or "auto"),
         }
         last_tool = str(getattr(video, "manual_target_tool", "") or "")
-        predicted = {
-            "translation": ("recognition", "translation"),
-            "voice": ("voice",),
-            "source": ("separation",),
-            "image": ("ocr",),
-        }.get(last_tool, ("recognition", "translation"))
-        for offset, capability in enumerate(predicted):
-            self.request(capability, context, priority=10 + offset)
+        predicted = {"voice": "voice", "source": "separation", "image": "ocr"}.get(last_tool, "recognition")
+        self.request(predicted, context, priority=10)
 
     def request(self, capability: str, context: dict | None = None, *, priority: int = 20) -> None:
         if self._stopping or self._suspended or not bool(getattr(self._host, "_keep_models_warm", True)):
-            return
-        profile = runtime_profile()
-        # Speculative model loads can overlap the first foreground request.
-        # On a 16 GB / 8 GB VRAM machine even one idle speech or translation
-        # model can prevent the next model from mapping its weights on Windows.
-        if profile.total_ram_gib < 24 or (profile.cuda_available and profile.total_vram_gib < 12):
             return
         capability = str(capability or "").strip().lower()
         if capability not in {"recognition", "translation", "voice", "separation", "ocr"}:
@@ -101,8 +88,9 @@ class SmartWarmupController:
         context = dict(context or {})
         with self._condition:
             self._sequence += 1
-            self._requests = [request for request in self._requests if request.capability != capability]
-            heapq.heapify(self._requests)
+            # Keep only the latest prediction. Queuing recognition and HY-MT2
+            # together defeats the memory budget on a common 16 GB machine.
+            self._requests.clear()
             heapq.heappush(self._requests, _WarmRequest(int(priority), self._sequence, capability, context))
             self._condition.notify_all()
 
@@ -123,6 +111,14 @@ class SmartWarmupController:
                 time.sleep(0.1)
             if self._stopping:
                 return
+            with self._condition:
+                if self._suspended or not bool(getattr(self._host, "_keep_models_warm", True)):
+                    continue
+                if self._requests and self._sequence > request.sequence:
+                    continue
+                existing = self._resident_contexts.get(request.capability)
+            if existing is not None and existing != request.context:
+                self._release_now("model-changed", {request.capability})
             missing = self._resource_manager.missing_packs(request.capability, request.context)
             if missing:
                 self._events.put(
@@ -133,6 +129,14 @@ class SmartWarmupController:
                         "missing": missing,
                     }
                 )
+                continue
+            self._enforce_resident_budget(request.capability)
+            if existing != request.context and not self._has_warmup_budget(request.capability, request.context):
+                self._events.put({
+                    "state": "skipped",
+                    "capability": request.capability,
+                    "detail": "Bỏ qua chuẩn bị model để giữ đủ bộ nhớ cho tác vụ.",
+                })
                 continue
             try:
                 with self._condition:
@@ -145,8 +149,8 @@ class SmartWarmupController:
                         "detail": self._warming_label(request.capability),
                     }
                 )
-                self._enforce_resident_budget(request.capability)
-                self._warm(request.capability, request.context)
+                if existing != request.context:
+                    self._warm(request.capability, request.context)
                 with self._condition:
                     self._resident.add(request.capability)
                     self._resident_since[request.capability] = time.monotonic()
@@ -199,10 +203,24 @@ class SmartWarmupController:
         constrained = total_ram_gib < 24 or (profile.cuda_available and total_vram_gib < 12)
         if not constrained:
             return
-        if next_capability == "recognition" and "translation" in self._resident:
-            self._release_now("memory-pressure", {"translation"})
-        elif next_capability == "translation" and "recognition" in self._resident:
-            self._release_now("memory-pressure", {"recognition"})
+        self._release_now("memory-pressure", set(self._resident) - {next_capability})
+
+    def _has_warmup_budget(self, capability: str, context: dict) -> bool:
+        profile = runtime_profile()
+        available = available_memory_bytes()
+        # Leave headroom for Qt, video decoding and the next foreground job.
+        required_gib = 7 if capability in {"translation", "voice"} else 5
+        if available and available < required_gib * 1024**3:
+            return False
+        if profile.total_ram_gib and profile.total_ram_gib < 14:
+            return False
+        if capability == "recognition" and str(context.get("model")) in {"turbo", "large-v3-turbo"}:
+            if not profile.cuda_available or profile.total_vram_gib < 7:
+                return False
+        if capability == "translation" and str(context.get("translation_model")) == "full":
+            if not profile.cuda_available or profile.total_vram_gib < 12:
+                return False
+        return True
 
     def _idle_timeout(self, capability: str) -> float | None:
         video = self._host._selected_video()
@@ -249,7 +267,7 @@ class SmartWarmupController:
         if capability == "translation":
             from haizflow.services.translation import warm_hymt2_worker
 
-            warm_hymt2_worker()
+            warm_hymt2_worker(model_preference=str(context.get("translation_model") or "auto"))
             return
         if capability == "voice":
             from haizflow.pipeline.omnivoice_tts import warm_runtime
@@ -367,6 +385,35 @@ class SmartWarmupController:
             # finish their current import/load and are released afterwards.
             if not self._preempt_active_warm(active):
                 self.release("foreground", {active})
+
+    def quiesce_for_foreground(self, timeout_seconds: float = 30.0) -> None:
+        """Finish speculative cleanup before a memory-constrained job loads models.
+
+        Called by the processing worker, never by the Qt/UI thread. Merely
+        scheduling ``release`` at enqueue time is not a memory barrier: the
+        recognition/translation worker could start while that release was
+        still unloading a different model.
+        """
+        with self._condition:
+            self._suspended = True
+            self._requests.clear()
+            active = self._active_capability
+        if active:
+            self._preempt_active_warm(active)
+        deadline = time.monotonic() + max(0.5, float(timeout_seconds))
+        with self._condition:
+            while self._active_capability and time.monotonic() < deadline:
+                self._condition.wait(timeout=0.1)
+            if self._active_capability:
+                raise RuntimeError("Không thể giải phóng model đã chuẩn bị trước khi xử lý.")
+        self._release_now("foreground")
+
+    def resume_after_foreground(self) -> None:
+        with self._condition:
+            self._suspended = False
+            self._condition.notify_all()
+        if bool(getattr(self._host, "_keep_models_warm", True)) and not self._stopping:
+            self.request_project_prediction()
 
     def suspend_for_storage_move(self) -> None:
         """Quiesce warm workers before resource files move to another drive."""

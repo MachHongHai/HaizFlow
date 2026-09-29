@@ -508,18 +508,8 @@ Item {
             onProjectDeleteRequested: AppController.deleteCurrentProject()
         }
 
-        SourceMediaPanel {
-            visible: !AppController.hasSelectedVideo
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            compact: false
-            onRequestUrlImport: root.requestUrlImport()
-            onRequestDownloadProjectImport: root.requestDownloadProjectImport()
-        }
-
         SplitView {
             id: manualEditorSplit
-            visible: AppController.hasSelectedVideo
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Vertical
@@ -566,6 +556,9 @@ Item {
                     SplitView.fillWidth: true
                     SplitView.fillHeight: true
                     SplitView.minimumWidth: 400
+                    emptySource: !AppController.hasSelectedVideo
+                    onRequestUrlImport: root.requestUrlImport()
+                    onRequestDownloadProjectImport: root.requestDownloadProjectImport()
                     comparing: root.comparing
                     activeMonitor: root.activeMonitor
                     onMonitorSelected: function(monitorId) {
@@ -672,7 +665,6 @@ Item {
 
             SubtitleTimeline {
                 id: manualSubtitleTimeline
-                visible: AppController.hasSelectedVideo
                 SplitView.fillWidth: true
                 SplitView.preferredHeight: root.height < 780
                     ? Math.max(200, Math.min(220, root.timelineDesiredHeight))
@@ -750,7 +742,6 @@ Item {
 
         Item {
             id: timelineResizeGrip
-            visible: AppController.hasSelectedVideo
             Layout.fillWidth: true
             Layout.preferredHeight: 12
             property real dragStartY: 0

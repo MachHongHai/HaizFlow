@@ -13,6 +13,7 @@ Rectangle {
     property url resultSource: ""
     property url resultBaseSource: ""
     property url thumbnailSource: ""
+    property bool emptySource: false
     property bool previewBusy: false
     property real previewProgress: 0
     property bool inputMuted: true
@@ -74,6 +75,8 @@ Rectangle {
     signal watermarkScaleCommitted(int beforeScalePercent, int afterScalePercent)
     signal editorClipSelected(string clipId)
     signal monitorSelected(string monitorId)
+    signal requestUrlImport()
+    signal requestDownloadProjectImport()
     readonly property url effectiveResultSource: subtitleLivePreviewEnabled ? resultBaseSource : resultSource
     readonly property real positionSeconds: scrubController.scrubPositionMs / 1000
     readonly property real durationSeconds: sequenceDurationSeconds > 0
@@ -586,6 +589,55 @@ Rectangle {
                     horizontalAlignment: Text.AlignRight
                     textFormat: Text.PlainText
                 }
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        anchors.leftMargin: Theme.space8
+        anchors.rightMargin: Theme.space8
+        anchors.topMargin: 32
+        anchors.bottomMargin: 52
+        z: 5
+        visible: root.emptySource
+        color: Theme.video
+        radius: Theme.radiusSmall
+        border.width: 1
+        border.color: Theme.outline
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: Math.min(280, parent.width - Theme.space16 * 2)
+            spacing: Theme.space12
+
+            AppIcon {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 28
+                Layout.preferredHeight: 28
+                glyph: "\uE710"
+                iconColor: Theme.textMuted
+                iconSize: Theme.iconLarge
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Chưa có video nguồn")
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.control
+                font.weight: Font.DemiBold
+                horizontalAlignment: Text.AlignHCenter
+                textFormat: Text.PlainText
+            }
+
+            MediaSourceImportButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 148
+                enabled: AppController.canEditSelectedVideo
+                onFileRequested: AppController.browseVideo()
+                onLinkRequested: root.requestUrlImport()
+                onDownloadProjectRequested: root.requestDownloadProjectImport()
             }
         }
     }

@@ -166,7 +166,7 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         self.assertTrue(options[1]["available"])
 
-    def test_whisper_turbo_option_stays_locked_until_integrity_passes(self):
+    def test_whisper_turbo_option_can_be_selected_to_explain_missing_pack(self):
         host = SimpleNamespace(
             _hardware_capabilities=SimpleNamespace(cuda_available=True),
             _active_processing_device="gpu",
@@ -177,14 +177,14 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         options = HaizFlowController.speechRecognitionModelOptions.fget(host)
 
-        self.assertFalse(options[1]["available"])
+        self.assertTrue(options[1]["available"])
 
     def test_whisper_turbo_readiness_uses_fast_resource_inventory(self):
         manager = SimpleNamespace(status=Mock(return_value="installed"))
         host = SimpleNamespace(_resource_packs=SimpleNamespace(manager=manager))
 
         self.assertTrue(HaizFlowController._detect_whisper_turbo_model_ready(host))
-        manager.status.assert_called_once_with("model-speech-gpu")
+        manager.status.assert_called_once_with("model-whisper-turbo")
 
     def test_download_project_source_import_uses_single_replace_and_batch_copy_flows(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1157,6 +1157,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         with (
             patch.object(qml_controller.video_store, "get_video", return_value=selected_video),
             patch.object(qml_controller.video_store, "log_to_video"),
+            patch.object(qml_controller.video_store, "update_video"),
             patch("haizflow.pipeline.process_video.process_video_sync") as process_video,
         ):
             process_video.side_effect = lambda _video_id: pipeline_started.set()

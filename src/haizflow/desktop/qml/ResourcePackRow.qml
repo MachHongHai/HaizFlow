@@ -70,7 +70,6 @@ ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8
                 Text {
-                    Layout.fillWidth: true
                     text: root.label
                     color: Theme.text
                     font {
@@ -81,13 +80,27 @@ ColumnLayout {
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                 }
-                Text {
+
+                Rectangle {
                     visible: root.recommended
-                    text: qsTr("Phù hợp máy này")
-                    color: Theme.interactive
-                    font.pixelSize: TypeScale.metadata
-                    textFormat: Text.PlainText
+                    Layout.preferredWidth: recommendedText.implicitWidth + Theme.space16
+                    Layout.preferredHeight: 24
+                    radius: 5
+                    color: Theme.surfaceStrong
+                    border.color: Theme.outlineStrong
+                    border.width: 1
+                    Text {
+                        id: recommendedText
+                        anchors.centerIn: parent
+                        text: qsTr("Khuyên dùng")
+                        color: Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.metadata
+                        textFormat: Text.PlainText
+                    }
                 }
+
+                Item { Layout.fillWidth: true }
             }
 
             Text {
@@ -107,8 +120,8 @@ ColumnLayout {
                     : !root.hardwareCompatible ? root.hardwareWarning
                     : root.status === "bundled" ? ""
                     : root.blockedReason.length > 0 ? root.blockedReason
-                    : root.status === "installed" ? qsTr("Đã dùng %1").arg(root.installedSizeText)
-                    : qsTr("Dung lượng tải %1").arg(root.downloadSizeText)
+                    : root.status === "installed" ? qsTr("Dung lượng %1").arg(root.installedSizeText)
+                    : qsTr("Cần tải %1").arg(root.downloadSizeText)
                 color: root.status === "failed" || !root.hardwareCompatible
                     ? Theme.warning : Theme.textSubtle
                 font.family: Theme.fontFamily

@@ -103,6 +103,10 @@ def test_manual_layout_has_one_toolbar_and_on_demand_comparison():
     timeline = (QML_DIR / "SubtitleTimeline.qml").read_text(encoding="utf-8")
 
     assert "ManualEditorToolbar {" in workspace
+    assert "SourceMediaPanel {" not in workspace
+    assert "emptySource: !AppController.hasSelectedVideo" in workspace
+    assert "visible: AppController.hasSelectedVideo" not in workspace
+    assert "visible: root.emptySource" in preview
     assert "ManualWorkflowBar {" not in workspace
     assert "EditorCommandBar {" not in workspace
     assert "comparing: root.comparing" in workspace

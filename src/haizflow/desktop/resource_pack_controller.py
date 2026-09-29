@@ -241,63 +241,81 @@ class ResourcePackController(QObject):
         }
 
     def _hardware_compatibility(self, pack_id: str) -> tuple[bool, str]:
+        if not getattr(self._host, "_startup_hardware_resolved", True):
+            return True, ""  # A pending probe must not be presented as an absent GPU.
         capabilities = getattr(self._host, "_hardware_capabilities", None)
         if capabilities is None:
             return True, ""
-        if pack_id in {"engine-cuda128-py313", "model-speech-gpu"}:
+        if pack_id in {"engine-cuda128-py313", "model-whisper-turbo", "model-hymt2-gpu"}:
             compatible, reason = validate_processing_device("gpu", capabilities)
             if not compatible and getattr(self._host, "_settings_language", "vi") == "vi":
                 if not capabilities.cuda_available:
                     reason = "Không phát hiện GPU NVIDIA tương thích CUDA."
-                elif capabilities.ac_powered is False:
-                    reason = "Hãy cắm sạc trước khi dùng cấu hình NVIDIA."
                 elif capabilities.total_vram_bytes < 7 * 1024**3:
                     reason = (
                         "Cần ít nhất 7 GB VRAM; máy này có "
                         f"{capabilities.total_vram_bytes / (1024**3):.1f} GB."
                     )
-                elif capabilities.free_vram_bytes and capabilities.free_vram_bytes < 5 * 1024**3:
-                    reason = (
-                        "Cần ít nhất 5 GB VRAM trống; hiện còn "
-                        f"{capabilities.free_vram_bytes / (1024**3):.1f} GB."
-                    )
                 else:
                     reason = "Cấu hình NVIDIA cần máy có ít nhất 16 GB RAM."
             return compatible, reason
-        if pack_id in {"engine-cpu-py313", "model-speech-cpu"}:
+        if pack_id in {"engine-cpu-py313", "model-whisper-small", "model-hymt2-cpu"}:
             compatible, reason = validate_processing_device("cpu", capabilities)
             if not compatible and getattr(self._host, "_settings_language", "vi") == "vi":
                 reason = "Cấu hình CPU cần máy có ít nhất 16 GB RAM."
             return compatible, reason
         return True, ""
 
+    def _supporting_packs(self, pack_id: str) -> list[str]:
+        """Runtime downloads stay internal to the five model choices."""
+        context = self._display_context()
+        if pack_id == "model-whisper-small":
+            capability = "recognition"
+            context["model"] = "small"
+        elif pack_id == "model-whisper-turbo":
+            capability = "recognition"
+            context.update(device="gpu", model="large-v3-turbo")
+        elif pack_id == "model-hymt2-cpu":
+            capability = "translation"
+            context["translation_model"] = "q4"
+        elif pack_id == "model-hymt2-gpu":
+            capability = "translation"
+            context["translation_model"] = "full"
+        elif pack_id == "model-omnivoice":
+            capability = "voice"
+            context["provider"] = "omnivoice"
+        elif pack_id == "model-demucs":
+            capability = "separation"
+        elif pack_id == "model-subtitle-ocr":
+            capability = "ocr"
+        else:
+            return []
+        return [
+            item for item in self.manager.required_packs(capability, context)
+            if item != pack_id and item in self.manager.definitions
+        ]
+
     @property
     def displayRows(self) -> list[dict]:
-        """Return honest install units grouped by machine profile."""
+        """Present only independently installable, large model downloads."""
         context = self._display_context()
         device = "gpu" if context["device"] == "gpu" else "cpu"
-        gpu_compatible, gpu_warning = self._hardware_compatibility("engine-cuda128-py313")
-        cpu_compatible, cpu_warning = self._hardware_compatibility("engine-cpu-py313")
+        hardware_resolved = bool(getattr(self._host, "_startup_hardware_resolved", True))
+        capabilities = getattr(self._host, "_hardware_capabilities", None)
+        gpu_vram = getattr(capabilities, "total_vram_bytes", 0) if capabilities else 0
+        turbo_recommended = device == "gpu" and gpu_vram >= 7 * 1024**3
+        full_translation_recommended = device == "gpu" and gpu_vram >= 12 * 1024**3
         ordered_ids = [
-            "engine-cuda128-py313",
-            "engine-cpu-py313",
-            "model-speech-gpu",
-            "model-speech-cpu",
-            "model-omnivoice",
-            "model-demucs",
-            "engine-vision-onnx",
-            "model-subtitle-ocr",
+            "model-whisper-small", "model-whisper-turbo",
+            "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
         ]
         source_rows = {str(row.get("packId")): row for row in self.model._rows}
         descriptions = {
-            "engine-cpu-py313": "Môi trường chạy model trên bộ xử lý chính.",
-            "engine-cuda128-py313": "Môi trường tăng tốc dành cho GPU NVIDIA.",
-            "engine-vision-onnx": "Môi trường nhận biết vùng chữ trong khung hình.",
-            "model-speech-cpu": "Nhận dạng Whisper, dịch HY-MT2 Q4 và căn thời gian · CPU.",
-            "model-speech-gpu": "Nhận dạng Whisper Small/Turbo, dịch HY-MT2 và căn thời gian · NVIDIA.",
+            "model-whisper-small": "Nhận dạng lời nói trên CPU hoặc GPU.",
+            "model-whisper-turbo": "Nhận dạng nhanh trên GPU NVIDIA.",
+            "model-hymt2-cpu": "Dịch cục bộ bằng bản Q4, dùng CPU.",
+            "model-hymt2-gpu": "Dịch bằng model đầy đủ trên GPU NVIDIA.",
             "model-omnivoice": "Tạo giọng đọc cục bộ.",
-            "model-demucs": "Tách lời thoại và âm thanh nền.",
-            "model-subtitle-ocr": "Nhận biết vị trí phụ đề gốc.",
         }
         result: list[dict] = []
         previous_group = ""
@@ -305,22 +323,32 @@ class ResourcePackController(QObject):
             if pack_id not in source_rows:
                 continue
             source = dict(source_rows[pack_id])
-            if pack_id in {"engine-cuda128-py313", "engine-cpu-py313"}:
-                group = "runtime"
-                title = "Môi trường xử lý"
-                compatible, warning = (gpu_compatible, gpu_warning) if pack_id == "engine-cuda128-py313" else (cpu_compatible, cpu_warning)
-                backend = "gpu" if pack_id == "engine-cuda128-py313" else "cpu"
-            elif pack_id in {"model-speech-gpu", "model-speech-cpu"}:
-                group = "language"
-                title = "Nhận dạng và dịch"
-                backend = "gpu" if pack_id == "model-speech-gpu" else "cpu"
-                compatible, warning = (gpu_compatible, gpu_warning) if backend == "gpu" else (cpu_compatible, cpu_warning)
-            elif pack_id in {"model-omnivoice", "model-demucs"}:
-                group, title, backend = "audio", "Giọng đọc và âm thanh", ""
-                compatible, warning = True, ""
+            if pack_id.startswith("model-whisper-"):
+                group, title = "recognition", "Nhận dạng"
+            elif pack_id.startswith("model-hymt2-"):
+                group, title = "translation", "Dịch"
             else:
-                group, title, backend = "image", "Hình ảnh và phụ đề gốc", ""
-                compatible, warning = True, ""
+                group, title = "voice", "Giọng đọc"
+            compatible, warning = self._hardware_compatibility(pack_id)
+            supporting = [
+                item for item in self._supporting_packs(pack_id)
+                if self.manager.status(item) not in {"installed", "bundled"}
+            ]
+            if supporting and source.get("status") == "installed":
+                source["status"] = "missing"
+                source["detail"] = "Cần cài môi trường xử lý."
+            needs_download = supporting or source.get("status") in {"missing", "paused", "failed"}
+            runtime_available = all(
+                bool(self.manager.definitions[item].archive_url) for item in supporting
+            )
+            if needs_download:
+                total_download = int(source.get("downloadSize", 0)) + sum(
+                    self.manager.download_bytes(item) for item in supporting
+                )
+                source["downloadSizeText"] = format_memory_size(total_download)
+            if supporting and not runtime_available:
+                source["blockedReason"] = "Bản cài chưa có môi trường xử lý tương ứng."
+                source["detail"] = source["blockedReason"]
             source.update(
                 {
                     "group": group,
@@ -329,8 +357,13 @@ class ResourcePackController(QObject):
                     "summary": descriptions.get(pack_id, ""),
                     "hardwareCompatible": compatible,
                     "hardwareWarning": warning,
-                    "recommended": (backend == device and compatible),
-                    "canInstall": bool(source.get("canInstall")) and compatible,
+                    "recommended": hardware_resolved and compatible and (
+                        (pack_id == "model-whisper-turbo" and turbo_recommended)
+                        or (pack_id == "model-whisper-small" and not turbo_recommended)
+                        or (pack_id == "model-hymt2-gpu" and full_translation_recommended)
+                        or (pack_id == "model-hymt2-cpu" and not full_translation_recommended)
+                    ),
+                    "canInstall": compatible and needs_download and runtime_available,
                 }
             )
             result.append(source)
@@ -417,6 +450,26 @@ class ResourcePackController(QObject):
 
     def _run_install(self, pack_id: str) -> None:
         try:
+            for supporting_id in self._supporting_packs(pack_id):
+                if self.manager.status(supporting_id) in {"installed", "bundled"}:
+                    continue
+                definition = self.manager.definitions[supporting_id]
+                if not definition.archive_url:
+                    raise ResourcePackError(
+                        f"Bản cài chưa có môi trường xử lý {definition.label}. Hãy cập nhật ứng dụng."
+                    )
+
+                def report_runtime(_unused_id: str, progress: ModelProgress) -> None:
+                    percentage = -1
+                    if progress.total_bytes:
+                        percentage = min(100, round(progress.completed_bytes * 100 / progress.total_bytes))
+                    self._events.put({
+                        "kind": "progress", "pack_id": pack_id,
+                        "status": progress.state, "progress": percentage,
+                        "detail": f"{definition.label} · {progress.detail}",
+                    })
+
+                self.manager.install(supporting_id, report_runtime)
             self.manager.install(pack_id, self._report)
             self._events.put({
                 "kind": "done",
@@ -443,6 +496,9 @@ class ResourcePackController(QObject):
 
     @Slot("QVariantList")
     def installResourcePacks(self, pack_ids) -> None:
+        ensure_hardware = getattr(self._host, "_ensure_hardware_ready_for_action", None)
+        if callable(ensure_hardware) and not ensure_hardware():
+            return
         for raw_pack_id in pack_ids:
             pack_id = str(raw_pack_id)
             if pack_id not in self.manager.definitions:

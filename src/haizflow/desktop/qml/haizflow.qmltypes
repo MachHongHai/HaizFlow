@@ -1626,6 +1626,28 @@ Module {
         Signal { name: "enableAudioSeparationChanged" }
         Signal { name: "originalVolumeChanged" }
         Signal { name: "backgroundMusicVolumeChanged" }
+        Signal { name: "audioMixOptionsChanged" }
+        Property {
+            name: "backgroundMusicLoop"
+            type: "bool"
+            read: "backgroundMusicLoop"
+            write: "backgroundMusicLoop"
+            notify: "audioMixOptionsChanged"
+        }
+        Property {
+            name: "audioDuckingEnabled"
+            type: "bool"
+            read: "audioDuckingEnabled"
+            write: "audioDuckingEnabled"
+            notify: "audioMixOptionsChanged"
+        }
+        Property {
+            name: "audioDuckingReductionDb"
+            type: "double"
+            read: "audioDuckingReductionDb"
+            write: "audioDuckingReductionDb"
+            notify: "audioMixOptionsChanged"
+        }
         Signal { name: "ttsVolumeChanged" }
         Signal { name: "watermarkTextChanged" }
         Signal { name: "watermarkScalePercentChanged" }
@@ -1972,12 +1994,10 @@ Module {
             Parameter { name: "a1"; type: "QString" }
             Parameter { name: "a2"; type: "int" }
         }
-        Method { name: "prepareVoiceCloneRecording"; type: "QUrl" }
-        Method {
-            name: "saveRecordedVoiceCloneReference"
-            type: "bool"
-            Parameter { name: "a1"; type: "QString" }
-        }
+        Method { name: "startVoiceCloneRecording"; type: "bool" }
+        Method { name: "voiceCloneRecordingState"; type: "QVariantMap" }
+        Method { name: "finishVoiceCloneRecording"; type: "bool" }
+        Method { name: "cancelVoiceCloneRecording" }
         Method {
             name: "requestEditorPreview"
             type: "bool"
@@ -2008,10 +2028,6 @@ Module {
             Parameter { name: "outline"; type: "int" }
         }
         Method { name: "adoptSubtitlePreviewLayout"; type: "bool" }
-        Method {
-            name: "discardVoiceCloneRecording"
-            Parameter { name: "a1"; type: "QString" }
-        }
         Method { name: "clearVoiceCloneReference"; type: "bool" }
         Method {
             name: "selectVideo"

@@ -80,6 +80,7 @@ from haizflow.desktop.smart_warmup_controller import SmartWarmupController
 from haizflow.desktop.social_publish_controller import SocialPublishController
 from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 from haizflow.desktop.url_import import VideoUrlImportCoordinator
+from haizflow.desktop.voice_clone_recorder import VoiceCloneRecorder
 from haizflow.pipeline.process_registry import pause_video
 from haizflow.schemas.editor import (
     EditorClip,
@@ -128,6 +129,9 @@ class HaizFlowController(QObject):
         "enable_audio_separation",
         "original_video_volume",
         "background_music_volume",
+        "background_music_loop",
+        "audio_ducking_enabled",
+        "audio_ducking_reduction_db",
         "tts_volume",
         "watermark_text",
         "watermark_scale_percent",
@@ -154,6 +158,7 @@ class HaizFlowController(QObject):
     enableAudioSeparationChanged = Signal()
     originalVolumeChanged = Signal()
     backgroundMusicVolumeChanged = Signal()
+    audioMixOptionsChanged = Signal()
     ttsVolumeChanged = Signal()
     watermarkTextChanged = Signal()
     watermarkScalePercentChanged = Signal()
@@ -242,6 +247,9 @@ class HaizFlowController(QObject):
         self._enable_audio_separation = True
         self._original_volume = 60
         self._background_music_volume = 30
+        self._background_music_loop = True
+        self._audio_ducking_enabled = False
+        self._audio_ducking_reduction_db = -12.0
         self._tts_volume = 100
         self._watermark_text = ""
         self._watermark_scale_percent = 100
@@ -307,6 +315,8 @@ class HaizFlowController(QObject):
         self._hardware_probe_lock = threading.Lock()
         self._hardware_probe_running = False
         self._startup_hardware_resolved = False
+        self._startup_hardware_done = threading.Event()
+        self._startup_hardware_thread: threading.Thread | None = None
         self._background_shutdown_event = threading.Event()
         self._processing_lifecycle = ProcessingLifecycleController(self)
         self._processing_queue = SerialProcessingQueue(
@@ -446,11 +456,13 @@ class HaizFlowController(QObject):
         self._channel_importer.downloadsFinished.connect(self._finish_channel_import_target)
 
         if os.getenv("HAIZFLOW_SMOKE_TEST") == "1":
+            self._startup_hardware_resolved = True
+            self._startup_hardware_done.set()
             self._initial_model_warmup_done.set()
         else:
             # Render Home first. Optional engines and models warm in their own
             # low-priority worker only after the Qt event loop is responsive.
-            QTimer.singleShot(1250, self._smart_warmup.start)
+            QTimer.singleShot(1250, self._start_smart_warmup_after_hardware)
             QTimer.singleShot(2500, lambda: self._app_updates.check(manual=False))
             # Smart warm-up is speculative, never a prerequisite for a user
             # command. Foreground work either reuses the resident model or
@@ -480,6 +492,8 @@ class HaizFlowController(QObject):
         self._hardware_timer = QTimer(self)
         self._hardware_timer.timeout.connect(self._refresh_live_hardware)
         self._hardware_timer.start(5000)
+        if os.getenv("HAIZFLOW_SMOKE_TEST") != "1":
+            QTimer.singleShot(0, self._start_startup_hardware_probe)
 
         self.refreshVideos()
         self._last_video_metadata_revision = video_store.metadata_revision()
@@ -506,6 +520,48 @@ class HaizFlowController(QObject):
         self._app_updates.drain_events()
         self._smart_warmup.drain_events()
         HaizFlowController._runtime_device_for(self).drain_hardware_events()
+
+    def _start_startup_hardware_probe(self) -> None:
+        """Resolve CUDA once after the first frame, independently of Settings."""
+        if self._shutdown_started or self._startup_hardware_thread is not None:
+            return
+
+        def probe() -> None:
+            try:
+                HaizFlowController._runtime_device_for(self)._resolve_startup_processing_device()
+            except Exception as exc:
+                self._hardware_probe_events.put({"kind": "error", "message": str(exc)})
+            finally:
+                self._startup_hardware_done.set()
+
+        self._startup_hardware_thread = threading.Thread(
+            target=probe, name="hardware-startup-probe", daemon=True
+        )
+        self._startup_hardware_thread.start()
+
+    def _start_smart_warmup_after_hardware(self) -> None:
+        if self._shutdown_started:
+            return
+        if not self._startup_hardware_done.is_set():
+            QTimer.singleShot(500, self._start_smart_warmup_after_hardware)
+            return
+        self._smart_warmup.start()
+
+    def _ensure_hardware_ready_for_action(self) -> bool:
+        """Wait only on an explicit GPU action, never while painting a page."""
+        if self._startup_hardware_resolved:
+            return True
+        if self._startup_hardware_thread is None:
+            self._start_startup_hardware_probe()
+        self._startup_hardware_done.wait(timeout=4.0)
+        if self._startup_hardware_resolved:
+            return True
+        self._show_app_alert(
+            "Đang kiểm tra máy",
+            "Chưa xác minh xong GPU NVIDIA. Hãy thử lại sau vài giây.",
+            "info",
+        )
+        return False
 
     def _refresh_selected_elapsed(self) -> None:
         video = self._selected_video()
@@ -733,7 +789,7 @@ class HaizFlowController(QObject):
         if resource_packs is None:
             return False
         try:
-            return resource_packs.manager.status("model-speech-gpu") in {"installed", "bundled"}
+            return resource_packs.manager.status("model-whisper-turbo") in {"installed", "bundled"}
         except (KeyError, OSError):
             return False
 
@@ -1235,6 +1291,8 @@ class HaizFlowController(QObject):
         requested = str(value or "small").strip().lower()
         if requested not in {"small", "large-v3-turbo"}:
             requested = "small"
+        if requested == "large-v3-turbo" and not self._ensure_hardware_ready_for_action():
+            return
         capabilities = getattr(self, "_hardware_capabilities", None)
         gpu_available = bool(
             (capabilities and capabilities.cuda_available)
@@ -1242,20 +1300,25 @@ class HaizFlowController(QObject):
             or getattr(self, "_settings_processing_device", "") == "gpu"
         )
         if requested == "large-v3-turbo":
-            if not gpu_available:
+            if not gpu_available or self._settings_processing_device != "gpu":
                 self._show_app_alert(
-                    "Whisper Turbo requires a GPU",
-                    "Whisper large-v3-turbo needs an NVIDIA CUDA GPU. WhisperX small remains selected.",
+                    "Máy không đáp ứng",
+                    "Whisper Turbo cần chạy bằng GPU NVIDIA. Đã giữ Whisper Small.",
                     "warning",
                 )
                 requested = "small"
             elif not getattr(self, "_whisper_turbo_model_ready", False):
                 self._show_app_alert(
-                    "Whisper Turbo is not ready",
-                    "The downloaded Whisper Turbo files are missing or have not passed integrity verification yet.",
+                    "Thiếu Whisper Turbo",
+                    "Hãy cài Whisper Turbo trong Gói tài nguyên trước khi nhận dạng.",
                     "warning",
                 )
-                requested = "small"
+        resource_packs = getattr(self, "_resource_packs", None)
+        if requested == "small" and resource_packs is not None:
+            if resource_packs.manager.status("model-whisper-small") not in {"installed", "bundled"}:
+                self._show_app_alert(
+                    "Thiếu Whisper Small", "Hãy cài Whisper Small trong Gói tài nguyên trước khi nhận dạng.", "warning"
+                )
         if self._speech_recognition_model != requested:
             self._speech_recognition_model = requested
             self.speechRecognitionModelChanged.emit()
@@ -1272,21 +1335,21 @@ class HaizFlowController(QObject):
             or getattr(self, "_active_processing_device", "") == "gpu"
             or getattr(self, "_settings_processing_device", "") == "gpu"
         )
-        turbo_available = gpu_available and bool(getattr(self, "_whisper_turbo_model_ready", False))
+        turbo_available = gpu_available or not self._startup_hardware_resolved
         if getattr(self, "_settings_language", "en") == "vi":
             return [
-                {"value": "small", "label": "WhisperX small · CPU / GPU VRAM thấp", "available": True},
+                {"value": "small", "label": "Whisper Small · CPU / GPU", "available": True},
                 {
                     "value": "large-v3-turbo",
-                    "label": "Whisper large-v3-turbo · GPU chất lượng cao",
+                    "label": "Whisper Turbo · GPU NVIDIA",
                     "available": turbo_available,
                 },
             ]
         return [
-            {"value": "small", "label": "WhisperX small · CPU / low VRAM", "available": True},
+            {"value": "small", "label": "Whisper Small · CPU / GPU", "available": True},
             {
                 "value": "large-v3-turbo",
-                "label": "Whisper large-v3-turbo · High-quality GPU",
+                "label": "Whisper Turbo · NVIDIA GPU",
                 "available": turbo_available,
             },
         ]
@@ -1532,6 +1595,37 @@ class HaizFlowController(QObject):
         if self._tts_volume != value:
             self._tts_volume = value
             self.ttsVolumeChanged.emit()
+
+    @Property(bool, notify=audioMixOptionsChanged)
+    def backgroundMusicLoop(self):
+        return self._background_music_loop
+
+    @backgroundMusicLoop.setter
+    def backgroundMusicLoop(self, value):
+        if self._background_music_loop != bool(value):
+            self._background_music_loop = bool(value)
+            self.audioMixOptionsChanged.emit()
+
+    @Property(bool, notify=audioMixOptionsChanged)
+    def audioDuckingEnabled(self):
+        return self._audio_ducking_enabled
+
+    @audioDuckingEnabled.setter
+    def audioDuckingEnabled(self, value):
+        if self._audio_ducking_enabled != bool(value):
+            self._audio_ducking_enabled = bool(value)
+            self.audioMixOptionsChanged.emit()
+
+    @Property(float, notify=audioMixOptionsChanged)
+    def audioDuckingReductionDb(self):
+        return self._audio_ducking_reduction_db
+
+    @audioDuckingReductionDb.setter
+    def audioDuckingReductionDb(self, value):
+        value = max(-36.0, min(0.0, float(value)))
+        if self._audio_ducking_reduction_db != value:
+            self._audio_ducking_reduction_db = value
+            self.audioMixOptionsChanged.emit()
 
     @Property(str, notify=watermarkTextChanged)
     def watermarkText(self):
@@ -2291,6 +2385,16 @@ class HaizFlowController(QObject):
         video = self._selected_video()
         if not video:
             return "Sẵn sàng" if self._settings_language == "vi" else "Ready"
+        if video.status == "processing":
+            active_manual_labels = {
+                "manual_translation": ("Transcribing and translating", "Đang nhận dạng và dịch"),
+                "manual_subtitles": ("Preparing subtitles", "Đang chuẩn bị phụ đề"),
+                "manual_voice": ("Generating voice", "Đang tạo giọng"),
+                "manual_timeline": ("Mixing audio", "Đang phối âm"),
+            }
+            label = active_manual_labels.get(video.step)
+            if label:
+                return label[1] if self._settings_language == "vi" else label[0]
         return stage_label(video.step, self._settings_language, video.step_detail or video.status)
 
     @Property(str, notify=selectedVideoChanged)
@@ -2589,9 +2693,24 @@ class HaizFlowController(QObject):
         normalized = str(value or "auto").lower()
         if normalized not in {"auto", "q4", "full"}:
             return
-        if normalized == "full" and self._settings_processing_device != "gpu":
-            self._show_app_alert("Model dịch", "HY-MT2 đầy đủ cần GPU NVIDIA tương thích.", "warning")
+        if normalized == "full" and not self._ensure_hardware_ready_for_action():
             return
+        if normalized == "full" and self._settings_processing_device != "gpu":
+            self._show_app_alert("Máy không đáp ứng", "HY-MT2 GPU cần GPU NVIDIA tương thích.", "warning")
+            return
+        resource_packs = getattr(self, "_resource_packs", None)
+        if resource_packs is not None:
+            pack_id = "model-hymt2-gpu" if normalized == "full" else "model-hymt2-cpu"
+            compatible, reason = resource_packs._hardware_compatibility(pack_id)
+            if not compatible:
+                self._show_app_alert("Máy không đáp ứng", reason, "warning")
+                return
+            if resource_packs.manager.status(pack_id) not in {"installed", "bundled"}:
+                self._show_app_alert(
+                    "Thiếu model dịch",
+                    f"Hãy cài {resource_packs.manager.definitions[pack_id].label} trong Gói tài nguyên trước khi dịch.",
+                    "warning",
+                )
         if normalized != self._translation_model:
             self._translation_model = normalized
             self.translationModelChanged.emit()
@@ -2712,12 +2831,16 @@ class HaizFlowController(QObject):
 
     @Slot(str, result=bool)
     def processingDeviceCompatible(self, preference):
+        if not self._startup_hardware_resolved:
+            return True  # Unknown is not the same as unsupported.
         compatible, _message = validate_processing_device(str(preference), self._hardware_capabilities)
         return compatible
 
     @Slot(str, result=str)
     def processingDeviceStatus(self, preference):
         preference = str(preference)
+        if not self._startup_hardware_resolved:
+            return "Đang kiểm tra cấu hình máy…" if self._settings_language == "vi" else "Checking hardware…"
         capabilities = self._hardware_capabilities
         compatible, message = validate_processing_device(preference, capabilities)
         if self._settings_language != "vi":
@@ -2725,18 +2848,17 @@ class HaizFlowController(QObject):
         if preference == "gpu":
             if not capabilities.cuda_available:
                 return "Không phát hiện GPU NVIDIA tương thích CUDA."
-            if capabilities.ac_powered is False:
-                return "Hãy cắm sạc trước khi dùng GPU để quá trình xử lý ổn định."
             if capabilities.total_vram_bytes < 7 * 1024**3:
                 return f"GPU cần ít nhất 7 GB VRAM; hiện có {capabilities.total_vram_bytes / (1024**3):.1f} GB."
-            if capabilities.free_vram_bytes and capabilities.free_vram_bytes < 5 * 1024**3:
-                return (
-                    f"GPU cần ít nhất 5 GB VRAM trống; hiện có {capabilities.free_vram_bytes / (1024**3):.1f} GB trống."
-                )
             if capabilities.total_ram_bytes and capabilities.total_ram_bytes < 14 * 1024**3:
                 memory_gib = capabilities.total_ram_bytes / (1024**3)
                 return f"HaizFlow cần ít nhất 16 GiB RAM; máy hiện có {memory_gib:.1f} GiB."
-            return f"GPU sẵn sàng: {capabilities.cuda_name}, {capabilities.total_vram_bytes / (1024**3):.0f} GB VRAM."
+            status = f"GPU sẵn sàng: {capabilities.cuda_name}, {capabilities.total_vram_bytes / (1024**3):.0f} GB VRAM."
+            if capabilities.free_vram_bytes and capabilities.free_vram_bytes < 5 * 1024**3:
+                status += " VRAM trống đang thấp; tác vụ lớn có thể cần đóng bớt ứng dụng."
+            if capabilities.ac_powered is False:
+                status += " Nên cắm sạc để xử lý ổn định."
+            return status
         if preference == "cpu":
             if not compatible:
                 memory_gib = capabilities.total_ram_bytes / (1024**3)
@@ -2852,18 +2974,45 @@ class HaizFlowController(QObject):
     def voiceCloneReferenceAnalysis(self, path, bucket_count):
         return HaizFlowController._project_import_for(self).analyze_voice_reference(path, bucket_count)
 
-    @Slot(result=QUrl)
-    def prepareVoiceCloneRecording(self):
+    def _voice_clone_capture(self) -> VoiceCloneRecorder:
+        recorder = getattr(self, "_voice_clone_recorder", None)
+        if recorder is None:
+            recorder = VoiceCloneRecorder()
+            self._voice_clone_recorder = recorder
+        return recorder
+
+    @Slot(result=bool)
+    def startVoiceCloneRecording(self):
+        self.cancelVoiceCloneRecording()
         path = HaizFlowController._project_import_for(self).prepare_voice_reference_recording()
-        return QUrl.fromLocalFile(path) if path else QUrl()
-
-    @Slot(str, result=bool)
-    def saveRecordedVoiceCloneReference(self, path):
-        return HaizFlowController._project_import_for(self).save_recorded_voice_reference(path)
-
-    @Slot(str)
-    def discardVoiceCloneRecording(self, path):
+        if not path:
+            return False
+        recorder = self._voice_clone_capture()
+        if recorder.start(path):
+            return True
         HaizFlowController._project_import_for(self).discard_voice_reference_recording(path)
+        return False
+
+    @Slot(result="QVariantMap")
+    def voiceCloneRecordingState(self):
+        return self._voice_clone_capture().poll()
+
+    @Slot(result=bool)
+    def finishVoiceCloneRecording(self):
+        recorder = self._voice_clone_capture()
+        path = recorder.stop()
+        if not path:
+            return False
+        saved = HaizFlowController._project_import_for(self).save_recorded_voice_reference(path)
+        if saved:
+            recorder.cancel()
+        return saved
+
+    @Slot()
+    def cancelVoiceCloneRecording(self):
+        path = self._voice_clone_capture().cancel()
+        if path:
+            HaizFlowController._project_import_for(self).discard_voice_reference_recording(path)
 
     @Slot(result=bool)
     def clearVoiceCloneReference(self):
@@ -3458,6 +3607,10 @@ class HaizFlowController(QObject):
         if tool_id not in allowed:
             self.appAlertRequested.emit("Thủ công", "Công cụ này không khả dụng.", "warning")
             return False
+        ensure_hardware = getattr(self, "_ensure_hardware_ready_for_action", None)
+        if tool_id in {"translation", "voice", "separation"} and callable(ensure_hardware):
+            if not ensure_hardware():
+                return False
         capabilities = {
             "separation": ("separation",),
             "translation": ("recognition", "translation"),
@@ -3467,6 +3620,7 @@ class HaizFlowController(QObject):
         pack_context = {
             "device": str(getattr(self, "_settings_processing_device", "cpu") or "cpu"),
             "model": str(getattr(video, "speech_recognition_model", "small") or "small"),
+            "translation_model": str(getattr(video, "translation_model", "auto") or "auto"),
             "source_language": str(getattr(video, "source_language", "auto") or "auto"),
             "language": str(getattr(video, "target_language", "") or ""),
             "provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
@@ -3476,9 +3630,28 @@ class HaizFlowController(QObject):
         resource_manager = getattr(resource_packs, "manager", None)
         if resource_manager is not None:
             for capability in capabilities:
+                for pack_id in resource_manager.required_packs(capability, pack_context):
+                    compatible, reason = resource_packs._hardware_compatibility(pack_id)
+                    if not compatible:
+                        self.appAlertRequested.emit("Máy không đáp ứng", reason, "warning")
+                        return False
                 missing.extend(resource_manager.missing_packs(capability, pack_context))
         missing = list(dict.fromkeys(missing))
         if missing:
+            support = [item for item in missing if item in {"model-demucs", "model-subtitle-ocr", "engine-vision-onnx"}]
+            support_models = {item for item in support if item in {"model-demucs", "model-subtitle-ocr"}}
+            if "engine-vision-onnx" in support:
+                support_models.add("model-subtitle-ocr")
+            if support_models:
+                resource_packs.installResourcePacks(sorted(support_models))
+            missing = [item for item in missing if item not in support]
+            if not missing:
+                self.appAlertRequested.emit(
+                    "Đang chuẩn bị thành phần hỗ trợ",
+                    "Ứng dụng đang cài thành phần cần thiết. Hãy chạy lại khi hoàn tất.",
+                    "info",
+                )
+                return False
             summary = resource_manager.requirement_summary(missing)
             feature_label = {
                 "recognition": "Nhận dạng và dịch",
@@ -3487,11 +3660,12 @@ class HaizFlowController(QObject):
                 "image": "Che phụ đề gốc",
                 "voice": "Giọng đọc OmniVoice",
             }.get(tool_id, "Công cụ này")
+            missing_labels = ", ".join(resource_manager.definitions[item].label for item in missing)
             self.appAlertRequested.emit(
                 "Cần cài thêm gói",
-                f"{feature_label} cần tải {format_memory_size(summary['downloadBytes'])}. "
+                f"{feature_label} thiếu {missing_labels}. Cần tải {format_memory_size(summary['downloadBytes'])}. "
                 f"Ổ lưu cần còn trống {format_memory_size(summary['requiredBytes'])} trong lúc cài. "
-                "Mở Gói cài đặt để tiếp tục.",
+                "Mở Gói tài nguyên để tiếp tục.",
                 "info",
             )
             self.resourcePacksRequested.emit(resource_manager.definitions[missing[0]].group)
@@ -5666,6 +5840,9 @@ class HaizFlowController(QObject):
             "enable_audio_separation": video.enable_audio_separation,
             "original_video_volume": video.original_video_volume,
             "background_music_volume": video.background_music_volume,
+            "background_music_loop": video.background_music_loop,
+            "audio_ducking_enabled": video.audio_ducking_enabled,
+            "audio_ducking_reduction_db": video.audio_ducking_reduction_db,
             "tts_volume": video.tts_volume,
             "watermark_text": video.watermark_text,
             "watermark_scale_percent": getattr(video, "watermark_scale_percent", 100),
@@ -5879,7 +6056,9 @@ class HaizFlowController(QObject):
         )
 
     def _build_config(self):
-        manual_subtitle_layout = bool(self._subtitle_layout_override)
+        manual_subtitle_layout = bool(self._subtitle_layout_override) and not (
+            self._project_type != "manual" and self._remove_original_subtitles
+        )
         return VideoConfig(
             # Auto and Batch no longer expose the legacy pre-TTS review mode.
             # Manual projects provide the explicit, checkpointed editing flow.
@@ -5901,6 +6080,9 @@ class HaizFlowController(QObject):
             enable_audio_separation=self._enable_audio_separation,
             original_video_volume=self._original_volume,
             background_music_volume=self._background_music_volume,
+            background_music_loop=getattr(self, "_background_music_loop", True),
+            audio_ducking_enabled=getattr(self, "_audio_ducking_enabled", False),
+            audio_ducking_reduction_db=getattr(self, "_audio_ducking_reduction_db", -12.0),
             tts_volume=self._tts_volume,
             watermark_text=self._watermark_text,
             watermark_scale_percent=self._watermark_scale_percent,
@@ -6059,6 +6241,9 @@ class HaizFlowController(QObject):
             "enable_audio_separation": config.enable_audio_separation,
             "original_video_volume": config.original_video_volume,
             "background_music_volume": config.background_music_volume,
+            "background_music_loop": config.background_music_loop,
+            "audio_ducking_enabled": config.audio_ducking_enabled,
+            "audio_ducking_reduction_db": config.audio_ducking_reduction_db,
             "tts_volume": config.tts_volume,
             "watermark_text": config.watermark_text,
             "watermark_scale_percent": config.watermark_scale_percent,
@@ -6223,10 +6408,14 @@ class HaizFlowController(QObject):
             # A multi-stage Auto/Batch job cannot retain every model on a
             # constrained machine. Each stage loads only what it needs.
             if constrained:
+                # The queue worker performs a *blocking* cleanup before any
+                # foreground model load. An async release here could remove
+                # the resident marker before memory is actually returned.
                 required = set()
             elif not target:
                 required = set(warmup.resident)
-            warmup.foreground_work_requested(required)
+            if not constrained:
+                warmup.foreground_work_requested(required)
         return HaizFlowController._processing_delegate_for(self).enqueue_video(video_id)
 
     def _enqueue_videos(self, video_ids) -> int:

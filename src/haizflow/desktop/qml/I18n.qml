@@ -294,6 +294,7 @@ QtObject {
         "Separating speech from background audio": "Đang tách lời nói khỏi âm thanh nền",
         "Speech track ready": "Âm thanh lời nói đã sẵn sàng",
         "Preparing speech recognition": "Đang chuẩn bị nhận diện lời nói",
+        "Loading WhisperX speech model": "Đang tải model nhận dạng WhisperX",
         "Starting HY-MT2 translation": "Đang bắt đầu dịch bằng HY-MT2",
         "Reusing subtitles checkpoint": "Đang dùng lại checkpoint phụ đề",
         "Formatting timed subtitles": "Đang định dạng phụ đề theo thời gian",

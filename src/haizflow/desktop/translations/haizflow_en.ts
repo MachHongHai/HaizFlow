@@ -25,8 +25,8 @@
     </message>
     <message>
         <location line="+17"/>
-        <source>Các tính năng cốt lõi chạy trên máy của bạn. HaizFlow không yêu cầu API trả phí và không tự gửi tệp dự án lên máy chủ khác.</source>
-        <translation>Core features run on your computer. HaizFlow requires no paid API and does not upload project files to another server.</translation>
+        <source>Mình là Mạch Hồng Hải, nhà phát triển của HaizFlow. Nếu bạn thích ứng dụng này, đừng ngần ngại cho HaizFlow 1 sao trên Github</source>
+        <translation>I'm Mạch Hồng Hải, the developer of HaizFlow. If you like the app, don't hesitate to give HaizFlow one star on GitHub.</translation>
     </message>
     <message>
         <location line="+21"/>
@@ -37,6 +37,41 @@
         <location line="-7"/>
         <source>Mã nguồn</source>
         <translation>Source code</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="83"/>
+        <source>Trang web</source>
+        <translation>Website</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="100"/>
+        <source>GitHub cá nhân</source>
+        <translation>Personal GitHub</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="143"/>
+        <source>Mã QR ủng hộ HaizFlow</source>
+        <translation>HaizFlow support QR code</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="151"/>
+        <source>Mở mã QR bằng liên kết bên cạnh</source>
+        <translation>Open the QR code with the link beside it</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="169"/>
+        <source>Ủng hộ HaizFlow</source>
+        <translation>Support HaizFlow</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="179"/>
+        <source>Nếu bạn muốn ủng hộ HaizFlow, đây là mã QR. Cảm ơn bạn rất nhiều! Chúc bạn một ngày tốt lành!</source>
+        <translation>If you'd like to support HaizFlow, here is the QR code. Thank you very much, and have a wonderful day!</translation>
+    </message>
+    <message>
+        <location filename="../qml/AboutDialog.qml" line="188"/>
+        <source>Mở mã QR</source>
+        <translation>Open QR code</translation>
     </message>
     <message>
         <location line="+22"/>
@@ -206,11 +241,6 @@
         <translation>Settings</translation>
     </message>
     <message>
-        <location line="-113"/>
-        <source>Trợ giúp</source>
-        <translation>Help</translation>
-    </message>
-    <message>
         <location line="+65"/>
         <source>Dự án Tự động mới</source>
         <translation>New automatic project</translation>
@@ -239,6 +269,21 @@
         <location line="+25"/>
         <source>Gói cài đặt</source>
         <translation>Installed packages</translation>
+    </message>
+    <message>
+        <location filename="../qml/AppMenuBar.qml" line="242"/>
+        <source>Gói tài nguyên</source>
+        <translation>Resource packs</translation>
+    </message>
+    <message>
+        <location filename="../qml/AppMenuBar.qml" line="252"/>
+        <source>Hướng dẫn sử dụng</source>
+        <translation>User guide</translation>
+    </message>
+    <message>
+        <location filename="../qml/AppMenuBar.qml" line="259"/>
+        <source>Báo lỗi</source>
+        <translation>Report a bug</translation>
     </message>
     <message>
         <location line="+9"/>
@@ -342,6 +387,22 @@
 </context>
 <context>
     <name>AudioMixDialog</name>
+    <message>
+        <source>Âm thanh</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>Lặp nhạc nền</source>
+        <translation>Loop background music</translation>
+    </message>
+    <message>
+        <source>Tự giảm nhạc khi có lời</source>
+        <translation>Lower music during speech</translation>
+    </message>
+    <message>
+        <source>Mức giảm</source>
+        <translation>Reduction</translation>
+    </message>
     <message>
         <location filename="../qml/AudioMixDialog.qml" line="+24"/>
         <source>Âm lượng</source>
@@ -1137,59 +1198,6 @@
     </message>
 </context>
 <context>
-    <name>HelpDialog</name>
-    <message>
-        <location filename="../qml/HelpDialog.qml" line="+10"/>
-        <source>Trợ giúp</source>
-        <translation>Help</translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Tự động</source>
-        <translation>Automatic</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Thủ công</source>
-        <translation>Manual</translation>
-    </message>
-    <message>
-        <location line="-12"/>
-        <source>Tạo dự án</source>
-        <translation>Create project</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Mở menu Dự án, sau đó chọn loại dự án.</source>
-        <translation>Open the Project menu, then choose a project type.</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Xử lý video bằng cấu hình đã chọn.</source>
-        <translation>Process video with the selected settings.</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Chạy từng công cụ và chỉnh trực tiếp trong editor.</source>
-        <translation>Run each tool separately and edit directly in the editor.</translation>
-    </message>
-    <message>
-        <location line="+14"/>
-        <source>Mở hướng dẫn trên GitHub</source>
-        <translation>Open the guide on GitHub</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Báo lỗi</source>
-        <translation>Report an issue</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Đóng</source>
-        <translation>Close</translation>
-    </message>
-</context>
-<context>
     <name>HelpPopover</name>
     <message>
         <location filename="../qml/HelpPopover.qml" line="+12"/>
@@ -1393,6 +1401,10 @@
 <context>
     <name>ManualComparePreview</name>
     <message>
+        <source>Chưa có video nguồn</source>
+        <translation>No source video yet</translation>
+    </message>
+    <message>
         <location filename="../qml/ManualComparePreview.qml" line="+331"/>
         <source>Nguồn</source>
         <translation>Source</translation>
@@ -1472,6 +1484,14 @@
 </context>
 <context>
     <name>ManualStageInspector</name>
+    <message>
+        <source>Quét phụ đề gốc</source>
+        <translation>Scan original subtitles</translation>
+    </message>
+    <message>
+        <source>Quét lại phụ đề gốc</source>
+        <translation>Rescan original subtitles</translation>
+    </message>
     <message>
         <location filename="../qml/ManualStageInspector.qml" line="+504"/>
         <source>Giọng đọc</source>
@@ -4045,8 +4065,8 @@
     </message>
     <message>
         <location line="+159"/>
-        <source>Không thể bắt đầu ghi âm bằng microphone</source>
-        <translation>Microphone recording could not be started</translation>
+        <source>Không thể lưu mẫu ghi âm. Hãy ghi lại.</source>
+        <translation>Could not save the recording. Please record again.</translation>
     </message>
     <message>
         <location line="+40"/>
@@ -4071,7 +4091,7 @@
     </message>
     <message>
         <location line="+25"/>
-        <source>Dừng ghi âm</source>
+        <source>Dừng ghi</source>
         <translation>Stop recording</translation>
     </message>
     <message>
@@ -4086,23 +4106,53 @@
     </message>
     <message>
         <location line="+96"/>
-        <source>Đang ghi âm mẫu giọng</source>
-        <translation>Recording voice sample</translation>
+        <source>Đang ghi</source>
+        <translation>Recording</translation>
     </message>
     <message>
         <location line="+0"/>
-        <source>Mẫu giọng đã sẵn sàng</source>
-        <translation>Voice sample ready</translation>
+        <source>Mẫu giọng đã được lưu</source>
+        <translation>Voice sample saved</translation>
     </message>
     <message>
         <location line="+0"/>
-        <source>Sẵn sàng ghi âm</source>
-        <translation>Ready to record</translation>
+        <source>Microphone</source>
+        <translation>Microphone</translation>
     </message>
     <message>
         <location line="+8"/>
         <source>Ghi lại</source>
         <translation>Record again</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoiceCloneDialog.qml" line="140"/>
+        <source>Ghi âm đã dừng. Hãy thử lại.</source>
+        <translation>Recording stopped. Please try again.</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoiceCloneDialog.qml" line="203"/>
+        <source>Đọc rõ 5–15 giây bằng giọng tự nhiên.</source>
+        <translation>Speak clearly in your natural voice for 5–15 seconds.</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoiceCloneDialog.qml" line="253"/>
+        <source>Nghe lại mẫu</source>
+        <translation>Listen to the sample</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoiceCloneDialog.qml" line="284"/>
+        <source>Nhấn dừng để dùng mẫu này</source>
+        <translation>Stop recording to use this sample</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoiceCloneDialog.qml" line="285"/>
+        <source>Chỉ dùng giọng của bạn hoặc người đã đồng ý</source>
+        <translation>Only use your voice or a voice with permission</translation>
+    </message>
+    <message>
+        <location filename="../qml/VoiceCloneDialog.qml" line="299"/>
+        <source>Bắt đầu ghi</source>
+        <translation>Start recording</translation>
     </message>
 </context>
 <context>

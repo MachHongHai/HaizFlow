@@ -10,8 +10,8 @@ AppComboBox {
     textRole: "label"
     valueRole: "value"
     model: [
-        { label: qsTr("CPU · HY-MT2 Q4"), value: "q4" },
-        { label: qsTr("GPU · HY-MT2 đầy đủ"), value: "full" }
+        { label: qsTr("HY-MT2 CPU · Q4"), value: "q4" },
+        { label: qsTr("HY-MT2 GPU · đầy đủ"), value: "full" }
     ]
     currentIndex: root.selectedModel === "full" ? 1 : 0
     onActivated: {

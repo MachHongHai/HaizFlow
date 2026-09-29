@@ -380,6 +380,8 @@ class TimelineRenderTests(unittest.TestCase):
             remove_original_subtitles=True,
             subtitle_layout_override=True,
         )
+        self.assertFalse(_manual_subtitle_layout_for_render(edited_cover_video))
+        edited_cover_video.project_type = "manual"
         self.assertTrue(_manual_subtitle_layout_for_render(edited_cover_video))
 
     def test_bundled_karaoke_font_is_available_to_ffmpeg(self):

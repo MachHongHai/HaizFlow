@@ -9,7 +9,6 @@ Item {
     id: root
 
     property var projectModel: null
-    readonly property int sidePanelWidth: Math.max(286, Math.min(354, width * 0.31))
 
     signal newProjectRequested(string projectType)
     signal recentProjectRequested(int index, string projectType)
@@ -62,64 +61,9 @@ Item {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 142
-            Layout.maximumHeight: 142
-            spacing: Theme.space12
-
-            HomeHero {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 420
-                Layout.fillHeight: true
-            }
-
-            HomeCreatorPanel {
-                Layout.preferredWidth: root.sidePanelWidth
-                Layout.fillHeight: true
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 62
-            spacing: Theme.space8
-
-            HomeActionButton {
-                Layout.fillWidth: true
-                text: qsTr("Xử lý tự động")
-                iconName: "play"
-                onClicked: root.newProjectRequested("single")
-            }
-            HomeActionButton {
-                Layout.fillWidth: true
-                text: qsTr("Biên tập thủ công")
-                iconName: "edit"
-                onClicked: root.newProjectRequested("manual")
-            }
-            HomeActionButton {
-                Layout.fillWidth: true
-                text: qsTr("Tải nội dung")
-                iconName: "download"
-                onClicked: root.downloadsRequested()
-            }
-            HomeActionButton {
-                Layout.fillWidth: true
-                text: qsTr("Đăng mạng xã hội")
-                iconName: "publish"
-                onClicked: root.publishingRequested()
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: Theme.space12
-
-            AppSurface {
+        AppSurface {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.minimumWidth: 430
                 padding: 0
                 spacing: 0
 
@@ -232,12 +176,6 @@ Item {
                         onClicked: newProjectMenu.popup(this, 0, height + Theme.space4)
                     }
                 }
-            }
-
-            TutorialPlaceholder {
-                Layout.preferredWidth: root.sidePanelWidth
-                Layout.fillHeight: true
-            }
         }
     }
 }

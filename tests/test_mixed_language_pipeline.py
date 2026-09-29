@@ -379,12 +379,42 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             binarize.return_value.return_value = speech
             model.vad_model.preprocess_audio.return_value = audio
             model._vad_params = {"vad_onset": 0.5, "vad_offset": 0.36}
-            output = transcribe._split_long_chinese_speech(model, audio, original, 8, "test-video")
+            output = transcribe._split_long_unaligned_speech(model, audio, original, 8, "test-video", "zh")
 
         self.assertEqual([(item["start"], item["end"], item["text"]) for item in output], [
             (1.0, 2.5, "第一句"),
             (5.0, 6.5, "第二句"),
         ])
+
+    def test_vietnamese_long_segment_uses_speech_windows_before_translation(self):
+        audio = np.zeros(16_000 * 18, dtype=np.float32)
+        original = [{"start": 0.0, "end": 17.0, "text": "Câu đầu. Câu sau.", "language": "vi"}]
+        model = mock.Mock()
+        model.transcribe.side_effect = [
+            {"segments": [{"text": "Câu đầu."}]},
+            {"segments": [{"text": "Câu sau."}]},
+        ]
+        with (
+            mock.patch("whisperx.vads.pyannote.Binarize") as binarize,
+            mock.patch.object(transcribe, "log_to_video"),
+        ):
+            speech = mock.Mock()
+            speech.get_timeline.return_value = [
+                SimpleNamespace(start=1.0, end=3.0),
+                SimpleNamespace(start=10.0, end=12.0),
+            ]
+            binarize.return_value.return_value = speech
+            model.vad_model.preprocess_audio.return_value = audio
+            model._vad_params = {"vad_onset": 0.5, "vad_offset": 0.36}
+            output = transcribe._split_long_unaligned_speech(
+                model, audio, original, 8, "test-video", "vi",
+            )
+
+        self.assertEqual([(item["start"], item["end"], item["text"]) for item in output], [
+            (1.0, 3.0, "Câu đầu."),
+            (10.0, 12.0, "Câu sau."),
+        ])
+        self.assertEqual([call.kwargs["language"] for call in model.transcribe.call_args_list], ["vi", "vi"])
 
     def test_uncovered_tail_speech_is_recovered_without_retranscribing_covered_windows(self):
         audio = np.zeros(16_000 * 160, dtype=np.float32)
@@ -395,7 +425,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         with mock.patch.object(transcribe, "log_to_video"):
             recovered = transcribe._recover_uncovered_speech(
                 model, audio, recognized,
-                [(140.0, 146.0), (153.5, 154.3)], 8, "test-video",
+                [(140.0, 146.0), (153.5, 154.3)], 8, "test-video", "zh",
             )
 
         self.assertEqual(len(recovered), 1)
@@ -420,7 +450,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
             binarize.return_value.return_value = speech
             model.vad_model.preprocess_audio.return_value = audio
             model._vad_params = {"vad_onset": 0.5, "vad_offset": 0.36}
-            output = transcribe._split_long_chinese_speech(model, audio, recognized, 8, "test-video")
+            output = transcribe._split_long_unaligned_speech(model, audio, recognized, 8, "test-video", "zh")
 
         self.assertEqual([item["text"] for item in output], ["前一句", "两百万"])
 
@@ -430,7 +460,7 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         with mock.patch.object(transcribe, "log_to_video"):
             recovered = transcribe._recover_uncovered_speech(
                 model, np.zeros(16_000 * 4, dtype=np.float32), [],
-                [(1.0, 2.0)], 8, "test-video",
+                [(1.0, 2.0)], 8, "test-video", "zh",
             )
         self.assertEqual(recovered, [])
 

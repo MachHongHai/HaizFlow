@@ -498,12 +498,13 @@ def _speech_windows_in_segment(
     return [(round(left, 3), round(right, 3)) for left, right in windows]
 
 
-def _split_long_chinese_speech(asr_model, audio, segments, batch_size, video_id):
-    """Split long Chinese spans and recheck speech omitted by the first pass.
+def _split_long_unaligned_speech(asr_model, audio, segments, batch_size, video_id, language):
+    """Split long spans without a verified word aligner at real speech pauses.
 
     WhisperX merges VAD regions into up-to-30-second transcription chunks.
-    Chinese has no verified word aligner here, so a single unpunctuated chunk
-    would otherwise become one TTS/subtitle slot including every internal gap.
+    Chinese and Vietnamese have no verified word aligner here, so a long
+    unpunctuated chunk would otherwise include every internal pause in one
+    translation, subtitle and TTS slot.
     """
     try:
         from whisperx.vads.pyannote import Binarize
@@ -517,13 +518,13 @@ def _split_long_chinese_speech(asr_model, audio, segments, batch_size, video_id)
         )(scores)
         regions = [(float(region.start), float(region.end)) for region in speech.get_timeline()]
     except Exception as exc:
-        log_to_video(video_id, f"WARNING: Could not resolve Chinese speech pauses: {exc}")
+        log_to_video(video_id, f"WARNING: Could not resolve {language} speech pauses: {exc}")
         return segments
 
     result = []
     for segment in segments:
         check_cancellation(video_id)
-        if str(segment.get("language")) != "zh":
+        if str(segment.get("language")) != language:
             result.append(segment)
             continue
         start = float(segment["start"])
@@ -541,9 +542,9 @@ def _split_long_chinese_speech(asr_model, audio, segments, batch_size, video_id)
             if len(clip) < int(0.25 * _AUDIO_SAMPLE_RATE):
                 continue
             try:
-                recognized = asr_model.transcribe(clip, batch_size=batch_size, language="zh")
+                recognized = asr_model.transcribe(clip, batch_size=batch_size, language=language)
             except Exception as exc:
-                log_to_video(video_id, f"WARNING: Chinese utterance {left:.2f}-{right:.2f}s failed: {exc}")
+                log_to_video(video_id, f"WARNING: {language} utterance {left:.2f}-{right:.2f}s failed: {exc}")
                 utterances = []
                 break
             text = " ".join(
@@ -554,20 +555,20 @@ def _split_long_chinese_speech(asr_model, audio, segments, batch_size, video_id)
             if text:
                 utterances.append({**segment, "start": left, "end": right, "text": text})
         if len(utterances) < 2:
-            log_to_video(video_id, "WARNING: Chinese pause split was incomplete; preserving the original transcript.")
+            log_to_video(video_id, f"WARNING: {language} pause split was incomplete; preserving the original transcript.")
             result.append(segment)
         else:
-            log_to_video(video_id, f"Split Chinese {end - start:.1f}s speech span into {len(utterances)} utterances.")
+            log_to_video(video_id, f"Split {language} {end - start:.1f}s speech span into {len(utterances)} utterances.")
             result.extend(utterances)
     # VAD can identify a short, isolated utterance which the full-video ASR
     # omitted.  Recheck only uncovered speech windows, especially the tail of
     # short-form videos; a gap in the transcript otherwise becomes a gap in
     # translation, captions and narration alike.
-    recovered = _recover_uncovered_speech(asr_model, audio, result, regions, batch_size, video_id)
+    recovered = _recover_uncovered_speech(asr_model, audio, result, regions, batch_size, video_id, language)
     return sorted([*result, *recovered], key=lambda item: (float(item["start"]), float(item["end"])))
 
 
-def _recover_uncovered_speech(asr_model, audio, segments, regions, batch_size, video_id):
+def _recover_uncovered_speech(asr_model, audio, segments, regions, batch_size, video_id, language):
     recovered = []
     for left, right in regions:
         check_cancellation(video_id)
@@ -581,7 +582,7 @@ def _recover_uncovered_speech(asr_model, audio, segments, regions, batch_size, v
         if len(clip) < int(0.35 * _AUDIO_SAMPLE_RATE):
             continue
         try:
-            recognized = asr_model.transcribe(clip, batch_size=min(batch_size, 2), language="zh")
+            recognized = asr_model.transcribe(clip, batch_size=min(batch_size, 2), language=language)
         except Exception as exc:
             log_to_video(video_id, f"WARNING: Uncovered speech {left:.2f}-{right:.2f}s could not be checked: {exc}")
             continue
@@ -591,7 +592,7 @@ def _recover_uncovered_speech(asr_model, audio, segments, regions, batch_size, v
             continue
         log_to_video(video_id, f"Recovered omitted speech at {left:.2f}-{right:.2f}s: {text}")
         recovered.append({"start": left, "end": right, "text": text,
-                          "language": "zh", "language_confidence": 1.0})
+                          "language": language, "language_confidence": 1.0})
     return recovered
 
 
@@ -929,8 +930,8 @@ def _align_segments_by_language(audio, segments, device: str, video_id: str, pro
         if language not in _VERIFIED_ALIGNMENT_MODELS:
             log_to_video(
                 video_id,
-                f"WARNING: No checksum-pinned alignment model is supported for '{language}'. "
-                "Preserving Whisper spans with proportional sentence boundaries.",
+                f"No verified word-alignment model for '{language}'; "
+                "using the available ASR sentence timing.",
             )
             for group in language_groups:
                 aligned_segments.extend(group)
@@ -1182,9 +1183,10 @@ def transcribe(
         if progress_callback:
             progress_callback("transcribed", f"Detected {detected_language or 'unknown'} speech")
 
-        if detected_language == "zh":
-            initial_segments = _split_long_chinese_speech(
+        if detected_language in {"zh", "vi"}:
+            initial_segments = _split_long_unaligned_speech(
                 asr_model, audio, initial_segments, profile.whisper_batch_size, video_id,
+                detected_language,
             )
             initial_segments = _recover_speech_without_vad(
                 asr_model, audio, initial_segments, detected_language, video_id,

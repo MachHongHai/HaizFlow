@@ -1134,7 +1134,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                         language=str(request.get("language") or "") or None,
                         instruct=anchor_instruction,
                         num_step=int(request.get("inference_steps") or 32),
-                        normalize_text=True,
+                        normalize_text=False,
                         audio_chunk_duration=10.0,
                         audio_chunk_threshold=8.0,
                     )
@@ -1202,7 +1202,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                     instruct=None if voice_clone_prompt is not None else instruction,
                     voice_clone_prompt=voice_clone_prompt,
                     num_step=int(request.get("inference_steps") or 32),
-                    normalize_text=True,
+                    normalize_text=False,
                     audio_chunk_duration=10.0,
                     audio_chunk_threshold=8.0,
                 )

@@ -12,33 +12,26 @@ Item {
 
     function packageTitle(packId, fallback) {
         switch (packId) {
-        case "engine-cpu-py313": return qsTr("Bộ xử lý CPU");
-        case "engine-cuda128-py313": return qsTr("Bộ xử lý NVIDIA");
-        case "engine-vision-onnx": return qsTr("Bộ xử lý hình ảnh");
-        case "model-speech-cpu": return qsTr("Bộ ngôn ngữ · CPU");
-        case "model-speech-gpu": return qsTr("Bộ ngôn ngữ · NVIDIA");
-        case "model-omnivoice": return qsTr("Giọng đọc OmniVoice");
-        case "model-demucs": return qsTr("Tách giọng");
-        case "model-subtitle-ocr": return qsTr("Che phụ đề gốc");
+        case "model-whisper-small": return qsTr("Whisper Small");
+        case "model-whisper-turbo": return qsTr("Whisper Turbo");
+        case "model-hymt2-cpu": return qsTr("HY-MT2 CPU");
+        case "model-hymt2-gpu": return qsTr("HY-MT2 GPU");
+        case "model-omnivoice": return qsTr("OmniVoice");
         default: return fallback;
         }
     }
     function packageGroupTitle(group) {
-        if (group === "runtime") return qsTr("Môi trường xử lý");
-        if (group === "language") return qsTr("Nhận dạng và dịch");
-        if (group === "audio") return qsTr("Giọng đọc và âm thanh");
-        return qsTr("Hình ảnh và phụ đề gốc");
+        if (group === "recognition") return qsTr("Nhận dạng");
+        if (group === "translation") return qsTr("Dịch");
+        return qsTr("Giọng đọc");
     }
     function packageSummary(packId, fallback) {
         switch (packId) {
-        case "engine-cpu-py313": return qsTr("Môi trường chạy model bằng CPU");
-        case "engine-cuda128-py313": return qsTr("Tăng tốc xử lý bằng GPU NVIDIA");
-        case "model-speech-cpu": return qsTr("Whisper nhận dạng · HY-MT2 Q4 dịch · căn thời gian");
-        case "model-speech-gpu": return qsTr("Whisper Small/Turbo nhận dạng · HY-MT2 dịch · căn thời gian");
+        case "model-whisper-small": return qsTr("Nhận dạng lời nói bằng CPU hoặc GPU");
+        case "model-whisper-turbo": return qsTr("Nhận dạng nhanh bằng GPU NVIDIA");
+        case "model-hymt2-cpu": return qsTr("Dịch cục bộ bằng bản Q4");
+        case "model-hymt2-gpu": return qsTr("Dịch bằng model đầy đủ trên GPU NVIDIA");
         case "model-omnivoice": return qsTr("Tạo giọng đọc cục bộ");
-        case "model-demucs": return qsTr("Tách giọng nói khỏi âm thanh nền");
-        case "engine-vision-onnx": return qsTr("Môi trường xử lý hình ảnh");
-        case "model-subtitle-ocr": return qsTr("Nhận dạng vị trí phụ đề gốc");
         default: return fallback;
         }
     }
@@ -59,7 +52,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.space16
                     Layout.bottomMargin: Theme.space16
-                    label: qsTr("Cấu hình phù hợp với máy này")
+                    label: qsTr("Cấu hình máy")
                     description: AppController.hardwareInfo.recommendedDevice === "gpu"
                         ? qsTr("NVIDIA · %1 · %2 VRAM")
                             .arg(AppController.hardwareInfo.availableGpuName)

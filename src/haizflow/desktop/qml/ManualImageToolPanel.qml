@@ -10,12 +10,21 @@ ColumnLayout {
     spacing: Theme.space8
     readonly property string appliedTreatment: !AppController.removeOriginalSubtitles
         ? "keep" : AppController.originalSubtitleRemovalMode
+    readonly property string displayedVideoId: AppController.selectedVideoId
     property string draftTreatment: appliedTreatment
     readonly property string appliedWatermarkKind: AppController.watermarkKind
     property string draftWatermarkKind: appliedWatermarkKind
 
-    onAppliedTreatmentChanged: draftTreatment = appliedTreatment
     onAppliedWatermarkKindChanged: draftWatermarkKind = appliedWatermarkKind
+    onAppliedTreatmentChanged: draftTreatment = appliedTreatment
+    onDisplayedVideoIdChanged: {
+        draftTreatment = appliedTreatment;
+        draftWatermarkKind = appliedWatermarkKind;
+    }
+
+    function applyTreatment() {
+        return AppController.setManualSubtitleTreatment(draftTreatment);
+    }
 
     SettingLabel {
         Layout.fillWidth: true
@@ -38,15 +47,6 @@ ColumnLayout {
             if (selected)
                 imagePane.draftTreatment = String(selected.value || "keep");
         }
-    }
-    StudioButton {
-        Layout.fillWidth: true
-        visible: imagePane.draftTreatment !== imagePane.appliedTreatment
-        text: qsTr("Áp dụng")
-        variant: "primary"
-        enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
-            && imagePane.draftTreatment !== imagePane.appliedTreatment
-        onClicked: AppController.setManualSubtitleTreatment(imagePane.draftTreatment)
     }
     SettingLabel {
         Layout.fillWidth: true

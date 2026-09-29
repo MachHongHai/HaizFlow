@@ -84,7 +84,7 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Nhận dạng giọng nói")
-                helpText: qsTr("Turbo cho chất lượng cao hơn trên GPU. Small dùng ít bộ nhớ hơn và hỗ trợ cả CPU.")
+                helpText: qsTr("Turbo cần GPU NVIDIA. Small dùng được trên CPU và GPU.")
             }
             StudioComboBox {
                 Layout.fillWidth: true
@@ -99,7 +99,7 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Model dịch")
-                helpText: qsTr("Áp dụng cho tất cả dự án. Q4 dùng ít bộ nhớ hơn.")
+                helpText: qsTr("Q4 dùng CPU và ít bộ nhớ hơn. Chọn riêng cho dự án này.")
             }
             TranslationModelCombo {
                 Layout.fillWidth: true
@@ -244,6 +244,7 @@ GridLayout {
             StudioButton {
                 Layout.alignment: Qt.AlignRight
                 text: qsTr("Chỉnh phụ đề")
+                visible: !root.removeOriginalSubtitles
                 compact: true
                 variant: "secondary"
                 enabled: root.editable && root.hasSource

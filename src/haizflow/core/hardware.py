@@ -20,7 +20,6 @@ _GIB = 1024 ** 3
 _MIN_CPU_RAM_BYTES = 14 * _GIB
 _MIN_GPU_SYSTEM_RAM_BYTES = 14 * _GIB
 _MIN_GPU_VRAM_BYTES = 7 * _GIB
-_MIN_GPU_FREE_VRAM_BYTES = 5 * _GIB
 _FULL_GPU_VRAM_BYTES = 12 * _GIB
 _DEVICE_PREFERENCES = {"cpu", "gpu"}
 _TRANSLATION_MODELS = {"auto", "q4", "full"}
@@ -70,10 +69,8 @@ class HardwareCapabilities:
     def gpu_supported(self) -> bool:
         if not self.cuda_available or self.total_vram_bytes < _MIN_GPU_VRAM_BYTES:
             return False
-        if self.ac_powered is False:
-            return False
-        if self.free_vram_bytes and self.free_vram_bytes < _MIN_GPU_FREE_VRAM_BYTES:
-            return False
+        # Free VRAM and AC state change during a session. They affect speed or
+        # whether a particular load succeeds, not whether the GPU is capable.
         return not self.total_ram_bytes or self.total_ram_bytes >= _MIN_GPU_SYSTEM_RAM_BYTES
 
     @property
@@ -396,6 +393,10 @@ def _windows_system_info() -> dict:
 
 def detect_hardware_capabilities() -> HardwareCapabilities:
     """Probe live hardware telemetry without changing the active runtime profile."""
+    # The snapshot is cached only so the several CUDA fields in this one
+    # probe share a single nvidia-smi query. A failed first query must not
+    # report "no GPU" forever when the driver finishes starting later.
+    _nvidia_snapshot.cache_clear()
     cuda_available, cuda_name = _cuda_details()
     cuda_compute_capability, cuda_bf16_supported = (
         _cuda_precision_details() if cuda_available else ((0, 0), False)
@@ -497,14 +498,9 @@ def validate_processing_device(
     if preference == "gpu":
         if not capabilities.cuda_available:
             return False, "CUDA-compatible NVIDIA GPU was not detected."
-        if capabilities.ac_powered is False:
-            return False, "GPU mode requires AC power for stable processing. Connect the charger and try again."
         if capabilities.total_vram_bytes < _MIN_GPU_VRAM_BYTES:
             available = capabilities.total_vram_bytes / _GIB
             return False, f"GPU mode requires at least 7 GB VRAM; detected {available:.1f} GB."
-        if capabilities.free_vram_bytes and capabilities.free_vram_bytes < _MIN_GPU_FREE_VRAM_BYTES:
-            available = capabilities.free_vram_bytes / _GIB
-            return False, f"GPU mode requires at least 5 GB free VRAM; detected {available:.1f} GB free."
         if capabilities.total_ram_bytes and capabilities.total_ram_bytes < _MIN_GPU_SYSTEM_RAM_BYTES:
             available = capabilities.total_ram_bytes / _GIB
             return False, f"HaizFlow requires a 16 GB system; detected {available:.1f} GiB usable RAM."

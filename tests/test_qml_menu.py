@@ -215,8 +215,8 @@ ApplicationWindow {{
 
         self.assertIn('text: qsTr("Dự án")', title_bar)
         self.assertIn('text: qsTr("Cài đặt")', title_bar)
-        self.assertIn('text: qsTr("Gói cài đặt")', title_bar)
-        self.assertIn('toolTipText: qsTr("Trợ giúp")', title_bar)
+        self.assertIn('text: qsTr("Gói tài nguyên")', title_bar)
+        self.assertIn('toolTipText: qsTr("Giới thiệu")', title_bar)
         self.assertNotIn('text: I18n.t("Single projects")', title_bar)
         self.assertNotIn('text: I18n.t("Batch projects")', title_bar)
         self.assertNotIn('text: I18n.t("Download projects")', title_bar)
@@ -225,7 +225,7 @@ ApplicationWindow {{
         self.assertIn("root.toggleMenu(projectMenu, projectButton, menuWasOpenOnPress)", title_bar)
         self.assertIn("root.toggleMenu(settingsMenu, settingsButton, menuWasOpenOnPress)", title_bar)
         self.assertIn("root.settingsRequested()", title_bar)
-        self.assertIn("root.helpRequested()", title_bar)
+        self.assertIn("root.aboutRequested()", title_bar)
         self.assertNotIn("helpMenu", title_bar)
         self.assertNotIn('glyph: "\\uE713"', title_bar)
         self.assertIn("parent: Overlay.overlay", title_bar)
@@ -404,9 +404,8 @@ ApplicationWindow {{
         self.assertNotIn("startSystemMove()", title_bar)
         self.assertNotIn("SafeArea.margins", title_bar)
         self.assertIn("signal settingsRequested", title_bar)
-        self.assertIn("signal helpRequested", title_bar)
         self.assertIn("AboutDialog", main)
-        self.assertIn("HelpDialog", main)
+        self.assertNotIn("HelpDialog", main)
         self.assertNotIn('readonly property string routeAbout: "about"', main)
         self.assertIn("signal newSingleProjectRequested", title_bar)
         self.assertNotIn("showMinimized()", title_bar)
@@ -750,6 +749,13 @@ ApplicationWindow {{
                 return None
 
             clip = find_clip(timeline)
+            # Delegate creation can be deferred when the full suite has just
+            # released inference runtimes; wait for the item, not one frame.
+            for _ in range(100):
+                if clip is not None:
+                    break
+                QTest.qWait(20)
+                clip = find_clip(timeline)
             self.assertIsNotNone(clip)
             center = clip.mapToScene(QPointF(clip.width() / 2, clip.height() / 2))
             start = QPoint(round(center.x()), round(center.y()))
@@ -1044,21 +1050,21 @@ ApplicationWindow {{
         dialog = (QML_DIR / "VoiceCloneDialog.qml").read_text(encoding="utf-8")
         controller = (ROOT / "src" / "haizflow" / "desktop" / "qml_controller.py").read_text(encoding="utf-8")
 
-        self.assertIn("CaptureSession", dialog)
-        self.assertIn("MediaRecorder", dialog)
-        self.assertIn("prepareVoiceCloneRecording", dialog)
-        self.assertIn("saveRecordedVoiceCloneReference", dialog)
+        self.assertIn("startVoiceCloneRecording", dialog)
+        self.assertIn("finishVoiceCloneRecording", dialog)
+        self.assertIn("cancelVoiceCloneRecording", dialog)
         self.assertIn("voiceCloneReferenceAnalysis", dialog)
         self.assertIn("samplePlayer.position / playableDurationMs", dialog)
         self.assertIn("root.waveformPeaks[index]", dialog)
+        self.assertIn("root.livePeaks[index]", dialog)
         self.assertIn("samplePlayer", dialog)
         self.assertIn('qsTr("Ghi lại")', dialog)
         self.assertNotIn("Math.sin", dialog)
         self.assertNotIn("TextArea", dialog)
         self.assertNotIn("Save voice", dialog)
         self.assertNotIn("Remove sample", dialog)
-        self.assertIn("def prepareVoiceCloneRecording", controller)
-        self.assertIn("def saveRecordedVoiceCloneReference", controller)
+        self.assertIn("def startVoiceCloneRecording", controller)
+        self.assertIn("def finishVoiceCloneRecording", controller)
 
     def test_processing_settings_use_one_multiple_speaker_option_and_close_only_help(self):
         settings = (QML_DIR / "ProcessingSettingsForm.qml").read_text(encoding="utf-8")

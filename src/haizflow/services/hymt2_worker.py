@@ -1,4 +1,5 @@
 import argparse
+import ctypes
 import gc
 import importlib.util
 import json
@@ -7,8 +8,14 @@ import re
 import sys
 import traceback
 from pathlib import Path
+from contextlib import contextmanager
 
-from haizflow.core.hardware import processing_device_preference, runtime_profile, translation_model_preference
+from haizflow.core.hardware import (
+    available_memory_bytes,
+    processing_device_preference,
+    runtime_profile,
+    translation_model_preference,
+)
 
 
 _INFERENCE_BATCH_SIZE = max(1, min(8, int(os.getenv("HYMT2_INFERENCE_BATCH_SIZE", "4"))))
@@ -23,6 +30,23 @@ _MIN_GGUF_BYTES = 100 * 1024 * 1024
 _MIN_CPU_MODEL_DISK_BYTES = 2 * 1024 ** 3
 _MIN_GPU_MODEL_DISK_BYTES = 6 * 1024 ** 3
 _OUTPUT_TOKEN_BUCKETS = (24, 48, 96, 160, 256)
+
+
+@contextmanager
+def _checkpoint_reader():
+    """Avoid whole-file commit reservations and native storage slicing."""
+    if os.name != "nt":
+        yield
+        return
+    from transformers import modeling_utils
+    from haizflow.services.checkpoint_reader import BufferedCheckpoint
+
+    original = modeling_utils.safe_open
+    modeling_utils.safe_open = BufferedCheckpoint
+    try:
+        yield
+    finally:
+        modeling_utils.safe_open = original
 
 def _configure_torch_threading(torch) -> None:
     """Configure process-wide Torch pools once, before CUDA probing starts work."""
@@ -66,6 +90,36 @@ def _gib(value: int | float) -> float:
     return round(float(value) / (1024 ** 3), 2) if value else 0.0
 
 
+def _require_staged_cuda_memory(model_source: str) -> None:
+    """Reject only a critically starved host before GPU weight staging.
+
+    On Windows the safetensors shard is memory-mapped and the pageable CPU
+    staging copy is released after CUDA transfer. Physical ``available`` is
+    not the amount of address space the loader may use: successful project
+    logs show this model loading with only ~0.3 GiB reported as available.
+    Requiring 1.2x the checkpoint size here rejected known-working machines.
+    """
+    model_path = Path(model_source)
+    try:
+        checkpoint_bytes = sum(path.stat().st_size for path in model_path.glob("*.safetensors"))
+    except OSError:
+        return
+    if not checkpoint_bytes:
+        return
+    # Keep only an emergency floor; the loader itself provides a precise
+    # failure if Windows cannot commit or map the weights. A larger estimate
+    # based on physical RAM gives false negatives under normal paging.
+    required_bytes = 256 * 1024**2
+    available_bytes = available_memory_bytes()
+    if available_bytes and available_bytes < required_bytes:
+        raise RuntimeError(
+            "Không đủ RAM trống để nạp HY-MT2 GPU: "
+            f"cần khoảng {_gib(required_bytes):.1f} GiB, "
+            f"hiện có {_gib(available_bytes):.1f} GiB. "
+            "Hãy đóng bớt ứng dụng rồi chạy lại, hoặc chọn HY-MT2 CPU trong dự án."
+        )
+
+
 def _emit_diagnostic(stage: str, torch=None, **details) -> None:
     """Emit a crash-surviving memory snapshot through the worker event stream."""
     snapshot = {
@@ -84,11 +138,25 @@ def _emit_diagnostic(stage: str, torch=None, **details) -> None:
             {
                 "ram_available_gib": _gib(memory.available),
                 "ram_total_gib": _gib(memory.total),
-                "commit_or_swap_free_gib": _gib(swap.free),
-                "commit_or_swap_total_gib": _gib(swap.total),
+                "swap_free_gib": _gib(swap.free),
+                "swap_total_gib": _gib(swap.total),
                 "process_rss_gib": _gib(process.memory_info().rss),
             }
         )
+        if os.name == "nt":
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [
+                    (name, ctypes.c_ulonglong) for name in (
+                        "physical_total", "physical_free", "commit_total", "commit_free",
+                        "virtual_total", "virtual_free", "extended_free",
+                    )
+                ]
+
+            status = MemoryStatus()
+            status.length = ctypes.sizeof(status)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                snapshot["commit_free_gib"] = _gib(status.commit_free)
+                snapshot["commit_limit_gib"] = _gib(status.commit_total)
     except Exception as exc:
         snapshot["system_memory_probe_error"] = f"{type(exc).__name__}: {exc}"
 
@@ -125,7 +193,10 @@ def _inference_batches(texts: list[str], batch_size: int | None = None):
         if profile.is_cpu_only:
             batch_size = 1
         elif getattr(profile, "key", "") == "cuda_low_memory":
-            batch_size = min(2, _INFERENCE_BATCH_SIZE)
+            # Windows commit can be nearly exhausted after ASR even when
+            # several GiB of CUDA VRAM remain. One prompt avoids the extra
+            # host allocations of a padded two-prompt first generation.
+            batch_size = 1
         else:
             batch_size = _INFERENCE_BATCH_SIZE
     for start in range(0, len(texts), batch_size):
@@ -437,11 +508,11 @@ def _load_model(model_name: str):
     preference = translation_model_preference()
     if preference == "full":
         if not profile.cuda_available:
-            raise RuntimeError("HY-MT2 đầy đủ cần GPU NVIDIA tương thích. Hãy chọn Q4 hoặc Tự động trong Cài đặt.")
+            raise RuntimeError("HY-MT2 GPU cần GPU NVIDIA tương thích. Hãy chọn HY-MT2 CPU trong dự án.")
         backend = "transformers"
     elif preference == "q4":
         if importlib.util.find_spec("llama_cpp") is None:
-            raise RuntimeError("HY-MT2 Q4 cần gói nhận dạng và dịch CPU. Hãy cài gói này hoặc chọn Tự động trong Cài đặt.")
+            raise RuntimeError("Thiếu môi trường chạy HY-MT2 CPU. Hãy cài HY-MT2 CPU trong Gói tài nguyên.")
         backend = "llama_cpp"
     cpu_model_path = None
     if preference == "auto" and profile.key == "cuda_low_memory" and importlib.util.find_spec("llama_cpp") is not None:
@@ -549,7 +620,9 @@ def _load_model(model_name: str):
         fix_mistral_regex=False,
     )
     _emit_diagnostic("tokenizer_load_complete", torch, model=model_name, device=device)
-    staged_cuda_load = device == "cuda" and profile.key == "cuda_low_memory"
+    # Buffered checkpoint reads avoid the Windows mmap crash, so load each
+    # tensor directly to CUDA instead of retaining a second full model in RAM.
+    staged_cuda_load = device == "cuda" and profile.key == "cuda_low_memory" and os.name != "nt"
     load_options = {
         "dtype": dtype,
         "trust_remote_code": False,
@@ -561,6 +634,7 @@ def _load_model(model_name: str):
         # Transformers' meta-model path can trigger a native storage access
         # violation on Windows. Stage the same checkpoint in system
         # memory, then transfer the complete model to CUDA.
+        _require_staged_cuda_memory(model_source)
         load_options["low_cpu_mem_usage"] = False
         load_strategy = "staged_cpu_to_cuda"
     else:
@@ -574,6 +648,7 @@ def _load_model(model_name: str):
         dtype=str(dtype),
         device=device,
         load_strategy=load_strategy,
+        checkpoint_backend="bounded_read" if os.name == "nt" else "mmap",
     )
     _emit_event(
         {
@@ -587,11 +662,12 @@ def _load_model(model_name: str):
     )
     # model_source is the checksum-verified local safetensors snapshot and
     # load_options disables remote code while requiring safetensors.
-    model = AutoModelForCausalLM.from_pretrained(  # nosec B615
-        model_source,
-        revision=HYMT2_MODEL_REVISION,
-        **load_options,
-    )
+    with _checkpoint_reader():
+        model = AutoModelForCausalLM.from_pretrained(  # nosec B615
+            model_source,
+            revision=HYMT2_MODEL_REVISION,
+            **load_options,
+        )
     _emit_diagnostic(
         "weights_load_complete",
         torch,
@@ -612,6 +688,9 @@ def _load_model(model_name: str):
     # variation because one wrong noun corrupts both captions and TTS.
     model.generation_config.do_sample = False
     model.eval()
+    if device == "cuda" and profile.key == "cuda_low_memory":
+        gc.collect()
+        torch.cuda.synchronize()
     _emit_diagnostic("model_ready", torch, model=model_name, dtype=str(dtype), device=device)
     _emit_event({"event": "status", "detail": "HY-MT2 model is ready"})
     return model, tokenizer, torch, device

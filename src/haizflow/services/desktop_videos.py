@@ -279,7 +279,7 @@ def prepare_desktop_voice_recording(video_info) -> str:
     workspace = os.path.abspath(video_store.get_video_dir(video_info.video_id))
     recording_directory = os.path.join(workspace, "temp", "voice_cloning")
     os.makedirs(recording_directory, exist_ok=True)
-    return os.path.join(recording_directory, f"recording-{uuid.uuid4().hex}.m4a")
+    return os.path.join(recording_directory, f"recording-{uuid.uuid4().hex}.wav")
 
 
 def _remove_stale_voice_reference_files(input_directory: str, keep_path: str = "") -> list[str]:

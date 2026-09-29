@@ -39,7 +39,7 @@ ColumnLayout {
     SettingLabel {
         Layout.fillWidth: true
         text: qsTr("Model dịch")
-        helpText: qsTr("Áp dụng cho tất cả dự án. Q4 dùng ít bộ nhớ hơn.")
+        helpText: qsTr("Q4 dùng CPU và ít bộ nhớ hơn. Chọn riêng cho dự án này.")
     }
     TranslationModelCombo {
         Layout.fillWidth: true

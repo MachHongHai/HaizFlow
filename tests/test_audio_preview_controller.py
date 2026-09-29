@@ -83,6 +83,11 @@ class AudioPreviewControllerTests(unittest.TestCase):
 
         self.assertEqual(path, str(sample))
 
+    def test_omnivoice_preset_preview_uses_packaged_sample_for_english_project(self):
+        preview = AudioPreviewController(_host())
+        self.assertTrue(preview.has_voice_sample("omnivoice", "omnivoice:bright", "en"))
+        self.assertTrue(preview.voice_sample_path("omnivoice", "omnivoice:bright", "en").endswith("vi.mp3"))
+
     def test_voice_only_preview_publishes_an_existing_sample_immediately(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             sample = Path(temp_dir) / "sample.mp3"

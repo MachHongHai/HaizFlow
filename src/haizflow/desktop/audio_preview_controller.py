@@ -208,11 +208,17 @@ class AudioPreviewController:
     @classmethod
     def _packaged_sample_path(cls, provider: str, voice: str, language: str) -> str:
         safe_voice = re.sub(r"[^a-zA-Z0-9._-]+", "_", voice).strip("_")
-        candidates = (
+        candidates = [
             cls._PACKAGED_SAMPLE_DIR / provider / safe_voice / f"{language}.mp3",
             cls._PACKAGED_SAMPLE_DIR / provider / safe_voice / "default.mp3",
             cls._PACKAGED_SAMPLE_DIR / provider / f"{safe_voice}.mp3",
-        )
+        ]
+        # OmniVoice presets are timbre samples, not translated speech. Their
+        # packaged recordings are Vietnamese-only, but the same presets can
+        # synthesize English and other target languages. Do not mark every
+        # preset unavailable just because a project targets another language.
+        if provider == "omnivoice" and language != "vi":
+            candidates.append(cls._PACKAGED_SAMPLE_DIR / provider / safe_voice / "vi.mp3")
         for candidate in candidates:
             if cls._valid_media(str(candidate)):
                 return str(candidate)

@@ -94,7 +94,7 @@ class ManagedMediaCleanupTests(unittest.TestCase):
             self.assertEqual(video.files["voice_reference"], str(destination))
             self.assertEqual(recording_path.parent, workspace / "temp" / "voice_cloning")
             self.assertTrue(recording_path.name.startswith("recording-"))
-            self.assertEqual(recording_path.suffix, ".m4a")
+            self.assertEqual(recording_path.suffix, ".wav")
 
     def test_voice_clone_reference_falls_back_when_windows_locks_previous_sample(self):
         with tempfile.TemporaryDirectory() as temporary:

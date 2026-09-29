@@ -126,6 +126,19 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(snapshot.total_vram_bytes, 12288 * 1024**2)
         self.assertEqual(snapshot.compute_capability, (8, 6))
 
+    def test_live_hardware_probe_does_not_cache_an_initial_nvidia_failure(self):
+        with (
+            mock.patch.object(hardware, "_run_nvidia_query", side_effect=[
+                [], [], ["NVIDIA RTX Test", "8192", "7168", "8.9"],
+            ]) as query,
+            mock.patch.object(hardware, "_power_status", return_value=(True, 90)),
+            mock.patch.object(hardware, "_windows_system_info", return_value={}),
+            mock.patch.object(hardware, "_total_memory_bytes", return_value=16 * 1024**3),
+        ):
+            self.assertFalse(hardware.detect_hardware_capabilities().cuda_available)
+            self.assertTrue(hardware.detect_hardware_capabilities().cuda_available)
+        self.assertEqual(query.call_count, 3)
+
     def test_runtime_profile_can_use_a_cached_snapshot_without_detecting_hardware(self):
         capabilities = hardware.HardwareCapabilities(
             cuda_available=False,
@@ -213,6 +226,36 @@ class CpuRuntimeTests(unittest.TestCase):
         save_settings.assert_called_once()
         self.assertEqual(host._hardware_probe_events.get_nowait()["kind"], "startup")
 
+    def test_startup_hardware_probe_retries_transient_nvidia_driver_gap(self):
+        unavailable = hardware.HardwareCapabilities(
+            cuda_available=False, cuda_name="", total_vram_bytes=0, free_vram_bytes=0,
+            total_ram_bytes=16 * 1024**3, logical_cpu_count=12,
+            ac_powered=True, battery_percent=80,
+            detected_graphics=("NVIDIA GeForce RTX 4060 Laptop GPU",),
+        )
+        available = hardware.HardwareCapabilities(
+            cuda_available=True, cuda_name="RTX 4060", total_vram_bytes=8 * 1024**3,
+            free_vram_bytes=7 * 1024**3, total_ram_bytes=16 * 1024**3,
+            logical_cpu_count=12, ac_powered=True, battery_percent=80,
+        )
+        host = SimpleNamespace(
+            _hardware_probe_lock=threading.Lock(), _hardware_probe_running=False,
+            _hardware_probe_events=queue.Queue(), _settings_processing_device="cpu",
+            _processing_device_origin="detected", _settings_theme="graphite",
+            _settings_language="vi", _active_processing_device="cpu",
+            _startup_hardware_resolved=False, _status_message="Ready",
+        )
+        detect = mock.Mock(side_effect=[unavailable, available])
+        controller = RuntimeDeviceController(host, detect_hardware=detect)
+        with (
+            mock.patch("haizflow.desktop.runtime_device_controller.time.sleep") as sleep,
+            mock.patch("haizflow.desktop.runtime_device_controller.configure_processing_device"),
+            mock.patch.object(desktop_settings, "save_settings"),
+        ):
+            self.assertEqual(controller._resolve_startup_processing_device(), "gpu")
+        self.assertEqual(detect.call_count, 2)
+        sleep.assert_called_once_with(0.75)
+
     def test_cuda_profile_keeps_existing_fast_path(self):
         profile = self._profile(cuda=True, vram_gib=12, ram_gib=16, cpu_count=12)
         self.assertEqual(profile.key, "cuda")
@@ -242,7 +285,7 @@ class CpuRuntimeTests(unittest.TestCase):
         unsupported_gpu = self._profile(cuda=True, vram_gib=4, preference="gpu")
         self.assertFalse(unsupported_gpu.cuda_available)
 
-    def test_gpu_requires_safe_total_and_free_memory_before_auto_selecting_it(self):
+    def test_gpu_capability_does_not_depend_on_transient_free_memory(self):
         hardware.clear_runtime_profile_cache()
         with (
             mock.patch.object(hardware, "_cuda_details", return_value=(True, "Test GPU")),
@@ -254,11 +297,25 @@ class CpuRuntimeTests(unittest.TestCase):
             mock.patch.object(hardware.os, "cpu_count", return_value=8),
         ):
             compatible, message = hardware.validate_processing_device("gpu")
-            profile = hardware.runtime_profile()
+            capabilities = hardware.detect_hardware_capabilities()
 
-        self.assertFalse(compatible)
-        self.assertIn("free VRAM", message)
-        self.assertTrue(profile.is_cpu_only)
+        self.assertTrue(compatible)
+        self.assertIn("GPU ready", message)
+        self.assertEqual(hardware.recommended_processing_device(capabilities), "gpu")
+
+    def test_gpu_status_reports_low_free_vram_as_advice_not_incompatibility(self):
+        capabilities = hardware.HardwareCapabilities(
+            cuda_available=True, cuda_name="RTX 4060", total_vram_bytes=8 * 1024**3,
+            free_vram_bytes=3 * 1024**3, total_ram_bytes=16 * 1024**3,
+            logical_cpu_count=12, ac_powered=False, battery_percent=70,
+        )
+        host = SimpleNamespace(
+            _startup_hardware_resolved=True, _hardware_capabilities=capabilities,
+            _settings_language="vi",
+        )
+        status = qml_controller.HaizFlowController.processingDeviceStatus(host, "gpu")
+        self.assertIn("GPU sẵn sàng", status)
+        self.assertIn("VRAM trống đang thấp", status)
 
     def test_device_validation_reports_missing_gpu(self):
         hardware.clear_runtime_profile_cache()
@@ -358,6 +415,14 @@ class CpuRuntimeTests(unittest.TestCase):
             self.assertEqual(translation._worker_command(), ["gpu-engine"])
         self.assertEqual(engine.call_args.args[2], {"device": "gpu"})
 
+    def test_low_memory_gpu_translates_one_prompt_at_a_time(self):
+        profile = SimpleNamespace(key="cuda_low_memory", is_cpu_only=False)
+        with mock.patch.object(hymt2_worker, "runtime_profile", return_value=profile):
+            self.assertEqual(
+                list(hymt2_worker._inference_batches(["one", "two", "three"])),
+                [(0, 1), (1, 2), (2, 3)],
+            )
+
     def test_q4_model_selection_does_not_import_torch(self):
         profile = SimpleNamespace(key="cuda_low_memory", hymt2_backend="transformers", cuda_available=True, cpu_threads=4)
         llama = mock.Mock(return_value="loaded-q4")
@@ -372,6 +437,29 @@ class CpuRuntimeTests(unittest.TestCase):
             mock.patch.dict(sys.modules, {"llama_cpp": SimpleNamespace(Llama=llama)}),
         ):
             self.assertEqual(hymt2_worker._load_model("HY-MT2"), ("loaded-q4", None, None, "cpu-gguf"))
+
+    def test_staged_gpu_load_checks_free_ram_before_native_model_loader(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            checkpoint = Path(temporary) / "model.safetensors"
+            checkpoint.write_bytes(b"test checkpoint")
+            with mock.patch.object(hymt2_worker, "available_memory_bytes", return_value=1):
+                with self.assertRaisesRegex(RuntimeError, "Không đủ RAM trống"):
+                    hymt2_worker._require_staged_cuda_memory(temporary)
+            with mock.patch.object(hymt2_worker, "available_memory_bytes", return_value=2 * 1024**3):
+                hymt2_worker._require_staged_cuda_memory(temporary)
+            # A prior successful HY-MT2 GPU load on this 16 GiB Windows host
+            # reported ~0.34 GiB physically available while its pageable
+            # staging copy and CUDA transfer completed normally.
+            with mock.patch.object(hymt2_worker, "available_memory_bytes", return_value=int(0.34 * 1024**3)):
+                hymt2_worker._require_staged_cuda_memory(temporary)
+
+    def test_active_manual_translation_strip_never_says_translation_finished(self):
+        video = SimpleNamespace(
+            status="processing", step="manual_translation", step_detail="Đang dịch phụ đề"
+        )
+        host = SimpleNamespace(_selected_video=lambda: video, _settings_language="vi")
+        label = qml_controller.HaizFlowController.selectedStageLabel.fget(host)
+        self.assertEqual(label, "Đang nhận dạng và dịch")
 
     def test_manual_translation_cache_changes_with_global_model(self):
         video = SimpleNamespace(target_language="vi")
@@ -438,7 +526,7 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(loaded["theme"], "graphite")
         self.assertIn('"graphite"', persisted)
 
-    def test_battery_power_rejects_gpu_and_recommends_cpu(self):
+    def test_battery_power_does_not_misclassify_gpu_capability(self):
         hardware.clear_runtime_profile_cache()
         with (
             mock.patch.object(hardware, "_cuda_details", return_value=(True, "Laptop GPU")),
@@ -453,9 +541,9 @@ class CpuRuntimeTests(unittest.TestCase):
             compatible, message = hardware.validate_processing_device("gpu", capabilities)
             recommended = hardware.recommended_processing_device(capabilities)
 
-        self.assertFalse(compatible)
-        self.assertIn("AC power", message)
-        self.assertEqual(recommended, "cpu")
+        self.assertTrue(compatible)
+        self.assertIn("GPU ready", message)
+        self.assertEqual(recommended, "gpu")
 
     def test_hymt2_gguf_uses_chat_completion_and_plain_translation(self):
         class FakeLlama:

@@ -123,6 +123,16 @@ class GpuRecoveryTests(unittest.TestCase):
         self.assertIn("Bước tạo giọng chưa bắt đầu", message)
         self.assertIn("worker.log", message)
 
+    def test_cuda_unknown_error_with_native_allocation_failure_reports_memory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            diagnostic = Path(temporary) / "worker.log"
+            diagnostic.write_text("fatal   : Memory allocation failure\n", encoding="utf-8")
+            message = translation._worker_error_message(
+                "AcceleratorError: CUDA error: unknown error", str(diagnostic)
+            )
+        self.assertIn("bộ nhớ hệ thống", message)
+        self.assertIn("worker.log", message)
+
     def test_native_torch_crash_is_reported_without_automatic_fallback(self):
         profile = SimpleNamespace(cuda_available=True)
         with mock.patch.object(process_video, "runtime_profile", return_value=profile):

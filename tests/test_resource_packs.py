@@ -160,12 +160,10 @@ class ResourcePackManagerTests(unittest.TestCase):
             rows = controller.displayRows
             pack_ids = [row["packId"] for row in rows]
             self.assertEqual(len(pack_ids), len(set(pack_ids)))
-            self.assertIn("engine-cpu-py313", pack_ids)
-            self.assertIn("model-speech-cpu", pack_ids)
-            self.assertIn("engine-cuda128-py313", pack_ids)
-            self.assertIn("model-speech-gpu", pack_ids)
-            self.assertIn("engine-vision-onnx", pack_ids)
-            self.assertIn("model-subtitle-ocr", pack_ids)
+            self.assertEqual(pack_ids, [
+                "model-whisper-small", "model-whisper-turbo",
+                "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
+            ])
             self.assertTrue(all("packIds" not in row for row in rows))
         finally:
             controller.shutdown()
@@ -176,6 +174,25 @@ class ResourcePackManagerTests(unittest.TestCase):
         self.assertEqual({row["packId"] for row in rows}, set(ResourcePackManager().definitions))
         self.assertTrue(all(isinstance(row["installedSize"], int) for row in rows))
         self.assertTrue(all(isinstance(row["totalInstalledBytes"], int) for row in rows))
+
+    def test_eight_gib_nvidia_gpu_can_select_full_translation_pack(self):
+        from haizflow.core.hardware import HardwareCapabilities
+        from haizflow.desktop.resource_pack_controller import ResourcePackController
+
+        capabilities = HardwareCapabilities(
+            cuda_available=True, cuda_name="RTX 4060 Laptop GPU",
+            total_vram_bytes=8 * 1024**3, free_vram_bytes=7 * 1024**3,
+            total_ram_bytes=16 * 1024**3, logical_cpu_count=16,
+            ac_powered=True, battery_percent=80,
+        )
+        controller = SimpleNamespace(_host=SimpleNamespace(
+            _hardware_capabilities=capabilities, _settings_language="vi",
+        ))
+        compatible, warning = ResourcePackController._hardware_compatibility(
+            controller, "model-hymt2-gpu",
+        )
+        self.assertTrue(compatible)
+        self.assertNotIn("12 GB", warning)
 
     def test_storage_summary_counts_shared_files_only_once(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -195,21 +212,29 @@ class ResourcePackManagerTests(unittest.TestCase):
             ):
                 self.assertEqual(ResourcePackManager._resource_storage_bytes(), 6)
 
-    def test_capability_mapping_selects_one_integrated_speech_backend(self):
+    def test_capability_mapping_selects_independent_recognition_and_translation_models(self):
         manager = ResourcePackManager()
         self.assertEqual(
             manager.required_packs("recognition", {"device": "cpu", "language": "en-US"}),
-            ["engine-cpu-py313", "model-speech-cpu"],
+            ["engine-cpu-py313", "model-whisper-small"],
         )
         self.assertEqual(
             manager.required_packs(
                 "recognition", {"device": "gpu", "model": "large-v3-turbo", "language": "en"}
             ),
-            ["engine-cuda128-py313", "model-speech-gpu"],
+            ["engine-cuda128-py313", "model-whisper-turbo"],
         )
         self.assertEqual(
             manager.required_packs("recognition", {"device": "gpu", "model": "small"}),
-            ["engine-cuda128-py313", "model-speech-gpu"],
+            ["engine-cuda128-py313", "model-whisper-small"],
+        )
+        self.assertEqual(
+            manager.required_packs("translation", {"device": "gpu", "translation_model": "q4"}),
+            ["engine-cpu-py313", "model-hymt2-cpu"],
+        )
+        self.assertEqual(
+            manager.required_packs("translation", {"device": "gpu", "translation_model": "full"}),
+            ["engine-cuda128-py313", "model-hymt2-gpu"],
         )
         self.assertEqual(manager.required_packs("voice", {"provider": "edge"}), [])
 

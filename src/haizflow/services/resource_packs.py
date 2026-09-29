@@ -196,27 +196,30 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             installed_size=260_000_000,
             engine_modules=("onnxruntime", "rapidocr"),
         ),
-        # Recognition and translation are one user-facing Manual tool. Keep
-        # them as one installable model pack as well: one pack id, one
-        # transactional install and one repair/remove operation. The CPU and
-        # NVIDIA variants remain separate so users never download both.
         model_pack(
-            "model-speech-cpu",
-            "Nhận dạng và dịch · CPU",
-            "tools",
-            "speech",
-            ("whisper", "whisperx-vad", "hymt2-cpu", "alignment"),
-            ("engine-cpu-py313",),
-            backend="cpu",
+            "model-whisper-small",
+            "Whisper Small",
+            "recognition",
+            "recognition",
+            ("whisper", "whisperx-vad", "alignment"),
+            (),
         ),
         model_pack(
-            "model-speech-gpu",
-            "Nhận dạng và dịch · NVIDIA",
-            "tools",
-            "speech",
-            ("whisper", "whisper-turbo", "whisperx-vad", "hymt2-gpu", "alignment"),
-            ("engine-cuda128-py313",),
+            "model-whisper-turbo",
+            "Whisper Turbo",
+            "recognition",
+            "recognition",
+            ("whisper-turbo", "whisperx-vad", "alignment"),
+            (),
             backend="gpu",
+        ),
+        model_pack(
+            "model-hymt2-cpu", "HY-MT2 CPU", "translation", "translation",
+            ("hymt2-cpu",), (), backend="cpu",
+        ),
+        model_pack(
+            "model-hymt2-gpu", "HY-MT2 GPU", "translation", "translation",
+            ("hymt2-gpu",), (), backend="gpu",
         ),
         model_pack(
             "model-omnivoice",
@@ -504,11 +507,27 @@ class ResourcePackManager:
         context = context or {}
         device = "gpu" if str(context.get("device") or "cpu") == "gpu" else "cpu"
         provider = str(context.get("provider") or "omnivoice").lower()
-        engine_pack = f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}"
-        speech_pack = "model-speech-gpu" if device == "gpu" else "model-speech-cpu"
+        recognition_model = str(context.get("model") or "small").lower()
+        recognition_device = "gpu" if recognition_model in {"turbo", "large-v3-turbo"} else device
+        engine_pack = f"engine-{'cuda128-py313' if recognition_device == 'gpu' else 'cpu-py313'}"
+        whisper_pack = (
+            "model-whisper-turbo" if recognition_model in {"turbo", "large-v3-turbo"}
+            else "model-whisper-small"
+        )
+        translation_packs: list[str] = []
+        if str(capability) == "translation":
+            translation_model = str(context.get("translation_model") or "auto").lower()
+            if translation_model == "auto":
+                from haizflow.core.hardware import runtime_profile
+
+                profile = runtime_profile()
+                translation_model = "full" if device == "gpu" and profile.total_vram_gib >= 12 else "q4"
+            translation_device = "gpu" if translation_model == "full" else "cpu"
+            translation_engine = f"engine-{'cuda128-py313' if translation_device == 'gpu' else 'cpu-py313'}"
+            translation_packs = [translation_engine, f"model-hymt2-{translation_device}"]
         mapping = {
-            "recognition": [engine_pack, speech_pack],
-            "translation": [engine_pack, speech_pack],
+            "recognition": [engine_pack, whisper_pack],
+            "translation": translation_packs,
             "voice": []
             if provider == "edge"
             else [f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}", "model-omnivoice"],
@@ -642,19 +661,20 @@ class ResourcePackManager:
     def _verify_model_pack(self, definition: ResourcePackDefinition) -> None:
         root = models_dir()
         pack_id = definition.pack_id
-        if pack_id == "model-speech-cpu":
+        if pack_id == "model-whisper-small":
             verify_whisper_model(root / "whisper" / "small")
             verify_whisperx_vad_model(root / "whisperx-vad")
-            verify_cpu_model(root / "hymt2-gguf" / HYMT2_CPU_FILE)
             for language in ALIGNMENT_MODELS:
                 verify_alignment_model(root / "alignment", language)
-        elif pack_id == "model-speech-gpu":
-            verify_whisper_model(root / "whisper" / "small")
+        elif pack_id == "model-whisper-turbo":
             verify_whisper_turbo_model(root / "whisper" / "large-v3-turbo")
             verify_whisperx_vad_model(root / "whisperx-vad")
-            verify_gpu_model(root / "hymt2-transformers")
             for language in ALIGNMENT_MODELS:
                 verify_alignment_model(root / "alignment", language)
+        elif pack_id == "model-hymt2-cpu":
+            verify_cpu_model(root / "hymt2-gguf" / HYMT2_CPU_FILE)
+        elif pack_id == "model-hymt2-gpu":
+            verify_gpu_model(root / "hymt2-transformers")
         elif pack_id == "model-omnivoice":
             verify_omnivoice_model(root / "omnivoice")
             verify_omnivoice_sdk(root / "omnivoice")
