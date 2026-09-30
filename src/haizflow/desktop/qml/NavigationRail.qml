@@ -19,17 +19,42 @@ Rectangle {
         anchors.margins: Theme.space12
         spacing: Theme.space8
 
-        Text {
+        RowLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
             visible: !root.compact
-            text: "HaizFlow"
-            color: Theme.text
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.body
-            font.weight: Font.DemiBold
-            verticalAlignment: Text.AlignVCenter
-            textFormat: Text.PlainText
+            spacing: Theme.space8
+
+            Image {
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+                source: Qt.resolvedUrl("../assets/branding/haizflow-mark.png")
+                sourceSize.width: 64
+                sourceSize.height: 64
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                Text {
+                    text: "Haiz"
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: TypeScale.section
+                    font.weight: Font.Bold
+                    textFormat: Text.PlainText
+                }
+                Text {
+                    text: "Flow"
+                    color: Theme.interactive
+                    font.family: Theme.fontFamily
+                    font.pixelSize: TypeScale.section
+                    font.weight: Font.Bold
+                    textFormat: Text.PlainText
+                }
+            }
         }
 
         Rectangle {

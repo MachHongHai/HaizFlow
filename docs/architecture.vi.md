@@ -17,7 +17,7 @@ QML desktop UI
   -> preview hoặc FFmpeg output cuối
 ```
 
-Mạng chỉ xuất hiện trong tính năng cụ thể: tải model đã verify, nhập media công khai, Edge TTS khi được chọn và đăng bài qua Zernio do user cấu hình. OmniVoice, Whisper/WhisperX, HY-MT2, Demucs và FFmpeg chạy local sau khi asset hợp lệ đã có.
+Mạng chỉ xuất hiện trong tính năng cụ thể: tải model đã kiểm tra, nhập media công khai, dịch bằng Gemini khi được chọn và đăng bài qua Zernio do người dùng cấu hình. OmniVoice, Whisper/WhisperX, HY-MT2, Demucs và FFmpeg chạy trên máy sau khi đã cài gói phù hợp.
 
 ## 2. Nguyên tắc kiến trúc
 
@@ -102,7 +102,7 @@ input đã quản lý
   -> Whisper/WhisperX recognition và timing
   -> HY-MT2 translation
   -> subtitle document và ASS
-  -> OmniVoice hoặc Edge TTS clip
+  -> Clip giọng OmniVoice
   -> audio mix theo timestamp
   -> FFmpeg render/mux
 ```
@@ -161,7 +161,7 @@ Mạng chỉ dùng cho:
 
 - tải gói tài nguyên đã được người dùng xác nhận và kiểm checksum;
 - URL/channel inspection và download;
-- Edge TTS khi user chọn;
+- Dịch bằng Gemini API khi người dùng chọn;
 - Zernio authentication, upload và publishing.
 
 Credential nằm trong Windows Credential Manager. Import URL validate host và staging. Social upload cần xác nhận. Diagnostic bundle được giới hạn/redact và không chứa media hoặc metadata dự án.

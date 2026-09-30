@@ -38,6 +38,25 @@ class _Response:
 
 
 class ModelBootstrapTests(unittest.TestCase):
+    def test_duplicate_manifest_files_are_only_downloaded_once(self):
+        payload = b"voice model"
+        asset = model_bootstrap.ModelAsset(
+            "test-model", "voice", "https://huggingface.co/voice", "voice.bin",
+            len(payload), hashlib.sha256(payload).hexdigest(),
+        )
+        events = []
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(
+                model_bootstrap, "_open_download", return_value=_Response(payload, asset.url),
+            ) as download:
+                model_bootstrap.install_model_assets(Path(directory), [asset, asset], progress=events.append)
+            self.assertEqual(download.call_count, 1)
+            self.assertEqual(events[-1].state, "ready")
+            self.assertEqual(events[-1].total_bytes, len(payload))
+            with patch.object(model_bootstrap, "_open_download") as repeated_download:
+                model_bootstrap.install_model_assets(Path(directory), [asset, asset], progress=events.append)
+            repeated_download.assert_not_called()
+
     def test_startup_never_installs_models_and_only_queues_smart_warmup(self):
         class _Warmup:
             def __init__(self):

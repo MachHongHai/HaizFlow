@@ -318,7 +318,7 @@ class VideoMetadataMigrationTests(unittest.TestCase):
 
         self.assertEqual(recovered.original_subtitle_removal_mode, "patch")
 
-    def test_v11_metadata_keeps_existing_projects_on_edge_tts(self):
+    def test_v11_metadata_moves_existing_projects_to_omnivoice(self):
         video = self._create_video()
         path = Path(video_store.get_video_json_path(video.video_id))
         legacy = json.loads(path.read_text(encoding="utf-8"))
@@ -329,7 +329,7 @@ class VideoMetadataMigrationTests(unittest.TestCase):
         migrated = video_store.get_video(video.video_id)
 
         self.assertEqual(migrated.schema_version, VIDEO_METADATA_SCHEMA_VERSION)
-        self.assertEqual(migrated.tts_provider, "edge")
+        self.assertEqual(migrated.tts_provider, "omnivoice")
 
     def test_v13_metadata_defaults_to_one_narrator_voice(self):
         video = self._create_video()

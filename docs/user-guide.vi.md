@@ -17,7 +17,7 @@ Hãy tính chỗ trống cho bốn phần riêng:
 
 Setup hiển thị dung lượng đo từ đúng bản đang cài. Gói Core vừa được kiểm tra có dung lượng 477 MiB và Setup khuyến nghị chừa 4 GiB. Gói tài nguyên tùy chọn cùng dữ liệu dự án được đo riêng, không nằm trong con số của Core.
 
-HaizFlow có thể nhận dạng, dịch, tạo giọng cục bộ, tách âm và OCR trên máy sau khi cài đủ gói. Edge TTS, nhập liên kết công khai, tải gói tài nguyên và đăng mạng xã hội cần Internet.
+HaizFlow có thể nhận dạng, dịch, tạo giọng cục bộ, tách âm và OCR trên máy sau khi cài đủ gói. Dịch bằng Gemini, nhập liên kết công khai, tải gói tài nguyên và đăng mạng xã hội cần Internet.
 
 ## 2. Cài và mở ứng dụng
 
@@ -97,7 +97,7 @@ Nếu không kiểm tra được URL, hãy mở nó trong trình duyệt. Xác n
 
 1. Thêm video nguồn.
 2. Chọn ngôn ngữ nguồn, ngôn ngữ đích và model nhận dạng.
-3. Chọn OmniVoice để tạo giọng trên máy hoặc Edge TTS để dùng giọng trực tuyến.
+3. Chọn một mẫu giọng OmniVoice để tạo giọng trên máy.
 4. Chọn giữ nguyên, làm mờ hoặc vá vùng phụ đề gốc.
 5. Giữ âm thanh nguồn hoặc tách lời nói khỏi âm nền.
 6. Thêm nhạc hoặc watermark nếu cần.
@@ -147,7 +147,7 @@ Khi video chưa có giọng, chọn **Tạo giọng**. Sau khi đã có giọng,
 
 Chọn **Đoạn này** để chỉ tạo cho phụ đề đang chọn hoặc **Toàn video** để dùng một giọng cho toàn bộ video. Các đoạn không đổi giữ nguyên phần âm thanh hợp lệ. Khi không bật nhận diện nhiều người nói, đoạn được tạo lại dùng cùng cấu hình giọng với phần còn lại.
 
-OmniVoice chạy trên máy sau khi cài gói. Edge TTS là dịch vụ trực tuyến và nhận nội dung cần đọc. Mẫu giọng trong dự án Tự động là tệp ghi sẵn; phát mẫu không chạy model.
+OmniVoice chạy trên máy sau khi cài gói. Mẫu giọng trong dự án Tự động là tệp ghi sẵn; phát mẫu không chạy model.
 
 ### Âm thanh
 

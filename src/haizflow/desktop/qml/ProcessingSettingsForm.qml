@@ -10,6 +10,7 @@ GridLayout {
     property bool hasSource: false
     property bool showCloneAction: false
     property bool cloneActive: false
+    property bool showMusicPlaybackSettings: true
     property string speechRecognitionModel: "small"
     property string translationModel: "auto"
     property var speechRecognitionOptions: []
@@ -28,6 +29,9 @@ GridLayout {
     property string subtitleRemovalMode: "patch"
     property bool enableAudioSeparation: true
     property string backgroundMusicPath: ""
+    property bool backgroundMusicLoop: true
+    property bool audioDuckingEnabled: false
+    property int audioDuckingReductionDb: -12
     property string watermarkText: ""
     property string watermarkKind: "text"
     property string watermarkImagePath: ""
@@ -49,6 +53,9 @@ GridLayout {
     signal backgroundMusicFileRequested()
     signal backgroundMusicLinkRequested()
     signal backgroundMusicClearRequested()
+    signal backgroundMusicLoopEdited(bool value)
+    signal audioDuckingEdited(bool value)
+    signal audioDuckingReductionEdited(int value)
     signal watermarkKindEdited(string value)
     signal watermarkRequested()
 
@@ -124,18 +131,16 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Công cụ giọng đọc")
-                helpText: qsTr("OmniVoice chạy cục bộ. Edge TTS cần kết nối Internet ổn định.")
             }
             StudioComboBox {
                 Layout.fillWidth: true
                 enabled: root.editable
+                model: root.ttsProviderOptions
                 textRole: "label"
                 valueRole: "provider"
-                model: root.ttsProviderOptions
                 currentIndex: root.ttsProviderIndex
                 onActivated: root.ttsProviderEdited(currentValue)
             }
-
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Giọng đọc")
@@ -153,8 +158,8 @@ GridLayout {
             }
             StudioButton {
                 Layout.fillWidth: true
-                visible: root.showCloneAction
-                text: root.cloneActive ? qsTr("Giọng đã nhân bản") : qsTr("Nhân bản giọng")
+                visible: root.showCloneAction && root.ttsProvider.indexOf("omnivoice") === 0
+                text: qsTr("Nhân bản giọng")
                 iconGlyph: "\uE77B"
                 variant: root.cloneActive ? "primary" : "secondary"
                 compact: true
@@ -164,10 +169,10 @@ GridLayout {
 
             RowLayout {
                 Layout.fillWidth: true
-                visible: root.ttsProvider === "omnivoice"
+                visible: root.ttsProvider.indexOf("omnivoice") === 0
                 StudioCheckBox {
                     Layout.fillWidth: true
-                    enabled: root.editable && root.ttsProvider === "omnivoice"
+                    enabled: root.editable && root.ttsProvider.indexOf("omnivoice") === 0
                     text: qsTr("Nhận diện nhiều người nói")
                     checked: root.speakerMode === "multiple"
                     onToggled: root.speakerModeEdited(checked ? "multiple" : "single")
@@ -311,6 +316,20 @@ GridLayout {
                     enabled: root.editable
                     onClicked: root.backgroundMusicClearRequested()
                 }
+            }
+
+            MusicPlaybackSettings {
+                Layout.fillWidth: true
+                visible: root.showMusicPlaybackSettings
+                editable: root.editable
+                hasMusic: root.backgroundMusicPath.length > 0
+                loopMusic: root.backgroundMusicLoop
+                ducking: root.audioDuckingEnabled
+                reductionDb: root.audioDuckingReductionDb
+                onLoopEdited: function(value) { root.backgroundMusicLoopEdited(value) }
+                onDuckingEdited: function(value) { root.audioDuckingEdited(value) }
+                onReductionEdited: function(value) { root.audioDuckingReductionEdited(value) }
+                onMusicRequired: AppController.appAlertRequested(qsTr("Nhạc nền"), qsTr("Hãy nhập nhạc nền trước."), "info")
             }
 
             SettingLabel {

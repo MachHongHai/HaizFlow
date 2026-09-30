@@ -85,7 +85,7 @@ FloatingToolDialog {
         draftTranslationModel = settings.translationModel || "auto"
         draftTtsProvider = settings.ttsProvider || "omnivoice"
         draftTtsVoice = normalizedDraftVoice(draftTargetLanguage, draftTtsProvider, settings.ttsVoice || "")
-        draftSpeakerMode = draftTtsProvider === "omnivoice" && settings.speakerMode === "multiple"
+        draftSpeakerMode = draftTtsProvider.indexOf("omnivoice") === 0 && settings.speakerMode === "multiple"
             ? "multiple" : "single"
         draftEnableAudioSeparation = settings.enableAudioSeparation !== undefined ? Boolean(settings.enableAudioSeparation) : true
         draftOriginalVolume = Number(settings.originalVolume !== undefined ? settings.originalVolume : 60)
@@ -218,6 +218,7 @@ FloatingToolDialog {
                 cpuOnly: AppController.cpuOnly
                 hasSource: AppController.batchCount > 0 && AppController.videoPath.length > 0
                 showCloneAction: false
+                showMusicPlaybackSettings: false
                 speechRecognitionModel: root.draftSpeechRecognitionModel
                 translationModel: root.draftTranslationModel
                 speechRecognitionOptions: AppController.speechRecognitionModelOptions
@@ -255,7 +256,7 @@ FloatingToolDialog {
                 }
                 onTtsProviderEdited: function(value) {
                     root.draftTtsProvider = value
-                    if (value !== "omnivoice")
+                    if (value.indexOf("omnivoice") !== 0)
                         root.draftSpeakerMode = "single"
                     root.draftTtsVoice = root.normalizedDraftVoice(root.draftTargetLanguage, value, root.draftTtsVoice)
                 }

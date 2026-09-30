@@ -17,7 +17,7 @@ Allow space for four separate items:
 
 Setup displays the measured requirement for its exact build. The current verified Core artifact is 477 MiB and Setup recommends 4 GiB of free space. Optional resource packs and project media are measured separately and are not included in the Core figure.
 
-HaizFlow can perform recognition, translation, local speech, audio separation and OCR on the computer after the appropriate packs are installed. Edge TTS, public-link imports, resource downloads and social publishing require an Internet connection.
+HaizFlow can perform recognition, translation, local speech, audio separation and OCR on the computer after the appropriate packs are installed. Optional Gemini translation, public-link imports, resource downloads and social publishing require an Internet connection.
 
 ## 2. Install and open
 
@@ -97,7 +97,7 @@ If inspection fails, open the URL in a browser first. Confirm that the content i
 
 1. Add the source video.
 2. Choose the source and target languages and recognition model.
-3. Choose OmniVoice for local speech or Edge TTS for an online voice.
+3. Choose an OmniVoice preset for local speech.
 4. Decide whether to keep, blur or patch the original subtitles.
 5. Keep the source sound or separate speech from the background.
 6. Add music or a watermark if required.
@@ -147,7 +147,7 @@ Before speech exists, select **Generate voice**. Once speech exists, use **Chang
 
 Choose **This segment** to affect only the selected subtitle or **Entire video** to use one voice throughout. Unchanged segments keep their valid audio. When multi-speaker recognition is off, regenerated segments use the same voice configuration as the rest of the video.
 
-OmniVoice runs locally after its packs are installed. Edge TTS is an online provider and sends the text to that service. Voice samples in Automatic projects are prerecorded; opening a sample does not run a model.
+OmniVoice runs locally after its packs are installed. Voice samples in Automatic projects are prerecorded; opening a sample does not run a model.
 
 ### Sound
 

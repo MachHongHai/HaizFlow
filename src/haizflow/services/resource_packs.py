@@ -506,7 +506,9 @@ class ResourcePackManager:
     def required_packs(self, capability: str, context: dict | None = None) -> list[str]:
         context = context or {}
         device = "gpu" if str(context.get("device") or "cpu") == "gpu" else "cpu"
-        provider = str(context.get("provider") or "omnivoice").lower()
+        provider = str(context.get("provider") or "omnivoice")
+        voice_device = "gpu" if provider.endswith("-gpu") else "cpu"
+        voice_packs = [f"engine-{'cuda128-py313' if voice_device == 'gpu' else 'cpu-py313'}", "model-omnivoice"]
         recognition_model = str(context.get("model") or "small").lower()
         recognition_device = "gpu" if recognition_model in {"turbo", "large-v3-turbo"} else device
         engine_pack = f"engine-{'cuda128-py313' if recognition_device == 'gpu' else 'cpu-py313'}"
@@ -531,9 +533,7 @@ class ResourcePackManager:
         mapping = {
             "recognition": [engine_pack, whisper_pack],
             "translation": translation_packs,
-            "voice": []
-            if provider == "edge"
-            else [f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}", "model-omnivoice"],
+            "voice": voice_packs,
             "separation": [
                 f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}",
                 "model-demucs",

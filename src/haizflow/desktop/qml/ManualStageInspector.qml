@@ -18,11 +18,13 @@ InspectorPanel {
     property var exportPreflight: ({ "canExport": false, "issues": [],
         "requiredBytes": 0, "availableBytes": 0 })
     readonly property var toolIds: [
-        "source", "translation", "subtitle", "image", "voice", "audio", "export"
+        "source", "translation", "subtitle", "image", "voice", "audio", "export", "watermark"
     ]
     readonly property string toolId: toolIds[Math.max(0, Math.min(currentStage, toolIds.length - 1))]
-    readonly property var toolState: currentStage >= 0 && currentStage < toolModel.length
-        ? toolModel[currentStage] : ({
+    readonly property var toolState: currentStage === 7
+        ? ({label: qsTr("Watermark"), state: "ready", canRun: false})
+        : currentStage >= 0 && currentStage < toolModel.length
+        ? Object.assign({}, toolModel[currentStage], currentStage === 3 ? {label: qsTr("Che phụ đề")} : {}) : ({
             "label": "", "state": "blocked", "canRun": false,
             "blockedReason": "", "cacheHit": false, "progress": 0
         })
@@ -211,7 +213,8 @@ InspectorPanel {
                 imageInspectorComponent,
                 voiceInspectorComponent,
                 audioInspectorComponent,
-                exportInspectorComponent
+                exportInspectorComponent,
+                watermarkInspectorComponent
             ][root.currentStage]
         }
 
@@ -233,6 +236,11 @@ InspectorPanel {
         Component {
             id: imageInspectorComponent
             ManualImageToolPanel { inspector: root }
+        }
+
+        Component {
+            id: watermarkInspectorComponent
+            ManualWatermarkToolPanel { inspector: root }
         }
 
         Component {
@@ -292,6 +300,17 @@ InspectorPanel {
             font.pixelSize: TypeScale.metadata
             wrapMode: Text.Wrap
             textFormat: Text.PlainText
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: root.taskPaused && root.taskBelongsToTool
+            text: qsTr("Kết quả đã hoàn thành được giữ lại. Bạn có thể tiếp tục hoặc dùng công cụ khác.")
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.metadata
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
         }
 
         StudioButton {
@@ -419,6 +438,8 @@ InspectorPanel {
         parent: root
         sourceComponent: Component {
             VoiceCloneDialog {
+                preferredProvider: (voiceDialogLoader.item as ManualVoiceDialog)
+                    ? (voiceDialogLoader.item as ManualVoiceDialog).draftProvider : AppController.ttsProvider
                 onReferenceAccepted: function(path) {
                     // qmllint disable missing-property
                     if (voiceDialogLoader.status === Loader.Ready && voiceDialogLoader.item)

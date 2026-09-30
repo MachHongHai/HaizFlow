@@ -19,7 +19,7 @@ QML desktop UI
   -> preview or final FFmpeg output
 ```
 
-Network access is explicit and feature-specific. It is used to download verified model files, import public media, use Edge TTS when selected, and publish through a user-configured Zernio account. Local OmniVoice, Whisper/WhisperX, HY-MT2, Demucs and FFmpeg do not require a metered inference API after their assets are installed.
+Network access is explicit and feature-specific. It is used to download verified model files, import public media, translate with Gemini when selected, and publish through a user-configured Zernio account. Local OmniVoice, Whisper/WhisperX, HY-MT2, Demucs and FFmpeg do not require a metered inference API after their assets are installed.
 
 ## 2. Architectural principles
 
@@ -106,7 +106,7 @@ managed video input
   -> Whisper/WhisperX recognition and timing
   -> HY-MT2 translation
   -> subtitle document and ASS materialization
-  -> OmniVoice or Edge TTS clips
+  -> OmniVoice clips
   -> timestamped audio mix
   -> FFmpeg render and mux
 ```
@@ -196,7 +196,7 @@ Network access is limited to features that require it:
 
 - user-confirmed, checksum-verified resource-pack downloads;
 - URL/channel media inspection and download;
-- Edge TTS when explicitly selected;
+- Gemini API translation when explicitly selected;
 - Zernio authentication, upload and publishing.
 
 Credentials are stored through Windows Credential Manager. Media import validates supported hosts and writes to project-owned staging before promotion. Social upload requires explicit confirmation. Diagnostic bundles contain bounded, redacted runtime data and exclude project media and project metadata.

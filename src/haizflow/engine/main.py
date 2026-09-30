@@ -204,7 +204,11 @@ def run_file_request(request_path: Path) -> int:
     try:
         if request.get("protocol_version") != PROTOCOL_VERSION:
             raise ValueError("Unsupported engine protocol request.")
-        if operation == "transcribe":
+        if operation == "reference_transcribe":
+            from haizflow.pipeline.voice_reference import recognize_reference
+
+            result = {"text": recognize_reference(str(payload["audio_path"]), str(payload["model_root"]))}
+        elif operation == "transcribe":
             from haizflow.pipeline.transcribe import transcribe
 
             def progress(stage, detail):

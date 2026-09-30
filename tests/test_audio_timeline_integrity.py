@@ -11,6 +11,29 @@ from haizflow.pipeline import audio_timeline
 
 
 class AudioTimelineIntegrityTests(unittest.TestCase):
+    def test_master_mix_preserves_stereo_at_48khz(self):
+        import wave
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "stereo.wav"
+            left = Sine(440, sample_rate=48000).to_audio_segment(duration=1000)
+            right = Sine(880, sample_rate=48000).to_audio_segment(duration=1000)
+            AudioSegment.from_mono_audiosegments(left, right).export(source, format="wav")
+            segments = root / "segments.json"
+            segments.write_text("[]", encoding="utf-8")
+            output = root / "mix.wav"
+            with mock.patch.object(audio_timeline, "get_video_duration", return_value=1.0), mock.patch.object(audio_timeline, "log_to_video"):
+                audio_timeline.build_audio_timeline(str(segments), str(root / "voices"), "source.mp4", str(output), "v",
+                                                    background_audio_path=str(source), original_video_volume=100,
+                                                    require_voice_parts=False)
+            with wave.open(str(output), "rb") as master:
+                self.assertEqual(master.getframerate(), 48000)
+                self.assertEqual(master.getnchannels(), 2)
+                self.assertEqual(master.getsampwidth(), 3)
+            channels = AudioSegment.from_file(output).split_to_mono()
+            self.assertNotEqual(channels[0].raw_data, channels[1].raw_data)
+
     def _segments_file(self, root: Path) -> Path:
         path = root / "segments.json"
         path.write_text(json.dumps([{"start": 0, "end": 1, "text": "hello"}]), encoding="utf-8")

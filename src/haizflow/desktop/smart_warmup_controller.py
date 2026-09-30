@@ -272,7 +272,8 @@ class SmartWarmupController:
         if capability == "voice":
             from haizflow.pipeline.omnivoice_tts import warm_runtime
 
-            warm_runtime(str(context.get("language") or "vi"))
+            provider = str(context.get("provider") or "omnivoice")
+            warm_runtime(str(context.get("language") or "vi"), device="gpu" if provider.endswith("-gpu") else "cpu")
             return
         if self._external_engines.warm(capability, context):
             return

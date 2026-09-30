@@ -26,7 +26,8 @@ Item {
             required property var modelData
             width: toolList.width
             height: 40
-            color: root.currentIndex === index ? Theme.sidebarSelected
+            readonly property int stageIndex: modelData.stageIndex !== undefined ? Number(modelData.stageIndex) : index
+            color: root.currentIndex === stageIndex ? Theme.sidebarSelected
                 : pointer.hovered ? Theme.surfaceMuted : "transparent"
             radius: Theme.radiusTiny
 
@@ -57,7 +58,7 @@ Item {
             }
 
             HoverHandler { id: pointer }
-            TapHandler { onTapped: root.toolSelected(row.index) }
+            TapHandler { onTapped: root.toolSelected(row.stageIndex) }
         }
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
     }

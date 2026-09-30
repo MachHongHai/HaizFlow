@@ -229,7 +229,7 @@ def fit_tempo_to_duration(
             [
                 _binary("ffmpeg"), "-y", "-v", "error", "-i", input_path,
                 "-filter:a", _atempo_filters(speed_factor),
-                "-ac", "1", "-ar", "16000", output_path,
+                "-ac", str(audio.channels), "-ar", str(audio.frame_rate), output_path,
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -335,7 +335,7 @@ def build_audio_timeline(
         and os.path.getsize(prepared_base_audio_path) > 44
     )
     if base_cache_hit:
-        base_audio = AudioSegment.from_file(prepared_base_audio_path)
+        base_audio = AudioSegment.from_file(prepared_base_audio_path).set_frame_rate(48000).set_channels(2)
         log_to_video(video_id, f"Reusing prepared preview audio base: {prepared_base_audio_path}")
     elif background_audio_path:
         if not os.path.exists(background_audio_path) or os.path.getsize(background_audio_path) <= 0:
@@ -349,23 +349,22 @@ def build_audio_timeline(
                 original_audio_fade_in_ms,
                 original_audio_fade_out_ms,
             )
-            # Convert background audio to mono and 16000Hz (the format whisperX/edge-tts uses)
-            base_audio = bg_audio.set_frame_rate(16000).set_channels(1)
+            base_audio = bg_audio.set_frame_rate(48000).set_channels(2)
             log_to_video(video_id, f"Original/background audio loaded and pre-processed. Duration: {len(base_audio)}ms")
         except Exception as exc:
             if require_background_audio:
                 raise RuntimeError(f"Could not load required original/background audio track: {exc}") from exc
-            base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=16000)
+            base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=48000).set_channels(2)
             log_to_video(video_id, "Source has no decodable audio; using a silent base layer.")
     else:
-        base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=16000)
+        base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=48000).set_channels(2)
 
     if background_audio_path and not base_cache_hit:
         if original_audio_duration_ms is not None:
             base_audio = base_audio[:max(0, int(original_audio_duration_ms))]
         if original_audio_start_ms > 0:
             base_audio = AudioSegment.silent(
-                duration=int(original_audio_start_ms), frame_rate=16000,
+                duration=int(original_audio_start_ms), frame_rate=48000,
             ) + base_audio
 
     # The final audio must always match the video. Source tracks can occasionally
@@ -374,7 +373,7 @@ def build_audio_timeline(
     if len(base_audio) < video_dur_ms:
         base_audio += AudioSegment.silent(
             duration=video_dur_ms - len(base_audio),
-            frame_rate=16000,
+            frame_rate=48000,
         )
 
     # The user-selected track never enters Demucs.  AudioSegment decodes both
@@ -399,7 +398,7 @@ def build_audio_timeline(
                 music = _fit_to_duration(music, music_duration)
             else:
                 music = music[:music_duration]
-            music = music.set_frame_rate(16000).set_channels(1)
+            music = music.set_frame_rate(48000).set_channels(2)
             music = _apply_volume(music, background_music_volume, "Background music", video_id)
             music = _fade_clip(
                 music,
@@ -446,7 +445,7 @@ def build_audio_timeline(
             exported_cache = base_audio[:video_dur_ms].export(
                 staged_cache,
                 format="wav",
-                parameters=["-ac", "1", "-ar", "16000"],
+                parameters=["-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le"],
             )
             exported_cache.close()
             check_cancellation(cancellation_id)
@@ -530,7 +529,7 @@ def build_audio_timeline(
         except Exception as exc:
             raise RuntimeError(f"Failed to overlay required voice segment {idx} ({part_filename}): {exc}") from exc
 
-    # Export mono 16kHz WAV file atomically so resume never sees a partial file.
+    # Publish the stereo production mix atomically for safe resume.
     check_cancellation(cancellation_id)
     output_directory = os.path.dirname(os.path.abspath(output_wav_path))
     os.makedirs(output_directory, exist_ok=True)
@@ -544,7 +543,7 @@ def build_audio_timeline(
         exported_timeline = base_audio[:video_dur_ms].export(
             temporary_path,
             format="wav",
-            parameters=["-ac", "1", "-ar", "16000"],
+            parameters=["-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le"],
         )
         exported_timeline.close()
         check_cancellation(cancellation_id)

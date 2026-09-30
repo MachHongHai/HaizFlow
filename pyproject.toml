@@ -15,10 +15,6 @@ dependencies = [
   "numpy==2.5.1",
   "Pillow==12.3.0",
   "audioop-lts==0.2.2; python_version >= '3.13'",
-  "edge-tts==7.2.8",
-  # Security floor for the transitive Edge TTS/FSSpec HTTP client. Keep this
-  # explicit until all upstream constraints naturally resolve to 3.14.3+.
-  "aiohttp==3.14.3",
   "websockets==16.0",
   "yt-dlp[curl-cffi]==2026.8.19",
   "pydub==0.25.1",

@@ -9,7 +9,8 @@ FloatingToolDialog {
     id: root
 
     expandedWidth: screen === "record" ? 540 : 410
-    expandedHeight: screen === "record" ? (recordingError.length > 0 ? 408 : 372) : 178
+    expandedHeight: screen === "record"
+        ? (hasSample ? 448 : 372) + (recordingError.length > 0 ? 54 : 0) : 178
     toolTitle: qsTr("Nhân bản giọng của tôi")
     toolSubtitle: ""
 
@@ -21,6 +22,10 @@ FloatingToolDialog {
     property var waveformPeaks: []
     property var livePeaks: []
     property bool recording: false
+    property bool referenceCommitted: false
+    property string openedVideoId: ""
+    property var controller: AppController
+    property string preferredProvider: controller.ttsProvider
     signal referenceAccepted(string path)
     readonly property bool samplePlaying: samplePlayer.playbackState === MediaPlayer.PlayingState
     readonly property bool samplePaused: samplePlayer.playbackState === MediaPlayer.PausedState
@@ -49,7 +54,7 @@ FloatingToolDialog {
         sampleDurationMs = 0;
         if (samplePath.length === 0)
             return;
-        const analysis = AppController.voiceCloneReferenceAnalysis(samplePath, waveformBarCount);
+        const analysis = controller.voiceCloneReferenceAnalysis(samplePath, waveformBarCount);
         waveformPeaks = analysis.peaks || [];
         sampleDurationMs = Math.max(0, Number(analysis.durationMs || 0));
         samplePlayer.source = localFileUrl(samplePath);
@@ -57,11 +62,30 @@ FloatingToolDialog {
 
     function chooseReferenceFile() {
         releaseSamplePlayer();
-        const selected = AppController.chooseVoiceCloneReference();
-        if (selected.length > 0 && AppController.setVoiceCloneReference(selected, "")) {
-            referenceAccepted(String(AppController.voiceCloneReferencePath || ""));
-            root.close();
+        const selected = controller.chooseVoiceCloneReference();
+        if (openedVideoId !== String(controller.selectedVideoId || ""))
+            return;
+        if (selected.length > 0 && controller.setVoiceCloneReference(selected, "")) {
+            loadSample(controller.voiceCloneReferencePath);
+            referenceCommitted = false;
+            screen = "record";
+            recordingError = "";
         }
+    }
+
+    function acceptReference() {
+        if (!hasSample || recording || openedVideoId !== String(controller.selectedVideoId || ""))
+            return false;
+        if (!referenceCommitted) {
+            releaseSamplePlayer();
+            if (!controller.applyVoiceCloneReference(openedVideoId, preferredProvider)) {
+                recordingError = qsTr("Không thể áp dụng mẫu giọng. Hãy kiểm tra dự án rồi thử lại.");
+                return false;
+            }
+            referenceCommitted = true;
+            referenceAccepted(samplePath);
+        }
+        return true;
     }
 
     function beginRecording() {
@@ -69,8 +93,8 @@ FloatingToolDialog {
         recordingError = "";
         recordingElapsedMs = 0;
         livePeaks = [];
-        if (!AppController.startVoiceCloneRecording()) {
-            recordingError = String(AppController.voiceCloneRecordingState().error || "");
+        if (!controller.startVoiceCloneRecording()) {
+            recordingError = String(controller.voiceCloneRecordingState().error || "");
             return;
         }
         recording = true;
@@ -82,11 +106,12 @@ FloatingToolDialog {
             return;
         recordingTimer.stop();
         recording = false;
-        if (AppController.finishVoiceCloneRecording()) {
-            loadSample(AppController.voiceCloneReferencePath);
+        if (controller.finishVoiceCloneRecording()) {
+            loadSample(controller.voiceCloneReferencePath);
+            referenceCommitted = false;
             recordingError = "";
         } else {
-            recordingError = String(AppController.voiceCloneRecordingState().error || qsTr("Không thể lưu mẫu ghi âm. Hãy ghi lại."));
+            recordingError = String(controller.voiceCloneRecordingState().error || qsTr("Không thể lưu mẫu ghi âm. Hãy ghi lại."));
         }
     }
 
@@ -103,23 +128,34 @@ FloatingToolDialog {
     }
 
     function openForSelectedVideo() {
+        openedVideoId = String(controller.selectedVideoId || "");
+        referenceCommitted = false;
         recordingTimer.stop();
-        AppController.cancelVoiceCloneRecording();
+        controller.cancelVoiceCloneRecording();
         releaseSamplePlayer();
         recording = false;
         screen = "source";
         recordingElapsedMs = 0;
         recordingError = "";
-        loadSample(AppController.voiceCloneReferencePath);
+        loadSample(controller.voiceCloneReferencePath);
+        screen = hasSample ? "record" : "source";
         open();
     }
 
     onClosed: {
         recordingTimer.stop();
-        AppController.cancelVoiceCloneRecording();
+        controller.cancelVoiceCloneRecording();
         recording = false;
         releaseSamplePlayer();
         screen = "source";
+    }
+
+    Connections {
+        target: root.controller
+        function onSelectedVideoChanged() {
+            if (root.opened && root.openedVideoId !== String(root.controller.selectedVideoId || ""))
+                root.close();
+        }
     }
 
     MediaPlayer {
@@ -136,7 +172,7 @@ FloatingToolDialog {
         interval: 80
         repeat: true
         onTriggered: {
-            const state = AppController.voiceCloneRecordingState();
+            const state = root.controller.voiceCloneRecordingState();
             root.livePeaks = state.peaks || [];
             root.recordingElapsedMs = Number(state.durationMs || 0);
             if (!state.active || String(state.error || "").length > 0) {
@@ -165,7 +201,7 @@ FloatingToolDialog {
 
             StudioButton {
                 Layout.preferredWidth: 126
-                text: qsTr("Chọn tệp")
+                text: root.hasSample ? qsTr("Đổi mẫu") : qsTr("Chọn tệp")
                 iconGlyph: "\uE8B7"
                 onClicked: root.chooseReferenceFile()
             }
@@ -181,15 +217,17 @@ FloatingToolDialog {
                 Layout.fillWidth: true
                 spacing: Theme.space8
 
-                IconButton {
-                    glyph: "\uE72B"
-                    controlSize: 32
-                    toolTipText: qsTr("Quay lại")
+                StudioButton {
+                    text: qsTr("Đổi mẫu")
+                    iconGlyph: "\uE8B7"
+                    variant: "secondary"
                     enabled: !root.recording
                     onClicked: {
                         root.releaseSamplePlayer();
-                        AppController.cancelVoiceCloneRecording();
-                        root.screen = "source";
+                        root.controller.cancelVoiceCloneRecording();
+                        // The sample/review screen remains the return point:
+                        // changing input must not hide Apply for an existing sample.
+                        root.chooseReferenceFile();
                     }
                 }
 
@@ -198,7 +236,7 @@ FloatingToolDialog {
                     spacing: 2
                     Text {
                         Layout.fillWidth: true
-                        text: qsTr("Ghi mẫu giọng")
+                        text: root.hasSample ? qsTr("Mẫu giọng đã chọn") : qsTr("Ghi mẫu giọng")
                         color: Theme.text
                         font.pixelSize: TypeScale.control
                         font.weight: Font.DemiBold
@@ -303,7 +341,7 @@ FloatingToolDialog {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.recording ? qsTr("Nhấn dừng để dùng mẫu này")
+                    text: root.recording ? qsTr("Dừng ghi, nghe lại rồi áp dụng mẫu")
                         : root.hasSample ? qsTr("Mẫu đã lưu. Nhấn Áp dụng để chọn giọng nhân bản.")
                         : qsTr("Chỉ dùng giọng của bạn hoặc người đã đồng ý")
                     color: Theme.textMuted
@@ -323,7 +361,7 @@ FloatingToolDialog {
                     text: root.recording ? qsTr("Dừng ghi")
                         : root.hasSample ? (root.samplePlaying ? qsTr("Tạm dừng") : qsTr("Nghe lại")) : qsTr("Bắt đầu ghi")
                     iconGlyph: root.recording ? "\uE71A" : root.hasSample ? "\uE768" : "\uE720"
-                    variant: "primary"
+                    variant: root.hasSample && !root.recording ? "secondary" : "primary"
                     onClicked: {
                         if (root.recording)
                             root.finishRecording();
@@ -341,8 +379,8 @@ FloatingToolDialog {
                 text: qsTr("Áp dụng giọng nhân bản")
                 variant: "primary"
                 onClicked: {
-                    root.referenceAccepted(root.samplePath);
-                    root.close();
+                    if (root.acceptReference())
+                        root.close();
                 }
             }
         }

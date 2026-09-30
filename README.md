@@ -25,7 +25,7 @@
 
 HaizFlow is a Windows application for translating and finishing video. It combines transcription, translation, subtitle editing, speech synthesis, audio mixing, source-subtitle removal and export without sending the core job through a paid inference API.
 
-Whisper, HY-MT2, OmniVoice, Demucs and OCR can run on the user's computer after the corresponding resource packs are installed. Projects, working files and exports remain in directories controlled by the user. Features that depend on an outside service—such as Edge TTS, importing a public URL and social publishing—still require an Internet connection.
+Whisper, HY-MT2, OmniVoice, Demucs and OCR can run on the user's computer after the corresponding resource packs are installed. Projects, working files and exports remain in directories controlled by the user. Optional Gemini translation, importing a public URL and social publishing require an Internet connection.
 
 The project is under active development. Keep a separate copy of source material that cannot be replaced, and consult [release readiness](docs/release-readiness.md) before distributing a build.
 
@@ -115,7 +115,7 @@ HaizFlow does not operate a hosted video-processing service. Local engines read 
 
 - downloading resource packs after confirmation;
 - inspecting or downloading a public URL or channel;
-- sending subtitle text to Edge TTS when that voice provider is selected;
+- sending subtitle text to Gemini when API translation is selected;
 - authenticating, uploading and publishing through Zernio.
 
 Credentials are stored with Windows Credential Manager. Diagnostic exports exclude project media and redact known secret fields. The exact boundary is described in [Architecture: network and privacy](docs/architecture.md#10-network-and-privacy-boundary).
@@ -137,7 +137,7 @@ Credentials are stored with Windows Credential Manager. Diagnostic exports exclu
 - **Application:** Python 3.13, PySide6 and Qt Quick/QML.
 - **Recognition:** WhisperX, faster-whisper and CTranslate2.
 - **Translation:** HY-MT2.
-- **Speech:** OmniVoice locally; Edge TTS as an online option.
+- **Speech:** OmniVoice locally.
 - **Audio:** Demucs, FFmpeg, PyDub and SoundFile.
 - **Picture and subtitles:** RapidOCR, FFmpeg and libass-compatible rendering.
 - **Public media import:** yt-dlp with validation and bounded retry.

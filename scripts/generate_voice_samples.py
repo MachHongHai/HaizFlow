@@ -8,14 +8,12 @@ the locked sample sentence changes.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import re
 from pathlib import Path
 
-from haizflow.desktop.catalog import EDGE_TTS_VOICES_BY_LANGUAGE, OMNIVOICE_TTS_VOICES
+from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES
 from haizflow.pipeline.omnivoice_tts import clear_runtime, synthesize_to_mp3
-from haizflow.pipeline.tts import tts_segment_with_retry
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +29,6 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--limit", type=int, default=0)
-    parser.add_argument("--provider", choices=("all", "omnivoice", "edge"), default="all")
     parser.add_argument("--languages", default="vi,en,zh")
     args = parser.parse_args()
 
@@ -45,34 +42,23 @@ def main() -> int:
 
     generated: list[dict[str, str]] = []
     try:
-        if args.provider in {"all", "omnivoice"}:
-            for language in languages:
-                for index, (voice, label, _category) in enumerate(voices, 1):
-                    output = SAMPLE_ROOT / "omnivoice" / safe_voice_id(voice) / f"{language}.mp3"
-                    output.parent.mkdir(parents=True, exist_ok=True)
-                    if args.force or not output.is_file() or output.stat().st_size <= 0:
-                        print(f"[{language} {index}/{len(voices)}] {label}", flush=True)
-                        synthesize_to_mp3(
-                            str(manifest["sentences"][language]),
-                            voice,
-                            str(output),
-                            "voice-sample-assets",
-                            language_id=language,
-                            keep_worker_warm=True,
-                            inference_steps=8,
-                        )
-    finally:
-        clear_runtime()
-
-    if args.provider in {"all", "edge"}:
         for language in languages:
-            edge_voices = EDGE_TTS_VOICES_BY_LANGUAGE[language]
-            for index, (voice, label) in enumerate(edge_voices, 1):
-                output = SAMPLE_ROOT / "edge" / safe_voice_id(voice) / f"{language}.mp3"
+            for index, (voice, label, _category) in enumerate(voices, 1):
+                output = SAMPLE_ROOT / "omnivoice" / safe_voice_id(voice) / f"{language}.mp3"
                 output.parent.mkdir(parents=True, exist_ok=True)
                 if args.force or not output.is_file() or output.stat().st_size <= 0:
-                    print(f"[Edge {language} {index}/{len(edge_voices)}] {label}", flush=True)
-                    asyncio.run(tts_segment_with_retry(str(manifest["sentences"][language]), voice, str(output), video_id=None))
+                    print(f"[{language} {index}/{len(voices)}] {label}", flush=True)
+                    synthesize_to_mp3(
+                        str(manifest["sentences"][language]),
+                        voice,
+                        str(output),
+                        "voice-sample-assets",
+                        language_id=language,
+                        keep_worker_warm=True,
+                        inference_steps=8,
+                    )
+    finally:
+        clear_runtime()
 
     for language in manifest["sentences"]:
         for voice, _label, category in OMNIVOICE_TTS_VOICES:
@@ -82,14 +68,6 @@ def main() -> int:
                     "provider": "omnivoice", "voice": voice, "language": language,
                     "category": category, "path": output.relative_to(SAMPLE_ROOT).as_posix(),
                 })
-        for voice, _label in EDGE_TTS_VOICES_BY_LANGUAGE[language]:
-            output = SAMPLE_ROOT / "edge" / safe_voice_id(voice) / f"{language}.mp3"
-            if output.is_file() and output.stat().st_size > 0:
-                generated.append({
-                    "provider": "edge", "voice": voice, "language": language,
-                    "category": "language", "path": output.relative_to(SAMPLE_ROOT).as_posix(),
-                })
-
     manifest["samples"] = generated
     MANIFEST_PATH.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 0

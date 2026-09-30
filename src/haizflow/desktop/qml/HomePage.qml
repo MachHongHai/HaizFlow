@@ -95,8 +95,7 @@ Item {
 
                     StudioButton {
                         text: qsTr("Xem tất cả")
-                        variant: "ghost"
-                        iconName: "forward"
+                        variant: "secondary"
                         onClicked: root.projectsRequested()
                     }
                 }
@@ -124,7 +123,7 @@ Item {
                         textFormat: Text.PlainText
                     }
                     Text {
-                        Layout.preferredWidth: 94
+                        Layout.preferredWidth: 112
                         text: qsTr("Trạng thái")
                         color: Theme.textSubtle
                         font.family: Theme.fontFamily
@@ -133,7 +132,7 @@ Item {
                         textFormat: Text.PlainText
                     }
                     Text {
-                        Layout.preferredWidth: 138
+                        Layout.preferredWidth: 108
                         visible: recentList.width >= 690
                         text: qsTr("Cập nhật")
                         color: Theme.textSubtle

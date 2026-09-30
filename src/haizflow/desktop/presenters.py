@@ -3,7 +3,6 @@
 import os
 
 from haizflow.desktop.catalog import (
-    EDGE_TTS_VOICES_BY_LANGUAGE,
     POPULAR_TARGET_LANGUAGES,
     OMNIVOICE_TTS_VOICES,
 )
@@ -197,23 +196,15 @@ def format_memory_size(value: int) -> str:
 
 
 def voice_options_for_language(language_code: str, ui_language: str, provider: str = "omnivoice"):
-    effective = "omnivoice" if provider in {"omnivoice", "auto", "vieneu"} else "edge"
-    voices = (
-        OMNIVOICE_TTS_VOICES
-        if effective == "omnivoice"
-        else EDGE_TTS_VOICES_BY_LANGUAGE.get(language_code) or EDGE_TTS_VOICES_BY_LANGUAGE["en"]
-    )
     options = []
-    for item in voices:
+    for item in OMNIVOICE_TTS_VOICES:
         voice, label = item[:2]
         category = item[2] if len(item) > 2 else "natural"
         options.append(
             {
                 "voice": voice,
-                "label": localized_voice_label(label, ui_language)
-                if effective == "omnivoice"
-                else f"{localized_voice_label(label, ui_language)} ({voice})",
-                "category": category if effective == "omnivoice" else "natural",
+                "label": localized_voice_label(label, ui_language),
+                "category": category,
                 "categoryLabel": (
                     {
                         "natural": "Tự nhiên",
@@ -231,6 +222,12 @@ def voice_options_for_language(language_code: str, ui_language: str, provider: s
                 ).get(category, category),
             }
         )
+    options.append({
+        "voice": "omnivoice:clone",
+        "label": "Giọng nhân bản của tôi" if ui_language == "vi" else "My cloned voice",
+        "category": "reference",
+        "categoryLabel": "Giọng của tôi" if ui_language == "vi" else "My voice",
+    })
     return options
 
 

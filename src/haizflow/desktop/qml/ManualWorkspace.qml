@@ -94,6 +94,7 @@ Item {
     property bool initialMediaLoad: true
     readonly property int subtitleToolIndex: 2
     readonly property int imageToolIndex: 3
+    readonly property int watermarkToolIndex: 7
     readonly property var stageIds: [
         "source", "translation", "subtitle", "image", "voice", "audio", "export"
     ]
@@ -168,7 +169,7 @@ Item {
     onSelectedStageIndexChanged: {
         if (selectedStageIndex !== subtitleToolIndex)
             subtitleTransformActive = false;
-        if (selectedStageIndex !== imageToolIndex)
+        if (selectedStageIndex !== watermarkToolIndex)
             watermarkTransformActive = false;
     }
 
@@ -247,7 +248,7 @@ Item {
 
     function selectWatermark() {
         dismissSubtitleEditor();
-        selectedStageIndex = imageToolIndex;
+        selectedStageIndex = watermarkToolIndex;
         watermarkTransformActive = true;
         AppController.manualEditorDocumentModel.selectClip("watermark-1", false);
         activatePanel("tasks", "right");
@@ -259,7 +260,7 @@ Item {
         const selected = AppController.manualEditorDocumentModel.selectedClip;
         const trackId = String(selected.track_id || "");
         const stageByTrack = {
-            "source-video": 0, "subtitles": 2, "overlays": 3,
+            "source-video": 0, "subtitles": 2, "overlays": 7,
             "voice": 4, "source-audio": 5, "music": 5
         };
         if (stageByTrack[trackId] !== undefined)
@@ -510,6 +511,9 @@ Item {
             onExportRequested: {
                 root.selectedStageIndex = 6;
                 root.activatePanel("tasks", "right");
+                stageInspector.saveNow();
+                if (AppController.runManualTool("export"))
+                    root.exportCompletionArmed = true;
             }
             onProjectFolderRequested: AppController.openProjectFolder()
             onInputVideoRequested: AppController.openInputFile()
@@ -723,7 +727,7 @@ Item {
                 onTrackSelected: function(trackId) {
                     AppController.manualEditorDocumentModel.selectTrack(trackId);
                     const stageByTrack = {
-                        "source-video": 0, "subtitles": 2, "overlays": 3,
+                        "source-video": 0, "subtitles": 2, "overlays": 7,
                         "voice": 4, "source-audio": 5, "music": 5
                     };
                     if (stageByTrack[trackId] !== undefined)
@@ -799,7 +803,11 @@ Item {
         parent: root.panelHost("tools")
         anchors.fill: parent
         visible: root.isPanelActive("tools")
-        tools: root.toolModel.slice(0, 6)
+        tools: [root.toolModel[0], root.toolModel[1], root.toolModel[2],
+            Object.assign({}, root.toolModel[3], {label: qsTr("Che phụ đề")}),
+            {label: qsTr("Watermark"), stageIndex: 7},
+            Object.assign({}, root.toolModel[4], {stageIndex: 4}),
+            Object.assign({}, root.toolModel[5], {stageIndex: 5})]
         currentIndex: root.selectedStageIndex
         onToolSelected: function(index) {
             root.selectedStageIndex = index;
@@ -814,7 +822,7 @@ Item {
         visible: root.isPanelActive("properties")
         clipData: root.selectedEditorClip
         onOpenImageToolRequested: {
-            root.selectedStageIndex = root.imageToolIndex;
+            root.selectedStageIndex = root.watermarkToolIndex;
             root.activatePanel("tasks", "right");
         }
         onWatermarkSettingsEdited: stageInspector.scheduleSave()

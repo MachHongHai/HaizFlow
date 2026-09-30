@@ -197,14 +197,14 @@ Control {
         modal: false
         focus: true
         margins: Theme.space8
-        width: Math.max(280, Math.min(Math.max(root.width, 520), parent.width - Theme.space16))
+        width: Math.min(440, Math.max(280, root.width), parent.width - Theme.space16)
         height: Math.min(330, parent.height - Theme.space16,
             126 + Math.max(1, voiceList.count) * 46)
         x: {
             const point = root.mapToItem(parent, 0, 0)
             return Math.max(
                 Theme.space8,
-                Math.min(point.x + root.width - width, parent.width - width - Theme.space8)
+                Math.min(point.x, parent.width - width - Theme.space8)
             )
         }
         y: {

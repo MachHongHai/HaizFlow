@@ -8,9 +8,9 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QAbstractListModel, QModelIndex, QObject, Qt, Signal, Slot
 
+from haizflow.core.hardware import validate_processing_device
 from haizflow.desktop.localization import QFileDialog
 from haizflow.desktop.presenters import format_memory_size
-from haizflow.core.hardware import validate_processing_device
 from haizflow.services.model_bootstrap import ModelBootstrapCancelled, ModelProgress
 from haizflow.services.resource_packs import ResourcePackError, ResourcePackManager
 
@@ -315,7 +315,7 @@ class ResourcePackController(QObject):
             "model-whisper-turbo": "Nhận dạng nhanh trên GPU NVIDIA.",
             "model-hymt2-cpu": "Dịch cục bộ bằng bản Q4, dùng CPU.",
             "model-hymt2-gpu": "Dịch bằng model đầy đủ trên GPU NVIDIA.",
-            "model-omnivoice": "Tạo giọng đọc cục bộ.",
+            "model-omnivoice": "Giọng đọc và nhân bản giọng. Dùng chung cho OmniVoice CPU và GPU.",
         }
         result: list[dict] = []
         previous_group = ""
@@ -437,7 +437,8 @@ class ResourcePackController(QObject):
     def _report(self, pack_id: str, progress: ModelProgress) -> None:
         percentage = -1
         if progress.total_bytes:
-            percentage = min(100, round(progress.completed_bytes * 100 / progress.total_bytes))
+            percentage = min(100 if progress.state == "ready" else 99,
+                             round(progress.completed_bytes * 100 / progress.total_bytes))
         self._events.put(
             {
                 "kind": "progress",

@@ -26,7 +26,7 @@ This is the authoritative checklist for a public Windows build. A source checkou
 | 8 | Schema migration | Complete for current schema | Sequential migration, backup, defaults, legacy roots, and future-schema rejection. Project/video schema versions must match current source at release time. |
 | 9 | Dependency reproducibility | Complete | Hash-locked Windows/Python 3.13 set, CUDA variant, source/lock fingerprint, and environment verification. |
 | 10 | Disk and cache policy | Complete for tooling | Core artifact preflight, per-pack resource estimates, safe headroom, resumable partials, and bounded Manual caches. |
-| 11 | Offline/privacy claims | Complete | UI and documentation distinguish local processing from model download, Edge TTS, URL import, and social publishing. |
+| 11 | Offline/privacy claims | Complete | UI and documentation distinguish local processing from model download, optional Gemini translation, URL import, and social publishing. |
 | 12 | Diagnostics | Complete | Rotating logs, build ID, Python/thread/Qt capture, redacted bounded diagnostic export excluding project media. |
 | 13 | Shutdown and recovery | Complete | Confirmation, pause/cancel, bounded worker wait, child-process containment, and interrupted-video recovery. |
 | 14 | Runtime containment | Complete | Frozen mutable data below the chosen local install root; source mode supports `HAIZFLOW_HOME`. |
@@ -46,7 +46,6 @@ Primary references:
 - [Whisper large-v3-turbo model card](https://huggingface.co/openai/whisper-large-v3-turbo)
 - [OmniVoice source](https://github.com/k2-fsa/OmniVoice)
 - [OmniVoice model](https://huggingface.co/k2-fsa/OmniVoice)
-- [Edge TTS source](https://github.com/rany2/edge-tts)
 
 Each artifact must contain:
 
@@ -136,7 +135,7 @@ Its filename contains `UNSIGNED`. The installer smoke test can also be run expli
 - Windows 10 version 1809 or later and Windows 11 x64 clean installations.
 - CPU-only Intel and AMD systems with representative 16/24/32 GB memory.
 - NVIDIA systems with 7 GB, 8 GB, and 12 GB or larger VRAM; unsupported BF16 and missing/older drivers.
-- Core-only offline launch, slow network, interrupted pack download, and Edge TTS outage.
+- Core-only offline launch, slow network, and interrupted pack downloads.
 - Supported public URL imports, extractor changes, cookies, rate limiting, and cancellation.
 - Unicode Windows account, project path, file name, and Vietnamese IME input.
 - Low disk, alternate local drive, removable drive behavior, sleep/hibernate, and interrupted GPU work.
@@ -148,7 +147,7 @@ Its filename contains `UNSIGNED`. The installer smoke test can also be run expli
 
 Core and engine artifacts are separate release units. Before a public Core build, build each engine from its reviewed hash lock, run its profile smoke test, sign the executable, upload the immutable ZIP, then use `finalize-resource-pack.py` to record the real URL, compressed size, installed size and SHA-256. `verify-resource-pack-manifest.py --strict` must pass; estimated or empty engine metadata is a release blocker.
 
-Acceptance must cover interrupted download and resume, checksum rejection, atomic activation, rollback after a failed smoke test, safe removal, storage migration to another local drive, and refusal to remove an engine in use. A Core-only machine must still open Home, edit media, import URLs and use Edge TTS without importing an inference package.
+Acceptance must cover interrupted download and resume, checksum rejection, atomic activation, rollback after a failed smoke test, safe removal, storage migration to another local drive, and refusal to remove an engine in use. A Core-only machine must still open Home and edit media without importing an inference package.
 
 ## Release decision
 

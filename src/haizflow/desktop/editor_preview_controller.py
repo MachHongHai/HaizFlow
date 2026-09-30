@@ -418,7 +418,7 @@ class EditorPreviewController:
             "watermark_scale_percent": max(
                 25, min(300, int(getattr(video, "watermark_scale_percent", 100) or 100))
             ),
-            "tts_provider": str(getattr(video, "tts_provider", "edge") or "edge"),
+            "tts_provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
             "tts_voice": str(getattr(video, "tts_voice", "") or ""),
             "target_language": str(getattr(video, "target_language", "vi") or "vi"),
             "speaker_mode": str(getattr(video, "speaker_mode", "single") or "single"),
@@ -1385,7 +1385,7 @@ class EditorPreviewController:
             "source_volume": settings["original_video_volume"],
             "music_volume": settings["background_music_volume"],
             "duration": settings["duration"],
-            "format": "mono-16k-v1",
+            "format": "stereo-48k-v2",
         }
         base_audio_signature = hashlib.sha256(
             json.dumps(base_audio_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")

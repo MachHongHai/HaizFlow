@@ -132,6 +132,8 @@ class AudioPreviewController:
     ) -> str:
         """Resolve an exact prerecorded sample; never synthesize a fallback."""
         provider = str(provider or "").strip().lower()
+        if provider == "omnivoice-gpu":
+            provider = "omnivoice"
         voice = str(voice or "").strip()
         language = str(target_language or "").strip().lower()
         if not voice:

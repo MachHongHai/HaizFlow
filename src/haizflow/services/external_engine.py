@@ -281,6 +281,12 @@ class ExternalEnginePool:
                 )
             except ExternalEngineError:
                 self._client(pack_id).close()
+            # Dropping weights does not release Windows CUDA/DLL commit.
+            # Retire the process once its final capability is released; keep
+            # shared engines alive while another capability still owns them.
+            with self._lock:
+                if pack_id not in self._capability_packs.values():
+                    self._client(pack_id).terminate()
             released.add(capability)
         return released
 

@@ -236,7 +236,7 @@ class ResourcePackManagerTests(unittest.TestCase):
             manager.required_packs("translation", {"device": "gpu", "translation_model": "full"}),
             ["engine-cuda128-py313", "model-hymt2-gpu"],
         )
-        self.assertEqual(manager.required_packs("voice", {"provider": "edge"}), [])
+        self.assertEqual(manager.required_packs("voice", {"provider": "edge"}), ["engine-cpu-py313", "model-omnivoice"])
 
     def test_engine_without_pinned_archive_cannot_be_installed(self):
         definition = ResourcePackDefinition(

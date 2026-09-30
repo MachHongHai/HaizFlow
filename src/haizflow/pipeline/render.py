@@ -1670,7 +1670,7 @@ def render_video(
     else:
         cmd_prefix.extend(["-map", "0:v:0", "-vf", vf_filter])
     cmd_prefix.extend(["-map", "1:a:0", "-t", f"{source_duration:.6f}"])
-    audio_args = ["-c:a", "aac", "-b:a", "192k", rel_output]
+    audio_args = ["-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-ac", "2", rel_output]
 
     def run_render(encoder: str, encoder_args: list[str]):
         progress_handle, progress_path = tempfile.mkstemp(

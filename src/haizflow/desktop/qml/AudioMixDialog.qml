@@ -120,47 +120,6 @@ AppDialog {
         }
     }
 
-    PropertyRow {
-        Layout.fillWidth: true
-        label: qsTr("Lặp nhạc nền")
-        contentItem: AppSwitch {
-            enabled: root.backgroundMusicAdjustable
-            checked: AppController.backgroundMusicLoop
-            onToggled: {
-                AppController.backgroundMusicLoop = checked;
-                root.scheduleVideoSettingsSave();
-            }
-        }
-    }
-
-    PropertyRow {
-        Layout.fillWidth: true
-        label: qsTr("Tự giảm nhạc khi có lời")
-        contentItem: AppSwitch {
-            enabled: root.backgroundMusicAdjustable
-            checked: AppController.audioDuckingEnabled
-            onToggled: {
-                AppController.audioDuckingEnabled = checked;
-                root.scheduleVideoSettingsSave();
-            }
-        }
-    }
-
-    PropertyRow {
-        Layout.fillWidth: true
-        visible: AppController.audioDuckingEnabled
-        label: qsTr("Mức giảm")
-        contentItem: NumericField {
-            enabled: root.backgroundMusicAdjustable
-            from: -36; to: 0
-            suffix: " dB"
-            value: AppController.audioDuckingReductionDb
-            onValueModified: {
-                AppController.audioDuckingReductionDb = value;
-                root.scheduleVideoSettingsSave();
-            }
-        }
-    }
 
     RowLayout {
         Layout.fillWidth: true

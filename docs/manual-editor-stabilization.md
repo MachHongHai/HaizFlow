@@ -13,7 +13,7 @@ This note separates implemented editor behavior from remaining acceptance work. 
 - Preview transport, fullscreen, and timeline share scrub state with consolidated seeks and source-generation rejection.
 - Result audio is owned by one preview audio controller/output. Source, separated background, speech clips, and music share one clock; level changes do not rerender video.
 - Text edits invalidate speech only for the changed segment. Timing edits reposition cached clips without invoking TTS.
-- OmniVoice can retain a warm worker for bounded idle time. Edge TTS uses a serialized per-video path and content-addressed sentence clips.
+- OmniVoice can retain a warm worker for bounded idle time; sentence clips remain cacheable by content.
 - Edit history is separate from navigation history and records supported text, timing, media, voice, audio, visual, project, publishing, and application-setting changes in their owning context.
 - Voice manifests activate only if their subtitle document signature is still current when generation completes.
 - Preview artifacts are published atomically and stale callbacks are rejected by generation/revision.
@@ -36,7 +36,7 @@ The current test count is intentionally not embedded here; the gate output from 
 - Windows hardware-audio stress testing across repeated source swaps, 100+ seeks, device changes, suspend/resume, and workspace shutdown.
 - Long-duration decode/memory validation. The PCM cache is bounded, but a single very long track still needs a measured windowed/memory-mapped strategy.
 - Crash-interruption tests for pending subtitle publication and voice refresh at every atomic boundary.
-- Real-provider Edge TTS outage/rate-limit recovery and retry UI across multiple locale voices.
+- OmniVoice worker recovery and retry UI across the supported languages.
 - Ownership tests proving every Manual worker and media connection is released after rapid project switching.
 - Cache quota acceptance with active/pinned artifact protection under low-disk conditions.
 

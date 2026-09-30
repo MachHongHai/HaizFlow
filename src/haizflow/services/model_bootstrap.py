@@ -366,7 +366,7 @@ def _download_asset(
             ModelProgress(
                 "downloading",
                 asset.label,
-                f"{asset.label} is already available",
+                f"Đã có tệp · {asset.label}",
                 base_completed + asset.size,
                 total_bytes,
             )
@@ -381,7 +381,7 @@ def _download_asset(
             ModelProgress(
                 "downloading",
                 asset.label,
-                f"{asset.label} is already available",
+                f"Đã có tệp · {asset.label}",
                 base_completed + asset.size,
                 total_bytes,
             )
@@ -418,7 +418,7 @@ def _download_asset(
                             ModelProgress(
                                 "downloading",
                                 asset.label,
-                                f"Downloading {asset.label}",
+                                f"Đang tải · {asset.label}",
                                 base_completed + written,
                                 total_bytes,
                             )
@@ -431,7 +431,7 @@ def _download_asset(
                 ModelProgress(
                     "verifying",
                     asset.label,
-                    f"Verifying {asset.label}",
+                    f"Đang kiểm tra tệp · {asset.label}",
                     base_completed + asset.size,
                     total_bytes,
                 )
@@ -496,13 +496,19 @@ def install_model_assets(
     """
     root = root.expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-    assets = tuple(assets)
+    unique_assets: dict[str, ModelAsset] = {}
+    for asset in assets:
+        previous = unique_assets.get(asset.relative_path)
+        if previous is not None and (previous.size, previous.sha256) != (asset.size, asset.sha256):
+            raise ModelBootstrapError(f"Conflicting resource manifest entry: {asset.relative_path}")
+        unique_assets[asset.relative_path] = asset
+    assets = tuple(unique_assets.values())
     total_bytes = sum(asset.size for asset in assets)
-    progress(ModelProgress("checking", "", "Checking installed resources", 0, total_bytes))
+    progress(ModelProgress("checking", "", "Đang kiểm tra các tệp đã cài", 0, total_bytes))
 
     valid: set[str] = set()
     completed = 0
-    for asset in assets:
+    for position, asset in enumerate(assets, 1):
         _check_cancelled(cancel_event)
         if _asset_is_valid(root / Path(asset.relative_path), asset):
             valid.add(asset.relative_path)
@@ -511,7 +517,7 @@ def install_model_assets(
             ModelProgress(
                 "checking",
                 asset.label,
-                f"Checking {asset.label}",
+                f"Kiểm tra {position}/{len(assets)} · {asset.label}",
                 completed,
                 total_bytes,
             )
@@ -537,7 +543,7 @@ def install_model_assets(
             f"available {available_gib:.1f} GiB in {root}."
         )
 
-    for asset in assets:
+    for position, asset in enumerate(assets, 1):
         _check_cancelled(cancel_event)
         if asset.relative_path in valid:
             continue
@@ -546,16 +552,19 @@ def install_model_assets(
             asset,
             base_completed=completed,
             total_bytes=total_bytes,
-            progress=progress,
+            progress=lambda event, position=position: progress(ModelProgress(
+                event.state, event.component, f"Tệp {position}/{len(assets)} · {event.detail}",
+                event.completed_bytes, event.total_bytes,
+            )),
             cancel_event=cancel_event,
         )
         completed += asset.size
 
     _check_cancelled(cancel_event)
-    progress(ModelProgress("verifying", "", "Verifying installed resources", total_bytes, total_bytes))
+    progress(ModelProgress("verifying", "", "Đang xác minh toàn bộ gói", total_bytes, total_bytes))
     if verify_complete is not None:
         verify_complete(root)
-    progress(ModelProgress("ready", "", "Resources are ready", total_bytes, total_bytes))
+    progress(ModelProgress("ready", "", "Gói đã sẵn sàng", total_bytes, total_bytes))
     return root
 
 

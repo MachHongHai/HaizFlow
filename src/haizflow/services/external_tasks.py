@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
 
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, TMP_DIR
-from haizflow.pipeline.process_registry import check_cancellation
+from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.external_engine import shared_external_engine_pool
 from haizflow.services.resource_packs import installed_engine_command
 
@@ -22,9 +25,13 @@ def run_external_task(
     *,
     context: dict | None = None,
     progress_callback=None,
+    isolate_source: bool = False,
 ) -> dict | None:
     """Run an installed engine command, or return ``None`` for a bundled runtime."""
     command = installed_engine_command(capability, command_name, context)
+    source_worker = not command and isolate_source and os.name == "nt" and not getattr(sys, "frozen", False)
+    if source_worker:
+        command = [sys.executable, "-m", "haizflow.engine.main"]
     if not command:
         return None
     root = Path(TMP_DIR)
@@ -47,7 +54,24 @@ def run_external_task(
 
         def execute() -> None:
             try:
-                if not pool.run_file_task(capability, context, str(request_path)):
+                if source_worker:
+                    environment = os.environ.copy()
+                    environment["PYTHONPATH"] = (
+                        str(Path(__file__).resolve().parents[2]) + os.pathsep + environment.get("PYTHONPATH", "")
+                    )
+                    environment["PYTHONUTF8"] = "1"
+                    process = subprocess.Popen(
+                        [*command, "--request", str(request_path)], env=environment,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                        encoding="utf-8", errors="replace",
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    _stdout, errors = communicate_process(
+                        video_id, process, label=command_name, timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
+                    )
+                    if process.returncode and not response_path.is_file():
+                        raise RuntimeError(errors[-1800:] or f"{command_name} worker exited ({process.returncode}).")
+                elif not pool.run_file_task(capability, context, str(request_path)):
                     raise RuntimeError(f"{command_name} engine is no longer installed.")
             except BaseException as exc:
                 failure.append(exc)

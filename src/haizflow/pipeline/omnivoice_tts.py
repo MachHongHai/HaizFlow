@@ -40,6 +40,7 @@ _RUNTIME_PREPARE_LOCK = threading.Lock()
 _PERSISTENT_WORKER_LOCK = threading.RLock()
 _PERSISTENT_OPERATION_LOCK = threading.Lock()
 _PERSISTENT_WORKER_PROCESS: subprocess.Popen[str] | None = None
+_PERSISTENT_WORKER_DEVICE = ""
 _PERSISTENT_IDLE_TIMER: threading.Timer | None = None
 _PERSISTENT_STDERR_LOCK = threading.Lock()
 _PERSISTENT_STDERR_TAIL: deque[str] = deque(maxlen=192)
@@ -304,7 +305,7 @@ def _worker_command(request_path: Path) -> list[str]:
     external = installed_engine_command(
         "voice",
         "omnivoice_worker",
-        {"provider": "omnivoice", "device": processing_device_preference()},
+        {"provider": "omnivoice-gpu" if str(json.loads(request_path.read_text(encoding="utf-8")).get("device")).startswith("cuda") else "omnivoice"},
     )
     if external:
         return [*external, str(request_path)]
@@ -319,13 +320,13 @@ def _worker_command(request_path: Path) -> list[str]:
     ]
 
 
-def _worker_server_command() -> list[str]:
+def _worker_server_command(device: str = "") -> list[str]:
     from haizflow.services.resource_packs import installed_engine_command
 
     external = installed_engine_command(
         "voice",
         "omnivoice_server",
-        {"provider": "omnivoice", "device": processing_device_preference()},
+        {"provider": "omnivoice-gpu" if (device or processing_device_preference()) in {"gpu", "cuda:0"} else "omnivoice"},
     )
     if external:
         return external
@@ -341,6 +342,11 @@ def _worker_server_command() -> list[str]:
 
 def _worker_environment() -> dict[str, str]:
     environment = os.environ.copy()
+    environment["PYTHONFAULTHANDLER"] = "1"
+    # Transformers 5 materializes safetensors in a thread pool by default.
+    # On Windows/CUDA this can crash natively during model loading and raises
+    # peak memory. Use its supported sequential loader in this isolated worker.
+    environment["HF_DEACTIVATE_ASYNC_LOAD"] = "1"
     environment["PYTHONUTF8"] = "1"
     environment["HF_HUB_OFFLINE"] = "1"
     environment["TRANSFORMERS_OFFLINE"] = "1"
@@ -364,6 +370,16 @@ def _worker_environment() -> dict[str, str]:
             inherited.insert(0, source_root)
         environment["PYTHONPATH"] = os.pathsep.join(inherited)
     return environment
+
+
+def _log_monitor_event(video_id: str, message: str) -> None:
+    """Keep status monitoring alive if the metadata/log file is temporarily busy."""
+    try:
+        log_to_video(video_id, message)
+    except OSError:
+        # TimeoutError from the metadata lock is an OSError too. Losing one
+        # diagnostic entry must not disable progress or stalled-worker checks.
+        pass
 
 
 def _stop_persistent_worker_unlocked() -> None:
@@ -441,17 +457,17 @@ def _schedule_idle_shutdown() -> None:
     timer.start()
 
 
-def _persistent_worker_unlocked() -> subprocess.Popen[str]:
-    global _PERSISTENT_WORKER_PROCESS, _PERSISTENT_STDERR_THREAD
+def _persistent_worker_unlocked(device: str = "") -> subprocess.Popen[str]:
+    global _PERSISTENT_WORKER_PROCESS, _PERSISTENT_STDERR_THREAD, _PERSISTENT_WORKER_DEVICE
     _cancel_idle_shutdown()
     process = _PERSISTENT_WORKER_PROCESS
-    if process is not None and process.poll() is None and process.stdin is not None:
+    if process is not None and process.poll() is None and process.stdin is not None and (not device or device == _PERSISTENT_WORKER_DEVICE):
         return process
     _stop_persistent_worker_unlocked()
     with _PERSISTENT_STDERR_LOCK:
         _PERSISTENT_STDERR_TAIL.clear()
     process = subprocess.Popen(
-        _worker_server_command(),
+        _worker_server_command(device),
         cwd=str(Path(__file__).resolve().parents[3]),
         env=_worker_environment(),
         stdin=subprocess.PIPE,
@@ -473,6 +489,7 @@ def _persistent_worker_unlocked() -> subprocess.Popen[str]:
     stderr_thread.start()
     register_process(_PERSISTENT_WORKER_REGISTRY_ID, process)
     _PERSISTENT_WORKER_PROCESS = process
+    _PERSISTENT_WORKER_DEVICE = device
     return process
 
 
@@ -531,7 +548,7 @@ def _run_worker_process(
                 last_current = current
                 monitor_state["last_activity"] = now
                 monitor_state["last_heartbeat"] = now
-                log_to_video(
+                _log_monitor_event(
                     video_id,
                     f"[TTS][PROGRESS] provider=omnivoice stage={stage} "
                     f"completed={completed}/{total} current={current or '-'}",
@@ -545,7 +562,7 @@ def _run_worker_process(
                     f"{stall_timeout // 60} minutes while running on "
                     f"{request.get('device') or 'cpu'}."
                 )
-                log_to_video(
+                _log_monitor_event(
                     video_id,
                     f"[TTS][ERROR] {monitor_state['abort_reason']}",
                 )
@@ -556,7 +573,7 @@ def _run_worker_process(
                 return
             if now - float(monitor_state["last_heartbeat"]) >= _HEARTBEAT_LOG_INTERVAL_SECONDS:
                 monitor_state["last_heartbeat"] = now
-                log_to_video(
+                _log_monitor_event(
                     video_id,
                     "[TTS][WAIT] OmniVoice is still working "
                     f"(stage={last_stage or 'starting'}, item={last_current or '-'}).",
@@ -609,7 +626,7 @@ def _run_persistent_worker_process(
 
     with _PERSISTENT_OPERATION_LOCK:
         with _PERSISTENT_WORKER_LOCK:
-            process = _persistent_worker_unlocked()
+            process = _persistent_worker_unlocked(str(request.get("device") or "cpu"))
             try:
                 assert process.stdin is not None
                 process.stdin.write(f"{request_path}\n")
@@ -780,6 +797,7 @@ def synthesize_batch_to_mp3(
     process_registry_id: str | None = None,
     inference_steps: int = 32,
     narrator_anchor_text: str = "",
+    device: str | None = None,
 ) -> None:
     """Synthesize missing segments, normally reusing one warm isolated model."""
     if not items:
@@ -791,6 +809,13 @@ def synthesize_batch_to_mp3(
         "[TTS][PREPARE] provider=omnivoice stage=verifying_runtime "
         "detail=Checking the local model and isolated SDK runtime.",
     )
+    prepared_items = [dict(item) for item in items]
+    for item in prepared_items:
+        if item.get("reference_path") and not str(item.get("reference_text") or "").strip():
+            from haizflow.pipeline.voice_reference import transcribe_reference
+
+            item["reference_text"] = transcribe_reference(str(item["reference_path"]), video_id, process_registry_id=cancellation_id)
+    items = prepared_items
     _prepare_isolated_runtime()
     model_root = verify_omnivoice_model(Path(MODELS_DIR) / "omnivoice")
     runtime_tmp = Path(TMP_DIR)
@@ -858,7 +883,7 @@ def synthesize_batch_to_mp3(
         request = {
             "model_root": str(model_root),
             "site_packages": str(_sdk_root() / "site-packages"),
-            "device": "cuda:0" if processing_device_preference() == "gpu" else "cpu",
+            "device": "cuda:0" if (device or processing_device_preference()) == "gpu" else "cpu",
             "language": _omnivoice_language_id(language_id),
             "narrator_anchor_text": str(narrator_anchor_text or "").strip()
             or _narrator_anchor_text(language_id),
@@ -935,6 +960,7 @@ def synthesize_to_mp3(
     reference_text: str = "",
     keep_worker_warm: bool = False,
     inference_steps: int = 32,
+    device: str | None = None,
 ) -> None:
     synthesize_batch_to_mp3(
         [
@@ -950,6 +976,7 @@ def synthesize_to_mp3(
         language_id=language_id,
         keep_worker_warm=keep_worker_warm,
         inference_steps=inference_steps,
+        device=device,
     )
 
 
@@ -963,7 +990,7 @@ def clear_runtime() -> None:
         _stop_persistent_worker_unlocked()
 
 
-def warm_runtime(language_id: str = "vi") -> None:
+def warm_runtime(language_id: str = "vi", *, device: str | None = None) -> None:
     """Load OmniVoice in its isolated worker without synthesizing user audio."""
     _prepare_isolated_runtime()
     model_root = verify_omnivoice_model(Path(MODELS_DIR) / "omnivoice")
@@ -976,7 +1003,7 @@ def warm_runtime(language_id: str = "vi") -> None:
         request = {
             "model_root": str(model_root),
             "site_packages": str(_sdk_root() / "site-packages"),
-            "device": "cuda:0" if processing_device_preference() == "gpu" else "cpu",
+            "device": "cuda:0" if (device or processing_device_preference()) == "gpu" else "cpu",
             "language": _omnivoice_language_id(language_id),
             "items": [],
             "speaker_mode": "single",
@@ -988,7 +1015,7 @@ def warm_runtime(language_id: str = "vi") -> None:
         request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
         with _PERSISTENT_OPERATION_LOCK:
             with _PERSISTENT_WORKER_LOCK:
-                process = _persistent_worker_unlocked()
+                process = _persistent_worker_unlocked(str(request["device"]))
                 if process.stdin is None:
                     raise RuntimeError("OmniVoice worker input channel is unavailable.")
                 process.stdin.write(f"{request_path}\n")
@@ -1114,7 +1141,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
     # A fixed, language-specific reference keeps the same preset identity when
     # a later edit regenerates only one segment. The persistent worker retains
     # the prompt; multiple-speaker mode deliberately keeps per-segment voices.
-    if speaker_mode == "single" and synthesis_items:
+    if speaker_mode == "single" and synthesis_items and not synthesis_items[0].get("reference_path"):
         anchor_text = str(request.get("narrator_anchor_text") or "").strip()
         anchor_voice = str(synthesis_items[0].get("voice") or "omnivoice:female").strip().lower()
         anchor_instruction = OMNIVOICE_VOICE_INSTRUCTIONS.get(
@@ -1181,6 +1208,8 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
         reference_text = str(item.get("reference_text") or "").strip()
         voice_clone_prompt: Any = None
         if reference_path:
+            if not reference_text:
+                raise RuntimeError("Mẫu giọng cần có bản chép lời trước khi nạp OmniVoice.")
             prompt_key = (reference_path, reference_text)
             # Multiple-speaker mode creates a different reference for nearly
             # every subtitle. Retaining all of those GPU prompts caused DAC
@@ -1190,7 +1219,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
             if voice_clone_prompt is None:
                 voice_clone_prompt = model.create_voice_clone_prompt(
                     ref_audio=reference_path,
-                    ref_text=reference_text or None,
+                    ref_text=reference_text,
                 )
                 if cache_prompt:
                     prompt_cache[prompt_key] = voice_clone_prompt

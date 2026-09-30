@@ -23,7 +23,6 @@ _PACKAGE_NAMES = (
     "transformers",
     "whisperx",
     "llama-cpp-python",
-    "edge-tts",
     "yt-dlp",
 )
 _SECRET_PATTERN = re.compile(

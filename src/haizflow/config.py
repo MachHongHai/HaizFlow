@@ -60,9 +60,7 @@ HYMT2_MODEL_REVISION = HYMT2_GPU_REVISION
 HYMT2_CPU_MODEL_REPO = HYMT2_CPU_REPO
 HYMT2_CPU_MODEL_REVISION = HYMT2_CPU_REVISION
 HYMT2_CPU_MODEL_FILE = HYMT2_CPU_FILE
-# Edge's consumer speech endpoint is substantially more reliable with one
-# WebSocket at a time. Advanced users can still override this, but production
-# defaults preserve the sequential behavior of the stable pipeline.
+# Keep local voice generation sequential to bound model memory consumption.
 TTS_MAX_CONCURRENCY = max(1, min(4, int(os.getenv("TTS_MAX_CONCURRENCY", "1"))))
 
 

@@ -112,7 +112,8 @@ def test_manual_layout_has_one_toolbar_and_on_demand_comparison():
     assert "comparing: root.comparing" in workspace
     assert "visible: root.comparing" in preview
     assert "ManualToolNavigator {" in workspace
-    assert "tools: root.toolModel.slice(0, 6)" in workspace
+    assert '{label: qsTr("Watermark"), stageIndex: 7}' in workspace
+    assert 'label: qsTr("Che phụ đề")' in workspace
     assert "EditorDockGroup {" in workspace
     assert 'onExportRequested: {\n                root.selectedStageIndex = 6;' in workspace
     assert 'root.activatePanel("tasks", "right");' in workspace
@@ -153,7 +154,7 @@ def test_voice_and_subtitles_share_one_timeline_lane_without_merging_data():
 
 def test_text_style_controls_are_inline_in_both_editor_tools():
     inspector = (QML_DIR / "ManualStageInspector.qml").read_text(encoding="utf-8")
-    image = (QML_DIR / "ManualImageToolPanel.qml").read_text(encoding="utf-8")
+    image = (QML_DIR / "ManualWatermarkToolPanel.qml").read_text(encoding="utf-8")
     subtitle = (QML_DIR / "ManualSubtitleToolPanel.qml").read_text(encoding="utf-8")
     selection = (QML_DIR / "ManualSelectionPanel.qml").read_text(encoding="utf-8")
     subtitle_controls = (QML_DIR / "ManualSubtitleStyleControls.qml").read_text(encoding="utf-8")

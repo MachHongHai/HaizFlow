@@ -75,12 +75,13 @@ Demucs 4.0.1 loads an upstream model class through `torch.load`. HaizFlow fixes 
 | --- | --- |
 | Model bootstrap | Requests for fixed model files and transport metadata |
 | URL/channel import | Submitted public URL, configured platform cookies, provider response |
-| Edge TTS | Subtitle text required for speech synthesis |
+| Gemini API translation | Subtitle text required for translation, only when selected |
 | Social publishing | Explicitly selected media, post content, provider credentials |
 | Diagnostic export | Bounded redacted application/model logs; no project media or metadata |
 
 WhisperX, HY-MT2, OmniVoice, Demucs, OCR, FFmpeg, and project storage remain local after verified assets are present.
 
 ## Review requirements
+
 
 A package, model, download host, deserializer, native binary, or provider change requires compatibility evidence, license review, vulnerability audit output, immutable integrity metadata where applicable, failure/corruption/cancellation tests, and an updated threat model. An exception expires when its mitigation no longer matches the implementation or a compatible fixed release becomes available.

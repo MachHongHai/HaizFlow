@@ -61,7 +61,7 @@ ApplicationWindow {
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
     readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace || currentRoute === routeManualWorkspace || currentRoute === routeBatchWorkspace || currentRoute === routeBatchVideo || currentRoute === routeDownloadWorkspace || currentRoute === routePublishWorkspace
-    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(appUpdateDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
+    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
     readonly property bool downloadCanGoBack: routeHost.downloadCanGoBack
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
@@ -293,12 +293,6 @@ ApplicationWindow {
         }
     }
 
-    LazyDialogLoader {
-        id: appUpdateDialogLoader
-        sourceComponent: Component {
-            AppUpdateDialog { onClosed: appUpdateDialogLoader.release() }
-        }
-    }
 
     AppAlertDialog {
         id: appAlertDialog
@@ -371,9 +365,7 @@ ApplicationWindow {
             appConfirmationDialog.open();
         }
 
-        function onAppUpdateAvailable() {
-            appUpdateDialogLoader.invoke("open", []);
-        }
+        function onAppUpdateAvailable() { appMenuBar.showUpdates(); }
 
         function onResourcePacksRequested(group) {
             root.navigate(root.routePackages);
@@ -416,6 +408,7 @@ ApplicationWindow {
         spacing: 0
 
         AppMenuBar {
+            id: appMenuBar
             Layout.fillWidth: true
             Layout.preferredHeight: 40
             canGoBack: root.canNavigateBack

@@ -2,6 +2,7 @@ import os
 import hashlib
 import json
 import shutil
+import sys
 import time
 import traceback
 from datetime import datetime, timezone
@@ -10,8 +11,11 @@ from pathlib import Path
 from haizflow.config import HYMT2_MODEL_REVISION
 from haizflow.core.hardware import (
     configure_processing_device,
+    configure_translation_model,
     detect_hardware_capabilities,
+    processing_device_preference,
     runtime_profile,
+    translation_model_preference,
     translation_model_signature_parts,
 )
 from haizflow.core.runtime_probe import probe_runtime
@@ -60,11 +64,11 @@ def _release_recognition_runtime() -> None:
 
     if "recognition" in shared_external_engine_pool().release({"recognition"}):
         return
-    try:
-        from haizflow.pipeline.transcribe import release_warm_whisperx_model
-    except (ImportError, ModuleNotFoundError):
-        return
-    release_warm_whisperx_model()
+    # An isolated ASR process is already gone. Do not import WhisperX/Torch
+    # into Core just to release a model that never lived in this process.
+    recognition = sys.modules.get("haizflow.pipeline.transcribe")
+    if recognition is not None:
+        recognition.release_warm_whisperx_model()
 
 
 def _signature(*values):
@@ -266,6 +270,24 @@ def _manual_subtitle_layout_for_render(video) -> bool:
 
 
 def _prepare_audio_mix(video, reporter, video_dir: str, fallback_audio_path: str) -> tuple[str, int]:
+    # Upgrade the old ASR-only mono master before reusing translated/voice checkpoints.
+    import wave
+
+    # A separated stem is normally 44.1 kHz; it is not the original master.
+    # Inspect the source WAV only, otherwise every export re-runs Demucs and
+    # can even overwrite a no-vocals stem with the original voice track.
+    source_master = os.path.join(video_dir, "temp", "audio.wav") if video.enable_audio_separation else fallback_audio_path
+    try:
+        with wave.open(source_master, "rb") as master:
+            legacy_master = master.getnchannels() != 2 or master.getframerate() != 48000
+    except (OSError, wave.Error, EOFError):
+        legacy_master = False
+    if legacy_master:
+        extract_audio(_required_video_path(video, "video_input", must_exist=True), source_master, video.video_id)
+        fallback_audio_path = source_master
+        if video.enable_audio_separation:
+            video.files.pop("background_audio", None)
+            video.files.pop("speech_audio", None)
     background_audio_path, background_volume = _resolve_audio_mix(video, fallback_audio_path)
     if background_audio_path:
         return background_audio_path, background_volume
@@ -368,7 +390,8 @@ def _finish_recovered_translation(
         video.target_language,
         source_language="en",
         provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
-        translation_model=getattr(video, "translation_model", "auto"),
+        translation_model=("q4" if getattr(video, "translation_model", "auto") == "full"
+                           else getattr(video, "translation_model", "auto")),
         progress_callback=report_translation_progress,
     )
     _mark_checkpoint(video, "translation", translation_signature)
@@ -574,7 +597,7 @@ def process_video_sync(
 
         check_cancellation(video_id)
         _ensure_gpu_available("speech recognition")
-        reporter.update(24, "transcribing", "Preparing speech recognition")
+        reporter.update(24, "transcribing", "Preparing Whisper speech recognition")
         _segments, detected_language = transcribe(
             transcribe_audio_target,
             source_segments_json,
@@ -594,7 +617,8 @@ def process_video_sync(
                 "transcribing",
                 detail,
             ),
-            model_name=getattr(video, "speech_recognition_model", "small"),
+            model_name=("small" if getattr(video, "runtime_recovery_step", "") == "transcribing"
+                        else getattr(video, "speech_recognition_model", "small")),
         )
 
         if profile.key in {"cpu_low_memory", "cpu_minimum", "cuda_low_memory"}:
@@ -673,9 +697,15 @@ def process_video_sync(
             return
         failed_video = get_video(video_id)
         failed_stage = (failed_video.step if failed_video else "processing") or "processing"
+        original_device = processing_device_preference()
+        original_translation = translation_model_preference()
         if _recover_gpu_to_cpu(video_id, failed_stage, exc):
-            log_to_video(video_id, "Restarting the interrupted pipeline stage on CPU.")
-            return process_video_sync(video_id, _reporter=reporter, stop_after=stop_after)
+            try:
+                log_to_video(video_id, "Restarting the interrupted pipeline stage on CPU.")
+                return process_video_sync(video_id, _reporter=reporter, stop_after=stop_after)
+            finally:
+                configure_processing_device(original_device)
+                configure_translation_model(original_translation)
         stack_trace = traceback.format_exc()
         log_to_video(video_id, f"Execution failed: {error_msg}\n{stack_trace}", level="ERROR", component="PIPELINE")
         update_video(video_id, status="failed", error=error_msg, step="failed")
@@ -760,7 +790,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
 
     check_cancellation(video_id)
     target_language = str(getattr(video, "target_language", "vi") or "vi")
-    configured_tts_provider = str(getattr(video, "tts_provider", "edge") or "edge")
+    configured_tts_provider = str(getattr(video, "tts_provider", "omnivoice") or "omnivoice")
     effective_tts_provider = resolve_tts_provider(configured_tts_provider, target_language)
     voice_reference = str((video.files or {}).get("voice_reference") or "")
     voice_reference_transcript = str((video.files or {}).get("voice_reference_transcript") or "")
@@ -809,9 +839,8 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         if os.path.isdir(voice_parts_dir) and not partial_signature_matches:
             shutil.rmtree(voice_parts_dir)
         os.makedirs(voice_parts_dir, exist_ok=True)
-        # Persist the input signature before the first online request. If
-        # the user pauses during Edge TTS, resume can safely retain every
-        # already verified MP3 and regenerate only missing segments.
+        # Persist the input signature before synthesis so an interrupted job
+        # can reuse verified clips and regenerate only missing segments.
         _mark_checkpoint(video, "voice_partial", voice_signature)
 
         def report_voice_progress(current, total):

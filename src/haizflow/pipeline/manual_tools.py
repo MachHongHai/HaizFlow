@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import traceback
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,7 @@ def transcribe(*args, **kwargs):
         },
         str(video_id),
         context={"device": processing_device_preference(), "model": model_name},
+        isolate_source=True,
         progress_callback=(
             (lambda status: callback(str(status.get("stage") or "processing"), str(status.get("detail") or "")))
             if callback is not None
@@ -114,17 +116,15 @@ def transcribe(*args, **kwargs):
 
 
 def _release_recognition_runtime() -> None:
-    """Release ASR through its engine; source AI imports remain a fallback."""
+    """Release existing ASR models without creating a new runtime in Core."""
 
     from haizflow.services.external_engine import shared_external_engine_pool
 
     if "recognition" in shared_external_engine_pool().release({"recognition"}):
         return
-    try:
-        from haizflow.pipeline.transcribe import release_warm_whisperx_model
-    except (ImportError, ModuleNotFoundError):
-        return
-    release_warm_whisperx_model()
+    recognition = sys.modules.get("haizflow.pipeline.transcribe")
+    if recognition is not None:
+        recognition.release_warm_whisperx_model()
 
 
 def preprocess_text_for_tts(*args, **kwargs):
@@ -252,7 +252,7 @@ def source_signature(video) -> str:
     return manual_artifacts.signature(
         manual_artifacts.file_state(_video_input(video)),
         *_generation_token(video, "source"),
-        "source-audio-pcm-v1",
+        "source-audio-stereo-48k-pcm-v2",
     )
 
 
@@ -669,7 +669,7 @@ def audio_signature(video, *, validate: bool = True) -> str:
         (subtitle or {}).get("signature", "") if voice else "no-subtitle-audio",
         audio_document,
         *_generation_token(video, "audio"),
-        "manual-audio-mix-v5-preserve-speech-pauses",
+        "manual-audio-mix-v6-stereo-48k",
     )
 
 
@@ -994,7 +994,7 @@ def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
         "export": (True, export_ok, ""),
     }
     current = str(getattr(video, "manual_target_tool", "") or "")
-    busy = bool(current) and video.status in {"pending", "processing", "paused"}
+    busy = bool(current) and video.status in {"pending", "processing"}
     published_voice = published_voice_record(video, validate=False)
     voice_notice = ""
     if published_voice and not voice_ok:
@@ -1035,7 +1035,9 @@ def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
     rows = []
     for tool_id in MANUAL_TOOL_IDS:
         can_run, cached, blocked = requirements[tool_id]
-        belongs = busy and current in ({"source", "separation"} if tool_id == "source" else {tool_id})
+        belongs = bool(current) and video.status in {"pending", "processing", "paused"} and current in (
+            {"source", "separation"} if tool_id == "source" else {tool_id}
+        )
         another_tool_busy = busy and not belongs
         if belongs and video.status == "processing":
             state = "running"
@@ -1324,7 +1326,7 @@ def _run_source(video, reporter) -> None:
             extract_audio(_video_input(video), str(staging / "audio.wav"), video.video_id)
             cached = manual_artifacts.publish(
                 video.video_id, "source_audio", expected, staging, {"audio": "audio.wav"},
-                config_fingerprint="source-audio-pcm-v1",
+                config_fingerprint="source-audio-stereo-48k-pcm-v2",
             )
         finally:
             shutil.rmtree(staging, ignore_errors=True)
@@ -2174,7 +2176,14 @@ def migrate_legacy_artifacts(video_id: str) -> bool:
     files = dict(video.files or {})
 
     source_path = str(files.get("source_audio") or video_dir / "temp" / "audio.wav")
-    if manual_artifacts.file_state(source_path):
+    import wave
+
+    try:
+        with wave.open(source_path, "rb") as source_master:
+            low_quality_source = source_master.getframerate() != 48000 or source_master.getnchannels() != 2
+    except (OSError, wave.Error, EOFError):
+        low_quality_source = False
+    if manual_artifacts.file_state(source_path) and not low_quality_source:
         changed = bool(manual_artifacts.register_existing(
             video_id, "source_audio", source_signature(video), {"audio": source_path},
             config_fingerprint="legacy-source-audio",
@@ -2183,7 +2192,7 @@ def migrate_legacy_artifacts(video_id: str) -> bool:
 
     vocals = str(files.get("speech_audio") or "")
     no_vocals = str(files.get("background_audio") or "")
-    if manual_artifacts.file_state(vocals) and manual_artifacts.file_state(no_vocals):
+    if not low_quality_source and manual_artifacts.file_state(vocals) and manual_artifacts.file_state(no_vocals):
         changed = bool(manual_artifacts.register_existing(
             video_id,
             "separation",

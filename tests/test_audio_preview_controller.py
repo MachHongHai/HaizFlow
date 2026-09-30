@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from haizflow.desktop.audio_preview_controller import AudioPreviewController
-from haizflow.desktop.catalog import EDGE_TTS_VOICES_BY_LANGUAGE, OMNIVOICE_TTS_VOICES, POPULAR_TARGET_LANGUAGES
+from haizflow.desktop.catalog import OMNIVOICE_TTS_VOICES, POPULAR_TARGET_LANGUAGES
 
 
 def _host(**overrides):
@@ -42,16 +42,11 @@ class AudioPreviewControllerTests(unittest.TestCase):
                 for voice, _label, _category in OMNIVOICE_TTS_VOICES
                 if not preview.has_voice_sample("omnivoice", voice, language)
             )
-            missing.extend(
-                (language, voice)
-                for voice, _label in EDGE_TTS_VOICES_BY_LANGUAGE[language]
-                if not preview.has_voice_sample("edge", voice, language)
-            )
         self.assertEqual(missing, [])
 
         manifest_path = AudioPreviewController._PACKAGED_SAMPLE_DIR / "samples.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual(len(manifest["samples"]), len(languages) * (len(OMNIVOICE_TTS_VOICES) + 2))
+        self.assertEqual(len(manifest["samples"]), len(languages) * len(OMNIVOICE_TTS_VOICES))
         self.assertEqual(set(manifest["sentences"]), set(languages))
         packaged_audio = list(AudioPreviewController._PACKAGED_SAMPLE_DIR.rglob("*.mp3"))
         self.assertEqual(len(packaged_audio), len(manifest["samples"]))

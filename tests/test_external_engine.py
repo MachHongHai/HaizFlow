@@ -59,6 +59,35 @@ class _Manager:
 
 
 class ExternalEngineTests(unittest.TestCase):
+    def test_releasing_last_capability_exits_the_engine_and_can_restart(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pool = ExternalEnginePool(_Manager(Path(temp_dir)))
+            try:
+                pool.warm("recognition")
+                client = pool._client("engine-test")
+                first_process = client._process
+                self.assertEqual(pool.release({"recognition"}), {"recognition"})
+                self.assertIsNotNone(first_process.poll())
+                pool.warm("recognition")
+                self.assertIsNot(client._process, first_process)
+                self.assertIsNone(client._process.poll())
+            finally:
+                pool.close()
+
+    def test_releasing_one_capability_preserves_a_shared_engine_owner(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pool = ExternalEnginePool(_Manager(Path(temp_dir)))
+            try:
+                pool.warm("recognition")
+                pool.warm("separation")
+                process = pool._client("engine-test")._process
+                self.assertEqual(pool.release({"recognition"}), {"recognition"})
+                self.assertIsNone(process.poll())
+                self.assertEqual(pool.release({"separation"}), {"separation"})
+                self.assertIsNotNone(process.poll())
+            finally:
+                pool.close()
+
     def test_client_reuses_one_process_for_serial_requests(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             manager = _Manager(Path(temp_dir))

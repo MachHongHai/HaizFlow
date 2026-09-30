@@ -18,7 +18,12 @@ Rectangle {
 
     function updatedLabel(value) {
         const updated = new Date(value)
-        return isNaN(updated.getTime()) ? "" : Qt.formatDateTime(updated, Locale.ShortFormat)
+        if (isNaN(updated.getTime()))
+            return ""
+        const locale = Qt.locale(AppController.settingsLanguage === "vi" ? "vi_VN" : "en_US")
+        const pattern = updated.getFullYear() === new Date().getFullYear()
+            ? "dd/MM HH:mm" : "dd/MM/yy"
+        return locale.toString(updated, pattern)
     }
 
     implicitHeight: 64
@@ -61,22 +66,20 @@ Rectangle {
             }
         }
 
-        StatusBadge {
-            status: root.status
-            label: root.statusLabel
-        }
-
         Text {
-            visible: root.status === "processing"
-            text: qsTr("%1%").arg(root.progress)
-            color: Theme.interactive
+            Layout.preferredWidth: 112
+            text: root.status === "processing"
+                ? root.statusLabel + " " + qsTr("%1%").arg(root.progress)
+                : root.statusLabel
+            color: root.status === "failed" ? Theme.danger : Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.metadata
             textFormat: Text.PlainText
+            elide: Text.ElideRight
         }
 
         Text {
-            Layout.preferredWidth: 138
+            Layout.preferredWidth: 108
             visible: root.width >= 690
             text: root.updatedLabel(root.updatedAt)
             color: Theme.textSubtle
@@ -86,13 +89,6 @@ Rectangle {
             elide: Text.ElideRight
         }
 
-        FluentIcon {
-            Layout.preferredWidth: 14
-            Layout.preferredHeight: 14
-            name: "forward"
-            iconColor: Theme.textMuted
-            iconSize: 13
-        }
     }
 
     Rectangle {

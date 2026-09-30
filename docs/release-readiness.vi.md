@@ -26,7 +26,7 @@ Rà soát gần nhất: **2026-09-09**
 | 8 | Migration schema | Hoàn tất cho schema hiện tại | Migration tuần tự, backup, default, legacy root, từ chối future schema; version phải khớp source release. |
 | 9 | Dependency tái lập | Hoàn tất | Lock có hash cho Windows/Python 3.13, CUDA variant, fingerprint và verify environment. |
 | 10 | Disk và cache | Hoàn tất cho tooling | Preflight Core từ artifact, ước tính riêng từng gói, headroom, partial resume và cache Manual có giới hạn. |
-| 11 | Offline/privacy claim | Hoàn tất | UI/tài liệu phân biệt local với tải model, Edge TTS, URL import và social publishing. |
+| 11 | Offline/privacy claim | Hoàn tất | UI/tài liệu phân biệt xử lý trên máy với tải model, dịch Gemini, nhập URL và đăng mạng xã hội. |
 | 12 | Chẩn đoán | Hoàn tất | Log xoay vòng, build ID, bắt lỗi Python/thread/Qt và diagnostic redact không chứa media. |
 | 13 | Shutdown/phục hồi | Hoàn tất | Confirm, pause/cancel, chờ worker hữu hạn, child-process containment và phục hồi video gián đoạn. |
 | 14 | Runtime containment | Hoàn tất | Frozen data mutable nằm dưới install root; source mode dùng `HAIZFLOW_HOME`. |
@@ -37,7 +37,7 @@ Rà soát gần nhất: **2026-09-09**
 
 ## License gate
 
-Nguồn chính thức: [Qt for Python](https://doc.qt.io/qtforpython-6/licenses.html), [FFmpeg legal](https://ffmpeg.org/legal.html), [FFmpeg license](https://ffmpeg.org/doxygen/trunk/md_LICENSE.html), [HY-MT2](https://huggingface.co/tencent/Hy-MT2-1.8B), [Whisper](https://huggingface.co/openai/whisper-large-v3-turbo), [OmniVoice source](https://github.com/k2-fsa/OmniVoice), [OmniVoice model](https://huggingface.co/k2-fsa/OmniVoice), [Edge TTS](https://github.com/rany2/edge-tts).
+Nguồn chính thức: [Qt for Python](https://doc.qt.io/qtforpython-6/licenses.html), [FFmpeg legal](https://ffmpeg.org/legal.html), [FFmpeg license](https://ffmpeg.org/doxygen/trunk/md_LICENSE.html), [HY-MT2](https://huggingface.co/tencent/Hy-MT2-1.8B), [Whisper](https://huggingface.co/openai/whisper-large-v3-turbo), [OmniVoice source](https://github.com/k2-fsa/OmniVoice), [OmniVoice model](https://huggingface.co/k2-fsa/OmniVoice).
 
 Artifact phải có:
 
@@ -113,7 +113,7 @@ Tên file luôn có `UNSIGNED`. Có thể chạy lại installer smoke riêng:
 - Windows 10 phiên bản 1809 trở lên và Windows 11 x64 sạch.
 - CPU-only Intel/AMD với RAM đại diện 16/24/32 GB.
 - NVIDIA 7/8/12 GB VRAM và lớn hơn; không hỗ trợ BF16; driver thiếu/cũ.
-- Mở Core khi offline, mạng chậm, tải gói gián đoạn và Edge TTS lỗi.
+- Mở Core khi offline, mạng chậm và tải gói gián đoạn.
 - URL công khai, extractor đổi, cookie, rate limit và cancel.
 - Tài khoản/path/file Unicode và nhập tiếng Việt bằng IME.
 - Ổ gần đầy, ổ local khác, removable drive, sleep/hibernate, GPU gián đoạn.
@@ -125,7 +125,7 @@ Tên file luôn có `UNSIGNED`. Có thể chạy lại installer smoke riêng:
 
 Core và engine là các release unit riêng. Trước khi build Core công khai, phải build từng engine từ lock hash đã review, chạy profile smoke, ký executable, tải ZIP lên URL bất biến rồi dùng `finalize-resource-pack.py` ghi URL, dung lượng nén, dung lượng cài và SHA-256 thật. `verify-resource-pack-manifest.py --strict` phải đạt; metadata ước lượng hoặc để trống là blocker.
 
-Nghiệm thu gồm tải gián đoạn/resume, từ chối checksum sai, active atomic, rollback khi smoke lỗi, gỡ an toàn, chuyển resource sang ổ local khác và chặn gỡ engine đang dùng. Máy chỉ cài Core vẫn phải mở Home, chỉnh media, nhập URL và dùng Edge TTS mà không import package suy luận.
+Nghiệm thu gồm tải gián đoạn/resume, từ chối checksum sai, active atomic, rollback khi smoke lỗi, gỡ an toàn, chuyển resource sang ổ local khác và chặn gỡ engine đang dùng. Máy chỉ cài Core vẫn phải mở Home và chỉnh media mà không import package suy luận.
 
 ## Quyết định
 

@@ -105,6 +105,26 @@ class GpuRecoveryTests(unittest.TestCase):
                 process_video._recover_gpu_to_cpu("video-1", "translating", RuntimeError("CUDA device lost"))
             )
 
+    def test_cpu_recovery_restores_device_and_model_for_the_next_run(self):
+        original_function = process_video.process_video_sync
+        def recover(*_args):
+            process_video.configure_processing_device("cpu")
+            process_video.configure_translation_model("q4")
+            return True
+        with (
+            mock.patch.dict("os.environ", {"HAIZFLOW_PROCESSING_DEVICE": "gpu", "HAIZFLOW_TRANSLATION_MODEL": "full"}),
+            mock.patch.object(process_video, "start_video", side_effect=RuntimeError("CUDA error")),
+            mock.patch.object(process_video, "get_video", return_value=SimpleNamespace(step="translating")),
+            mock.patch.object(process_video, "is_cancelled", return_value=False),
+            mock.patch.object(process_video, "_recover_gpu_to_cpu", side_effect=recover),
+            mock.patch.object(process_video, "process_video_sync", return_value=None),
+            mock.patch.object(process_video, "log_to_video"),
+            mock.patch.object(process_video, "clean_video"),
+        ):
+            original_function("v")
+            self.assertEqual(process_video.processing_device_preference(), "gpu")
+            self.assertEqual(process_video.translation_model_preference(), "full")
+
     def test_windows_commit_limit_is_reported_without_hiding_it_behind_cpu_recovery(self):
         profile = SimpleNamespace(cuda_available=True)
         with mock.patch.object(process_video, "runtime_profile", return_value=profile):

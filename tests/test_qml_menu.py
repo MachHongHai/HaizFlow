@@ -1073,7 +1073,7 @@ ApplicationWindow {{
 
         self.assertIn('qsTr("Nhận diện nhiều người nói")', settings)
         self.assertIn('speakerModeEdited(checked ? "multiple" : "single")', settings)
-        self.assertIn('visible: root.ttsProvider === "omnivoice"', settings)
+        self.assertIn('visible: root.ttsProvider.indexOf("omnivoice") === 0', settings)
         self.assertNotIn('qsTr("Một giọng")', settings)
         self.assertNotIn('qsTr("Nhiều người")', settings)
         self.assertIn("HelpPopover {", help_label)

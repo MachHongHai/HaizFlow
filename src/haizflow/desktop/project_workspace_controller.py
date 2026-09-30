@@ -60,7 +60,7 @@ class ProjectWorkspaceController:
         host._speech_recognition_model = str(getattr(video, "speech_recognition_model", "small") or "small")
         host._translation_model = str(getattr(video, "translation_model", "auto") or "auto")
         host._tts_provider = host._normalized_tts_provider(
-            host._target_language, getattr(video, "tts_provider", "edge")
+            host._target_language, getattr(video, "tts_provider", "omnivoice")
         )
         host._tts_voice = host._normalized_voice_for_language(
             host._target_language, video.tts_voice, host._tts_provider
@@ -68,12 +68,12 @@ class ProjectWorkspaceController:
         stored_speaker_mode = str(getattr(video, "speaker_mode", "single") or "single")
         host._speaker_mode = (
             "multiple"
-            if host._tts_provider == "omnivoice" and stored_speaker_mode == "multiple"
+            if host._tts_provider.startswith("omnivoice") and stored_speaker_mode == "multiple"
             else "single"
         )
         if (
             host._tts_voice != video.tts_voice
-            or host._tts_provider != getattr(video, "tts_provider", "edge")
+            or host._tts_provider != getattr(video, "tts_provider", "omnivoice")
             or host._speaker_mode != stored_speaker_mode
         ) and video.status != "processing":
             video = (

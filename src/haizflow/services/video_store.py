@@ -442,9 +442,8 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             continue
         if version == 11:
             data["schema_version"] = 12
-            # Preserve the output of existing projects. New projects use the
-            # recommended automatic provider, while previously saved voices
-            # remain explicitly tied to Edge TTS.
+            # Preserve the historical provider until the final compatibility
+            # normalization maps it to the available local engine.
             data.setdefault("tts_provider", "edge")
             version = 12
             continue
@@ -452,7 +451,7 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data["schema_version"] = 13
             data.setdefault("speech_recognition_model", "small")
             # VieNeu and the old automatic alias were removed in favour of
-            # OmniVoice. Explicit Edge projects retain their online voice.
+            # OmniVoice. Legacy Edge projects are normalized on load.
             if data.get("tts_provider") in {"auto", "vieneu", None, ""}:
                 data["tts_provider"] = "omnivoice"
             version = 13
@@ -503,10 +502,30 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     # could write legacy provider/layout values without bumping the schema;
     # strict production models must remain able to open and repair them.
     data["mode"] = data.get("mode") if data.get("mode") in {"A", "review"} else "A"
-    if data.get("tts_provider") in {"auto", "vieneu"}:
+    # Keep old projects readable after retiring the online speech provider.
+    # Published audio files remain untouched; only future synthesis changes.
+    legacy_voice = str(data.get("tts_voice") or "")
+    if not legacy_voice.startswith("omnivoice:"):
+        data["tts_voice"] = (
+            "omnivoice:male"
+            if legacy_voice in {"vi-VN-NamMinhNeural", "en-US-GuyNeural", "zh-CN-YunxiNeural"}
+            else "omnivoice:female"
+        )
+    if data.get("tts_provider") not in {"omnivoice", "omnivoice-gpu"}:
         data["tts_provider"] = "omnivoice"
-    if data.get("tts_provider") not in {"omnivoice", "edge"}:
-        data["tts_provider"] = "omnivoice"
+    files = data.get("files")
+    if isinstance(files, dict) and isinstance(files.get("manual_voice_overrides"), dict):
+        for override in files["manual_voice_overrides"].values():
+            if isinstance(override, dict):
+                voice = str(override.get("voice") or "")
+                if not voice.startswith("omnivoice:"):
+                    override["voice"] = (
+                        "omnivoice:male"
+                        if voice in {"vi-VN-NamMinhNeural", "en-US-GuyNeural", "zh-CN-YunxiNeural"}
+                        else "omnivoice:female"
+                    )
+                if override.get("provider") not in {"omnivoice", "omnivoice-gpu"}:
+                    override["provider"] = "omnivoice"
     if data.get("speech_recognition_model") not in {"small", "large-v3-turbo"}:
         data["speech_recognition_model"] = "small"
     if data.get("translation_model") not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:

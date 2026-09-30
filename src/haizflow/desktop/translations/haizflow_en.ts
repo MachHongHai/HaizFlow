@@ -318,7 +318,7 @@
 <context>
     <name>AppMenuBar</name>
     <message>
-        <location filename="../qml/AppMenuBar.qml" line="+67"/>
+        <location filename="../qml/AppMenuBar.qml" line="+68"/>
         <source>Quay lại</source>
         <translation>Back</translation>
     </message>
@@ -343,7 +343,7 @@
         <translation>Edit</translation>
     </message>
     <message>
-        <location line="+60"/>
+        <location line="+114"/>
         <source>Hoàn tác</source>
         <translation>Undo</translation>
     </message>
@@ -353,13 +353,23 @@
         <translation>Redo</translation>
     </message>
     <message>
-        <location line="-58"/>
-        <location line="+130"/>
+        <location line="-112"/>
+        <location line="+184"/>
         <source>Cài đặt</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location line="-51"/>
+        <location line="-176"/>
+        <source>Phiên bản mới</source>
+        <translation>Updates</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Phiên bản mới, có 1 thông báo</source>
+        <translation>Updates, 1 notification</translation>
+    </message>
+    <message>
+        <location line="+123"/>
         <source>Dự án Tự động mới</source>
         <translation>New automatic project</translation>
     </message>
@@ -389,10 +399,6 @@
         <translation>API Key</translation>
     </message>
     <message>
-        <source>Gói cài đặt</source>
-        <translation type="vanished">Installed packages</translation>
-    </message>
-    <message>
         <location line="+7"/>
         <source>Gói tài nguyên</source>
         <translation>Resource packs</translation>
@@ -408,8 +414,8 @@
         <translation>Report a bug</translation>
     </message>
     <message>
-        <location line="-146"/>
-        <location line="+155"/>
+        <location line="-166"/>
+        <location line="+175"/>
         <source>Giới thiệu</source>
         <translation>About</translation>
     </message>
@@ -417,29 +423,122 @@
 <context>
     <name>AppUpdateDialog</name>
     <message>
-        <location filename="../qml/AppUpdateDialog.qml" line="+8"/>
         <source>Có phiên bản HaizFlow mới</source>
-        <translation>A new HaizFlow version is available</translation>
+        <translation type="vanished">A new HaizFlow version is available</translation>
+    </message>
+    <message>
+        <source>Phiên bản %1</source>
+        <translation type="vanished">Version %1</translation>
+    </message>
+    <message>
+        <source>Xem ghi chú phát hành và tải bộ cài từ GitHub.</source>
+        <translation type="vanished">Read the release notes and download the installer from GitHub.</translation>
+    </message>
+    <message>
+        <source>Để sau</source>
+        <translation type="vanished">Later</translation>
+    </message>
+    <message>
+        <source>Mở trang tải xuống</source>
+        <translation type="vanished">Open download page</translation>
+    </message>
+</context>
+<context>
+    <name>AppUpdatePopup</name>
+    <message>
+        <location filename="../qml/AppUpdatePopup.qml" line="+22"/>
+        <source>Dừng hoặc chờ các tác vụ hoàn tất trước khi cập nhật.</source>
+        <translation>Stop or wait for your tasks to finish before updating.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <source>Phiên bản %1</source>
-        <translation>Version %1</translation>
+        <source>Cập nhật trực tiếp chỉ dùng trong bản HaizFlow đã cài đặt.</source>
+        <translation>Direct updates are available only in an installed HaizFlow build.</translation>
     </message>
     <message>
-        <location line="+8"/>
-        <source>Xem ghi chú phát hành và tải bộ cài từ GitHub.</source>
-        <translation>Read the release notes and download the installer from GitHub.</translation>
+        <location line="+1"/>
+        <source>Bản phát hành chưa có bộ cài Windows kèm mã kiểm tra. Hãy xem chi tiết cập nhật.</source>
+        <translation>This release does not have a Windows installer with a checksum yet. See the release details.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bộ cài chưa có chữ ký hợp lệ. Không thể cập nhật tự động.</source>
+        <translation>The installer does not have a valid signature. Automatic updating is unavailable.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bộ cài tải xuống chưa đầy đủ hoặc mã kiểm tra không khớp. Hãy thử lại.</source>
+        <translation>The download is incomplete or its checksum does not match. Please try again.</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bộ cài đã đóng. Nếu cập nhật thành công, hãy khởi động lại HaizFlow.</source>
+        <translation>The installer has closed. Restart HaizFlow if the update finished successfully.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Không thể cập nhật. Hãy thử lại hoặc xem chi tiết trên trang HaizFlow.</source>
+        <translation>Could not update. Try again or see the details on the HaizFlow website.</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>Phiên bản mới</source>
+        <translation>Updates</translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <source>Đang kiểm tra phiên bản mới…</source>
+        <translation>Checking for updates…</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Không thể kiểm tra phiên bản mới. Kiểm tra kết nối mạng rồi thử lại.</source>
+        <translation>Could not check for updates. Check your connection and try again.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Đã có phiên bản mới, hãy cập nhật ngay, chi tiết bản cập nhật xem tại:</source>
+        <translation>A new version is available. Update now; see the release details at:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Hiện tại chưa có phiên bản mới, chi tiết bản cập nhật gần nhất:</source>
+        <translation>No new version is available. See the latest release details at:</translation>
     </message>
     <message>
         <location line="+12"/>
-        <source>Để sau</source>
-        <translation>Later</translation>
+        <source>Xem chi tiết cập nhật trên trang HaizFlow</source>
+        <translation>View release details on the HaizFlow website</translation>
     </message>
     <message>
-        <location line="+5"/>
-        <source>Mở trang tải xuống</source>
-        <translation>Open download page</translation>
+        <location line="+10"/>
+        <source>Đang tải bộ cài · %1%</source>
+        <translation>Downloading installer · %1%</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Đang kiểm tra bộ cài…</source>
+        <translation>Verifying installer…</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bộ cài đã mở. Làm theo hướng dẫn để hoàn tất cập nhật.</source>
+        <translation>The installer is open. Follow its instructions to finish updating.</translation>
+    </message>
+    <message>
+        <location line="+28"/>
+        <source>Chờ các tác vụ hoàn tất trước khi cập nhật.</source>
+        <translation>Wait for your tasks to finish before updating.</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Kiểm tra lại</source>
+        <translation>Check again</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Cập nhật</source>
+        <translation>Update</translation>
     </message>
 </context>
 <context>
@@ -508,14 +607,6 @@
         <translation>Choose file</translation>
     </message>
     <message>
-        <source>Chưa chọn thư mục</source>
-        <translation type="vanished">No folder selected</translation>
-    </message>
-    <message>
-        <source>Chọn thư mục</source>
-        <translation type="vanished">Choose folder</translation>
-    </message>
-    <message>
         <location line="+14"/>
         <source>Tải âm thanh</source>
         <translation>Download audio</translation>
@@ -542,26 +633,7 @@
         <translation>Audio</translation>
     </message>
     <message>
-        <location line="+101"/>
-        <source>Lặp nhạc nền</source>
-        <translation>Loop background music</translation>
-    </message>
-    <message>
-        <location line="+13"/>
-        <source>Tự giảm nhạc khi có lời</source>
-        <translation>Lower music during speech</translation>
-    </message>
-    <message>
-        <location line="+14"/>
-        <source>Mức giảm</source>
-        <translation>Reduction</translation>
-    </message>
-    <message>
-        <source>Âm lượng</source>
-        <translation type="vanished">Volume</translation>
-    </message>
-    <message>
-        <location line="-127"/>
+        <location line="+1"/>
         <source>Cân bằng âm thanh gốc, giọng đọc và nhạc nền</source>
         <translation>Balance source audio, voice, and background music</translation>
     </message>
@@ -591,7 +663,7 @@
         <translation>Choose background music before adjusting its volume</translation>
     </message>
     <message>
-        <location line="+57"/>
+        <location line="+16"/>
         <source>Đang chuẩn bị bản nghe thử</source>
         <translation>Preparing audio preview</translation>
     </message>
@@ -1071,14 +1143,6 @@
         <translation>All available</translation>
     </message>
     <message>
-        <source>Chưa chọn thư mục</source>
-        <translation type="vanished">No folder selected</translation>
-    </message>
-    <message>
-        <source>Chọn thư mục</source>
-        <translation type="vanished">Choose folder</translation>
-    </message>
-    <message>
         <location line="+23"/>
         <source>Quét lại</source>
         <translation>Scan again</translation>
@@ -1474,7 +1538,7 @@
         <translation>Processing settings</translation>
     </message>
     <message>
-        <location line="+141"/>
+        <location line="+155"/>
         <source>Đưa vào hàng đợi xử lý</source>
         <translation>Add to processing queue</translation>
     </message>
@@ -1487,7 +1551,7 @@
 <context>
     <name>EditorDockGroup</name>
     <message>
-        <location filename="../qml/EditorDockGroup.qml" line="+22"/>
+        <location filename="../qml/EditorDockGroup.qml" line="+21"/>
         <source>Công cụ</source>
         <translation>Tools</translation>
     </message>
@@ -1547,7 +1611,7 @@
 <context>
     <name>GeminiApiGuideDialog</name>
     <message>
-        <location filename="../qml/GeminiApiGuideDialog.qml" line="+9"/>
+        <location filename="../qml/GeminiApiGuideDialog.qml" line="+10"/>
         <source>Lấy Gemini API key</source>
         <translation>Get a Gemini API key</translation>
     </message>
@@ -1600,10 +1664,6 @@
         <location line="+1"/>
         <source>Đặt tên, dán và lưu key trong Cài đặt → API Key. Bạn có thể thêm nhiều key và chọn key đang dùng. Key không nằm trong dự án.</source>
         <translation>Name, paste, and save the key under Settings → API Key. You can add multiple keys and choose the active one. Keys are not stored in projects.</translation>
-    </message>
-    <message>
-        <source>Dán vào Quản lý API Key. Key được lưu trong Windows Credential Manager, không nằm trong dự án.</source>
-        <translation type="vanished">Paste it in Manage API key. The key is saved in Windows Credential Manager, not in the project.</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -1748,25 +1808,13 @@
         <translation>Home</translation>
     </message>
     <message>
-        <source>Xử lý tự động</source>
-        <translation type="vanished">Automatic processing</translation>
-    </message>
-    <message>
-        <source>Biên tập thủ công</source>
-        <translation type="vanished">Manual editor</translation>
-    </message>
-    <message>
-        <source>Tải nội dung</source>
-        <translation type="vanished">Download media</translation>
-    </message>
-    <message>
         <location line="+45"/>
         <source>Dự án gần đây</source>
         <translation>Recent projects</translation>
     </message>
     <message>
         <location line="-41"/>
-        <location line="+136"/>
+        <location line="+135"/>
         <source>Dự án mới</source>
         <translation>New project</translation>
     </message>
@@ -1776,12 +1824,12 @@
         <translation>Project</translation>
     </message>
     <message>
-        <location line="-22"/>
+        <location line="-21"/>
         <source>Xem tất cả</source>
         <translation>View all</translation>
     </message>
     <message>
-        <location line="+31"/>
+        <location line="+30"/>
         <source>Trạng thái</source>
         <translation>Status</translation>
     </message>
@@ -1825,7 +1873,7 @@
 <context>
     <name>Main</name>
     <message>
-        <location filename="../qml/Main.qml" line="+309"/>
+        <location filename="../qml/Main.qml" line="+303"/>
         <source>Chưa thiết lập Gemini API Key</source>
         <translation>Gemini API key not configured</translation>
     </message>
@@ -1845,7 +1893,7 @@
         <translation>Confirm</translation>
     </message>
     <message>
-        <location line="+208"/>
+        <location line="+207"/>
         <source>Tác vụ thất bại · Mở log kỹ thuật để xem chi tiết</source>
         <translation>Task failed · Open the technical log for details</translation>
     </message>
@@ -2064,7 +2112,7 @@
 <context>
     <name>ManualImageToolPanel</name>
     <message>
-        <location filename="../qml/ManualImageToolPanel.qml" line="+31"/>
+        <location filename="../qml/ManualImageToolPanel.qml" line="+26"/>
         <source>Phụ đề gốc</source>
         <translation>Original subtitles</translation>
     </message>
@@ -2082,66 +2130,6 @@
         <location line="+1"/>
         <source>Che · Vá nền</source>
         <translation>Cover · Patch</translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Watermark</source>
-        <translation>Watermark</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Chữ</source>
-        <translation>Text</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Ảnh</source>
-        <translation>Image</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Video</source>
-        <translation>Video</translation>
-    </message>
-    <message>
-        <location line="+10"/>
-        <source>Áp dụng watermark</source>
-        <translation>Apply watermark</translation>
-    </message>
-    <message>
-        <location line="+13"/>
-        <source>Nhập watermark</source>
-        <translation>Enter watermark</translation>
-    </message>
-    <message>
-        <location line="+12"/>
-        <source>Đổi ảnh</source>
-        <translation>Change image</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Chọn ảnh</source>
-        <translation>Choose image</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>Đổi video thu nhỏ</source>
-        <translation>Change thumbnail video</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Chọn video thu nhỏ</source>
-        <translation>Choose thumbnail video</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>Độ hiển thị · %1%</source>
-        <translation>Opacity · %1%</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Độ hiển thị watermark</source>
-        <translation>Watermark opacity</translation>
     </message>
 </context>
 <context>
@@ -2213,51 +2201,7 @@
 <context>
     <name>ManualStageInspector</name>
     <message>
-        <source>Quét phụ đề gốc</source>
-        <translation type="vanished">Scan original subtitles</translation>
-    </message>
-    <message>
-        <source>Quét lại phụ đề gốc</source>
-        <translation type="vanished">Rescan original subtitles</translation>
-    </message>
-    <message>
-        <source>Giọng đọc</source>
-        <translation type="vanished">Voice</translation>
-    </message>
-    <message>
-        <source>Âm thanh</source>
-        <translation type="vanished">Audio</translation>
-    </message>
-    <message>
-        <source>Dịch sang</source>
-        <translation type="vanished">Translate to</translation>
-    </message>
-    <message>
-        <source>Tách giọng</source>
-        <translation type="vanished">Separate vocals</translation>
-    </message>
-    <message>
-        <source>Phụ đề gốc</source>
-        <translation type="vanished">Original subtitles</translation>
-    </message>
-    <message>
-        <source>Giữ nguyên</source>
-        <translation type="vanished">Keep original</translation>
-    </message>
-    <message>
-        <source>Đã lưu</source>
-        <translation type="vanished">Saved</translation>
-    </message>
-    <message>
-        <source>Sẵn sàng</source>
-        <translation type="vanished">Ready</translation>
-    </message>
-    <message>
-        <source>Thiếu dữ liệu</source>
-        <translation type="vanished">Missing input</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualStageInspector.qml" line="+134"/>
+        <location filename="../qml/ManualStageInspector.qml" line="+136"/>
         <source>Nhận dạng &amp; dịch lại</source>
         <translation>Recognize and translate again</translation>
     </message>
@@ -2267,84 +2211,17 @@
         <translation>Recognize and translate</translation>
     </message>
     <message>
-        <source>Video nguồn</source>
-        <translation type="vanished">Source video</translation>
-    </message>
-    <message>
-        <source>Từ tệp</source>
-        <translation type="vanished">From file</translation>
-    </message>
-    <message>
-        <source>Giữ âm thanh gốc</source>
-        <translation type="vanished">Keep original audio</translation>
-    </message>
-    <message>
-        <source>Chạy tách giọng</source>
-        <translation type="vanished">Separate vocals</translation>
-    </message>
-    <message>
-        <source>Che · Làm mờ</source>
-        <translation type="vanished">Cover · Blur</translation>
-    </message>
-    <message>
-        <source>Che · Vá nền</source>
-        <translation type="vanished">Cover · Patch</translation>
-    </message>
-    <message>
         <location line="+1"/>
         <source>Áp dụng</source>
         <translation>Apply</translation>
     </message>
     <message>
-        <source>Đổi giọng</source>
-        <translation type="vanished">Change voice</translation>
+        <location line="-110"/>
+        <source>Che phụ đề</source>
+        <translation>Hide source subtitles</translation>
     </message>
     <message>
-        <source>Tạo lại</source>
-        <translation type="vanished">Regenerate</translation>
-    </message>
-    <message>
-        <source>Xuất video với các chỉnh sửa hiện tại.</source>
-        <translation type="vanished">Export the video with the current edits.</translation>
-    </message>
-    <message>
-        <source>Dọn dữ liệu tạm</source>
-        <translation type="vanished">Clear temporary data</translation>
-    </message>
-    <message>
-        <source>Xóa nhạc nền</source>
-        <translation type="vanished">Remove background music</translation>
-    </message>
-    <message>
-        <source>%1 / %2</source>
-        <translation type="vanished">%1 / %2</translation>
-    </message>
-    <message>
-        <source>Chưa chọn phụ đề</source>
-        <translation type="vanished">No subtitle selected</translation>
-    </message>
-    <message>
-        <source>Phụ đề trước</source>
-        <translation type="vanished">Previous subtitle</translation>
-    </message>
-    <message>
-        <source>Đang chạy</source>
-        <translation type="vanished">Running</translation>
-    </message>
-    <message>
-        <source>Đang chờ</source>
-        <translation type="vanished">Queued</translation>
-    </message>
-    <message>
-        <source>Đã tạm dừng</source>
-        <translation type="vanished">Paused</translation>
-    </message>
-    <message>
-        <source>Có lỗi</source>
-        <translation type="vanished">Error</translation>
-    </message>
-    <message>
-        <location line="+1"/>
+        <location line="+111"/>
         <source>Tạo lại giọng</source>
         <translation>Regenerate voice</translation>
     </message>
@@ -2384,83 +2261,17 @@
         <translation>The task failed. Open the technical log for details.</translation>
     </message>
     <message>
-        <source>Tách lại giọng</source>
-        <translation type="vanished">Separate again</translation>
-    </message>
-    <message>
-        <source>Model nhận dạng</source>
-        <translation type="vanished">Recognition model</translation>
-    </message>
-    <message>
-        <source>Turbo cần GPU. Small dùng ít bộ nhớ hơn và hỗ trợ CPU.</source>
-        <translation type="vanished">Turbo requires a GPU. Small uses less memory and supports CPU processing.</translation>
-    </message>
-    <message>
-        <source>Nguồn nhận dạng: track giọng đã tách</source>
-        <translation type="vanished">Recognition source: separated vocals</translation>
-    </message>
-    <message>
-        <source>Nguồn nhận dạng: âm thanh gốc</source>
-        <translation type="vanished">Recognition source: original audio</translation>
-    </message>
-    <message>
-        <source>Phụ đề sau</source>
-        <translation type="vanished">Next subtitle</translation>
-    </message>
-    <message>
-        <source>Chọn phụ đề trên video hoặc timeline.</source>
-        <translation type="vanished">Select a subtitle on the video or timeline.</translation>
-    </message>
-    <message>
-        <source>Mở rộng</source>
-        <translation type="vanished">Expand</translation>
-    </message>
-    <message>
-        <source>Giọng đọc chưa khớp thiết lập hiện tại.</source>
-        <translation type="vanished">The narration does not match the current settings.</translation>
-    </message>
-    <message>
-        <source>Âm nền</source>
-        <translation type="vanished">Background audio</translation>
-    </message>
-    <message>
-        <source>Âm thanh gốc</source>
-        <translation type="vanished">Original audio</translation>
-    </message>
-    <message>
-        <source>Chưa tạo giọng đọc</source>
-        <translation type="vanished">Voice has not been generated</translation>
-    </message>
-    <message>
-        <source>Chưa chọn nhạc nền</source>
-        <translation type="vanished">No background music selected</translation>
-    </message>
-    <message>
+        <location line="-159"/>
         <source>Watermark</source>
-        <translation type="vanished">Watermark</translation>
+        <translation>Watermark</translation>
     </message>
     <message>
-        <source>Đặt watermark</source>
-        <translation type="vanished">Set watermark</translation>
+        <location line="+283"/>
+        <source>Kết quả đã hoàn thành được giữ lại. Bạn có thể tiếp tục hoặc dùng công cụ khác.</source>
+        <translation>Completed results are saved. Resume this task or use another tool.</translation>
     </message>
     <message>
-        <source>Nhạc nền</source>
-        <translation type="vanished">Background music</translation>
-    </message>
-    <message>
-        <source>Chưa có nhạc nền</source>
-        <translation type="vanished">No background music</translation>
-    </message>
-    <message>
-        <source>Chọn tệp</source>
-        <translation type="vanished">Choose file</translation>
-    </message>
-    <message>
-        <source>Từ liên kết</source>
-        <translation type="vanished">From link</translation>
-    </message>
-    <message>
-        <location line="+119"/>
+        <location line="+12"/>
         <source>Tạm dừng</source>
         <translation>Pause</translation>
     </message>
@@ -2478,10 +2289,6 @@
 <context>
     <name>ManualSubtitleEditorDialog</name>
     <message>
-        <source>Đoạn %1/%2 · %3 — %4</source>
-        <translation type="vanished">Subtitle %1/%2 · %3 — %4</translation>
-    </message>
-    <message>
         <location filename="../qml/ManualSubtitleEditorDialog.qml" line="+105"/>
         <source>Đoạn %1 / %2</source>
         <translation>Segment %1 / %2</translation>
@@ -2491,10 +2298,6 @@
         <location line="+68"/>
         <source>Chưa chọn phụ đề</source>
         <translation>No subtitle selected</translation>
-    </message>
-    <message>
-        <source>Sửa phụ đề</source>
-        <translation type="vanished">Edit subtitles</translation>
     </message>
     <message>
         <location line="-73"/>
@@ -2602,14 +2405,6 @@
         <source>Lưu</source>
         <translation>Save</translation>
     </message>
-    <message>
-        <source>Nội dung</source>
-        <translation type="vanished">Text</translation>
-    </message>
-    <message>
-        <source>Ctrl+Enter để lưu</source>
-        <translation type="vanished">Ctrl+Enter to save</translation>
-    </message>
 </context>
 <context>
     <name>ManualSubtitleToolPanel</name>
@@ -2647,7 +2442,7 @@
 <context>
     <name>ManualToolNavigator</name>
     <message>
-        <location filename="../qml/ManualToolNavigator.qml" line="+51"/>
+        <location filename="../qml/ManualToolNavigator.qml" line="+52"/>
         <source>Lỗi</source>
         <translation>Failed</translation>
     </message>
@@ -2746,49 +2541,24 @@
         <translation>Generate voice</translation>
     </message>
     <message>
-        <source>Chỉ áp dụng cho đoạn đang chọn</source>
-        <translation type="vanished">Apply only to the selected segment</translation>
-    </message>
-    <message>
-        <source>Áp dụng một giọng thống nhất cho toàn video</source>
-        <translation type="vanished">Apply one consistent voice to the entire video</translation>
-    </message>
-    <message>
-        <source>Phạm vi</source>
-        <translation type="vanished">Scope</translation>
-    </message>
-    <message>
-        <source>Toàn video</source>
-        <translation type="vanished">Entire video</translation>
-    </message>
-    <message>
-        <source>Đoạn này</source>
-        <translation type="vanished">This segment</translation>
-    </message>
-    <message>
-        <location line="+79"/>
+        <location line="+72"/>
         <source>Công cụ</source>
         <translation>Engine</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+20"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
     </message>
     <message>
-        <location line="+47"/>
+        <location line="+29"/>
         <source>Nhận diện nhiều người nói</source>
         <translation>Detect multiple speakers</translation>
     </message>
     <message>
-        <location line="+7"/>
-        <source>Đổi mẫu giọng</source>
-        <translation>Change voice sample</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Thêm mẫu giọng</source>
-        <translation>Add voice sample</translation>
+        <location line="+6"/>
+        <source>Nhân bản giọng</source>
+        <translation>Clone voice</translation>
     </message>
     <message>
         <location line="+16"/>
@@ -2796,21 +2566,9 @@
         <translation>Generate voice</translation>
     </message>
     <message>
-        <source>Chỉ tạo lại đoạn đang chọn.</source>
-        <translation type="vanished">Regenerate only the selected segment.</translation>
-    </message>
-    <message>
         <location line="-5"/>
         <source>Hủy</source>
         <translation>Cancel</translation>
-    </message>
-    <message>
-        <source>Tạo cho đoạn này</source>
-        <translation type="vanished">Generate for this segment</translation>
-    </message>
-    <message>
-        <source>Tạo cho toàn video</source>
-        <translation type="vanished">Generate for entire video</translation>
     </message>
 </context>
 <context>
@@ -2827,32 +2585,72 @@
     </message>
 </context>
 <context>
-    <name>ManualWorkflowBar</name>
+    <name>ManualWatermarkToolPanel</name>
     <message>
-        <source> · Lỗi</source>
-        <translation type="vanished"> · Error</translation>
+        <location filename="../qml/ManualWatermarkToolPanel.qml" line="+18"/>
+        <source>Watermark</source>
+        <translation>Watermark</translation>
     </message>
     <message>
-        <source> · Đang chạy</source>
-        <translation type="vanished"> · Running</translation>
+        <location line="+6"/>
+        <source>Chữ</source>
+        <translation>Text</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Ảnh</source>
+        <translation>Image</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Video</source>
+        <translation>Video</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Áp dụng watermark</source>
+        <translation>Apply watermark</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Nhập watermark</source>
+        <translation>Enter watermark</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Đổi ảnh</source>
+        <translation>Change image</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Chọn ảnh</source>
+        <translation>Choose image</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>Đổi video thu nhỏ</source>
+        <translation>Change thumbnail video</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Chọn video thu nhỏ</source>
+        <translation>Choose thumbnail video</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>Độ hiển thị · %1%</source>
+        <translation>Opacity · %1%</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Độ hiển thị watermark</source>
+        <translation>Watermark opacity</translation>
     </message>
 </context>
 <context>
     <name>ManualWorkspace</name>
     <message>
-        <source>Mở video xuất</source>
-        <translation type="vanished">Open exported video</translation>
-    </message>
-    <message>
-        <source>Mở video vừa xuất</source>
-        <translation type="vanished">Open the exported video</translation>
-    </message>
-    <message>
-        <source>Chưa có video xuất</source>
-        <translation type="vanished">No exported video yet</translation>
-    </message>
-    <message>
-        <location filename="../qml/ManualWorkspace.qml" line="+103"/>
+        <location filename="../qml/ManualWorkspace.qml" line="+104"/>
         <source>Nguồn</source>
         <translation>Source</translation>
     </message>
@@ -2904,7 +2702,17 @@
         <translation>Background music</translation>
     </message>
     <message>
-        <location line="+759"/>
+        <location line="+690"/>
+        <source>Che phụ đề</source>
+        <translation>Hide source subtitles</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Watermark</source>
+        <translation>Watermark</translation>
+    </message>
+    <message>
+        <location line="+75"/>
         <source>Log kỹ thuật</source>
         <translation>Technical log</translation>
     </message>
@@ -2991,9 +2799,27 @@
     </message>
 </context>
 <context>
+    <name>MusicPlaybackSettings</name>
+    <message>
+        <location filename="../qml/MusicPlaybackSettings.qml" line="+20"/>
+        <source>Lặp nhạc nền</source>
+        <translation>Loop background music</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Tự giảm nhạc khi có lời</source>
+        <translation>Lower music during speech</translation>
+    </message>
+    <message>
+        <location line="+28"/>
+        <source>Mức giảm</source>
+        <translation>Reduction</translation>
+    </message>
+</context>
+<context>
     <name>NavigationRail</name>
     <message>
-        <location filename="../qml/NavigationRail.qml" line="+44"/>
+        <location filename="../qml/NavigationRail.qml" line="+69"/>
         <source>Trang chủ</source>
         <translation>Home</translation>
     </message>
@@ -3044,7 +2870,7 @@
 <context>
     <name>ProcessingSettingsForm</name>
     <message>
-        <location filename="../qml/ProcessingSettingsForm.qml" line="+102"/>
+        <location filename="../qml/ProcessingSettingsForm.qml" line="+109"/>
         <source>HY-MT2 chạy cục bộ. Gemini cần Internet và API key riêng; Google có thể tính phí theo mức sử dụng.</source>
         <translation>HY-MT2 runs locally. Gemini needs internet and your own API key; Google may charge for usage.</translation>
     </message>
@@ -3057,10 +2883,6 @@
         <location line="+11"/>
         <source>Nhận dạng giọng nói</source>
         <translation>Speech recognition</translation>
-    </message>
-    <message>
-        <source>Turbo cho chất lượng cao hơn trên GPU. Small dùng ít bộ nhớ hơn và hỗ trợ cả CPU.</source>
-        <translation type="vanished">Turbo provides higher GPU quality. Small uses less memory and also supports CPU processing.</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -3083,22 +2905,12 @@
         <translation>TTS engine</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <source>OmniVoice chạy cục bộ. Edge TTS cần kết nối Internet ổn định.</source>
-        <translation>OmniVoice runs locally. Edge TTS requires a stable internet connection.</translation>
-    </message>
-    <message>
-        <location line="+14"/>
+        <location line="+13"/>
         <source>Giọng đọc</source>
         <translation>Voice</translation>
     </message>
     <message>
         <location line="+16"/>
-        <source>Giọng đã nhân bản</source>
-        <translation>Cloned voice</translation>
-    </message>
-    <message>
-        <location line="+0"/>
         <source>Nhân bản giọng</source>
         <translation>Clone voice</translation>
     </message>
@@ -3185,11 +2997,12 @@
     </message>
     <message>
         <location line="+8"/>
+        <location line="+34"/>
         <source>Nhạc nền</source>
         <translation>Background music</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="-27"/>
         <source>Chưa có nhạc nền</source>
         <translation>No background music</translation>
     </message>
@@ -3209,7 +3022,12 @@
         <translation>Remove background music</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+17"/>
+        <source>Hãy nhập nhạc nền trước.</source>
+        <translation>Import background music first.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
         <source>Watermark</source>
         <translation>Watermark</translation>
     </message>
@@ -3257,10 +3075,6 @@
         <location line="+9"/>
         <source>Chỉnh sửa</source>
         <translation>Edit</translation>
-    </message>
-    <message>
-        <source>Thêm</source>
-        <translation type="vanished">Add</translation>
     </message>
 </context>
 <context>
@@ -3655,7 +3469,7 @@
 <context>
     <name>RecentProjectRow</name>
     <message>
-        <location filename="../qml/RecentProjectRow.qml" line="+71"/>
+        <location filename="../qml/RecentProjectRow.qml" line="+72"/>
         <source>%1%</source>
         <translation>%1%</translation>
     </message>
@@ -3724,18 +3538,6 @@
         <translation>Download %1</translation>
     </message>
     <message>
-        <source>Có sẵn trong bản cài đặt</source>
-        <translation type="vanished">Included with the app</translation>
-    </message>
-    <message>
-        <source>Đã dùng %1</source>
-        <translation type="vanished">%1 used</translation>
-    </message>
-    <message>
-        <source>Dung lượng tải %1</source>
-        <translation type="vanished">%1 download</translation>
-    </message>
-    <message>
         <location line="+47"/>
         <source>Tạm dừng</source>
         <translation>Pause</translation>
@@ -3774,121 +3576,9 @@
 <context>
     <name>ResourcePacksPage</name>
     <message>
-        <source>Bộ xử lý CPU</source>
-        <translation type="vanished">CPU engine</translation>
-    </message>
-    <message>
-        <source>Bộ xử lý NVIDIA</source>
-        <translation type="vanished">NVIDIA engine</translation>
-    </message>
-    <message>
-        <source>Bộ xử lý hình ảnh</source>
-        <translation type="vanished">Image engine</translation>
-    </message>
-    <message>
-        <source>Nhận dạng và dịch · CPU</source>
-        <translation type="vanished">Recognition and translation · CPU</translation>
-    </message>
-    <message>
-        <source>Nhận dạng và dịch · NVIDIA</source>
-        <translation type="vanished">Recognition and translation · NVIDIA</translation>
-    </message>
-    <message>
-        <source>Giọng đọc OmniVoice</source>
-        <translation type="vanished">OmniVoice narration</translation>
-    </message>
-    <message>
-        <source>Tách giọng</source>
-        <translation type="vanished">Vocal separation</translation>
-    </message>
-    <message>
-        <source>Che phụ đề gốc</source>
-        <translation type="vanished">Original subtitle cleanup</translation>
-    </message>
-    <message>
-        <source>NVIDIA · Khuyên dùng</source>
-        <translation type="vanished">NVIDIA · Recommended</translation>
-    </message>
-    <message>
-        <source>NVIDIA</source>
-        <translation type="vanished">NVIDIA</translation>
-    </message>
-    <message>
-        <source>CPU · Khuyên dùng</source>
-        <translation type="vanished">CPU · Recommended</translation>
-    </message>
-    <message>
-        <source>CPU · Tùy chọn</source>
-        <translation type="vanished">CPU · Optional</translation>
-    </message>
-    <message>
-        <source>Công cụ bổ sung</source>
-        <translation type="vanished">Additional tools</translation>
-    </message>
-    <message>
         <location filename="../qml/ResourcePacksPage.qml" line="+74"/>
         <source>%1 · Đang dùng %2 · Còn trống %3</source>
         <translation>%1 · %2 used · %3 available</translation>
-    </message>
-    <message>
-        <source>Chạy model bằng CPU.</source>
-        <translation type="vanished">Runs models on the CPU.</translation>
-    </message>
-    <message>
-        <source>Chạy model trên GPU NVIDIA.</source>
-        <translation type="vanished">Runs models on an NVIDIA GPU.</translation>
-    </message>
-    <message>
-        <source>Bộ xử lý dùng để nhận biết vùng chữ.</source>
-        <translation type="vanished">Processes frames to locate text regions.</translation>
-    </message>
-    <message>
-        <source>Whisper Small và HY-MT2 cho CPU.</source>
-        <translation type="vanished">Whisper Small and HY-MT2 for CPU.</translation>
-    </message>
-    <message>
-        <source>Whisper Small, Whisper Turbo và HY-MT2 cho NVIDIA.</source>
-        <translation type="vanished">Whisper Small, Whisper Turbo, and HY-MT2 for NVIDIA.</translation>
-    </message>
-    <message>
-        <source>Tạo giọng đọc cục bộ.</source>
-        <translation type="vanished">Generates narration locally.</translation>
-    </message>
-    <message>
-        <source>Tách lời thoại và âm thanh nền.</source>
-        <translation type="vanished">Separates speech from background audio.</translation>
-    </message>
-    <message>
-        <source>Nhận biết vị trí phụ đề gốc.</source>
-        <translation type="vanished">Locates subtitles in the source video.</translation>
-    </message>
-    <message>
-        <source>Căn lời thoại cho ngôn ngữ đã chọn.</source>
-        <translation type="vanished">Aligns speech for the selected language.</translation>
-    </message>
-    <message>
-        <source>Bộ xử lý</source>
-        <translation type="vanished">Engines</translation>
-    </message>
-    <message>
-        <source>Công cụ</source>
-        <translation type="vanished">Tools</translation>
-    </message>
-    <message>
-        <source>Căn lời thoại</source>
-        <translation type="vanished">Speech alignment</translation>
-    </message>
-    <message>
-        <source>Gói khác đã cài</source>
-        <translation type="vanished">Other installed packages</translation>
-    </message>
-    <message>
-        <source>Gói cài đặt</source>
-        <translation type="vanished">Installed packages</translation>
-    </message>
-    <message>
-        <source>Cấu hình phù hợp với máy này</source>
-        <translation type="vanished">Recommended for this computer</translation>
     </message>
     <message>
         <location line="-62"/>
@@ -3986,17 +3676,9 @@
         <translation>Storage location</translation>
     </message>
     <message>
-        <source>Đang dùng %1 · Còn trống %2</source>
-        <translation type="vanished">%1 used · %2 free</translation>
-    </message>
-    <message>
         <location line="+7"/>
         <source>Chuyển vị trí</source>
         <translation>Move storage</translation>
-    </message>
-    <message>
-        <source>Dọn tệp tải dở</source>
-        <translation type="vanished">Remove partial downloads</translation>
     </message>
 </context>
 <context>
@@ -4040,50 +3722,6 @@
 <context>
     <name>SettingsPage</name>
     <message>
-        <source>Quản lý API Key</source>
-        <translation type="vanished">Manage API key</translation>
-    </message>
-    <message>
-        <source>Hướng dẫn</source>
-        <translation type="vanished">Guide</translation>
-    </message>
-    <message>
-        <source>Gemini API key đã lưu trên máy này.</source>
-        <translation type="vanished">Gemini API key is saved on this device.</translation>
-    </message>
-    <message>
-        <source>Chưa có Gemini API key. Thêm key để dịch bằng Gemini trong dự án.</source>
-        <translation type="vanished">No Gemini API key yet. Add one to translate with Gemini in projects.</translation>
-    </message>
-    <message>
-        <source>Dán key mới để thay thế</source>
-        <translation type="vanished">Paste a new key to replace it</translation>
-    </message>
-    <message>
-        <source>Dán Gemini API key</source>
-        <translation type="vanished">Paste Gemini API key</translation>
-    </message>
-    <message>
-        <source>Ẩn</source>
-        <translation type="vanished">Hide</translation>
-    </message>
-    <message>
-        <source>Hiện</source>
-        <translation type="vanished">Show</translation>
-    </message>
-    <message>
-        <source>Lưu key</source>
-        <translation type="vanished">Save key</translation>
-    </message>
-    <message>
-        <source>Xóa</source>
-        <translation type="vanished">Remove</translation>
-    </message>
-    <message>
-        <source>Tiết kiệm token: HaizFlow chỉ gửi câu thoại theo lô, không gửi video hoặc âm thanh; giữ đúng một bản dịch cho mỗi câu. Mức phí và quota do Google quản lý.</source>
-        <translation type="vanished">Save tokens: HaizFlow sends only dialogue in batches, never video or audio, and keeps one translation per sentence. Google manages pricing and quotas.</translation>
-    </message>
-    <message>
         <location filename="../qml/SettingsPage.qml" line="+52"/>
         <source>Cài đặt</source>
         <translation>Settings</translation>
@@ -4107,18 +3745,6 @@
         <location line="+4"/>
         <source>Tiếng Việt</source>
         <translation>Vietnamese</translation>
-    </message>
-    <message>
-        <source>Thiết bị xử lý</source>
-        <translation type="vanished">Processing device</translation>
-    </message>
-    <message>
-        <source>GPU</source>
-        <translation type="vanished">GPU</translation>
-    </message>
-    <message>
-        <source>CPU</source>
-        <translation type="vanished">CPU</translation>
     </message>
     <message>
         <location line="+22"/>
@@ -4165,50 +3791,6 @@
         <location line="+0"/>
         <source>Kiểm tra</source>
         <translation>Check</translation>
-    </message>
-    <message>
-        <source>Cache mỗi dự án</source>
-        <translation type="vanished">Cache per project</translation>
-    </message>
-    <message>
-        <source>Giới hạn mềm; dữ liệu đang dùng không bị xóa.</source>
-        <translation type="vanished">Soft limit; active data is not removed.</translation>
-    </message>
-    <message>
-        <source>Cache toàn cục</source>
-        <translation type="vanished">Global cache</translation>
-    </message>
-    <message>
-        <source>HaizFlow dọn các bản dựng cũ khi vượt giới hạn này.</source>
-        <translation type="vanished">HaizFlow removes older cached renders when this limit is exceeded.</translation>
-    </message>
-    <message>
-        <source>Không khả dụng</source>
-        <translation type="vanished">Not available</translation>
-    </message>
-    <message>
-        <source>Đang tải</source>
-        <translation type="vanished">Loading</translation>
-    </message>
-    <message>
-        <source>Xử lý cục bộ</source>
-        <translation type="vanished">Local processing</translation>
-    </message>
-    <message>
-        <source>Tệp video và kết quả model nằm trong thư mục dự án đã chọn.</source>
-        <translation type="vanished">Video files and model output remain in the selected project directory.</translation>
-    </message>
-    <message>
-        <source>Dữ liệu tạm của dự án thủ công</source>
-        <translation type="vanished">Manual project temporary data</translation>
-    </message>
-    <message>
-        <source>Xóa các bản dựng cũ; dữ liệu đang dùng được giữ lại.</source>
-        <translation type="vanished">Remove old renders while keeping data currently in use.</translation>
-    </message>
-    <message>
-        <source>Dọn dữ liệu tạm</source>
-        <translation type="vanished">Clear temporary data</translation>
     </message>
 </context>
 <context>
@@ -4305,14 +3887,6 @@
         <location line="-5"/>
         <source>API key</source>
         <translation>API key</translation>
-    </message>
-    <message>
-        <source>Đổi nền tảng</source>
-        <translation type="vanished">Change platform</translation>
-    </message>
-    <message>
-        <source>Chọn nền tảng</source>
-        <translation type="vanished">Choose platform</translation>
     </message>
 </context>
 <context>
@@ -4522,14 +4096,6 @@
 <context>
     <name>SocialPublishPage</name>
     <message>
-        <source>%1 / %2 %3</source>
-        <translation type="vanished">%1 / %2 %3</translation>
-    </message>
-    <message>
-        <source>đã đăng</source>
-        <translation type="vanished">published</translation>
-    </message>
-    <message>
         <location filename="../qml/SocialPublishPage.qml" line="+26"/>
         <source>Hủy</source>
         <translation>Cancel</translation>
@@ -4575,10 +4141,6 @@
         <translation>No videos to publish</translation>
     </message>
     <message>
-        <source>Nguồn video</source>
-        <translation type="vanished">Video sources</translation>
-    </message>
-    <message>
         <location line="-79"/>
         <source>Thêm video</source>
         <translation>Add videos</translation>
@@ -4603,10 +4165,6 @@
         <source>Hàng đợi đăng</source>
         <translation>Publishing queue</translation>
     </message>
-    <message>
-        <source>Thêm video vào hàng đợi đăng.</source>
-        <translation type="vanished">Add videos to the publishing queue.</translation>
-    </message>
 </context>
 <context>
     <name>SocialPublishRow</name>
@@ -4619,10 +4177,6 @@
         <location line="-93"/>
         <source>Đã đăng</source>
         <translation>Published</translation>
-    </message>
-    <message>
-        <source>Đang đăng</source>
-        <translation type="vanished">Publishing</translation>
     </message>
     <message>
         <location line="+6"/>
@@ -4643,10 +4197,6 @@
         <location line="+0"/>
         <source>Sẵn sàng</source>
         <translation>Ready</translation>
-    </message>
-    <message>
-        <source>%1%</source>
-        <translation type="vanished">%1%</translation>
     </message>
     <message>
         <location line="-8"/>
@@ -4722,10 +4272,6 @@
         <location line="+7"/>
         <source>Sao chép caption</source>
         <translation>Copy caption</translation>
-    </message>
-    <message>
-        <source>Xóa khỏi hàng đợi</source>
-        <translation type="vanished">Remove from queue</translation>
     </message>
 </context>
 <context>
@@ -4850,34 +4396,6 @@
 <context>
     <name>SubtitlePreviewDialog</name>
     <message>
-        <source>Xem trước phụ đề mới</source>
-        <translation type="vanished">Preview new subtitles</translation>
-    </message>
-    <message>
-        <source>Kéo phụ đề để di chuyển; dùng thanh trượt để đổi cỡ chữ</source>
-        <translation type="vanished">Drag the subtitle to move it; use the slider to adjust its size</translation>
-    </message>
-    <message>
-        <source>PHỤ ĐỀ </source>
-        <translation type="vanished">Sample subtitle first half</translation>
-    </message>
-    <message>
-        <source>MẪU</source>
-        <translation type="vanished">Sample subtitle second half</translation>
-    </message>
-    <message>
-        <source>Cỡ chữ</source>
-        <translation type="vanished">Font size</translation>
-    </message>
-    <message>
-        <source>%1 px</source>
-        <translation type="vanished">%1 px</translation>
-    </message>
-    <message>
-        <source>Đặt lại vị trí</source>
-        <translation type="vanished">Reset position</translation>
-    </message>
-    <message>
         <location filename="../qml/SubtitlePreviewDialog.qml" line="+33"/>
         <source>Xem trước phụ đề</source>
         <translation>Subtitle preview</translation>
@@ -4905,65 +4423,9 @@
         <source>Nội dung phụ đề</source>
         <translation>Subtitle text</translation>
     </message>
-    <message>
-        <source>Đang lưu…</source>
-        <translation type="vanished">Saving…</translation>
-    </message>
-    <message>
-        <source>Không lưu được</source>
-        <translation type="vanished">Could not save</translation>
-    </message>
-    <message>
-        <source>Thử lưu lại</source>
-        <translation type="vanished">Try saving again</translation>
-    </message>
-    <message>
-        <source>Lưu thay đổi</source>
-        <translation type="vanished">Save changes</translation>
-    </message>
-    <message>
-        <source>Chưa lưu</source>
-        <translation type="vanished">Not saved</translation>
-    </message>
-    <message>
-        <source>Đã lưu</source>
-        <translation type="vanished">Saved</translation>
-    </message>
-    <message>
-        <source>Bỏ thay đổi</source>
-        <translation type="vanished">Discard changes</translation>
-    </message>
-    <message>
-        <source>%1 ký tự</source>
-        <translation type="vanished">%1 characters</translation>
-    </message>
 </context>
 <context>
     <name>SubtitleTimeline</name>
-    <message>
-        <source>Dòng thời gian</source>
-        <translation type="vanished">Timeline</translation>
-    </message>
-    <message>
-        <source>Đoạn đã chọn</source>
-        <translation type="vanished">Selected clip</translation>
-    </message>
-    <message>
-        <source>Kéo đoạn hoặc hai mép để chỉnh thời gian</source>
-        <translation type="vanished">Drag a clip or its edges to adjust timing</translation>
-    </message>
-    <message>
-        <source>Thu phóng timeline</source>
-        <translation type="vanished">Timeline zoom</translation>
-    </message>
-    <message>
-        <source>Video</source>
-        <translation type="vanished">Video</translation>
-    </message>
-    <message>
-        <source>Phụ đề</source>
-        <translation type="vanished">Subtitles</translation>
-    </message>
     <message>
         <location filename="../qml/SubtitleTimeline.qml" line="+374"/>
         <source>Video nguồn</source>
@@ -5030,7 +4492,7 @@
 <context>
     <name>TrackHeader</name>
     <message>
-        <location filename="../qml/TrackHeader.qml" line="+53"/>
+        <location filename="../qml/TrackHeader.qml" line="+52"/>
         <source>Tùy chọn track</source>
         <translation>Track options</translation>
     </message>
@@ -5096,10 +4558,6 @@
 <context>
     <name>TranslationReviewDialog</name>
     <message>
-        <source>Sửa phụ đề</source>
-        <translation type="vanished">Edit subtitles</translation>
-    </message>
-    <message>
         <location filename="../qml/TranslationReviewDialog.qml" line="+17"/>
         <source>Duyệt phụ đề</source>
         <translation>Review subtitles</translation>
@@ -5123,10 +4581,6 @@
         <location line="+234"/>
         <source>Lưu phụ đề</source>
         <translation>Save subtitles</translation>
-    </message>
-    <message>
-        <source>Lưu và tạo lại giọng</source>
-        <translation type="vanished">Save and regenerate voice</translation>
     </message>
     <message>
         <location line="+0"/>
@@ -5219,25 +4673,9 @@
         <translation>Ready to process</translation>
     </message>
     <message>
-        <source>%1%</source>
-        <translation type="vanished">%1%</translation>
-    </message>
-    <message>
-        <source>Thời gian đã chạy</source>
-        <translation type="vanished">Time running</translation>
-    </message>
-    <message>
-        <source>Thời gian xử lý</source>
-        <translation type="vanished">Processing time</translation>
-    </message>
-    <message>
         <location line="+35"/>
         <source>Duyệt phụ đề</source>
         <translation>Review subtitles</translation>
-    </message>
-    <message>
-        <source>Sửa lại phụ đề</source>
-        <translation type="vanished">Edit subtitles</translation>
     </message>
     <message>
         <location line="-44"/>
@@ -5280,14 +4718,6 @@
         <translation>Pause</translation>
     </message>
     <message>
-        <source>Đang chờ</source>
-        <translation type="vanished">Queued</translation>
-    </message>
-    <message>
-        <source>Đang tạm dừng</source>
-        <translation type="vanished">Pausing</translation>
-    </message>
-    <message>
         <location line="+8"/>
         <source>Mở video đầu ra</source>
         <translation>Open output video</translation>
@@ -5317,14 +4747,6 @@
         <translation>Cancel</translation>
     </message>
     <message>
-        <source>Chưa chọn thư mục</source>
-        <translation type="vanished">No folder selected</translation>
-    </message>
-    <message>
-        <source>Chọn thư mục</source>
-        <translation type="vanished">Choose folder</translation>
-    </message>
-    <message>
         <location line="+86"/>
         <source>Tải video</source>
         <translation>Download video</translation>
@@ -5333,17 +4755,22 @@
 <context>
     <name>VoiceCloneDialog</name>
     <message>
-        <location filename="../qml/VoiceCloneDialog.qml" line="+13"/>
+        <location filename="../qml/VoiceCloneDialog.qml" line="+14"/>
         <source>Nhân bản giọng của tôi</source>
         <translation>Clone my voice</translation>
     </message>
     <message>
-        <location line="+76"/>
+        <location line="+68"/>
+        <source>Không thể áp dụng mẫu giọng. Hãy kiểm tra dự án rồi thử lại.</source>
+        <translation>Could not apply the voice sample. Check your project and try again.</translation>
+    </message>
+    <message>
+        <location line="+32"/>
         <source>Không thể lưu mẫu ghi âm. Hãy ghi lại.</source>
         <translation>Could not save the recording. Please record again.</translation>
     </message>
     <message>
-        <location line="+71"/>
+        <location line="+82"/>
         <source>Ghi âm</source>
         <translation>Record audio</translation>
     </message>
@@ -5353,17 +4780,32 @@
         <translation>Choose file</translation>
     </message>
     <message>
-        <location line="+19"/>
-        <source>Quay lại</source>
-        <translation>Back</translation>
+        <location line="+0"/>
+        <location line="+17"/>
+        <source>Đổi mẫu</source>
+        <translation>Change sample</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <source>Quay lại</source>
+        <translation type="vanished">Back</translation>
+    </message>
+    <message>
+        <location line="+18"/>
         <source>Ghi mẫu giọng</source>
         <translation>Record a voice sample</translation>
     </message>
     <message>
-        <location line="+106"/>
+        <location line="+0"/>
+        <source>Mẫu giọng đã chọn</source>
+        <translation>Selected voice sample</translation>
+    </message>
+    <message>
+        <location line="+105"/>
+        <source>Dừng ghi, nghe lại rồi áp dụng mẫu</source>
+        <translation>Stop recording, listen back, then apply the sample</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>Mẫu đã lưu. Nhấn Áp dụng để chọn giọng nhân bản.</source>
         <translation>Sample saved. Select Apply to use the cloned voice.</translation>
     </message>
@@ -5393,10 +4835,6 @@
         <translation>Recording</translation>
     </message>
     <message>
-        <source>Mẫu giọng đã được lưu</source>
-        <translation type="vanished">Voice sample saved</translation>
-    </message>
-    <message>
         <location line="+0"/>
         <source>Microphone</source>
         <translation>Microphone</translation>
@@ -5407,12 +4845,12 @@
         <translation>Record again</translation>
     </message>
     <message>
-        <location line="-172"/>
+        <location line="-174"/>
         <source>Ghi âm đã dừng. Hãy thử lại.</source>
         <translation>Recording stopped. Please try again.</translation>
     </message>
     <message>
-        <location line="+64"/>
+        <location line="+66"/>
         <source>Đọc rõ 5–15 giây bằng giọng tự nhiên.</source>
         <translation>Speak clearly in your natural voice for 5–15 seconds.</translation>
     </message>
@@ -5422,12 +4860,11 @@
         <translation>Listen to the sample</translation>
     </message>
     <message>
-        <location line="+33"/>
         <source>Nhấn dừng để dùng mẫu này</source>
-        <translation>Stop recording to use this sample</translation>
+        <translation type="vanished">Stop recording to use this sample</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+35"/>
         <source>Chỉ dùng giọng của bạn hoặc người đã đồng ý</source>
         <translation>Only use your voice or a voice with permission</translation>
     </message>
@@ -5502,10 +4939,6 @@
         <location line="+5"/>
         <source>Lưu</source>
         <translation>Save</translation>
-    </message>
-    <message>
-        <source>Áp dụng</source>
-        <translation type="vanished">Apply settings</translation>
     </message>
 </context>
 <context>

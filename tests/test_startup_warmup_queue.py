@@ -62,6 +62,9 @@ class StartupWarmupQueueTests(unittest.TestCase):
             patch("haizflow.desktop.processing_lifecycle_controller.video_store.log_to_video"),
             patch("haizflow.desktop.processing_lifecycle_controller.is_cancelled", return_value=False),
             patch("haizflow.desktop.processing_lifecycle_controller.is_paused", return_value=False),
+            patch("haizflow.desktop.processing_lifecycle_controller.runtime_profile", return_value=SimpleNamespace(
+                total_ram_gib=16, cuda_available=False, total_vram_gib=0,
+            )),
             patch("haizflow.pipeline.process_video.process_video_sync") as process_video,
         ):
             worker = threading.Thread(target=controller.execute_pipeline, args=("video-2",))

@@ -13,8 +13,8 @@ from haizflow.pipeline.process_video import process_video_sync
 def parse_args():
     parser = argparse.ArgumentParser(description="Run one local HaizFlow pipeline smoke test.")
     parser.add_argument("--input", required=True, type=Path, help="Path to an MP4, MOV, or MKV input video.")
-    parser.add_argument("--target-language", default="vi", help="Target language code, for example vi or ja.")
-    parser.add_argument("--voice", default="vi-VN-NamMinhNeural", help="Edge TTS voice identifier.")
+    parser.add_argument("--target-language", default="vi", help="Target language code: vi, en, or zh.")
+    parser.add_argument("--voice", default="omnivoice:male", help="OmniVoice preset identifier.")
     return parser.parse_args()
 
 

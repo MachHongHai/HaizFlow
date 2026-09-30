@@ -21,7 +21,7 @@ class DependencyLockTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         payload = json.loads(completed.stdout)
-        self.assertGreaterEqual(payload["locked_packages"], 40)
+        self.assertGreaterEqual(payload["locked_packages"], 30)
         lock_text = (root / "requirements-lock-py313-win64.txt").read_text(encoding="utf-8").lower()
         self.assertNotIn("download.pytorch.org", lock_text)
         self.assertNotIn("llama-cpp-python", lock_text)

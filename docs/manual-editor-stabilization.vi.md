@@ -13,7 +13,7 @@ Tài liệu tách hành vi đã triển khai khỏi phần nghiệm thu còn l�
 - Transport, fullscreen và timeline dùng chung scrub state, seek được gộp và callback source generation cũ bị bỏ.
 - Một preview audio controller/output sở hữu âm kết quả. Source, no-vocals, TTS và music chạy theo cùng clock; đổi level không render lại video.
 - Sửa text chỉ invalid voice của segment đó; sửa timing chỉ đổi vị trí clip cache.
-- OmniVoice giữ warm worker trong idle timeout hữu hạn. Edge TTS đi qua luồng tuần tự theo video và clip cache theo nội dung.
+- OmniVoice giữ warm worker trong thời gian chờ hữu hạn; clip giọng được lưu cache theo nội dung.
 - Edit history tách khỏi navigation và ghi text, timing, media, voice, audio, visual, project, publishing, application setting theo context sở hữu.
 - Voice manifest chỉ activate khi subtitle document signature vẫn current lúc generation hoàn tất.
 - Preview artifact publish atomic; callback stale bị chặn bằng generation/revision.
@@ -36,7 +36,7 @@ Không ghi số test cố định; output gate của commit được review là 
 - Stress audio thật trên Windows với source swap, hơn 100 seek, đổi device, suspend/resume và đóng workspace.
 - Đo decode/memory cho video dài; PCM cache có giới hạn nhưng một track cực dài vẫn cần chiến lược window/memmap được kiểm chứng.
 - Test crash ở mọi atomic boundary của subtitle publication và voice refresh.
-- Kiểm Edge TTS thật khi outage/rate-limit và retry UI với nhiều locale voice.
+- Kiểm tra phục hồi worker OmniVoice và giao diện thử lại cho các ngôn ngữ hỗ trợ.
 - Chứng minh mọi worker/media connection Manual được giải phóng khi đổi project nhanh.
 - Nghiệm thu quota cache dưới low-disk và bảo vệ artifact active/pinned.
 

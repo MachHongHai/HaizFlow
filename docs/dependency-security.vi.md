@@ -69,7 +69,7 @@ HaizFlow khóa host/URL/size/full SHA-256 của `htdemucs` và không cho resolv
 | --- | --- |
 | Tải model | Request file cố định và transport metadata |
 | Nhập URL/kênh | URL công khai, cookie đã cấu hình và provider response |
-| Edge TTS | Text phụ đề cần để tổng hợp giọng |
+| Dịch bằng Gemini API | Nội dung phụ đề cần dịch, chỉ khi người dùng chọn |
 | Đăng mạng xã hội | Media/nội dung đã chọn và credential provider |
 | Xuất chẩn đoán | Log giới hạn và redact; không có media/metadata dự án |
 

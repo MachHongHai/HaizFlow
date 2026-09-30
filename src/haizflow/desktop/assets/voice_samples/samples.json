@@ -288,20 +288,6 @@
       "path": "omnivoice/omnivoice_documentary/vi.mp3"
     },
     {
-      "provider": "edge",
-      "voice": "vi-VN-HoaiMyNeural",
-      "language": "vi",
-      "category": "language",
-      "path": "edge/vi-VN-HoaiMyNeural/vi.mp3"
-    },
-    {
-      "provider": "edge",
-      "voice": "vi-VN-NamMinhNeural",
-      "language": "vi",
-      "category": "language",
-      "path": "edge/vi-VN-NamMinhNeural/vi.mp3"
-    },
-    {
       "provider": "omnivoice",
       "voice": "omnivoice:female",
       "language": "en",
@@ -582,20 +568,6 @@
       "path": "omnivoice/omnivoice_documentary/en.mp3"
     },
     {
-      "provider": "edge",
-      "voice": "en-US-JennyNeural",
-      "language": "en",
-      "category": "language",
-      "path": "edge/en-US-JennyNeural/en.mp3"
-    },
-    {
-      "provider": "edge",
-      "voice": "en-US-GuyNeural",
-      "language": "en",
-      "category": "language",
-      "path": "edge/en-US-GuyNeural/en.mp3"
-    },
-    {
       "provider": "omnivoice",
       "voice": "omnivoice:female",
       "language": "zh",
@@ -874,20 +846,6 @@
       "language": "zh",
       "category": "entertainment",
       "path": "omnivoice/omnivoice_documentary/zh.mp3"
-    },
-    {
-      "provider": "edge",
-      "voice": "zh-CN-XiaoxiaoNeural",
-      "language": "zh",
-      "category": "language",
-      "path": "edge/zh-CN-XiaoxiaoNeural/zh.mp3"
-    },
-    {
-      "provider": "edge",
-      "voice": "zh-CN-YunxiNeural",
-      "language": "zh",
-      "category": "language",
-      "path": "edge/zh-CN-YunxiNeural/zh.mp3"
     }
   ]
 }

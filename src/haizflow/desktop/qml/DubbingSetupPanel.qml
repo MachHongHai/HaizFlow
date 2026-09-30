@@ -35,7 +35,7 @@ InspectorPanel {
             editable: AppController.canEditSelectedVideo
             cpuOnly: AppController.cpuOnly
             hasSource: AppController.videoPath.length > 0
-            showCloneAction: AppController.ttsProvider === "omnivoice"
+            showCloneAction: AppController.ttsProvider.indexOf("omnivoice") === 0
             cloneActive: AppController.ttsVoice === "omnivoice:clone"
             speechRecognitionModel: AppController.speechRecognitionModel
             translationModel: AppController.translationModel
@@ -59,6 +59,13 @@ InspectorPanel {
             watermarkKind: AppController.watermarkKind
             watermarkImagePath: AppController.watermarkImagePath
             watermarkVideoPath: AppController.watermarkVideoPath
+            backgroundMusicLoop: AppController.backgroundMusicLoop
+            audioDuckingEnabled: AppController.audioDuckingEnabled
+            audioDuckingReductionDb: AppController.audioDuckingReductionDb
+
+            onBackgroundMusicLoopEdited: function(value) { AppController.backgroundMusicLoop = value; root.scheduleVideoSettingsSave() }
+            onAudioDuckingEdited: function(value) { AppController.audioDuckingEnabled = value; root.scheduleVideoSettingsSave() }
+            onAudioDuckingReductionEdited: function(value) { AppController.audioDuckingReductionDb = value; root.scheduleVideoSettingsSave() }
 
             onSpeechRecognitionEdited: function(value) { AppController.speechRecognitionModel = value; root.scheduleVideoSettingsSave() }
             onTranslationModelEdited: function(value) {
@@ -116,7 +123,14 @@ InspectorPanel {
     LazyDialogLoader {
         id: voiceCloneDialogLoader
         sourceComponent: Component {
-            VoiceCloneDialog { onClosed: voiceCloneDialogLoader.release() }
+            VoiceCloneDialog {
+                onReferenceAccepted: function(path) {
+                    // The backend has already committed this selection.
+                    videoSettingsSaveTimer.stop();
+                    root.pendingSettingsVideoId = "";
+                }
+                onClosed: voiceCloneDialogLoader.release()
+            }
         }
     }
 

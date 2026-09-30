@@ -425,6 +425,10 @@ class HaizFlowController(QObject):
         self.hardwareChanged.connect(self.resourcePacksChanged.emit)
         self._app_updates = AppUpdateController(self)
         self._app_updates.changed.connect(self.appUpdateChanged.emit)
+        for signal in (self.processingChanged, self.resourcePacksChanged, self.mediaImportChanged,
+                       self.channelImportChanged, self.backgroundMusicImportChanged,
+                       self.socialPublishStateChanged, self.editorPreviewChanged):
+            signal.connect(self.appUpdateChanged.emit)
         self._smart_warmup = SmartWarmupController(self, self._resource_packs.manager)
         self.selectedVideoChanged.connect(self._smart_warmup.request_project_prediction)
         _set_ui_language(self._settings_language)
@@ -1385,7 +1389,7 @@ class HaizFlowController(QObject):
             return
         self._tts_provider = provider
         self._tts_voice = normalized_voice
-        speaker_changed = provider != "omnivoice" and getattr(self, "_speaker_mode", "single") != "single"
+        speaker_changed = not provider.startswith("omnivoice") and getattr(self, "_speaker_mode", "single") != "single"
         if speaker_changed:
             self._speaker_mode = "single"
         preview = getattr(self, "_audio_preview", None)
@@ -1437,7 +1441,7 @@ class HaizFlowController(QObject):
     @ttsVoice.setter
     def ttsVoice(self, value):
         normalized_voice = self._normalized_voice_for_language(
-            self._target_language, value, getattr(self, "_tts_provider", "edge")
+            self._target_language, value, getattr(self, "_tts_provider", "omnivoice")
         )
         if self._tts_voice != normalized_voice:
             self._tts_voice = normalized_voice
@@ -1455,7 +1459,7 @@ class HaizFlowController(QObject):
     def speakerMode(self, value):
         normalized = (
             "multiple"
-            if self._tts_provider == "omnivoice"
+            if self._tts_provider.startswith("omnivoice")
             and str(value or "").strip().lower() == "multiple"
             else "single"
         )
@@ -2246,7 +2250,7 @@ class HaizFlowController(QObject):
             "crop": serializable_settings(crop),
             "audioSeparationEnabled": separation_enabled,
             "speakerMode": str(getattr(video, "speaker_mode", "single") or "single"),
-            "ttsProvider": str(getattr(video, "tts_provider", "edge") or "edge"),
+            "ttsProvider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
             "ttsVoice": str(getattr(video, "tts_voice", "") or ""),
             "removeOriginalSubtitles": bool(getattr(video, "remove_original_subtitles", True)),
             "removalMode": str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
@@ -2666,16 +2670,38 @@ class HaizFlowController(QObject):
     def appUpdateReleaseNotes(self):
         return self._app_updates.release_notes
 
+    @Property(bool, notify=appUpdateChanged)
+    def hasAppUpdate(self):
+        return self._app_updates.available
+
+    @Property(int, notify=appUpdateChanged)
+    def appUpdateDownloadProgress(self):
+        return self._app_updates.download_progress
+
+    @Property(str, notify=appUpdateChanged)
+    def appUpdateError(self):
+        return self._app_updates.error
+
+    @Property(bool, notify=appUpdateChanged)
+    def appUpdateBlocked(self):
+        return self._app_updates.blocked
+
+    @Slot()
+    def checkAppUpdateIfNeeded(self):
+        self._app_updates.check_if_needed()
+
+    @Slot(result=bool)
+    def installAppUpdate(self):
+        return self._app_updates.install()
+
     @Slot()
     def checkForAppUpdates(self):
         self._app_updates.check(manual=True)
 
     @Slot()
     def showAppUpdate(self):
-        if self._app_updates.state == "available":
-            self.appUpdateAvailable.emit()
-        else:
-            self._app_updates.check(manual=True)
+        self.appUpdateAvailable.emit()
+        self._app_updates.check_if_needed()
 
     @Slot(result=bool)
     def openAppUpdatePage(self):
@@ -3058,6 +3084,10 @@ class HaizFlowController(QObject):
     def setVoiceCloneReference(self, path, transcript):
         return HaizFlowController._project_import_for(self).set_voice_reference(path, transcript)
 
+    @Slot(str, str, result=bool)
+    def applyVoiceCloneReference(self, video_id, provider):
+        return HaizFlowController._project_import_for(self).apply_voice_reference(video_id, provider)
+
     @Slot(str, int, result="QVariantMap")
     def voiceCloneReferenceAnalysis(self, path, bucket_count):
         return HaizFlowController._project_import_for(self).analyze_voice_reference(path, bucket_count)
@@ -3077,6 +3107,7 @@ class HaizFlowController(QObject):
             return False
         recorder = self._voice_clone_capture()
         if recorder.start(path):
+            self._voice_clone_recording_video_id = str(self._selected_video_id or "")
             return True
         HaizFlowController._project_import_for(self).discard_voice_reference_recording(path)
         return False
@@ -3087,6 +3118,9 @@ class HaizFlowController(QObject):
 
     @Slot(result=bool)
     def finishVoiceCloneRecording(self):
+        if str(getattr(self, "_voice_clone_recording_video_id", "")) != str(self._selected_video_id or ""):
+            self.cancelVoiceCloneRecording()
+            return False
         recorder = self._voice_clone_capture()
         path = recorder.stop()
         if not path:
@@ -3100,7 +3134,9 @@ class HaizFlowController(QObject):
     def cancelVoiceCloneRecording(self):
         path = self._voice_clone_capture().cancel()
         if path:
-            HaizFlowController._project_import_for(self).discard_voice_reference_recording(path)
+            HaizFlowController._project_import_for(self).discard_voice_reference_recording(
+                path, str(getattr(self, "_voice_clone_recording_video_id", "")))
+        self._voice_clone_recording_video_id = ""
 
     @Slot(result=bool)
     def clearVoiceCloneReference(self):
@@ -3836,12 +3872,18 @@ class HaizFlowController(QObject):
                 timer.stop()
             self._manual_voice_refresh_pending = False
             self._manual_voice_refresh_enabled = False
+        # A stopped worker no longer owns the registry. Clear its pause flag
+        # before replacing the resume target; completed artifacts stay intact.
+        from haizflow.pipeline.process_registry import prepare_video_resume
+
+        prepare_video_resume(video.video_id)
         self._apply_setup_to_video(video, review_approved=True)
         prepare_manual_rerun(video.video_id, tool_id)
         video_store.update_video(
             video.video_id,
             manual_target_tool=tool_id,
             manual_target_stage="",
+            resume_step="",
             error=None,
             status="manual_ready" if getattr(video, "active_artifacts", {}) else "pending",
         )
@@ -3944,7 +3986,7 @@ class HaizFlowController(QObject):
             self._tts_voice = selected_voice
             self._speaker_mode = (
                 "multiple"
-                if selected_provider == "omnivoice"
+                if selected_provider.startswith("omnivoice")
                 and str(speaker_mode or "").strip().lower() == "multiple"
                 else "single"
             )
@@ -6578,21 +6620,13 @@ class HaizFlowController(QObject):
 
     @staticmethod
     def _normalized_tts_provider(language_code, provider):
-        normalized = str(provider or "omnivoice").strip().lower()
-        if normalized in {"auto", "vieneu"}:
-            return "omnivoice"
-        return normalized if normalized in {"omnivoice", "edge"} else "omnivoice"
+        provider = str(provider or "omnivoice").lower()
+        return provider if provider in {"omnivoice", "omnivoice-gpu"} else "omnivoice"
 
     def _tts_provider_options_for_language(self, language_code):
-        if getattr(self, "_settings_language", "en") == "vi":
-            return [
-                {"provider": "omnivoice", "label": "OmniVoice · Chạy cục bộ"},
-                {"provider": "edge", "label": "Edge TTS · Trực tuyến"},
-            ]
-        return [
-            {"provider": "omnivoice", "label": "OmniVoice · Local"},
-            {"provider": "edge", "label": "Edge TTS · Online"},
-        ]
+        return [{"provider": provider, "label": label} for provider, label in (
+            ("omnivoice", "OmniVoice · CPU"), ("omnivoice-gpu", "OmniVoice · GPU"),
+        )]
 
     def _show_app_alert(self, title: str, message: str, severity: str = "information") -> None:
         level = str(severity or "information").strip().lower()

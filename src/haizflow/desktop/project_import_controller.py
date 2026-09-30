@@ -937,24 +937,9 @@ class ProjectImportController:
         except (OSError, RuntimeError, ValueError) as exc:
             host._show_app_alert("Voice cloning", str(exc), "warning")
             return False
-        if video.project_type != "manual":
-            host._tts_provider = "omnivoice"
-            host._tts_voice = "omnivoice:clone"
-            host.ttsProviderChanged.emit()
-            host.ttsVoiceChanged.emit()
-            host.ttsVoiceOptionsChanged.emit()
-            # Auto/Batch use the setup form as their committed configuration.
-            host._edit_history_recording_suspended += 1
-            try:
-                host.persistSelectedVideoSettings()
-            finally:
-                host._edit_history_recording_suspended -= 1
-        else:
-            # Manual treats the voice dialog as a transaction. Recording or
-            # importing an authorised sample only makes the clone option
-            # available; it does not change the requested voice until the
-            # user confirms the dialog.
-            host.ttsVoiceOptionsChanged.emit()
+        # Import/record makes a sample available. Selecting the voice is a
+        # separate, explicit operation shared by Manual and Auto.
+        host.ttsVoiceOptionsChanged.emit()
         refreshed = video_store.get_video(video.video_id) or video
         host._record_video_asset_change(
             video.video_id,
@@ -963,6 +948,35 @@ class ProjectImportController:
             "Mẫu giọng",
         )
         host.selectedVideoChanged.emit()
+        preview = getattr(host, "_audio_preview", None)
+        if preview is not None:
+            preview.invalidate()
+        return True
+
+    def apply_voice_reference(self, video_id: str, provider: str) -> bool:
+        """Commit the reference voice now, not on dialog close/debounce."""
+        host = self._host
+        if not video_id or video_id != str(host._selected_video_id or ""):
+            return False
+        video = video_store.get_video(video_id)
+        path = str(((video.files if video else {}) or {}).get("voice_reference") or "")
+        if not video or host._processing_queue.contains(video_id) or not os.path.isfile(path):
+            return False
+        provider = str(provider or host._tts_provider)
+        if provider not in {"omnivoice", "omnivoice-gpu"}:
+            return False
+        previous = (host._tts_provider, host._tts_voice)
+        host._tts_provider, host._tts_voice = provider, "omnivoice:clone"
+        # Saves the owner's configuration synchronously and removes an older
+        # captured draft which could otherwise overwrite it after navigation.
+        if not host.persistVideoSettingsFor(video_id):
+            host._tts_provider, host._tts_voice = previous
+            host.ttsProviderChanged.emit()
+            host.ttsVoiceChanged.emit()
+            return False
+        host.ttsProviderChanged.emit()
+        host.ttsVoiceChanged.emit()
+        host.ttsVoiceOptionsChanged.emit()
         preview = getattr(host, "_audio_preview", None)
         if preview is not None:
             preview.invalidate()
@@ -999,10 +1013,11 @@ class ProjectImportController:
             self.discard_voice_reference_recording(path)
         return saved
 
-    def discard_voice_reference_recording(self, path: str) -> None:
+    def discard_voice_reference_recording(self, path: str, video_id: str = "") -> None:
         """Remove only the uncommitted capture owned by the selected video."""
         host = self._host
-        video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
+        owner_id = video_id or host._selected_video_id
+        video = video_store.get_video(owner_id) if owner_id else None
         candidate = os.path.abspath(str(path or "").strip()) if path else ""
         if not video or not candidate:
             return

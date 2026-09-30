@@ -24,15 +24,6 @@ AppDialog {
     preferredHeight: 410
     maximumHeight: 680
 
-    function providerIndex(value) {
-        const options = AppController.ttsProviderOptions || [];
-        for (let index = 0; index < options.length; ++index) {
-            if (String(options[index].provider || "") === String(value || ""))
-                return index;
-        }
-        return 0;
-    }
-
     function firstAvailableVoice(options) {
         for (let index = 0; index < options.length; ++index) {
             if (options[index].available === undefined || options[index].available !== false)
@@ -66,7 +57,9 @@ AppDialog {
     }
 
     function selectCloneReference() {
-        draftProvider = "omnivoice";
+        draftProvider = AppController.ttsProvider;
+        globalProvider = draftProvider;
+        globalVoice = "omnivoice:clone";
         refreshVoices("omnivoice:clone");
     }
 
@@ -94,37 +87,38 @@ AppDialog {
 
         GridLayout {
             Layout.fillWidth: true
-            columns: 2
+            columns: 1
             columnSpacing: Theme.space12
             rowSpacing: Theme.space8
 
             SettingLabel { text: qsTr("Công cụ") }
-            SettingLabel { text: qsTr("Giọng đọc") }
-
-            AppComboBox {
-                id: providerBox
+            StudioComboBox {
                 Layout.fillWidth: true
+                model: AppController.ttsProviderOptions
                 textRole: "label"
                 valueRole: "provider"
-                model: AppController.ttsProviderOptions
-                currentIndex: root.providerIndex(root.draftProvider)
-                onActivated: function(index) {
-                    const option = model[index];
-                    if (!option)
-                        return;
-                    root.draftProvider = String(option.provider || "omnivoice");
-                    if (root.draftProvider !== "omnivoice")
-                        root.draftSpeakerMode = "single";
-                    root.refreshVoices("");
+                currentIndex: {
+                    for (let i = 0; i < model.length; ++i) {
+                        if (model[i].provider === root.draftProvider)
+                            return i;
+                    }
+                    return 0;
+                }
+                onActivated: {
+                    root.draftProvider = currentValue;
+                    root.draftSpeakerMode = "single";
+                    root.refreshVoices(root.draftVoice);
                 }
             }
+
+            SettingLabel { text: qsTr("Giọng đọc") }
 
             VoicePicker {
                 id: voicePicker
                 Layout.fillWidth: true
                 model: root.voiceModel
                 currentValue: root.draftVoice
-                allowVoiceClone: true
+                allowVoiceClone: root.draftProvider.indexOf("omnivoice") === 0
                 previewEnabled: true
                 previewSource: AppController.audioPreviewSource
                 previewState: AppController.audioPreviewState
@@ -141,7 +135,7 @@ AppDialog {
 
         RowLayout {
             Layout.fillWidth: true
-            visible: root.draftProvider === "omnivoice"
+            visible: root.draftProvider.indexOf("omnivoice") === 0
             spacing: Theme.space8
 
             AppCheckBox {
@@ -152,8 +146,7 @@ AppDialog {
             }
 
             StudioButton {
-                text: AppController.voiceCloneReferencePath.length > 0
-                    ? qsTr("Đổi mẫu giọng") : qsTr("Thêm mẫu giọng")
+                text: qsTr("Nhân bản giọng")
                 iconName: "volume"
                 variant: "secondary"
                 onClicked: root.cloneRequested()

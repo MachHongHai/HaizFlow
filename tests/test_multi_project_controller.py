@@ -821,10 +821,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         controller = SimpleNamespace(
             _batch_video_ids=[video.video_id],
             _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
-            _voice_options_for_language=lambda language, provider="edge": {
-                "vi": [{"voice": "vi-VN-HoaiMyNeural"}],
-                "en": [{"voice": "en-US-JennyNeural"}],
-            }[language],
+            _voice_options_for_language=lambda language, provider="omnivoice": [{"voice": "omnivoice:female"}],
             refreshVideos=Mock(),
             batchChanged=SimpleNamespace(emit=Mock()),
         )
@@ -860,8 +857,8 @@ class MultiProjectControllerTests(unittest.TestCase):
             speech_recognition_model="small",
             translation_model="auto",
             translator_provider="hymt2",
-            tts_provider="edge",
-            tts_voice="en-US-JennyNeural",
+            tts_provider="omnivoice",
+            tts_voice="omnivoice:female",
             speaker_mode="single",
             enable_audio_separation=True,
             original_video_volume=35,
@@ -1119,7 +1116,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         controller.ttsVoiceChanged.emit.assert_called_once()
         controller.ttsVoiceOptionsChanged.emit.assert_called_once()
 
-    def test_tts_engine_change_invalidates_the_rendered_audio_preview(self):
+    def test_legacy_tts_engine_alias_does_not_invalidate_audio_preview(self):
         preview = SimpleNamespace(invalidate=Mock())
         controller = SimpleNamespace(
             _target_language="vi",
@@ -1141,9 +1138,9 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         HaizFlowController.ttsProvider.fset(controller, "edge")
 
-        self.assertEqual(controller._tts_provider, "edge")
-        self.assertEqual(controller._tts_voice, "vi-VN-HoaiMyNeural")
-        preview.invalidate.assert_called_once()
+        self.assertEqual(controller._tts_provider, "omnivoice")
+        self.assertEqual(controller._tts_voice, "omnivoice:female")
+        preview.invalidate.assert_not_called()
 
     def test_pipeline_waits_for_startup_warmup_without_blocking_the_ui_thread(self):
         warmup_done = threading.Event()

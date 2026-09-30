@@ -7,7 +7,7 @@ from haizflow.pipeline.process_registry import check_cancellation, communicate_p
 from haizflow.utils.ffmpeg import _binary, get_media_stream_types
 
 def extract_audio(video_path: str, output_wav_path: str, video_id: str):
-    """Extracts audio from video to a 16kHz mono WAV file."""
+    """Extract a stereo 48 kHz PCM master; ASR resamples its own input."""
     log_to_video(video_id, f"Extracting audio from: {video_path}")
     stream_types = get_media_stream_types(video_path)
     if "audio" not in stream_types:
@@ -31,8 +31,9 @@ def extract_audio(video_path: str, output_wav_path: str, video_id: str):
             _binary("ffmpeg"), "-y",
             "-i", video_path,
             "-vn",
-            "-ac", "1",
-            "-ar", "16000",
+            "-ac", "2",
+            "-ar", "48000",
+            "-c:a", "pcm_s24le",
             temporary_path,
         ]
 

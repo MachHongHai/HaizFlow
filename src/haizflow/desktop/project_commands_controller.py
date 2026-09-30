@@ -220,7 +220,7 @@ class ProjectCommandsController:
                 video.target_language,
                 getattr(video, "speech_recognition_model", "small"),
                 getattr(video, "translation_model", "auto"),
-                getattr(video, "tts_provider", "edge"),
+                getattr(video, "tts_provider", "omnivoice"),
                 video.tts_voice,
                 getattr(video, "speaker_mode", "single"),
                 video.enable_audio_separation,
@@ -260,7 +260,7 @@ class ProjectCommandsController:
                     video.target_language,
                     getattr(video, "speech_recognition_model", "small"),
                     getattr(video, "translation_model", "auto"),
-                    getattr(video, "tts_provider", "edge"),
+                    getattr(video, "tts_provider", "omnivoice"),
                     video.tts_voice,
                     getattr(video, "speaker_mode", "single"),
                     video.enable_audio_separation,
@@ -324,7 +324,7 @@ class ProjectCommandsController:
                 str(video.target_language or "vi"),
                 str(getattr(video, "speech_recognition_model", "small") or "small"),
                 str(getattr(video, "translation_model", "auto") or "auto"),
-                str(getattr(video, "tts_provider", "edge") or "edge"),
+                str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
                 str(video.tts_voice or ""),
                 str(getattr(video, "speaker_mode", "single") or "single"),
                 bool(video.enable_audio_separation),
@@ -457,7 +457,7 @@ class ProjectCommandsController:
             voice = host._normalized_voice_for_language(language, tts_voice)
         normalized_speaker_mode = (
             "multiple"
-            if provider == "omnivoice"
+            if provider.startswith("omnivoice")
             and str(speaker_mode or getattr(host, "_speaker_mode", "single")).strip().lower()
             == "multiple"
             else "single"

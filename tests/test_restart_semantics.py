@@ -293,8 +293,8 @@ class RestartCheckpointTests(unittest.TestCase):
             transcript_state = process_video._file_state(str(transcript))
             voice_signature = process_video._signature(
                 transcript_state,
-                "edge",
-                "edge",
+                "omnivoice",
+                "omnivoice",
                 "vi",
                 "same-voice",
                 "single",
