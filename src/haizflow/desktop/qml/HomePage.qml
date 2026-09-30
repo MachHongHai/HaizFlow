@@ -33,17 +33,6 @@ Item {
         return qsTr("Sẵn sàng")
     }
 
-    Menu {
-        id: newProjectMenu
-
-        AppMenuItem { text: qsTr("Tự động"); onTriggered: root.newProjectRequested("single") }
-        AppMenuItem { text: qsTr("Thủ công"); onTriggered: root.newProjectRequested("manual") }
-        AppMenuItem { text: qsTr("Hàng loạt"); onTriggered: root.newProjectRequested("batch") }
-        MenuSeparator {}
-        AppMenuItem { text: qsTr("Tải xuống"); onTriggered: root.newProjectRequested("download") }
-        AppMenuItem { text: qsTr("Đăng mạng xã hội"); onTriggered: root.newProjectRequested("publish") }
-    }
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: UiMetrics.pageMargin
@@ -54,10 +43,30 @@ Item {
             title: qsTr("Trang chủ")
 
             StudioButton {
+                id: newProjectButton
                 text: qsTr("Dự án mới")
                 variant: "primary"
                 iconName: "add"
-                onClicked: newProjectMenu.popup(this, 0, height + Theme.space4)
+                onClicked: newProjectMenu.open()
+                Menu {
+                    id: newProjectMenu
+                    y: newProjectButton.height + Theme.space4
+                    width: 220
+                    padding: Theme.space4
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                    background: Rectangle {
+                        radius: Theme.radiusSmall
+                        color: Theme.surfaceElevated
+                        border.width: 1
+                        border.color: Theme.outlineStrong
+                    }
+                    AppMenuItem { text: qsTr("Tự động"); onTriggered: root.newProjectRequested("single") }
+                    AppMenuItem { text: qsTr("Thủ công"); onTriggered: root.newProjectRequested("manual") }
+                    AppMenuItem { text: qsTr("Hàng loạt"); onTriggered: root.newProjectRequested("batch") }
+                    MenuSeparator {}
+                    AppMenuItem { text: qsTr("Tải xuống"); onTriggered: root.newProjectRequested("download") }
+                    AppMenuItem { text: qsTr("Đăng mạng xã hội"); onTriggered: root.newProjectRequested("publish") }
+                }
             }
         }
 

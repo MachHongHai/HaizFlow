@@ -98,7 +98,23 @@ Item {
         "source", "translation", "subtitle", "image", "voice", "audio", "export"
     ]
     // qmllint disable missing-property
-    readonly property var toolModel: AppController.manualToolModel || []
+    readonly property var toolModel: AppController.manualToolModel.length > 0
+        ? AppController.manualToolModel : [
+            { "label": qsTr("Nguồn"), "state": "blocked", "canRun": false },
+            { "label": qsTr("Nhận dạng & dịch"), "state": "blocked", "canRun": false },
+            { "label": qsTr("Phụ đề"), "state": "blocked", "canRun": false },
+            { "label": qsTr("Hình ảnh"), "state": "blocked", "canRun": false },
+            { "label": qsTr("Giọng đọc"), "state": "blocked", "canRun": false },
+            { "label": qsTr("Âm thanh"), "state": "blocked", "canRun": false },
+            { "label": qsTr("Xuất"), "state": "blocked", "canRun": false }
+        ]
+    readonly property var emptyEditorTracks: [
+        { "track_id": "source-video", "kind": "source_video", "name": qsTr("Video nguồn"), "visible": true },
+        { "track_id": "subtitles", "kind": "subtitle", "name": qsTr("Phụ đề"), "visible": true },
+        { "track_id": "voice", "kind": "voice", "name": qsTr("Giọng đọc"), "visible": true },
+        { "track_id": "source-audio", "kind": "source_audio", "name": qsTr("Âm thanh nguồn"), "visible": true },
+        { "track_id": "music", "kind": "music", "name": qsTr("Nhạc nền"), "visible": true }
+    ]
     readonly property var previewMedia: AppController.reviewPreviewMedia || ({})
     readonly property var previewRenderLayout: previewMedia.subtitleRenderLayout || ({})
     readonly property bool subtitleLayoutOverride: Boolean(AppController.subtitleLayoutOverride)
@@ -676,8 +692,10 @@ Item {
                         layoutSaveTimer.restart();
                 }
                 segments: root.segments
-                editorTracks: root.editorModel.tracks
-                editorClips: root.editorModel.clips
+                editorTracks: AppController.hasSelectedVideo
+                    ? root.editorModel.tracks : root.emptyEditorTracks
+                editorClips: AppController.hasSelectedVideo
+                    ? root.editorModel.clips : []
                 sourceTrimEnabled: Boolean(root.editorModel.document.sequence)
                     && (root.editorModel.document.sequence.edit_decisions || []).length === 1
                     && root.editorModel.clips.filter(function(clip) {

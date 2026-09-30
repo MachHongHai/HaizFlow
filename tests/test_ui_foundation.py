@@ -58,6 +58,25 @@ assert QCoreApplication.translate('DownloadDestinationRow', 'Lưu vào') == 'Sav
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_editor_empty_state_inputs_and_gemini_setup_flow(self):
+        workspace = (QML_DIR / "ManualWorkspace.qml").read_text(encoding="utf-8")
+        settings = (QML_DIR / "SettingsWorkspace.qml").read_text(encoding="utf-8")
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        voice = (QML_DIR / "VoiceCloneDialog.qml").read_text(encoding="utf-8")
+        inspector = (QML_DIR / "ManualStageInspector.qml").read_text(encoding="utf-8")
+        self.assertIn('"track_id": "source-video"', workspace)
+        self.assertIn('"track_id": "source-audio"', workspace)
+        self.assertIn('"track_id": "music"', workspace)
+        self.assertIn("? root.editorModel.clips : []", workspace)
+        self.assertIn("asynchronous: true", settings)
+        self.assertIn("geminiSetupDialog.open()", main)
+        self.assertIn("onConfirmed: root.navigate(root.routeApiKeys)", main)
+        self.assertIn("referenceAccepted(root.samplePath)", voice)
+        self.assertIn("selectCloneReference()", inspector)
+        for control in ("AppTextField.qml", "AppTextArea.qml"):
+            source = (QML_DIR / control).read_text(encoding="utf-8")
+            self.assertIn("focusPolicy: Qt.StrongFocus", source)
+
     def test_ui_gallery_creates_offscreen(self):
         script = f"""
 from PySide6.QtCore import QUrl
@@ -130,8 +149,23 @@ for name in ('AutoWatermarkPreviewDialog.qml', 'SubtitlePreviewDialog.qml',
         home = (QML_DIR / "HomePage.qml").read_text(encoding="utf-8")
         self.assertIn('qsTr("Dự án gần đây")', home)
         self.assertIn('qsTr("Dự án mới")', home)
+        self.assertIn("color: Theme.surfaceElevated", home)
+        self.assertIn("border.color: Theme.outlineStrong", home)
         for component in ("HomeHero {", "HomeCreatorPanel {", "HomeActionButton {", "TutorialPlaceholder {"):
             self.assertNotIn(component, home)
+
+    def test_settings_has_three_sections_and_named_api_keys(self):
+        workspace = (QML_DIR / "SettingsWorkspace.qml").read_text(encoding="utf-8")
+        api_page = (QML_DIR / "ApiKeysPage.qml").read_text(encoding="utf-8")
+        menu = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
+        for section in ("Chung", "API Key", "Gói tài nguyên"):
+            self.assertIn(f'qsTr("{section}")', workspace)
+        self.assertIn("ApiKeysPage {", workspace)
+        self.assertIn("AppController.geminiApiKeys", api_page)
+        self.assertIn("AppController.addGeminiApiKey", api_page)
+        self.assertIn("AppController.selectGeminiApiKey", api_page)
+        self.assertIn("AppController.removeGeminiApiKey", api_page)
+        self.assertIn("root.apiKeysRequested()", menu)
 
     def test_ui_gallery_renders_at_supported_dpi_scales(self):
         script = f"""
@@ -525,7 +559,8 @@ window.close()
         self.assertIn("subtitleLayoutHeight: root.subtitleLayoutHeight", workspace)
         self.assertIn("watermarkScalePercent: AppController.watermarkScalePercent", workspace)
         self.assertIn("recordManualWatermarkScaleChange", workspace)
-        self.assertIn("editorTracks: root.editorModel.tracks", workspace)
+        self.assertIn("editorTracks: AppController.hasSelectedVideo", workspace)
+        self.assertIn("? root.editorModel.tracks : root.emptyEditorTracks", workspace)
         self.assertNotIn("voiceLayerVisible:", workspace)
         self.assertNotIn("musicLayerVisible:", workspace)
         self.assertIn("editorTracks", timeline)
@@ -891,7 +926,8 @@ app.processEvents()
         self.assertNotIn('qsTr("Phạm vi")', manual_dialog)
         self.assertIn('"all",', manual_dialog)
         self.assertNotIn('"segment",', manual_dialog)
-        self.assertIn("referenceJustAdded", manual_dialog)
+        self.assertIn("function selectCloneReference()", manual_dialog)
+        self.assertIn("onReferenceAccepted:", manual_inspector)
         self.assertIn("root.openedVideoId", manual_dialog)
         self.assertIn('qsTr("Phát mẫu giọng")', voice_picker)
         self.assertNotIn("VoicePreviewPanel", voice_picker)
@@ -957,6 +993,7 @@ app.processEvents()
         raw_row = (QML_DIR / "ResourcePackRow.qml").read_text(encoding="utf-8")
         settings = (QML_DIR / "SettingsPage.qml").read_text(encoding="utf-8")
         shell = (QML_DIR / "SettingsPageShell.qml").read_text(encoding="utf-8")
+        workspace = (QML_DIR / "SettingsWorkspace.qml").read_text(encoding="utf-8")
 
         self.assertIn("AppController.resourcePackageRows", page)
         self.assertIn("SettingsPageShell {", page)
@@ -964,7 +1001,7 @@ app.processEvents()
         self.assertIn("PageHeader {", shell)
         self.assertIn("UiMetrics.pageMargin", shell)
         self.assertIn("root.horizontalInset", shell)
-        self.assertIn("AppController.setHardwareTelemetryActive(visible)", page)
+        self.assertIn("AppController.setHardwareTelemetryActive(visible)", workspace)
         self.assertIn("ResourcePackRow", page)
         self.assertNotIn("ResourceBundleRow", page)
         self.assertNotIn("installResourceBundle", page)

@@ -14,7 +14,8 @@ TextField {
     placeholderTextColor: Theme.textSubtle
     font.family: Theme.fontFamily
     font.pixelSize: TypeScale.control
-    focusPolicy: Qt.TabFocus
+    focusPolicy: Qt.StrongFocus
+    selectByMouse: true
     Accessible.name: accessibleName.length > 0 ? accessibleName : placeholderText
 
     property string accessibleName: ""

@@ -7,9 +7,6 @@ import "."
 Item {
     id: root
 
-    onVisibleChanged: AppController.setHardwareTelemetryActive(visible)
-    Component.onCompleted: AppController.setHardwareTelemetryActive(visible)
-
     function packageTitle(packId, fallback) {
         switch (packId) {
         case "model-whisper-small": return qsTr("Whisper Small");
@@ -46,6 +43,7 @@ Item {
     SettingsPageShell {
         anchors.fill: parent
         title: qsTr("Gói tài nguyên")
+        showHeader: false
         contentMaximumWidth: 920
 
         SettingRow {

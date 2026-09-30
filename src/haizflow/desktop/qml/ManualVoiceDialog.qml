@@ -14,7 +14,6 @@ AppDialog {
     property string globalProvider: "omnivoice"
     property string globalVoice: ""
     property string openedVideoId: ""
-    property string referencePathSnapshot: ""
     property var voiceModel: []
 
     signal confirmed(string provider, string voice, string scope, string segmentId, string speakerMode)
@@ -57,7 +56,6 @@ AppDialog {
 
     function openForVoice(hasVoice, configuration) {
         openedVideoId = String(AppController.selectedVideoId || "");
-        referencePathSnapshot = String(AppController.voiceCloneReferencePath || "");
         replacingVoice = Boolean(hasVoice);
         globalProvider = String(configuration.globalProvider || configuration.provider || "omnivoice");
         globalVoice = String(configuration.globalVoice || configuration.voice || "");
@@ -65,6 +63,11 @@ AppDialog {
         draftProvider = globalProvider;
         refreshVoices(globalVoice);
         open();
+    }
+
+    function selectCloneReference() {
+        draftProvider = "omnivoice";
+        refreshVoices("omnivoice:clone");
     }
 
     onClosed: voicePicker.stopPreview()
@@ -79,16 +82,9 @@ AppDialog {
                 root.close();
                 return;
             }
-            const currentReference = String(AppController.voiceCloneReferencePath || "");
-            const referenceJustAdded = root.referencePathSnapshot.length === 0
-                && currentReference.length > 0;
-            root.referencePathSnapshot = currentReference;
-            // selectedVideoChanged is also emitted by progress and cache
-            // updates. Those unrelated events must not replace the voice the
-            // user picked in this draft. Select Clone only for the one event
-            // that actually adds the first reference sample.
-            const preferred = referenceJustAdded ? "omnivoice:clone" : root.draftVoice;
-            root.refreshVoices(preferred);
+            // Refresh availability while preserving the user's draft. Only
+            // an explicit Apply action in the recorder chooses Clone.
+            root.refreshVoices(root.draftVoice);
         }
     }
 

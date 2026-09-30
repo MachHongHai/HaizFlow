@@ -5,7 +5,8 @@ from typing import Any, Dict, Literal, Optional
 VIDEO_METADATA_SCHEMA_VERSION = 18
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
-TranslatorProvider = Literal["hymt2"]
+TranslatorProvider = Literal["hymt2", "gemini"]
+TranslationModel = Literal["auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
 TTSProvider = Literal["omnivoice", "edge"]
 SpeechRecognitionModel = Literal["small", "large-v3-turbo"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
@@ -68,7 +69,7 @@ class VideoConfig(BaseModel):
     target_language: str = "vi"
     translator_provider: TranslatorProvider = "hymt2"
     speech_recognition_model: SpeechRecognitionModel = "small"
-    translation_model: Literal["auto", "q4", "full"] = "auto"
+    translation_model: TranslationModel = "auto"
     tts_provider: TTSProvider = "omnivoice"
     tts_voice: str = "omnivoice:female"
     speaker_mode: SpeakerMode = "single"
@@ -115,7 +116,7 @@ class VideoInfo(BaseModel):
     target_language: str
     translator_provider: TranslatorProvider = "hymt2"
     speech_recognition_model: SpeechRecognitionModel = "small"
-    translation_model: Literal["auto", "q4", "full"] = "auto"
+    translation_model: TranslationModel = "auto"
     tts_provider: TTSProvider = "omnivoice"
     tts_voice: str
     speaker_mode: SpeakerMode = "single"

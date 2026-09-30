@@ -38,7 +38,8 @@ StackLayout {
             "home": 11,
             "projects": 12,
             "settings": 13,
-            "packages": 14
+            "api-keys": 13,
+            "packages": 13
         };
         return routes[route] === undefined ? 0 : routes[route];
     }
@@ -276,15 +277,11 @@ StackLayout {
         }
     }
 
-    SettingsPage {
+    SettingsWorkspace {
+        currentRoute: root.currentRoute
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.margins: 0
-    }
-
-    ResourcePacksPage {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        Layout.margins: 0
+        onNavigateRequested: function(route) { root.navigateRequested(route); }
     }
 }

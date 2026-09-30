@@ -270,8 +270,8 @@ class EditorPreviewController:
             "watermark_text": settings["watermark_text"],
             "watermark_scale_percent": settings["watermark_scale_percent"],
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
-            "original_subtitle_intervals": settings["original_subtitle_intervals"] if removes_source_text else [],
             "preview_encoding": settings["preview_encoding"],
+            "source_treatment_revision": 2,
         }
 
     @staticmethod
@@ -293,8 +293,8 @@ class EditorPreviewController:
             "watermark_text": settings["watermark_text"] if live_watermark else "",
             "watermark_scale_percent": settings["watermark_scale_percent"] if live_watermark else 100,
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
-            "original_subtitle_intervals": settings["original_subtitle_intervals"] if removes_source_text else [],
             "preview_encoding": settings["preview_encoding"],
+            "source_treatment_revision": 2,
         }
 
     @staticmethod

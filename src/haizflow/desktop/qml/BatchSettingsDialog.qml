@@ -239,7 +239,16 @@ FloatingToolDialog {
                 watermarkText: root.draftWatermarkText
 
                 onSpeechRecognitionEdited: function(value) { root.draftSpeechRecognitionModel = value }
-                onTranslationModelEdited: function(value) { root.draftTranslationModel = value }
+                onTranslationModelEdited: function(value) {
+                    root.draftTranslationModel = value;
+                    // The generated QML type metadata does not include this runtime property yet.
+                    // qmllint disable missing-property
+                    if (value.indexOf("gemini-") === 0 && !AppController.geminiKeyConfigured) {
+                        root.close();
+                        AppController.requestGeminiSetup();
+                    }
+                    // qmllint enable missing-property
+                }
                 onTargetLanguageEdited: function(value) {
                     root.draftTargetLanguage = value
                     root.draftTtsVoice = root.normalizedDraftVoice(value, root.draftTtsProvider, root.draftTtsVoice)

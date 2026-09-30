@@ -16,7 +16,11 @@ ColumnLayout {
         ? "queued"
         : stepId === "waiting_for_models" || stepId === "starting"
             ? "preparing" : "running"
-    readonly property bool measured: phase === "running"
+    readonly property bool measured: phase === "running" && [
+        "manual_source", "manual_separation", "manual_recognition", "manual_audio",
+        "extracting_audio", "separating_audio", "transcribing",
+        "creating_subtitle", "building_audio_timeline"
+    ].indexOf(stepId) < 0
     readonly property string phaseTitle: phase === "queued" ? qsTr("Đang chờ")
         : phase === "preparing" ? qsTr("Đang chuẩn bị") : qsTr("Đang xử lý")
     readonly property string phaseDetail: phase === "queued"

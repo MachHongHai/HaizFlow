@@ -503,15 +503,15 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
     # could write legacy provider/layout values without bumping the schema;
     # strict production models must remain able to open and repair them.
     data["mode"] = data.get("mode") if data.get("mode") in {"A", "review"} else "A"
-    data["translator_provider"] = "hymt2"
     if data.get("tts_provider") in {"auto", "vieneu"}:
         data["tts_provider"] = "omnivoice"
     if data.get("tts_provider") not in {"omnivoice", "edge"}:
         data["tts_provider"] = "omnivoice"
     if data.get("speech_recognition_model") not in {"small", "large-v3-turbo"}:
         data["speech_recognition_model"] = "small"
-    if data.get("translation_model") not in {"auto", "q4", "full"}:
+    if data.get("translation_model") not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:
         data["translation_model"] = "auto"
+    data["translator_provider"] = "gemini" if str(data["translation_model"]).startswith("gemini-") else "hymt2"
     if data.get("speaker_mode") not in {"single", "multiple"}:
         data["speaker_mode"] = "single"
     data["output_format"] = (

@@ -70,19 +70,28 @@ def translate_segments(
     progress_callback=None,
     translation_model: str = "auto",
 ):
-    if provider != "hymt2":
-        raise ValueError("HY-MT2 is the only supported translation provider.")
-    from haizflow.core.hardware import configure_translation_model
+    from haizflow.services.gemini_translation import MODELS as GEMINI_MODELS
+    from haizflow.services.gemini_translation import translate_texts
 
     requested_model = str(translation_model or "auto").lower()
-    if requested_model not in {"auto", "q4", "full"}:
+    using_gemini = requested_model in GEMINI_MODELS
+    if provider not in {"hymt2", "gemini"} or (provider == "gemini") != using_gemini:
+        raise ValueError("Translation provider does not match the selected model.")
+    from haizflow.core.hardware import configure_translation_model
+
+    if requested_model not in {"auto", "q4", "full", *GEMINI_MODELS}:
         raise ValueError(f"Unsupported translation model: {translation_model}")
-    if translation_model_preference() != requested_model:
+    if using_gemini:
+        # An earlier local project may have left HY-MT2 warm. Gemini does not
+        # need it and should never hold a second large model in memory.
+        shutdown_hymt2_worker()
+    elif translation_model_preference() != requested_model:
         shutdown_hymt2_worker()
         configure_translation_model(requested_model)
 
     target_language_name = language_name(target_language)
-    log_to_video(video_id, f"Initializing HY-MT2 translation | target: {target_language_name}.")
+    engine_name = "Gemini" if using_gemini else "HY-MT2"
+    log_to_video(video_id, f"Initializing {engine_name} translation | target: {target_language_name}.")
     with open(input_json_path, "r", encoding="utf-8") as file:
         segments = json.load(file)
     if not isinstance(segments, list) or not segments:
@@ -100,13 +109,21 @@ def translate_segments(
 
     source_texts = [segment["text"] for segment in segments]
     source_codes = [str(segment.get("language") or source_language or "en").lower() for segment in segments]
-    translations = _translate_with_hymt2_worker(
-        source_texts,
-        video_id=video_id,
-        source_languages=[language_name(code) for code in source_codes],
-        target_language_name=target_language_name,
-        progress_callback=progress_callback,
-    )
+    if using_gemini:
+        translations = translate_texts(
+            source_texts, model=requested_model,
+            source_language=language_name(source_language) if source_language != "auto" else "auto",
+            target_language=target_language_name,
+            video_id=video_id, progress_callback=progress_callback,
+        )
+    else:
+        translations = _translate_with_hymt2_worker(
+            source_texts,
+            video_id=video_id,
+            source_languages=[language_name(code) for code in source_codes],
+            target_language_name=target_language_name,
+            progress_callback=progress_callback,
+        )
     if len(translations) != len(segments):
         raise RuntimeError(
             "HY-MT2 must return exactly one translation for each timestamped source sentence."
@@ -129,20 +146,28 @@ def translate_segments(
         recovery_kind = "strict contextual" if include_context else "isolated"
         log_to_video(
             video_id,
-            f"HY-MT2 validation rejected segment(s) {labels}; running {recovery_kind} retry {retry_number}/2.",
+            f"Translation validation rejected segment(s) {labels}; running {recovery_kind} retry {retry_number}/2.",
             level="WARNING",
             component="TRANSLATE",
         )
-        retry_results = _translate_with_hymt2_worker(
-            source_texts,
-            video_id=video_id,
-            source_languages=[language_name(code) for code in source_codes],
-            target_language_name=target_language_name,
-            progress_callback=None,
-            include_context=include_context,
-            strict_source_only=True,
-            translate_indices=retry_indexes,
-        )
+        if using_gemini:
+            retry_values = translate_texts(
+                [source_texts[index] for index in retry_indexes],
+                model=requested_model, source_language="auto",
+                target_language=target_language_name, video_id=video_id,
+            )
+            retry_results = dict(zip(retry_indexes, retry_values))
+        else:
+            retry_results = _translate_with_hymt2_worker(
+                source_texts,
+                video_id=video_id,
+                source_languages=[language_name(code) for code in source_codes],
+                target_language_name=target_language_name,
+                progress_callback=None,
+                include_context=include_context,
+                strict_source_only=True,
+                translate_indices=retry_indexes,
+            )
         for index in retry_indexes:
             translations[index] = clean_translation(retry_results[index])
         suspect_indexes = _suspicious_translation_indexes(
@@ -153,7 +178,7 @@ def translate_segments(
     if suspect_indexes:
         labels = ", ".join(str(index + 1) for index in sorted(suspect_indexes))
         raise RuntimeError(
-            "HY-MT2 returned invalid or duplicated translations after two bounded recovery attempts "
+            "The translator returned invalid or duplicated translations after two bounded recovery attempts "
             f"(segments: {labels}). The export was stopped to protect subtitle quality."
         )
 

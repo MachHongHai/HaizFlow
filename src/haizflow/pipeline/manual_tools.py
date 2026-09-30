@@ -276,13 +276,15 @@ def recognition_signature(video) -> str:
 
 
 def translation_signature(video) -> str:
+    model = str(getattr(video, "translation_model", "auto") or "auto")
+    using_gemini = model.startswith("gemini-")
     return manual_artifacts.signature(
         recognition_signature(video),
         getattr(video, "target_language", "vi"),
-        "hymt2",
-        HYMT2_MODEL_REVISION,
-        *translation_model_signature_parts(getattr(video, "translation_model", "auto")),
-        "hymt2-semantic-source-context-retry-v21",
+        "gemini" if using_gemini else "hymt2",
+        "gemini-segment-json-v1" if using_gemini else HYMT2_MODEL_REVISION,
+        *translation_model_signature_parts(model),
+        "gemini-batched-segments-v1" if using_gemini else "hymt2-semantic-source-context-retry-v21",
         *_generation_token(video, "translation"),
         "manual-translation-v1",
     )
@@ -1440,7 +1442,7 @@ def _run_translation(video, reporter) -> None:
                 video.video_id,
                 getattr(video, "target_language", "vi"),
                 source_language="auto",
-                provider="hymt2",
+                provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
                 translation_model=getattr(video, "translation_model", "auto"),
                 progress_callback=lambda current, total, detail: reporter.update(
                     5 + round(90 * current / max(1, total)), "manual_translation", detail, current, total

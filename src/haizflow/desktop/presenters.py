@@ -270,5 +270,13 @@ def localized_voice_label(label: str, ui_language: str) -> str:
         "Deep trailer": "Trailer trầm",
         "Warm radio": "Radio ấm",
         "Mystery whisper": "Thì thầm bí ẩn",
+        "Gentle female": "Nữ dịu dàng",
+        "Soft male": "Nam nhẹ nhàng",
+        "Confident female": "Nữ tự tin",
+        "Broadcast male": "Nam phát thanh",
+        "Bright child": "Trẻ em sáng",
+        "Warm elder": "Lớn tuổi ấm",
+        "High comic": "Hài giọng cao",
+        "Documentary": "Thuyết minh tài liệu",
     }
     return translations.get(label, label.replace("Female", "Nữ").replace("Male", "Nam"))

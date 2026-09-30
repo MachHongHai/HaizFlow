@@ -367,7 +367,7 @@ def _finish_recovered_translation(
         video.video_id,
         video.target_language,
         source_language="en",
-        provider="hymt2",
+        provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
         translation_model=getattr(video, "translation_model", "auto"),
         progress_callback=report_translation_progress,
     )
@@ -445,11 +445,13 @@ def process_video_sync(
         if video.mode not in {"A", "review"}:
             raise ValueError(f"Unsupported workflow: {video.mode}")
 
-        if video.translator_provider != "hymt2":
+        if video.translator_provider not in {"hymt2", "gemini"}:
             log_to_video(video_id, "Migrated legacy translation setting to HY-MT2.")
             video = update_video(video_id, translator_provider="hymt2") or video
         reporter.update(3, "starting", "Preparing video")
-        log_to_video(video_id, "Processing started | Mode: Full Auto | Translator: HY-MT2")
+        using_gemini = str(getattr(video, "translation_model", "")).startswith("gemini-")
+        engine_name = "Gemini" if using_gemini else "HY-MT2"
+        log_to_video(video_id, f"Processing started | Mode: Full Auto | Translator: {engine_name}")
 
         video_input = _required_video_path(video, "video_input", must_exist=True)
         reporter.update(4, "validating_source", "Checking source video integrity")
@@ -462,12 +464,12 @@ def process_video_sync(
         translation_signature = _signature(
             _file_state(video_input),
             TIMING_SOURCE,
-            "hymt2-semantic-source-context-retry-v21",
+            "gemini-batched-segments-v1" if using_gemini else "hymt2-semantic-source-context-retry-v21",
             video.target_language,
             video.enable_audio_separation,
             getattr(video, "speech_recognition_model", "small"),
-            "hymt2",
-            HYMT2_MODEL_REVISION,
+            "gemini" if using_gemini else "hymt2",
+            "gemini-segment-json-v1" if using_gemini else HYMT2_MODEL_REVISION,
             *translation_model_signature_parts(getattr(video, "translation_model", "auto")),
         )
 
@@ -525,10 +527,14 @@ def process_video_sync(
 
         clear_omnivoice_runtime()
         profile = runtime_profile()
-        if getattr(profile, "key", "") == "cuda_low_memory" or getattr(profile, "total_ram_gib", 24) < 24:
+        if (
+            using_gemini
+            or getattr(profile, "key", "") == "cuda_low_memory"
+            or getattr(profile, "total_ram_gib", 24) < 24
+        ):
             shutdown_hymt2_worker()
             log_to_video(video_id, "Released HY-MT2 before speech recognition to preserve memory.")
-        elif profile.warm_hymt2_on_startup and not is_hymt2_worker_warm():
+        elif not using_gemini and profile.warm_hymt2_on_startup and not is_hymt2_worker_warm():
             _ensure_gpu_available("translation model warm-up")
             reporter.update(4, "loading_models", "Preparing HY-MT2 translation model")
             log_to_video(video_id, "Preparing HY-MT2 before WhisperX to avoid peak memory usage.")
@@ -598,8 +604,9 @@ def process_video_sync(
             )
 
         check_cancellation(video_id)
-        _ensure_gpu_available("translation")
-        reporter.update(50, "translating", "Starting HY-MT2 translation")
+        if not using_gemini:
+            _ensure_gpu_available("translation")
+        reporter.update(50, "translating", f"Starting {engine_name} translation")
 
         def report_translation_progress(current, total, detail):
             progress = 50 + round(12 * current / total) if total else 50
@@ -611,7 +618,7 @@ def process_video_sync(
             video_id,
             video.target_language,
             source_language=detected_language or "en",
-            provider="hymt2",
+            provider="gemini" if using_gemini else "hymt2",
             translation_model=getattr(video, "translation_model", "auto"),
             progress_callback=report_translation_progress,
         )

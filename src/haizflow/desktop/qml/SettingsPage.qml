@@ -24,7 +24,6 @@ Item {
     }
 
     onVisibleChanged: {
-        AppController.setHardwareTelemetryActive(visible);
         if (visible)
             loadDraft();
         else
@@ -51,6 +50,7 @@ Item {
     SettingsPageShell {
         anchors.fill: parent
         title: qsTr("Cài đặt")
+        showHeader: false
         contentMaximumWidth: 920
 
         SettingRow {
@@ -134,4 +134,5 @@ Item {
                     }
         }
     }
+
 }

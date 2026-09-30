@@ -18,7 +18,8 @@ TextArea {
     font.family: Theme.fontFamily
     font.pixelSize: TypeScale.control
     wrapMode: TextEdit.Wrap
-    focusPolicy: Qt.TabFocus
+    focusPolicy: Qt.StrongFocus
+    selectByMouse: true
     Accessible.name: accessibleName.length > 0 ? accessibleName : placeholderText
 
     background: Rectangle {

@@ -99,7 +99,7 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Model dịch")
-                helpText: qsTr("Q4 dùng CPU và ít bộ nhớ hơn. Chọn riêng cho dự án này.")
+                helpText: qsTr("HY-MT2 chạy cục bộ. Gemini cần Internet và API key riêng; Google có thể tính phí theo mức sử dụng.")
             }
             TranslationModelCombo {
                 Layout.fillWidth: true

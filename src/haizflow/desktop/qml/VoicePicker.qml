@@ -114,13 +114,26 @@ Control {
         requestedVoice = ""
     }
 
-    onModelChanged: syncCategory()
-    onCurrentValueChanged: syncCategory()
+    onModelChanged: {
+        voicePlayer.stop()
+        requestedVoice = ""
+        syncCategory()
+    }
+    onCurrentValueChanged: {
+        voicePlayer.stop()
+        syncCategory()
+    }
     onAllowVoiceCloneChanged: syncCategory()
     onPreviewEnabledChanged: if (!previewEnabled) voicePlayer.stop()
     Component.onCompleted: syncCategory()
     onPreviewStateChanged: previewStartTimer.restart()
-    onPreviewSourceChanged: previewStartTimer.restart()
+    onPreviewSourceChanged: {
+        if (!previewSource) {
+            voicePlayer.stop()
+            requestedVoice = ""
+        }
+        previewStartTimer.restart()
+    }
 
     Timer {
         id: previewStartTimer

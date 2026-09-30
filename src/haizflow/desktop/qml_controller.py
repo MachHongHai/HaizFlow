@@ -91,7 +91,14 @@ from haizflow.schemas.editor import (
     SourceEditDecision,
 )
 from haizflow.schemas.video import CropSettings, SubtitleStyle, VideoConfig
-from haizflow.services import desktop_settings, editor_documents, manual_artifacts, project_store, video_store
+from haizflow.services import (
+    desktop_settings,
+    editor_documents,
+    gemini_translation,
+    manual_artifacts,
+    project_store,
+    video_store,
+)
 from haizflow.services.desktop_videos import (
     create_desktop_video,
     migrate_legacy_single_export,
@@ -203,6 +210,8 @@ class HaizFlowController(QObject):
     tiktokPublishChanged = Signal()
     appAlertRequested = Signal(str, str, str)
     resourcePacksRequested = Signal(str)
+    geminiSetupRequested = Signal()
+    geminiKeyChanged = Signal()
     appConfirmationRequested = Signal(str, str)
     editorPreviewChanged = Signal()
     manualToolStateChanged = Signal(str)
@@ -2684,6 +2693,78 @@ class HaizFlowController(QObject):
     def processingDevice(self):
         return self._settings_processing_device
 
+    @Property(bool, notify=geminiKeyChanged)
+    def geminiKeyConfigured(self):
+        try:
+            return gemini_translation.key_configured()
+        except OSError:
+            return False
+
+    @Property("QVariantList", notify=geminiKeyChanged)
+    def geminiApiKeys(self):
+        try:
+            return gemini_translation.list_keys()
+        except OSError:
+            return []
+
+    @Slot(str, str, result=bool)
+    def addGeminiApiKey(self, label, value):
+        try:
+            gemini_translation.add_named_key(label, value)
+        except (OSError, ValueError) as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def selectGeminiApiKey(self, key_id):
+        try:
+            gemini_translation.select_key(key_id)
+        except (OSError, ValueError) as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def removeGeminiApiKey(self, key_id):
+        try:
+            gemini_translation.remove_key(key_id)
+        except OSError as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def saveGeminiApiKey(self, value):
+        try:
+            gemini_translation.save_key(value)
+        except (OSError, ValueError) as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(result=bool)
+    def clearGeminiApiKey(self):
+        try:
+            gemini_translation.clear_key()
+        except OSError as exc:
+            self._show_app_alert("Gemini API key", str(exc), "warning")
+            return False
+        self.geminiKeyChanged.emit()
+        return True
+
+    @Slot(result=bool)
+    def openGeminiApiKeys(self):
+        return open_external_url(gemini_translation.API_KEYS_URL)
+
+    @Slot()
+    def requestGeminiSetup(self):
+        self.geminiSetupRequested.emit()
+
     @Property(str, notify=translationModelChanged)
     def translationModel(self):
         return self._translation_model
@@ -2691,7 +2772,14 @@ class HaizFlowController(QObject):
     @translationModel.setter
     def translationModel(self, value):
         normalized = str(value or "auto").lower()
-        if normalized not in {"auto", "q4", "full"}:
+        if normalized not in {"auto", "q4", "full", *gemini_translation.MODELS}:
+            return
+        if normalized in gemini_translation.MODELS:
+            if normalized != self._translation_model:
+                self._translation_model = normalized
+                self.translationModelChanged.emit()
+            if not self.geminiKeyConfigured:
+                self.requestGeminiSetup()
             return
         if normalized == "full" and not self._ensure_hardware_ready_for_action():
             return
@@ -3606,6 +3694,13 @@ class HaizFlowController(QObject):
             return False
         if tool_id not in allowed:
             self.appAlertRequested.emit("Thủ công", "Công cụ này không khả dụng.", "warning")
+            return False
+        if (
+            tool_id == "translation"
+            and str(getattr(video, "translation_model", "auto")).startswith("gemini-")
+            and not self.geminiKeyConfigured
+        ):
+            self.requestGeminiSetup()
             return False
         ensure_hardware = getattr(self, "_ensure_hardware_ready_for_action", None)
         if tool_id in {"translation", "voice", "separation"} and callable(ensure_hardware):
@@ -6067,7 +6162,7 @@ class HaizFlowController(QObject):
             target_language=self._target_language,
             speech_recognition_model=self._speech_recognition_model,
             translation_model=self._translation_model,
-            translator_provider="hymt2",
+            translator_provider="gemini" if self._translation_model in gemini_translation.MODELS else "hymt2",
             tts_provider=self._tts_provider,
             tts_voice=self._tts_voice,
             speaker_mode=self._speaker_mode,
@@ -6229,6 +6324,7 @@ class HaizFlowController(QObject):
             "target_language": config.target_language,
             "speech_recognition_model": config.speech_recognition_model,
             "translation_model": config.translation_model,
+            "translator_provider": config.translator_provider,
             "tts_provider": config.tts_provider,
             "tts_voice": config.tts_voice,
             "speaker_mode": config.speaker_mode,

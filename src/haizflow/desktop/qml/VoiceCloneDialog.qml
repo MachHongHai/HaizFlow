@@ -9,7 +9,7 @@ FloatingToolDialog {
     id: root
 
     expandedWidth: screen === "record" ? 540 : 410
-    expandedHeight: screen === "record" ? (recordingError.length > 0 ? 360 : 324) : 178
+    expandedHeight: screen === "record" ? (recordingError.length > 0 ? 408 : 372) : 178
     toolTitle: qsTr("Nhân bản giọng của tôi")
     toolSubtitle: ""
 
@@ -21,6 +21,7 @@ FloatingToolDialog {
     property var waveformPeaks: []
     property var livePeaks: []
     property bool recording: false
+    signal referenceAccepted(string path)
     readonly property bool samplePlaying: samplePlayer.playbackState === MediaPlayer.PlayingState
     readonly property bool samplePaused: samplePlayer.playbackState === MediaPlayer.PausedState
     readonly property bool hasSample: samplePath.length > 0
@@ -57,8 +58,10 @@ FloatingToolDialog {
     function chooseReferenceFile() {
         releaseSamplePlayer();
         const selected = AppController.chooseVoiceCloneReference();
-        if (selected.length > 0 && AppController.setVoiceCloneReference(selected, ""))
+        if (selected.length > 0 && AppController.setVoiceCloneReference(selected, "")) {
+            referenceAccepted(String(AppController.voiceCloneReferencePath || ""));
             root.close();
+        }
     }
 
     function beginRecording() {
@@ -301,7 +304,8 @@ FloatingToolDialog {
                 Text {
                     Layout.fillWidth: true
                     text: root.recording ? qsTr("Nhấn dừng để dùng mẫu này")
-                        : root.hasSample ? qsTr("Mẫu giọng đã được lưu") : qsTr("Chỉ dùng giọng của bạn hoặc người đã đồng ý")
+                        : root.hasSample ? qsTr("Mẫu đã lưu. Nhấn Áp dụng để chọn giọng nhân bản.")
+                        : qsTr("Chỉ dùng giọng của bạn hoặc người đã đồng ý")
                     color: Theme.textMuted
                     font.pixelSize: TypeScale.metadata
                     textFormat: Text.PlainText
@@ -328,6 +332,17 @@ FloatingToolDialog {
                         else
                             root.beginRecording();
                     }
+                }
+            }
+
+            StudioButton {
+                Layout.fillWidth: true
+                visible: root.hasSample && !root.recording
+                text: qsTr("Áp dụng giọng nhân bản")
+                variant: "primary"
+                onClicked: {
+                    root.referenceAccepted(root.samplePath);
+                    root.close();
                 }
             }
         }

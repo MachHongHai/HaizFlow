@@ -9,6 +9,7 @@ Item {
     id: root
 
     property string title: ""
+    property bool showHeader: true
     property int contentMaximumWidth: 920
     readonly property int horizontalInset: UiMetrics.pageMargin
     default property alias content: contentColumn.data
@@ -22,11 +23,13 @@ Item {
             Layout.fillWidth: true
             Layout.bottomMargin: Theme.space12
             title: root.title
+            visible: root.showHeader
         }
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 1
+            Layout.preferredHeight: root.showHeader ? 1 : 0
+            visible: root.showHeader
             color: Theme.divider
         }
 

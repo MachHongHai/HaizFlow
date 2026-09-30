@@ -409,7 +409,7 @@ class ProjectCommandsController:
         if asr_model not in {"small", "large-v3-turbo"}:
             asr_model = "small"
         selected_translation_model = str(translation_model or getattr(host, "_translation_model", "auto")).lower()
-        if selected_translation_model not in {"auto", "q4", "full"}:
+        if selected_translation_model not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:
             return False
         capabilities = getattr(host, "_hardware_capabilities", None)
         turbo_gpu_available = bool(
@@ -525,6 +525,7 @@ class ProjectCommandsController:
                 "target_language": language,
                 "speech_recognition_model": asr_model,
                 "translation_model": selected_translation_model,
+                "translator_provider": "gemini" if selected_translation_model.startswith("gemini-") else "hymt2",
                 "tts_provider": provider,
                 "tts_voice": voice,
                 "speaker_mode": normalized_speaker_mode,

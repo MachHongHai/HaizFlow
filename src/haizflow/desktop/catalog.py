@@ -4,19 +4,6 @@ POPULAR_TARGET_LANGUAGES = [
     ("vi", "Vietnamese", "Tiếng Việt"),
     ("en", "English", "English"),
     ("zh", "Chinese", "中文"),
-    ("hi", "Hindi", "हिन्दी"),
-    ("es", "Spanish", "Español"),
-    ("fr", "French", "Français"),
-    ("ar", "Arabic", "العربية"),
-    ("pt", "Portuguese", "Português"),
-    ("ru", "Russian", "Русский"),
-    ("id", "Indonesian", "Bahasa Indonesia"),
-    ("de", "German", "Deutsch"),
-    ("ja", "Japanese", "日本語"),
-    ("ko", "Korean", "한국어"),
-    ("it", "Italian", "Italiano"),
-    ("th", "Thai", "ไทย"),
-    ("fil", "Filipino", "Filipino"),
 ]
 
 
@@ -95,4 +82,12 @@ OMNIVOICE_TTS_VOICES = [
     ("omnivoice:trailer_deep", "Deep trailer", "entertainment"),
     ("omnivoice:radio_warm", "Warm radio", "entertainment"),
     ("omnivoice:mystery_whisper", "Mystery whisper", "entertainment"),
+    ("omnivoice:female_gentle", "Gentle female", "natural"),
+    ("omnivoice:male_soft", "Soft male", "natural"),
+    ("omnivoice:female_confident", "Confident female", "narration"),
+    ("omnivoice:male_broadcast", "Broadcast male", "narration"),
+    ("omnivoice:child_bright", "Bright child", "style"),
+    ("omnivoice:elder_warm", "Warm elder", "style"),
+    ("omnivoice:comic_high", "High comic", "entertainment"),
+    ("omnivoice:documentary", "Documentary", "entertainment"),
 ]

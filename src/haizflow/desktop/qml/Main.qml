@@ -24,6 +24,7 @@ ApplicationWindow {
     readonly property string routeHome: "home"
     readonly property string routeProjects: "projects"
     readonly property string routeSettings: "settings"
+    readonly property string routeApiKeys: "api-keys"
     readonly property string routePackages: "packages"
     readonly property string routeSingleProjects: "single-projects"
     readonly property string routeSingleWorkspace: "single-workspace"
@@ -54,7 +55,8 @@ ApplicationWindow {
         && AppController.isSelectedVideoQueued && !AppController.isSelectedVideoProcessing
     readonly property bool selectedProgressMeasured: [
         "extracting_audio", "separating_audio", "transcribing",
-        "creating_subtitle", "building_audio_timeline"
+        "creating_subtitle", "building_audio_timeline",
+        "manual_source", "manual_separation", "manual_recognition", "manual_audio"
     ].indexOf(AppController.selectedStepId) < 0
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
@@ -64,7 +66,7 @@ ApplicationWindow {
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
     readonly property bool canNavigateForward: !globalNavigationBlocked && (downloadCanGoForward || routeCanGoForward)
-    readonly property bool editScopeAvailable: currentRoute === routeSettings
+    readonly property bool editScopeAvailable: currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages
         || currentRoute === routeSingleWorkspace
         || currentRoute === routeManualWorkspace
         || currentRoute === routeBatchWorkspace
@@ -73,7 +75,7 @@ ApplicationWindow {
         || currentRoute === routePublishWorkspace
 
     function syncEditHistoryScope() {
-        if (currentRoute === routeSettings) {
+        if (currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages) {
             AppController.setEditHistoryScope("settings");
         } else if (currentRoute === routeBatchWorkspace
                 || currentRoute === routeDownloadWorkspace
@@ -93,7 +95,7 @@ ApplicationWindow {
     function navigationSection() {
         if (currentRoute === routeProjects)
             return "projects";
-        if (currentRoute === routeSettings || currentRoute === routePackages)
+        if (currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages)
             return "settings";
         if (currentRoute === routeDownloadProjects)
             return "downloads";
@@ -114,7 +116,7 @@ ApplicationWindow {
     }
 
     function routeIsAvailable(route) {
-        if (route === routeHome || route === routeProjects || route === routeSettings || route === routePackages || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
+        if (route === routeHome || route === routeProjects || route === routeSettings || route === routeApiKeys || route === routePackages || route === routeSingleProjects || route === routeManualProjects || route === routeBatchProjects || route === routeDownloadProjects || route === routePublishProjects)
             return true;
         if (!AppController.hasOpenProject)
             return false;
@@ -303,6 +305,14 @@ ApplicationWindow {
     }
 
     ConfirmDialog {
+        id: geminiSetupDialog
+        title: qsTr("Chưa thiết lập Gemini API Key")
+        message: qsTr("Bạn cần thêm API key để dịch bằng Gemini. Mở Cài đặt → API Key ngay bây giờ?")
+        confirmText: qsTr("Mở API Key")
+        onConfirmed: root.navigate(root.routeApiKeys)
+    }
+
+    ConfirmDialog {
         id: appConfirmationDialog
         property bool responseSent: false
         confirmText: qsTr("Xác nhận")
@@ -367,6 +377,11 @@ ApplicationWindow {
 
         function onResourcePacksRequested(group) {
             root.navigate(root.routePackages);
+        }
+
+        function onGeminiSetupRequested() {
+            if (!geminiSetupDialog.visible)
+                geminiSetupDialog.open();
         }
 
         function onProjectPrepared() {
@@ -434,6 +449,7 @@ ApplicationWindow {
                 projectSetupDialogLoader.invoke("openForType", ["publish"]);
             }
             onSettingsRequested: root.navigate(root.routeSettings)
+            onApiKeysRequested: root.navigate(root.routeApiKeys)
             onPackagesRequested: root.navigate(root.routePackages)
             onAboutRequested: aboutDialogLoader.invoke("open", [])
         }

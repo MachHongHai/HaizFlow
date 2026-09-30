@@ -91,6 +91,14 @@ OMNIVOICE_VOICE_INSTRUCTIONS = {
     "omnivoice:trailer_deep": "male, young adult, low pitch",
     "omnivoice:radio_warm": "female, young adult, low pitch",
     "omnivoice:mystery_whisper": "whisper, elderly, low pitch",
+    "omnivoice:female_gentle": "female, young adult, moderate pitch",
+    "omnivoice:male_soft": "male, young adult, low pitch",
+    "omnivoice:female_confident": "female, young adult, high pitch",
+    "omnivoice:male_broadcast": "male, elderly, moderate pitch",
+    "omnivoice:child_bright": "child, high pitch",
+    "omnivoice:elder_warm": "elderly, low pitch",
+    "omnivoice:comic_high": "child, very high pitch",
+    "omnivoice:documentary": "male, elderly, low pitch",
 }
 
 # The desktop catalog uses ISO 639-1 identifiers. OmniVoice accepts most of

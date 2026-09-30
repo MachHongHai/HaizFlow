@@ -417,6 +417,16 @@ InspectorPanel {
     LazyDialogLoader {
         id: voiceCloneDialogLoader
         parent: root
-        sourceComponent: Component { VoiceCloneDialog { onClosed: voiceCloneDialogLoader.release() } }
+        sourceComponent: Component {
+            VoiceCloneDialog {
+                onReferenceAccepted: function(path) {
+                    // qmllint disable missing-property
+                    if (voiceDialogLoader.status === Loader.Ready && voiceDialogLoader.item)
+                        voiceDialogLoader.item.selectCloneReference();
+                    // qmllint enable missing-property
+                }
+                onClosed: voiceCloneDialogLoader.release()
+            }
+        }
     }
 }

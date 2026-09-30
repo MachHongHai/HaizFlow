@@ -24,6 +24,17 @@ class ProcessingLifecycleController:
         video = video_store.get_video(video_id)
         if not video or video.status == "processing" or host._processing_queue.contains(video_id):
             return False
+        if str(getattr(video, "translation_model", "")).startswith("gemini-"):
+            from haizflow.services.gemini_translation import key_configured
+
+            if not key_configured():
+                host.appAlertRequested.emit(
+                    "Cần Gemini API key",
+                    "Thêm API key trong Cài đặt → Quản lý API Key trước khi dịch.",
+                    "warning",
+                )
+                host.geminiSetupRequested.emit()
+                return False
         if video.status == "paused":
             prepare_video_resume(video_id)
         manual_tool = (

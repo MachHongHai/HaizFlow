@@ -1197,12 +1197,10 @@ def _subtitle_visibility_enable(
     source_start_seconds: float = 0.0,
     source_duration_seconds: float | None = None,
 ) -> str:
-    """Return a local-timeline FFmpeg expression for source caption visibility.
+    """Legacy timing helper retained for older callers.
 
-    OCR determines geometry, while transcription timings determine when that
-    geometry should be treated.  Keeping the two independent prevents a clean
-    first frame from receiving a conspicuous patch strip without expanding the
-    OCR rectangle itself.
+    Source blur/patch no longer uses speech windows: the selected OCR region
+    must remain covered continuously, including silence between utterances.
     """
     if not intervals:
         return ""
@@ -1545,11 +1543,10 @@ def render_video(
     )
     requested_removal_mode = str(original_subtitle_removal_mode).strip().lower()
     removal_mode = "patch" if requested_removal_mode in {"patch", "inpaint"} else "blur"
-    removal_enable = _subtitle_visibility_enable(
-        original_subtitle_intervals,
-        source_start_seconds=source_start_seconds,
-        source_duration_seconds=source_duration,
-    )
+    # The detected rectangle is a source-video treatment, not a subtitle cue.
+    # ASR gaps do not imply the burnt-in source caption has disappeared.
+    # Keep blur/patch active for the entire clip, including its first/last frames.
+    removal_enable = ""
     if removal_region:
         x, y, width, height = removal_region
         log_to_video(

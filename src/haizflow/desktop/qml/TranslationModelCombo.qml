@@ -11,13 +11,22 @@ AppComboBox {
     valueRole: "value"
     model: [
         { label: qsTr("HY-MT2 CPU · Q4"), value: "q4" },
-        { label: qsTr("HY-MT2 GPU · đầy đủ"), value: "full" }
+        { label: qsTr("HY-MT2 GPU · đầy đủ"), value: "full" },
+        { label: qsTr("Gemini 3.1 Flash-Lite · giá thấp"), value: "gemini-3.1-flash-lite" },
+        { label: qsTr("Gemini 3.5 Flash-Lite · tiết kiệm"), value: "gemini-3.5-flash-lite" },
+        { label: qsTr("Gemini 3.8 Flash · chất lượng cao"), value: "gemini-3.8-flash" }
     ]
-    currentIndex: root.selectedModel === "full" ? 1 : 0
+    currentIndex: root.selectedModel === "full" ? 1
+        : root.selectedModel === "gemini-3.1-flash-lite" ? 2
+        : root.selectedModel === "gemini-3.5-flash-lite" ? 3
+        : root.selectedModel === "gemini-3.8-flash" ? 4 : 0
     onActivated: {
         root.edited(root.currentValue);
         root.currentIndex = Qt.binding(function() {
-            return root.selectedModel === "full" ? 1 : 0;
+            return root.selectedModel === "full" ? 1
+                : root.selectedModel === "gemini-3.1-flash-lite" ? 2
+                : root.selectedModel === "gemini-3.5-flash-lite" ? 3
+                : root.selectedModel === "gemini-3.8-flash" ? 4 : 0;
         });
     }
 }

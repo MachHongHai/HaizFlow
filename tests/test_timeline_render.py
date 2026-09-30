@@ -362,6 +362,45 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("crop=1152:76:384:842", filter_graph)
         self.assertIn("overlay=384:842", filter_graph)
 
+    def test_source_cover_stays_on_between_spoken_subtitles(self):
+        captured = {}
+
+        class FakeProcess:
+            returncode = 0
+
+            def __init__(self, command, **kwargs):
+                captured["command"] = command
+                (Path(kwargs["cwd"]) / command[-1]).resolve().write_bytes(b"rendered-video")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "input.mp4").write_bytes(b"source")
+            (root / "voice.wav").write_bytes(b"R" * 100)
+            subtitle_path = root / "subtitles.srt"
+            subtitle_path.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
+            with (
+                mock.patch.object(render, "get_video_dimensions", return_value=(1920, 1080)),
+                mock.patch.object(render, "get_video_duration", return_value=5.0),
+                mock.patch.object(render, "get_media_stream_types", return_value={"video", "audio"}),
+                mock.patch.object(render, "preferred_video_encoder", return_value=("libx264", [])),
+                mock.patch.object(render.subprocess, "Popen", FakeProcess),
+                mock.patch.object(render, "communicate_process", return_value=("", "")),
+                mock.patch.object(render, "check_cancellation"),
+                mock.patch.object(render, "log_to_video"),
+            ):
+                for mode in ("blur", "patch"):
+                    render.render_video(
+                        str(root / "input.mp4"), str(root / "voice.wav"), str(subtitle_path),
+                        str(root / "output.mp4"), "keep_ratio", SubtitleStyle(), CropSettings(), "video-id",
+                        {"x_percent": 20, "y_percent": 78, "width_percent": 60, "height_percent": 7},
+                        original_subtitle_removal_mode=mode,
+                        original_subtitle_intervals=[(1.0, 2.0), (3.0, 4.0)],
+                    )
+                    command = captured["command"]
+                    filter_graph = command[command.index("-filter_complex") + 1]
+                    self.assertIn("overlay=384:842", filter_graph)
+                    self.assertNotIn("between(t", filter_graph)
+
     def test_ocr_cover_mode_uses_default_until_caption_layout_is_edited(self):
         from haizflow.pipeline.process_video import _manual_subtitle_layout_for_render
 

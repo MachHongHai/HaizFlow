@@ -14,6 +14,7 @@ Rectangle {
     signal newDownloadProjectRequested
     signal newPublishProjectRequested
     signal settingsRequested
+    signal apiKeysRequested
     signal packagesRequested
     signal undoRequested
     signal redoRequested
@@ -224,6 +225,7 @@ Rectangle {
         parent: Overlay.overlay
         menuContentWidth: Math.max(
             settingsItem.implicitWidth,
+            apiKeysItem.implicitWidth,
             packagesItem.implicitWidth,
             guideItem.implicitWidth,
             reportIssueItem.implicitWidth,
@@ -234,6 +236,13 @@ Rectangle {
 
             text: qsTr("Cài đặt")
             onTriggered: root.settingsRequested()
+        }
+
+        AppMenuItem {
+            id: apiKeysItem
+
+            text: qsTr("API Key")
+            onTriggered: root.apiKeysRequested()
         }
 
         AppMenuItem {

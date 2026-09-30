@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from haizflow.desktop.audio_preview_controller import AudioPreviewController
-from haizflow.desktop.catalog import EDGE_TTS_VOICES_BY_LANGUAGE, OMNIVOICE_TTS_VOICES
+from haizflow.desktop.catalog import EDGE_TTS_VOICES_BY_LANGUAGE, OMNIVOICE_TTS_VOICES, POPULAR_TARGET_LANGUAGES
 
 
 def _host(**overrides):
@@ -31,23 +31,31 @@ def _host(**overrides):
 
 
 class AudioPreviewControllerTests(unittest.TestCase):
-    def test_every_vietnamese_voice_has_the_locked_packaged_sample(self):
+    def test_every_target_language_voice_has_a_matching_packaged_sample(self):
         preview = AudioPreviewController(_host())
-        missing = [
-            voice
-            for voice, _label, _category in OMNIVOICE_TTS_VOICES
-            if not preview.has_voice_sample("omnivoice", voice, "vi")
-        ]
-        missing.extend(
-            voice
-            for voice, _label in EDGE_TTS_VOICES_BY_LANGUAGE["vi"]
-            if not preview.has_voice_sample("edge", voice, "vi")
-        )
+        languages = [code for code, _english, _native in POPULAR_TARGET_LANGUAGES]
+        self.assertEqual(languages, ["vi", "en", "zh"])
+        missing = []
+        for language in languages:
+            missing.extend(
+                (language, voice)
+                for voice, _label, _category in OMNIVOICE_TTS_VOICES
+                if not preview.has_voice_sample("omnivoice", voice, language)
+            )
+            missing.extend(
+                (language, voice)
+                for voice, _label in EDGE_TTS_VOICES_BY_LANGUAGE[language]
+                if not preview.has_voice_sample("edge", voice, language)
+            )
         self.assertEqual(missing, [])
 
         manifest_path = AudioPreviewController._PACKAGED_SAMPLE_DIR / "samples.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual(len(manifest["samples"]), 34)
+        self.assertEqual(len(manifest["samples"]), len(languages) * (len(OMNIVOICE_TTS_VOICES) + 2))
+        self.assertEqual(set(manifest["sentences"]), set(languages))
+        packaged_audio = list(AudioPreviewController._PACKAGED_SAMPLE_DIR.rglob("*.mp3"))
+        self.assertEqual(len(packaged_audio), len(manifest["samples"]))
+        self.assertEqual({path.stem for path in packaged_audio}, set(languages))
         self.assertEqual(
             manifest["sentences"]["vi"],
             "Ứng dụng được phát triển bởi Mạch Hồng Hải, một sinh viên Đại học Kinh tế "
@@ -83,10 +91,10 @@ class AudioPreviewControllerTests(unittest.TestCase):
 
         self.assertEqual(path, str(sample))
 
-    def test_omnivoice_preset_preview_uses_packaged_sample_for_english_project(self):
+    def test_omnivoice_preset_preview_uses_english_sample_for_english_project(self):
         preview = AudioPreviewController(_host())
         self.assertTrue(preview.has_voice_sample("omnivoice", "omnivoice:bright", "en"))
-        self.assertTrue(preview.voice_sample_path("omnivoice", "omnivoice:bright", "en").endswith("vi.mp3"))
+        self.assertTrue(preview.voice_sample_path("omnivoice", "omnivoice:bright", "en").endswith("en.mp3"))
 
     def test_voice_only_preview_publishes_an_existing_sample_immediately(self):
         with tempfile.TemporaryDirectory() as temp_dir:

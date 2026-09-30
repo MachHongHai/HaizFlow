@@ -1,45 +1,45 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
 ColumnLayout {
+    id: root
     property var inspector
     spacing: Theme.space8
 
     AudioLevelControl {
         Layout.fillWidth: true
-        label: AppController.enableAudioSeparation && inspector.hasCurrentCache("source")
+        label: AppController.enableAudioSeparation && root.inspector.hasCurrentCache("source")
             ? qsTr("Âm nền") : qsTr("Âm thanh gốc")
         volume: AppController.originalVolume
-        adjustable: inspector.editable
+        adjustable: root.inspector.editable
         onVolumeEdited: function(value) {
             AppController.originalVolume = value;
-            inspector.scheduleSave();
+            root.inspector.scheduleSave();
         }
     }
     AudioLevelControl {
         Layout.fillWidth: true
         label: qsTr("Giọng đọc")
         volume: AppController.ttsVolume
-        adjustable: inspector.editable && inspector.hasCurrentCache("voice")
+        adjustable: root.inspector.editable && root.inspector.hasCurrentCache("voice")
         disabledHint: qsTr("Chưa tạo giọng đọc")
         onVolumeEdited: function(value) {
             AppController.ttsVolume = value;
-            inspector.scheduleSave();
+            root.inspector.scheduleSave();
         }
     }
     AudioLevelControl {
         Layout.fillWidth: true
         label: qsTr("Nhạc nền")
         volume: AppController.backgroundMusicVolume
-        adjustable: inspector.editable && AppController.backgroundMusicPath.length > 0
+        adjustable: root.inspector.editable && AppController.backgroundMusicPath.length > 0
         disabledHint: qsTr("Chưa chọn nhạc nền")
         onVolumeEdited: function(value) {
             AppController.backgroundMusicVolume = value;
-            inspector.scheduleSave();
+            root.inspector.scheduleSave();
         }
     }
     ColumnLayout {
@@ -53,7 +53,7 @@ ColumnLayout {
             label: qsTr("Tự giảm nhạc khi có lời")
             AppSwitch {
                 checked: duckingSection.duckingEnabled
-                enabled: inspector.editable && AppController.backgroundMusicPath.length > 0
+                enabled: root.inspector.editable && AppController.backgroundMusicPath.length > 0
                 onToggled: AppController.setAudioDucking(
                     checked,
                     Number(duckingSection.editorDocument.audio_ducking_reduction_db || -12),
@@ -95,21 +95,21 @@ ColumnLayout {
             Layout.fillWidth: true
             text: qsTr("Chọn tệp")
             variant: "secondary"
-            enabled: inspector.editable
+            enabled: root.inspector.editable
             onClicked: AppController.browseBackgroundMusic()
         }
         StudioButton {
             Layout.fillWidth: true
             text: qsTr("Từ liên kết")
             variant: "secondary"
-            enabled: inspector.editable
-            onClicked: inspector.openBackgroundMusicLinkDialog()
+            enabled: root.inspector.editable
+            onClicked: root.inspector.openBackgroundMusicLinkDialog()
         }
         IconButton {
             visible: AppController.backgroundMusicPath.length > 0
             glyph: "\uE74D"
             toolTipText: qsTr("Xóa nhạc nền")
-            enabled: inspector.editable
+            enabled: root.inspector.editable
             onClicked: AppController.clearBackgroundMusic()
         }
     }
