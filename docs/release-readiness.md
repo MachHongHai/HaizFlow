@@ -1,5 +1,13 @@
 # Release readiness
 
+Current source license is Apache-2.0. The proposed source-available/application
+terms are drafts, not active. [Licensing review](licensing-review.md) records
+LICENSE COMPLIANCE BLOCKER gates for rights scope, OmniVoice NonCommercial
+models/samples, FFmpeg source closure and Qt LGPL obligations. Run
+`scripts/verify-legal-state.py`; public packaging also requires
+`--public-release` and reviewed clearance evidence. Do not activate draft terms
+through installer metadata or assume previous Apache grants were revoked.
+
 [Documentation](README.md) · [Dependency security](dependency-security.md) · [Tiếng Việt](release-readiness.vi.md)
 
 Last reviewed: **2026-09-09**

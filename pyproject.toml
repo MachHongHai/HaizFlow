@@ -6,6 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "haizflow"
 version = "0.1.0"
 description = "Free desktop video translation, dubbing and automation for Windows"
+authors = [{name = "Mach Hong Hai", email = "machhonghaipr@gmail.com"}]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "licenses/*"]
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "PySide6==6.11.1",
@@ -20,6 +23,11 @@ dependencies = [
   "pydub==0.25.1",
   "srt==3.5.3",
 ]
+
+[project.urls]
+Homepage = "https://haizflow.pages.dev/"
+Repository = "https://github.com/MachHongHai/HaizFlow"
+Issues = "https://github.com/MachHongHai/HaizFlow/issues"
 
 [project.optional-dependencies]
 # Development compatibility set. Public releases install these dependencies

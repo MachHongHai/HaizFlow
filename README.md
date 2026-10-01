@@ -150,11 +150,15 @@ Focused issues and pull requests are welcome. Changes to saved project data, cac
 
 ## License
 
-HaizFlow source code is available under the [Apache License 2.0](LICENSE). Models, fonts, codecs and third-party libraries retain their own licenses. The OmniVoice SDK and its model checkpoint, in particular, do not have identical licensing terms. Review [NOTICE](NOTICE), [`licenses`](licenses) and [release readiness](docs/release-readiness.md) before redistribution or commercial use.
+The current source license is [Apache-2.0](LICENSE). A proposed **freeware + source-available + restricted redistribution** license is [a draft, not in force](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md). It would permit free application use and personal/internal builds and changes, but would not grant software redistribution, rebranding or resale rights for covered code without separate permission. It is not an OSI open-source license. Existing Apache permissions and third-party rights are not revoked.
+
+Public source supports technical transparency, study and architectural review. HaizFlow claims no ownership of users' videos. The proposed HaizFlow terms permit monetized video creation without per-video approval, **but model, media and voice rights still apply**: the current OmniVoice checkpoint is NonCommercial, unlike its Apache-licensed SDK. This is an unresolved commercial-workflow/release blocker, not cleared by HaizFlow's license.
+
+Use the [official repository](https://github.com/MachHongHai/HaizFlow), [GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases) and [website](https://haizflow.pages.dev/) to identify official distribution. This remains a development project, not a statement of production readiness. See [NOTICE](NOTICE), [third-party inventory](THIRD_PARTY_NOTICES.md) and [licensing review and activation checklist](docs/licensing-review.md).
 
 ## Developer
 
-HaizFlow is developed and maintained by **Mạch Hồng Hải**.
+HaizFlow was created by **Mach Hong Hai (Mạch Hồng Hải)**. Copyright (c) 2026 Mach Hong Hai applies to the work he owns; contributors and third parties retain their own rights and notices.
 
 <p>
   <a href="https://github.com/MachHongHai"><img alt="Mạch Hồng Hải on GitHub" src="https://img.shields.io/badge/GitHub-MachHongHai-24292F?style=for-the-badge&logo=github"></a>

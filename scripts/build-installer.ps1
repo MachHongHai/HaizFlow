@@ -26,6 +26,10 @@ if (!(Test-Path -LiteralPath (Join-Path $ArtifactPath "HaizFlow.exe") -PathType 
 
 & $Python (Join-Path $PSScriptRoot "finalize-release.py") --artifact $ArtifactPath --verify
 if ($LASTEXITCODE -ne 0) { throw "Artifact checksum verification failed." }
+$LegalArguments = @((Join-Path $PSScriptRoot "verify-legal-state.py"), "--artifact", $ArtifactPath)
+if (!$AllowUnsigned) { $LegalArguments += "--public-release" }
+& $Python @LegalArguments
+if ($LASTEXITCODE -ne 0) { throw "Installer legal documents or licensing review failed." }
 & $Python (Join-Path $PSScriptRoot "finalize-release.py") --artifact $ArtifactPath --verify-installer-eligibility
 if ($LASTEXITCODE -ne 0) { throw "Artifact provenance and payload eligibility verification failed." }
 

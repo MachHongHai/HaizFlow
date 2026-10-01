@@ -115,7 +115,7 @@ HaizFlow không vận hành máy chủ xử lý video cho người dùng. Các b
 
 - tải gói tài nguyên sau khi người dùng xác nhận;
 - kiểm tra hoặc tải nội dung từ liên kết và kênh công khai;
-- gửi nội dung phụ đề tới Edge TTS khi chọn nhà cung cấp này;
+- gửi nội dung phụ đề tới Gemini khi người dùng chọn dịch bằng API;
 - đăng nhập, tải lên và đăng bài qua Zernio.
 
 Thông tin đăng nhập được lưu bằng Windows Credential Manager. Gói chẩn đoán không chứa video dự án và lọc các trường bí mật đã biết. Chi tiết được trình bày tại [Kiến trúc: kết nối mạng và quyền riêng tư](docs/architecture.vi.md#10-ranh-giới-mạng-và-quyền-riêng-tư).
@@ -137,7 +137,7 @@ Thông tin đăng nhập được lưu bằng Windows Credential Manager. Gói c
 - **Ứng dụng:** Python 3.13, PySide6 và Qt Quick/QML.
 - **Nhận dạng:** WhisperX, faster-whisper và CTranslate2.
 - **Dịch:** HY-MT2.
-- **Giọng đọc:** OmniVoice chạy cục bộ; Edge TTS là lựa chọn trực tuyến.
+- **Giọng đọc:** OmniVoice chạy cục bộ.
 - **Âm thanh:** Demucs, FFmpeg, PyDub và SoundFile.
 - **Hình ảnh và phụ đề:** RapidOCR, FFmpeg và renderer tương thích libass.
 - **Nhập video công khai:** yt-dlp với kiểm tra dữ liệu và số lần thử lại có giới hạn.
@@ -150,11 +150,15 @@ Repository hoan nghênh issue rõ ràng và pull request có phạm vi cụ th�
 
 ## Giấy phép
 
-Mã nguồn HaizFlow được phát hành theo [Apache License 2.0](LICENSE). Model, font, codec và thư viện bên thứ ba giữ giấy phép riêng. SDK OmniVoice và checkpoint model của nó không dùng cùng một điều khoản giấy phép. Hãy đọc [NOTICE](NOTICE), thư mục [`licenses`](licenses) và [điều kiện phát hành](docs/release-readiness.vi.md) trước khi phân phối lại hoặc sử dụng thương mại.
+Giấy phép mã nguồn hiện hành là [Apache-2.0](LICENSE). Mô hình **miễn phí sử dụng + source-available + hạn chế phân phối lại** mới đang là [bản dự thảo, chưa có hiệu lực](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md). Dự thảo cho phép dùng ứng dụng miễn phí, build và chỉnh sửa cá nhân/nội bộ; không mặc định cho phép phân phối phần mềm, đóng gói lại, đổi thương hiệu hoặc bán phần mã thuộc phạm vi kiểm soát nếu chưa được cấp quyền riêng. Đây không phải giấy phép open-source theo OSI. Quyền Apache đã cấp và quyền của bên thứ ba không bị thu hồi.
+
+Mã nguồn được công khai để minh bạch kỹ thuật, học tập và đánh giá kiến trúc. HaizFlow không nhận quyền sở hữu video của người dùng. Điều khoản dự kiến cho phép tạo video kiếm tiền mà không cần xin phép từng video, **nhưng vẫn phải đáp ứng quyền về model, nội dung và giọng nói**: checkpoint OmniVoice hiện tại có điều kiện phi thương mại, khác SDK Apache. Đây là vướng mắc chưa giải quyết cho luồng thương mại và phát hành, không được giấy phép HaizFlow ghi đè.
+
+Bản chính thức được nhận diện qua [repository](https://github.com/MachHongHai/HaizFlow), [GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases) và [trang web](https://haizflow.pages.dev/). Dự án vẫn đang phát triển, chưa có tuyên bố sẵn sàng production. Xem [NOTICE](NOTICE), [thành phần bên thứ ba](THIRD_PARTY_NOTICES.md) và [rà soát giấy phép, điều kiện kích hoạt](docs/licensing-review.md).
 
 ## Nhà phát triển
 
-HaizFlow được phát triển và duy trì bởi **Mạch Hồng Hải**.
+HaizFlow được khởi tạo bởi **Mach Hong Hai (Mạch Hồng Hải)**. Copyright (c) 2026 Mach Hong Hai chỉ áp dụng cho phần ông sở hữu; người đóng góp và bên thứ ba giữ quyền cùng thông báo riêng.
 
 <p>
   <a href="https://github.com/MachHongHai"><img alt="GitHub của Mạch Hồng Hải" src="https://img.shields.io/badge/GitHub-MachHongHai-24292F?style=for-the-badge&logo=github"></a>

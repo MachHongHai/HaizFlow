@@ -4,6 +4,26 @@
 <context>
     <name>AboutDialog</name>
     <message>
+        <source>HaizFlow · Phiên bản %1</source>
+        <translation>HaizFlow · Version %1</translation>
+    </message>
+    <message>
+        <source>Khởi tạo bởi Mach Hong Hai. Copyright (c) 2026 Mach Hong Hai cho phần mã thuộc sở hữu; các tác giả khác giữ quyền riêng.</source>
+        <translation>Created by Mach Hong Hai. Copyright (c) 2026 Mach Hong Hai for his own work; contributors and third parties retain their rights.</translation>
+    </message>
+    <message>
+        <source>Giấy phép</source>
+        <translation>License</translation>
+    </message>
+    <message>
+        <source>Bên thứ ba</source>
+        <translation>Third parties</translation>
+    </message>
+    <message>
+        <source>Giấy phép và thông báo</source>
+        <translation>Licenses and notices</translation>
+    </message>
+    <message>
         <location filename="../qml/AboutDialog.qml" line="+10"/>
         <source>Giới thiệu</source>
         <translation>About</translation>
@@ -20,8 +40,8 @@
     </message>
     <message>
         <location line="+10"/>
-        <source>Miễn phí · Mã nguồn mở</source>
-        <translation>Free · Open source</translation>
+        <source>Miễn phí sử dụng · Mã nguồn công khai</source>
+        <translation>Free to use · Public source</translation>
     </message>
     <message>
         <location line="+17"/>

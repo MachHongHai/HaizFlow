@@ -46,6 +46,10 @@ if (!(Test-Path -LiteralPath $Lock -PathType Leaf)) {
 if ($LASTEXITCODE -ne 0) {
   throw "Engine dependency locks do not match their reviewed manifest."
 }
+$LegalArguments = @((Join-Path $PSScriptRoot "verify-legal-state.py"))
+if (!$AllowUnsigned) { $LegalArguments += "--public-release" }
+& $VerifierPython @LegalArguments
+if ($LASTEXITCODE -ne 0) { throw "Engine licensing review failed." }
 
 function Sign-EngineExecutable {
   param([string]$Executable)
@@ -137,8 +141,11 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Could not generate engine compliance notices." }
   Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination $Artifact -Force
   Copy-Item -LiteralPath (Join-Path $Root "NOTICE") -Destination $Artifact -Force
+  Copy-Item -LiteralPath (Join-Path $Root "legal") -Destination $Artifact -Recurse -Force
   Copy-Item -LiteralPath (Join-Path $Compliance "THIRD_PARTY_NOTICES.md") -Destination $Artifact -Force
   Copy-Item -LiteralPath (Join-Path $Compliance "licenses") -Destination $Artifact -Recurse -Force
+  & $VerifierPython (Join-Path $PSScriptRoot "verify-legal-state.py") --artifact $Artifact
+  if ($LASTEXITCODE -ne 0) { throw "Packaged engine legal documents differ from source." }
   Sign-EngineExecutable (Join-Path $Artifact "HaizFlowEngine.exe")
   & (Join-Path $Artifact "HaizFlowEngine.exe") --smoke --profile $Profile
   if ($LASTEXITCODE -ne 0) { throw "Frozen engine smoke test failed." }

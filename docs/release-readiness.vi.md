@@ -1,5 +1,13 @@
 # Tiêu chuẩn sẵn sàng phát hành
 
+Giấy phép mã nguồn hiện hành vẫn là Apache-2.0. Giấy phép source-available và
+điều khoản ứng dụng mới là dự thảo, chưa có hiệu lực. [Rà soát giấy phép](licensing-review.md)
+ghi các LICENSE COMPLIANCE BLOCKER: phạm vi quyền sở hữu, OmniVoice phi thương
+mại và mẫu giọng, source tương ứng FFmpeg, nghĩa vụ LGPL của Qt. Chạy
+`scripts/verify-legal-state.py`; đóng gói công khai cần thêm `--public-release`
+cùng bằng chứng phê duyệt. Không kích hoạt dự thảo qua installer hoặc coi quyền
+Apache đã cấp trước đây là bị thu hồi.
+
 [Tài liệu](README.vi.md) · [An toàn dependency](dependency-security.vi.md) · [English](release-readiness.md)
 
 Rà soát gần nhất: **2026-09-09**

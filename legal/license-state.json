@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "active_source_license": "Apache-2.0",
+  "active_license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+  "proposed_source_license": "LicenseRef-HaizFlow-Source-Available-1.0",
+  "proposal_status": "draft",
+  "owner_approval": null,
+  "effective_release": null,
+  "public_release_review": null,
+  "blockers": [
+    "owned-code-and-contributor-scope",
+    "omnivoice-noncommercial-checkpoint-and-preview-assets",
+    "ffmpeg-complete-corresponding-source",
+    "qt-lgpl-module-and-relinking-evidence"
+  ]
+}

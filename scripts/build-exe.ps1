@@ -75,6 +75,10 @@ if (!$SignCertificatePath) {
 Push-Location -LiteralPath $Root
 try {
 
+$LegalArguments = @((Join-Path $PSScriptRoot "verify-legal-state.py"))
+if ($SignCertificatePath -and !$AllowDirtyBuild) { $LegalArguments += "--public-release" }
+Invoke-PythonChecked -Arguments $LegalArguments -Label "Legal document and licensing review"
+
 if (![System.IO.Path]::GetDirectoryName($ReleaseTemp).Equals($ReleaseTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Refusing to use an unsafe release temporary directory: $ReleaseTemp"
 }
@@ -400,8 +404,10 @@ Sign-ReleaseExecutable -Executable (Join-Path $ArtifactPath "HaizFlow.exe")
 
 Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination (Join-Path $ArtifactPath "LICENSE.txt") -Force
 Copy-Item -LiteralPath (Join-Path $Root "NOTICE") -Destination (Join-Path $ArtifactPath "NOTICE.txt") -Force
+Copy-Item -LiteralPath (Join-Path $Root "legal") -Destination $ArtifactPath -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $CompliancePath "THIRD_PARTY_NOTICES.md") -Destination $ArtifactPath -Force
 Copy-Item -LiteralPath (Join-Path $CompliancePath "licenses") -Destination (Join-Path $ArtifactPath "licenses") -Recurse -Force
+Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-legal-state.py"), "--artifact", $ArtifactPath) -Label "Packaged legal documents"
 Copy-Item -LiteralPath $FfmpegManifestPath -Destination (Join-Path $ArtifactPath "FFMPEG-MANIFEST.json") -Force
 Copy-Item -LiteralPath $ResourcePackManifestPath -Destination (Join-Path $ArtifactPath "RESOURCE-PACKS.json") -Force
 $ArtifactSources = Join-Path $ArtifactPath "sources"

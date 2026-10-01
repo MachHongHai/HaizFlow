@@ -15,4 +15,14 @@ Focused bug reports and pull requests are welcome. Before working on a change, s
 
 Do not commit models, project media, runtime data, credentials, generated build output, or private logs. By submitting a contribution, you agree that it may be distributed under the repository's Apache-2.0 license.
 
+Contributors retain copyright; a pull request is not a copyright assignment.
+The proposed restricted license is not active. Before incorporating a
+contribution into a future restricted release, maintainers must obtain and
+record sufficient permission for its exact scope, or keep it separately
+licensed. The [opt-in contributor permission draft](legal/CONTRIBUTOR-PERMISSION-DRAFT.md)
+requires explicit acceptance after approval; it does not bind earlier
+contributors. Mark third-party material and retain its notices. Report bugs
+with reproduction steps; discuss features before broad changes. Review covers
+behavior, tests, privacy, data safety and licensing, not only code style.
+
 For implementation conventions and release requirements, read the [development guide](docs/development.md) and [release readiness](docs/release-readiness.md).

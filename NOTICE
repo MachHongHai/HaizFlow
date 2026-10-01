@@ -1,7 +1,15 @@
 HaizFlow
+Created by Mach Hong Hai.
+Copyright (c) 2026 Mach Hong Hai, for the HaizFlow work he owns.
 Copyright 2026 HaizFlow contributors
 
 Licensed under the Apache License, Version 2.0.
+The proposed source-available license in legal/ is a DRAFT, not in force.
+This notice does not revoke earlier permissions or assert ownership of
+third-party code, models, fonts, icons, or other contributors' work.
+
+Official repository: https://github.com/MachHongHai/HaizFlow
+Official website: https://haizflow.pages.dev/
 
 This product bundles or can download third-party components that remain under
 their own licenses. See THIRD_PARTY_NOTICES.md and the licenses directory in

@@ -67,6 +67,7 @@ OutputDir=..\dist\installer
 OutputBaseFilename={#OutputBaseFilename}
 SetupIconFile={#SetupIconPath}
 LicenseFile={#SourceDir}\LICENSE.txt
+; The active approved license is displayed here, never draft application terms.
 Compression=lzma2/ultra64
 SolidCompression=yes
 DefaultDialogFontName=Segoe UI
@@ -111,6 +112,7 @@ Type: files; Name: "{app}\INSTALL-REQUIREMENTS.json"
 Type: files; Name: "{app}\LICENSE.txt"
 Type: files; Name: "{app}\NOTICE.txt"
 Type: files; Name: "{app}\THIRD_PARTY_NOTICES.md"
+Type: filesandordirs; Name: "{app}\legal"
 Type: files; Name: "{app}\FFMPEG-MANIFEST.json"
 
 [Icons]
