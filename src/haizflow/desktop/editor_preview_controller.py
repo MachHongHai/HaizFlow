@@ -373,7 +373,7 @@ class EditorPreviewController:
             start += cls._VISUAL_CHUNK_SECONDS
         return windows
 
-    def request(self, payload: str, playhead_seconds: float) -> bool:
+    def request(self, payload: str, playhead_seconds: float, *, cache_only: bool = False) -> bool:
         # Kept in the public slot for QML/API compatibility. A full-timeline
         # proxy is independent of the current playhead and can be reused for
         # every seek operation.
@@ -517,16 +517,20 @@ class EditorPreviewController:
                     and self._file_identity(cached_video) == cached_identity
                 )
                 audio_intact = not cached_audio or Path(cached_audio).is_file()
-                if video_intact and audio_intact:
+                cached_base = self._completed_base_sources.get(request_fingerprint)
+                base_intact = bool(
+                    cached_base and Path(cached_base[0]).is_file()
+                    and self._file_identity(cached_base[0]) == cached_base[1]
+                )
+                if video_intact and audio_intact and (
+                    not settings.get("independent_manual_preview") or base_intact
+                ):
                     self._generation += 1
                     generation = self._generation
                     previous_process_id = self._active_process_id
                     self._active_process_id = ""
                     self._source = QUrl.fromLocalFile(str(Path(cached_video).resolve())).toString()
-                    cached_base = self._completed_base_sources.get(request_fingerprint)
-                    if cached_base and Path(cached_base[0]).is_file() and self._file_identity(
-                        cached_base[0]
-                    ) == cached_base[1]:
+                    if base_intact:
                         self._base_source = QUrl.fromLocalFile(
                             str(Path(cached_base[0]).resolve())
                         ).toString()
@@ -559,6 +563,11 @@ class EditorPreviewController:
             if cache_hit:
                 process_id = ""
             else:
+                # Navigating away releases media handles, not completed proxy
+                # records. A queued AI task may restore an exact, intact proxy
+                # without starting FFmpeg or replacing it with source video.
+                if cache_only:
+                    return False
                 self._generation += 1
                 generation = self._generation
                 previous_process_id = self._active_process_id

@@ -159,7 +159,7 @@ Nếu thiếu một đoạn giọng, HaizFlow chỉ rõ phụ đề bị thiếu
 
 Chọn **Xuất video** để kết xuất bản chỉnh sửa hiện tại. Phụ đề dịch, che phụ đề gốc, giọng đọc, nhạc và watermark đều là tùy chọn. Lệnh xuất không tự chạy công cụ AI mà người dùng chưa chọn.
 
-Khi hoàn tất, cửa sổ kết quả có **Phát video**, **Mở thư mục** và **Đóng**. Tệp xuất hiện tại vẫn được mở trực tiếp từ thanh công cụ dự án.
+Chọn chất lượng, chọn nơi lưu bằng hộp thoại Lưu thành, rồi xác nhận **Xuất**. Tên mặc định là tên dự án. Nếu tệp đã tồn tại, bạn phải đồng ý ghi đè. Cửa sổ tiến trình hiển thị đường dẫn đã lưu, có **Mở thư mục** và **Đóng**. Xuất lại dùng bản dựng nội bộ phù hợp; đổi tên hoặc xóa video đã xuất không ảnh hưởng trình sửa. Hãy lưu ngoài các thư mục dự án được quản lý để bản sao không bị xóa cùng dự án.
 
 ## 9. Xem trước và timeline
 
@@ -185,7 +185,7 @@ Thêm video, đặt thiết lập chung rồi chạy hàng đợi. Mỗi dòng g
 
 ### Đăng mạng xã hội
 
-Kết nối Zernio, đặt nội dung và tùy chọn bài đăng, thêm video đã xuất, kiểm tra nơi đăng rồi xác nhận. Thao tác này gửi video tới dịch vụ bên thứ ba. Hãy đọc điều khoản, quy định riêng tư, hạn mức và chi phí của dịch vụ trước khi dùng. Video đã đăng có nút **Mở bài đăng**.
+Kết nối Zernio, đặt nội dung và tùy chọn bài đăng, thêm video cục bộ hoặc bản dựng hoàn tất từ dự án Thủ công, Tự động hay Hàng loạt, kiểm tra nơi đăng rồi xác nhận. Không cần xuất video ra ngoài trước khi nhập từ dự án. Ứng dụng sao chép bản dựng sang dữ liệu riêng của dự án đăng bài trước khi tải lên. Hãy đọc điều khoản, quy định riêng tư, hạn mức và chi phí của dịch vụ. Video đã đăng có nút **Mở bài đăng**.
 
 ## 11. Dung lượng và dữ liệu tạm
 

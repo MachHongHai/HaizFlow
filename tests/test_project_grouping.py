@@ -228,11 +228,11 @@ class ProjectGroupingTests(unittest.TestCase):
 
         output_path = Path(video.files["final_video"])
         self.assertEqual(video.project_type, "batch")
-        self.assertEqual(output_path.name, "dubbed_video.mp4")
-        self.assertEqual(output_path.parent.parent.name, "exports")
-        self.assertEqual(output_path.parent.parent.parent, project_root)
+        self.assertEqual(output_path.name, "render.mp4")
+        self.assertEqual(output_path.parent.name, "temp")
+        self.assertEqual(output_path.parent.parent.parent.parent, project_root)
         self.assertTrue(project_root.name.startswith("Launch--"))
-        self.assertIn(video.video_id[:8], output_path.parent.name)
+        self.assertIn("--", output_path.parent.parent.name)
 
     def test_batch_storage_cleanup_removes_only_unreferenced_app_folders(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -343,8 +343,8 @@ class ProjectGroupingTests(unittest.TestCase):
                 project_store.PROJECT_INDEX_PATH = original_project_index
 
         output_path = Path(video.files["final_video"])
-        self.assertEqual(output_path.parent.name, "exports")
-        self.assertEqual(output_path.parent.parent, project_root)
+        self.assertEqual(output_path.parent, workspace / "temp")
+        self.assertEqual(output_path.name, "render.mp4")
         self.assertTrue(project_root.name.startswith("Interview--"))
         self.assertEqual(workspace.parent.name, "videos")
         self.assertEqual(workspace.parent.parent, project_root)
@@ -410,7 +410,7 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(video.media_source.type, "channel")
         self.assertEqual(video.media_source.remote_video_id, "abc")
 
-    def test_legacy_single_export_moves_into_exports_once(self):
+    def test_incomplete_legacy_output_is_preserved_without_claiming_render_completion(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             original_videos_dir = video_store.LEGACY_VIDEO_WORKSPACES_DIR
@@ -436,12 +436,12 @@ class ProjectGroupingTests(unittest.TestCase):
                 video_store.LEGACY_VIDEO_WORKSPACES_DIR = original_videos_dir
                 project_store.PROJECT_INDEX_PATH = original_project_index
 
-        self.assertTrue(migrated)
-        self.assertFalse(legacy_export_exists)
-        self.assertTrue(expected_export_exists)
-        self.assertEqual(saved_export_path, expected_export)
+        self.assertFalse(migrated)
+        self.assertTrue(legacy_export_exists)
+        self.assertFalse(expected_export_exists)
+        self.assertEqual(saved_export_path, legacy_export)
 
-    def test_legacy_video_workspace_moves_into_its_project(self):
+    def test_legacy_video_workspace_stays_at_its_persisted_root(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             original_videos_dir = video_store.LEGACY_VIDEO_WORKSPACES_DIR
@@ -468,8 +468,8 @@ class ProjectGroupingTests(unittest.TestCase):
                 video_store.LEGACY_VIDEO_WORKSPACES_DIR = original_videos_dir
                 project_store.PROJECT_INDEX_PATH = original_project_index
 
-        self.assertEqual(migrated, ["legacy-workspace"])
-        self.assertFalse(legacy_workspace_exists)
+        self.assertEqual(migrated, [])
+        self.assertTrue(legacy_workspace_exists)
         self.assertEqual(workspace_parent_name, "videos")
         self.assertTrue(workspace_has_metadata)
         self.assertEqual(saved_input_parent, workspace)
@@ -505,8 +505,7 @@ class ProjectGroupingTests(unittest.TestCase):
                     raise OSError("simulated interrupted migration")
 
                 with mock.patch.object(video_store.shutil, "copytree", side_effect=fail_copy):
-                    with self.assertRaisesRegex(OSError, "simulated interrupted migration"):
-                        video_store.migrate_legacy_project_data()
+                    self.assertEqual(video_store.migrate_legacy_project_data(), [])
 
                 destination = Path(project["project_root"]) / "videos" / video.video_id
                 source_still_exists = legacy_workspace.is_dir()
@@ -835,7 +834,7 @@ class ProjectGroupingTests(unittest.TestCase):
         self.assertEqual(replacement_name, "video.mov")
         self.assertEqual(replacement_bytes, b"new-video")
         self.assertFalse(old_input_exists)
-        self.assertFalse(old_export_exists)
+        self.assertTrue(old_export_exists)  # Legacy MP4 outside this video's workspace is preserved.
         self.assertFalse(old_transcript_exists)
         self.assertFalse(old_voice_exists)
         self.assertFalse(old_thumbnail_exists)

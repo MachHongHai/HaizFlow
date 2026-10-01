@@ -19,6 +19,10 @@ if (!(Test-Path -LiteralPath $QmlLint -PathType Leaf)) {
 
 $PreviousTemp = $env:TEMP
 $PreviousTmp = $env:TMP
+$PreviousAppEnvironment = @{}
+foreach ($Name in @("HAIZFLOW_HOME", "RUNTIME_DATA_DIR", "HAIZFLOW_RESOURCE_ROOT", "HAIZFLOW_SMOKE_TEST", "PYTHONPATH")) {
+  $PreviousAppEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
+}
 try {
   if (![System.IO.Path]::GetDirectoryName($TestTemp).Equals($TestTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to use an unsafe test temporary directory: $TestTemp"
@@ -27,6 +31,11 @@ try {
   $env:TEMP = $TestTemp
   $env:TMP = $TestTemp
   $env:PYTHONPATH = Join-Path $Root "src"
+  # Qt singleton startup and maintenance must never see a developer's projects.
+  $env:HAIZFLOW_SMOKE_TEST = "1"
+  $env:HAIZFLOW_HOME = Join-Path $TestTemp "app"
+  $env:RUNTIME_DATA_DIR = Join-Path $TestTemp "app\data"
+  $env:HAIZFLOW_RESOURCE_ROOT = Join-Path $TestTemp "resources"
 
   if (!$SkipCompile) {
     & $Python -m compileall -q (Join-Path $Root "src") (Join-Path $Root "scripts") (Join-Path $Root "tests")
@@ -66,6 +75,9 @@ try {
 finally {
   $env:TEMP = $PreviousTemp
   $env:TMP = $PreviousTmp
+  foreach ($Name in $PreviousAppEnvironment.Keys) {
+    [Environment]::SetEnvironmentVariable($Name, $PreviousAppEnvironment[$Name], "Process")
+  }
   if (Test-Path -LiteralPath $TestTemp) {
     $ResolvedTestTemp = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $TestTemp).Path)
     if (![System.IO.Path]::GetDirectoryName($ResolvedTestTemp).Equals($TestTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {

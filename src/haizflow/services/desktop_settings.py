@@ -9,6 +9,8 @@ from haizflow.config import RUNTIME_DATA_DIR
 
 SETTINGS_PATH = Path(RUNTIME_DATA_DIR) / "desktop-settings.json"
 DEFAULT_SETTINGS = {
+    "default_project_directory": "",
+    "last_export_directory": "",
     "theme": "graphite",
     "language": "en",
     "processing_device": "cpu",
@@ -112,6 +114,8 @@ def save_settings(settings: dict) -> dict:
     workspace = _normalize_manual_workspace(merged.get("manual_editor_workspace"))
 
     normalized = {
+        "default_project_directory": str(merged.get("default_project_directory") or ""),
+        "last_export_directory": str(merged.get("last_export_directory") or ""),
         # Theme switching was removed in favour of one production palette.
         # Always normalize legacy dark/light preferences so old installations
         # cannot silently reintroduce a second appearance.

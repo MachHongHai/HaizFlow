@@ -55,6 +55,12 @@ Item {
                 onProjectFolderRequested: AppController.openProjectFolder()
                 onDeleteRequested: AppController.deleteCurrentBatch()
             }
+            StudioButton {
+                text: qsTr("Xuất video")
+                iconName: "open"
+                enabled: !AppController.videoExportBusy && AppController.batchCount > 0
+                onClicked: AppController.exportBatchVideos()
+            }
         }
 
         RowLayout {

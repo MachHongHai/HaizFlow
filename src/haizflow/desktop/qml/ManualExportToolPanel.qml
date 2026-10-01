@@ -8,6 +8,25 @@ ColumnLayout {
     id: root
     property var inspector
     spacing: Theme.space12
+    property var configuration: AppController.manualExportSettings()
+
+    Connections {
+        target: AppController
+        function onSelectedVideoChanged() { root.configuration = AppController.manualExportSettings(); }
+    }
+    FormSection {
+        Layout.fillWidth: true
+        title: qsTr("Chất lượng video")
+        StudioComboBox {
+            Layout.fillWidth: true
+            model: root.configuration.presets || []
+            textRole: "label"
+            valueRole: "value"
+            currentIndex: Math.max(0, (root.configuration.presets || []).findIndex(item => item.value === root.configuration.preset))
+            enabled: AppController.canEditSelectedVideo
+            onActivated: AppController.setManualExportPreset(currentValue)
+        }
+    }
 
     StatusBadge {
         visible: Boolean(root.inspector.exportPreflight.canExport)

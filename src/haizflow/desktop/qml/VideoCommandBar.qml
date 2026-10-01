@@ -19,7 +19,7 @@ Rectangle {
         && ["paused", "awaiting_review", "done", "failed", "cancelled"].indexOf(AppController.selectedStatus) >= 0
     readonly property bool canReview: AppController.selectedStatus === "awaiting_review"
     readonly property string headline: AppController.selectedStatus === "failed"
-        ? qsTr("Xử lý thất bại")
+        ? AppController.selectedFailureTitle
         : AppController.selectedStatus === "cancelled"
             ? qsTr("Đã dừng")
             : AppController.selectedStatus === "done" && root.hasOutput
@@ -103,11 +103,11 @@ Rectangle {
 
             StudioButton {
                 visible: AppController.hasSelectedVideo
-                text: qsTr("Mở video đầu ra")
+                text: qsTr("Xuất")
                 iconGlyph: "\uE768"
                 variant: "primary"
-                enabled: root.hasOutput
-                onClicked: AppController.openOutputFile()
+                enabled: !root.selectedQueued && !AppController.videoExportBusy
+                onClicked: AppController.requestVideoExport()
             }
 
         }

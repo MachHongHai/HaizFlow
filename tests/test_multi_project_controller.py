@@ -144,10 +144,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             files={"thumbnail": ""},
         )
 
-        with patch(
-            "haizflow.desktop.project_workspace_controller.migrate_legacy_single_export",
-            return_value=False,
-        ):
+        with patch("haizflow.desktop.project_workspace_controller.project_store.get_project", return_value=None):
             ProjectWorkspaceController(host).select_video(video)
 
         self.assertEqual(host._speech_recognition_model, "turbo")

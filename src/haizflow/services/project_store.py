@@ -1,6 +1,7 @@
 """Persistent metadata for desktop projects, including projects without videos."""
 
 import json
+import logging
 import os
 import shutil
 import stat
@@ -15,6 +16,7 @@ from typing import Any
 
 from haizflow.config import RUNTIME_DATA_DIR
 from haizflow.core.file_lock import interprocess_file_lock
+from haizflow.core.storage_ownership import managed_storage_guard, owned_path, safe_tree
 
 
 PROJECT_INDEX_PATH = os.path.join(RUNTIME_DATA_DIR, "projects.json")
@@ -53,6 +55,7 @@ def _force_remove_readonly(func, path, _exc_info) -> None:
 
 def _remove_project_root(root: str, attempts: int = 8, delay_seconds: float = 0.35) -> None:
     """Remove only the validated project root, tolerating brief Windows locks."""
+    safe_tree(root)
     last_error = None
     for attempt in range(attempts):
         try:
@@ -101,6 +104,36 @@ def validate_new_project_name(project_name: str) -> str:
     if reserved_stem in _WINDOWS_RESERVED_NAMES:
         raise ValueError(f"'{name}' is reserved by Windows. Choose another project name.")
     return name
+
+
+def validate_project_directory(value: str) -> str:
+    """Validate only a new location; never create an unavailable old project."""
+    directory = Path(str(value).strip())
+    if not directory.is_absolute():
+        raise ValueError("Choose an absolute project storage location.")
+    if not directory.exists():
+        if not directory.parent.is_dir():
+            raise FileNotFoundError("Project storage drive or parent folder is unavailable.")
+        directory.mkdir()
+    if not directory.is_dir():
+        raise ValueError("Project storage location is not a directory.")
+    for record in list_projects():
+        try:
+            directory.resolve().relative_to(Path(_record_root(record)).resolve())
+        except ValueError:
+            continue
+        raise ValueError("A project cannot be created inside another project's managed storage.")
+    if shutil.disk_usage(directory).free < 8 * 1024**2:
+        raise OSError("Not enough free space to create project metadata.")
+    handle, probe = tempfile.mkstemp(prefix=".haizflow-write-check-", dir=directory)
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(b"HaizFlow")
+            stream.flush()
+            os.fsync(stream.fileno())
+    finally:
+        os.unlink(probe)
+    return str(directory.absolute())
 
 
 def project_key(project_name: str, project_directory: str, project_type: str) -> str:
@@ -550,7 +583,10 @@ def _migrate_registered_manifests(records: list[dict[str, Any]]) -> None:
         try:
             manifest_path = Path(_record_root(record)) / PROJECT_MANIFEST_NAME
             if manifest_path.is_file():
-                _load_manifest(manifest_path)
+                manifest = _load_manifest(manifest_path)
+                if (manifest["key"] == record["key"]
+                        and manifest["project_name"] != record["project_name"]):
+                    _write_json_atomic(str(manifest_path), record)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, ProjectMetadataError):
             continue
 
@@ -599,6 +635,9 @@ def _load_index() -> list[dict[str, Any]]:
 def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any]) -> dict[str, Any]:
     """Persist one already-normalized record and its owned directory layout."""
     root = _record_root(record)
+    owned_path(root, root, allow_root=True)
+    if any(item.get("key") == record["key"] for item in records) and not os.path.isdir(root):
+        raise FileNotFoundError("The registered project storage is unavailable. No replacement project was created.")
     project_type = normalize_project_type(record.get("project_type"))
     os.makedirs(root, exist_ok=True)
     if project_type in {"single", "manual", "batch"}:
@@ -628,7 +667,7 @@ def create_project(project_name: str, project_directory: str, project_type: str)
     if not directory_input:
         raise ValueError("Choose a project folder.")
     name = validate_new_project_name(name)
-    directory = os.path.abspath(directory_input)
+    directory = validate_project_directory(directory_input)
     kind = normalize_project_type(project_type)
     now = _now()
 
@@ -712,6 +751,43 @@ def list_projects() -> list[dict[str, Any]]:
         key=lambda record: record.get("activity_at") or record.get("created_at", ""),
         reverse=True,
     )
+
+
+def rename_project_by_key(project_key_value: str, new_name: str) -> dict[str, Any]:
+    """Rename presentation metadata; never move media or change ownership IDs."""
+    name = validate_new_project_name(str(new_name or ""))
+    existing = get_project(project_key_value)
+    if not existing:
+        raise ValueError("The selected project no longer exists.")
+    if not os.path.isdir(_record_root(existing)):
+        raise FileNotFoundError("The project's storage is unavailable. Reconnect it before renaming.")
+    if existing["project_name"] == name:
+        return existing
+    # Video writers acquire video -> index locks. Do not invert that order.
+    if existing["project_type"] in {"single", "manual", "batch"}:
+        from haizflow.services import video_store
+
+        video_store.bind_project_video_identity(existing)
+    with _index_guard():
+        records = _load_index()
+        current = next((item for item in records if item["key"] == existing["key"]), None)
+        if current is None or _record_root(current) != _record_root(existing):
+            raise ValueError("The selected project no longer exists.")
+        updated = dict(current, project_name=name, updated_at=_now())
+        next_records = [updated if item["key"] == current["key"] else item for item in records]
+        try:
+            _save_index(next_records)
+        except OSError:
+            committed, _, _ = _read_index_file(PROJECT_INDEX_PATH)
+            if not any(item["key"] == updated["key"] and item["project_name"] == name for item in committed):
+                raise
+        # The atomically replaced index is authoritative. A mirror interrupted
+        # here is repaired on the next index read, including after a crash.
+        try:
+            _write_json_atomic(os.path.join(_record_root(updated), PROJECT_MANIFEST_NAME), updated)
+        except OSError:
+            logging.getLogger(__name__).warning("Project rename committed; manifest repair deferred: %s", updated["key"])
+        return updated
 
 
 def list_download_project_videos() -> list[dict[str, Any]]:
@@ -806,6 +882,12 @@ def _validated_deletion_record(records: list[dict[str, Any]], key: str) -> tuple
     if not os.path.lexists(root):
         return record, root
 
+    owned_path(root, root, allow_root=True)
+    safe_tree(root)
+    from haizflow.services import manual_artifacts
+
+    manual_artifacts.assert_root_idle(root)
+
     manifest_path = os.path.join(root, PROJECT_MANIFEST_NAME)
     if os.path.isfile(manifest_path):
         try:
@@ -850,7 +932,7 @@ def delete_project(project_name: str, project_directory: str, project_type: str)
 def delete_project_by_key(project_key_value: str) -> bool:
     """Remove exactly one project and all data it owns."""
     key = str(project_key_value or "").strip()
-    with _index_guard():
+    with managed_storage_guard, _index_guard():
         records = _load_index()
         validated = _validated_deletion_record(records, key)
         if not validated:

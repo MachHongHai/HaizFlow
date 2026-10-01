@@ -70,7 +70,7 @@ Dependencies point inward from presentation to application services: QML uses th
 
 `HaizFlowController` is registered as the QML singleton facade. Focused desktop controllers separate catalog/project state, project commands, imports, processing lifecycle, preview rendering, audio preview, downloads, publishing, settings, resource packs, update checks, smart warm-up and diagnostics. List data is exposed through `QAbstractListModel` implementations in `desktop/models.py`.
 
-`AppUpdateController` performs the public GitHub Releases request on a worker thread and transfers only the parsed result to the Qt thread. It accepts release pages below the fixed official repository URL and compares stable semantic versions. The desktop application opens that page for an update; it does not download or execute an installer.
+`AppUpdateController` checks the fixed official GitHub repository on a worker thread. Updates use the existing full-installer workflow and its validation gates; no delta updater is introduced.
 
 Background model status belongs to the persistent activity strip. Dialogs are reserved for confirmation or errors that require a decision; transient action feedback uses the toast stack.
 
@@ -78,12 +78,11 @@ Background model status belongs to the persistent activity strip. Dialogs are re
 
 `project_store` owns the project index and `.haizflow-project.json` manifests. `video_store` owns each video's `video.json`, log, media paths and checkpoints. Project and video IDs are immutable UUID-backed identifiers; readable folder names are labels, not identity.
 
-Project metadata currently uses schema v4. Video metadata uses schema v17. Writes use an interprocess lock, temporary file, `fsync` and atomic replacement. The previous valid document is retained as a backup, and corrupt input is quarantined before recovery.
+Project metadata uses schema v4; video metadata uses schema v19. Writes use an interprocess lock, temporary file, `fsync` and atomic replacement. Migration retains a schema backup; unknown newer schemas are refused. See [storage and export](project-storage-export.md) for ownership, legacy compatibility and verification limits.
 
 ```text
 <project-name>--<short-id>/
   .haizflow-project.json
-  exports/
   videos/
     <source-name>--<short-id>/
       video.json
@@ -91,7 +90,7 @@ Project metadata currently uses schema v4. Video metadata uses schema v17. Write
       input/
       temp/
         editor-preview/
-        cache/manual/
+      cache/manual/
 ```
 
 Download projects own `downloads/video`, `downloads/channel` and `downloads/audio`. Publishing projects own `publishing/media`, thumbnails and an atomic queue file. Deletion resolves the registered project root before removing project-owned content; it does not derive a target from the display name.
@@ -139,7 +138,7 @@ Changing one subtitle invalidates that sentence's voice clip and descendants. Ch
 
 ### Manual artifact store
 
-`services/manual_artifacts.py` stores immutable artifacts below `temp/cache/manual`. `manifest.json` records each kind, signature, status, inputs, configuration fingerprint, outputs, timestamps, size and error state. Active signatures remain in `video.json`; historical variants stay in the manifest.
+`services/manual_artifacts.py` stores immutable Manual, Automatic and Batch artifacts below each video's `cache/manual`. `manifest.json` records each kind, signature, status, inputs, configuration fingerprint, outputs, timestamps, size and error state. Active signatures remain in `video.json`; historical variants stay in the manifest. User exports are independent copies outside managed project roots.
 
 ```text
 cache/manual/

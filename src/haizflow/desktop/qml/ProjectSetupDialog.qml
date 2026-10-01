@@ -23,6 +23,7 @@ AppDialog {
                     : qsTr("Dự án tự động")
 
     function openForType(type) {
+        AppController.prepareProjectCreationDirectory();
         projectType = ["batch", "manual", "download", "publish"].includes(type)
             ? type : "single"
         open()

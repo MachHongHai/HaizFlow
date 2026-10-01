@@ -181,6 +181,7 @@ class EditorPreviewControllerTests(unittest.TestCase):
             with (
                 mock.patch.object(controller, "_remove_stale_files"),
                 mock.patch.object(controller, "_remove_stale_audio_dirs"),
+                mock.patch("haizflow.desktop.editor_preview_controller.manual_artifacts.pin"),
                 mock.patch(
                     "haizflow.desktop.editor_preview_controller.video_store.get_video",
                     return_value=video,

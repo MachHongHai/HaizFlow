@@ -89,8 +89,6 @@ Item {
     property bool watermarkTransformActive: false
     property bool subtitleAudioRefreshPending: false
     property bool subtitleVisualRefreshPending: false
-    property bool exportCompletionArmed: false
-    property string pendingExportPath: ""
     property bool initialMediaLoad: true
     readonly property int subtitleToolIndex: 2
     readonly property int imageToolIndex: 3
@@ -160,8 +158,6 @@ Item {
                 : AppController.subtitleBoxHeightPercent) / 100))
     readonly property var previewSubtitleFrame: AppController.subtitleOverlayRenderer.frame
     readonly property ActivityLogDialog technicalLogDialog: technicalLogLoader.item as ActivityLogDialog
-    readonly property ExportCompletedDialog exportCompletedDialog:
-        exportCompletedDialogLoader.item as ExportCompletedDialog
     readonly property string previewSubtitleFragment: String(previewSubtitleFrame.text || "")
     readonly property real previewSubtitleKaraokeProgress: Number(previewSubtitleFrame.progress || 0)
     // qmllint enable missing-property
@@ -223,7 +219,7 @@ Item {
     }
 
     function schedulePreview() {
-        if (AppController.projectType !== "manual" || AppController.isSelectedVideoQueued)
+        if (AppController.projectType !== "manual")
             return;
         previewTimer.restart();
     }
@@ -340,15 +336,6 @@ Item {
             AppController.ttsVolume, AppController.backgroundMusicVolume);
     }
 
-    function showExportCompleted(outputPath) {
-        pendingExportPath = String(outputPath || "");
-        if (exportCompletedDialogLoader.status === Loader.Ready && exportCompletedDialog) {
-            exportCompletedDialog.showForOutput(pendingExportPath);
-            return;
-        }
-        exportCompletedDialogLoader.active = true;
-    }
-
     Component.onCompleted: {
         previewVideoId = AppController.selectedVideoId;
         selectedStageIndex = nextStageIndex();
@@ -428,13 +415,6 @@ Item {
         function onTtsVolumeChanged() { root.syncVolumes(); }
         function onBackgroundMusicVolumeChanged() { root.syncVolumes(); }
 
-        function onManualExportCompleted(videoId, outputPath) {
-            if (!root.exportCompletionArmed || String(videoId) !== AppController.selectedVideoId)
-                return;
-            root.exportCompletionArmed = false;
-            root.showExportCompleted(outputPath);
-        }
-
     }
 
     Connections {
@@ -507,17 +487,14 @@ Item {
             onUndoRequested: AppController.undoEdit()
             onRedoRequested: AppController.redoEdit()
             onCompareToggled: root.comparing = !root.comparing
-            onOutputRequested: AppController.openOutputFile()
             onExportRequested: {
                 root.selectedStageIndex = 6;
                 root.activatePanel("tasks", "right");
                 stageInspector.saveNow();
-                if (AppController.runManualTool("export"))
-                    root.exportCompletionArmed = true;
+                AppController.requestVideoExport();
             }
             onProjectFolderRequested: AppController.openProjectFolder()
             onInputVideoRequested: AppController.openInputFile()
-            onOutputFolderRequested: AppController.openOutputFolder()
             onVideoFolderRequested: AppController.openVideoFolder()
             onTechnicalLogRequested: {
                 if (technicalLogLoader.status === Loader.Ready && root.technicalLogDialog)
@@ -845,30 +822,12 @@ Item {
         onSubtitleEditorClosed: root.finishSubtitleDialogEditing()
         onSourceLinkRequested: root.requestUrlImport()
         onSettingsCommitted: root.schedulePreview()
-        onExportRequested: root.exportCompletionArmed = true
         onEditorSeekRequested: function(seconds) { comparePreview.seekTo(seconds); }
         onToolSelected: function(index) {
             root.dismissSubtitleEditor();
             root.dismissWatermarkEditor();
             root.selectedStageIndex = index;
             root.warmTool(index);
-        }
-    }
-
-    Loader {
-        id: exportCompletedDialogLoader
-        active: false
-        asynchronous: false
-        onLoaded: {
-            if (status === Loader.Ready && root.exportCompletedDialog)
-                root.exportCompletedDialog.showForOutput(root.pendingExportPath);
-        }
-        sourceComponent: Component {
-            ExportCompletedDialog {
-                onOpenVideoRequested: AppController.openOutputFile()
-                onOpenFolderRequested: AppController.openOutputFolder()
-                onClosed: exportCompletedDialogLoader.active = false
-            }
         }
     }
 

@@ -8,6 +8,8 @@ Rectangle {
 
     required property int index
     required property string projectName
+    required property string projectKey
+    property string menuProjectKey: ""
     required property string projectType
     required property int videoCount
     required property string status
@@ -19,6 +21,7 @@ Rectangle {
     signal openRequested
     signal projectFolderRequested
     signal deleteRequested
+    signal renameRequested(string key)
 
     readonly property string statusLabel: status === "pending" ? qsTr("Đang chờ") : status === "empty" ? qsTr("Chưa chọn video nguồn") : status === "ready" || status === "manual_ready" ? qsTr("Sẵn sàng") : status === "processing" ? qsTr("Đang xử lý") : status === "done" ? qsTr("Hoàn tất") : status === "failed" ? qsTr("Lỗi") : status === "cancelled" ? qsTr("Đã hủy") : status === "paused" ? qsTr("Đã tạm dừng") : status === "awaiting_review" ? qsTr("Cần duyệt") : I18n.taskStateLabel(status)
     readonly property string typeLabel: projectType === "manual" ? qsTr("Thủ công")
@@ -77,6 +80,7 @@ Rectangle {
         width: 224
         padding: Theme.space4
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onAboutToShow: root.menuProjectKey = root.projectKey
 
         background: Rectangle {
             radius: Theme.radiusSmall
@@ -98,6 +102,12 @@ Rectangle {
         }
 
         MenuSeparator {}
+
+        AppMenuItem {
+            text: qsTr("Đổi tên")
+            iconGlyph: IconCatalog.glyph("edit")
+            onTriggered: root.renameRequested(root.menuProjectKey)
+        }
 
         AppMenuItem {
             text: qsTr("Xóa dự án")

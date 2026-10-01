@@ -81,6 +81,7 @@ from haizflow.desktop.social_publish_controller import SocialPublishController
 from haizflow.desktop.subtitle_overlay_renderer import SubtitleOverlayRenderer
 from haizflow.desktop.url_import import VideoUrlImportCoordinator
 from haizflow.desktop.voice_clone_recorder import VoiceCloneRecorder
+from haizflow.desktop.video_export_controller import VideoExportController
 from haizflow.pipeline.process_registry import pause_video
 from haizflow.schemas.editor import (
     EditorClip,
@@ -101,7 +102,6 @@ from haizflow.services import (
 )
 from haizflow.services.desktop_videos import (
     create_desktop_video,
-    migrate_legacy_single_export,
     set_desktop_background_music,
     set_desktop_voice_reference,
     set_desktop_watermark_image,
@@ -197,6 +197,7 @@ class HaizFlowController(QObject):
     languageOptionsChanged = Signal()
     projectSetupChanged = Signal()
     projectPrepared = Signal()
+    projectRenameRequested = Signal(str, str)
     urlImportFinished = Signal()
     channelImportChanged = Signal()
     mediaImportChanged = Signal()
@@ -216,6 +217,10 @@ class HaizFlowController(QObject):
     editorPreviewChanged = Signal()
     manualToolStateChanged = Signal(str)
     manualExportCompleted = Signal(str, str)
+    videoExportCompleted = Signal(str, str)
+    exportStateChanged = Signal()
+    videoExportRequested = Signal()
+    videoExportStarted = Signal()
     manualSubtitleSaved = Signal(str, int, str)
     manualSubtitleSaveFailed = Signal(str, str, str)
     manualSubtitleDocumentChanged = Signal()
@@ -424,6 +429,8 @@ class HaizFlowController(QObject):
         self._resource_packs.changed.connect(self.resourcePacksChanged.emit)
         self.hardwareChanged.connect(self.resourcePacksChanged.emit)
         self._app_updates = AppUpdateController(self)
+        self._video_exports = VideoExportController(self)
+        self.exportStateChanged.connect(self.appUpdateChanged.emit)
         self._app_updates.changed.connect(self.appUpdateChanged.emit)
         for signal in (self.processingChanged, self.resourcePacksChanged, self.mediaImportChanged,
                        self.channelImportChanged, self.backgroundMusicImportChanged,
@@ -443,7 +450,7 @@ class HaizFlowController(QObject):
         configure_processing_device(self._settings_processing_device)
         self._active_processing_device = self._settings_processing_device
         self._whisper_turbo_model_ready = self._detect_whisper_turbo_model_ready()
-        self._project_directory = os.path.join(RUNTIME_DATA_DIR, "projects")
+        self._project_directory = settings.get("default_project_directory") or os.path.join(RUNTIME_DATA_DIR, "projects")
         self._project_name = ""
         self._project_type = "single"
         self._log_queue = queue.Queue()
@@ -609,6 +616,11 @@ class HaizFlowController(QObject):
             for video in video_store.list_videos():
                 if self._background_shutdown_event.is_set():
                     return
+                if getattr(video, "project_type", "single") in {"single", "batch"}:
+                    from haizflow.services.video_export import adopt_legacy_render
+
+                    adopt_legacy_render(video)
+                    continue
                 if getattr(video, "project_type", "single") != "manual":
                     continue
                 video_id = str(video.video_id or "")
@@ -825,6 +837,9 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        exporter = getattr(self, "_video_exports", None)
+        if exporter is not None:
+            exporter.shutdown()
         smart_warmup = getattr(self, "_smart_warmup", None)
         if smart_warmup is not None:
             smart_warmup.stop()
@@ -2169,7 +2184,9 @@ class HaizFlowController(QObject):
             return ""
 
         video_dir = video_store.get_video_dir(video.video_id)
-        rendered_video_source = existing_url(files.get("final_video") or "")
+        from haizflow.services.video_export import render_path
+
+        rendered_video_source = existing_url(render_path(video))
         voice_source = existing_url(
             files.get("voice_output") or "",
             os.path.join(video_dir, "temp", "voice_final.wav"),
@@ -2379,6 +2396,24 @@ class HaizFlowController(QObject):
         return video.status if video else "none"
 
     @Property(str, notify=selectedVideoChanged)
+    def selectedFailureMessage(self):
+        from haizflow.core.processing_errors import describe_failure
+
+        video = self._selected_video()
+        if not video or video.status != "failed":
+            return ""
+        return describe_failure(video.error or video.step_detail, self._settings_language)["message"]
+
+    @Property(str, notify=selectedVideoChanged)
+    def selectedFailureTitle(self):
+        from haizflow.core.processing_errors import describe_failure
+
+        video = self._selected_video()
+        if not video or video.status != "failed":
+            return ""
+        return describe_failure(video.error or video.step_detail, self._settings_language)["title"]
+
+    @Property(str, notify=selectedVideoChanged)
     def selectedStep(self):
         video = self._selected_video()
         return video.step_detail or video.step if video else "pending"
@@ -2528,7 +2563,9 @@ class HaizFlowController(QObject):
     @Property(str, notify=selectedVideoChanged)
     def selectedOutputPath(self):
         video = self._selected_video()
-        return self._resolve_video_file(video, ("final_video", "output_video"), ("output", "final.mp4"))
+        from haizflow.services.video_export import render_path
+
+        return render_path(video)
 
     @Property(QUrl, notify=selectedVideoChanged)
     def selectedOutputSource(self):
@@ -2537,11 +2574,7 @@ class HaizFlowController(QObject):
 
     @Property(bool, notify=selectedVideoChanged)
     def hasSelectedOutput(self):
-        video = self._selected_video()
-        if not video or video.status != "done":
-            return False
-        output_path = self._resolve_video_file(video, ("final_video", "output_video"), ("output", "final.mp4"))
-        return bool(output_path and os.path.isfile(output_path) and os.path.getsize(output_path) > 0)
+        return bool(self.selectedOutputPath)
 
     @Property(str, notify=selectedVideoChanged)
     def selectedSrtPath(self):
@@ -2992,6 +3025,20 @@ class HaizFlowController(QObject):
     @Property(str, notify=projectSetupChanged)
     def projectName(self):
         return self._project_name
+
+    @Property(str, notify=projectSetupChanged)
+    def projectKey(self):
+        return str(self._selected_project_key or "")
+
+    @Slot(str)
+    def requestProjectRename(self, key):
+        project = project_store.get_project(str(key or ""))
+        if project:
+            self.projectRenameRequested.emit(project["key"], project["project_name"])
+
+    @Slot(str, str, result=bool)
+    def renameProject(self, key, name):
+        return HaizFlowController._project_commands_for(self).rename_project(str(key), str(name))
 
     @Property(str, notify=projectSetupChanged)
     def projectType(self):
@@ -3707,14 +3754,90 @@ class HaizFlowController(QObject):
         input_path = self._resolve_video_file(
             video, ("video_input", "input_video"), ("input", "video.mp4")
         )
-        output_path = self._resolve_video_file(
-            video, ("final_video", "output_video"), ("output", "final.mp4")
-        )
+        from haizflow.services.video_export import export_destination
+
+        output_path = str(export_destination(video))
         output_directory = str(
             Path(output_path).parent
             if output_path else Path(video_store.get_video_dir(video.video_id)) / "output"
         )
         return export_preflight(document, input_path, output_directory)
+
+    @Slot(result="QVariantMap")
+    def manualExportSettings(self):
+        return self._video_exports.settings(self._selected_video())
+
+    @Property(bool, notify=exportStateChanged)
+    def videoExportBusy(self):
+        return self._video_exports.busy
+
+    @Property("QVariantList", notify=exportStateChanged)
+    def videoExportJobs(self):
+        return [dict(job) for job in self._video_exports.jobs]
+
+    @Slot()
+    def requestVideoExport(self):
+        if self.hasSelectedVideo and not self.videoExportBusy:
+            self.videoExportRequested.emit()
+
+    @Slot(str, result=str)
+    def chooseVideoExportDestination(self, video_id):
+        return self._video_exports.choose_file(video_id)
+
+    @Slot(str, str, str, bool, result=bool)
+    def exportVideoTo(self, video_id, preset, destination, overwrite):
+        started = self._video_exports.start(video_id, preset, destination, overwrite=overwrite)
+        if started:
+            self.videoExportStarted.emit()
+        return started
+
+    @Slot(str, result=bool)
+    def exportDestinationExists(self, path):
+        return Path(str(path)).exists()
+
+    @Slot(result=bool)
+    def exportBatchVideos(self):
+        started = self._video_exports.start_batch()
+        if started:
+            self.videoExportStarted.emit()
+        return started
+
+    @Slot(result=bool)
+    def retryVideoExports(self):
+        return self._video_exports.retry_failed()
+
+    @Slot()
+    def cancelVideoExport(self):
+        self._video_exports.cancel_all()
+
+    @Slot(str)
+    def openExportDestinationFolder(self, exported_path):
+        destination = Path(str(exported_path)).parent
+        if not destination.is_dir():
+            self.appAlertRequested.emit(
+                "Không truy cập được thư mục" if self._settings_language == "vi" else "Folder unavailable",
+                "Thư mục đã bị di chuyển hoặc ổ đĩa chưa được kết nối." if self._settings_language == "vi"
+                else "The folder was moved or the drive is disconnected.", "warning",
+            )
+            return
+        self._open_path(str(destination))
+
+    @Slot()
+    def prepareProjectCreationDirectory(self):
+        self._project_directory = desktop_settings.load_settings().get("default_project_directory") or os.path.join(RUNTIME_DATA_DIR, "projects")
+        self.projectSetupChanged.emit()
+
+    @Slot(str, result=bool)
+    def setManualExportPreset(self, preset):
+        from haizflow.services.video_export import EXPORT_PRESETS
+
+        video = self._selected_video()
+        if not video or video.project_type != "manual" or self.isSelectedVideoQueued or preset not in EXPORT_PRESETS:
+            return False
+        video_store.update_video(video.video_id, export_preset=preset)
+        self._refresh_selected_video_snapshot()
+        self.selectedVideoChanged.emit()
+        return True
 
     @Slot(str, result=bool)
     def runManualTool(self, tool_id):
@@ -3878,7 +4001,8 @@ class HaizFlowController(QObject):
 
         prepare_video_resume(video.video_id)
         self._apply_setup_to_video(video, review_approved=True)
-        prepare_manual_rerun(video.video_id, tool_id)
+        if tool_id != "export":
+            prepare_manual_rerun(video.video_id, tool_id)
         video_store.update_video(
             video.video_id,
             manual_target_tool=tool_id,
@@ -4147,7 +4271,9 @@ class HaizFlowController(QObject):
 
     @Slot(str, float, result=bool)
     def requestEditorPreview(self, payload, playhead_seconds):
-        return self._editor_preview.request(payload, playhead_seconds)
+        return self._editor_preview.request(
+            payload, playhead_seconds, cache_only=self.isSelectedVideoQueued,
+        )
 
     @Slot()
     def releaseEditorPreview(self):
@@ -5819,39 +5945,6 @@ class HaizFlowController(QObject):
             QMessageBox.information(None, "Open input video", "Input video is not available yet.")
             return
         self._open_path(input_path)
-
-    @Slot()
-    def openOutputFile(self):
-        video = video_store.get_video(self._selected_video_id) if self._selected_video_id else None
-        if not video or video.status != "done":
-            QMessageBox.information(None, "Open output", "Final video is not available yet.")
-            return
-        output_path = self._resolve_video_file(video, ("final_video", "output_video"), ("output", "final.mp4"))
-        if not output_path or not os.path.exists(output_path):
-            QMessageBox.information(None, "Open output", "Final video is not available yet.")
-            return
-        self._open_path(output_path)
-
-    @Slot()
-    def openOutputFolder(self):
-        video = video_store.get_video(self._selected_video_id) if self._selected_video_id else None
-        if video and migrate_legacy_single_export(video):
-            video = video_store.get_video(video.video_id) or video
-        output_path = self._resolve_video_file(video, ("final_video", "output_video"), ("output", "final.mp4"))
-        folder = os.path.dirname(output_path) if output_path else ""
-        fallback_folder = os.path.join(video_store.get_video_dir(video.video_id), "output") if video else ""
-        if folder and os.path.isdir(folder):
-            self._open_path(folder)
-            return
-        if fallback_folder and os.path.isdir(fallback_folder):
-            self._open_path(fallback_folder)
-            return
-        if self.hasOpenProject:
-            export_folder = project_store.project_exports_dir_for_key(self._selected_project_key)
-            os.makedirs(export_folder, exist_ok=True)
-            self._open_path(export_folder)
-            return
-        QMessageBox.information(None, "Open export folder", "The export folder is not available yet.")
 
     @Slot()
     def openVideoFolder(self):

@@ -13,8 +13,10 @@ from typing import Any
 from haizflow.config import HYMT2_MODEL_REVISION
 from haizflow.core.hardware import translation_model_signature_parts
 from haizflow.core.model_integrity import DEMUCS_MODEL_SIGNATURE
+from haizflow.core.processing_errors import describe_failure
 from haizflow.pipeline.timing_contract import TIMING_SOURCE
 from haizflow.services import editor_documents, manual_artifacts, video_store
+from haizflow.services.video_export import legacy_render_owned, preset_settings
 
 # Cache-contract versions are intentionally available without importing the
 # model runtimes that implement them. Importing WhisperX/torch from a QML
@@ -705,6 +707,7 @@ def export_signature(video, *, validate: bool = True) -> str:
         getattr(video, "watermark_italic", True),
         getattr(video, "subtitle_layout_override", False),
         editor_document.model_dump() if editor_document else {},
+        getattr(video, "export_preset", "source"),
         *_generation_token(video, "export"),
         "manual-export-v7-voice-caption-clock",
     )
@@ -1084,6 +1087,8 @@ def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
                 "image": "ocr_region", "voice": "tts_manifest", "audio": "audio_mix", "export": "export",
             }[tool_id]),
             "detail": str(video.step_detail if belongs else ""),
+            "errorMessage": describe_failure(video.error or video.step_detail, language)["message"]
+                if state == "error" else "",
         })
     return rows
 
@@ -1944,6 +1949,7 @@ def _ocr_region(video) -> dict[str, Any] | None:
 def _run_export(video, reporter) -> None:
     from haizflow.pipeline.sequence_compiler import (
         apply_overlays,
+        finish_export_resolution,
         map_source_intervals,
         materialize_source_video,
         resolved_subtitle_style,
@@ -1952,6 +1958,8 @@ def _run_export(video, reporter) -> None:
     )
 
     subtitle = _current_subtitle_record(video)
+    export_preset = str(getattr(video, "export_preset", "source") or "source")
+    encoding_quality = int(preset_settings(export_preset)["crf"])
     audio = manual_artifacts.resolve(video.video_id, "audio_mix", audio_signature(video))
     expected = export_signature(video)
     cached = manual_artifacts.resolve(video.video_id, "export", expected)
@@ -2036,13 +2044,20 @@ def _run_export(video, reporter) -> None:
                 watermark_bold=getattr(video, "watermark_bold", True),
                 watermark_italic=getattr(video, "watermark_italic", True),
                 subtitle_style_overrides=subtitle_style_overrides(editor_document),
+                encoding_quality=encoding_quality,
             )
             reporter.update(91, "manual_export", "Đang ghép các lớp hình ảnh")
             apply_overlays(
                 str(staging / "video-base.mp4"),
-                str(staging / "video.mp4"),
+                str(staging / "video-overlays.mp4"),
                 editor_document,
                 video.video_id,
+                encoding_quality=encoding_quality,
+            )
+            reporter.update(94, "manual_export", "Đang hoàn thiện video theo chất lượng đã chọn")
+            finish_export_resolution(
+                str(staging / "video-overlays.mp4"), str(staging / "video.mp4"),
+                export_preset, video.video_id,
             )
             cached = manual_artifacts.publish(
                 video.video_id,
@@ -2066,15 +2081,9 @@ def _run_export(video, reporter) -> None:
             shutil.rmtree(staging, ignore_errors=True)
     else:
         manual_artifacts.activate(video.video_id, "export", expected)
-    final_path = str((video.files or {}).get("final_video") or "")
-    if not final_path:
-        final_path = str(Path(video_store.get_video_dir(video.video_id)) / "output" / "final.mp4")
-    Path(final_path).parent.mkdir(parents=True, exist_ok=True)
-    source = Path(cached["resolved_outputs"]["video"])
-    temporary = Path(final_path).with_suffix(".exporting.mp4")
-    shutil.copy2(source, temporary)
-    os.replace(temporary, final_path)
-    _update_files(video.video_id, final_video=final_path)
+    # This tool produces the managed render only. Saving a user-owned copy is
+    # an independent desktop export task, never part of the processing queue.
+    _update_files(video.video_id, final_video=cached["resolved_outputs"]["video"])
 
 
 _RUNNERS = {
@@ -2271,6 +2280,7 @@ def migrate_legacy_artifacts(video_id: str) -> bool:
         and _image_ready(video)
         and expected_export
         and manual_artifacts.file_state(legacy_export)
+        and legacy_render_owned(video, legacy_export)
     ):
         exported = manual_artifacts.register_existing(
             video_id,
@@ -2281,7 +2291,7 @@ def migrate_legacy_artifacts(video_id: str) -> bool:
                 manual_artifacts.artifact_id("subtitle_document", _active_signature(video, "subtitle_document")),
                 manual_artifacts.artifact_id("audio_mix", audio_signature(video)),
             ],
-            config_fingerprint="legacy-export",
+            config_fingerprint=expected_export,
         )
         if exported:
             changed = True

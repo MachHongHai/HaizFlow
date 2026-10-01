@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Any, Dict, Literal, Optional
 
 
-VIDEO_METADATA_SCHEMA_VERSION = 18
+VIDEO_METADATA_SCHEMA_VERSION = 19
 VIDEO_METADATA_TYPE = "haizflow.video"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2", "gemini"]
@@ -125,6 +125,8 @@ class VideoInfo(BaseModel):
     remove_original_subtitles: bool = True
     original_subtitle_removal_mode: OriginalSubtitleRemovalMode = "patch"
     output_format: OutputFormat
+    export_preset: Literal["source", "1080p", "1080p-high", "720p", "2160p"] = "source"
+    export_history: list[dict] = Field(default_factory=list)
     crop: CropSettings = Field(default_factory=CropSettings)
     enable_audio_separation: bool = True
     original_video_volume: int = Field(default=60, ge=0, le=100)

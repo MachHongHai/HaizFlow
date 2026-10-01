@@ -159,7 +159,7 @@ If a voice clip is missing, HaizFlow identifies the affected subtitle instead of
 
 Select **Export video** to render the current edit. Translated subtitles, concealed source subtitles, generated speech, music and watermark are optional. Export does not run an omitted AI tool on your behalf.
 
-When the file is ready, the completion window offers **Play video**, **Open folder** and **Close**. The current output also remains available from the project toolbar.
+Choose a quality preset, select a destination using Save As, then confirm **Export**. The suggested filename is the project name. An existing destination requires explicit overwrite approval. The jobs window shows the actual saved path and offers **Open folder** and **Close**. Re-export reuses the matching internal render; changing or deleting an exported file does not affect editing. Export outside managed project roots so deleting a project cannot remove your copy.
 
 ## 9. Preview and timeline
 
@@ -185,7 +185,7 @@ Changing tabs does not reset the active request or queue.
 
 ### Social publishing
 
-Connect Zernio, set the caption and post options, add an exported video, review the destination and confirm. This sends media to a third-party service. Review its terms, privacy rules, quotas and charges before use. A published item provides **Open post**.
+Connect Zernio, set the caption and post options, add a local video or a completed internal render from a Manual, Automatic or Batch project, review the destination and confirm. No external export is required for project import. HaizFlow copies the selected render into publishing-owned media before upload. This sends media to a third-party service; review its terms, privacy rules, quotas and charges. A published item provides **Open post**.
 
 ## 11. Storage and cache
 

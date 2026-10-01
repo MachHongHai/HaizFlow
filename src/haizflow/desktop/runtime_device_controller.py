@@ -48,6 +48,7 @@ class RuntimeDeviceController:
             or host._channel_importer.busy
             or (getattr(host, "_media_downloader", None) and host._media_downloader.hasWork)
             or getattr(host, "_media_import_busy", False)
+            or getattr(host, "videoExportBusy", False)
             or getattr(host, "_model_setup_state", "ready") in {"checking", "downloading", "verifying"}
         )
         if not background_work:

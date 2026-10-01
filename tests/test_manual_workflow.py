@@ -113,7 +113,7 @@ class ManualWorkflowTests(unittest.TestCase):
         host._update_queue_positions.assert_called_once_with()
         host.processingChanged.emit.assert_called_once_with()
 
-    def test_manual_export_completion_is_emitted_only_after_output_exists(self):
+    def test_internal_render_completion_does_not_claim_external_export_success(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "final.mp4"
             output_path.write_bytes(b"exported-video")
@@ -141,10 +141,7 @@ class ManualWorkflowTests(unittest.TestCase):
             ):
                 ProcessingLifecycleController(host).drain_log_queue()
 
-            host.manualExportCompleted.emit.assert_called_once_with(
-                video.video_id,
-                str(output_path),
-            )
+            host.manualExportCompleted.emit.assert_not_called()
 
     def test_completed_manual_voice_reconciles_document_before_preview_refresh(self):
         video = SimpleNamespace(

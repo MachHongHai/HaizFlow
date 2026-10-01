@@ -1053,16 +1053,19 @@ class SocialPublishController:
     def refresh_project_sources(self) -> None:
         candidates: list[dict] = []
         batch_groups: dict[str, dict] = {}
+        projects = {item["key"]: item for item in project_store.list_projects()}
         for video in video_store.list_videos():
-            if video.project_type not in {"single", "batch"} or video.status != "done":
+            if video.project_type not in {"single", "manual", "batch"}:
+                continue
+            if video.project_type != "manual" and video.status != "done":
                 continue
             output_path = self._output_path(video)
             if not self._supported_file(output_path):
                 continue
             width = int(getattr(video, "video_width", 0) or 0)
             height = int(getattr(video, "video_height", 0) or 0)
-            project_name = video.project_name or Path(video.original_filename).stem
-            source = {"output_path": output_path, "display_name": f"{project_name} — {video.original_filename}"}
+            project_name = projects.get(str(getattr(video, "project_key", "") or ""), {}).get("project_name") or video.project_name or Path(video.original_filename).stem
+            source = {"output_path": output_path, "display_name": f"{project_name} — {video.original_filename}", "video_id": video.video_id}
             if video.project_type == "batch":
                 group_key = str(getattr(video, "project_key", "") or getattr(video, "project_id", "") or project_name)
                 candidate = batch_groups.get(group_key)
@@ -1087,8 +1090,8 @@ class SocialPublishController:
                     {
                         "video_id": video.video_id,
                         "project_name": project_name,
-                        "project_type": "single",
-                        "file_name": video.original_filename,
+                        "project_type": video.project_type,
+                        "file_name": Path(output_path).name,
                         "output_paths": [source],
                         "thumbnail_source": thumbnail_source((video.files or {}).get("thumbnail") or ""),
                         "video_size": f"{width} x {height}" if width and height else "",
@@ -1108,12 +1111,39 @@ class SocialPublishController:
         return True
 
     def add_selected_project_videos(self) -> bool:
+        if self._busy:
+            return False
         selected = [item for item in self._project_sources if item["selected"]]
         sources = [source for item in selected for source in item["output_paths"]]
         if not sources:
             return False
+        from haizflow.services import manual_artifacts
+
+        leases = {}
+        try:
+            for source in sources:
+                identifier = str(source.get("video_id") or "")
+                video = video_store.get_video(identifier) if identifier else None
+                signature = str((getattr(video, "active_artifacts", {}) or {}).get("export") or "")
+                if not video or not signature:
+                    continue
+                owner = "social-import-" + uuid.uuid4().hex
+                manual_artifacts.pin(video.video_id, "export", signature, owner)
+                leases[source["output_path"]] = (video.video_id, owner)
+        except (OSError, RuntimeError, ValueError):
+            for identifier, owner in leases.values():
+                manual_artifacts.unpin(identifier, owner)
+            self._status = "The selected render is unavailable. Rebuild it or select another video."
+            self._emit_changed()
+            return False
+        self._source_render_leases = leases
         labels = {source["output_path"]: source["display_name"] for source in sources}
-        return self.add_videos([source["output_path"] for source in sources], labels)
+        accepted = self.add_videos([source["output_path"] for source in sources], labels)
+        if not accepted:
+            for identifier, owner in leases.values():
+                manual_artifacts.unpin(identifier, owner)
+            self._source_render_leases = {}
+        return accepted
 
     def browse_videos(self) -> bool:
         if self._busy or not self._ensure_publish_project():
@@ -1205,8 +1235,20 @@ class SocialPublishController:
         errors: list[str] = []
         media_dir = tiktok_publish.media_directory(project_root)
         thumbnails_dir = tiktok_publish.thumbnail_directory(project_root)
-        os.makedirs(media_dir, exist_ok=True)
-        os.makedirs(thumbnails_dir, exist_ok=True)
+        try:
+            from haizflow.core.storage_ownership import owned_path
+
+            if not os.path.isdir(project_root):
+                raise FileNotFoundError("Project storage is unavailable.")
+            owned_path(media_dir, project_root)
+            owned_path(thumbnails_dir, project_root)
+            os.makedirs(media_dir, exist_ok=True)
+            os.makedirs(thumbnails_dir, exist_ok=True)
+        except (OSError, ValueError) as exc:
+            self._release_source_render_leases()
+            self._events.put({"type": "import_finished", "project_key": project_key, "done": 0,
+                              "total": len(sources), "errors": [str(exc)], "cancelled": self._cancel.is_set()})
+            return
         for offset, (source, display_name) in enumerate(sources):
             if self._cancel.is_set():
                 break
@@ -1216,6 +1258,12 @@ class SocialPublishController:
             thumbnail_path = os.path.join(thumbnails_dir, f"{item_id}.jpg")
             imported_destination = False
             try:
+                lease = getattr(self, "_source_render_leases", {}).get(source)
+                if lease:
+                    from haizflow.services.video_export import render_path
+
+                    if render_path(video_store.get_video(lease[0]), verify=True) != source:
+                        raise FileNotFoundError("The selected project's current render is unavailable. Rebuild it or select another video.")
                 shutil.copy2(source, temporary)
                 if self._cancel.is_set():
                     raise InterruptedError
@@ -1260,11 +1308,17 @@ class SocialPublishController:
                         except OSError:
                             pass
             finally:
+                lease = getattr(self, "_source_render_leases", {}).pop(source, None)
+                if lease:
+                    from haizflow.services import manual_artifacts
+
+                    manual_artifacts.unpin(*lease)
                 for candidate in (temporary,):
                     try:
                         os.remove(candidate)
-                    except FileNotFoundError:
+                    except OSError:
                         pass
+        self._release_source_render_leases()
         self._events.put(
             {
                 "type": "import_finished",
@@ -1275,6 +1329,13 @@ class SocialPublishController:
                 "cancelled": self._cancel.is_set(),
             }
         )
+
+    def _release_source_render_leases(self):
+        from haizflow.services import manual_artifacts
+
+        for identifier, owner in getattr(self, "_source_render_leases", {}).values():
+            manual_artifacts.unpin(identifier, owner)
+        self._source_render_leases = {}
 
     def save_defaults(self, caption: str, hashtags: str, apply_to_existing: bool) -> bool:
         if not self._ensure_publish_project():
@@ -2298,10 +2359,6 @@ class SocialPublishController:
 
     @staticmethod
     def _output_path(video) -> str:
-        files = video.files or {}
-        for key in ("final_video", "output_video"):
-            candidate = str(files.get(key) or "")
-            if candidate and os.path.isfile(candidate):
-                return os.path.abspath(candidate)
-        legacy = os.path.join(video_store.get_video_dir(video.video_id), "output", "final.mp4")
-        return os.path.abspath(legacy) if os.path.isfile(legacy) else ""
+        from haizflow.services.video_export import render_path
+
+        return render_path(video)

@@ -131,6 +131,7 @@ Item {
                         AppController.openProjectFolder()
                 }
                 onDeleteRequested: AppController.deleteProjectFromBrowser(index)
+                onRenameRequested: key => AppController.requestProjectRename(key)
             }
 
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }

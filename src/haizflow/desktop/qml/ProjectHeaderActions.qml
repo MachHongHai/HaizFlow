@@ -10,8 +10,6 @@ RowLayout {
     property bool projectFolderEnabled: true
     property bool showInputVideo: false
     property bool inputVideoEnabled: true
-    property bool showOutputFolder: false
-    property bool outputFolderEnabled: true
     property bool showVideoFolder: false
     property bool videoFolderEnabled: true
     property bool showTechnicalLog: false
@@ -20,10 +18,10 @@ RowLayout {
     property bool setupEnabled: true
     property string deleteText: qsTr("Xóa dự án")
     property bool deleteEnabled: true
+    property string menuProjectKey: ""
 
     signal projectFolderRequested()
     signal inputVideoRequested()
-    signal outputFolderRequested()
     signal videoFolderRequested()
     signal technicalLogRequested()
     signal setupRequested()
@@ -56,6 +54,7 @@ RowLayout {
             y: parent.height + Theme.space4
             padding: Theme.space4
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
+            onAboutToShow: root.menuProjectKey = AppController.projectKey
 
             background: Rectangle {
                 radius: Theme.radiusSmall
@@ -70,14 +69,6 @@ RowLayout {
                 collapsed: !root.showInputVideo
                 enabled: root.inputVideoEnabled
                 onTriggered: root.inputVideoRequested()
-            }
-
-            AppMenuItem {
-                text: qsTr("Mở thư mục video xuất")
-                iconGlyph: "\uE8B7"
-                collapsed: !root.showOutputFolder
-                enabled: root.outputFolderEnabled
-                onTriggered: root.outputFolderRequested()
             }
 
             AppMenuItem {
@@ -109,6 +100,13 @@ RowLayout {
                 collapsed: !root.setupVisible
                 enabled: root.setupEnabled
                 onTriggered: root.setupRequested()
+            }
+
+            AppMenuItem {
+                text: qsTr("Đổi tên")
+                iconGlyph: IconCatalog.glyph("edit")
+                enabled: root.menuProjectKey.length > 0
+                onTriggered: AppController.requestProjectRename(root.menuProjectKey)
             }
 
             AppMenuItem {

@@ -181,7 +181,7 @@ InspectorPanel {
     Text {
         Layout.fillWidth: true
         visible: root.toolState.state === "error"
-        text: qsTr("Tác vụ gặp lỗi. Mở log kỹ thuật để xem chi tiết.")
+        text: String(root.toolState.errorMessage || qsTr("Tác vụ gặp lỗi. Mở log kỹ thuật để xem chi tiết."))
         color: Theme.danger
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.metadata
@@ -342,8 +342,11 @@ InspectorPanel {
                             imagePane.applyTreatment();
                         return;
                     }
-                    if (root.toolId === "export")
+                    if (root.toolId === "export") {
                         root.refreshExportPreflight();
+                        AppController.requestVideoExport();
+                        return;
+                    }
                     const started = AppController.runManualTool(root.toolId);
                     if (root.toolId === "export" && started)
                         root.exportRequested();

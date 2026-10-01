@@ -1382,6 +1382,7 @@ def render_video(
     watermark_bold: bool = True,
     watermark_italic: bool = True,
     subtitle_style_overrides: dict[int, dict] | None = None,
+    encoding_quality: int | None = None,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     process_key = str(process_registry_id or video_id)
@@ -1653,7 +1654,10 @@ def render_video(
             "+faststart",
         ]
     else:
-        video_encoder, video_encoder_args = preferred_video_encoder()
+        video_encoder, video_encoder_args = (
+            preferred_video_encoder(encoding_quality)
+            if encoding_quality is not None else preferred_video_encoder()
+        )
     cmd_prefix = ["ffmpeg", "-y"]
     if source_start_seconds > 0:
         cmd_prefix.extend(["-ss", f"{source_start_seconds:.6f}"])
@@ -1738,7 +1742,7 @@ def render_video(
         return_code, stderr = run_render(video_encoder, video_encoder_args)
         if return_code != 0 and video_encoder != "libx264":
             log_to_video(video_id, f"Hardware encoder {video_encoder} failed; retrying with libx264.")
-            return_code, stderr = run_render("libx264", ["-preset", "veryfast", "-crf", "23"])
+            return_code, stderr = run_render("libx264", ["-preset", "veryfast", "-crf", str(encoding_quality if encoding_quality is not None else 23)])
         if return_code != 0:
             log_to_video(video_id, f"FFmpeg Render Error output:\n{stderr}", level="ERROR", component="RENDER")
             raise RuntimeError(f"FFmpeg render failed with exit code {return_code}")

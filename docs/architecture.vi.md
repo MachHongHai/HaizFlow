@@ -66,7 +66,7 @@ Dependency đi từ presentation vào application services: QML → facade/contr
 
 `HaizFlowController` là singleton facade cho QML. Các controller chuyên trách sở hữu catalog/project, command, import, processing lifecycle, preview video, preview audio, download, publishing, setting, gói tài nguyên, kiểm tra cập nhật, smart warm-up và diagnostics. Danh sách lớn được expose bằng `QAbstractListModel`.
 
-`AppUpdateController` gọi GitHub Releases công khai trên worker thread và chỉ chuyển kết quả đã phân tích về Qt thread. Controller chỉ chấp nhận trang phát hành thuộc repository chính thức cố định rồi so sánh version stable. Ứng dụng mở trang đó khi có bản mới; nó không tự tải hoặc chạy bộ cài.
+`AppUpdateController` kiểm tra repository GitHub chính thức trên worker thread. Cập nhật giữ luồng bộ cài đầy đủ và các bước xác minh hiện có; không thêm delta updater.
 
 Activity ngắn nằm ở status strip; raw log chỉ mở khi cần chẩn đoán. Dialog dành cho quyết định hoặc lỗi cần hành động.
 
@@ -74,12 +74,11 @@ Activity ngắn nằm ở status strip; raw log chỉ mở khi cần chẩn đo�
 
 `project_store` sở hữu index và `.haizflow-project.json`; `video_store` sở hữu `video.json`, log, media path và checkpoint. ID là immutable identifier; folder name dễ đọc chỉ là nhãn.
 
-Ghi metadata dùng interprocess lock, file tạm, `fsync` và atomic replace. Bản hợp lệ trước được giữ làm backup; input hỏng được quarantine trước phục hồi.
+Schema dự án là v4; schema video là v19. Ghi metadata dùng interprocess lock, file tạm, `fsync` và atomic replace. Migration giữ bản sao schema cũ; schema tương lai chưa biết bị từ chối. Chi tiết tại [lưu trữ và xuất video](project-storage-export.md).
 
 ```text
 <project-name>--<short-id>/
   .haizflow-project.json
-  exports/
   videos/
     <source-name>--<short-id>/
       video.json
@@ -87,7 +86,7 @@ Ghi metadata dùng interprocess lock, file tạm, `fsync` và atomic replace. B�
       input/
       temp/
         editor-preview/
-        cache/manual/
+      cache/manual/
 ```
 
 Project Download dùng `downloads/video`, `downloads/channel`, `downloads/audio`. Project Publishing dùng `publishing/media`, thumbnail và queue file atomic. Delete phải resolve registered root; không suy ra target từ display name.
@@ -133,7 +132,7 @@ Sửa text chỉ invalid voice clip của câu đó và descendant. Sửa timing
 
 ### Artifact store
 
-`services/manual_artifacts.py` lưu artifact immutable dưới `temp/cache/manual`. Manifest ghi kind, signature, status, inputs, config fingerprint, outputs, timestamp, size và error.
+`services/manual_artifacts.py` lưu artifact bất biến của cả Thủ công, Tự động và Hàng loạt dưới `cache/manual` của từng video. Manifest ghi kind, signature, status, inputs, config fingerprint, outputs, timestamp, size và error. Video xuất là bản sao độc lập ngoài thư mục dự án được quản lý.
 
 Producer ghi staging, validate output, tạo complete marker rồi rename atomic. Lookup từ chối partial, thiếu, rỗng hoặc signature sai. Artifact active/runtime đang dùng được pin; variant inactive bị dọn theo LRU và quota.
 

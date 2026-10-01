@@ -58,28 +58,39 @@ Popup {
             }
         }
         Text {
+            id: updateMessage
             objectName: "appUpdateMessage"
             Layout.fillWidth: true
-            text: root.state === "checking" || root.state === "idle"
+            readonly property string message: root.state === "checking" || root.state === "idle"
                 ? qsTr("Đang kiểm tra phiên bản mới…")
                 : root.state === "error"
                     ? qsTr("Không thể kiểm tra phiên bản mới. Kiểm tra kết nối mạng rồi thử lại.")
                     : root.controller.hasAppUpdate
                         ? qsTr("Đã có phiên bản mới, hãy cập nhật ngay, chi tiết bản cập nhật xem tại:")
                         : qsTr("Hiện tại chưa có phiên bản mới, chi tiết bản cập nhật gần nhất:")
+            text: message + (root.state === "checking" || root.state === "idle" || root.state === "error"
+                ? "" : ' <a href="https://haizflow.pages.dev/" style="color: '
+                    + Theme.interactive + ';">haizflow.pages.dev</a>')
             color: Theme.textMuted
+            linkColor: Theme.interactive
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.control
-            textFormat: Text.PlainText
+            textFormat: Text.RichText
             wrapMode: Text.WordWrap
-        }
-        StudioButton {
-            objectName: "appUpdateLandingLink"
-            text: "haizflow.pages.dev"
-            variant: "ghost"
-            implicitHeight: 28
-            Accessible.name: qsTr("Xem chi tiết cập nhật trên trang HaizFlow")
-            onClicked: Qt.openUrlExternally("https://haizflow.pages.dev/")
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Link
+            Accessible.name: message + " haizflow.pages.dev"
+            onLinkActivated: link => {
+                if (link === "https://haizflow.pages.dev/")
+                    Qt.openUrlExternally(link);
+            }
+            Keys.onReturnPressed: {
+                if (root.state !== "checking" && root.state !== "idle" && root.state !== "error")
+                    Qt.openUrlExternally("https://haizflow.pages.dev/");
+            }
+            HoverHandler {
+                cursorShape: updateMessage.hoveredLink ? Qt.PointingHandCursor : Qt.ArrowCursor
+            }
         }
         ColumnLayout {
             Layout.fillWidth: true

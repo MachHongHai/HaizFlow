@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -7,6 +8,8 @@ Rectangle {
 
     required property int modelIndex
     required property string projectName
+    required property string projectKey
+    property string menuProjectKey: ""
     required property string projectType
     required property string status
     required property int progress
@@ -100,7 +103,34 @@ Rectangle {
     }
 
     HoverHandler { id: hoverHandler; cursorShape: Qt.PointingHandCursor }
-    TapHandler { onTapped: root.activated(root.modelIndex, root.projectType) }
+    TapHandler { acceptedButtons: Qt.LeftButton; onTapped: root.activated(root.modelIndex, root.projectType) }
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: eventPoint => projectMenu.popup(root, eventPoint.position.x, eventPoint.position.y)
+    }
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Menu) {
+            projectMenu.popup(root, 0, root.height);
+            event.accepted = true;
+        }
+    }
+    Menu {
+        id: projectMenu
+        width: 224
+        padding: Theme.space4
+        onAboutToShow: root.menuProjectKey = root.projectKey
+        background: Rectangle {
+            radius: Theme.radiusSmall
+            color: Theme.surfaceElevated
+            border.width: 1
+            border.color: Theme.outlineStrong
+        }
+        AppMenuItem {
+            text: qsTr("Đổi tên")
+            iconGlyph: IconCatalog.glyph("edit")
+            onTriggered: AppController.requestProjectRename(root.menuProjectKey)
+        }
+    }
     Keys.onReturnPressed: root.activated(root.modelIndex, root.projectType)
     Keys.onSpacePressed: root.activated(root.modelIndex, root.projectType)
 }

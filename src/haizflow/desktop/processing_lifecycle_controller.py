@@ -14,6 +14,7 @@ from haizflow.services import project_store, video_store
 class ProcessingLifecycleController:
     def __init__(self, host):
         self._host = host
+        self._disk_log_revision = None
 
     def enqueue_video(self, video_id: str) -> bool:
         host = self._host
@@ -311,27 +312,7 @@ class ProcessingLifecycleController:
                 host.selectedVideoChanged.emit()
                 host._refresh_batch_model()
                 host.batchChanged.emit()
-                if (
-                    finished_video
-                    and getattr(finished_video, "project_type", "single") == "manual"
-                    and finished_video.status == "done"
-                    and str(getattr(finished_video, "step", "") or "") == "done"
-                ):
-                    output_path = host._resolve_video_file(
-                        finished_video,
-                        ("final_video", "output_video"),
-                        ("output", "final.mp4"),
-                    )
-                    try:
-                        output_ready = bool(
-                            output_path
-                            and os.path.isfile(output_path)
-                            and os.path.getsize(output_path) > 0
-                        )
-                    except OSError:
-                        output_ready = False
-                    if output_ready:
-                        host.manualExportCompleted.emit(finished_video_id, output_path)
+                # Render completion is not external export completion.
             elif item == "__QUEUE_IDLE__":
                 if host._processing_queue.has_work:
                     continue
@@ -349,7 +330,34 @@ class ProcessingLifecycleController:
                 host.refreshVideos()
             elif item == "__VIDEO_DIMENSIONS_READY__":
                 host.poll_videos()
-        if pending_lines and self.append_logs(pending_lines):
+        changed = False
+        file_followed = False
+        # Worker processes write the same durable log but their in-process
+        # event listeners do not reach Qt. Follow the file while the task runs
+        # instead of discovering all Whisper lines at the completion boundary.
+        video_id = str(host._selected_video_id or "")
+        if video_id:
+            try:
+                path = video_store.get_video_logs_path(video_id)
+                stat = os.stat(path)
+                revision = (video_id, stat.st_mtime_ns, stat.st_size)
+                if revision != self._disk_log_revision or pending_lines:
+                    tail = ActivityLogBuffer()
+                    tail.replace(ActivityLogBuffer.read_tail(path))
+                    self._disk_log_revision = revision
+                    if tail.text != host._log_buffer.text:
+                        self.replace_logs(tail.text)
+                        changed = True
+                file_followed = True
+            except OSError:
+                pass
+        else:
+            self._disk_log_revision = None
+        # A delayed Qt callback may describe a line already read from disk.
+        # Treat the durable file as authoritative, rather than appending it twice.
+        if not file_followed and pending_lines:
+            changed = self.append_logs(pending_lines) or changed
+        if changed:
             host.logsChanged.emit()
 
     @staticmethod
@@ -364,6 +372,7 @@ class ProcessingLifecycleController:
 
     def clear_logs(self) -> None:
         host = self._host
+        self._disk_log_revision = None
         host._log_buffer.clear()
         host._logs = ""
         host.activity_events.clear()

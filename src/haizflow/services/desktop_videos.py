@@ -365,42 +365,10 @@ def set_desktop_voice_reference(video_info, source_path: str, transcript: str = 
 
 
 def migrate_legacy_single_export(video_info) -> bool:
-    """Move a legacy single-project export out of the project root once."""
-    if (
-        not video_info
-        or video_info.project_type == "batch"
-        or not video_info.project_name
-        or not video_info.project_directory
-    ):
-        return False
+    """Legacy entry point: preserve the old MP4 and adopt only verified owned media."""
+    from haizflow.services.video_export import adopt_legacy_render
 
-    project_root = (
-        project_store.project_root_for_key(video_info.project_key)
-        if video_info.project_key
-        else project_store.project_root(video_info.project_name, video_info.project_directory, video_info.project_type)
-    )
-    legacy_export = os.path.join(project_root, "dubbed_video.mp4")
-    current_export = (video_info.files or {}).get("final_video") or ""
-    if not current_export or not _same_path(current_export, legacy_export):
-        return False
-
-    export_directory = (
-        project_store.project_exports_dir_for_key(video_info.project_key)
-        if video_info.project_key
-        else project_store.project_exports_dir(
-            video_info.project_name, video_info.project_directory, video_info.project_type
-        )
-    )
-    migrated_export = os.path.join(export_directory, "dubbed_video.mp4")
-    os.makedirs(export_directory, exist_ok=True)
-    if os.path.isfile(legacy_export) and not os.path.exists(migrated_export):
-        os.replace(legacy_export, migrated_export)
-
-    if os.path.exists(migrated_export):
-        video_info.files["final_video"] = migrated_export
-        video_store.save_video(video_info)
-        return True
-    return False
+    return bool(adopt_legacy_render(video_info))
 
 
 def create_desktop_video(

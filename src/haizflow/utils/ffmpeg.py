@@ -57,7 +57,7 @@ def _encoder_works(encoder: str) -> bool:
     return result.returncode == 0
 
 
-def preferred_video_encoder() -> tuple[str, list[str]]:
+def preferred_video_encoder(quality: int = 23) -> tuple[str, list[str]]:
     """Return a verified hardware encoder, with a universal CPU fallback.
 
     Video encoding support is independent from the device selected for AI
@@ -65,15 +65,16 @@ def preferred_video_encoder() -> tuple[str, list[str]]:
     AMF, or an NVIDIA encoder, so probe every supported backend directly.
     """
     candidates = ["h264_nvenc", "h264_qsv", "h264_amf"]
+    quality_value = str(max(0, min(51, int(quality))))
     for encoder in candidates:
         if not _encoder_works(encoder):
             continue
         if encoder == "h264_nvenc":
-            return encoder, ["-preset", "p4", "-cq", "23"]
+            return encoder, ["-preset", "p4", "-cq", quality_value]
         if encoder == "h264_qsv":
-            return encoder, ["-preset", "faster", "-global_quality", "23"]
-        return encoder, ["-quality", "speed", "-qp_i", "23", "-qp_p", "23"]
-    return "libx264", ["-preset", "veryfast", "-crf", "23"]
+            return encoder, ["-preset", "faster", "-global_quality", quality_value]
+        return encoder, ["-quality", "speed", "-qp_i", quality_value, "-qp_p", quality_value]
+    return "libx264", ["-preset", "veryfast", "-crf", quality_value]
 
 def is_ffmpeg_available() -> bool:
     """Checks if both ffmpeg and ffprobe are available in the PATH."""

@@ -7,7 +7,6 @@ import os
 from haizflow.desktop.media import thumbnail_source
 from haizflow.schemas.video import CropSettings
 from haizflow.services import project_store, social_publish as tiktok_publish, video_store
-from haizflow.services.desktop_videos import migrate_legacy_single_export
 
 
 class ProjectWorkspaceController:
@@ -36,7 +35,8 @@ class ProjectWorkspaceController:
         # Set only after selecting the source record.  Every field below is
         # loaded from this exact video, so autosave may safely target it.
         host._settings_owner_video_id = video.video_id
-        host._project_name = video.project_name or os.path.splitext(video.original_filename)[0]
+        project_record = project_store.get_project(str(getattr(video, "project_key", "") or ""))
+        host._project_name = (project_record or {}).get("project_name") or video.project_name or os.path.splitext(video.original_filename)[0]
         host._project_directory = video.project_directory or host._project_directory
         selected_project_type = project_store.normalize_project_type(
             getattr(video, "project_type", "single")
@@ -53,8 +53,6 @@ class ProjectWorkspaceController:
             video = (
                 video_store.update_video(video.video_id, source_language="auto", output_format="keep_ratio") or video
             )
-        if migrate_legacy_single_export(video):
-            video = video_store.get_video(video.video_id) or video
         host._workflow_mode = video.mode
         host._target_language = str(video.target_language or "vi")
         host._speech_recognition_model = str(getattr(video, "speech_recognition_model", "small") or "small")
@@ -189,6 +187,18 @@ class ProjectWorkspaceController:
 
     def open_project_summary(self, project) -> None:
         host = self._host
+        try:
+            root = project_store.project_root_for_key(project["key"])
+            if not os.path.isdir(root):
+                raise FileNotFoundError(root)
+        except (OSError, RuntimeError, ValueError):
+            host.appAlertRequested.emit(
+                "Không truy cập được dự án" if host._settings_language == "vi" else "Project unavailable",
+                "Thư mục dự án chưa được kết nối hoặc đã di chuyển. Kết nối lại ổ đĩa rồi thử mở lại; dữ liệu và danh sách dự án được giữ nguyên."
+                if host._settings_language == "vi" else
+                "Project folder is disconnected or moved. Reconnect the drive and retry; the project remains registered.", "warning",
+            )
+            return
         # Save before replacing project identity fields.  In particular,
         # _apply_setup_to_video also snapshots project_type, so doing this
         # after switching projects could assign the next project's type to

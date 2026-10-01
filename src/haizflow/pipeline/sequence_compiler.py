@@ -531,6 +531,8 @@ def apply_overlays(
     output_path: str,
     document: EditorDocument | None,
     process_id: str,
+    *,
+    encoding_quality: int = 20,
 ) -> str:
     overlays = _active_overlays(document)
     if not overlays:
@@ -685,7 +687,7 @@ def apply_overlays(
         "-preset",
         "veryfast",
         "-crf",
-        "20",
+        str(encoding_quality),
         "-c:a",
         audio_codec,
         "-movflags",
@@ -698,4 +700,22 @@ def apply_overlays(
         process_id=process_id,
         label="Editor overlays",
     )
+    return output_path
+
+
+def finish_export_resolution(input_path: str, output_path: str, preset: str, process_id: str) -> str:
+    from haizflow.services.video_export import output_dimensions, preset_settings
+    from haizflow.utils.ffmpeg import get_video_dimensions
+
+    dimensions = get_video_dimensions(input_path)
+    target = output_dimensions(*dimensions, preset)
+    if target == dimensions:
+        shutil.copy2(input_path, output_path)
+        return output_path
+    _run([
+        _binary("ffmpeg"), "-y", "-i", os.path.abspath(input_path),
+        "-map", "0:v:0", "-map", "0:a?", "-vf", f"scale={target[0]}:{target[1]}:flags=lanczos",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", str(preset_settings(preset)["crf"]),
+        "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", os.path.abspath(output_path),
+    ], cwd=str(Path(output_path).resolve().parent), process_id=process_id, label="Export resolution")
     return output_path

@@ -91,15 +91,6 @@ AppDialog {
                 root.openFolderRequested();
                 root.close();
             }
-        },
-        StudioButton {
-            text: qsTr("Mở video")
-            iconName: "play"
-            variant: "primary"
-            onClicked: {
-                root.openVideoRequested();
-                root.close();
-            }
         }
     ]
 }

@@ -45,15 +45,12 @@ Item {
                 projectFolderEnabled: AppController.hasOpenProject
                 showInputVideo: AppController.hasSelectedVideo
                 inputVideoEnabled: AppController.hasSelectedVideo
-                showOutputFolder: AppController.hasSelectedVideo
-                outputFolderEnabled: AppController.hasSelectedVideo
                 showTechnicalLog: true
                 technicalLogEnabled: AppController.hasSelectedVideo
                 deleteEnabled: AppController.hasOpenProject
                 deleteText: root.editingBatchVideo ? qsTr("Xóa video") : qsTr("Xóa dự án")
                 onProjectFolderRequested: AppController.openProjectFolder()
                 onInputVideoRequested: AppController.openInputFile()
-                onOutputFolderRequested: AppController.openOutputFolder()
                 onTechnicalLogRequested: {
                     if (technicalLogLoader.status === Loader.Ready && root.technicalLogDialog)
                         root.technicalLogDialog.open();

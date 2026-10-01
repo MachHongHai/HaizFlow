@@ -259,6 +259,27 @@ ApplicationWindow {
     }
 
     LazyDialogLoader {
+        id: projectRenameDialogLoader
+        sourceComponent: Component {
+            ProjectRenameDialog { onClosed: projectRenameDialogLoader.release() }
+        }
+    }
+
+    LazyDialogLoader {
+        id: videoExportDialogLoader
+        sourceComponent: Component { VideoExportDialog { onClosed: videoExportDialogLoader.release() } }
+    }
+    LazyDialogLoader {
+        id: videoExportJobsDialogLoader
+        sourceComponent: Component { VideoExportJobsDialog { onClosed: videoExportJobsDialogLoader.release() } }
+    }
+    Connections {
+        target: AppController
+        function onVideoExportRequested() { videoExportDialogLoader.invoke("openForSelection", []); }
+        function onVideoExportStarted() { videoExportJobsDialogLoader.invoke("open", []); }
+    }
+
+    LazyDialogLoader {
         id: urlImportDialogLoader
         sourceComponent: Component {
             UrlImportDialog { onClosed: urlImportDialogLoader.release() }
@@ -325,6 +346,9 @@ ApplicationWindow {
 
     Connections {
         target: AppController
+        function onProjectRenameRequested(key, name) {
+            projectRenameDialogLoader.invoke("openForProject", [key, name]);
+        }
 
         function onVideoDeleted() {
             if (!AppController.hasOpenProject) {
@@ -516,7 +540,7 @@ ApplicationWindow {
                     : root.selectedTaskPaused ? "paused"
                     : root.selectedTaskQueued ? "queued" : "ready"
             message: root.modelStatusFailed ? I18n.runtimeStatus(AppController.statusMessage)
-                : root.selectedTaskFailed ? qsTr("Tác vụ thất bại · Mở log kỹ thuật để xem chi tiết")
+                : root.selectedTaskFailed ? AppController.selectedFailureMessage
                 : AppController.isProcessing ? (AppController.isSelectedVideoProcessing
                     ? AppController.selectedStageLabel
                     : qsTr("Đang xử lý video khác"))

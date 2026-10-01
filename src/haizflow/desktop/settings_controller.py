@@ -70,6 +70,9 @@ class SettingsController:
             activity_events.set_language(host._settings_language)
         host._status_message = "Settings applied"
         host.settingsChanged.emit()
+        selected_changed = getattr(host, "selectedVideoChanged", None)
+        if history_before["language"] != host._settings_language and selected_changed is not None:
+            selected_changed.emit()
         options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
         if options_changed:
             options_changed.emit()
@@ -135,6 +138,9 @@ class SettingsController:
         else:
             host._status_message = "Settings reset to defaults"
         host.settingsChanged.emit()
+        selected_changed = getattr(host, "selectedVideoChanged", None)
+        if history_before["language"] != host._settings_language and selected_changed is not None:
+            selected_changed.emit()
         options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
         if options_changed:
             options_changed.emit()

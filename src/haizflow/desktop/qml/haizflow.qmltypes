@@ -1236,6 +1236,20 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "selectedFailureMessage"
+            type: "QString"
+            read: "selectedFailureMessage"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
+            name: "selectedFailureTitle"
+            type: "QString"
+            read: "selectedFailureTitle"
+            notify: "selectedVideoChanged"
+            isReadonly: true
+        }
+        Property {
             name: "selectedStep"
             type: "QString"
             read: "selectedStep"
@@ -2190,8 +2204,27 @@ Module {
         Method { name: "deleteCurrentProject" }
         Method { name: "refreshVideos" }
         Method { name: "openInputFile" }
-        Method { name: "openOutputFile" }
-        Method { name: "openOutputFolder" }
+        Property { name: "projectKey"; type: "QString"; read: "projectKey"; notify: "projectSetupChanged"; isReadonly: true }
+        Property { name: "videoExportBusy"; type: "bool"; read: "videoExportBusy"; notify: "exportStateChanged"; isReadonly: true }
+        Property { name: "videoExportJobs"; type: "QVariantList"; read: "videoExportJobs"; notify: "exportStateChanged"; isReadonly: true }
+        Signal { name: "exportStateChanged" }
+        Signal { name: "videoExportRequested" }
+        Signal { name: "videoExportStarted" }
+        Signal { name: "videoExportCompleted"; Parameter { name: "a1"; type: "QString" } Parameter { name: "a2"; type: "QString" } }
+        Signal { name: "projectRenameRequested"; Parameter { name: "a1"; type: "QString" } Parameter { name: "a2"; type: "QString" } }
+        Method { name: "requestProjectRename"; Parameter { name: "a1"; type: "QString" } }
+        Method { name: "renameProject"; type: "bool"; Parameter { name: "a1"; type: "QString" } Parameter { name: "a2"; type: "QString" } }
+        Method { name: "prepareProjectCreationDirectory" }
+        Method { name: "requestVideoExport" }
+        Method { name: "manualExportSettings"; type: "QVariantMap" }
+        Method { name: "setManualExportPreset"; type: "bool"; Parameter { name: "a1"; type: "QString" } }
+        Method { name: "chooseVideoExportDestination"; type: "QString"; Parameter { name: "a1"; type: "QString" } }
+        Method { name: "exportDestinationExists"; type: "bool"; Parameter { name: "a1"; type: "QString" } }
+        Method { name: "exportVideoTo"; type: "bool"; Parameter { name: "a1"; type: "QString" } Parameter { name: "a2"; type: "QString" } Parameter { name: "a3"; type: "QString" } Parameter { name: "a4"; type: "bool" } }
+        Method { name: "exportBatchVideos"; type: "bool" }
+        Method { name: "retryVideoExports"; type: "bool" }
+        Method { name: "cancelVideoExport" }
+        Method { name: "openExportDestinationFolder"; Parameter { name: "a1"; type: "QString" } }
         Method { name: "openVideoFolder" }
     }
 }

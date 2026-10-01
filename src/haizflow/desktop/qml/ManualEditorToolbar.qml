@@ -20,11 +20,9 @@ Rectangle {
     signal undoRequested()
     signal redoRequested()
     signal compareToggled()
-    signal outputRequested()
     signal exportRequested()
     signal projectFolderRequested()
     signal inputVideoRequested()
-    signal outputFolderRequested()
     signal videoFolderRequested()
     signal technicalLogRequested()
     signal projectDeleteRequested()
@@ -91,14 +89,6 @@ Rectangle {
         }
         StudioButton {
             visible: root.hasVideo
-            text: qsTr("Mở video xuất")
-            iconName: "play"
-            variant: "ghost"
-            enabled: root.hasOutput
-            onClicked: root.outputRequested()
-        }
-        StudioButton {
-            visible: root.hasVideo
             text: qsTr("Xuất")
             iconName: "open"
             variant: "primary"
@@ -109,16 +99,13 @@ Rectangle {
             projectFolderEnabled: root.hasProject
             showInputVideo: true
             inputVideoEnabled: root.hasVideo
-            showOutputFolder: true
-            outputFolderEnabled: root.hasVideo
-            showVideoFolder: true
+            showVideoFolder: false
             videoFolderEnabled: root.hasVideo
             showTechnicalLog: true
             technicalLogEnabled: root.hasVideo
             deleteEnabled: root.hasProject
             onProjectFolderRequested: root.projectFolderRequested()
             onInputVideoRequested: root.inputVideoRequested()
-            onOutputFolderRequested: root.outputFolderRequested()
             onVideoFolderRequested: root.videoFolderRequested()
             onTechnicalLogRequested: root.technicalLogRequested()
             onDeleteRequested: root.projectDeleteRequested()

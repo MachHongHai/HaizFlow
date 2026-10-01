@@ -707,6 +707,7 @@ class CpuRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             with (
                 mock.patch.object(audio_separation, "runtime_profile", return_value=profile),
+                mock.patch.object(audio_separation, "_demucs_model_directory", return_value=Path(temp_dir)),
                 mock.patch.object(audio_separation.subprocess, "Popen", FakeProcess),
                 mock.patch.object(audio_separation, "communicate_process", return_value=("", "")),
                 mock.patch.object(audio_separation, "check_cancellation"),

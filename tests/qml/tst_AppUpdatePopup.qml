@@ -41,10 +41,14 @@ Item {
             const popup = makePopup();
             const message = findChild(popup, "appUpdateMessage");
             verify(!!message, "Object exists");
-            compare(message.text, qsTr("Hiện tại chưa có phiên bản mới, chi tiết bản cập nhật gần nhất:"));
+            compare(message.message, qsTr("Hiện tại chưa có phiên bản mới, chi tiết bản cập nhật gần nhất:"));
+            compare(message.textFormat, Text.RichText);
+            verify(message.text.indexOf('<a href="https://haizflow.pages.dev/"') >= 0);
+            verify(message.text.indexOf('color: ' + Theme.interactive) >= 0);
+            verify(!findChild(popup, "appUpdateLandingLink"), "Landing page is an inline link, not a button");
             popup.controller.hasAppUpdate = true;
             popup.controller.appUpdateState = "available";
-            tryCompare(message, "text", qsTr("Đã có phiên bản mới, hãy cập nhật ngay, chi tiết bản cập nhật xem tại:"));
+            tryCompare(message, "message", qsTr("Đã có phiên bản mới, hãy cập nhật ngay, chi tiết bản cập nhật xem tại:"));
         }
         function test_install_click_starts_download_and_disables_repeat() {
             const popup = makePopup();

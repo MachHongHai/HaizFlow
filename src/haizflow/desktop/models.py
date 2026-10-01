@@ -325,6 +325,7 @@ class ProjectListModel(QAbstractListModel):
     VideoSizeRole = Qt.ItemDataRole.UserRole + 7
     UpdatedAtRole = Qt.ItemDataRole.UserRole + 8
     ActivityAtRole = Qt.ItemDataRole.UserRole + 9
+    ProjectKeyRole = Qt.ItemDataRole.UserRole + 10
 
     def __init__(self):
         super().__init__()
@@ -342,6 +343,7 @@ class ProjectListModel(QAbstractListModel):
     def _role_values(self, project):
         return {
             self.ProjectNameRole: project["project_name"],
+            self.ProjectKeyRole: project["key"],
             self.ProjectTypeRole: project["project_type"],
             self.VideoCountRole: project["video_count"],
             self.StatusRole: project["status"],
@@ -355,6 +357,7 @@ class ProjectListModel(QAbstractListModel):
     def roleNames(self):
         return {
             self.ProjectNameRole: b"projectName",
+            self.ProjectKeyRole: b"projectKey",
             self.ProjectTypeRole: b"projectType",
             self.VideoCountRole: b"videoCount",
             self.StatusRole: b"status",

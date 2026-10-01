@@ -204,7 +204,11 @@ class MixedLanguagePipelineTests(unittest.TestCase):
         transcribe._release_cuda = lambda *_args, **_kwargs: None
         transcribe.log_to_video = lambda *_args, **_kwargs: None
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                tempfile.TemporaryDirectory() as temp_dir,
+                mock.patch.object(transcribe, "_verify_whisperx_vad_asset", return_value="test-vad.bin"),
+                mock.patch.object(transcribe, "_whisper_model_source", return_value=("test-whisper", True)),
+            ):
                 output_path = Path(temp_dir) / "segments.json"
                 output, language = transcribe.transcribe(
                     "audio.wav",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -20,6 +21,7 @@ from haizflow.core.storage_policy import (
     MINIMUM_OPERATIONAL_FREE_BYTES,
 )
 from haizflow.services import video_store
+from haizflow.core.storage_ownership import managed_storage_guard, owned_path, safe_tree
 
 MANIFEST_SCHEMA_VERSION = 1
 PROJECT_SOFT_LIMIT_BYTES = MANUAL_PROJECT_SOFT_LIMIT_BYTES
@@ -65,6 +67,7 @@ _MANIFEST_LOCKS_GUARD = threading.Lock()
 _STAGING_LEASES: set[str] = set()
 _STAGING_LEASES_GUARD = threading.Lock()
 _RUNTIME_PINS: dict[tuple[str, str], str] = {}
+_RUNTIME_PIN_ROOTS: dict[tuple[str, str], str] = {}
 _RUNTIME_PINS_GUARD = threading.Lock()
 
 
@@ -96,7 +99,8 @@ def file_state(path: str | os.PathLike[str] | None) -> dict[str, Any] | None:
 
 
 def cache_root(video_id: str) -> Path:
-    return Path(video_store.get_video_dir(video_id)) / "cache" / "manual"
+    owner = Path(video_store.get_video_dir(video_id))
+    return owned_path(owner / "cache" / "manual", owner)
 
 
 def manifest_path(video_id: str) -> Path:
@@ -163,7 +167,10 @@ def artifact_id(kind: str, artifact_signature: str) -> str:
 def artifact_directory(video_id: str, kind: str, artifact_signature: str) -> Path:
     if kind not in _CACHE_DIRECTORIES:
         raise ValueError(f"Unsupported Manual artifact kind: {kind}")
-    return cache_root(video_id) / _CACHE_DIRECTORIES[kind] / artifact_signature
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", str(artifact_signature)):
+        raise ValueError("Unsafe artifact signature.")
+    root = cache_root(video_id)
+    return owned_path(root / _CACHE_DIRECTORIES[kind] / artifact_signature, root)
 
 
 def create_staging_directory(video_id: str, kind: str) -> Path:
@@ -220,6 +227,11 @@ def _remove_abandoned_staging(root: Path, *, include_recent: bool = False) -> in
     removed = 0
     now = time.time()
     for partial in root.rglob(".partial-*"):
+        try:
+            owned_path(partial, root)
+            safe_tree(partial)
+        except (OSError, ValueError):
+            continue
         if not partial.is_dir() or _is_live_staging(partial):
             continue
         try:
@@ -326,6 +338,7 @@ def publish(
                 # The target is a cache directory for this exact immutable
                 # signature, never user output.  Replace a corrupt/incomplete
                 # directory instead of discarding the newly completed artifact.
+                safe_tree(final)
                 shutil.rmtree(final)
                 os.replace(staging, final)
         else:
@@ -367,12 +380,16 @@ def _validated_outputs(video_id: str, record: dict[str, Any]) -> dict[str, str] 
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     marker_outputs = marker.get("outputs")
-    if not isinstance(marker_outputs, dict):
+    if (not isinstance(marker_outputs, dict) or marker.get("kind") != record.get("kind")
+            or marker.get("signature") != record.get("signature")):
         return None
     resolved: dict[str, str] = {}
     for name, relative in (record.get("outputs") or {}).items():
         metadata = marker_outputs.get(name)
-        candidate = (directory / str(relative)).resolve()
+        try:
+            candidate = owned_path(directory / str(relative), directory)
+        except ValueError:
+            return None
         if not isinstance(metadata, dict) or not candidate.is_relative_to(directory.resolve()):
             return None
         try:
@@ -440,10 +457,10 @@ def peek(video_id: str, kind: str, artifact_signature: str) -> dict[str, Any] | 
         resolved: dict[str, str] = {}
         for name, relative in (record.get("outputs") or {}).items():
             metadata = marker["outputs"].get(name)
-            candidate = (directory / str(relative)).resolve()
-            if not isinstance(metadata, dict) or not candidate.is_relative_to(directory):
-                return None
             try:
+                candidate = owned_path(directory / str(relative), directory)
+                if not isinstance(metadata, dict):
+                    return None
                 if not candidate.is_file() or candidate.stat().st_size != int(metadata.get("size") or -1):
                     return None
             except (OSError, TypeError, ValueError):
@@ -506,13 +523,44 @@ def deactivate(video_id: str, kinds: Iterable[str]) -> None:
 def pin(video_id: str, kind: str, artifact_signature: str, owner: str) -> None:
     """Pin one immutable artifact while a runtime consumer has it open."""
     key = artifact_id(kind, artifact_signature)
-    with _RUNTIME_PINS_GUARD:
-        _RUNTIME_PINS[(str(video_id), str(owner))] = key
+    directory = artifact_directory(video_id, kind, artifact_signature)
+    root = str(Path(video_store.get_video_dir(video_id)).absolute())
+    with managed_storage_guard, _RUNTIME_PINS_GUARD:
+        if not directory.is_dir():
+            raise FileNotFoundError("Managed artifact is unavailable.")
+        identifier = (str(video_id), str(owner))
+        _RUNTIME_PINS[identifier] = key
+        _RUNTIME_PIN_ROOTS[identifier] = root
 
 
 def unpin(video_id: str, owner: str) -> None:
     with _RUNTIME_PINS_GUARD:
         _RUNTIME_PINS.pop((str(video_id), str(owner)), None)
+        _RUNTIME_PIN_ROOTS.pop((str(video_id), str(owner)), None)
+
+
+def has_runtime_pins(video_id: str) -> bool:
+    with _RUNTIME_PINS_GUARD:
+        return any(identifier == str(video_id) for identifier, _owner in _RUNTIME_PINS)
+
+
+def assert_root_idle(root) -> None:
+    with _RUNTIME_PINS_GUARD:
+        roots = [path for key, path in _RUNTIME_PIN_ROOTS.items() if key in _RUNTIME_PINS]
+    for path in roots:
+        try:
+            owned_path(path, root)
+        except ValueError:
+            continue
+        raise RuntimeError("Managed video is in use by export or social import. Wait or cancel that task before deleting.")
+    with _STAGING_LEASES_GUARD:
+        staging = list(_STAGING_LEASES)
+    for path in staging:
+        try:
+            owned_path(path, root)
+        except ValueError:
+            continue
+        raise RuntimeError("Project artifacts are being produced. Wait or cancel the worker before deleting.")
 
 
 def register_existing(
@@ -541,7 +589,10 @@ def register_existing(
             relative = f"{name}{suffix}"
             destination = staging / relative
             try:
-                os.link(source, destination)
+                if kind == "export":
+                    shutil.copy2(source, destination)  # Independent from editable legacy output.
+                else:
+                    os.link(source, destination)
             except OSError:
                 shutil.copy2(source, destination)
             relatives[name] = relative
@@ -672,6 +723,15 @@ def adaptive_global_limit(root: Path, current_bytes: int) -> int:
     )
 
 
+def _remove_inactive_directory(directory: Path) -> bool:
+    try:
+        safe_tree(directory)
+        shutil.rmtree(directory, ignore_errors=True)
+        return not directory.exists()
+    except (OSError, ValueError):
+        return False
+
+
 def _prune_unlocked(video_id: str, *, limit_bytes: int | None = None) -> int:
     """Remove least-recently-used inactive artifacts inside one project."""
     root = cache_root(video_id)
@@ -717,7 +777,8 @@ def _prune_unlocked(video_id: str, *, limit_bytes: int | None = None) -> int:
             continue
         size = max(0, int(record.get("size_bytes") or 0))
         directory = artifact_directory(video_id, str(record.get("kind") or ""), str(record.get("signature") or ""))
-        shutil.rmtree(directory, ignore_errors=True)
+        if not _remove_inactive_directory(directory):
+            continue
         manifest["artifacts"].pop(str(record.get("artifact_id") or ""), None)
         required -= size
         total -= size
@@ -729,20 +790,31 @@ def _prune_unlocked(video_id: str, *, limit_bytes: int | None = None) -> int:
 
 
 def prune(video_id: str, *, limit_bytes: int | None = None) -> int:
-    with _manifest_lock(video_id):
+    with _manifest_lock(video_id), managed_storage_guard:
         return _prune_unlocked(video_id, limit_bytes=limit_bytes)
 
 
 def _clear_unlocked(video_id: str, *, include_active: bool = False) -> int:
     manifest = load_manifest(video_id)
-    active_ids = set() if include_active else _active_ids(video_id)
+    active_ids = _active_ids(video_id)
+    if include_active:
+        with _RUNTIME_PINS_GUARD:
+            active_ids = {value for (identifier, _), value in _RUNTIME_PINS.items() if identifier == str(video_id)}
+        pending = list(active_ids)
+        while pending:
+            record = manifest["artifacts"].get(pending.pop()) or {}
+            for dependency in record.get("inputs") or []:
+                if dependency in manifest["artifacts"] and dependency not in active_ids:
+                    active_ids.add(dependency)
+                    pending.append(dependency)
     removed = 0
     for key, record in list(manifest["artifacts"].items()):
         if key in active_ids:
             continue
-        removed += max(0, int(record.get("size_bytes") or 0))
         directory = artifact_directory(video_id, str(record.get("kind") or ""), str(record.get("signature") or ""))
-        shutil.rmtree(directory, ignore_errors=True)
+        if not _remove_inactive_directory(directory):
+            continue
+        removed += max(0, int(record.get("size_bytes") or 0))
         manifest["artifacts"].pop(key, None)
     removed += _remove_abandoned_staging(cache_root(video_id), include_recent=True)
     _save_manifest(video_id, manifest)
@@ -750,14 +822,14 @@ def _clear_unlocked(video_id: str, *, include_active: bool = False) -> int:
 
 
 def clear(video_id: str, *, include_active: bool = False) -> int:
-    with _manifest_lock(video_id):
+    with _manifest_lock(video_id), managed_storage_guard:
         return _clear_unlocked(video_id, include_active=include_active)
 
 
 def prune_global(*, limit_bytes: int | None = None) -> int:
     """Apply one LRU budget across every Manual project cache."""
     try:
-        videos = [video for video in video_store.list_videos() if video.project_type == "manual"]
+        videos = [video for video in video_store.list_videos() if video.project_type in {"manual", "single", "batch"}]
     except (AttributeError, OSError, RuntimeError, ValueError):
         # Cache publication must remain successful if an unrelated legacy
         # record cannot be enumerated. The next maintenance pass can retry.
@@ -799,7 +871,7 @@ def prune_global(*, limit_bytes: int | None = None) -> int:
     ):
         if required <= 0:
             break
-        with _manifest_lock(video_id):
+        with _manifest_lock(video_id), managed_storage_guard:
             current = load_manifest(video_id)
             removed_id = str(record.get("artifact_id") or "")
             latest = current["artifacts"].get(removed_id)
@@ -811,7 +883,8 @@ def prune_global(*, limit_bytes: int | None = None) -> int:
                 str(latest.get("kind") or ""),
                 str(latest.get("signature") or ""),
             )
-            shutil.rmtree(directory, ignore_errors=True)
+            if not _remove_inactive_directory(directory):
+                continue
             current["artifacts"].pop(removed_id, None)
             _save_manifest(video_id, current)
             required -= size
@@ -821,9 +894,12 @@ def prune_global(*, limit_bytes: int | None = None) -> int:
 
 def maintain(video_id: str) -> int:
     """Run coalesced cache maintenance after a Manual operation is idle."""
-    removed = prune(video_id)
-    removed += prune_global()
-    return removed
+    try:
+        return prune(video_id) + prune_global()
+    except (OSError, RuntimeError, ValueError):
+        # Maintenance can retry later. A locked/corrupt inactive cache must not
+        # turn an already published render or successful AI task into failure.
+        return 0
 
 
 def cache_size(video_id: str) -> int:

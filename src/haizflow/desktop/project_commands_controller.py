@@ -1250,6 +1250,42 @@ class ProjectCommandsController:
         host.refreshVideos()
         host.videoDeleted.emit()
 
+    def rename_project(self, key: str, name: str) -> bool:
+        host = self._host
+        project = project_store.get_project(str(key or ""))
+        if not project:
+            return False
+        videos = [video for video in video_store.list_videos() if host._video_project_key(video) == key]
+        busy = any(host._processing_queue.contains(video.video_id) or video.status == "processing" for video in videos)
+        if project["project_type"] == "download":
+            busy = busy or host._media_downloader.has_project_work(key)
+        if project["project_type"] == "publish":
+            busy = busy or host._tiktok_publisher.has_project_work(key)
+        vi = getattr(host, "_settings_language", "vi") == "vi"
+        if busy:
+            host.appAlertRequested.emit(
+                "Chưa thể đổi tên" if vi else "Cannot rename yet",
+                "Chờ tác vụ của dự án hoàn tất hoặc tạm dừng trước khi đổi tên." if vi
+                else "Wait for the project's task to finish or pause it before renaming.", "info",
+            )
+            return False
+        try:
+            updated = project_store.rename_project_by_key(key, name)
+        except (OSError, RuntimeError, ValueError):
+            host.appAlertRequested.emit(
+                "Không thể đổi tên" if vi else "Cannot rename project",
+                "Kiểm tra tên dự án (tối đa 120 ký tự, không dùng ký tự cấm của Windows), quyền ghi thư mục và trạng thái tác vụ. Dữ liệu dự án vẫn được giữ nguyên."
+                if vi else "Check the project name (120 characters maximum, no reserved Windows characters), folder write permissions and task status. Project data is unchanged.",
+                "warning",
+            )
+            return False
+        if host._selected_project_key == key:
+            host._project_name = updated["project_name"]
+            host.projectSetupChanged.emit()
+            host.selectedVideoChanged.emit()
+        host.refreshVideos()
+        return True
+
     def delete_project_summary(self, project: dict) -> bool:
         """Delete the exact project represented by a browser row.
 

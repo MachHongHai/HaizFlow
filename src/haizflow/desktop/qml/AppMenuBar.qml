@@ -110,6 +110,10 @@ Rectangle {
             onClicked: root.toggleMenu(settingsMenu, settingsButton, menuWasOpenOnPress)
         }
 
+        Item {
+            Layout.fillWidth: true
+        }
+
         TopBarMenuButton {
             id: updatesButton
             objectName: "appUpdatesButton"
@@ -142,10 +146,6 @@ Rectangle {
                     font.weight: Font.DemiBold
                 }
             }
-        }
-
-        Item {
-            Layout.fillWidth: true
         }
 
         TopBarNavigationButton {

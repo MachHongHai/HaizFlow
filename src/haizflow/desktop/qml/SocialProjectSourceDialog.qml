@@ -9,7 +9,7 @@ AppDialog {
     id: root
 
     title: qsTr("Thêm video từ dự án")
-    subtitle: qsTr("Chọn video đã xử lý hoặc toàn bộ dự án hàng loạt")
+    subtitle: qsTr("Chọn video đã dựng hoặc toàn bộ dự án hàng loạt")
     preferredWidth: 700
     preferredHeight: 560
     maximumWidth: 740
@@ -96,7 +96,7 @@ AppDialog {
                 StatusBadge {
                     status: "ready"
                     label: sourceDelegate.projectType === "batch"
-                        ? qsTr("Hàng loạt") : qsTr("Tự động")
+                        ? qsTr("Hàng loạt") : sourceDelegate.projectType === "manual" ? qsTr("Thủ công") : qsTr("Tự động")
                 }
 
                 Text {
@@ -127,8 +127,8 @@ AppDialog {
             visible: sourceList.count === 0
             width: Math.min(400, sourceList.width - Theme.space32)
             iconName: "video"
-            title: qsTr("Chưa có video hoàn tất")
-            message: qsTr("Xử lý video trong dự án Tự động hoặc Hàng loạt trước.")
+                    title: qsTr("Chưa có video đã dựng")
+                    message: qsTr("Hoàn tất dựng video trong dự án Thủ công, Tự động hoặc Hàng loạt để thêm vào đây. Không cần xuất tệp ra ngoài.")
         }
 
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }

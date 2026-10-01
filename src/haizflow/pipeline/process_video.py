@@ -757,7 +757,9 @@ def _original_subtitle_region_for_render(video, reporter, video_dir, *, pipeline
 def _finish_after_translation(video, reporter, video_dir, original_audio_target, *, stop_after=None):
     video_id = video.video_id
     video_input = _required_video_path(video, "video_input", must_exist=True)
-    final_video = _required_video_path(video, "final_video")
+    from haizflow.services.video_export import export_destination
+
+    final_video = str(export_destination(video))
     srt_output = _required_video_path(video, "srt_output")
     voice_output = _required_video_path(video, "voice_output")
     transcript_json = _required_video_path(video, "transcript_json", must_exist=True)
@@ -969,7 +971,13 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         getattr(video, "watermark_bold", True),
         getattr(video, "watermark_italic", True),
         manual_subtitle_layout,
+        getattr(video, "export_preset", "source"),
     )
+    from haizflow.services.video_export import current_render, preset_settings
+
+    reusable_render = current_render(get_video(video_id) or video)
+    if reusable_render and video.checkpoints.get("render") == render_signature:
+        final_video = reusable_render["resolved_outputs"]["video"]
     if _checkpoint_valid(video, "render", render_signature, [final_video]) or _recovery_checkpoint_valid(
         video, "render", render_signature, [final_video]
     ):
@@ -1014,8 +1022,35 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             watermark_text_color=getattr(video, "watermark_text_color", "#FFFFFF"),
             watermark_bold=getattr(video, "watermark_bold", True),
             watermark_italic=getattr(video, "watermark_italic", True),
+            encoding_quality=int(preset_settings(getattr(video, "export_preset", "source"))["crf"]),
         )
+        if getattr(video, "export_preset", "source") != "source":
+            from haizflow.pipeline.sequence_compiler import finish_export_resolution
+
+            scaled = str(Path(final_video).with_name("render-quality.mp4"))
+            finish_export_resolution(final_video, scaled, video.export_preset, video_id)
+            os.replace(scaled, final_video)
         _mark_checkpoint(video, "render", render_signature)
+
+    # Both Auto and Manual use the same immutable artifact infrastructure.
+    # Publication precedes success; external copies are never checkpoint inputs.
+    from haizflow.services import manual_artifacts
+    from haizflow.services.video_export import render_revision
+
+    completed_video = get_video(video_id) or video
+    revision = render_revision(completed_video)
+    managed = manual_artifacts.register_existing(
+        video_id, "export", revision, {"video": final_video}, config_fingerprint=revision,
+    )
+    if not managed:
+        raise RuntimeError("Rendered video could not be published as a managed artifact.")
+    files = dict(completed_video.files or {})
+    files["final_video"] = managed["resolved_outputs"]["video"]
+    update_video(video_id, files=files)
+    working = export_destination(completed_video)
+    if str(working) != files["final_video"]:
+        working.unlink(missing_ok=True)
+    manual_artifacts.maintain(video_id)
 
     update_video(
         video_id,

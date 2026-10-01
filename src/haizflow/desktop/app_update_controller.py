@@ -130,7 +130,7 @@ class AppUpdateController(QObject):
     @property
     def blocked(self) -> bool:
         return any(bool(getattr(self._host, name, False)) for name in (
-            "isProcessing", "resourcePackBusy", "mediaImportBusy", "channelImportBusy",
+            "isProcessing", "resourcePackBusy", "mediaImportBusy", "channelImportBusy", "videoExportBusy",
             "backgroundMusicImportBusy", "tiktokPublishBusy", "editorPreviewBusy",
         ))
 

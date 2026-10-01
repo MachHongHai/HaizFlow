@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from haizflow.config import LEGACY_VIDEO_WORKSPACES_DIR
 from haizflow.core.events import emit_log
+from haizflow.core.storage_ownership import managed_storage_guard, owned_path, safe_tree
 from haizflow.schemas.video import (
     VIDEO_METADATA_SCHEMA_VERSION,
     VIDEO_METADATA_TYPE,
@@ -106,6 +107,8 @@ def metadata_changes_since(revision: int) -> tuple[int, set[str]] | None:
 
 
 def _legacy_video_dir(video_id: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", str(video_id)):
+        raise ValueError("Invalid video identity.")
     return os.path.join(LEGACY_VIDEO_WORKSPACES_DIR, video_id)
 
 
@@ -162,20 +165,21 @@ def _find_video_dir(video_id: str) -> str:
 
     legacy = _legacy_video_dir(video_id)
     if os.path.isdir(legacy):
+        owned_path(legacy, LEGACY_VIDEO_WORKSPACES_DIR)
         _VIDEO_DIR_CACHE[video_id] = legacy
         return legacy
 
     for project in project_store.list_projects():
         videos_dir = project_store.project_videos_dir_for_key(project["key"])
         candidate = os.path.join(videos_dir, video_id)
-        if os.path.isdir(candidate):
+        if os.path.isdir(candidate) and _is_inside(candidate, videos_dir):
             _VIDEO_DIR_CACHE[video_id] = candidate
             return candidate
         if not os.path.isdir(videos_dir):
             continue
         for name in os.listdir(videos_dir):
             candidate = os.path.join(videos_dir, name)
-            if not os.path.isdir(candidate) or name.startswith("."):
+            if not os.path.isdir(candidate) or name.startswith(".") or not _is_inside(candidate, videos_dir):
                 continue
             discovered_id = _workspace_video_id(candidate)
             if discovered_id:
@@ -220,29 +224,8 @@ def create_video(video_id: str, original_filename: str, config: VideoConfig, vid
     os.makedirs(os.path.join(video_dir, "input"), exist_ok=True)
     os.makedirs(os.path.join(video_dir, "temp"), exist_ok=True)
     os.makedirs(os.path.join(video_dir, "temp", "voice_parts"), exist_ok=True)
-    project_owned = bool(config.project_name and config.project_directory)
-    # Modern desktop projects export through <project>/exports. Preserve the
-    # per-video output folder only for legacy videos without a project owner.
-    if not project_owned:
-        os.makedirs(os.path.join(video_dir, "output"), exist_ok=True)
-
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    if project_owned:
-        export_dir = (
-            project_store.project_exports_dir_for_key(config.project_key)
-            if config.project_key
-            else project_store.project_exports_dir(config.project_name, config.project_directory, config.project_type)
-        )
-        if config.project_type == "batch":
-            safe_stem = "".join(
-                character if character.isalnum() or character in {"-", "_", " "} else "_"
-                for character in os.path.splitext(original_filename)[0]
-            ).strip()
-            export_dir = os.path.join(export_dir, f"{safe_stem or 'video'}--{video_id[:8]}")
-        os.makedirs(export_dir, exist_ok=True)
-        final_video = os.path.join(export_dir, "dubbed_video.mp4")
-    else:
-        final_video = os.path.join(video_dir, "output", "final.mp4")
+    final_video = os.path.join(video_dir, "temp", "render.mp4")
     files = {
         "video_input": os.path.join(video_dir, "input", f"video{video_ext}"),
         "final_video": final_video,
@@ -492,6 +475,12 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
             data.setdefault("editor_document_path", "")
             version = 18
             continue
+        if version == 18:
+            data["schema_version"] = 19
+            data.setdefault("export_preset", "source")
+            data.setdefault("export_history", [])
+            version = 19
+            continue
         raise VideoMetadataError(f"No video metadata migration is available from schema v{version}.")
     data["schema_version"] = VIDEO_METADATA_SCHEMA_VERSION
     data["metadata_type"] = VIDEO_METADATA_TYPE
@@ -543,6 +532,10 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
         }
         else "keep_ratio"
     )
+    if data.get("export_preset", "source") not in {"source", "1080p", "1080p-high", "720p", "2160p"}:
+        data["export_preset"] = "source"
+    history = data.get("export_history")
+    data["export_history"] = [item for item in history if isinstance(item, dict)][-20:] if isinstance(history, list) else []
     data["project_type"] = (
         data.get("project_type") if data.get("project_type") in {"single", "manual", "batch"} else "single"
     )
@@ -679,6 +672,15 @@ def _load_video_metadata(path: str, *, persist_migration: bool = True) -> VideoI
 
 def _save_video_unlocked(video_info: VideoInfo) -> None:
     path = get_video_json_path(video_info.video_id)
+    if video_info.project_key:
+        root = project_store.project_root_for_key(video_info.project_key)
+        if not os.path.isdir(root):
+            raise FileNotFoundError("Project storage is unavailable; no replacement workspace was created.")
+        if _is_inside(path, LEGACY_VIDEO_WORKSPACES_DIR) and os.path.isfile(path):
+            if _workspace_video_id(os.path.dirname(path)) != video_info.video_id:
+                raise ValueError("Legacy workspace identity could not be verified.")
+        else:
+            owned_path(path, root)
     backup_path = _get_video_backup_path(video_info.video_id)
     if os.path.exists(path):
         try:
@@ -739,6 +741,35 @@ def get_video(video_id: str) -> Optional[VideoInfo]:
         return _get_video_unlocked(video_id)
 
 
+def bind_project_video_identity(project: dict) -> None:
+    """Make legacy ownership explicit without changing any workspace paths."""
+    root = os.path.realpath(project_store.project_videos_dir_for_key(project["key"]))
+    if not os.path.isdir(root):
+        return
+    for entry in os.scandir(root):
+        if not entry.is_dir(follow_symlinks=False) or entry.name.startswith("."):
+            continue
+        if not any(os.path.isfile(os.path.join(entry.path, name)) for name in ("video.json", _LEGACY_METADATA_NAME)):
+            continue
+        video_id = _workspace_video_id(entry.path)
+        if not video_id:
+            raise RuntimeError("Cannot rename a project with unreadable video metadata.")
+        cached_dir = _VIDEO_DIR_CACHE.get(video_id)
+        if cached_dir and os.path.normcase(os.path.realpath(cached_dir)) != os.path.normcase(os.path.realpath(entry.path)):
+            raise RuntimeError("Conflicting video identity. Repair project metadata before renaming.")
+        _VIDEO_DIR_CACHE[video_id] = entry.path
+        with _video_lock(video_id):
+            video = _get_video_unlocked(video_id)
+            if not video or (video.project_key and video.project_key != project["key"]):
+                raise RuntimeError("Conflicting video ownership. Repair project metadata before renaming.")
+            if video.status == "processing":
+                raise RuntimeError("Wait for the project's active task to finish before renaming.")
+            if not video.project_key or not video.project_id:
+                video.project_key = project["key"]
+                video.project_id = project["project_id"]
+                _save_video_unlocked(video)
+
+
 def update_video(video_id: str, **kwargs) -> Optional[VideoInfo]:
     with _video_lock(video_id):
         video_info = _get_video_unlocked(video_id)
@@ -767,8 +798,9 @@ def update_video(video_id: str, **kwargs) -> Optional[VideoInfo]:
 
 def _is_inside(path: str, root: str) -> bool:
     try:
-        return os.path.commonpath([os.path.abspath(path), os.path.abspath(root)]) == os.path.abspath(root)
-    except ValueError:
+        owned_path(path, root)
+        return True
+    except (OSError, ValueError):
         return False
 
 
@@ -779,7 +811,7 @@ def replace_video_input(
 ) -> Optional[VideoInfo]:
     """Replace a completed/pending video's source and discard its old artifacts."""
     source_path = os.path.abspath(source_path)
-    with _video_lock(video_id):
+    with managed_storage_guard, _video_lock(video_id):
         video = _get_video_unlocked(video_id)
         if not video:
             return None
@@ -787,6 +819,11 @@ def replace_video_input(
             raise RuntimeError("Cannot replace a video while it is processing.")
 
         video_dir = get_video_dir(video_id)
+        from haizflow.services import manual_artifacts
+
+        if manual_artifacts.has_runtime_pins(video_id):
+            raise RuntimeError("Video is in use by export or preview. Close that consumer before replacing the source.")
+        safe_tree(video_dir)
         extension = os.path.splitext(source_path)[1].lower() or ".mp4"
         input_path = os.path.join(video_dir, "input", f"video{extension}")
         if os.path.normcase(source_path) == os.path.normcase(os.path.abspath(input_path)):
@@ -794,13 +831,6 @@ def replace_video_input(
 
         final_video = (video.files or {}).get("final_video") or ""
         previous_thumbnail = (video.files or {}).get("thumbnail") or ""
-        project_root = (
-            project_store.project_root_for_key(video.project_key)
-            if video.project_key
-            else project_store.project_root(video.project_name, video.project_directory, video.project_type)
-            if video.project_name and video.project_directory
-            else video_dir
-        )
 
         transaction_directory = tempfile.mkdtemp(prefix=".replace-input-", dir=video_dir)
         staged_input_directory = os.path.join(transaction_directory, "new-input")
@@ -834,6 +864,7 @@ def replace_video_input(
             ):
                 video.files.pop(generated_key, None)
             video.files["video_input"] = input_path
+            video.files["final_video"] = os.path.join(video_dir, "temp", "render.mp4")
             video.files["srt_output"] = os.path.join(video_dir, "temp", "vi.srt")
             video.files["voice_output"] = os.path.join(video_dir, "temp", "voice_final.wav")
             video.files["transcript_json"] = os.path.join(video_dir, "temp", "vi_segments.json")
@@ -894,7 +925,7 @@ def replace_video_input(
             cleanup_errors.append(f"legacy output: {exc}")
 
         try:
-            if final_video and _is_inside(final_video, project_root) and os.path.isfile(final_video):
+            if final_video and _is_inside(final_video, video_dir) and os.path.isfile(final_video):
                 os.remove(final_video)
         except OSError as exc:
             cleanup_errors.append(f"previous export: {exc}")
@@ -937,7 +968,7 @@ def remove_empty_legacy_output_dir(video_id: str) -> bool:
 
 def prepare_video_restart(video_id: str) -> Optional[VideoInfo]:
     """Discard generated artifacts so a restart always runs from the source video."""
-    with _video_lock(video_id):
+    with managed_storage_guard, _video_lock(video_id):
         video = _get_video_unlocked(video_id)
         if not video:
             return None
@@ -945,20 +976,18 @@ def prepare_video_restart(video_id: str) -> Optional[VideoInfo]:
             raise RuntimeError("Cannot restart a video while it is processing.")
 
         video_dir = get_video_dir(video_id)
+        from haizflow.services import manual_artifacts
+
+        if manual_artifacts.has_runtime_pins(video_id):
+            raise RuntimeError("Video is in use by export or preview. Close that consumer before restarting.")
+        safe_tree(video_dir)
         temp_dir = os.path.join(video_dir, "temp")
         if os.path.isdir(temp_dir):
             shutil.rmtree(temp_dir, onerror=_force_remove_readonly)
         os.makedirs(os.path.join(temp_dir, "voice_parts"), exist_ok=True)
 
         final_video = (video.files or {}).get("final_video") or ""
-        project_root = (
-            project_store.project_root_for_key(video.project_key)
-            if video.project_key
-            else project_store.project_root(video.project_name, video.project_directory, video.project_type)
-            if video.project_name and video.project_directory
-            else video_dir
-        )
-        if final_video and (_is_inside(final_video, project_root) or _is_inside(final_video, video_dir)):
+        if final_video and _is_inside(final_video, video_dir):
             try:
                 os.remove(final_video)
             except FileNotFoundError:
@@ -1159,6 +1188,7 @@ def _remove_tree_verified(path: str) -> None:
     """Remove a tree and fail if Windows left any locked content behind."""
     if not os.path.exists(path):
         return
+    safe_tree(path)
     shutil.rmtree(path, onerror=_force_remove_readonly)
     if os.path.exists(path):
         raise OSError(f"Directory is still in use: {path}")
@@ -1172,13 +1202,20 @@ _VIDEO_WORKSPACE_PATTERN = re.compile(
 
 
 def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) -> bool:
-    with _video_lock(video_id):
+    with managed_storage_guard, _video_lock(video_id):
         video_dir = get_video_dir(video_id)
         if not os.path.exists(video_dir):
             _VIDEO_DIR_CACHE.pop(video_id, None)
             _VIDEO_METADATA_CACHE.pop(video_id, None)
             return False
         video = _get_video_unlocked(video_id)
+        from haizflow.services import manual_artifacts
+
+        if manual_artifacts.has_runtime_pins(video_id):
+            raise RuntimeError("Video is in use by export or social import.")
+        if not video or video.video_id != str(video_id):
+            raise RuntimeError("Video ownership could not be verified; no files were deleted.")
+        safe_tree(video_dir)
         # Batch exports live beside, rather than inside, the video workspace.
         # Delete that app-owned directory here so every deletion entry point
         # (card menu, project deletion, failed import rollback) has identical
@@ -1186,7 +1223,7 @@ def delete_video(video_id: str, attempts: int = 8, delay_seconds: float = 0.35) 
         batch_export_directory = ""
         if video and video.project_type == "batch" and video.project_key:
             final_video = str((video.files or {}).get("final_video") or "")
-            if final_video:
+            if final_video and video_id[:8].lower() in os.path.basename(os.path.dirname(final_video)).lower():
                 export_directory = os.path.abspath(os.path.dirname(final_video))
                 exports_root = os.path.abspath(project_store.project_exports_dir_for_key(video.project_key))
                 if (
@@ -1287,104 +1324,12 @@ def cleanup_batch_project_orphans(project_key_value: str) -> list[str]:
 
 
 def migrate_legacy_project_data() -> list[str]:
-    """Move old global video workspaces into their registered project folders."""
-    if not os.path.isdir(LEGACY_VIDEO_WORKSPACES_DIR):
-        return []
-    registered = {record["key"]: record for record in project_store.list_projects()}
-    migrated = []
-    for video_id in os.listdir(LEGACY_VIDEO_WORKSPACES_DIR):
-        source = _legacy_video_dir(video_id)
-        metadata_path = os.path.join(source, "video.json")
-        if not os.path.isfile(metadata_path):
-            metadata_path = os.path.join(source, _LEGACY_METADATA_NAME)
-        if not os.path.isdir(source) or not os.path.isfile(metadata_path):
-            continue
-        try:
-            video = _load_video_metadata(metadata_path)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, VideoMetadataError):
-            continue
-        if not video.project_name or not video.project_directory:
-            continue
-        key = video.project_key or project_store.resolve_project_key(
-            video.project_name,
-            video.project_directory,
-            video.project_type,
-        )
-        record = registered.get(key)
-        if not record:
-            continue
-        destination = os.path.join(
-            project_store.project_videos_dir_for_key(key),
-            video_id,
-        )
-        if os.path.exists(destination):
-            # A previous cross-volume migration may have published the complete
-            # destination before the old copy could be removed.
-            destination_metadata = os.path.join(destination, "video.json")
-            try:
-                migrated_video = _load_video_metadata(
-                    destination_metadata,
-                    persist_migration=False,
-                )
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, VideoMetadataError):
-                continue
-            if migrated_video.video_id == video_id:
-                shutil.rmtree(source, onerror=_force_remove_readonly)
-                _VIDEO_DIR_CACHE[video_id] = destination
-                _cache_video(migrated_video)
-                migrated.append(video_id)
-            continue
+    """Retired compatibility entry point; discovery supports both layouts.
 
-        destination_parent = os.path.dirname(destination)
-        os.makedirs(destination_parent, exist_ok=True)
-        staging = os.path.join(destination_parent, f".{video_id}.migrating")
-        if os.path.isdir(staging):
-            shutil.rmtree(staging, onerror=_force_remove_readonly)
-
-        video.project_key = key
-        video.project_id = str(record.get("project_id") or "")
-        for file_key, file_path in (video.files or {}).items():
-            if not file_path:
-                continue
-            try:
-                if os.path.commonpath([os.path.abspath(source), os.path.abspath(file_path)]) == os.path.abspath(source):
-                    video.files[file_key] = os.path.join(destination, os.path.relpath(file_path, source))
-            except ValueError:
-                continue
-        for checkpoint_key, checkpoint_path in (video.checkpoints or {}).items():
-            try:
-                if os.path.commonpath([os.path.abspath(source), os.path.abspath(checkpoint_path)]) == os.path.abspath(
-                    source
-                ):
-                    video.checkpoints[checkpoint_key] = os.path.join(
-                        destination, os.path.relpath(checkpoint_path, source)
-                    )
-            except (TypeError, ValueError):
-                continue
-
-        try:
-            # Copy first and publish with one directory rename. The legacy
-            # workspace remains intact if copying or metadata rewriting fails.
-            shutil.copytree(source, staging)
-            _write_json_atomic(
-                os.path.join(staging, "video.json"),
-                _video_data(video),
-            )
-            os.replace(staging, destination)
-        finally:
-            if os.path.isdir(staging):
-                shutil.rmtree(staging, onerror=_force_remove_readonly)
-
-        _VIDEO_DIR_CACHE[video_id] = destination
-        _cache_video(video)
-        _mark_metadata_changed(video_id)
-        shutil.rmtree(source, onerror=_force_remove_readonly)
-        migrated.append(video_id)
-    try:
-        os.rmdir(LEGACY_VIDEO_WORKSPACES_DIR)
-    except OSError:
-        pass
-    return migrated
+    Opening the app must never move/delete an older project workspace. Schema
+    migration and verified render adoption are independent backup/copy steps.
+    """
+    return []
 
 
 def migrate_legacy_thumbnails(legacy_directory: str) -> list[str]:

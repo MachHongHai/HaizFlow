@@ -114,6 +114,24 @@ Control {
         requestedVoice = ""
     }
 
+    function positionPopup() {
+        if (!voicePopup.parent)
+            return;
+        const point = root.mapToItem(voicePopup.parent, 0, 0);
+        voicePopup.x = Math.max(Theme.space8,
+            Math.min(point.x, voicePopup.parent.width - voicePopup.width - Theme.space8));
+        const below = point.y + root.height + Theme.space4;
+        voicePopup.y = below + voicePopup.height <= voicePopup.parent.height - Theme.space8
+            ? below : Math.max(Theme.space8, point.y - voicePopup.height - Theme.space4);
+        const groups = root.categories();
+        for (let index = 0; index < groups.length; ++index) {
+            if (groups[index].key === root.activeCategory) {
+                categoryList.positionViewAtIndex(index, ListView.Contain);
+                break;
+            }
+        }
+    }
+
     onModelChanged: {
         voicePlayer.stop()
         requestedVoice = ""
@@ -124,6 +142,8 @@ Control {
         syncCategory()
     }
     onAllowVoiceCloneChanged: syncCategory()
+    onWidthChanged: if (voicePopup.visible) popupLayoutTimer.restart()
+    onHeightChanged: if (voicePopup.visible) popupLayoutTimer.restart()
     onPreviewEnabledChanged: if (!previewEnabled) voicePlayer.stop()
     Component.onCompleted: syncCategory()
     onPreviewStateChanged: previewStartTimer.restart()
@@ -133,6 +153,22 @@ Control {
             requestedVoice = ""
         }
         previewStartTimer.restart()
+    }
+
+    Timer {
+        id: popupLayoutTimer
+        interval: 0
+        onTriggered: if (voicePopup.visible) root.positionPopup()
+    }
+
+    Connections {
+        target: voicePopup.parent
+        function onWidthChanged() {
+            if (voicePopup.visible) popupLayoutTimer.restart();
+        }
+        function onHeightChanged() {
+            if (voicePopup.visible) popupLayoutTimer.restart();
+        }
     }
 
     Timer {
@@ -194,26 +230,17 @@ Control {
         id: voicePopup
         objectName: "voicePickerPopup"
         parent: Overlay.overlay
+        popupType: Popup.Item
         modal: false
         focus: true
         margins: Theme.space8
         width: Math.min(440, Math.max(280, root.width), parent.width - Theme.space16)
         height: Math.min(330, parent.height - Theme.space16,
             126 + Math.max(1, voiceList.count) * 46)
-        x: {
-            const point = root.mapToItem(parent, 0, 0)
-            return Math.max(
-                Theme.space8,
-                Math.min(point.x, parent.width - width - Theme.space8)
-            )
-        }
-        y: {
-            const point = root.mapToItem(parent, 0, 0)
-            const below = point.y + root.height + Theme.space4
-            if (below + height <= parent.height - Theme.space8)
-                return below
-            return Math.max(Theme.space8, point.y - height - Theme.space4)
-        }
+        onAboutToShow: root.positionPopup()
+        onOpened: popupLayoutTimer.restart()
+        onHeightChanged: if (visible) popupLayoutTimer.restart()
+        onWidthChanged: if (visible) popupLayoutTimer.restart()
         padding: Theme.space8
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         onClosed: {
@@ -238,6 +265,7 @@ Control {
                 }
 
                 Text {
+                    Layout.maximumWidth: voicePopup.availableWidth * 0.55
                     text: root.displayLabel()
                     color: Theme.interactive
                     font.pixelSize: Theme.caption

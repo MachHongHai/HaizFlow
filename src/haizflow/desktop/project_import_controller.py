@@ -1124,7 +1124,6 @@ class ProjectImportController:
 
     def browse_project_directory(self, project_type: str = "single") -> None:
         host = self._host
-        os.makedirs(host._project_directory, exist_ok=True)
         title = (
             "Choose download output location"
             if project_store.normalize_project_type(project_type) == "download"
@@ -1257,13 +1256,19 @@ class ProjectImportController:
             project_commands = getattr(host, "_project_commands", None)
             if project_commands is not None:
                 project_commands.persist_selected_video_settings(previous_video_id)
-        host._project_name, host._project_directory = project_name, os.path.abspath(project_directory)
-        host._project_type = normalized_type
         try:
-            project = project_store.create_project(host._project_name, host._project_directory, host._project_type)
+            project = project_store.create_project(project_name, project_directory, normalized_type)
         except (OSError, ValueError, RuntimeError) as exc:
             QMessageBox.warning(None, "Project storage location", f"Cannot create the project at this location: {exc}")
             return False
+        host._project_name, host._project_directory = project["project_name"], project["project_directory"]
+        host._project_type = normalized_type
+        from haizflow.services import desktop_settings
+
+        try:
+            desktop_settings.save_settings({"default_project_directory": host._project_directory})
+        except OSError:
+            pass  # A settings failure must not orphan a successfully-created project.
         host._selected_project_key = project["key"]
         self._reset_new_project_setup()
         if host._project_type == "download":
