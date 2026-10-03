@@ -42,7 +42,7 @@ ColumnLayout {
                         radius: Theme.radiusTiny
                         color: swatch.modelData
                         border.width: root.selectedColor.toUpperCase() === swatch.modelData ? 3 : 1
-                        border.color: swatch.activeFocus ? Theme.focus : Theme.outlineStrong
+                        border.color: swatch.visualFocus ? Theme.focus : Theme.outlineStrong
                     }
                 }
             }
@@ -67,8 +67,8 @@ ColumnLayout {
             background: Rectangle {
                 radius: Theme.radiusTiny
                 color: Theme.surfaceElevated
-                border.width: customColorButton.activeFocus ? 2 : 1
-                border.color: customColorButton.activeFocus ? Theme.focus : Theme.outlineStrong
+                border.width: customColorButton.visualFocus ? 2 : 1
+                border.color: customColorButton.visualFocus ? Theme.focus : Theme.outlineStrong
             }
         }
         Item { Layout.fillWidth: true }

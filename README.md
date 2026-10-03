@@ -5,7 +5,7 @@
   <p>Work with subtitles, speech, picture and sound in one desktop application. Local engines do not require a paid inference API.</p>
 
   <p>
-    <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/License-Apache%202.0-C4915E?style=flat-square"></a>
+    <a href="LICENSE"><img alt="HaizFlow Source-Available" src="https://img.shields.io/badge/License-Source--Available-C4915E?style=flat-square"></a>
     <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-4B5563?style=flat-square">
     <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-4B5563?style=flat-square">
     <img alt="No paid inference API required" src="https://img.shields.io/badge/Local%20engines-No%20API%20fee-587052?style=flat-square">
@@ -150,15 +150,15 @@ Focused issues and pull requests are welcome. Changes to saved project data, cac
 
 ## License
 
-The current source license is [Apache-2.0](LICENSE). A proposed **freeware + source-available + restricted redistribution** license is [a draft, not in force](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md). It would permit free application use and personal/internal builds and changes, but would not grant software redistribution, rebranding or resale rights for covered code without separate permission. It is not an OSI open-source license. Existing Apache permissions and third-party rights are not revoked.
+The active [HaizFlow Source-Available 1.0 license](LICENSE) permits free use, study and personal/internal builds and modifications. Redistribution, repackaging, rebranding, sale, rental, false attribution and paid software services require the owner's written consent, subject to the rights and exceptions specified in the license. This is not an OSI open-source license. Separately licensed components remain subject to their own terms. [Inactive proposed terms](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) do not replace the root LICENSE.
 
-Public source supports technical transparency, study and architectural review. HaizFlow claims no ownership of users' videos. The proposed HaizFlow terms permit monetized video creation without per-video approval, **but model, media and voice rights still apply**: the current OmniVoice checkpoint is NonCommercial, unlike its Apache-licensed SDK. This is an unresolved commercial-workflow/release blocker, not cleared by HaizFlow's license.
+Public source supports technical transparency, study and architectural review. HaizFlow claims no ownership of users' videos. The HaizFlow license permits monetized video creation without per-video approval, **but model, media and voice rights still apply**: the current OmniVoice checkpoint is NonCommercial, unlike its Apache-licensed SDK. This is an unresolved commercial-workflow/release blocker, not cleared by HaizFlow's license.
 
 Use the [official repository](https://github.com/MachHongHai/HaizFlow), [GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases) and [website](https://haizflow.pages.dev/) to identify official distribution. This remains a development project, not a statement of production readiness. See [NOTICE](NOTICE), [third-party inventory](THIRD_PARTY_NOTICES.md) and [licensing review and activation checklist](docs/licensing-review.md).
 
 ## Developer
 
-HaizFlow was created by **Mach Hong Hai (Mạch Hồng Hải)**. Copyright (c) 2026 Mach Hong Hai applies to the work he owns; contributors and third parties retain their own rights and notices.
+HaizFlow was created by **Mach Hong Hai (Mạch Hồng Hải)**. Copyright (c) 2026 Mach Hong Hai applies to the work he owns; separately licensed components retain their rights and notices.
 
 <p>
   <a href="https://github.com/MachHongHai"><img alt="Mạch Hồng Hải on GitHub" src="https://img.shields.io/badge/GitHub-MachHongHai-24292F?style=for-the-badge&logo=github"></a>

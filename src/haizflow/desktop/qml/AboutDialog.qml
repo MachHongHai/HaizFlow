@@ -8,11 +8,12 @@ import "."
 AppDialog {
     id: root
     property var controller: AppController
+    readonly property bool compactLayout: root.parent && root.parent.height < 800
+    readonly property int qrSize: compactLayout ? 136 : 160
 
     title: qsTr("Giới thiệu")
     subtitle: qsTr("HaizFlow · Phiên bản %1").arg(root.controller.currentAppVersion)
     preferredWidth: 650
-    preferredHeight: 840
     maximumWidth: 680
     maximumHeight: 860
     bodySpacing: Theme.space12
@@ -22,25 +23,25 @@ AppDialog {
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.minimumHeight: 0
+        implicitHeight: aboutContent.implicitHeight
         contentWidth: availableWidth
         contentHeight: aboutContent.implicitHeight
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
-        ScrollBar.vertical.active: true
+        ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
         ColumnLayout {
             id: aboutContent
             width: aboutScroll.availableWidth
-            spacing: Theme.space12
+            spacing: root.compactLayout ? Theme.space8 : Theme.space12
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space16
 
                 Image {
-                    Layout.preferredWidth: 68
-                    Layout.preferredHeight: 68
+                    Layout.preferredWidth: root.compactLayout ? 56 : 68
+                    Layout.preferredHeight: root.compactLayout ? 56 : 68
                     source: Qt.resolvedUrl("../assets/branding/haizflow-mark.png")
                     sourceSize.width: 176
                     sourceSize.height: 176
@@ -98,36 +99,12 @@ AppDialog {
                 font.pixelSize: TypeScale.control
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
-                lineHeight: 1.35
+                lineHeight: root.compactLayout ? 1.25 : 1.35
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space4
-
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Khởi tạo bởi Mach Hong Hai. Copyright (c) 2026 Mach Hong Hai cho phần mã thuộc sở hữu; các tác giả khác giữ quyền riêng.")
-                    color: Theme.textSubtle
-                    font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.metadata
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WordWrap
-                }
-
-                AboutLinkRow {
-                    label: qsTr("Giấy phép")
-                    value: "Apache-2.0"
-                    destination: "https://github.com/MachHongHai/HaizFlow/blob/main/LICENSE"
-                    copyValue: destination
-                }
-
-                AboutLinkRow {
-                    label: qsTr("Bên thứ ba")
-                    value: qsTr("Giấy phép và thông báo")
-                    destination: "https://github.com/MachHongHai/HaizFlow/blob/main/THIRD_PARTY_NOTICES.md"
-                    copyValue: destination
-                }
 
                 AboutLinkRow {
                     label: qsTr("Trang web")
@@ -167,7 +144,7 @@ AppDialog {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 186
+                Layout.preferredHeight: root.qrSize + Theme.space12 * 2 + 2
                 radius: Theme.radius
                 color: Theme.surfaceStrong
                 border.width: 1
@@ -179,8 +156,8 @@ AppDialog {
                     spacing: Theme.space16
 
                     Rectangle {
-                        Layout.preferredWidth: 160
-                        Layout.preferredHeight: 160
+                        Layout.preferredWidth: root.qrSize
+                        Layout.preferredHeight: root.qrSize
                         radius: 6
                         color: "white"
                         clip: true

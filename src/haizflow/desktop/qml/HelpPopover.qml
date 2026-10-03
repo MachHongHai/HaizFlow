@@ -46,8 +46,8 @@ Button {
     background: Rectangle {
         radius: Theme.radiusSmall
         color: root.hovered || helpPopup.opened ? Theme.surfaceMuted : "transparent"
-        border.width: root.activeFocus ? 2 : 1
-        border.color: root.activeFocus ? Theme.focus : Theme.outline
+        border.width: root.visualFocus ? 2 : 1
+        border.color: root.visualFocus ? Theme.focus : Theme.outline
     }
 
     Popup {

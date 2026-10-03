@@ -44,6 +44,18 @@ AppDialog {
         statusTone: AppController.geminiKeyConfigured ? "success" : "warning"
     }
 
+    Text {
+        Layout.fillWidth: true
+        text: qsTr("Free Tier có hạn mức riêng. HaizFlow không xác định được gói thanh toán từ API key. Kiểm tra giá và hạn mức trước khi chạy tác vụ dài.")
+        color: Theme.textMuted
+        font.pixelSize: TypeScale.metadata
+        wrapMode: Text.WordWrap
+    }
+    ExternalTextLink {
+        text: qsTr("Bảng giá và hạn mức Gemini")
+        destination: "https://ai.google.dev/gemini-api/docs/pricing"
+    }
+
     footerActions: [
         StudioButton {
             text: qsTr("Đóng")

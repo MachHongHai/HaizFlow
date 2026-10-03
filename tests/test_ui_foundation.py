@@ -44,7 +44,7 @@ app = QCoreApplication([])
 translator = QTranslator(app)
 assert translator.load(r'{catalog_binary}')
 assert app.installTranslator(translator)
-assert QCoreApplication.translate('HomePage', 'Dự án gần đây') == 'Recent projects'
+assert QCoreApplication.translate('HomePage', 'Trang chủ') == 'Home'
 assert QCoreApplication.translate('ProjectSetupDialog', 'Tạo dự án') == 'Create project'
 assert QCoreApplication.translate('DownloadDestinationRow', 'Lưu vào') == 'Save to'
 """
@@ -75,7 +75,9 @@ assert QCoreApplication.translate('DownloadDestinationRow', 'Lưu vào') == 'Sav
         self.assertIn("controller.applyVoiceCloneReference(openedVideoId, preferredProvider)", voice)
         self.assertIn("if (root.acceptReference())", voice)
         self.assertIn("referenceAccepted(samplePath)", voice)
-        self.assertIn('screen = hasSample ? "record" : "source"', voice)
+        self.assertIn('property string screen: "record"', voice)
+        self.assertEqual(voice.count('objectName: "voiceCloneRecordButton"'), 1)
+        self.assertIn('objectName: "voiceClonePlaybackButton"', voice)
         self.assertIn("selectCloneReference()", inspector)
         for control in ("AppTextField.qml", "AppTextArea.qml"):
             source = (QML_DIR / control).read_text(encoding="utf-8")
@@ -149,12 +151,16 @@ for name in ('AutoWatermarkPreviewDialog.qml', 'SubtitlePreviewDialog.qml',
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_home_centers_recent_projects_without_promotional_panels(self):
+    def test_home_reuses_the_complete_project_browser_without_old_panels(self):
         home = (QML_DIR / "HomePage.qml").read_text(encoding="utf-8")
-        self.assertIn('qsTr("Dự án gần đây")', home)
-        self.assertIn('qsTr("Dự án mới")', home)
-        self.assertIn("color: Theme.surfaceElevated", home)
-        self.assertIn("border.color: Theme.outlineStrong", home)
+        self.assertIn("ProjectsHubPage {", home)
+        self.assertIn('pageTitle: qsTr("Trang chủ")', home)
+        self.assertNotIn("RecentProjectRow", home)
+        hub = (QML_DIR / "ProjectsHubPage.qml").read_text(encoding="utf-8")
+        self.assertIn('qsTr("Dự án mới")', hub)
+        self.assertIn("color: Theme.surfaceElevated", hub)
+        self.assertIn("border.color: Theme.outlineStrong", hub)
+        self.assertNotIn("id: statusFilter", hub)
         for component in ("HomeHero {", "HomeCreatorPanel {", "HomeActionButton {", "TutorialPlaceholder {"):
             self.assertNotIn(component, home)
 
@@ -933,6 +939,10 @@ app.processEvents()
         self.assertIn('"all",', manual_dialog)
         self.assertNotIn('"segment",', manual_dialog)
         self.assertIn("function selectCloneReference()", manual_dialog)
+        self.assertIn('draftSpeakerMode = "single";', manual_dialog)
+        self.assertNotIn('text: qsTr("Nhân bản giọng")', manual_dialog)
+        self.assertNotIn('text: qsTr("Nhân bản giọng")', processing_form)
+        self.assertNotIn('onClicked: root.togglePreview("omnivoice:clone")', voice_picker)
         self.assertIn("onReferenceAccepted:", manual_inspector)
         self.assertIn("root.openedVideoId", manual_dialog)
         self.assertIn('qsTr("Phát mẫu giọng")', voice_picker)
@@ -1047,8 +1057,12 @@ app.processEvents()
                 direct_dialogs.append(path.name)
 
         self.assertEqual(sorted(direct_dialogs), ["AppDialog.qml", "FloatingToolDialog.qml"])
-        self.assertEqual(about.count("AboutLinkRow {"), 7)
+        self.assertEqual(about.count("AboutLinkRow {"), 5)
         self.assertIn("contentHeight: aboutContent.implicitHeight", about)
+        self.assertIn("implicitHeight: aboutContent.implicitHeight", about)
+        self.assertNotIn("preferredHeight: 840", about)
+        self.assertIn("ScrollBar.vertical.policy: ScrollBar.AlwaysOff", about)
+        self.assertIn("root.compactLayout ? Theme.space8 : Theme.space12", about)
         self.assertIn('destination: "https://haizflow.pages.dev/"', about)
         self.assertIn('label: qsTr("GitHub cá nhân")', about)
         self.assertIn('qsTr("Ủng hộ HaizFlow")', about)

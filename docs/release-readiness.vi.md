@@ -1,12 +1,12 @@
 # Tiêu chuẩn sẵn sàng phát hành
 
-Giấy phép mã nguồn hiện hành vẫn là Apache-2.0. Giấy phép source-available và
-điều khoản ứng dụng mới là dự thảo, chưa có hiệu lực. [Rà soát giấy phép](licensing-review.md)
+Giấy phép mã thuộc sở hữu hiện hành là HaizFlow Source-Available 1.0, được chủ
+sở hữu duyệt ngày 01/10/2026. Điều khoản ứng dụng/CLA/branding còn dự thảo. [Rà soát giấy phép](licensing-review.md)
 ghi các LICENSE COMPLIANCE BLOCKER: phạm vi quyền sở hữu, OmniVoice phi thương
 mại và mẫu giọng, source tương ứng FFmpeg, nghĩa vụ LGPL của Qt. Chạy
 `scripts/verify-legal-state.py`; đóng gói công khai cần thêm `--public-release`
-cùng bằng chứng phê duyệt. Không kích hoạt dự thảo qua installer hoặc coi quyền
-Apache đã cấp trước đây là bị thu hồi.
+cùng bằng chứng phê duyệt. Không kích hoạt dự thảo qua bộ cài hoặc hạn chế
+quyền được cấp độc lập.
 
 [Tài liệu](README.vi.md) · [An toàn dependency](dependency-security.vi.md) · [English](release-readiness.md)
 
@@ -25,7 +25,7 @@ Rà soát gần nhất: **2026-09-09**
 | ID | Hạng mục | Trạng thái | Điều kiện |
 | --- | --- | --- | --- |
 | 1 | Định danh và xóa project | Hoàn tất | UUID, registered root, giữ legacy, kiểm shared-root/path traversal và test xóa. |
-| 2 | License và third-party | **Chặn phát hành** | Notice Apache, license bên thứ ba, review checkpoint OmniVoice, nghĩa vụ FFmpeg/GPL và duyệt pháp lý. |
+| 2 | License và third-party | **Chặn phát hành** | Giấy phép source hiện hành, quyền đã cấp/thông báo thành phần, review checkpoint OmniVoice, nghĩa vụ FFmpeg/GPL và duyệt phát hành. |
 | 3 | Artifact tái lập sạch | **Chặn đến clean build** | Worktree đã commit sạch, gate đầy đủ, frozen smoke cô lập, metadata và checksum. |
 | 4 | Installer và ký số | **Chặn bản công khai** | Artifact sạch, ma trận Windows, certificate Authenticode thật và verify chữ ký. |
 | 5 | Integrity model | Hoàn tất | Revision/size/SHA-256 cho HY-MT2, Whisper, OmniVoice, OCR, Demucs, VAD và alignment. |

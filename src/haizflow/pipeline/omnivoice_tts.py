@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import gc
 import json
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -451,7 +453,7 @@ def _schedule_idle_shutdown() -> None:
             if _PERSISTENT_IDLE_TIMER is timer:
                 _stop_persistent_worker_unlocked()
 
-    timer = threading.Timer(90.0, expire)
+    timer = threading.Timer(300.0, expire)
     timer.daemon = True
     _PERSISTENT_IDLE_TIMER = timer
     timer.start()
@@ -491,6 +493,22 @@ def _persistent_worker_unlocked(device: str = "") -> subprocess.Popen[str]:
     _PERSISTENT_WORKER_PROCESS = process
     _PERSISTENT_WORKER_DEVICE = device
     return process
+
+
+def _timing_detail(status: dict[str, Any]) -> str:
+    values = status.get("timing_seconds")
+    if not isinstance(values, dict):
+        return ""
+    parts = []
+    for key in ("runtime_imports", "model_load", "reference_encoding", "synthesis"):
+        value = values.get(key)
+        if isinstance(value, (int, float)) and 0 <= value <= MEDIA_PROCESS_TIMEOUT_SECONDS:
+            parts.append(f"{key}={value:.2f}s")
+    for key in ("batch_size", "batch_retries"):
+        value = status.get(key)
+        if isinstance(value, int) and 0 <= value <= 1024:
+            parts.append(f"{key}={value}")
+    return " " + " ".join(parts) if parts else ""
 
 
 def _run_worker_process(
@@ -551,10 +569,18 @@ def _run_worker_process(
                 _log_monitor_event(
                     video_id,
                     f"[TTS][PROGRESS] provider=omnivoice stage={stage} "
-                    f"completed={completed}/{total} current={current or '-'}",
+                    f"completed={completed}/{total} current={current or '-'}{_timing_detail(status)}",
                 )
                 if progress_callback is not None:
-                    progress_callback(completed, total, stage)
+                    try:
+                        progress_callback(completed, total, stage)
+                    except Exception as exc:
+                        monitor_state["abort_reason"] = str(exc)
+                        try:
+                            process.terminate()
+                        except OSError:
+                            pass
+                        return
                 continue
             if now - float(monitor_state["last_activity"]) >= stall_timeout:
                 monitor_state["abort_reason"] = (
@@ -594,7 +620,7 @@ def _run_worker_process(
         )
     finally:
         stop_progress.set()
-        progress_thread.join(timeout=1.0)
+        progress_thread.join()
     detail = str(stderr or "")
     if monitor_state["abort_reason"]:
         detail = f"{detail}\n{monitor_state['abort_reason']}".strip()
@@ -684,7 +710,7 @@ def _run_persistent_worker_process(
                     log_to_video(
                         video_id,
                         f"[TTS][PROGRESS] provider=omnivoice stage={stage} "
-                        f"completed={completed}/{total} current={current or '-'}",
+                        f"completed={completed}/{total} current={current or '-'}{_timing_detail(status)}",
                     )
                     if progress_callback is not None:
                         progress_callback(completed, total, stage)
@@ -786,6 +812,30 @@ def _encode_mp3(wav_path: Path, output_path: Path, video_id: str) -> None:
     os.replace(temporary_output, output_path)
 
 
+def _preset_reference(voice: str, language: str) -> tuple[str, str]:
+    """Use the same packaged speaker identity as the library preview."""
+    if voice not in OMNIVOICE_VOICE_INSTRUCTIONS or language not in {"vi", "en", "zh"}:
+        return "", ""
+    root = Path(__file__).resolve().parents[1] / "desktop" / "assets" / "voice_samples"
+    try:
+        metadata = json.loads((root / "samples.json").read_text(encoding="utf-8"))
+        text = str(metadata["sentences"][language]).strip()
+        safe_voice = re.sub(r"[^a-zA-Z0-9._-]+", "_", voice).strip("_")
+        sample = root / "omnivoice" / safe_voice / f"{language}.mp3"
+        if text and sample.is_file() and sample.stat().st_size > 512:
+            return str(sample), text
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return "", ""
+
+
+def _usable_source_reference(start: float, end: float, text: str) -> bool:
+    # Chinese captions need not contain spaces. Do not discard every Chinese
+    # speaker sample merely because the whitespace-token count is one.
+    enough_text = len(text.split()) >= 3 or len(re.findall(r"[\u3400-\u9fff]", text)) >= 6
+    return 2.5 <= end - start <= 15.0 and enough_text
+
+
 def synthesize_batch_to_mp3(
     items: list[dict[str, str]],
     video_id: str,
@@ -795,7 +845,7 @@ def synthesize_batch_to_mp3(
     progress_callback=None,
     keep_worker_warm: bool = False,
     process_registry_id: str | None = None,
-    inference_steps: int = 32,
+    inference_steps: int | None = None,
     narrator_anchor_text: str = "",
     device: str | None = None,
 ) -> None:
@@ -831,10 +881,16 @@ def synthesize_batch_to_mp3(
             reference_path = str(item.get("reference_path") or "")
             reference_text = str(item.get("reference_text") or "")
             source_audio = str(item.get("source_audio_path") or "")
-            if speaker_mode == "multiple" and not reference_path and source_audio:
+            source_start = max(0.0, float(item.get("source_start") or 0.0))
+            source_end = max(source_start, float(item.get("source_end") or source_start))
+            source_text = str(item.get("source_text") or "").strip()
+            usable_source_reference = _usable_source_reference(source_start, source_end, source_text)
+            if speaker_mode == "multiple" and not reference_path and source_audio and not usable_source_reference:
+                log_to_video(video_id, f"WARNING: Source voice sample {index} is too short or unreliable "
+                             f"({source_end - source_start:.2f}s). Using the library voice instead of cloning this fragment.")
+            if speaker_mode == "multiple" and not reference_path and source_audio and usable_source_reference:
                 reference_wav = temp_root / f"source-speaker-{index:04d}.wav"
-                start = max(0.0, float(item.get("source_start") or 0.0))
-                end = max(start + 0.1, float(item.get("source_end") or start + 0.1))
+                start, end = source_start, source_end
                 process = subprocess.Popen(
                     [
                         _binary("ffmpeg"),
@@ -877,6 +933,8 @@ def synthesize_batch_to_mp3(
                     "wav_path": str(wav),
                     "reference_path": reference_path,
                     "reference_text": reference_text,
+                    "preset_reference_path": _preset_reference(str(item.get("voice") or "omnivoice:female"), language_id)[0],
+                    "preset_reference_text": _preset_reference(str(item.get("voice") or "omnivoice:female"), language_id)[1],
                 }
             )
             output_pairs.append((wav, output))
@@ -889,7 +947,8 @@ def synthesize_batch_to_mp3(
             or _narrator_anchor_text(language_id),
             "items": request_items,
             "speaker_mode": "multiple" if speaker_mode == "multiple" else "single",
-            "inference_steps": max(8, min(32, int(inference_steps))),
+            "inference_steps": max(8, min(32, int(inference_steps or
+                (32 if (device or processing_device_preference()) == "gpu" else 16)))),
             "status_path": str(temp_root / "status.json"),
             # One stable latent seed per voice keeps a single narrator's
             # identity consistent across every subtitle segment in the video.
@@ -898,16 +957,42 @@ def synthesize_batch_to_mp3(
                 "big",
             ),
         }
+        if any(not item.get("reference_path") for item in request_items):
+            reference_path, reference_text = _preset_reference(
+                str(request_items[0]["voice"]), language_id,
+            )
+            request["preset_reference_path"] = reference_path
+            request["preset_reference_text"] = reference_text
         request_path = temp_root / "request.json"
         request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
         log_to_video(
             video_id,
             f"[TTS][PREPARE] provider=omnivoice stage=launching_worker "
-            f"device={request['device']} segments={len(request_items)}",
+            f"device={request['device']} steps={request['inference_steps']} segments={len(request_items)}",
         )
+        encoded: set[int] = set()
+        encoding_errors: list[Exception] = []
+
+        def publish_completed(completed, total, stage):
+            # A worker status is emitted only after sf.write has closed a WAV.
+            # Commit each MP3 before reporting it; pause can retain these clips.
+            if not encoding_errors:
+                try:
+                    for index in range(min(max(0, int(completed)), len(output_pairs))):
+                        if index not in encoded:
+                            wav, output = output_pairs[index]
+                            if wav.is_file() and wav.stat().st_size > 44:
+                                _encode_mp3(wav, output, cancellation_id)
+                                encoded.add(index)
+                except Exception as exc:
+                    encoding_errors.append(exc)
+                    raise
+            if progress_callback is not None:
+                progress_callback(len(encoded), total, stage)
+
         worker_runner = _run_persistent_worker_process if keep_worker_warm else _run_worker_process
         worker_kwargs = {"cancellation_id": cancellation_id} if worker_runner is _run_persistent_worker_process else {}
-        return_code, stderr = worker_runner(request_path, request, video_id, progress_callback, **worker_kwargs)
+        return_code, stderr = worker_runner(request_path, request, video_id, publish_completed, **worker_kwargs)
         if return_code != 0 and keep_worker_warm and _is_persistent_transport_failure(stderr):
             # A warm server is an optimization, never a requirement for a
             # successful edit. Retry the same request once in an isolated
@@ -923,7 +1008,7 @@ def synthesize_batch_to_mp3(
                 request_path,
                 request,
                 video_id,
-                progress_callback,
+                publish_completed,
             )
         if return_code != 0 and str(request["device"]).startswith("cuda") and _is_cuda_resource_failure(stderr):
             log_to_video(
@@ -938,11 +1023,15 @@ def synthesize_batch_to_mp3(
             if keep_worker_warm:
                 with _PERSISTENT_WORKER_LOCK:
                     _stop_persistent_worker_unlocked()
-            return_code, stderr = worker_runner(request_path, request, video_id, progress_callback, **worker_kwargs)
+            return_code, stderr = worker_runner(request_path, request, video_id, publish_completed, **worker_kwargs)
+        if encoding_errors:
+            raise encoding_errors[0]
         if return_code != 0:
             detail = (stderr or "OmniVoice worker stopped unexpectedly.").strip()
             raise RuntimeError(detail[-1200:])
-        for wav, output in output_pairs:
+        for index, (wav, output) in enumerate(output_pairs):
+            if index in encoded:
+                continue
             check_cancellation(cancellation_id)
             if not wav.is_file() or wav.stat().st_size <= 44:
                 raise RuntimeError("OmniVoice did not produce a valid waveform.")
@@ -988,6 +1077,189 @@ def clear_runtime() -> None:
     """Release the long-lived isolated model worker and its GPU allocation."""
     with _PERSISTENT_WORKER_LOCK:
         _stop_persistent_worker_unlocked()
+
+
+def release_model_memory() -> bool:
+    """Free weights/voice prompts but retain imported SDK modules when RAM allows.
+
+    Never start a process for this operation. Cancellation/shutdown still use
+    clear_runtime(), which terminates the process completely.
+    """
+    import psutil
+
+    with _PERSISTENT_OPERATION_LOCK:
+        with _PERSISTENT_WORKER_LOCK:
+            process = _PERSISTENT_WORKER_PROCESS
+            if process is None or process.poll() is not None:
+                return False
+            _cancel_idle_shutdown()
+        try:
+            Path(TMP_DIR).mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="omnivoice-release-", dir=TMP_DIR) as directory:
+                request_path = Path(directory) / "request.json"
+                response_path = Path(directory) / "response.json"
+                request_path.write_text(json.dumps({"operation": "release_model", "response_path": str(response_path)}), encoding="utf-8")
+                if process.stdin is None:
+                    raise RuntimeError("OmniVoice worker input is unavailable.")
+                process.stdin.write(f"{request_path}\n")
+                process.stdin.flush()
+                deadline = time.monotonic() + 10.0
+                while time.monotonic() < deadline and process.poll() is None:
+                    if response_path.is_file():
+                        response = json.loads(response_path.read_text(encoding="utf-8"))
+                        if response.get("return_code") != 0:
+                            break
+                        if (not response.get("model_released")
+                                or int(response.get("resident_cuda_bytes", 0)) > 64 * 1024**2):
+                            # A new SDK may retain tensors through a global
+                            # cache. Never keep that worker across GPU handoff.
+                            break
+                        # Imports alone consume RAM. Retain them only with a
+                        # substantial remaining budget for the next model.
+                        if psutil.virtual_memory().available < 3 * 1024**3:
+                            break
+                        with _PERSISTENT_WORKER_LOCK:
+                            if _PERSISTENT_WORKER_PROCESS is process:
+                                _schedule_idle_shutdown()
+                                return True
+                        return False
+                    time.sleep(0.05)
+        except (OSError, ValueError, RuntimeError):
+            pass
+        with _PERSISTENT_WORKER_LOCK:
+            if _PERSISTENT_WORKER_PROCESS is process:
+                _stop_persistent_worker_unlocked()
+        return False
+
+
+def _release_worker_model(runtime: dict[str, Any]) -> None:
+    """Release every weight/prompt reference; leave only the imported modules."""
+    modules = runtime.get("modules")
+    profiles = runtime.get("batch_profiles")
+    model = runtime.get("model")
+    # Transformers 5.3's Higgs codec uses an lru_cache on a bound method.
+    # The cache keys retain `self` and its Conv1d modules (roughly 0.8 GiB),
+    # so deleting the model alone does not release the codec's CUDA weights.
+    codec = getattr(model, "audio_tokenizer", None)
+    layers = getattr(codec, "_get_conv1d_layers", None)
+    clear_layers = getattr(layers, "cache_clear", None)
+    if callable(clear_layers):
+        clear_layers()
+    runtime.clear()
+    if modules is not None:
+        runtime["modules"] = modules
+    if profiles is not None:
+        runtime["batch_profiles"] = profiles  # Bounded scalar measurements, never tensors/audio.
+    del model, codec, layers, clear_layers
+    gc.collect()
+    if modules is not None:
+        torch = modules[2]
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+def _batch_identity(item: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(str(item.get(key) or "").strip() for key in (
+        "voice", "reference_path", "reference_text", "preset_reference_path", "preset_reference_text",
+    ))
+
+
+def _encode_voice_reference(model, torch, reference, transcript):
+    # SDK 0.2.1 does not decorate create_voice_clone_prompt with inference_mode.
+    # Its acoustic codec otherwise builds autograd activations on GPU/CPU,
+    # despite returning only discrete reference tokens for inference.
+    with torch.inference_mode():
+        return model.create_voice_clone_prompt(ref_audio=reference, ref_text=transcript)
+
+
+def _next_synthesis_batch(items: list[dict[str, Any]], offset: int, ceiling: int) -> list[dict[str, Any]]:
+    """Batch adjacent similar short utterances with exactly the same voice.
+
+    No sorting: timestamps, progress and pause checkpoints retain their order.
+    Long utterances stay single because attention memory grows quadratically.
+    """
+    first = items[offset]
+    length = len(str(first.get("text") or "").strip())
+    batch = [first]
+    if length > 160 or length == 0:
+        return batch
+    for item in items[offset + 1:offset + max(1, ceiling)]:
+        other = len(str(item.get("text") or "").strip())
+        if (_batch_identity(item) != _batch_identity(first) or not other or other > 160
+                or max(length, other) > max(24, min(length, other) * 1.6)):
+            break
+        batch.append(item)
+    return batch
+
+
+def _gpu_batch_ceiling(torch, device: str, maximum: int = 2) -> int:
+    """Use reclaimable allocator blocks as well as driver free VRAM."""
+    if not device.startswith("cuda"):
+        return 1  # CPU throughput is not improved by padding unlike GPU.
+    free, _total = torch.cuda.mem_get_info()
+    reclaimable = max(0, torch.cuda.memory_reserved() - torch.cuda.memory_allocated())
+    # Reserve 1.5 GiB for codec work and other desktop/GPU consumers, plus a
+    # conservative 0.5 GiB for each concurrent short sentence.
+    budget = free + reclaimable - int(1.5 * 1024**3)
+    return max(1, min(maximum, int(budget // (512 * 1024**2))))
+
+
+def _adaptive_batch_profile(runtime, device, language, item, steps=32):
+    length = len(str(item.get("text") or ""))
+    bucket = 40 if length <= 40 else 80 if length <= 80 else 160 if length <= 160 else 320
+    key = (device, language, bucket, steps)
+    profiles = runtime.setdefault("batch_profiles", {})
+    profile = profiles.setdefault(key, {"single": [], "paired": [], "trials": 0})
+    while len(profiles) > 12:
+        profiles.pop(next(iter(profiles)))
+    return profile
+
+
+def _adaptive_batch_size(profile, memory_limit):
+    if memory_limit < 2:
+        return 1
+    if len(profile["single"]) < 2 or len(profile["paired"]) < 2:
+        # Trial uses real pending sentences, not extra generated benchmarks.
+        size = 1 if profile["trials"] % 2 == 0 else 2
+        profile["trials"] += 1
+        return size
+    # Padding can make a larger batch slower even when VRAM easily permits it.
+    # Require a 5% measured gain; otherwise prefer the smaller memory footprint.
+    return 2 if statistics.median(profile["paired"]) < statistics.median(profile["single"]) * 0.95 else 1
+
+
+def _record_batch_performance(profile, size, seconds, audio_seconds):
+    if size not in {1, 2} or audio_seconds <= 0:
+        return
+    values = profile["single" if size == 1 else "paired"]
+    values.append(seconds / audio_seconds)
+    del values[:-6]
+
+
+def _generate_bounded_batch(generate, items, torch, device):
+    """Retry only CUDA allocation failures, halving the batch before fallback."""
+    candidate = list(items)
+    retries = 0
+    while True:
+        allocation_failed = False
+        try:
+            return generate(candidate), candidate, retries
+        except RuntimeError as exc:
+            allocation_error = isinstance(exc, torch.OutOfMemoryError) or any(
+                marker in str(exc).lower() for marker in (
+                    "out of memory", "cublas_status_alloc_failed", "cudnn_status_alloc_failed", "not enough memory",
+                )
+            )
+            if (not device.startswith("cuda") or len(candidate) == 1
+                    or not allocation_error):
+                raise
+            allocation_failed = True
+        # Leave the exception frame before GC: its traceback may own tensors.
+        if allocation_failed:
+            gc.collect()
+            torch.cuda.empty_cache()
+            candidate = candidate[:max(1, len(candidate) // 2)]
+            retries += 1
 
 
 def warm_runtime(language_id: str = "vi", *, device: str | None = None) -> None:
@@ -1048,10 +1320,39 @@ def warm_runtime(language_id: str = "vi", *, device: str | None = None) -> None:
 
 def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> int:
     request = json.loads(Path(request_path).read_text(encoding="utf-8"))
-    site_packages = str(request["site_packages"])
     runtime = {} if runtime is None else runtime
+    if request.get("operation") == "release_model":
+        _release_worker_model(runtime)
+        return 0
+    site_packages = str(request["site_packages"])
     modules = runtime.get("modules")
+    items = request.get("items") or []
+    status_path = Path(str(request.get("status_path") or ""))
+    timings = {"runtime_imports": 0.0, "model_load": 0.0,
+               "reference_encoding": 0.0, "synthesis": 0.0}
+
+    batch_size = 1
+    batch_retries = 0
+
+    def write_status(completed: int, stage: str, *, current: int = 0) -> None:
+        _write_status_file(
+            status_path,
+            {
+                "completed": completed,
+                "total": len(items),
+                "stage": stage,
+                "current": current,
+                "batch_size": batch_size,
+                "batch_retries": batch_retries,
+                "timing_seconds": {key: round(value, 3) for key, value in timings.items()},
+            },
+        )
+
+    # Publish before importing Torch/Transformers: this cold-start interval
+    # used to look like a stalled model load despite no checkpoint being read.
+    write_status(0, "importing_runtime" if modules is None else "reusing_runtime")
     if modules is None:
+        imports_started = time.monotonic()
         sys.path.insert(0, site_packages)
 
         # Imports intentionally happen only after the isolated Transformers 5
@@ -1063,6 +1364,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
 
         modules = (np, sf, torch, OmniVoice)
         runtime["modules"] = modules
+        timings["runtime_imports"] = time.monotonic() - imports_started
     np, sf, torch, OmniVoice = modules
 
     # On Windows the default CPU parallel pools can fault inside torch_cpu.dll
@@ -1074,48 +1376,26 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
     except RuntimeError:
         pass
 
-    items = request.get("items") or []
-    status_path = Path(str(request.get("status_path") or ""))
-
-    def write_status(completed: int, stage: str, *, current: int = 0) -> None:
-        _write_status_file(
-            status_path,
-            {
-                "completed": completed,
-                "total": len(items),
-                "stage": stage,
-                "current": current,
-            },
-        )
-
     device = str(request.get("device") or "cpu")
     if device.startswith("cuda") and not torch.cuda.is_available():
         raise RuntimeError("OmniVoice GPU mode was selected, but CUDA is unavailable.")
     if device.startswith("cuda"):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
-    else:
-        # Leave one logical core for Qt, FFmpeg and the operating system while
-        # keeping local synthesis responsive on high-core-count machines.
-        torch.set_num_threads(max(1, min(8, (os.cpu_count() or 4) - 1)))
-        try:
-            torch.set_num_interop_threads(1)
-        except RuntimeError:
-            pass
     dtype = torch.float16 if device.startswith("cuda") else torch.float32
     model_key = (str(request["model_root"]), device)
     model = runtime.get("model") if runtime.get("model_key") == model_key else None
     write_status(0, "reusing_model" if model is not None else "loading_model")
     if model is None:
+        loading_started = time.monotonic()
         from haizflow.core.dependency_security import validate_checkpoint_weight_maps
 
         previous_model = runtime.pop("model", None)
         runtime.pop("model_key", None)
         if previous_model is not None:
+            runtime["model"] = previous_model
             del previous_model
-            runtime.pop("narrator_prompt_cache", None)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            _release_worker_model(runtime)
         model_root = str(request["model_root"])
         validate_checkpoint_weight_maps(model_root)
         model = OmniVoice.from_pretrained(
@@ -1126,22 +1406,29 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
         )
         runtime["model"] = model
         runtime["model_key"] = model_key
+        timings["model_load"] = time.monotonic() - loading_started
+    if not device.startswith("cuda"):
+        # Map weights with one thread (Windows native loader safety), then
+        # enable parallel inference while leaving a core for the desktop.
+        torch.set_num_threads(max(1, min(8, (os.cpu_count() or 4) - 1)))
     voice_seed = int(request.get("voice_seed") or 0) & 0x7FFFFFFF
     speaker_mode = str(request.get("speaker_mode") or "single")
     synthesis_items = list(items)
     anchor_prompt: Any = None
-    prompt_cache: dict[tuple[str, str], Any] = {}
+    # Two authorised references at most. Persist across retries/edits, but do
+    # not accumulate an unbounded number of GPU-resident clone prompts.
+    prompt_cache = runtime.setdefault("clone_prompt_cache", {})
 
-    def reset_seed() -> None:
-        torch.manual_seed(voice_seed)
-        np.random.seed(voice_seed % (2**32 - 1))
+    def reset_seed(seed=voice_seed) -> None:
+        torch.manual_seed(seed)
+        np.random.seed(seed % (2**32 - 1))
         if device.startswith("cuda"):
-            torch.cuda.manual_seed_all(voice_seed)
+            torch.cuda.manual_seed_all(seed)
 
     # A fixed, language-specific reference keeps the same preset identity when
     # a later edit regenerates only one segment. The persistent worker retains
     # the prompt; multiple-speaker mode deliberately keeps per-segment voices.
-    if speaker_mode == "single" and synthesis_items and not synthesis_items[0].get("reference_path"):
+    if speaker_mode != "multiple" and synthesis_items and any(not item.get("reference_path") for item in synthesis_items):
         anchor_text = str(request.get("narrator_anchor_text") or "").strip()
         anchor_voice = str(synthesis_items[0].get("voice") or "omnivoice:female").strip().lower()
         anchor_instruction = OMNIVOICE_VOICE_INSTRUCTIONS.get(
@@ -1157,7 +1444,17 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
             anchor_text,
         )
         anchor_prompt = narrator_prompt_cache.get(anchor_key)
-        if anchor_prompt is None and anchor_text:
+        preset_reference = str(request.get("preset_reference_path") or "")
+        preset_transcript = str(request.get("preset_reference_text") or "")
+        if anchor_prompt is None and preset_reference and preset_transcript:
+            write_status(0, "loading_voice_reference")
+            reference_started = time.monotonic()
+            anchor_prompt = _encode_voice_reference(model, torch, preset_reference, preset_transcript)
+            narrator_prompt_cache[anchor_key] = anchor_prompt
+            while len(narrator_prompt_cache) > 4:
+                narrator_prompt_cache.pop(next(iter(narrator_prompt_cache)))
+            timings["reference_encoding"] += time.monotonic() - reference_started
+        elif anchor_prompt is None and anchor_text:
             write_status(0, "creating_voice_anchor")
             reset_seed()
             generated_anchor: Any = None
@@ -1184,19 +1481,27 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                 anchor_path = status_path.parent / "narrator-anchor.wav"
                 sample_rate = int(getattr(model, "sampling_rate", None) or _SAMPLE_RATE)
                 sf.write(str(anchor_path), anchor_waveform, sample_rate, subtype="PCM_16")
-                anchor_prompt = model.create_voice_clone_prompt(
-                    ref_audio=str(anchor_path),
-                    ref_text=anchor_text,
-                )
+                anchor_prompt = _encode_voice_reference(model, torch, str(anchor_path), anchor_text)
                 narrator_prompt_cache[anchor_key] = anchor_prompt
+                while len(narrator_prompt_cache) > 4:
+                    narrator_prompt_cache.pop(next(iter(narrator_prompt_cache)))
             finally:
                 del generated_anchor, anchor_waveform
         elif anchor_prompt is not None:
             write_status(0, "reusing_voice_anchor")
 
     write_status(0, "synthesizing")
-    for completed, item in enumerate(synthesis_items, 1):
-        write_status(completed - 1, "synthesizing", current=completed)
+    offset = 0
+    maximum_batch = 2
+    while offset < len(synthesis_items):
+        item = synthesis_items[offset]
+        completed = offset + 1
+        profile = _adaptive_batch_profile(runtime, device, str(request.get("language") or ""), item,
+                                          int(request.get("inference_steps") or 32))
+        ceiling = _adaptive_batch_size(profile, _gpu_batch_ceiling(torch, device, maximum_batch))
+        batch = _next_synthesis_batch(synthesis_items, offset, ceiling)
+        batch_size = len(batch)
+        write_status(offset, "synthesizing", current=completed)
         text = str(item.get("text") or "").strip()
         if not text:
             raise RuntimeError("OmniVoice received an empty subtitle segment.")
@@ -1210,54 +1515,95 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
         if reference_path:
             if not reference_text:
                 raise RuntimeError("Mẫu giọng cần có bản chép lời trước khi nạp OmniVoice.")
-            prompt_key = (reference_path, reference_text)
+            stat = Path(reference_path).stat()
+            prompt_key = (model_key, reference_path, stat.st_size, stat.st_mtime_ns, reference_text)
             # Multiple-speaker mode creates a different reference for nearly
             # every subtitle. Retaining all of those GPU prompts caused DAC
             # convolution failures after several segments on 8 GB cards.
             cache_prompt = speaker_mode != "multiple"
             voice_clone_prompt = prompt_cache.get(prompt_key) if cache_prompt else None
             if voice_clone_prompt is None:
-                voice_clone_prompt = model.create_voice_clone_prompt(
-                    ref_audio=reference_path,
-                    ref_text=reference_text,
-                )
+                reference_started = time.monotonic()
+                voice_clone_prompt = _encode_voice_reference(model, torch, reference_path, reference_text)
                 if cache_prompt:
                     prompt_cache[prompt_key] = voice_clone_prompt
-        elif speaker_mode == "single" and anchor_prompt is not None:
+                    while len(prompt_cache) > 2:
+                        prompt_cache.pop(next(iter(prompt_cache)))
+                timings["reference_encoding"] += time.monotonic() - reference_started
+        elif speaker_mode == "multiple" and item.get("preset_reference_path") and item.get("preset_reference_text"):
+            preset_key = (model_key, str(request.get("language") or ""), str(item.get("voice") or ""))
+            preset_cache = runtime.setdefault("preset_prompt_cache", {})
+            voice_clone_prompt = preset_cache.get(preset_key)
+            if voice_clone_prompt is None:
+                reference_started = time.monotonic()
+                voice_clone_prompt = _encode_voice_reference(
+                    model, torch, str(item["preset_reference_path"]), str(item["preset_reference_text"]))
+                preset_cache[preset_key] = voice_clone_prompt
+                while len(preset_cache) > 4:
+                    preset_cache.pop(next(iter(preset_cache)))
+                timings["reference_encoding"] += time.monotonic() - reference_started
+        elif anchor_prompt is not None and speaker_mode != "multiple":
             voice_clone_prompt = anchor_prompt
         generated: Any = None
         waveform: Any = None
+        outputs: Any = None
+        waveforms: Any = None
+        output: Any = None
         try:
             # OmniVoice is generative. Resetting the same voice-specific seed
             # before each utterance prevents random speaker-identity drift
             # while text and prosody remain segment-specific.
-            reset_seed()
-            with torch.inference_mode():
-                generated = model.generate(
-                    text=text,
-                    language=str(request.get("language") or "") or None,
-                    instruct=None if voice_clone_prompt is not None else instruction,
-                    voice_clone_prompt=voice_clone_prompt,
-                    num_step=int(request.get("inference_steps") or 32),
-                    normalize_text=False,
-                    audio_chunk_duration=10.0,
-                    audio_chunk_threshold=8.0,
-                )
-            waveform = generated[0] if isinstance(generated, (list, tuple)) else generated
-            if isinstance(waveform, torch.Tensor):
-                waveform = waveform.detach().float().cpu().numpy()
-            waveform = np.asarray(waveform, dtype=np.float32).reshape(-1)
-            if waveform.size < 240 or not np.isfinite(waveform).all():
-                raise RuntimeError("OmniVoice returned empty or invalid audio.")
+            item_seed = int(hashlib.sha256(str(item.get("voice") or "").encode()).hexdigest()[:8], 16) & 0x7FFFFFFF
+            reset_seed(item_seed if speaker_mode == "multiple" else voice_seed)
+            synthesis_started = time.monotonic()
+
+            def generate(candidate):
+                reset_seed(item_seed if speaker_mode == "multiple" else voice_seed)
+                with torch.inference_mode():
+                    return model.generate(
+                        text=[str(entry["text"]).strip() for entry in candidate] if len(candidate) > 1 else text,
+                        language=str(request.get("language") or "") or None,
+                        instruct=None if voice_clone_prompt is not None else instruction,
+                        voice_clone_prompt=voice_clone_prompt,
+                        num_step=int(request.get("inference_steps") or 32),
+                        normalize_text=False,
+                        audio_chunk_duration=10.0,
+                        audio_chunk_threshold=8.0,
+                    )
+
+            generated, batch, retries = _generate_bounded_batch(generate, batch, torch, device)
+            batch_retries += retries
+            if retries:
+                maximum_batch = len(batch)
+            batch_size = len(batch)
+            outputs = generated if isinstance(generated, (list, tuple)) else [generated]
+            if len(outputs) != len(batch):
+                raise RuntimeError("OmniVoice returned an unexpected number of audio clips.")
+            waveforms = []
+            for output in outputs:
+                if isinstance(output, torch.Tensor):
+                    output = output.detach().float().cpu().numpy()
+                waveform = np.asarray(output, dtype=np.float32).reshape(-1)
+                if waveform.size < 240 or not np.isfinite(waveform).all():
+                    raise RuntimeError("OmniVoice returned empty or invalid audio.")
+                waveforms.append(waveform)
             sample_rate = int(getattr(model, "sampling_rate", None) or _SAMPLE_RATE)
-            sf.write(str(item["wav_path"]), waveform, sample_rate, subtype="PCM_16")
-            write_status(completed, "synthesizing")
+            synthesis_seconds = time.monotonic() - synthesis_started
+            if not retries:
+                _record_batch_performance(profile, len(batch), synthesis_seconds,
+                                          sum(wave.size for wave in waveforms) / sample_rate)
+            # Validate the whole batch before publishing any completion.
+            for entry, waveform in zip(batch, waveforms):
+                sf.write(str(entry["wav_path"]), waveform, sample_rate, subtype="PCM_16")
+            offset += len(batch)
+            timings["synthesis"] += synthesis_seconds
+            write_status(offset, "synthesizing")
         finally:
             # A video can contain hundreds of calls to generate().  Keep the
             # model resident, but release per-utterance tensors immediately so
             # an 8 GB GPU does not accumulate allocator pressure until OOM.
-            del generated, waveform, voice_clone_prompt
-            if device.startswith("cuda") and speaker_mode == "multiple":
+            del generated, waveform, voice_clone_prompt, outputs, waveforms, output
+            if device.startswith("cuda") and speaker_mode == "multiple" and reference_path:
                 # Per-segment clone prompts are intentionally short-lived.
                 # Return their blocks to the allocator before the next DAC
                 # decode instead of accumulating unique speaker references.
@@ -1288,6 +1634,13 @@ def _worker_server_main() -> int:
                 response_path = Path(configured_response)
             return_code = _worker_main(request_path, runtime)
             payload = {"return_code": return_code, "error": ""}
+            if request.get("operation") == "release_model":
+                modules = runtime.get("modules")
+                torch = modules[2] if modules else None
+                payload["model_released"] = "model" not in runtime
+                payload["resident_cuda_bytes"] = (
+                    torch.cuda.memory_allocated() if torch is not None and torch.cuda.is_available() else 0
+                )
         except BaseException as exc:  # The server must report model/runtime failures to its parent.
             payload = {
                 "return_code": 1,

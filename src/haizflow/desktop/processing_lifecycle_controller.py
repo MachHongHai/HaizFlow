@@ -174,7 +174,16 @@ class ProcessingLifecycleController:
                     warmup = getattr(host, "_smart_warmup", None)
                     if warmup is not None:
                         video_store.log_to_video(video_id, "Releasing speculative models before foreground processing.")
-                        warmup.quiesce_for_foreground()
+                        # Keep at most the immediately used model; release
+                        # other predictions before stage-to-stage handoff.
+                        from haizflow.pipeline.process_video import foreground_capability
+
+                        capability = foreground_capability(current_video, manual_tool)
+                        required = {capability} if capability else set()
+                        if required:
+                            warmup.quiesce_for_foreground(required_capabilities=required)
+                        else:
+                            warmup.quiesce_for_foreground()
                 runtime_probe_error = getattr(host, "_runtime_probe_error", "")
                 if runtime_probe_error:
                     raise RuntimeError(f"Model runtime validation failed: {runtime_probe_error}")

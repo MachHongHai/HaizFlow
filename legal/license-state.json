@@ -1,11 +1,16 @@
 {
   "schema_version": 1,
-  "active_source_license": "Apache-2.0",
-  "active_license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+  "active_source_license": "LicenseRef-HaizFlow-Source-Available-1.0",
+  "active_license_sha256": "7e8ae75625ced5824ba938d52b245e0128d814c22ff669b09066710c8d348b1c",
   "proposed_source_license": "LicenseRef-HaizFlow-Source-Available-1.0",
-  "proposal_status": "draft",
-  "owner_approval": null,
-  "effective_release": null,
+  "proposal_status": "adopted",
+  "owner_approval": {
+    "approved_by": "Mạch Hồng Hải",
+    "approved_at": "2026-10-01",
+    "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
+    "language_precedence": "vi"
+  },
+  "effective_release": "0.1.0 source working tree; not a published release",
   "public_release_review": null,
   "blockers": [
     "owned-code-and-contributor-scope",

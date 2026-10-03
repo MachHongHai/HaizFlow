@@ -33,7 +33,7 @@ Slider {
         scale: root.pressed || root.hovered ? 1.08 : 1
         radius: width / 2
         color: root.enabled ? Theme.text : Theme.textDisabled
-        border.width: root.activeFocus ? 3 : 2
-        border.color: root.activeFocus ? Theme.focus : Theme.interactive
+        border.width: root.visualFocus ? 3 : 2
+        border.color: root.visualFocus ? Theme.focus : Theme.interactive
     }
 }

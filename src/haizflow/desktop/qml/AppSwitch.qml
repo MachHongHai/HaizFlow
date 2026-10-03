@@ -16,8 +16,8 @@ Switch {
         implicitHeight: 20
         radius: 10
         color: root.checked ? Theme.interactive : Theme.surfaceStrong
-        border.width: root.activeFocus ? 2 : 1
-        border.color: root.activeFocus ? Theme.focus
+        border.width: root.visualFocus ? 2 : 1
+        border.color: root.visualFocus ? Theme.focus
             : root.checked ? Theme.interactiveOutline : Theme.outlineStrong
 
         Rectangle {

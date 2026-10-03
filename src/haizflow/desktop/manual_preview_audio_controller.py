@@ -13,6 +13,7 @@ import numpy as np
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtMultimedia import QAudioFormat, QAudioSink, QMediaDevices
 
+from haizflow.config import TMP_DIR
 from haizflow.utils.ffmpeg import _binary
 
 RATE = 48000
@@ -182,7 +183,7 @@ class ManualPreviewAudioController(QObject):
 
             target = max(1, fitted_speech_duration_ms(len(audio), duration))
             speed = len(audio) / target
-            with tempfile.TemporaryDirectory(prefix="haizflow-preview-voice-") as work:
+            with tempfile.TemporaryDirectory(prefix="haizflow-preview-voice-", dir=TMP_DIR) as work:
                 source = Path(work) / "voice.wav"
                 audio.export(source, format="wav").close()
                 command = [_binary("ffmpeg"), "-v", "error", "-i", str(source)]

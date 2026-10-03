@@ -9,7 +9,6 @@ GridLayout {
     property bool cpuOnly: false
     property bool hasSource: false
     property bool showCloneAction: false
-    property bool cloneActive: false
     property bool showMusicPlaybackSettings: true
     property string speechRecognitionModel: "small"
     property string translationModel: "auto"
@@ -88,6 +87,17 @@ GridLayout {
 
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
+            Text {
+                Layout.fillWidth: true
+                text: AppController.processingDevice === "gpu"
+                    ? qsTr("Máy đang dùng GPU. Model GPU thường xử lý nhanh hơn; bạn vẫn có thể chọn CPU.")
+                    : qsTr("Chế độ CPU: model GPU chưa khả dụng. Đổi bộ xử lý trong Cài đặt → Chung để sử dụng GPU.")
+                color: Theme.textMuted
+                font.pixelSize: TypeScale.metadata
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+            }
+
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Nhận dạng giọng nói")
@@ -144,45 +154,25 @@ GridLayout {
             SettingLabel {
                 Layout.fillWidth: true
                 text: qsTr("Giọng đọc")
+                helpText: qsTr("Nhận diện nhiều người nói chọn giọng thư viện ổn định cho từng người; kết quả có thể cần chỉnh lại. Giọng nhân bản dùng mẫu do bạn cung cấp.")
             }
             VoicePicker {
                 Layout.fillWidth: true
                 enabled: root.editable
                 model: root.ttsVoiceOptions
-                currentValue: root.ttsVoice
-                allowVoiceClone: false
+                currentValue: root.speakerMode === "multiple" ? "omnivoice:multiple" : root.ttsVoice
+                allowMultipleSpeakers: root.ttsProvider.indexOf("omnivoice") === 0
+                allowVoiceClone: root.showCloneAction && root.ttsProvider.indexOf("omnivoice") === 0
                 previewSource: root.voicePreviewSource
                 previewState: root.voicePreviewState
-                onSelected: function(voice) { root.ttsVoiceEdited(voice) }
+                onSelected: function(voice) {
+                    root.speakerModeEdited(voice === "omnivoice:multiple" ? "multiple" : "single");
+                    root.ttsVoiceEdited(voice === "omnivoice:multiple" ? "omnivoice:female" : voice);
+                }
                 onPreviewRequested: function(voice) { root.ttsVoicePreviewRequested(voice) }
-            }
-            StudioButton {
-                Layout.fillWidth: true
-                visible: root.showCloneAction && root.ttsProvider.indexOf("omnivoice") === 0
-                text: qsTr("Nhân bản giọng")
-                iconGlyph: "\uE77B"
-                variant: root.cloneActive ? "primary" : "secondary"
-                compact: true
-                enabled: root.editable
-                onClicked: root.cloneVoiceRequested()
+                onCloneRequested: root.cloneVoiceRequested()
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                visible: root.ttsProvider.indexOf("omnivoice") === 0
-                StudioCheckBox {
-                    Layout.fillWidth: true
-                    enabled: root.editable && root.ttsProvider.indexOf("omnivoice") === 0
-                    text: qsTr("Nhận diện nhiều người nói")
-                    checked: root.speakerMode === "multiple"
-                    onToggled: root.speakerModeEdited(checked ? "multiple" : "single")
-                }
-                SettingLabel {
-                    labelVisible: false
-                    text: qsTr("Nhận diện nhiều người nói")
-                    helpText: qsTr("Chỉ bật khi video nguồn có nhiều người nói. Mỗi người được nhận diện sẽ dùng một giọng riêng.")
-                }
-            }
         }
     }
 

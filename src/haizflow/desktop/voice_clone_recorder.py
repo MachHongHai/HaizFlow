@@ -27,6 +27,8 @@ class VoiceCloneRecorder:
         self._pending_pcm = b""
         self._sample_bytes = 0
         self._max_rms = 0.0
+        self._level_db = -120.0
+        self._device_name = ""
         self._peaks: list[float] = [0.04] * self.BAR_COUNT
         self.error = ""
 
@@ -38,10 +40,24 @@ class VoiceCloneRecorder:
     def path(self) -> str:
         return self._path
 
-    def start(self, path: str) -> bool:
+    @staticmethod
+    def input_devices() -> list[dict[str, str]]:
+        default = QMediaDevices.defaultAudioInput()
+        result = [{"id": "", "label": "Mặc định Windows: " + default.description()}]
+        result.extend({"id": bytes(device.id().toHex()).decode("ascii"), "label": device.description()}
+                      for device in QMediaDevices.audioInputs())
+        return result
+
+    def start(self, path: str, device_id: str = "") -> bool:
         self.cancel()
         self.error = ""
         device = QMediaDevices.defaultAudioInput()
+        if device_id:
+            device = next((item for item in QMediaDevices.audioInputs()
+                           if bytes(item.id().toHex()).decode("ascii") == device_id), None)
+            if device is None:
+                self.error = "Microphone đã chọn không còn kết nối. Hãy chọn thiết bị khác."
+                return False
         if device.isNull():
             self.error = "Không tìm thấy microphone. Hãy kiểm tra thiết bị ghi âm trong Windows."
             return False
@@ -92,9 +108,23 @@ class VoiceCloneRecorder:
         self._sample_rate = self._capture_format.sampleRate()
         self._sample_bytes = 0
         self._max_rms = 0.0
+        self._level_db = -120.0
+        self._device_name = device.description() if hasattr(device, "description") else "Microphone"
         self._pending_pcm = b""
         self._peaks = [0.04] * self.BAR_COUNT
+        # Drain on readyRead too: UI timers can be delayed by video decoding.
+        ready = getattr(self._stream, "readyRead", None)
+        if ready is not None:
+            ready.connect(self._drain_stream)
         return True
+
+    def _drain_stream(self) -> None:
+        if self._stream is None:
+            return
+        try:
+            self._consume_pcm(bytes(self._stream.readAll()))
+        except (OSError, RuntimeError):
+            self.error = "Không thể ghi mẫu giọng. Hãy kiểm tra microphone và dung lượng ổ đĩa."
 
     def _mono_int16(self, data: bytes) -> bytes:
         audio_format = self._capture_format
@@ -119,8 +149,14 @@ class VoiceCloneRecorder:
         if sys.byteorder != "little" and width > 1:
             samples.byteswap()
         mono = array.array("h")
+        # Microphone arrays can expose one silent channel or opposite phases.
+        # Select the strongest channel, rather than cancelling speech by averaging.
+        channel = max(range(channels), key=lambda ch: sum(float(v - 128 if kind == "B" else v) ** 2
+                      for v in samples[ch::channels])) if samples else 0
         for offset in range(0, len(samples), channels):
-            level = sum(samples[offset:offset + channels]) / channels
+            level = samples[offset + channel]
+            if not math.isfinite(level):
+                level = 0
             if kind == "B":
                 level -= 128
             mono.append(max(-32768, min(32767, round(level * scale))))
@@ -142,17 +178,14 @@ class VoiceCloneRecorder:
             samples.byteswap()
         rms = math.sqrt(sum(value * value for value in samples) / len(samples))
         self._max_rms = max(self._max_rms, rms)
-        peak = round(max(0.04, min(1.0, rms / 10_000)), 3)
+        self._level_db = 20 * math.log10(max(rms, 0.001) / 32768)
+        peak = round(max(0.04, min(1.0, (self._level_db + 70) / 70)), 3)
         self._peaks = [*self._peaks[1:], peak]
 
     def poll(self) -> dict[str, object]:
-        if self._stream is not None:
-            try:
-                self._consume_pcm(bytes(self._stream.readAll()))
-            except (OSError, RuntimeError):
-                self.error = "Không thể ghi mẫu giọng. Hãy kiểm tra microphone và dung lượng ổ đĩa."
+        self._drain_stream()
         if self._source is not None and (
-            self._source.error().value != 0
+            (self._source.error().value != 0 and self._source.error().name != "UnderrunError")
             or self._source.state().name == "StoppedState"
         ):
             self.error = "Microphone đã ngừng hoạt động. Hãy kiểm tra thiết bị ghi âm."
@@ -163,6 +196,9 @@ class VoiceCloneRecorder:
             "durationMs": round(self._sample_bytes * 1000 / (self._sample_rate * 2)) if self._sample_rate else 0,
             "peaks": self._peaks,
             "error": self.error,
+            "deviceName": self._device_name,
+            "levelDb": round(self._level_db, 1),
+            "hasSignal": self._level_db >= -72,
         }
 
     def stop(self) -> str:
@@ -175,7 +211,7 @@ class VoiceCloneRecorder:
         if not path or duration_ms < 1_000:
             self.error = "Mẫu ghi âm quá ngắn hoặc không có tiếng. Hãy ghi ít nhất một giây."
             return ""
-        if self._max_rms < 100:
+        if self._max_rms < 8:
             self.error = "Không thấy tiếng từ microphone. Hãy kiểm tra đầu vào âm thanh rồi ghi lại."
             return ""
         return path

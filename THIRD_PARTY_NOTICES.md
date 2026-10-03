@@ -14,6 +14,7 @@ HaizFlow's source license does not replace any component's independent terms.
 | HY-MT2 CPU/GPU | Separate pinned model packs | Apache-2.0 declared at pinned revisions; retain [notice](licenses/HY-MT2-NOTICE.md) and license text. |
 | Whisper / WhisperX / faster-whisper / CTranslate2 | Separate model and engine packs | Audit every pinned checkpoint including VAD and alignment models, not just the recognition SDK. Engine inventories must be generated from their own locks. |
 | Demucs / audio libraries / OCR | Separate engines and model packs; light audio dependencies in Core | Demucs checkpoint, alignment/VAD and OCR provenance must be documented per pack. Python notices cannot infer checkpoint rights. |
+| WeSpeaker VoxCeleb ResNet34 | Optional checksum-pinned speaker-identification model pack | Publisher declares Apache-2.0 at the pinned revision; retain [model notice](licenses/WESPEAKER-NOTICE.md) and license text. This is not the separate ResNet34-LM checkpoint. |
 | Bangers font | Bundled font | [SIL OFL text](licenses/Bangers-OFL.txt), [copyright notice](licenses/Bangers-NOTICE.md); no HaizFlow ownership claim. |
 | Fluent System Icons | Curated bundled SVGs | [Microsoft MIT notice](licenses/FLUENT-SYSTEM-ICONS-NOTICE.md). |
 | Douyin helper | Adapted bundled source, isolated process | [Original author and Apache notice](licenses/DOUYIN-CHANNEL-IMPORT-NOTICE.md); retain independently. |

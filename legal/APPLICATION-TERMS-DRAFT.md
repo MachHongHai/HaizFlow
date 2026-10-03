@@ -37,5 +37,5 @@ https://github.com/MachHongHai/HaizFlow/releases and https://haizflow.pages.dev/
    against your output or waiver of statutory remedies.
 
 Adoption requires approved text, an effective release and agreement presentation
-consistent with the source license. Until then installers continue to display
-Apache-2.0; this draft must never silently replace their `LicenseFile`.
+consistent with the source license. Installers display the active root LICENSE
+(now HaizFlow Source-Available 1.0); this draft must not replace LicenseFile.

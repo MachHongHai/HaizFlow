@@ -146,7 +146,7 @@ Rectangle {
 
         StudioIconButton {
             id: moreButton
-            visible: !root.published
+            visible: true
             iconName: "more"
             toolTipText: qsTr("Tùy chọn")
             onClicked: actionMenu.popup(this, width, 0)

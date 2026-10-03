@@ -1,12 +1,12 @@
 # Release readiness
 
-Current source license is Apache-2.0. The proposed source-available/application
-terms are drafts, not active. [Licensing review](licensing-review.md) records
+Current owned-source license is HaizFlow Source-Available 1.0, approved by the
+owner on 2026-10-01; application/CLA/brand terms remain drafts. [Licensing review](licensing-review.md) records
 LICENSE COMPLIANCE BLOCKER gates for rights scope, OmniVoice NonCommercial
 models/samples, FFmpeg source closure and Qt LGPL obligations. Run
 `scripts/verify-legal-state.py`; public packaging also requires
 `--public-release` and reviewed clearance evidence. Do not activate draft terms
-through installer metadata or assume previous Apache grants were revoked.
+through installer metadata or restrict independently granted rights.
 
 [Documentation](README.md) · [Dependency security](dependency-security.md) · [Tiếng Việt](release-readiness.vi.md)
 
@@ -25,7 +25,7 @@ This is the authoritative checklist for a public Windows build. A source checkou
 | ID | Control | Status | Acceptance condition |
 | --- | --- | --- | --- |
 | 1 | Project identity and deletion | Complete | UUID identity, registered roots, legacy preservation, shared-root/path-traversal checks, and deletion tests. |
-| 2 | License and third-party compliance | **Release blocker** | Apache source notices, all third-party texts, OmniVoice checkpoint review, FFmpeg/GPL corresponding-source obligations, and legal approval. |
+| 2 | License and third-party compliance | **Release blocker** | Active source license, preserved earlier grants/component notices, OmniVoice checkpoint review, FFmpeg/GPL source obligations, and public release approval. |
 | 3 | Clean reproducible artifact | **Release blocker until clean build** | Committed clean tree, complete gate, isolated frozen smoke, build metadata, and verified checksums. |
 | 4 | Installer and signing | **Release blocker for public build** | Clean artifact, Windows acceptance matrix, real Authenticode certificate, signed executable/installer, signature verification. |
 | 5 | Model integrity | Complete | Immutable revision, size, and SHA-256 for HY-MT2 CPU/GPU, Whisper, OmniVoice, OCR, Demucs, VAD, and alignment assets. |

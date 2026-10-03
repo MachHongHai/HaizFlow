@@ -7,10 +7,12 @@ import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import threading
 import time
 from collections.abc import Iterable
+from functools import wraps
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,7 @@ from haizflow.core.storage_policy import (
     MINIMUM_OPERATIONAL_FREE_BYTES,
 )
 from haizflow.services import video_store
-from haizflow.core.storage_ownership import managed_storage_guard, owned_path, safe_tree
+from haizflow.core.storage_ownership import is_reparse, managed_storage_guard, owned_path, safe_tree
 
 MANIFEST_SCHEMA_VERSION = 1
 PROJECT_SOFT_LIMIT_BYTES = MANUAL_PROJECT_SOFT_LIMIT_BYTES
@@ -62,6 +64,25 @@ _CACHE_DIRECTORIES = {
 # is not re-read on every binding evaluation.  A size or mtime change creates a
 # different key and therefore forces a fresh checksum.
 _VALIDATED_DIGESTS: dict[tuple[str, int, int, str], bool] = {}
+_PRESENTATION_BATCH = threading.local()
+
+
+def presentation_batch(function):
+    """Reuse structural observations within one GUI state evaluation only.
+
+    No persistent validity cache: a later call always sees filesystem changes.
+    Worker checksum validation is deliberately excluded from this scope.
+    """
+    @wraps(function)
+    def evaluate(*args, **kwargs):
+        if getattr(_PRESENTATION_BATCH, "records", None) is not None:
+            return function(*args, **kwargs)
+        _PRESENTATION_BATCH.records = {}
+        try:
+            return function(*args, **kwargs)
+        finally:
+            del _PRESENTATION_BATCH.records
+    return evaluate
 _MANIFEST_LOCKS: dict[str, threading.RLock] = {}
 _MANIFEST_LOCKS_GUARD = threading.Lock()
 _STAGING_LEASES: set[str] = set()
@@ -423,6 +444,17 @@ def resolve(video_id: str, kind: str, artifact_signature: str) -> dict[str, Any]
 
 
 def peek(video_id: str, kind: str, artifact_signature: str) -> dict[str, Any] | None:
+    observations = getattr(_PRESENTATION_BATCH, "records", None)
+    key = (video_id, kind, artifact_signature)
+    if observations is not None and key in observations:
+        return observations[key]
+    result = _peek_structure(video_id, kind, artifact_signature)
+    if observations is not None:
+        observations[key] = result
+    return result
+
+
+def _peek_structure(video_id: str, kind: str, artifact_signature: str) -> dict[str, Any] | None:
     """Inspect a completed artifact without hashing media on the caller thread.
 
     QML asks for Manual tool state while a workspace is being constructed.
@@ -455,13 +487,23 @@ def peek(video_id: str, kind: str, artifact_signature: str) -> dict[str, Any] | 
         ):
             return None
         resolved: dict[str, str] = {}
+        validated_parents: set[Path] = set()
         for name, relative in (record.get("outputs") or {}).items():
             metadata = marker["outputs"].get(name)
             try:
-                candidate = owned_path(directory / str(relative), directory)
+                candidate = Path(os.path.abspath(directory / str(relative)))
+                # Validate each shared parent once, not once per voice clip.
+                # A separate leaf check still rejects every symlink/junction.
+                candidate.relative_to(directory)
+                if candidate.parent not in validated_parents:
+                    owned_path(candidate.parent, directory, allow_root=True)
+                    validated_parents.add(candidate.parent)
+                if is_reparse(candidate):
+                    return None
                 if not isinstance(metadata, dict):
                     return None
-                if not candidate.is_file() or candidate.stat().st_size != int(metadata.get("size") or -1):
+                info = candidate.stat()
+                if not stat.S_ISREG(info.st_mode) or info.st_size != int(metadata.get("size") or -1):
                     return None
             except (OSError, TypeError, ValueError):
                 return None

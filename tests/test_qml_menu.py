@@ -6,9 +6,9 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QUrl
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlComponent, QQmlEngine
-from PySide6.QtQuick import QQuickItem, QQuickView
+from PySide6.QtGui import QFontDatabase, QGuiApplication
+from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
+from PySide6.QtQuick import QQuickItem, QQuickView, QQuickWindow
 from PySide6.QtTest import QTest
 
 
@@ -20,6 +20,55 @@ class QmlMenuTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QGuiApplication.instance() or QGuiApplication([])
+
+    def test_auto_commands_match_initial_running_and_restart_states(self):
+        engine = QQmlEngine()
+        state = QQmlPropertyMap()
+        for key, value in {
+            "hasSelectedOutput": False, "hasOpenProject": True,
+            "isSelectedVideoProcessing": False, "isSelectedVideoQueued": False,
+            "hasSelectedVideo": False, "videoExportBusy": False,
+            "selectedStatus": "pending", "selectedFailureTitle": "Failed",
+            "selectedStageLabel": "Processing", "selectedElapsed": "",
+        }.items():
+            state.insert(key, value)
+        engine.rootContext().setContextProperty("TestController", state)
+        component = QQmlComponent(engine)
+        component.setData((QML_DIR / "VideoCommandBar.qml").read_text(encoding="utf-8")
+                          .replace("AppController", "TestController").encode(),
+                          QUrl.fromLocalFile(str(QML_DIR / "VideoCommandBar.qml")))
+        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+        item = component.create()
+        window = QQuickWindow()
+        window.resize(1000, 80)
+        item.setParentItem(window.contentItem())
+        item.setWidth(1000)
+        item.setHeight(44)
+        window.show()
+        process = item.findChild(QObject, "autoProcessButton")
+        pause = item.findChild(QObject, "autoPauseButton")
+        try:
+            self.app.processEvents()
+            self.assertTrue(process.property("visible"))
+            self.assertFalse(process.property("enabled"))
+            self.assertFalse(pause.property("visible"))
+            state.insert("hasSelectedVideo", True)
+            for status in ("paused", "done", "failed", "cancelled"):
+                state.insert("selectedStatus", status)
+                self.app.processEvents()
+                self.assertEqual(process.property("text"), "Xử lý lại")
+                self.assertTrue(process.property("enabled"))
+            state.insert("isSelectedVideoProcessing", True)
+            state.insert("selectedStatus", "processing")
+            self.app.processEvents()
+            self.assertFalse(process.property("visible"))
+            self.assertTrue(pause.property("visible"))
+        finally:
+            window.close()
+            item.deleteLater()
+            window.deleteLater()
+            engine.deleteLater()
+            self.app.processEvents()
 
     def test_menu_item_keeps_its_label_after_repeated_visibility_changes(self):
         engine = QQmlEngine()
@@ -42,6 +91,163 @@ class QmlMenuTests(unittest.TestCase):
             self.assertEqual(item.property("implicitHeight"), 0)
         finally:
             item.deleteLater()
+            engine.deleteLater()
+            self.app.processEvents()
+
+    def test_home_search_loses_focus_outside_without_swallowing_buttons(self):
+        from haizflow.desktop.models import ProjectBrowserProxyModel, ProjectListModel
+
+        source = ProjectListModel()
+        source.set_projects([dict(
+            key="alpha", project_name="Alpha", project_type="manual",
+            video_count=0, status="empty", progress=0, thumbnail_source="",
+            updated_at="2026-10-01T13:53:00", video_size="",
+        )])
+        proxy = ProjectBrowserProxyModel(source)
+        engine = QQmlEngine()
+        engine.rootContext().setContextProperty("projectProxy", proxy)
+        component = QQmlComponent(engine)
+        component.setData(
+            f'''import QtQuick
+import QtQuick.Controls.Basic
+import "{QML_DIR.as_uri()}"
+ApplicationWindow {{
+    id: window
+    property bool projectOpened: false
+    width: 1120; height: 720; visible: true
+    HomePage {{
+        anchors.fill: parent; projectModel: projectProxy
+        onOpenProject: window.projectOpened = true
+    }}
+}}'''.encode("utf-8"), QUrl(),
+        )
+        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+        window = component.create()
+        self.assertIsNotNone(window)
+        try:
+            QTest.qWait(80)
+            search = window.findChild(QQuickItem, "projectSearchField")
+            button = window.findChild(QQuickItem, "newProjectButton")
+            menu = window.findChild(QObject, "newProjectMenu")
+            center = search.mapToScene(QPointF(search.width() / 2, search.height() / 2)).toPoint()
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, center)
+            QTest.keyClick(window, Qt.Key_A)
+            self.assertTrue(search.property("activeFocus"))
+            self.assertEqual(proxy.query, "a")
+            search.selectAll()
+            QTest.mouseMove(window, QPoint(1080, 675))
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(1080, 675))
+            self.assertFalse(search.property("activeFocus"))
+            self.assertEqual(search.property("selectedText"), "")
+            self.assertEqual(proxy.query, "a")
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, center)
+            button_center = button.mapToScene(QPointF(button.width() / 2, button.height() / 2)).toPoint()
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, button_center)
+            QTest.qWait(30)
+            self.assertTrue(menu.property("visible"))
+            self.assertFalse(search.property("activeFocus"))
+            QTest.keyClick(window, Qt.Key_Escape)
+            QTest.qWait(150)
+            pending = [window.contentItem()]
+            card = None
+            while pending:
+                item = pending.pop()
+                if item.property("projectKey") == "alpha":
+                    card = item
+                    break
+                pending.extend(item.childItems())
+            self.assertIsNotNone(card)
+            card_center = card.mapToScene(QPointF(card.width() / 2, card.height() / 2)).toPoint()
+            QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier, card_center)
+            QTest.qWait(40)
+            self.assertTrue(card.findChild(QObject, "projectContextMenu").property("visible"))
+            self.assertFalse(card.property("visualFocus"))
+            QTest.keyClick(window, Qt.Key_Escape)
+            QTest.qWait(150)
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, card_center)
+            self.assertTrue(window.property("projectOpened"))
+        finally:
+            window.close()
+            window.deleteLater()
+            engine.deleteLater()
+            self.app.processEvents()
+
+    def test_project_deletion_keeps_browser_route_and_only_exits_workspaces(self):
+        main = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        for handler, next_handler in (("onVideoDeleted", "onBatchDeleted"), ("onBatchDeleted", "onProjectSetupChanged")):
+            body = main.split(f"function {handler}() {{", 1)[1].split(f"function {next_handler}()", 1)[0]
+            self.assertIn("if (!root.projectWorkspaceVisible)", body)
+            self.assertLess(body.index("return;"), body.index("root.resetRouteHistory"))
+
+    def test_workspace_and_project_cards_only_show_keyboard_focus(self):
+        engine = QQmlEngine()
+        component = QQmlComponent(engine)
+        component.setData(
+            f'''import QtQuick
+import QtQuick.Controls.Basic
+import "{QML_DIR.as_uri()}"
+ApplicationWindow {{
+    id: window
+    width: 680; height: 720; visible: true
+    property int opened: 0
+    NavigationRail {{
+        width: 204; height: parent.height
+        onSectionRequested: function(section) {{ currentSection = section; }}
+    }}
+    ProjectCard {{
+        objectName: "testProjectCard"
+        readonly property int focusBorderWidth: background.border.width
+        x: 230; y: 70; width: 240
+        index: 0; projectName: "Example"; projectKey: "example"
+        projectType: "batch"; videoCount: 0; status: "empty"; progress: 0
+        thumbnailSource: ""; videoSize: ""
+        onActivated: window.opened++
+    }}
+}}'''.encode("utf-8"), QUrl(),
+        )
+        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+        window = component.create()
+        self.assertIsNotNone(window)
+        try:
+            QTest.qWait(100)
+            def visual_item(name):
+                pending = [window.contentItem()]
+                while pending:
+                    item = pending.pop()
+                    if item.objectName() == name:
+                        return item
+                    pending.extend(item.childItems())
+                self.fail(f"Missing visual item: {name}")
+
+            home = visual_item("workspaceNav_home")
+            single = visual_item("workspaceNav_single")
+            home.forceActiveFocus(Qt.TabFocusReason)
+            self.assertTrue(home.property("visualFocus"))
+            home_center = home.mapToScene(QPointF(home.width() / 2, home.height() / 2)).toPoint()
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, home_center)
+            self.assertFalse(home.property("visualFocus"))
+            QTest.keyClick(window, Qt.Key_Tab)
+            self.assertTrue(single.property("visualFocus"))
+            card = window.findChild(QQuickItem, "testProjectCard")
+            menu = card.findChild(QObject, "projectContextMenu")
+            card_center = card.mapToScene(QPointF(card.width() / 2, card.height() / 2)).toPoint()
+            card.forceActiveFocus(Qt.TabFocusReason)
+            self.assertTrue(card.property("visualFocus"))
+            QTest.keyClick(window, Qt.Key_Return)
+            self.assertEqual(window.property("opened"), 1)
+            for _ in range(2):
+                QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier, card_center)
+                QTest.qWait(40)
+                self.assertTrue(menu.property("visible"))
+                self.assertFalse(card.property("visualFocus"))
+                self.assertEqual(card.property("focusBorderWidth"), 1)
+                QTest.keyClick(window, Qt.Key_Escape)
+                QTest.qWait(150)
+                self.assertFalse(menu.property("visible"))
+                self.assertFalse(card.property("visualFocus"))
+        finally:
+            window.close()
+            window.deleteLater()
             engine.deleteLater()
             self.app.processEvents()
 
@@ -91,6 +297,64 @@ ApplicationWindow {{
                 self.assertIsNotNone(label)
                 self.assertEqual(label.property("text"), expected_text)
                 self.assertGreater(label.property("width"), 0)
+        finally:
+            window.close()
+            window.deleteLater()
+            engine.deleteLater()
+            self.app.processEvents()
+
+    def test_auto_export_requires_confirmation_and_keeps_selected_preset(self):
+        if os.name == "nt":
+            for filename in ("SegUIVar.ttf", "segoeui.ttf", "segmdl2.ttf"):
+                QFontDatabase.addApplicationFont("C:/Windows/Fonts/" + filename)
+        engine = QQmlEngine()
+        component = QQmlComponent(engine)
+        component.setData(f'''import QtQuick
+import QtQuick.Controls.Basic
+import "{QML_DIR.as_uri()}"
+ApplicationWindow {{
+    width: 1000; height: 800; visible: true; color: Theme.window
+    QtObject {{
+        id: fake; objectName: "exportController"
+        readonly property bool videoExportBusy: false
+        property string operation: ""
+        property string chosenPreset: ""
+        function manualExportSettings() {{
+            return {{videoId: "auto-video", preset: "720p", ready: false,
+                presets: [{{value: "source", label: "Theo nguồn"}}, {{value: "720p", label: "HD 720p"}}]}};
+        }}
+        function processVideoTo(id, preset, destination, overwrite) {{
+            operation = "process"; chosenPreset = preset; return true;
+        }}
+        function exportVideoTo(id, preset, destination, overwrite) {{
+            operation = "export"; chosenPreset = preset; return true;
+        }}
+    }}
+    VideoExportDialog {{
+        id: dialog; objectName: "exportDialog"; controller: fake
+        Component.onCompleted: {{ openForProcessing(); destination = "D:/Exports/Project.mp4"; }}
+    }}
+}}'''.encode("utf-8"), QUrl())
+        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+        window = component.create()
+        self.assertIsNotNone(window, "\n".join(error.toString() for error in component.errors()))
+        try:
+            QTest.qWait(250)
+            dialog = window.findChild(QObject, "exportDialog")
+            fake = window.findChild(QObject, "exportController")
+            confirm = window.findChild(QQuickItem, "confirmVideoExport")
+            self.assertEqual(fake.property("operation"), "")
+            self.assertEqual(dialog.property("title"), "Xử lý và xuất video")
+            self.assertTrue(confirm.property("enabled"))
+            self.assertLess(dialog.property("height"), window.height() - 48)
+            preview = window.grabWindow()
+            if not preview.isNull():
+                preview.save(str(ROOT / "build" / "auto-export-preview.png"))
+            center = confirm.mapToScene(QPointF(confirm.width() / 2, confirm.height() / 2))
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(round(center.x()), round(center.y())))
+            self.app.processEvents()
+            self.assertEqual(fake.property("operation"), "process")
+            self.assertEqual(fake.property("chosenPreset"), "720p")
         finally:
             window.close()
             window.deleteLater()
@@ -216,7 +480,7 @@ ApplicationWindow {{
         self.assertIn('text: qsTr("Dự án")', title_bar)
         self.assertIn('text: qsTr("Cài đặt")', title_bar)
         self.assertIn('text: qsTr("Gói tài nguyên")', title_bar)
-        self.assertIn('toolTipText: qsTr("Giới thiệu")', title_bar)
+        self.assertIn('toolTipText: qsTr("Thông tin HaizFlow")', title_bar)
         self.assertNotIn('text: I18n.t("Single projects")', title_bar)
         self.assertNotIn('text: I18n.t("Batch projects")', title_bar)
         self.assertNotIn('text: I18n.t("Download projects")', title_bar)
@@ -226,7 +490,9 @@ ApplicationWindow {{
         self.assertIn("root.toggleMenu(settingsMenu, settingsButton, menuWasOpenOnPress)", title_bar)
         self.assertIn("root.settingsRequested()", title_bar)
         self.assertIn("root.aboutRequested()", title_bar)
-        self.assertNotIn("helpMenu", title_bar)
+        self.assertIn("helpMenu", title_bar)
+        self.assertIn('text: qsTr("Bản quyền")', title_bar)
+        self.assertIn("root.copyrightRequested()", title_bar)
         self.assertNotIn('glyph: "\\uE713"', title_bar)
         self.assertIn("parent: Overlay.overlay", title_bar)
         self.assertIn("TopBarPopupMenu {", title_bar)
@@ -243,7 +509,9 @@ ApplicationWindow {{
         self.assertIn('readonly property string routeSettings: "settings"', main)
         self.assertIn('readonly property string routePackages: "packages"', main)
         self.assertIn('{ key: "home"', navigation_rail)
-        self.assertIn('{ key: "projects"', navigation_rail)
+        for section in ("single", "manual", "batch"):
+            self.assertIn(f'{{ key: "{section}"', navigation_rail)
+        self.assertNotIn('{ key: "projects"', navigation_rail)
         self.assertIn('{ key: "downloads"', navigation_rail)
         self.assertIn('{ key: "social"', navigation_rail)
         self.assertNotIn('I18n.t("Single")', navigation_rail)
@@ -776,7 +1044,8 @@ ApplicationWindow {{
         theme = (QML_DIR / "Theme.qml").read_text(encoding="utf-8")
 
         self.assertIn("Theme.interactiveMuted", batch_page)
-        self.assertIn("Theme.interactiveOutline", batch_page)
+        self.assertIn("Theme.surfaceElevated", batch_page)
+        self.assertIn("Theme.outline", batch_page)
         self.assertNotIn("Theme.blueSurface", batch_page)
         self.assertNotIn("Theme.violetSurface", batch_page)
         self.assertIn('qsTr("Hàng đợi xử lý")', batch_page)
@@ -828,9 +1097,10 @@ ApplicationWindow {{
         self.assertIn("readonly property int horizontalInset: UiMetrics.pageMargin", settings_shell)
         home_route = route_host.split("    HomePage {", 1)[1].split("    ProjectsHubPage {", 1)[0]
         self.assertIn("Layout.margins: 0", home_route)
-        self.assertIn("anchors.margins: UiMetrics.pageMargin", (QML_DIR / "HomePage.qml").read_text(encoding="utf-8"))
+        self.assertIn("ProjectsHubPage {", (QML_DIR / "HomePage.qml").read_text(encoding="utf-8"))
+        self.assertIn("anchors.margins: UiMetrics.pageMargin", (QML_DIR / "ProjectsHubPage.qml").read_text(encoding="utf-8"))
         self.assertNotIn("UiMetrics.pageMargin + Theme.space12", home_route)
-        for filename in ("HomePage.qml", "ProjectsPage.qml", "ProjectsHubPage.qml", "DownloadsPage.qml", "SocialPublishPage.qml"):
+        for filename in ("ProjectsPage.qml", "ProjectsHubPage.qml", "DownloadsPage.qml", "SocialPublishPage.qml"):
             self.assertIn("PageHeader {", (QML_DIR / filename).read_text(encoding="utf-8"), filename)
         for filename in ("VideoDownloadPage.qml", "AudioDownloadPage.qml", "ChannelDownloadPage.qml"):
             self.assertIn("DownloadDestinationRow {", (QML_DIR / filename).read_text(encoding="utf-8"), filename)
@@ -992,14 +1262,17 @@ ApplicationWindow {{
         self.assertNotIn("LanguageFlag", language_picker)
         self.assertNotIn('"flag": "vi"', settings)
 
-    def test_app_settings_apply_automatically_without_an_apply_button(self):
+    def test_app_settings_require_explicit_apply(self):
         settings = (QML_DIR / "SettingsPage.qml").read_text(encoding="utf-8")
 
         self.assertIn("function applyDraft()", settings)
-        self.assertIn("applyTimer.restart()", settings)
+        self.assertNotIn("applyTimer", settings)
         self.assertIn("onVisibleChanged: {", settings)
         self.assertIn("applyDraft()", settings)
-        self.assertNotIn('I18n.t("Apply settings")', settings)
+        self.assertIn('objectName: "applyGeneralSettingsButton"', settings)
+        self.assertIn("AppController.applyGeneralSettings", settings)
+        self.assertNotIn("AppController.setProcessingDevice", settings)
+        self.assertNotIn("AppController.setKeepModelsWarm", settings)
 
     def test_language_labels_are_names_without_codes(self):
         from haizflow.desktop.presenters import language_label
@@ -1071,9 +1344,11 @@ ApplicationWindow {{
         help_label = (QML_DIR / "SettingLabel.qml").read_text(encoding="utf-8")
         help_popover = (QML_DIR / "HelpPopover.qml").read_text(encoding="utf-8")
 
-        self.assertIn('qsTr("Nhận diện nhiều người nói")', settings)
-        self.assertIn('speakerModeEdited(checked ? "multiple" : "single")', settings)
-        self.assertIn('visible: root.ttsProvider.indexOf("omnivoice") === 0', settings)
+        picker = (QML_DIR / "VoicePicker.qml").read_text(encoding="utf-8")
+        self.assertIn('qsTr("Nhận diện nhiều người nói")', picker)
+        self.assertIn('allowMultipleSpeakers: root.ttsProvider.indexOf("omnivoice") === 0', settings)
+        self.assertIn('speakerModeEdited(voice === "omnivoice:multiple" ? "multiple" : "single")', settings)
+        self.assertNotIn('speakerModeEdited(checked ?', settings)
         self.assertNotIn('qsTr("Một giọng")', settings)
         self.assertNotIn('qsTr("Nhiều người")', settings)
         self.assertIn("HelpPopover {", help_label)

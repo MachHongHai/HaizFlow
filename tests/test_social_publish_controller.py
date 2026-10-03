@@ -68,6 +68,25 @@ class SocialPublishControllerTests(unittest.TestCase):
         self.host = _Host()
         self.controller = SocialPublishController(self.host)
 
+    def test_publish_all_excludes_done_and_ambiguous_remote_posts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            video = Path(directory) / "post.mp4"
+            video.write_bytes(b"video")
+            self.controller._state["items"] = [
+                {"file_path": str(video), "status": "published", "zernio_post_id": "done"},
+                {"file_path": str(video), "status": "failed", "zernio_post_id": "uncertain"},
+                {"file_path": str(video), "status": "ready"},
+            ]
+            self.assertEqual(self.controller.waiting_count, 1)
+            self.controller._state["items"].pop()
+            self.assertEqual(self.controller.waiting_count, 0)
+
+    def test_direct_publish_refuses_already_published_before_any_upload(self):
+        self.host.tiktok_publish_items.set_items([{"status": "published", "zernio_post_id": "done"}])
+        with patch.object(self.controller, "_ensure_ready_to_publish") as ensure:
+            self.assertFalse(self.controller.publish_item(0))
+        ensure.assert_not_called()
+
     def test_removing_post_only_removes_local_list_entry(self):
         with tempfile.TemporaryDirectory() as directory:
             video = Path(directory) / "post.mp4"

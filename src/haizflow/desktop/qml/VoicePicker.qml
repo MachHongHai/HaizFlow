@@ -12,12 +12,14 @@ Control {
     property string currentValue: ""
     property string activeCategory: ""
     property bool allowVoiceClone: false
+    property bool allowMultipleSpeakers: false
     property bool previewEnabled: true
     property string previewSource: ""
     property string previewState: "idle"
     property string requestedVoice: ""
     signal selected(string voice)
     signal previewRequested(string voice)
+    signal cloneRequested()
 
     implicitHeight: 42
     leftPadding: Theme.space12
@@ -34,6 +36,9 @@ Control {
             if (allowVoiceClone || String(option.voice || "") !== "omnivoice:clone")
                 result.push(option)
         }
+        if (allowMultipleSpeakers)
+            result.push({ voice: "omnivoice:multiple", label: qsTr("Nhận diện nhiều người nói"),
+                category: "source", categoryLabel: qsTr("Giọng từ video") });
         return result
     }
 
@@ -42,6 +47,9 @@ Control {
         const seen = {}
         const options = visibleOptions()
         for (let i = 0; i < options.length; ++i) {
+            if (String(options[i].voice || "") === "omnivoice:clone"
+                || String(options[i].voice || "") === "omnivoice:multiple")
+                continue
             const key = String(options[i].category || "voices")
             if (!seen[key]) {
                 result.push({
@@ -58,13 +66,40 @@ Control {
         const result = []
         const options = visibleOptions()
         for (let i = 0; i < options.length; ++i) {
-            if (String(options[i].category || "voices") === category)
+            if (String(options[i].voice || "") !== "omnivoice:clone"
+                && String(options[i].voice || "") !== "omnivoice:multiple"
+                && String(options[i].category || "voices") === category)
                 result.push(options[i])
         }
         return result
     }
 
+    function specialOptions() {
+        const result = []
+        if (allowVoiceClone) {
+            let clone = { voice: "omnivoice:clone", available: false, previewAvailable: false }
+            for (const option of model || []) {
+                if (String(option.voice || "") === "omnivoice:clone")
+                    clone = option
+            }
+            result.push(Object.assign({}, clone, { label: qsTr("Nhân bản giọng") }))
+        }
+        if (allowMultipleSpeakers)
+            result.push({ voice: "omnivoice:multiple", label: qsTr("Nhận diện nhiều người nói") })
+        return result
+    }
+
+    function chooseOption(option) {
+        voicePopup.close()
+        if (String(option.voice || "") === "omnivoice:clone")
+            cloneRequested()
+        else
+            selected(String(option.voice || ""))
+    }
+
     function displayLabel() {
+        if (currentValue === "omnivoice:multiple")
+            return qsTr("Nhận diện nhiều người nói")
         if (currentValue === "omnivoice:clone")
             return qsTr("Giọng đã nhân bản")
         for (let i = 0; i < model.length; ++i) {
@@ -77,7 +112,8 @@ Control {
     function syncCategory() {
         const options = visibleOptions()
         for (let i = 0; i < options.length; ++i) {
-            if (String(options[i].voice || "") === currentValue) {
+            if (String(options[i].voice || "") === currentValue
+                && currentValue !== "omnivoice:clone" && currentValue !== "omnivoice:multiple") {
                 activeCategory = String(options[i].category || "voices")
                 return
             }
@@ -87,7 +123,7 @@ Control {
     }
 
     function togglePreview(voice) {
-        if (!previewEnabled)
+        if (!previewEnabled || voice === "omnivoice:multiple" || voice === "omnivoice:clone")
             return
         const value = String(voice || "")
         if (requestedVoice === value && previewState === "ready") {
@@ -100,6 +136,7 @@ Control {
         voicePlayer.stop()
         requestedVoice = value
         previewRequested(value)
+        previewStartTimer.restart()
     }
 
     function playPreparedPreview() {
@@ -212,8 +249,8 @@ Control {
     background: Rectangle {
         color: root.hovered ? Theme.surfaceMuted : Theme.input
         radius: Theme.radiusSmall
-        border.width: root.activeFocus || voicePopup.opened ? 2 : 1
-        border.color: root.activeFocus || voicePopup.opened ? Theme.focus : Theme.outline
+        border.width: root.visualFocus || voicePopup.opened ? 2 : 1
+        border.color: root.visualFocus || voicePopup.opened ? Theme.focus : Theme.outline
     }
 
     TapHandler { enabled: root.enabled; onTapped: voicePopup.opened ? voicePopup.close() : voicePopup.open() }
@@ -235,8 +272,8 @@ Control {
         focus: true
         margins: Theme.space8
         width: Math.min(440, Math.max(280, root.width), parent.width - Theme.space16)
-        height: Math.min(330, parent.height - Theme.space16,
-            126 + Math.max(1, voiceList.count) * 46)
+        height: Math.min(440, parent.height - Theme.space16,
+            126 + root.specialOptions().length * 48 + Math.max(1, voiceList.count) * 46)
         onAboutToShow: root.positionPopup()
         onOpened: popupLayoutTimer.restart()
         onHeightChanged: if (visible) popupLayoutTimer.restart()
@@ -277,6 +314,56 @@ Control {
             }
 
             Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.divider
+            }
+
+            Repeater {
+                model: root.specialOptions()
+                delegate: ItemDelegate {
+                    id: specialDelegate
+                    required property var modelData
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 44
+                    highlighted: String(modelData.voice) === root.currentValue
+                    focusPolicy: Qt.TabFocus
+                    onClicked: root.chooseOption(modelData)
+                    contentItem: RowLayout {
+                        spacing: Theme.space8
+                        Text {
+                            Layout.fillWidth: true
+                            text: String(specialDelegate.modelData.label)
+                            color: Theme.text
+                            font.pixelSize: Theme.body
+                            elide: Text.ElideRight
+                            textFormat: Text.PlainText
+                        }
+                        Text {
+                            visible: specialDelegate.modelData.available === false
+                            text: qsTr("Thêm mẫu")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.caption
+                        }
+                        AppIcon {
+                            visible: specialDelegate.highlighted
+                            glyph: "\uE73E"
+                            iconColor: Theme.interactive
+                            iconSize: Theme.iconSmall
+                        }
+                    }
+                    background: Rectangle {
+                        color: specialDelegate.highlighted ? Theme.interactiveMuted
+                            : specialDelegate.hovered ? Theme.surfaceMuted : "transparent"
+                        radius: Theme.radiusSmall
+                        border.width: specialDelegate.visualFocus ? 1 : 0
+                        border.color: Theme.interactive
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: root.specialOptions().length > 0
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
                 color: Theme.divider
@@ -358,7 +445,7 @@ Control {
                             iconSize: Theme.iconSmall
                         }
                         Item {
-                            visible: root.previewEnabled
+                            visible: root.previewEnabled && String(voiceDelegate.modelData.voice || "") !== "omnivoice:multiple"
                             Layout.preferredWidth: visible ? 30 : 0
                             Layout.preferredHeight: 30
 

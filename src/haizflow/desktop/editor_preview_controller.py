@@ -272,6 +272,7 @@ class EditorPreviewController:
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
             "preview_encoding": settings["preview_encoding"],
             "source_treatment_revision": 2,
+            "image_generation": settings.get("image_generation", 0) if removes_source_text else 0,
         }
 
     @staticmethod
@@ -295,6 +296,7 @@ class EditorPreviewController:
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
             "preview_encoding": settings["preview_encoding"],
             "source_treatment_revision": 2,
+            "image_generation": settings.get("image_generation", 0) if removes_source_text else 0,
         }
 
     @staticmethod
@@ -459,6 +461,7 @@ class EditorPreviewController:
                 }
             ),
             "ocr_region": ocr_region,
+            "image_generation": int((getattr(video, "manual_tool_generations", {}) or {}).get("image", 0)),
             "original_subtitle_intervals": original_subtitle_intervals,
             # Version the proxy cache when its encoding contract changes.
             "preview_encoding": "layered-full-timeline-sdr-yuv420p-v5",
@@ -616,13 +619,14 @@ class EditorPreviewController:
 
     def _render_current(self, generation, process_id, video, settings, preview_dir: Path) -> None:
         try:
+            source_start = 0.0
+            sequence_duration = None
+            direct_source_window = True
             # FFprobe can block on a damaged file.  It must never run on the
             # GUI thread; every request enters this worker before probing.
             sequence_payload = settings.get("editor_sequence") or {}
             if sequence_payload:
-                from haizflow.pipeline.sequence_compiler import (
-                    has_source_edits, materialize_source_video,
-                )
+                from haizflow.pipeline.sequence_compiler import has_source_edits
                 from haizflow.schemas.editor import EditorDocument, EditorSequence
 
                 editor_document = EditorDocument(
@@ -630,28 +634,21 @@ class EditorPreviewController:
                     sequence=EditorSequence.model_validate(sequence_payload),
                 )
                 if has_source_edits(editor_document):
-                    sequence_key = hashlib.sha256(json.dumps(
-                        {"source": settings["source_identity"], "sequence": sequence_payload},
-                        sort_keys=True, separators=(",", ":"),
-                    ).encode("utf-8")).hexdigest()[:20]
-                    source_dir = preview_dir / f"source-sequence-{sequence_key}"
-                    source_output = source_dir / "sequence-source.mp4"
-                    expected_seconds = editor_document.sequence.duration_ms / 1000
-                    if not source_output.is_file() or self._source_duration(str(source_output)) < expected_seconds - 0.25:
-                        start_video(process_id)
-                        try:
-                            materialize_source_video(
-                                settings["source_path"], editor_document,
-                                source_dir, process_id,
-                            )
-                        finally:
-                            clean_video(process_id)
-                    settings["source_path"] = str(source_output)
-            total_duration = self._source_duration(settings["source_path"])
+                    window = self._contiguous_source_window(sequence_payload)
+                    if window is not None:
+                        # A basic edge trim can be applied in the proxy's one
+                        # encode. Do not first encode a full-quality edited
+                        # source and then encode the same frames again.
+                        source_start, sequence_duration = window
+                    else:
+                        direct_source_window = False
+                        self._materialize_preview_sequence(editor_document, sequence_payload, settings, preview_dir, process_id)
+            total_duration = sequence_duration if sequence_duration is not None else self._source_duration(settings["source_path"])
             if not self._request_is_current(generation, process_id):
                 return
             if total_duration <= 0:
                 raise RuntimeError("The source video duration could not be read")
+            settings["preview_source_start"] = source_start
             # The playhead is deliberately absent from the signature. Seeking
             # must reuse the same proxy instead of creating a new FFmpeg job.
             settings["start"] = 0.0
@@ -691,16 +688,25 @@ class EditorPreviewController:
             if settings.get("independent_manual_preview"):
                 base_dir.mkdir(parents=True, exist_ok=True)
                 if not self._preview_cache_is_complete(base_output_path, base_completion_path, settings["duration"]):
+                    reusable = self._reusable_treated_base(preview_dir, settings, source_start, settings["duration"]) if direct_source_window else None
+                    base_source = str(reusable[0]) if reusable else settings["source_path"]
+                    base_start = reusable[1] if reusable else source_start
                     start_video(process_id)
                     try:
                         if not self._render_proxy_layer(generation, process_id, video,
-                            settings["source_path"], base_output_path, base_completion_path,
-                            [], settings["duration"], settings["output_format"], video.crop,
-                            settings["ocr_region"] if settings["remove_original_subtitles"] else None,
+                            base_source, base_output_path, base_completion_path,
+                            [], settings["duration"], "keep_ratio" if reusable else settings["output_format"],
+                            CropSettings() if reusable else video.crop,
+                            None if reusable else settings["ocr_region"] if settings["remove_original_subtitles"] else None,
                             "", False, settings["removal_mode"], .03, .94,
+                            source_start_seconds=base_start,
                             subtitle_region_override=None,
                             original_subtitle_intervals=settings["original_subtitle_intervals"]):
                             return
+                        self._write_completion_marker(base_completion_path, base_output_path, settings["duration"],
+                            base_context=({"effects": self._source_effects_key(settings),
+                                           "source_start": source_start, "duration": settings["duration"]}
+                                          if direct_source_window else None))
                     finally:
                         clean_video(process_id)
                 self._finish_success(generation, base_output_path, 0, settings["duration"],
@@ -789,6 +795,7 @@ class EditorPreviewController:
                             settings["removal_mode"],
                             0.03,
                             0.39,
+                            source_start_seconds=source_start,
                             subtitle_region_override=None,
                             original_subtitle_intervals=settings["original_subtitle_intervals"],
                         ):
@@ -880,6 +887,64 @@ class EditorPreviewController:
             )
         except Exception as exc:
             self._finish_error(generation, str(exc))
+
+    @staticmethod
+    def _contiguous_source_window(sequence: dict) -> tuple[float, float] | None:
+        decisions = sequence.get("edit_decisions") or []
+        if len(decisions) != 1:
+            return None
+        decision = decisions[0]
+        start = int(decision.get("source_start_ms") or 0)
+        end = int(decision.get("source_end_ms") or 0)
+        duration = int(sequence.get("duration_ms") or 0)
+        if int(decision.get("sequence_start_ms") or 0) != 0 or end <= start or abs(end - start - duration) > 1:
+            return None
+        return start / 1000, duration / 1000
+
+    @classmethod
+    def _source_effects_key(cls, settings: dict) -> str:
+        payload = cls._base_visual_cache_payload(settings)
+        payload.pop("editor_sequence", None)
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _reusable_treated_base(cls, directory: Path, settings: dict, start: float, duration: float) -> tuple[Path, float] | None:
+        """Reuse already treated pictures, never substitute untreated source."""
+        effects = cls._source_effects_key(settings)
+        for marker in directory.glob("base-*/preview.complete.json"):
+            try:
+                payload = json.loads(marker.read_text(encoding="utf-8"))
+                context = payload.get("base_context") or {}
+                old_start = float(context.get("source_start", 0))
+                old_duration = float(context.get("duration", 0))
+                output = marker.parent / "preview.mp4"
+                if (context.get("effects") == effects and start >= old_start
+                        and start + duration <= old_start + old_duration + 0.001
+                        and int(payload.get("version", 0)) == 1
+                        and output.stat().st_size == int(payload.get("size", -1))
+                        and float(payload.get("duration", 0)) >= old_duration - 0.25):
+                    return output, start - old_start
+            except (OSError, TypeError, ValueError):
+                continue
+        return None
+
+    def _materialize_preview_sequence(self, document, sequence, settings, preview_dir, process_id) -> None:
+        from haizflow.pipeline.sequence_compiler import materialize_source_video
+
+        sequence_key = hashlib.sha256(json.dumps(
+            {"source": settings["source_identity"], "sequence": sequence},
+            sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")).hexdigest()[:20]
+        source_dir = preview_dir / f"source-sequence-{sequence_key}"
+        source_output = source_dir / "sequence-source.mp4"
+        expected_seconds = document.sequence.duration_ms / 1000
+        if not source_output.is_file() or self._source_duration(str(source_output)) < expected_seconds - 0.25:
+            start_video(process_id)
+            try:
+                materialize_source_video(settings["source_path"], document, source_dir, process_id)
+            finally:
+                clean_video(process_id)
+        settings["source_path"] = str(source_output)
 
     def _render_proxy_layer(
         self,
@@ -1188,6 +1253,7 @@ class EditorPreviewController:
         duration: float,
         *,
         chunk_directories: list[str] | None = None,
+        base_context: dict | None = None,
     ) -> None:
         payload = {
             "version": 1,
@@ -1196,6 +1262,8 @@ class EditorPreviewController:
         }
         if chunk_directories:
             payload["chunk_directories"] = list(dict.fromkeys(chunk_directories))
+        if base_context is not None:
+            payload["base_context"] = dict(base_context)
         staged = marker_path.with_suffix(".writing.json")
         staged.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
         os.replace(staged, marker_path)

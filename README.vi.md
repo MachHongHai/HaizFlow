@@ -5,7 +5,7 @@
   <p>Chỉnh phụ đề, giọng đọc, hình ảnh và âm thanh trong một ứng dụng. Các bộ xử lý cục bộ không cần API suy luận trả phí.</p>
 
   <p>
-    <a href="LICENSE"><img alt="Giấy phép Apache 2.0" src="https://img.shields.io/badge/Gi%E1%BA%A5y%20ph%C3%A9p-Apache%202.0-C4915E?style=flat-square"></a>
+    <a href="LICENSE"><img alt="HaizFlow Source-Available" src="https://img.shields.io/badge/Gi%E1%BA%A5y%20ph%C3%A9p-Source--Available-C4915E?style=flat-square"></a>
     <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-4B5563?style=flat-square">
     <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-4B5563?style=flat-square">
     <img alt="Không cần trả phí API suy luận" src="https://img.shields.io/badge/X%E1%BB%AD%20l%C3%BD%20c%E1%BB%A5c%20b%E1%BB%99-Kh%C3%B4ng%20ph%C3%AD%20API-587052?style=flat-square">
@@ -150,15 +150,15 @@ Repository hoan nghênh issue rõ ràng và pull request có phạm vi cụ th�
 
 ## Giấy phép
 
-Giấy phép mã nguồn hiện hành là [Apache-2.0](LICENSE). Mô hình **miễn phí sử dụng + source-available + hạn chế phân phối lại** mới đang là [bản dự thảo, chưa có hiệu lực](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md). Dự thảo cho phép dùng ứng dụng miễn phí, build và chỉnh sửa cá nhân/nội bộ; không mặc định cho phép phân phối phần mềm, đóng gói lại, đổi thương hiệu hoặc bán phần mã thuộc phạm vi kiểm soát nếu chưa được cấp quyền riêng. Đây không phải giấy phép open-source theo OSI. Quyền Apache đã cấp và quyền của bên thứ ba không bị thu hồi.
+[Giấy phép HaizFlow Source-Available 1.0](LICENSE) cho phép sử dụng miễn phí, nghiên cứu, biên dịch và chỉnh sửa cho cá nhân hoặc nội bộ. Không được phân phối lại, đóng gói lại, đổi thương hiệu, bán, cho thuê, mạo nhận phần mềm hoặc cung cấp dịch vụ phần mềm có thu phí khi chưa có chấp thuận bằng văn bản của chủ sở hữu, trừ quyền và ngoại lệ quy định trong giấy phép. Đây không phải giấy phép nguồn mở OSI. Giấy phép riêng của thành phần bên thứ ba vẫn được áp dụng. [Các điều khoản chưa có hiệu lực](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) không thay thế LICENSE ở thư mục gốc.
 
-Mã nguồn được công khai để minh bạch kỹ thuật, học tập và đánh giá kiến trúc. HaizFlow không nhận quyền sở hữu video của người dùng. Điều khoản dự kiến cho phép tạo video kiếm tiền mà không cần xin phép từng video, **nhưng vẫn phải đáp ứng quyền về model, nội dung và giọng nói**: checkpoint OmniVoice hiện tại có điều kiện phi thương mại, khác SDK Apache. Đây là vướng mắc chưa giải quyết cho luồng thương mại và phát hành, không được giấy phép HaizFlow ghi đè.
+Mã nguồn được công khai để minh bạch kỹ thuật, học tập và đánh giá kiến trúc. HaizFlow không nhận quyền sở hữu video của người dùng. Giấy phép HaizFlow cho phép tạo video kiếm tiền mà không cần xin phép từng video, **nhưng vẫn phải đáp ứng quyền về model, nội dung và giọng nói**: checkpoint OmniVoice hiện tại có điều kiện phi thương mại, khác SDK Apache. Đây là vướng mắc chưa giải quyết cho luồng thương mại và phát hành, không được giấy phép HaizFlow ghi đè.
 
 Bản chính thức được nhận diện qua [repository](https://github.com/MachHongHai/HaizFlow), [GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases) và [trang web](https://haizflow.pages.dev/). Dự án vẫn đang phát triển, chưa có tuyên bố sẵn sàng production. Xem [NOTICE](NOTICE), [thành phần bên thứ ba](THIRD_PARTY_NOTICES.md) và [rà soát giấy phép, điều kiện kích hoạt](docs/licensing-review.md).
 
 ## Nhà phát triển
 
-HaizFlow được khởi tạo bởi **Mach Hong Hai (Mạch Hồng Hải)**. Copyright (c) 2026 Mach Hong Hai chỉ áp dụng cho phần ông sở hữu; người đóng góp và bên thứ ba giữ quyền cùng thông báo riêng.
+HaizFlow do **Mạch Hồng Hải** phát triển. Bản quyền (c) 2026 Mạch Hồng Hải cho phần mã thuộc sở hữu. Thành phần có giấy phép riêng giữ nguyên thông báo áp dụng.
 
 <p>
   <a href="https://github.com/MachHongHai"><img alt="GitHub của Mạch Hồng Hải" src="https://img.shields.io/badge/GitHub-MachHongHai-24292F?style=for-the-badge&logo=github"></a>

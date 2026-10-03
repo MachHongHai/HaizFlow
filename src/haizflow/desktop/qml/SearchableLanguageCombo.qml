@@ -91,8 +91,8 @@ Item {
         background: Rectangle {
             color: displayButton.hovered ? Theme.surfaceMuted : Theme.input
             radius: Theme.radiusSmall
-            border.width: displayButton.activeFocus || languagePopup.opened ? 2 : 1
-            border.color: displayButton.activeFocus || languagePopup.opened ? Theme.focus : Theme.outline
+            border.width: displayButton.visualFocus || languagePopup.opened ? 2 : 1
+            border.color: displayButton.visualFocus || languagePopup.opened ? Theme.focus : Theme.outline
         }
 
         AppIcon {

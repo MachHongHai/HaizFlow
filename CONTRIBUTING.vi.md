@@ -13,12 +13,12 @@ HaizFlow chào đón issue rõ ràng và pull request có phạm vi cụ thể. 
 5. Chạy `scripts/test.ps1` trước khi mở pull request.
 6. Cập nhật cả tài liệu tiếng Anh và tiếng Việt nếu hành vi người dùng thay đổi.
 
-Không commit model, media dự án, runtime data, credential, build output hoặc log riêng tư. Khi gửi đóng góp, bạn đồng ý nội dung có thể được phân phối theo giấy phép Apache-2.0 của repository.
+Không commit model, media dự án, runtime data, credential, build output hoặc log riêng tư. Đóng góp mới cần thỏa thuận giấy phép/quyền rõ ràng trước khi được nhận; gửi pull request không tự cấp quyền phân phối mới.
 
 Đọc [hướng dẫn phát triển](docs/development.vi.md) và [tiêu chuẩn phát hành](docs/release-readiness.vi.md) để biết quy ước triển khai và gate kiểm tra.
 
 Người đóng góp giữ quyền tác giả; gửi pull request không phải chuyển nhượng
-bản quyền. Giấy phép hạn chế mới chưa có hiệu lực. Trước khi đưa đóng góp vào
+bản quyền. Phần mã thuộc sở hữu HaizFlow dùng Source-Available 1.0. Trước khi đưa đóng góp vào
 bản phát hành theo giấy phép mới, maintainer phải có quyền phù hợp cho đúng
 phạm vi hoặc giữ phần đó theo giấy phép riêng. [Thỏa thuận đóng góp dự thảo](legal/CONTRIBUTOR-PERMISSION-DRAFT.md)
 chỉ áp dụng khi đã được duyệt và người đóng góp đồng ý rõ ràng, không ràng buộc

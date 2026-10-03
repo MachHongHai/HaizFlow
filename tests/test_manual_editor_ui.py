@@ -165,7 +165,7 @@ def test_text_style_controls_are_inline_in_both_editor_tools():
     assert "ManualSubtitleStyleControls {" in subtitle
     assert "ManualWatermarkStyleControls {" in selection
     assert "ManualSubtitleStyleControls {" not in selection
-    assert '"outline_width": Math.round(AppController.watermarkOutlinePercent / 50)' in watermark_controls
+    assert '"outline_width": Math.round(root.controller.watermarkOutlinePercent / 50)' in watermark_controls
     assert 'AppController.applyTextStyle([], patch, "project")' in subtitle_controls
     assert "Style chung" not in subtitle_controls
     assert "Đoạn này" not in subtitle_controls

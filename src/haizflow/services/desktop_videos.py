@@ -415,6 +415,12 @@ def create_desktop_video(
 
         if config.background_music_path.strip():
             set_desktop_background_music(video_info, config.background_music_path)
+        if config.voice_reference_path:
+            set_desktop_voice_reference(video_info, config.voice_reference_path)
+        if config.watermark_image_path:
+            set_desktop_watermark_image(video_info, config.watermark_image_path)
+        if config.watermark_video_path:
+            set_desktop_watermark_video(video_info, config.watermark_video_path)
 
         try:
             video_info.video_width, video_info.video_height = get_video_dimensions(input_path)

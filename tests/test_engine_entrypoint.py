@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -28,6 +29,43 @@ write_manifest = load_script("write-engine-manifest.py")
 
 
 class EngineEntrypointTests(unittest.TestCase):
+    def test_atomic_response_retries_transient_windows_reader_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "response.json"
+            path.write_text('{"old":true}', encoding="utf-8")
+            replace = engine_main.os.replace
+            attempts = []
+
+            def locked_once(source, target):
+                attempts.append((source, target))
+                if len(attempts) == 1:
+                    raise PermissionError(13, "File is temporarily in use")
+                replace(source, target)
+
+            with patch.object(engine_main.os, "replace", side_effect=locked_once), patch.object(engine_main.time, "sleep"):
+                engine_main._write_atomic(path, {"ok": True})
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"ok": True})
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(list(Path(directory).glob("*.tmp")), [])
+
+    def test_status_failure_does_not_abort_inference_but_response_failure_is_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "status.json"
+            path.write_text('{"current":0}', encoding="utf-8")
+            with patch.object(engine_main.os, "replace", side_effect=PermissionError("locked")), patch.object(engine_main.time, "sleep"):
+                engine_main._status(path, current=1)
+                self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"current": 0})
+                with self.assertRaises(PermissionError):
+                    engine_main._write_atomic(Path(directory) / "response.json", {"ok": True})
+            self.assertEqual(list(Path(directory).glob("*.tmp")), [])
+
+    def test_atomic_publish_does_not_retry_unrelated_io_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(engine_main.os, "replace", side_effect=OSError("disk full")) as replace:
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    engine_main._write_atomic(Path(directory) / "response.json", {})
+                self.assertEqual(replace.call_count, 1)
+
     def test_cpu_smoke_rejects_a_cuda_torch_build(self):
         fake_torch = SimpleNamespace(version=SimpleNamespace(cuda="12.8"))
         with (

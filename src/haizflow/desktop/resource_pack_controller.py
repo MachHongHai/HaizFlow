@@ -288,6 +288,8 @@ class ResourcePackController(QObject):
             capability = "separation"
         elif pack_id == "model-subtitle-ocr":
             capability = "ocr"
+        elif pack_id == "model-speaker-identification":
+            capability = "speaker"
         else:
             return []
         return [
@@ -307,7 +309,7 @@ class ResourcePackController(QObject):
         full_translation_recommended = device == "gpu" and gpu_vram >= 12 * 1024**3
         ordered_ids = [
             "model-whisper-small", "model-whisper-turbo",
-            "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
+            "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice", "model-speaker-identification",
         ]
         source_rows = {str(row.get("packId")): row for row in self.model._rows}
         descriptions = {
@@ -316,6 +318,7 @@ class ResourcePackController(QObject):
             "model-hymt2-cpu": "Dịch cục bộ bằng bản Q4, dùng CPU.",
             "model-hymt2-gpu": "Dịch bằng model đầy đủ trên GPU NVIDIA.",
             "model-omnivoice": "Giọng đọc và nhân bản giọng. Dùng chung cho OmniVoice CPU và GPU.",
+            "model-speaker-identification": "Nhận diện người nói trên CPU và giữ giọng đọc ổn định theo từng người.",
         }
         result: list[dict] = []
         previous_group = ""

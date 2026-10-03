@@ -12,6 +12,43 @@ SRC = ROOT / "src"
 
 
 class PortablePathTests(unittest.TestCase):
+    def test_versioned_core_uses_same_install_runtime_not_version_directory(self):
+        from haizflow.update.state import provision
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "installation"
+            provision(root)
+            for value in ("0.1.0", "0.2.0"):
+                core = root / "versions" / value
+                core.mkdir(parents=True)
+                environment = dict(os.environ, PYTHONPATH=str(SRC), HAIZFLOW_TEST_CORE=str(core),
+                                   HAIZFLOW_INSTALL_ROOT="C:/HaizFlow-escape-test", HAIZFLOW_HOME="C:/HaizFlow-escape-test")
+                environment.pop("HAIZFLOW_SMOKE_TEST", None)
+                script = ("import sys, os, json; sys.frozen=True; "
+                          "sys.executable=os.environ['HAIZFLOW_TEST_CORE']+'/HaizFlowCore.exe'; "
+                          "from haizflow.core.paths import install_root, core_root, app_data_dir; "
+                          "print(json.dumps([str(install_root()),str(core_root()),str(app_data_dir())]))")
+                result = subprocess.run([sys.executable, "-c", script], env=environment, capture_output=True,
+                                        text=True, check=False, timeout=15)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                paths = list(map(Path, json.loads(result.stdout)))
+                self.assertEqual(paths, [root, core, root / "runtime"])
+
+    def test_versioned_core_with_bad_marker_does_not_fall_back_to_nested_runtime(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "installation"
+            core = root / "versions/0.2.0"
+            core.mkdir(parents=True)
+            (root / "update-layout.json").write_text("{}")
+            environment = dict(os.environ, PYTHONPATH=str(SRC), HAIZFLOW_TEST_CORE=str(core))
+            environment.pop("HAIZFLOW_SMOKE_TEST", None)
+            script = ("import sys, os; sys.frozen=True; "
+                      "sys.executable=os.environ['HAIZFLOW_TEST_CORE']+'/HaizFlowCore.exe'; "
+                      "from haizflow.core.paths import app_data_dir; app_data_dir()")
+            result = subprocess.run([sys.executable, "-c", script], env=environment, capture_output=True,
+                                    text=True, check=False, timeout=15)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((core / "runtime").exists())
+
     def test_portable_profile_includes_native_dialog_shell_folders(self):
         with tempfile.TemporaryDirectory() as temporary:
             environment = os.environ.copy()

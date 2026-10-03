@@ -12,6 +12,45 @@ from haizflow.desktop.voice_clone_recorder import VoiceCloneRecorder
 
 
 class VoiceCloneRecorderTests(unittest.TestCase):
+    def test_opposite_phase_microphone_channels_do_not_cancel_speech(self):
+        recorder = VoiceCloneRecorder()
+        fmt = QAudioFormat()
+        fmt.setChannelCount(2)
+        fmt.setSampleFormat(QAudioFormat.SampleFormat.Float)
+        recorder._capture_format = fmt
+        result = array.array("h")
+        result.frombytes(recorder._mono_int16(array.array("f", [0.5, -0.5, -0.5, 0.5]).tobytes()))
+        self.assertGreater(abs(result[0]), 16_000)
+        self.assertGreater(abs(result[1]), 16_000)
+
+    def test_silent_channel_does_not_attenuate_active_channel(self):
+        recorder = VoiceCloneRecorder()
+        fmt = QAudioFormat()
+        fmt.setChannelCount(2)
+        fmt.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+        recorder._capture_format = fmt
+        result = array.array("h")
+        result.frombytes(recorder._mono_int16(array.array("h", [0, 1000, 0, -1000]).tobytes()))
+        self.assertEqual(list(result), [1000, -1000])
+
+    def test_missing_selected_microphone_is_not_silently_replaced(self):
+        with patch("haizflow.desktop.voice_clone_recorder.QMediaDevices.audioInputs", return_value=[]):
+            recorder = VoiceCloneRecorder()
+            self.assertFalse(recorder.start("unused.wav", "disconnected-device"))
+            self.assertIn("không còn kết nối", recorder.error)
+
+    def test_quiet_but_valid_capture_is_not_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "quiet.wav"
+            recorder = VoiceCloneRecorder()
+            recorder._path = str(path)
+            recorder._sample_rate = 16_000
+            recorder._wave = wave.open(str(path), "wb")
+            recorder._wave.setparams((1, 2, 16_000, 0, "NONE", "not compressed"))
+            recorder._consume_pcm(array.array("h", [30, -30] * 16_000).tobytes())
+            self.assertTrue(recorder.poll()["hasSignal"])
+            self.assertEqual(recorder.stop(), str(path))
+
     def test_source_no_error_from_distinct_qt_enum_is_accepted(self):
         class SourceError(Enum):
             NoError = 0

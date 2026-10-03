@@ -21,7 +21,6 @@ AppDialog {
 
     title: replacingVoice ? qsTr("Đổi hoặc tạo lại giọng") : qsTr("Tạo giọng đọc")
     preferredWidth: 560
-    preferredHeight: 410
     maximumHeight: 680
 
     function firstAvailableVoice(options) {
@@ -33,7 +32,9 @@ AppDialog {
     }
 
     function refreshVoices(preferredVoice) {
-        voiceModel = AppController.manualVoiceOptionsForProvider(draftProvider);
+        const updatedOptions = AppController.manualVoiceOptionsForProvider(draftProvider);
+        if (JSON.stringify(voiceModel) !== JSON.stringify(updatedOptions))
+            voiceModel = updatedOptions;
         const requested = String(preferredVoice || "");
         for (let index = 0; index < voiceModel.length; ++index) {
             if (String(voiceModel[index].voice || "") === requested
@@ -57,6 +58,7 @@ AppDialog {
     }
 
     function selectCloneReference() {
+        draftSpeakerMode = "single";
         draftProvider = AppController.ttsProvider;
         globalProvider = draftProvider;
         globalVoice = "omnivoice:clone";
@@ -111,18 +113,39 @@ AppDialog {
                 }
             }
 
-            SettingLabel { text: qsTr("Giọng đọc") }
+            SettingLabel {
+                Layout.fillWidth: true
+                text: qsTr("Giọng đọc")
+                helpText: qsTr("Nhận diện nhiều người nói chọn giọng thư viện ổn định cho từng người; kết quả có thể cần chỉnh lại. Giọng nhân bản dùng mẫu do bạn cung cấp.")
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: AppController.processingDevice === "gpu" && root.draftProvider === "omnivoice"
+                    ? qsTr("Máy đang dùng GPU. OmniVoice GPU thường xử lý nhanh hơn; bạn vẫn có thể chọn CPU.")
+                    : qsTr("Chế độ CPU: đổi bộ xử lý trong Cài đặt → Chung để sử dụng OmniVoice GPU.")
+                visible: AppController.processingDevice !== "gpu" || root.draftProvider === "omnivoice"
+                color: Theme.textMuted
+                font.pixelSize: TypeScale.metadata
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+            }
 
             VoicePicker {
                 id: voicePicker
                 Layout.fillWidth: true
                 model: root.voiceModel
-                currentValue: root.draftVoice
+                currentValue: root.draftSpeakerMode === "multiple" ? "omnivoice:multiple" : root.draftVoice
+                allowMultipleSpeakers: root.draftProvider.indexOf("omnivoice") === 0
                 allowVoiceClone: root.draftProvider.indexOf("omnivoice") === 0
+                onCloneRequested: root.cloneRequested()
                 previewEnabled: true
                 previewSource: AppController.audioPreviewSource
                 previewState: AppController.audioPreviewState
-                onSelected: function(voice) { root.draftVoice = voice; }
+                onSelected: function(voice) {
+                    root.draftSpeakerMode = voice === "omnivoice:multiple" ? "multiple" : "single";
+                    root.draftVoice = voice === "omnivoice:multiple" ? "omnivoice:female" : voice;
+                }
                 onPreviewRequested: function(voice) {
                     AppController.previewVoiceSample(
                         root.draftProvider,
@@ -130,26 +153,6 @@ AppDialog {
                         AppController.targetLanguage
                     );
                 }
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            visible: root.draftProvider.indexOf("omnivoice") === 0
-            spacing: Theme.space8
-
-            AppCheckBox {
-                Layout.fillWidth: true
-                text: qsTr("Nhận diện nhiều người nói")
-                checked: root.draftSpeakerMode === "multiple"
-                onToggled: root.draftSpeakerMode = checked ? "multiple" : "single"
-            }
-
-            StudioButton {
-                text: qsTr("Nhân bản giọng")
-                iconName: "volume"
-                variant: "secondary"
-                onClicked: root.cloneRequested()
             }
         }
 

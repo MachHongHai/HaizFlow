@@ -14,6 +14,7 @@ AppDialog {
     property string ttsProvider: "omnivoice"
     property string ttsVoice: ""
     property string backgroundMusicPath: ""
+    property string voiceReferencePath: ""
     readonly property bool sourceAudioAdjustable: true
     readonly property bool backgroundMusicAdjustable: backgroundMusicPath.length > 0
     readonly property bool previewReady: AppController.audioPreviewState === "ready"
@@ -60,6 +61,12 @@ AppDialog {
     }
 
     function requestPreview() {
+        if (root.ttsVoice === "omnivoice:clone" && root.voiceReferencePath.length > 0) {
+            AppController.previewBatchAudioMixWithReference(root.targetLanguage, root.ttsProvider, root.ttsVoice,
+                root.audioSeparationEnabled, root.originalVolume, root.backgroundMusicVolume, root.ttsVolume,
+                root.backgroundMusicPath, root.voiceReferencePath);
+            return;
+        }
         // Audio preview state is shared with single-video voice rows. Always
         // resolve this batch's existing media before playback; no model runs.
         AppController.previewBatchAudioMix(

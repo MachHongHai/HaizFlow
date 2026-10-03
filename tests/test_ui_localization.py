@@ -5,6 +5,14 @@ from haizflow.desktop.localization import QMessageBox, _set_ui_language, _ui_tex
 
 
 class UiLocalizationTests(unittest.TestCase):
+    def test_save_picker_uses_real_explorer_profile_and_keeps_filename(self):
+        from haizflow.desktop.localization import QFileDialog
+        with (patch("haizflow.desktop.localization._native_explorer_profile") as profile,
+              patch("haizflow.desktop.localization.QtFileDialog.getSaveFileName", return_value=("", "")) as picker):
+            QFileDialog.getSaveFileName(None, "Export", "D:/Exports/project.mp4", "MP4 (*.mp4)")
+        profile.return_value.__enter__.assert_called_once()
+        self.assertEqual(picker.call_args.args[2], "D:/Exports/project.mp4")
+
     def tearDown(self):
         _set_ui_language("en")
         QMessageBox.set_alert_handler(None)

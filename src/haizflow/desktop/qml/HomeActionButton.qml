@@ -20,7 +20,7 @@ Button {
             Layout.preferredHeight: 34
             radius: Theme.radiusSmall
             color: root.down ? Theme.interactivePressed
-                : root.hovered || root.activeFocus ? Theme.interactiveHover : Theme.interactive
+                : root.hovered || root.visualFocus ? Theme.interactiveHover : Theme.interactive
 
             AppIcon {
                 anchors.centerIn: parent
@@ -55,8 +55,8 @@ Button {
     background: Rectangle {
         radius: Theme.radius
         color: root.down ? Theme.surfaceStrong
-            : root.hovered || root.activeFocus ? Theme.surfaceMuted : Theme.surfaceElevated
-        border.width: root.activeFocus ? 2 : 1
-        border.color: root.activeFocus ? Theme.focus : Theme.outline
+            : root.hovered || root.visualFocus ? Theme.surfaceMuted : Theme.surfaceElevated
+        border.width: root.visualFocus ? 2 : 1
+        border.color: root.visualFocus ? Theme.focus : Theme.outline
     }
 }

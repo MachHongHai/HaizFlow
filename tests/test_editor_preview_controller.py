@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -12,6 +13,7 @@ from PySide6.QtCore import QUrl
 from haizflow.desktop.editor_preview_controller import EditorPreviewController
 from haizflow.schemas.video import CropSettings, SubtitleStyle
 from haizflow.services import manual_artifacts
+from haizflow.utils.ffmpeg import _binary, get_video_duration
 
 
 class _Signal:
@@ -23,6 +25,101 @@ class _Signal:
 
 
 class EditorPreviewControllerTests(unittest.TestCase):
+    def test_real_trim_keeps_treated_pixels_and_skips_source_sequence_encode(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "source.mp4"
+            preview = root / "editor-preview"
+            old_base = preview / "base-original"
+            old_base.mkdir(parents=True)
+            treated = old_base / "preview.mp4"
+            for path, color in ((source, "red"), (treated, "green")):
+                subprocess.run([
+                    _binary("ffmpeg"), "-y", "-v", "error", "-f", "lavfi", "-i",
+                    f"color=c={color}:s=64x64:r=10:d=2", "-c:v", "mpeg4", str(path),
+                ], check=True, capture_output=True)
+            settings = {
+                "video_id": "trim-real", "source_path": str(source),
+                "source_identity": {"path": str(source), "size": source.stat().st_size},
+                "editor_sequence": {"duration_ms": 1000, "edit_decisions": [{
+                    "decision_id": "trim", "source_start_ms": 500,
+                    "source_end_ms": 1500, "sequence_start_ms": 0,
+                }]},
+                "segments": [], "subtitle_style": {}, "crop": {},
+                "output_format": "keep_ratio", "subtitle_layout_override": False,
+                "remove_original_subtitles": True, "removal_mode": "patch",
+                "watermark_text": "", "watermark_scale_percent": 100,
+                "ocr_region": {}, "original_subtitle_intervals": [],
+                "preview_encoding": "test", "image_generation": 1,
+                "independent_manual_preview": True, "original_video_volume": 60,
+                "background_music_volume": 30, "tts_volume": 100,
+                "audio_inputs": {}, "request_fingerprint": "trim",
+            }
+            EditorPreviewController._write_completion_marker(
+                old_base / "preview.complete.json", treated, 2,
+                base_context={"effects": EditorPreviewController._source_effects_key(settings),
+                              "source_start": 0, "duration": 2},
+            )
+            video = SimpleNamespace(video_id="trim-real", crop=CropSettings(), subtitle_style=SubtitleStyle())
+            controller = EditorPreviewController(SimpleNamespace(editorPreviewChanged=_Signal()))
+            controller._generation = 1
+            controller._active_process_id = "trim-real-preview"
+            calls = []
+
+            def render_proxy(*args, **kwargs):
+                path, destination, _marker = args[3:6]
+                calls.append((path, kwargs["source_start_seconds"]))
+                subprocess.run([
+                    _binary("ffmpeg"), "-y", "-v", "error", "-ss",
+                    str(kwargs["source_start_seconds"]), "-i", path,
+                    "-t", str(args[7]), "-c:v", "mpeg4", str(destination),
+                ], check=True, capture_output=True)
+                return True
+
+            with (
+                mock.patch.object(controller, "_render_proxy_layer", side_effect=render_proxy),
+                mock.patch.object(controller, "_materialize_preview_sequence") as materialize,
+                mock.patch.object(controller, "_finish_success") as finish,
+                mock.patch.object(controller, "_finish_error") as fail,
+            ):
+                controller._render_current(1, "trim-real-preview", video, settings, preview)
+            fail.assert_not_called()
+            materialize.assert_not_called()
+            finish.assert_called_once()
+            self.assertEqual(calls, [(str(treated), .5)])
+            output = finish.call_args.args[1]
+            self.assertAlmostEqual(get_video_duration(str(output)), 1, delta=.15)
+            frame = subprocess.run([
+                _binary("ffmpeg"), "-v", "error", "-i", str(output),
+                "-frames:v", "1", "-vf", "scale=1:1", "-pix_fmt", "rgb24",
+                "-f", "rawvideo", "pipe:1",
+            ], check=True, capture_output=True).stdout
+            self.assertGreater(frame[1], frame[0] + 40, "Trim must keep treated green pixels, not raw red source")
+
+    def test_single_edge_trim_is_one_source_window_without_intermediate_encode(self):
+        sequence = {"duration_ms": 6000, "edit_decisions": [
+            {"source_start_ms": 2000, "source_end_ms": 8000, "sequence_start_ms": 0}]}
+        self.assertEqual(EditorPreviewController._contiguous_source_window(sequence), (2.0, 6.0))
+        sequence["duration_ms"] = 9000
+        self.assertIsNone(EditorPreviewController._contiguous_source_window(sequence))
+
+    def test_trim_reuses_only_matching_treated_base_and_not_stale_effects(self):
+        settings = {"video_id": "video", "source_identity": {"size": 1}, "crop": {},
+                    "output_format": "keep_ratio", "remove_original_subtitles": True,
+                    "removal_mode": "patch", "watermark_text": "", "watermark_scale_percent": 100,
+                    "ocr_region": {}, "preview_encoding": "test", "image_generation": 1}
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            base = directory / "base-original"
+            base.mkdir()
+            output = base / "preview.mp4"
+            output.write_bytes(b"treated video")
+            EditorPreviewController._write_completion_marker(base / "preview.complete.json", output, 10,
+                base_context={"effects": EditorPreviewController._source_effects_key(settings), "source_start": 0, "duration": 10})
+            self.assertEqual(EditorPreviewController._reusable_treated_base(directory, settings, 2, 6), (output, 2))
+            self.assertIsNone(EditorPreviewController._reusable_treated_base(directory, {**settings, "image_generation": 2}, 2, 6))
+            self.assertIsNone(EditorPreviewController._reusable_treated_base(directory, settings, 2, 12))
+
     @staticmethod
     def _wait_until_idle(controller):
         for _ in range(200):

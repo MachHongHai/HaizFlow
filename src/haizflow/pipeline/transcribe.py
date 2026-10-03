@@ -90,20 +90,20 @@ def _load_whisper_model(device: str, compute_type: str, threads: int, model_name
     )
 
 
-def warm_whisperx_model(model_name: str = "small"):
+def warm_whisperx_model(model_name: str = "small", *, device_preference: str | None = None):
     """Load the ASR model once in the background so the first video starts promptly."""
     global _WARM_ASR_MODEL, _WARM_DEVICE, _WARM_MODEL_NAME
     model_name = str(model_name or "small").strip().lower()
     if model_name not in {"small", "large-v3-turbo"}:
         raise RuntimeError(f"Unsupported Whisper model: {model_name}")
     with _MODEL_LOCK:
-        if _WARM_ASR_MODEL is not None and _WARM_MODEL_NAME == model_name:
+        profile = runtime_profile()
+        device = "cuda" if profile.cuda_available and device_preference != "cpu" else "cpu"
+        if _WARM_ASR_MODEL is not None and _WARM_MODEL_NAME == model_name and _WARM_DEVICE == device:
             return True
         if _WARM_ASR_MODEL is not None:
             del _WARM_ASR_MODEL
             _WARM_ASR_MODEL = None
-        profile = runtime_profile()
-        device = "cuda" if profile.cuda_available else "cpu"
         compute_type = "float16" if device == "cuda" else "int8"
         try:
             model = _load_whisper_model(device, compute_type, profile.cpu_threads, model_name)
@@ -848,6 +848,56 @@ def _alignment_quality(source_segment: dict, aligned_segments: list[dict]) -> tu
     return True, f"coverage={coverage_ratio:.2f}"
 
 
+def _refine_suspicious_sentence_timing(asr_model, audio, segments: list[dict], video_id: str) -> None:
+    """Verify stretched forced alignment with the already-loaded ASR model.
+
+    A forced aligner can stretch the last word through a silent shot without
+    changing the recognized text. Only outliers are decoded again, and their
+    bounds are replaced only if the entire sentence is recognized verbatim.
+    """
+    decoder = getattr(asr_model, "model", None)
+    if decoder is None or not hasattr(decoder, "transcribe"):
+        return
+    def normalize(value):
+        return re.sub(r"[^\w]", "", str(value).casefold())
+    duration = len(audio) / _AUDIO_SAMPLE_RATE
+    for segment in segments:
+        start, end = float(segment["start"]), float(segment["end"])
+        words = segment.get("words") or []
+        count = len(str(segment.get("text") or "").split())
+        word_lengths = [float(word["end"]) - float(word["start"]) for word in words
+                        if word.get("start") is not None and word.get("end") is not None]
+        stretched_word = bool(word_lengths and max(word_lengths) > max(1.2, statistics.median(word_lengths) * 5))
+        if not stretched_word and not (count >= 4 and end - start > max(4.0, count * 0.8)):
+            continue
+        check_cancellation(video_id)
+        left, right = max(0.0, start - 0.6), min(duration, end + 0.4)
+        window = audio[round(left * _AUDIO_SAMPLE_RATE):round(right * _AUDIO_SAMPLE_RATE)]
+        try:
+            candidates, _info = decoder.transcribe(
+                window, language=str(segment.get("language") or "en"),
+                beam_size=1, word_timestamps=True, condition_on_previous_text=False,
+            )
+            candidates = list(candidates)
+            text = " ".join(candidate.text for candidate in candidates)
+            if normalize(text) != normalize(segment["text"]):
+                continue
+            timed = [word for candidate in candidates for word in (candidate.words or [])]
+            if not timed or min(float(word.probability) for word in timed) < 0.15:
+                continue
+            corrected_start, corrected_end = left + float(timed[0].start), left + float(timed[-1].end)
+            if corrected_end - corrected_start < 0.25 or corrected_end > end + 0.4:
+                continue
+            if corrected_end < end - 0.6:
+                segment.update(start=corrected_start, end=corrected_end)
+                log_to_video(video_id, f"Corrected stretched sentence timing {start:.3f}-{end:.3f}s "
+                             f"to {corrected_start:.3f}-{corrected_end:.3f}s using matching ASR words.")
+        except Exception as exc:
+            if is_cancelled(video_id):
+                raise
+            log_to_video(video_id, f"WARNING: Sentence timing verification was unavailable: {exc}")
+
+
 def _verify_whisperx_vad_asset() -> Path:
     """Reject a missing or modified bootstrap-installed VAD checkpoint."""
     try:
@@ -1110,13 +1160,14 @@ def transcribe(
     progress_callback=None,
     *,
     model_name: str = "small",
+    device_preference: str | None = None,
 ):
     """Transcribe through WhisperX and align sentence timestamps per language."""
     global _WARM_ASR_MODEL, _WARM_DEVICE, _WARM_MODEL_NAME
     model_name = str(model_name or "small").strip().lower()
     log_to_video(video_id, f"Initializing WhisperX with model '{model_name}'.")
     profile = runtime_profile()
-    device = "cuda" if profile.cuda_available else "cpu"
+    device = "cuda" if profile.cuda_available and device_preference != "cpu" else "cpu"
     if model_name == "large-v3-turbo" and device != "cuda":
         raise RuntimeError(
             "Whisper large-v3-turbo requires an available NVIDIA GPU. "
@@ -1232,6 +1283,7 @@ def transcribe(
             aligned_segments = source_segments
             log_to_video(video_id, "Keeping validated sentence timestamps; no language-switch realignment is needed.")
 
+        _refine_suspicious_sentence_timing(asr_model, audio, aligned_segments, video_id)
         output_segments = []
         for segment in aligned_segments:
             # Both proportional fallback and context alignment preserve the

@@ -162,7 +162,7 @@ class ResourcePackManagerTests(unittest.TestCase):
             self.assertEqual(len(pack_ids), len(set(pack_ids)))
             self.assertEqual(pack_ids, [
                 "model-whisper-small", "model-whisper-turbo",
-                "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
+                "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice", "model-speaker-identification",
             ])
             self.assertTrue(all("packIds" not in row for row in rows))
         finally:

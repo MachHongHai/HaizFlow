@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -67,22 +68,29 @@ Rectangle {
         Repeater {
             model: [
                 { key: "home", label: qsTr("Trang chủ"), icon: "home" },
-                { key: "projects", label: qsTr("Dự án"), icon: "projects" },
+                { key: "single", label: qsTr("Tự động"), icon: "play" },
+                { key: "manual", label: qsTr("Thủ công"), icon: "edit" },
+                { key: "batch", label: qsTr("Hàng loạt"), icon: "projects" },
                 { key: "downloads", label: qsTr("Tải xuống"), icon: "download" },
                 { key: "social", label: qsTr("Đăng mạng xã hội"), icon: "share" }
             ]
 
-            delegate: Rectangle {
+            delegate: Control {
                 id: navItem
+                objectName: "workspaceNav_" + modelData.key
                 required property var modelData
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
-                radius: Theme.radiusTiny
-                color: root.currentSection === modelData.key ? Theme.sidebarSelected
-                    : navHover.hovered ? Theme.sidebarHover : "transparent"
-                border.width: activeFocus ? 2 : 0
-                border.color: Theme.focus
-                activeFocusOnTab: true
+                focusPolicy: Qt.TabFocus
+                padding: 0
+                background: Rectangle {
+                    objectName: "workspaceNavigationBackground"
+                    radius: Theme.radiusTiny
+                    color: root.currentSection === navItem.modelData.key ? Theme.sidebarSelected
+                        : navHover.hovered ? Theme.sidebarHover : "transparent"
+                    border.width: navItem.visualFocus ? 2 : 0
+                    border.color: Theme.focus
+                }
                 Accessible.role: Accessible.Button
                 Accessible.name: modelData.label
 
@@ -125,7 +133,13 @@ Rectangle {
                 }
 
                 HoverHandler { id: navHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: root.sectionRequested(navItem.modelData.key) }
+                TapHandler {
+                    onTapped: {
+                        navItem.focus = false;
+                        navItem.forceActiveFocus(Qt.MouseFocusReason);
+                        root.sectionRequested(navItem.modelData.key);
+                    }
+                }
                 Keys.onReturnPressed: root.sectionRequested(navItem.modelData.key)
                 Keys.onSpacePressed: root.sectionRequested(navItem.modelData.key)
             }

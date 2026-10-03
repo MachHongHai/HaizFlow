@@ -41,6 +41,14 @@ Item {
             Layout.fillWidth: true
             title: AppController.projectName || qsTr("Xử lý video")
 
+            Text {
+                visible: root.editingBatchVideo
+                text: qsTr("Chỉnh riêng video này")
+                color: Theme.textMuted
+                font.pixelSize: Theme.caption
+                textFormat: Text.PlainText
+            }
+
             ProjectHeaderActions {
                 projectFolderEnabled: AppController.hasOpenProject
                 showInputVideo: AppController.hasSelectedVideo

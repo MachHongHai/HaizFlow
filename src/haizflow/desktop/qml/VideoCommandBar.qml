@@ -13,10 +13,8 @@ Rectangle {
     readonly property bool selectedQueued: AppController.isSelectedVideoQueued
     readonly property bool selectedActive: root.selectedProcessing || root.selectedQueued
     readonly property bool pausePending: AppController.selectedStatus === "paused" && root.selectedQueued
-    readonly property bool canStart: AppController.hasSelectedVideo && AppController.selectedStatus === "pending"
-        && !root.selectedQueued
-    readonly property bool canRestart: AppController.hasSelectedVideo && !root.selectedActive
-        && ["paused", "awaiting_review", "done", "failed", "cancelled"].indexOf(AppController.selectedStatus) >= 0
+    readonly property bool canProcess: AppController.hasSelectedVideo && !root.selectedActive
+        && !AppController.videoExportBusy
     readonly property bool canReview: AppController.selectedStatus === "awaiting_review"
     readonly property string headline: AppController.selectedStatus === "failed"
         ? AppController.selectedFailureTitle
@@ -26,6 +24,14 @@ Rectangle {
                 ? qsTr("Video xuất đã sẵn sàng")
                 : AppController.selectedStatus === "awaiting_review"
                     ? qsTr("Cần duyệt phụ đề")
+                    : root.pausePending
+                        ? qsTr("Đang tạm dừng…")
+                    : AppController.selectedStatus === "paused"
+                        ? qsTr("Đã tạm dừng · Kết quả xử lý được giữ lại")
+                    : AppController.selectedStatus === "pending" && !root.selectedQueued
+                        ? qsTr("Sẵn sàng xử lý")
+                    : root.selectedQueued && !root.selectedProcessing
+                        ? qsTr("Đang chờ xử lý")
                     : AppController.hasSelectedVideo
                         ? AppController.selectedStageLabel
                         : qsTr("Sẵn sàng xử lý")
@@ -73,43 +79,31 @@ Rectangle {
                 visible: AppController.selectedStatus === "paused" && !root.selectedQueued
                 text: qsTr("Tiếp tục")
                 iconGlyph: "\uE768"
-                variant: "primary"
+                variant: "secondary"
+                enabled: !AppController.videoExportBusy
                 onClicked: AppController.resumeSelectedVideo()
             }
 
             StudioButton {
-                visible: root.canStart
-                text: qsTr("Xử lý")
+                objectName: "autoProcessButton"
+                visible: !root.selectedActive
+                text: ["paused", "done", "failed", "cancelled", "awaiting_review"].indexOf(AppController.selectedStatus) >= 0
+                    ? qsTr("Xử lý lại") : qsTr("Xử lý")
                 iconGlyph: "\uE768"
                 variant: "primary"
-                onClicked: AppController.startProjectVideo()
+                enabled: root.canProcess
+                onClicked: AppController.requestAutoProcessing()
             }
 
             StudioButton {
-                visible: root.canRestart
-                text: qsTr("Chạy lại")
-                iconGlyph: "\uE72C"
-                variant: AppController.selectedStatus === "done" ? "secondary" : "primary"
-                onClicked: AppController.restartSelectedVideo()
-            }
-
-            StudioButton {
-                visible: root.selectedProcessing && !root.pausePending
-                text: qsTr("Tạm dừng")
+                objectName: "autoPauseButton"
+                visible: root.selectedActive
+                text: root.pausePending ? qsTr("Đang tạm dừng…") : qsTr("Tạm dừng")
                 iconGlyph: "\uE769"
                 variant: "danger"
+                enabled: !root.pausePending
                 onClicked: AppController.stopVideo()
             }
-
-            StudioButton {
-                visible: AppController.hasSelectedVideo
-                text: qsTr("Xuất")
-                iconGlyph: "\uE768"
-                variant: "primary"
-                enabled: !root.selectedQueued && !AppController.videoExportBusy
-                onClicked: AppController.requestVideoExport()
-            }
-
         }
     }
 }

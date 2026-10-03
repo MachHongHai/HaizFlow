@@ -1,8 +1,9 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-Rectangle {
+Control {
     id: root
 
     required property int index
@@ -11,6 +12,7 @@ Rectangle {
     required property int progress
     required property string thumbnailSource
     required property string videoSize
+    property bool customSettings: false
 
     signal activated
 
@@ -19,10 +21,12 @@ Rectangle {
     readonly property color baseColor: status === "processing" ? Theme.warmSurface : status === "awaiting_review" ? Theme.interactiveMuted : status === "failed" || status === "cancelled" ? Theme.dangerMuted : Theme.surface
     readonly property color stateOutline: status === "processing" ? Theme.amberMuted : status === "awaiting_review" ? Theme.interactiveOutline : status === "failed" || status === "cancelled" ? Theme.danger : Theme.outline
 
-    radius: Theme.radius
-    color: hoverHandler.hovered ? Theme.surfaceMuted : root.baseColor
-    border.width: activeFocus ? 2 : 1
-    border.color: activeFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : root.stateOutline
+    background: Rectangle {
+        radius: Theme.radius
+        color: hoverHandler.hovered ? Theme.surfaceMuted : root.baseColor
+        border.width: root.visualFocus ? 2 : 1
+        border.color: root.visualFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : root.stateOutline
+    }
     focusPolicy: Qt.TabFocus
     Accessible.role: Accessible.Button
     Accessible.name: qsTr("%1, %2").arg(fileName).arg(qsTr("Chỉnh cài đặt video"))
@@ -81,6 +85,25 @@ Rectangle {
             ThumbnailFallback {
                 anchors.fill: parent
                 visible: root.thumbnailSource.length === 0 || thumbnailImage.status === Image.Error
+            }
+
+            Rectangle {
+                visible: root.customSettings
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.margins: Theme.space8
+                width: overrideLabel.implicitWidth + Theme.space12
+                height: 24
+                radius: Theme.radiusSmall
+                color: Theme.scrim
+                Text {
+                    id: overrideLabel
+                    anchors.centerIn: parent
+                    text: qsTr("Cài đặt riêng")
+                    color: Theme.textOnDark
+                    font.pixelSize: Theme.label
+                    textFormat: Text.PlainText
+                }
             }
 
             Row {

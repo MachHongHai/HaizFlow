@@ -31,6 +31,22 @@ def _host(**overrides):
 
 
 class AudioPreviewControllerTests(unittest.TestCase):
+    def test_batch_draft_clone_preview_uses_reference_not_selected_video(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reference = Path(directory) / "draft.wav"
+            other = Path(directory) / "other.wav"
+            source = Path(directory) / "source.mp4"
+            for path in (reference, other, source):
+                path.write_bytes(b"media")
+            video = SimpleNamespace(project_type="batch", files={"voice_reference": str(other), "video_input": str(source)})
+            host = _host(_selected_video_id="selected", _tts_voice="omnivoice:clone")
+            preview = AudioPreviewController(host)
+            with patch("haizflow.desktop.audio_preview_controller.video_store.get_video", return_value=video), \
+                    patch.object(preview, "_sample_from_video") as cached:
+                self.assertTrue(preview.start(voice_reference_path=str(reference)))
+            cached.assert_not_called()
+            self.assertEqual(host._audio_preview_source, reference.as_uri())
+
     def test_every_target_language_voice_has_a_matching_packaged_sample(self):
         preview = AudioPreviewController(_host())
         languages = [code for code, _english, _native in POPULAR_TARGET_LANGUAGES]

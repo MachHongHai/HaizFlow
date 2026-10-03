@@ -183,7 +183,7 @@ Item {
         Text {
             Layout.fillWidth: true
             Layout.topMargin: Theme.space20
-            text: qsTr("Key được lưu trong Windows Credential Manager, không nằm trong tệp dự án. HaizFlow chỉ gửi câu thoại theo lô, không gửi video hoặc âm thanh. Gemini 3.1 Flash-Lite là lựa chọn chi phí thấp; giá và quota do Google quản lý.")
+            text: qsTr("Key được lưu trong Windows Credential Manager, không nằm trong tệp dự án. HaizFlow chỉ gửi văn bản theo lô, không gửi video hoặc âm thanh. Cả ba model Gemini trong ứng dụng có hạn mức miễn phí. Dự án đã bật thanh toán có thể phát sinh phí; Flash-Lite có giá thấp hơn Flash. Hạn mức áp dụng theo dự án Google, không theo số key.")
             color: Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.label

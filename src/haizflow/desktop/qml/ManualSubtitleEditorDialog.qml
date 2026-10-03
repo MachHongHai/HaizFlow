@@ -221,6 +221,7 @@ AppDialog {
             root.draftChanged(id, text, version);
         }
         onDraftCleared: function(id) { root.draftCleared(id); }
+        onApplied: Qt.callLater(root.closeEditor)
     }
 
     RowLayout {
@@ -260,7 +261,6 @@ AppDialog {
             text: subtitleEditor.saveStatus === "error" ? qsTr("Thử lưu") : qsTr("Lưu")
             variant: "primary"
             enabled: root.segment && subtitleEditor.saveStatus !== "saving"
-                && subtitleEditor.saveStatus !== "saved"
             onClicked: subtitleEditor.apply()
         }
     }

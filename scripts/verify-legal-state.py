@@ -10,7 +10,6 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APACHE_SHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
 DRAFTS = (
     "LICENSE-SOURCE-AVAILABLE-DRAFT.md", "APPLICATION-TERMS-DRAFT.md",
     "CONTRIBUTOR-PERMISSION-DRAFT.md", "BRAND-POLICY-DRAFT.md",
@@ -34,15 +33,22 @@ def verify(root: Path = ROOT, *, artifact: Path | None = None, public_release: b
         project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         if state.get("schema_version") != 1:
             errors.append("Unknown legal-state schema.")
-        if state.get("active_source_license") != "Apache-2.0" or project.get("license") != "Apache-2.0":
-            errors.append("Unapproved license activation: only the current Apache state is supported.")
-        if text_hash(root / "LICENSE") != APACHE_SHA256 or state.get("active_license_sha256") != APACHE_SHA256:
+        active = "LicenseRef-HaizFlow-Source-Available-1.0"
+        if state.get("active_source_license") != active or project.get("license") != active:
+            errors.append("Active source license and project metadata differ.")
+        if text_hash(root / "LICENSE") != state.get("active_license_sha256"):
             errors.append("Active LICENSE changed without a reviewed activation change.")
-        if state.get("proposal_status") != "draft" or state.get("owner_approval") or state.get("effective_release"):
-            errors.append("The proposed license cannot be activated by changing a status field.")
+        approval = state.get("owner_approval")
+        if (state.get("proposal_status") != "adopted" or not isinstance(approval, dict)
+                or not all(approval.get(key) for key in ("approved_by", "approved_at", "basis"))
+                or approval.get("language_precedence") != "vi" or not state.get("effective_release")):
+            errors.append("Active license requires explicit owner approval and Vietnamese precedence.")
+        content = (root / "LICENSE").read_text(encoding="utf-8")
+        if not content.startswith("# Giấy phép") or content.find("Bản quyền") > content.find("Copyright"):
+            errors.append("Vietnamese license/copyright must precede English.")
         notice = (root / "NOTICE").read_text(encoding="utf-8")
-        for required in ("Created by Mach Hong Hai.", "Copyright (c) 2026 Mach Hong Hai",
-                         "HaizFlow contributors", "Apache", "DRAFT", "third-party"):
+        for required in ("Bản quyền (c) 2026 Mạch Hồng Hải", "Copyright (c) 2026 Mach Hong Hai",
+                         "Source-Available", "Third-party"):
             if required not in notice:
                 errors.append(f"NOTICE is missing attribution/state: {required}")
         for filename in DRAFTS:
@@ -114,7 +120,7 @@ def main(argv=None) -> int:
         for error in errors:
             print(error, file=sys.stderr)
         return 1
-    print("Legal documents are consistent. This is not legal approval; active license: Apache-2.0.")
+    print("Legal documents are consistent. Active license: HaizFlow Source-Available 1.0. Not release clearance.")
     return 0
 
 

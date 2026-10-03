@@ -1,20 +1,24 @@
 HaizFlow
-Created by Mach Hong Hai.
-Copyright (c) 2026 Mach Hong Hai, for the HaizFlow work he owns.
-Copyright 2026 HaizFlow contributors
+Bản quyền (c) 2026 Mạch Hồng Hải.
+HaizFlow do Mạch Hồng Hải phát triển.
+Phần mã thuộc sở hữu: LicenseRef-HaizFlow-Source-Available-1.0; xem LICENSE.
+Không được phân phối lại, đóng gói lại, bán, cho thuê hoặc mạo nhận phần mềm
+khi chưa được chủ sở hữu chấp thuận bằng văn bản, trừ các quyền độc lập
+và ngoại lệ bắt buộc được quy định trong LICENSE.
+Thành phần bên thứ ba giữ giấy phép riêng: THIRD_PARTY_NOTICES.md và licenses/.
 
-Licensed under the Apache License, Version 2.0.
-The proposed source-available license in legal/ is a DRAFT, not in force.
-This notice does not revoke earlier permissions or assert ownership of
-third-party code, models, fonts, icons, or other contributors' work.
+Copyright (c) 2026 Mach Hong Hai.
+HaizFlow is developed by Mach Hong Hai.
+Owned HaizFlow work: LicenseRef-HaizFlow-Source-Available-1.0; see LICENSE.
+Redistribution, repackaging, sale, rental and false attribution of the software
+require the owner's written consent, subject to independent permissions and
+mandatory exceptions specified in LICENSE.
+Third-party components remain separately licensed; see THIRD_PARTY_NOTICES.md
+and licenses/. The application license does not override their permissions.
 
 Official repository: https://github.com/MachHongHai/HaizFlow
 Official website: https://haizflow.pages.dev/
+Contact: machhonghaipr@gmail.com
 
-This product bundles or can download third-party components that remain under
-their own licenses. See THIRD_PARTY_NOTICES.md and the licenses directory in
-each release artifact. No trademark rights are granted by this notice.
-
-The bundled Bangers typeface is Copyright 2010 The Bangers Project Authors and
-is distributed under the SIL Open Font License, Version 1.1. See
-licenses/Bangers-OFL.txt and licenses/Bangers-NOTICE.md.
+Bundled font: Bangers, Copyright 2010 The Bangers Project Authors,
+licensed under SIL Open Font License 1.1; see licenses/Bangers-OFL.txt.

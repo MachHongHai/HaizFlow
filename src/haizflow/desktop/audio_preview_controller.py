@@ -44,6 +44,7 @@ class AudioPreviewController:
         provider: str | None = None,
         target_language: str | None = None,
         voice_only: bool = False,
+        voice_reference_path: str = "",
     ) -> bool:
         """Publish existing sample/track URLs immediately, without synthesis."""
         del original_volume, background_music_volume, tts_volume
@@ -63,6 +64,9 @@ class AudioPreviewController:
             effective_language,
             selected_video_id=str(selected_video_id or ""),
         )
+        draft_reference = effective_voice == "omnivoice:clone" and bool(voice_reference_path)
+        if draft_reference:
+            packaged_voice_path = voice_reference_path if self._valid_media(voice_reference_path) else ""
         if voice_only:
             return self._publish_sources(voice_path=packaged_voice_path, voice_only=True)
 
@@ -70,6 +74,8 @@ class AudioPreviewController:
         if project_type == "single":
             if not packaged_voice_path:
                 return self._publish_sources(voice_only=True)
+            voice_path, mixed_voice = packaged_voice_path, False
+        elif draft_reference:
             voice_path, mixed_voice = packaged_voice_path, False
         else:
             voice_path, mixed_voice = self._sample_from_video(video, effective_provider, effective_voice)

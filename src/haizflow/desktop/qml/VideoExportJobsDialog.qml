@@ -39,7 +39,8 @@ AppDialog {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: exportJob.modelData.status === "rendering" ? qsTr("Đang dựng video")
+                        text: exportJob.modelData.status === "rendering"
+                            ? (exportJob.modelData.process ? qsTr("Đang xử lý và dựng video") : qsTr("Đang dựng video"))
                             : exportJob.modelData.status === "exporting" ? qsTr("Đang lưu · %1%").arg(exportJob.modelData.progress)
                             : exportJob.modelData.status === "done" ? qsTr("Đã xuất thành công")
                             : exportJob.modelData.status === "pending" ? qsTr("Đang chờ") : exportJob.modelData.error
@@ -77,7 +78,7 @@ AppDialog {
     }
     footerActions: [
         StudioButton {
-            visible: AppController.videoExportBusy
+            visible: AppController.videoExportBusy || AppController.videoExportJobs.some(item => item.status === "paused" || item.status === "awaiting_review")
             text: qsTr("Hủy xuất")
             variant: "ghost"
             onClicked: AppController.cancelVideoExport()

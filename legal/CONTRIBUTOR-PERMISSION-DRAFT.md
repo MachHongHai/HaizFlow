@@ -2,7 +2,7 @@
 
 This is a proposed agreement, **NOT IN FORCE** and not accepted by submitting
 an issue or pull request. Existing contributors retain their copyright and
-existing Apache-2.0 contribution terms. No copyright assignment is presumed.
+existing independently granted rights. No copyright assignment is presumed.
 
 For adoption, record contributor identity, contact, employer authority if
 needed, exact commit/file scope, agreement version, date and explicit written

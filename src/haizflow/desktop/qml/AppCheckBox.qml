@@ -18,8 +18,8 @@ CheckBox {
         y: parent.height / 2 - height / 2
         radius: Theme.radiusTiny
         color: root.checked ? Theme.interactive : Theme.input
-        border.width: root.activeFocus ? 2 : 1
-        border.color: root.activeFocus ? Theme.focus : root.checked ? Theme.interactive : Theme.outlineStrong
+        border.width: root.visualFocus ? 2 : 1
+        border.color: root.visualFocus ? Theme.focus : root.checked ? Theme.interactive : Theme.outlineStrong
 
         AppIcon {
             anchors.centerIn: parent

@@ -61,7 +61,7 @@ ApplicationWindow {
     readonly property bool routeCanGoBack: routeHistoryIndex > 0
     readonly property bool routeCanGoForward: routeHistoryIndex < routeHistory.length - 1
     readonly property bool projectWorkspaceVisible: currentRoute === routeSingleWorkspace || currentRoute === routeManualWorkspace || currentRoute === routeBatchWorkspace || currentRoute === routeBatchVideo || currentRoute === routeDownloadWorkspace || currentRoute === routePublishWorkspace
-    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
+    readonly property bool globalNavigationBlocked: lazyDialogVisible(projectSetupDialogLoader) || lazyDialogVisible(urlImportDialogLoader) || lazyDialogVisible(downloadProjectSourceDialogLoader) || lazyDialogVisible(batchSettingsDialogLoader) || lazyDialogVisible(translationReviewDialogLoader) || lazyDialogVisible(aboutDialogLoader) || lazyDialogVisible(copyrightDialogLoader) || appAlertDialog.visible || modelSetupOverlayLoader.active
     readonly property bool downloadCanGoBack: routeHost.downloadCanGoBack
     readonly property bool downloadCanGoForward: routeHost.downloadCanGoForward
     readonly property bool canNavigateBack: !globalNavigationBlocked && (downloadCanGoBack || routeCanGoBack)
@@ -94,7 +94,13 @@ ApplicationWindow {
 
     function navigationSection() {
         if (currentRoute === routeProjects)
-            return "projects";
+            return "home";
+        if (currentRoute === routeSingleProjects)
+            return "single";
+        if (currentRoute === routeManualProjects)
+            return "manual";
+        if (currentRoute === routeBatchProjects)
+            return "batch";
         if (currentRoute === routeSettings || currentRoute === routeApiKeys || currentRoute === routePackages)
             return "settings";
         if (currentRoute === routeDownloadProjects)
@@ -276,6 +282,8 @@ ApplicationWindow {
     Connections {
         target: AppController
         function onVideoExportRequested() { videoExportDialogLoader.invoke("openForSelection", []); }
+        function onAutoProcessingRequested() { videoExportDialogLoader.invoke("openForProcessing", []); }
+        function onBatchProcessingRequested(processFirst) { videoExportDialogLoader.invoke("openForBatch", [processFirst]); }
         function onVideoExportStarted() { videoExportJobsDialogLoader.invoke("open", []); }
     }
 
@@ -311,6 +319,13 @@ ApplicationWindow {
         id: aboutDialogLoader
         sourceComponent: Component {
             AboutDialog { onClosed: aboutDialogLoader.release() }
+        }
+    }
+
+    LazyDialogLoader {
+        id: copyrightDialogLoader
+        sourceComponent: Component {
+            CopyrightDialog { onClosed: copyrightDialogLoader.release() }
         }
     }
 
@@ -351,6 +366,10 @@ ApplicationWindow {
         }
 
         function onVideoDeleted() {
+            if (!root.projectWorkspaceVisible) {
+                root.pruneRouteHistory();
+                return;
+            }
             if (!AppController.hasOpenProject) {
                 root.resetRouteHistory(root.workspaceReturnRoute);
                 return;
@@ -360,6 +379,10 @@ ApplicationWindow {
         }
 
         function onBatchDeleted() {
+            if (!root.projectWorkspaceVisible) {
+                root.pruneRouteHistory();
+                return;
+            }
             root.workspaceReturnRoute = root.routeBatchProjects;
             root.resetRouteHistory(root.routeBatchProjects);
         }
@@ -390,6 +413,10 @@ ApplicationWindow {
         }
 
         function onAppUpdateAvailable() { appMenuBar.showUpdates(); }
+
+        function onVideoExportCompleted(videoId, path) {
+            toastStack.show(qsTr("Xuất video thành công"), path, "success", 6500);
+        }
 
         function onResourcePacksRequested(group) {
             root.navigate(root.routePackages);
@@ -469,6 +496,7 @@ ApplicationWindow {
             onApiKeysRequested: root.navigate(root.routeApiKeys)
             onPackagesRequested: root.navigate(root.routePackages)
             onAboutRequested: aboutDialogLoader.invoke("open", [])
+            onCopyrightRequested: copyrightDialogLoader.invoke("open", [])
         }
 
         RowLayout {
@@ -484,8 +512,12 @@ ApplicationWindow {
                 currentSection: root.navigationSection()
                 onSectionRequested: function (section) {
                     AppController.refreshVideos();
-                    if (section === "projects")
-                        root.navigate(root.routeProjects);
+                    if (section === "single")
+                        root.navigate(root.routeSingleProjects);
+                    else if (section === "manual")
+                        root.navigate(root.routeManualProjects);
+                    else if (section === "batch")
+                        root.navigate(root.routeBatchProjects);
                     else if (section === "downloads")
                         root.navigate(root.routeDownloadProjects);
                     else if (section === "social")

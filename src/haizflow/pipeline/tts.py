@@ -110,6 +110,8 @@ def generate_voice_parts(
     current_video = get_video(video_id)
     current_files = dict((current_video.files if current_video else {}) or {})
     speaker_mode = str(getattr(current_video, "speaker_mode", "single") or "single")
+    if speaker_mode == "multiple" and voice == "omnivoice:clone":
+        raise ValueError("Hãy chọn Giọng nhân bản hoặc Nhận diện nhiều người nói, không dùng cả hai cùng lúc.")
     clone_reference = str(current_files.get("voice_reference") or "")
     clone_transcript = str(current_files.get("voice_reference_transcript") or "")
     source_segments = []
@@ -132,6 +134,22 @@ def generate_voice_parts(
             raise RuntimeError(
                 "Multiple-speaker OmniVoice mode requires the current source speech and timestamped source transcript."
             )
+        from haizflow.pipeline.speaker_identity import prepare_speakers
+
+        def report_speakers(status):
+            current = int(status.get("current") or 0)
+            total_sources = int(status.get("total") or len(source_segments))
+            if status_callback is not None:
+                status_callback("identifying_speakers", current, total_sources)
+
+        source_segments = prepare_speakers(source_audio_path, source_segments,
+                                          process_registry_id or video_id, report_speakers)
+        log_to_video(video_id, f"Identified {len({s['speaker_id'] for s in source_segments})} speakers; "
+                     "using stable target-language voices, not per-sentence source clones.")
+        uncertain = sum(bool(s.get("speaker_uncertain")) for s in source_segments)
+        if uncertain:
+            log_to_video(video_id, f"[SPEAKERS][LOW_CONFIDENCE] {uncertain}/{len(source_segments)} turns are ambiguous; "
+                         "short, overlapping or distorted source speech may require manual voice correction.")
     if voice == "omnivoice:clone" and (
         not clone_reference or not os.path.isfile(clone_reference)
     ):
@@ -168,12 +186,16 @@ def generate_voice_parts(
             source_reference = source_reference_for(segment)
             pending.append({
                 "text": preprocess_text_for_tts(text),
-                "voice": voice,
+                "voice": str(source_reference.get("speaker_voice") or voice),
                 "output_path": part_path,
                 "index": str(index),
                 "reference_path": clone_reference if voice == "omnivoice:clone" else "",
                 "reference_text": clone_transcript if voice == "omnivoice:clone" else "",
-                "source_audio_path": source_audio_path if speaker_mode == "multiple" else "",
+                # Identity came from source audio, but pronunciation always
+                # comes from the target-language preset. Never leak reference
+                # dialogue into generated speech through cross-language cloning.
+                "source_audio_path": "",
+                "speaker_id": str(source_reference.get("speaker_id") or ""),
                 "source_start": str(source_reference.get("start", "")),
                 "source_end": str(source_reference.get("end", "")),
                 "source_text": str(source_reference.get("text", "")),

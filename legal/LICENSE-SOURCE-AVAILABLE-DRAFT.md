@@ -1,8 +1,9 @@
 # HaizFlow Source-Available License — DRAFT 1
 
-**DRAFT — NOT IN FORCE. Owner and legal review required.**
-No effective date or covered release has been approved. The root `LICENSE`
-remains Apache-2.0. This proposal does not revoke permissions already granted.
+**HISTORICAL DRAFT — NOT IN FORCE as this document.**
+The owner approved a reconciled bilingual source license on 2026-10-01.
+The root `LICENSE` is the active Source-Available 1.0 text, Vietnamese first.
+This earlier proposal is retained for comparison, not application terms.
 
 Proposed identifier: `LicenseRef-HaizFlow-Source-Available-1.0` (custom; not
 OSI-approved). Proposed licensor: Mach Hong Hai, only for rights he owns or is
@@ -68,7 +69,7 @@ written agreement with the relevant rights holder. Sharing links to official
 releases, describing architecture and exercising lawful quotation rights do
 not amount to unauthorized software redistribution. Third-party components
 remain redistributable under their own terms; no additional restriction is
-imposed on those components or on prior Apache-licensed copies.
+imposed on those components or on independently granted rights.
 
 ## 5. Attribution and official identity
 

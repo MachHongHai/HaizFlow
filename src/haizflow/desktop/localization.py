@@ -377,9 +377,10 @@ class QFileDialog(QtFileDialog):
 
     @staticmethod
     def getSaveFileName(parent=None, caption="", directory="", filter="", *args):
-        return QtFileDialog.getSaveFileName(
-            parent, _ui_text(caption), directory, _ui_text(filter), *args
-        )
+        with _native_explorer_profile():
+            return QtFileDialog.getSaveFileName(
+                parent, _ui_text(caption), directory, _ui_text(filter), *args
+            )
 
     @staticmethod
     def getExistingDirectory(parent=None, caption="", directory="", options=QtFileDialog.Option.ShowDirsOnly):

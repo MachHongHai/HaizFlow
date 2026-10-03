@@ -10,17 +10,52 @@ AppDialog {
     property var configuration: ({})
     property string destination: ""
     property bool destinationExists: false
-    title: qsTr("Xuất video")
-    subtitle: qsTr("Lưu bản sao thành phẩm; dữ liệu dự án được giữ nguyên")
+    property bool processBeforeExport: false
+    property bool batchMode: false
+    title: batchMode ? qsTr("Xử lý và xuất hàng loạt") : processBeforeExport ? qsTr("Xử lý và xuất video") : qsTr("Xuất video")
+    subtitle: processBeforeExport ? qsTr("Xử lý theo cài đặt dự án và lưu video vào vị trí đã chọn")
+        : qsTr("Lưu bản sao thành phẩm; dữ liệu dự án được giữ nguyên")
     preferredWidth: 600
+    bodySpacing: Theme.space12
 
-    function openForSelection() {
+    function openForSelection(processFirst = false) {
+        batchMode = false;
+        processBeforeExport = processFirst;
         configuration = controller.manualExportSettings();
         destination = "";
         destinationExists = false;
-        replaceCheck.checked = false;
         quality.currentIndex = Math.max(0, (configuration.presets || []).findIndex(item => item.value === configuration.preset));
         open();
+    }
+    function openForProcessing() { openForSelection(true); }
+    function openForBatch(processFirst = true) {
+        openForSelection(processFirst);
+        batchMode = true;
+        configuration = controller.batchExportSettings();
+        quality.currentIndex = Math.max(0, (configuration.presets || []).findIndex(item => item.value === configuration.preset));
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        visible: !root.batchMode
+        spacing: Theme.space12
+        Text {
+            text: qsTr("Tên tệp")
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.metadata
+        }
+        Text {
+            Layout.fillWidth: true
+            text: root.destination.length > 0
+                ? root.destination.replace(/\\/g, "/").split("/").pop()
+                : root.configuration.filename || ""
+            textFormat: Text.PlainText
+            elide: Text.ElideMiddle
+            color: Theme.text
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.control
+            font.weight: Font.Medium
+        }
     }
     FormSection {
         Layout.fillWidth: true
@@ -44,7 +79,16 @@ AppDialog {
         }
         Text {
             Layout.fillWidth: true
-            visible: !root.configuration.ready
+            visible: root.batchMode
+            text: qsTr("Áp dụng chất lượng xuất cho %1 video. Cài đặt xử lý riêng của từng video được giữ nguyên.").arg(root.configuration.count || 0)
+            textFormat: Text.PlainText
+            color: Theme.textMuted
+            font.pixelSize: TypeScale.metadata
+            wrapMode: Text.WordWrap
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: !root.processBeforeExport && !root.configuration.ready
             text: qsTr("Chưa có bản dựng phù hợp. HaizFlow sẽ dựng video từ các kết quả xử lý đã lưu trước khi xuất.")
             textFormat: Text.PlainText
             color: Theme.textMuted
@@ -56,45 +100,46 @@ AppDialog {
     FormSection {
         Layout.fillWidth: true
         title: qsTr("Vị trí lưu")
-        StudioButton {
+        RowLayout {
             Layout.fillWidth: true
-            text: root.destination.length > 0 ? qsTr("Chọn vị trí khác") : qsTr("Chọn vị trí và tên tệp")
-            iconName: "folder"
-            onClicked: {
-                const path = root.controller.chooseVideoExportDestination(root.configuration.videoId);
-                if (path.length > 0) {
-                    root.destination = path;
-                    root.destinationExists = root.controller.exportDestinationExists(path);
-                    replaceCheck.checked = false;
+            spacing: Theme.space8
+            AppTextField {
+                Layout.fillWidth: true
+                readOnly: true
+                text: root.destination
+                placeholderText: qsTr("Chưa chọn vị trí lưu")
+                accessibleName: qsTr("Đường dẫn xuất video")
+            }
+            StudioButton {
+                text: qsTr("Chọn…")
+                iconName: "folder"
+                onClicked: {
+                    const path = root.batchMode ? root.controller.chooseBatchExportDestination()
+                        : root.controller.chooseVideoExportDestination(root.configuration.videoId);
+                    if (path.length > 0) {
+                        root.destination = path;
+                        root.destinationExists = root.batchMode ? root.controller.batchExportDestinationExists(path)
+                            : root.controller.exportDestinationExists(path);
+                    }
                 }
             }
-        }
-        Text {
-            Layout.fillWidth: true
-            visible: root.destination.length > 0
-            text: root.destination
-            textFormat: Text.PlainText
-            wrapMode: Text.WrapAnywhere
-            color: Theme.text
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.metadata
-        }
-        AppCheckBox {
-            id: replaceCheck
-            Layout.fillWidth: true
-            visible: root.destinationExists
-            text: qsTr("Thay thế tệp đang có tại vị trí này")
         }
     }
     footerActions: [
         StudioButton { text: qsTr("Hủy"); variant: "ghost"; onClicked: root.close() },
         StudioButton {
             objectName: "confirmVideoExport"
-            text: qsTr("Xuất")
+            text: root.processBeforeExport ? qsTr("Xử lý và xuất") : qsTr("Xuất")
             variant: "primary"
-            enabled: root.destination.length > 0 && (!root.destinationExists || replaceCheck.checked) && !root.controller.videoExportBusy
+            enabled: root.destination.length > 0 && !root.controller.videoExportBusy
             onClicked: {
-                if (root.controller.exportVideoTo(root.configuration.videoId, quality.currentValue, root.destination, replaceCheck.checked))
+                const started = root.batchMode
+                    ? root.controller.processBatchTo(root.configuration.projectKey, root.configuration.videoIds,
+                        quality.currentValue, root.destination, root.destinationExists, root.processBeforeExport)
+                    : root.processBeforeExport
+                    ? root.controller.processVideoTo(root.configuration.videoId, quality.currentValue, root.destination, root.destinationExists)
+                    : root.controller.exportVideoTo(root.configuration.videoId, quality.currentValue, root.destination, root.destinationExists);
+                if (started)
                     root.close();
             }
         }

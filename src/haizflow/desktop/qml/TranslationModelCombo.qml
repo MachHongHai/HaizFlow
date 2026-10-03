@@ -11,7 +11,7 @@ AppComboBox {
     valueRole: "value"
     model: [
         { label: qsTr("HY-MT2 CPU · Q4"), value: "q4" },
-        { label: qsTr("HY-MT2 GPU · đầy đủ"), value: "full" },
+        { label: qsTr("HY-MT2 GPU · đầy đủ"), value: "full", available: AppController.processingDevice === "gpu" },
         { label: qsTr("Gemini 3.1 Flash-Lite · giá thấp"), value: "gemini-3.1-flash-lite" },
         { label: qsTr("Gemini 3.5 Flash-Lite · tiết kiệm"), value: "gemini-3.5-flash-lite" },
         { label: qsTr("Gemini 3.8 Flash · chất lượng cao"), value: "gemini-3.8-flash" }
@@ -21,6 +21,9 @@ AppComboBox {
         : root.selectedModel === "gemini-3.5-flash-lite" ? 3
         : root.selectedModel === "gemini-3.8-flash" ? 4 : 0
     onActivated: {
+        if (String(root.currentValue).indexOf("gemini-") === 0)
+            AppController.showAppAlert(qsTr("Chi phí Gemini"),
+                qsTr("Gemini 3.1 Flash-Lite, 3.5 Flash-Lite và 3.8 Flash có hạn mức miễn phí. Nếu dự án Google đã bật thanh toán, yêu cầu có thể bị tính phí; 3.8 Flash đắt hơn Flash-Lite. Kiểm tra Usage và Billing trong AI Studio. Lỗi 503 là dịch vụ tạm thời không khả dụng, không xác nhận yêu cầu thanh toán."), "information");
         root.edited(root.currentValue);
         root.currentIndex = Qt.binding(function() {
             return root.selectedModel === "full" ? 1

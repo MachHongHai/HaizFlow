@@ -39,14 +39,33 @@ FloatingToolDialog {
     property int draftSubtitleOutline: 2
     property int draftSubtitleMaxChars: 32
     property var settingOverrides: []
+    property string openedProjectKey: ""
+    property bool replaceOverrides: false
+    property bool draftBackgroundMusicLoop: true
+    property bool draftAudioDuckingEnabled: false
+    property int draftAudioDuckingReductionDb: -12
+    property string draftVoiceReferencePath: ""
+    property string draftWatermarkKind: "text"
+    property string draftWatermarkImagePath: ""
+    property string draftWatermarkVideoPath: ""
+    property int draftWatermarkScalePercent: 100
+    property int draftWatermarkOpacityPercent: 46
+    property int draftWatermarkOutlinePercent: 100
+    property string draftWatermarkFontFamily: "Arial"
+    property string draftWatermarkTextColor: "#FFFFFF"
+    property bool draftWatermarkBold: true
+    property bool draftWatermarkItalic: true
+    property var draftSubtitleStyle: ({})
+    property string draftPreviewVoice: ""
 
     readonly property var draftProviderOptions: localizedProviderOptions(
-        draftTargetLanguage, AppController.settingsLanguage)
+        draftTargetLanguage, AppController.settingsLanguage, AppController.processingDevice)
     readonly property var draftVoiceOptions: localizedVoiceOptions(
         draftTargetLanguage, draftTtsProvider, AppController.settingsLanguage)
     readonly property int draftTtsProviderIndex: findIndex(draftProviderOptions, "provider", draftTtsProvider)
     readonly property int draftSpeechRecognitionIndex: findIndex(
-        AppController.speechRecognitionModelOptions, "value", draftSpeechRecognitionModel)
+        AppController.speechRecognitionModelOptions, "value", draftSpeechRecognitionModel === "small"
+            ? (AppController.processingDevice === "gpu" ? "small-gpu" : "small-cpu") : draftSpeechRecognitionModel)
 
     function findIndex(options, role, value) {
         for (let index = 0; index < options.length; ++index) {
@@ -56,15 +75,22 @@ FloatingToolDialog {
         return 0
     }
 
-    function localizedProviderOptions(languageCode, interfaceLanguage) {
+    function localizedProviderOptions(languageCode, interfaceLanguage, processingDevice) {
         return AppController.ttsProviderOptionsForLanguage(languageCode)
     }
 
     function localizedVoiceOptions(languageCode, provider, interfaceLanguage) {
-        return AppController.voiceOptionsForLanguageAndProvider(languageCode, provider)
+        const voices = AppController.voiceOptionsForLanguageAndProvider(languageCode, provider)
+            .filter(item => item.voice !== "omnivoice:clone");
+        if (root.draftVoiceReferencePath.length > 0)
+            voices.push({"voice": "omnivoice:clone", "label": qsTr("Giọng đã nhân bản"),
+                "category": "clone", "categoryLabel": qsTr("Giọng của tôi"), "available": true, "previewAvailable": true});
+        return voices;
     }
 
     function normalizedDraftVoice(languageCode, provider, preferredVoice) {
+        if (preferredVoice === "omnivoice:clone" && root.draftVoiceReferencePath.length > 0)
+            return preferredVoice;
         const options = AppController.voiceOptionsForLanguageAndProvider(languageCode, provider)
         for (let index = 0; index < options.length; ++index) {
             if (options[index].voice === preferredVoice && options[index].available !== false)
@@ -79,6 +105,23 @@ FloatingToolDialog {
 
     function loadDraft() {
         const settings = AppController.batchSettings()
+        openedProjectKey = AppController.projectKey;
+        replaceOverrides = false;
+        draftVoiceReferencePath = settings.voiceReferencePath || "";
+        draftBackgroundMusicLoop = settings.backgroundMusicLoop !== false;
+        draftAudioDuckingEnabled = Boolean(settings.audioDuckingEnabled);
+        draftAudioDuckingReductionDb = Number(settings.audioDuckingReductionDb ?? -12);
+        draftWatermarkKind = settings.watermarkKind || "text";
+        draftWatermarkImagePath = settings.watermarkImagePath || "";
+        draftWatermarkVideoPath = settings.watermarkVideoPath || "";
+        draftWatermarkScalePercent = Number(settings.watermarkScalePercent ?? 100);
+        draftWatermarkOpacityPercent = Number(settings.watermarkOpacityPercent ?? 46);
+        draftWatermarkOutlinePercent = Number(settings.watermarkOutlinePercent ?? 100);
+        draftWatermarkFontFamily = settings.watermarkFontFamily || "Arial";
+        draftWatermarkTextColor = settings.watermarkTextColor || "#FFFFFF";
+        draftWatermarkBold = settings.watermarkBold !== false;
+        draftWatermarkItalic = settings.watermarkItalic !== false;
+        draftSubtitleStyle = settings.subtitleStyle || ({});
         baselineSettings = settings
         draftTargetLanguage = settings.targetLanguage || "vi"
         draftSpeechRecognitionModel = settings.speechRecognitionModel || "small"
@@ -124,9 +167,23 @@ FloatingToolDialog {
             "ttsVolume": draftTtsVolume,
             "watermarkText": draftWatermarkText,
             "backgroundMusicPath": draftBackgroundMusicPath,
+            "backgroundMusicLoop": draftBackgroundMusicLoop,
+            "audioDuckingEnabled": draftAudioDuckingEnabled,
+            "audioDuckingReductionDb": draftAudioDuckingReductionDb,
+            "voiceReferencePath": draftVoiceReferencePath,
+            "watermarkKind": draftWatermarkKind,
+            "watermarkImagePath": draftWatermarkImagePath,
+            "watermarkVideoPath": draftWatermarkVideoPath,
+            "watermarkScalePercent": draftWatermarkScalePercent,
+            "watermarkOpacityPercent": draftWatermarkOpacityPercent,
+            "watermarkOutlinePercent": draftWatermarkOutlinePercent,
+            "watermarkFontFamily": draftWatermarkFontFamily,
+            "watermarkTextColor": draftWatermarkTextColor,
+            "watermarkBold": draftWatermarkBold,
+            "watermarkItalic": draftWatermarkItalic,
             "removeOriginalSubtitles": draftRemoveOriginalSubtitles,
             "originalSubtitleRemovalMode": draftOriginalSubtitleRemovalMode,
-            "subtitleStyle": {
+            "subtitleStyle": Object.assign({}, draftSubtitleStyle, {
                 "font_size": draftSubtitleFontSize,
                 "margin_bottom": draftSubtitleMarginBottom,
                 "outline": draftSubtitleOutline,
@@ -136,29 +193,28 @@ FloatingToolDialog {
                 "box_width_percent": draftSubtitleBoxWidth,
                 "box_height_percent": draftSubtitleBoxHeight,
                 "manual": draftSubtitleManual
-            }
+            })
         }
     }
 
     function hasDraftChanges() { return JSON.stringify(currentDraft()) !== JSON.stringify(baselineSettings) }
 
     function saveDraft() {
-        if (!hasDraftChanges() || AppController.batchCount <= 0)
-            return
-        if (AppController.applyBatchSettingsDraft(
-                "A", draftTargetLanguage, draftSpeechRecognitionModel,
-                draftTtsProvider, draftTtsVoice, draftEnableAudioSeparation,
-                draftOriginalVolume, draftBackgroundMusicVolume, draftTtsVolume,
-                draftWatermarkText, draftBackgroundMusicPath, draftRemoveOriginalSubtitles,
-                currentDraft().subtitleStyle, draftOriginalSubtitleRemovalMode,
-                draftSpeakerMode, draftTranslationModel)) {
+        if (!hasDraftChanges() && !replaceOverrides)
+            return true;
+        if (AppController.applyBatchSettingsValues(openedProjectKey, currentDraft(), replaceOverrides)) {
             baselineSettings = currentDraft()
             settingOverrides = AppController.batchSettingOverrides()
+            return true;
         }
+        return false;
     }
 
-    onOpened: loadDraft()
-    onClosed: saveDraft()
+    onAboutToShow: {
+        loadDraft();
+        placeInCenter();
+    }
+    onClosed: AppController.cancelBatchVoiceRecording()
 
     Connections {
         target: AppController
@@ -195,7 +251,8 @@ FloatingToolDialog {
                     font.weight: Font.DemiBold
                 }
                 Text {
-                    text: qsTr("Cài đặt riêng của từng video được giữ nguyên")
+                    text: root.replaceOverrides ? qsTr("Sẽ thay thế cài đặt riêng sau khi xác nhận")
+                        : qsTr("Cài đặt riêng của từng video được giữ nguyên")
                     color: Theme.interactive
                     font.pixelSize: Theme.label
                 }
@@ -217,8 +274,8 @@ FloatingToolDialog {
                 editable: true
                 cpuOnly: AppController.cpuOnly
                 hasSource: AppController.batchCount > 0 && AppController.videoPath.length > 0
-                showCloneAction: false
-                showMusicPlaybackSettings: false
+                showCloneAction: true
+                showMusicPlaybackSettings: true
                 speechRecognitionModel: root.draftSpeechRecognitionModel
                 translationModel: root.draftTranslationModel
                 speechRecognitionOptions: AppController.speechRecognitionModelOptions
@@ -230,14 +287,21 @@ FloatingToolDialog {
                 ttsProviderIndex: root.draftTtsProviderIndex
                 ttsVoice: root.draftTtsVoice
                 ttsVoiceOptions: root.draftVoiceOptions
-                voicePreviewSource: AppController.audioPreviewSource
-                voicePreviewState: AppController.audioPreviewState
+                voicePreviewSource: root.draftPreviewVoice === "omnivoice:clone"
+                    ? draftController.localUrl(root.draftVoiceReferencePath) : AppController.audioPreviewSource
+                voicePreviewState: root.draftPreviewVoice === "omnivoice:clone" ? "ready" : AppController.audioPreviewState
                 speakerMode: root.draftSpeakerMode
                 removeOriginalSubtitles: root.draftRemoveOriginalSubtitles
                 subtitleRemovalMode: root.draftOriginalSubtitleRemovalMode
                 enableAudioSeparation: root.draftEnableAudioSeparation
                 backgroundMusicPath: root.draftBackgroundMusicPath
+                backgroundMusicLoop: root.draftBackgroundMusicLoop
+                audioDuckingEnabled: root.draftAudioDuckingEnabled
+                audioDuckingReductionDb: root.draftAudioDuckingReductionDb
                 watermarkText: root.draftWatermarkText
+                watermarkKind: root.draftWatermarkKind
+                watermarkImagePath: root.draftWatermarkImagePath
+                watermarkVideoPath: root.draftWatermarkVideoPath
 
                 onSpeechRecognitionEdited: function(value) { root.draftSpeechRecognitionModel = value }
                 onTranslationModelEdited: function(value) {
@@ -262,8 +326,11 @@ FloatingToolDialog {
                 }
                 onTtsVoiceEdited: function(value) { root.draftTtsVoice = value }
                 onTtsVoicePreviewRequested: function(value) {
-                    AppController.previewVoiceSample(root.draftTtsProvider, value, root.draftTargetLanguage)
+                    root.draftPreviewVoice = value;
+                    if (value !== "omnivoice:clone")
+                        AppController.previewVoiceSample(root.draftTtsProvider, value, root.draftTargetLanguage)
                 }
+                onCloneVoiceRequested: batchCloneDialogLoader.invoke("openForSelectedVideo", [])
                 onSpeakerModeEdited: function(value) { root.draftSpeakerMode = value }
                 onRemoveOriginalSubtitlesEdited: function(value) { root.draftRemoveOriginalSubtitles = value }
                 onSubtitleRemovalModeEdited: function(value) { root.draftOriginalSubtitleRemovalMode = value }
@@ -279,19 +346,112 @@ FloatingToolDialog {
                 }
                 onBackgroundMusicLinkRequested: batchBackgroundMusicLinkDialogLoader.invoke("open", [])
                 onBackgroundMusicClearRequested: root.draftBackgroundMusicPath = ""
-                onWatermarkRequested: batchWatermarkDialogLoader.invoke("openWithText", [root.draftWatermarkText])
+                onBackgroundMusicLoopEdited: function(value) { root.draftBackgroundMusicLoop = value; }
+                onAudioDuckingEdited: function(value) { root.draftAudioDuckingEnabled = value; }
+                onAudioDuckingReductionEdited: function(value) { root.draftAudioDuckingReductionDb = value; }
+                onWatermarkKindEdited: function(value) { root.draftWatermarkKind = value; }
+                onWatermarkRequested: batchWatermarkDialogLoader.invoke("openForSelectedVideo", [])
             }
 
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         }
+        AppCheckBox {
+            Layout.fillWidth: true
+            visible: root.settingOverrides.length > 0
+            text: qsTr("Thay thế cả cài đặt riêng bằng cài đặt chung")
+            checked: root.replaceOverrides
+            onToggled: root.replaceOverrides = checked
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            StudioButton { text: qsTr("Hủy"); variant: "ghost"; onClicked: root.close() }
+            StudioButton {
+                text: qsTr("Áp dụng")
+                variant: "primary"
+                onClicked: if (root.saveDraft()) root.close()
+            }
+        }
+    }
+
+    LazyDialogLoader {
+        id: batchCloneDialogLoader
+        sourceComponent: Component {
+            VoiceCloneDialog {
+                controller: draftController
+                preferredProvider: root.draftTtsProvider
+                onClosed: batchCloneDialogLoader.release()
+                onReferenceAccepted: function(path) {
+                    root.draftVoiceReferencePath = path;
+                    root.draftTtsVoice = "omnivoice:clone";
+                    root.draftSpeakerMode = "single";
+                }
+            }
+        }
+    }
+
+    QtObject {
+        id: draftController
+        signal selectedVideoChanged()
+        readonly property string selectedVideoId: root.openedProjectKey
+        readonly property bool canEditSelectedVideo: !AppController.isBatchRunning
+        readonly property string videoThumbnailSource: AppController.videoThumbnailSource
+        property alias ttsProvider: root.draftTtsProvider
+        property alias voiceCloneReferencePath: root.draftVoiceReferencePath
+        property alias watermarkKind: root.draftWatermarkKind
+        property alias watermarkText: root.draftWatermarkText
+        property alias watermarkImagePath: root.draftWatermarkImagePath
+        property alias watermarkVideoPath: root.draftWatermarkVideoPath
+        property alias watermarkScalePercent: root.draftWatermarkScalePercent
+        property alias watermarkOpacityPercent: root.draftWatermarkOpacityPercent
+        property alias watermarkOutlinePercent: root.draftWatermarkOutlinePercent
+        property alias watermarkFontFamily: root.draftWatermarkFontFamily
+        property alias watermarkTextColor: root.draftWatermarkTextColor
+        property alias watermarkBold: root.draftWatermarkBold
+        property alias watermarkItalic: root.draftWatermarkItalic
+        readonly property string watermarkImageSource: localUrl(watermarkImagePath)
+        readonly property string watermarkVideoSource: localUrl(watermarkVideoPath)
+        function localUrl(path) { return path ? "file:///" + path.replace(/\\/g, "/") : ""; }
+        function chooseWatermarkImage() { return AppController.chooseWatermarkImage(); }
+        function chooseWatermarkVideo() { return AppController.chooseWatermarkVideo(); }
+        function setWatermarkImage(path) {
+            const staged = AppController.stageBatchSettingsAsset(root.openedProjectKey, "watermarkImagePath", path);
+            if (staged) root.draftWatermarkImagePath = staged;
+            return staged.length > 0;
+        }
+        function setWatermarkVideo(path) {
+            const staged = AppController.stageBatchSettingsAsset(root.openedProjectKey, "watermarkVideoPath", path);
+            if (staged) root.draftWatermarkVideoPath = staged;
+            return staged.length > 0;
+        }
+        function chooseVoiceCloneReference() { return AppController.chooseVoiceCloneReference(); }
+        function setVoiceCloneReference(path, _transcript) {
+            const staged = AppController.stageBatchSettingsAsset(root.openedProjectKey, "voiceReferencePath", path);
+            if (staged) root.draftVoiceReferencePath = staged;
+            return staged.length > 0;
+        }
+        function applyVoiceCloneReference(owner, _provider) {
+            return owner === AppController.projectKey && root.draftVoiceReferencePath.length > 0;
+        }
+        function voiceCloneReferenceAnalysis(path, count) { return AppController.voiceCloneReferenceAnalysis(path, count); }
+        function voiceCloneInputDevices() { return AppController.voiceCloneInputDevices(); }
+        function selectVoiceCloneInputDevice(id) { return AppController.selectVoiceCloneInputDevice(id); }
+        function startVoiceCloneRecording() { return AppController.startBatchVoiceRecording(root.openedProjectKey); }
+        function voiceCloneRecordingState() { return AppController.batchVoiceRecordingState(); }
+        function finishVoiceCloneRecording() {
+            const staged = AppController.finishBatchVoiceRecording(root.openedProjectKey);
+            if (staged) root.draftVoiceReferencePath = staged;
+            return staged.length > 0;
+        }
+        function cancelVoiceCloneRecording() { AppController.cancelBatchVoiceRecording(); }
     }
 
     LazyDialogLoader {
         id: batchWatermarkDialogLoader
         sourceComponent: Component {
-            WatermarkDialog {
+            AutoWatermarkPreviewDialog {
+                controller: draftController
                 onClosed: batchWatermarkDialogLoader.release()
-                onWatermarkAccepted: function(text) { root.draftWatermarkText = text }
             }
         }
     }
@@ -300,6 +460,7 @@ FloatingToolDialog {
         id: batchAudioMixDialogLoader
         sourceComponent: Component {
             BatchAudioMixDialog {
+                voiceReferencePath: root.draftVoiceReferencePath
                 audioSeparationEnabled: root.draftEnableAudioSeparation
                 originalVolume: root.draftOriginalVolume
                 ttsVolume: root.draftTtsVolume

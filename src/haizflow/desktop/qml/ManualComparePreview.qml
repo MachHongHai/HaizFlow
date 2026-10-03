@@ -9,6 +9,7 @@ import "."
 Rectangle {
     id: root
 
+    property var controller: AppController
     property url inputSource: ""
     property url resultSource: ""
     property url resultBaseSource: ""
@@ -64,6 +65,7 @@ Rectangle {
     property var selectedEditorClipIds: []
     property var sourceEditDecisions: []
     property real sequenceDurationSeconds: 0
+    property bool resultUsesSequenceTimeline: false
     property int activeDecisionIndex: 0
     signal subtitleActivated()
     signal subtitleEditingDismissed()
@@ -124,6 +126,14 @@ Rectangle {
             Math.min(activeDecisionIndex, sourceEditDecisions.length - 1))];
         return Number(decision.sequence_start_ms || 0)
             + sourceMs - Number(decision.source_start_ms || 0);
+    }
+
+    function resultMsForSequence(sequenceMs) {
+        return resultUsesSequenceTimeline ? sequenceMs : sourceMsForSequence(sequenceMs);
+    }
+
+    function sequenceMsForResult(resultMs) {
+        return resultUsesSequenceTimeline ? resultMs : sequenceMsForSource(resultMs);
     }
 
     function togglePlayback() {
@@ -192,8 +202,8 @@ Rectangle {
     function endScrub(seconds) { scrubController.end(seconds * 1000); }
 
     function syncAudio() {
-        AppController.manualPreviewAudio.synchronize(
-            root.sourceMsForSequence(root.positionSeconds * 1000) / 1000,
+        root.controller.manualPreviewAudio.synchronize(
+            root.positionSeconds,
             (root.comparing || root.activeMonitor === "result")
                 && resultPlayer.playbackState === MediaPlayer.PlayingState
                 && !root.resultPriming && !root.resultSourceSwitching && !scrubController.scrubbing,
@@ -213,13 +223,13 @@ Rectangle {
         }
         onSeekRequested: function(positionMs) {
             const sourcePositionMs = root.sourceMsForSequence(positionMs);
-            AppController.manualPreviewAudio.seek(sourcePositionMs / 1000);
+            root.controller.manualPreviewAudio.seek(positionMs / 1000);
             root.pendingResultPositionMs = positionMs;
             root.lastStablePositionMs = positionMs;
             if (!root.inputSourceSwitching && inputPlayer.seekable)
                 inputPlayer.position = sourcePositionMs;
             if (!root.resultSourceSwitching && resultPlayer.seekable) {
-                resultPlayer.position = sourcePositionMs;
+                resultPlayer.position = root.resultMsForSequence(positionMs);
                 // Seeking to the current position need not emit positionChanged.
                 scrubController.observe(positionMs);
             }
@@ -302,7 +312,7 @@ Rectangle {
         resultMuted = false;
         synchronizedPlayback = true;
         resultPlaybackRequested = true;
-        inputPlayer.position = resultPlayer.position;
+        inputPlayer.position = root.sourceMsForSequence(root.sequenceMsForResult(resultPlayer.position));
         inputPlayer.play();
         resultPlayer.play();
     }
@@ -570,10 +580,16 @@ Rectangle {
                 }
 
                 StudioSlider {
+                    id: inlineSeekSlider
+                    objectName: "manualPreviewSeekSlider"
                     Layout.fillWidth: true
                     from: 0
                     to: Math.max(0.1, root.durationSeconds)
-                    value: root.positionSeconds
+                    Binding on value {
+                        when: !inlineSeekSlider.pressed
+                        value: root.positionSeconds
+                        restoreMode: Binding.RestoreBindingOrValue
+                    }
                     enabled: root.durationSeconds > 0
                     onPressedChanged: pressed ? root.beginScrub(value) : root.endScrub(value)
                     onMoved: root.updateScrub(value)
@@ -634,8 +650,8 @@ Rectangle {
             MediaSourceImportButton {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 148
-                enabled: AppController.canEditSelectedVideo
-                onFileRequested: AppController.browseVideo()
+                enabled: root.controller.canEditSelectedVideo
+                onFileRequested: root.controller.browseVideo()
                 onLinkRequested: root.requestUrlImport()
                 onDownloadProjectRequested: root.requestDownloadProjectImport()
             }
@@ -803,10 +819,16 @@ Rectangle {
                         }
                     }
                     StudioSlider {
+                        id: fullscreenSeekSlider
+                        objectName: "manualFullscreenSeekSlider"
                         Layout.fillWidth: true
                         from: 0
                         to: Math.max(0.1, root.durationSeconds)
-                        value: root.positionSeconds
+                        Binding on value {
+                            when: !fullscreenSeekSlider.pressed
+                            value: root.positionSeconds
+                            restoreMode: Binding.RestoreBindingOrValue
+                        }
                         onPressedChanged: pressed ? root.beginScrub(value) : root.endScrub(value)
                         onMoved: root.updateScrub(value)
                         Accessible.name: qsTr("Vị trí xem trước")
@@ -902,7 +924,7 @@ Rectangle {
         running: root.visible && (resultPlayer.playbackState === MediaPlayer.PlayingState
             || root.synchronizedPlayback)
         onTriggered: {
-            if (root.sourceEditDecisions.length > 0
+            if (!root.resultUsesSequenceTimeline && root.sourceEditDecisions.length > 0
                     && root.activeDecisionIndex < root.sourceEditDecisions.length - 1) {
                 const decision = root.sourceEditDecisions[root.activeDecisionIndex];
                 const endMs = Number(decision.source_end_ms || 0);
@@ -913,11 +935,11 @@ Rectangle {
                     resultPlayer.position = nextSource;
                     if (root.synchronizedPlayback)
                         inputPlayer.position = nextSource;
-                    AppController.manualPreviewAudio.seek(nextSource / 1000);
+                    root.controller.manualPreviewAudio.seek(Number(next.sequence_start_ms || 0) / 1000);
                     scrubController.observe(Number(next.sequence_start_ms || 0));
                 }
             }
-            const masterPosition = resultPlayer.position;
+            const masterPosition = root.sourceMsForSequence(root.sequenceMsForResult(resultPlayer.position));
             if (!scrubController.scrubbing && !scrubController.pending
                     && root.synchronizedPlayback && Math.abs(inputPlayer.position - masterPosition) > 220)
                 inputPlayer.position = masterPosition;
@@ -1004,7 +1026,7 @@ Rectangle {
 
         onPositionChanged: function() {
             if (!root.resultPriming && !root.resultSourceSwitching) {
-                const sequencePosition = root.sequenceMsForSource(resultPlayer.position);
+                const sequencePosition = root.sequenceMsForResult(resultPlayer.position);
                 if (root.comparing || root.activeMonitor === "result")
                     scrubController.observe(sequencePosition);
                 root.lastStablePositionMs = sequencePosition;

@@ -241,22 +241,21 @@ StackLayout {
     }
 
     HomePage {
-        // qmllint disable stale-property-read
-        projectModel: AppController.projectModel
-        // qmllint enable stale-property-read
+        // qmllint disable missing-property stale-property-read
+        projectModel: AppController.projectBrowserModel
+        // qmllint enable missing-property stale-property-read
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.margins: 0
-        onNewProjectRequested: function (projectType) {
+        onRequestNewProject: function (projectType) {
             root.newProjectRequested(projectType, "home");
         }
-        onRecentProjectRequested: function (index, projectType) {
-            if (AppController.selectProject(index))
+        onOpenProject: function (index, projectType) {
+            // qmllint disable missing-property
+            if (AppController.selectProjectFromBrowser(index))
                 root.workspaceRequested("home", root.workspaceRouteForType(projectType));
+            // qmllint enable missing-property
         }
-        onProjectsRequested: root.navigateRequested("projects")
-        onDownloadsRequested: root.navigateRequested("download-projects")
-        onPublishingRequested: root.navigateRequested("publish-projects")
     }
 
     ProjectsHubPage {

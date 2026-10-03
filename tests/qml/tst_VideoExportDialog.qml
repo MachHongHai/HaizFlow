@@ -14,6 +14,7 @@ Item {
             property int exportCalls: 0
             property string lastVideo: ""
             property string lastDestination: ""
+            property bool lastOverwrite: false
             property bool succeeds: true
             function manualExportSettings() {
                 return {videoId: "stable-video", filename: "Dự án.mp4", preset: "source", ready: true,
@@ -23,6 +24,7 @@ Item {
                 exportCalls++;
                 lastVideo = video;
                 lastDestination = destination;
+                lastOverwrite = overwrite;
                 return succeeds;
             }
         }
@@ -46,7 +48,7 @@ Item {
             compare(app.controller.exportCalls, 0);
             compare(app.destination, qsTr(""));
         }
-        function test_confirmation_requires_destination_and_replacement_approval() {
+        function test_native_replacement_approval_needs_no_second_checkbox() {
             let app = makeDialog();
             let confirm = findChild(app, "confirmVideoExport");
             verify(!!confirm, "Object exists");
@@ -54,9 +56,10 @@ Item {
             app.destination = "C:/Exports/Dự án.mp4";
             tryCompare(confirm, "enabled", true);
             app.destinationExists = true;
-            tryCompare(confirm, "enabled", false);
+            tryCompare(confirm, "enabled", true);
             mouseClick(confirm);
-            tryCompare(app.controller, "exportCalls", 0);
+            tryCompare(app.controller, "exportCalls", 1);
+            tryCompare(app.controller, "lastOverwrite", true);
         }
         function test_confirm_exports_once_then_closes() {
             let app = makeDialog();

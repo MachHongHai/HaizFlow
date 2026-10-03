@@ -1,21 +1,56 @@
 {
   "schema_version": 1,
-  "status": "unapproved-scope-inventory",
-  "creator": "Mach Hong Hai",
-  "copyright_notice": "Copyright (c) 2026 Mach Hong Hai",
+  "status": "owner-confirmed-application-scope",
+  "creator": "Mạch Hồng Hải",
+  "copyright_notice": "Bản quyền (c) 2026 Mạch Hồng Hải",
   "notice_scope": "Only work owned by or expressly licensed to this rights holder",
   "exclusive_ownership_verified": false,
-  "candidate_scope_requiring_review": ["src/haizflow", "scripts", "installer", "docs", "tests"],
   "separate_or_unverified_material": [
-    {"path": "src/haizflow/vendor/douyin_xbogus.py", "owner": "Evil0ctal", "license": "Apache-2.0"},
-    {"path": "src/haizflow/desktop/qml/icons", "owner": "Microsoft and respective authors", "license": "MIT, per curated notice"},
-    {"path": "src/haizflow/assets/fonts", "owner": "The Bangers Project Authors", "license": "SIL OFL-1.1"},
-    {"path": "src/haizflow/desktop/assets/branding", "owner": "Not independently established", "license": "Provenance review required"},
-    {"path": "src/haizflow/desktop/assets/voice_samples", "owner": "Reference voices and model-output rights not established", "license": "Commercial and redistribution review required"},
-    {"path": "runtime/bin", "owner": "FFmpeg and linked-library authors", "license": "GPL-3.0-or-later configured build"},
-    {"path": "licenses", "owner": "Respective component authors", "license": "Independent component terms"}
+    {
+      "path": "src/haizflow/vendor/douyin_xbogus.py",
+      "owner": "Evil0ctal",
+      "license": "Apache-2.0"
+    },
+    {
+      "path": "src/haizflow/desktop/qml/icons",
+      "owner": "Microsoft and respective authors",
+      "license": "MIT, per curated notice"
+    },
+    {
+      "path": "src/haizflow/assets/fonts",
+      "owner": "The Bangers Project Authors",
+      "license": "SIL OFL-1.1"
+    },
+    {
+      "path": "src/haizflow/desktop/assets/branding",
+      "owner": "Not independently established",
+      "license": "Provenance review required"
+    },
+    {
+      "path": "src/haizflow/desktop/assets/voice_samples",
+      "owner": "Reference voices and model-output rights not established",
+      "license": "Commercial and redistribution review required"
+    },
+    {
+      "path": "runtime/bin",
+      "owner": "FFmpeg and linked-library authors",
+      "license": "GPL-3.0-or-later configured build"
+    },
+    {
+      "path": "licenses",
+      "owner": "Respective component authors",
+      "license": "Independent component terms"
+    }
   ],
   "contributor_permission_records": [],
-  "scope_approved_by": null,
-  "scope_approved_at": null
+  "scope_approved_by": "Mạch Hồng Hải",
+  "scope_approved_at": "2026-10-01",
+  "approved_scope": [
+    "src/haizflow",
+    "scripts",
+    "installer",
+    "docs",
+    "tests"
+  ],
+  "scope_basis": "Owner states HaizFlow has a sole developer. Separately licensed and unverified material below remains excluded; no third-party rights assigned."
 }

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -14,19 +15,23 @@ ColumnLayout {
     Layout.fillWidth: true
     spacing: Theme.space8
 
-    Rectangle {
+    Control {
+        id: header
         Layout.fillWidth: true
         implicitHeight: 40
-        color: headerArea.containsMouse && root.collapsible ? Theme.surfaceMuted : "transparent"
-        radius: Theme.radiusSmall
         activeFocusOnTab: root.collapsible
+        focusPolicy: root.collapsible ? Qt.TabFocus : Qt.NoFocus
         Accessible.role: Accessible.Button
         Accessible.name: root.title
         Accessible.description: root.expanded ? qsTr("Đang mở") : qsTr("Đã thu gọn")
         Keys.onReturnPressed: root.expanded = !root.expanded
         Keys.onSpacePressed: root.expanded = !root.expanded
-        border.width: activeFocus ? 2 : 0
-        border.color: Theme.focus
+        background: Rectangle {
+            color: headerArea.containsMouse && root.collapsible ? Theme.surfaceMuted : "transparent"
+            radius: Theme.radiusSmall
+            border.width: header.visualFocus ? 2 : 0
+            border.color: Theme.focus
+        }
 
         RowLayout {
             anchors.fill: parent

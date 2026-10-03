@@ -52,12 +52,30 @@ def install_root() -> Path:
     override = os.getenv("HAIZFLOW_INSTALL_ROOT")
     if override and runtime_overrides_allowed():
         return Path(override).expanduser().resolve()
+    if is_frozen():
+        core = Path(sys.executable).absolute().parent
+        # Infer from the executable, never trust an inherited install-root
+        # environment variable. Provisioning marker and no-reparse checks are
+        # required before using the persistent root.
+        if core.parent.name == "versions" and Path(sys.executable).name == "HaizFlowCore.exe":
+            from haizflow.update.filesystem import version
+            from haizflow.update.state import Layout
+            version(core.name)
+            return Layout(core.parent.parent).root
     return project_root()
+
+
+def core_root() -> Path:
+    return project_root()
+
+
+def update_state_dir() -> Path:
+    return install_root() / "update-state"
 
 
 def app_data_dir() -> Path:
     if not runtime_overrides_allowed():
-        return project_root() / "runtime"
+        return install_root() / "runtime"
     override = os.getenv("HAIZFLOW_HOME") or os.getenv("APP_DATA_DIR")
     if override:
         return Path(override).expanduser().resolve()

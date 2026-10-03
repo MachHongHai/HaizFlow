@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,46 @@ class _Resources:
 
 
 class SmartWarmupTests(unittest.TestCase):
+    def test_new_project_without_video_warms_its_draft_not_previous_project(self):
+        host = _Host()
+        host._speech_recognition_model = "large-v3-turbo"
+        host._settings_processing_device = "gpu"
+        controller = SmartWarmupController(host, _Resources())
+        controller._resident_contexts["voice"] = {"provider": "omnivoice-cpu"}
+        controller.request_project_prediction()
+        self.assertEqual(len(controller._requests), 1)
+        self.assertEqual(controller._requests[0].capability, "recognition")
+        self.assertEqual(controller._requests[0].context, {"device": "gpu", "model": "large-v3-turbo"})
+
+    def test_draft_model_change_replaces_pending_old_model_prediction(self):
+        host = _Host()
+        controller = SmartWarmupController(host, _Resources())
+        controller.request_setup_prediction()
+        host._speech_recognition_model = "large-v3-turbo"
+        host._settings_processing_device = "gpu"
+        controller.request_setup_prediction()
+        self.assertEqual(len(controller._requests), 1)
+        self.assertEqual(controller._requests[0].context["model"], "large-v3-turbo")
+
+    def test_current_recognition_model_stays_warm_but_memory_pressure_still_releases_it(self):
+        controller = SmartWarmupController(_Host(), _Resources())
+        controller._resident.add("recognition")
+        controller._resident_contexts["recognition"] = {"device": "cpu", "model": "small"}
+        controller._resident_since["recognition"] = 1.0
+        self.assertIsNone(controller._idle_timeout("recognition"))
+        controller._release_now = Mock()
+        with patch("haizflow.desktop.smart_warmup_controller.runtime_profile", return_value=SimpleNamespace(total_ram_bytes=16 * 1024**3)), patch("haizflow.desktop.smart_warmup_controller.available_memory_bytes", return_value=2 * 1024**3):
+            controller._expire_idle_residents()
+        controller._release_now.assert_called_once_with("memory-pressure")
+
+    def test_download_and_publish_setup_do_not_load_speech_models(self):
+        host = _Host()
+        controller = SmartWarmupController(host, _Resources())
+        for project_type in ("download", "publish"):
+            host._project_type = project_type
+            controller.request_project_prediction()
+        self.assertEqual(controller._requests, [])
+
     def test_foreground_keeps_required_resident_and_releases_only_wrong_prediction(self):
         controller = SmartWarmupController(_Host(), _Resources())
         controller._resident.update({"recognition", "translation", "voice"})
@@ -53,6 +94,14 @@ class SmartWarmupTests(unittest.TestCase):
         controller._release_now.assert_called_once_with("foreground")
         controller.resume_after_foreground()
         self.assertFalse(controller._suspended)
+
+    def test_manual_voice_reuses_only_the_immediately_required_resident(self):
+        controller = SmartWarmupController(_Host(), _Resources())
+        controller._resident.update({"voice", "recognition", "translation"})
+        controller._release_now = Mock()
+        controller.quiesce_for_foreground(required_capabilities={"voice"})
+        controller._release_now.assert_called_once_with("foreground", {"recognition", "translation"})
+        self.assertTrue(controller._suspended)
 
     def test_startup_prediction_only_queues_first_model(self):
         controller = SmartWarmupController(_Host(), _Resources())

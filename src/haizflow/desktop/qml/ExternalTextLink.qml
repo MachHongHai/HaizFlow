@@ -17,10 +17,10 @@ Button {
         id: linkLabel
 
         text: root.text
-        color: root.hovered || root.activeFocus ? Theme.interactiveHover : Theme.interactive
+        color: root.hovered || root.visualFocus ? Theme.interactiveHover : Theme.interactive
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.control
-        font.underline: root.hovered || root.activeFocus
+        font.underline: root.hovered || root.visualFocus
         textFormat: Text.PlainText
     }
 

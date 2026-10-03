@@ -515,7 +515,7 @@ def _migrate_video_metadata(raw_data: dict) -> tuple[dict, bool]:
                     )
                 if override.get("provider") not in {"omnivoice", "omnivoice-gpu"}:
                     override["provider"] = "omnivoice"
-    if data.get("speech_recognition_model") not in {"small", "large-v3-turbo"}:
+    if data.get("speech_recognition_model") not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
         data["speech_recognition_model"] = "small"
     if data.get("translation_model") not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:
         data["translation_model"] = "auto"
@@ -966,28 +966,47 @@ def remove_empty_legacy_output_dir(video_id: str) -> bool:
         return False
 
 
+def validate_video_restart(video_id: str) -> None:
+    """Preflight a fresh attempt without deleting or changing its artifacts."""
+    with managed_storage_guard, _video_lock(video_id):
+        video = _get_video_unlocked(video_id)
+        if video is None:
+            raise ValueError("Video does not exist.")
+        if video.status == "processing":
+            raise RuntimeError("Cannot restart a video while it is processing.")
+        from haizflow.services import manual_artifacts
+
+        if manual_artifacts.has_runtime_pins(video_id):
+            raise RuntimeError("Video is in use by export or preview. Close that consumer before restarting.")
+        safe_tree(get_video_dir(video_id))
+
+
 def prepare_video_restart(video_id: str) -> Optional[VideoInfo]:
     """Discard generated artifacts so a restart always runs from the source video."""
     with managed_storage_guard, _video_lock(video_id):
         video = _get_video_unlocked(video_id)
         if not video:
             return None
-        if video.status == "processing":
-            raise RuntimeError("Cannot restart a video while it is processing.")
-
+        validate_video_restart(video_id)
         video_dir = get_video_dir(video_id)
         from haizflow.services import manual_artifacts
 
-        if manual_artifacts.has_runtime_pins(video_id):
-            raise RuntimeError("Video is in use by export or preview. Close that consumer before restarting.")
-        safe_tree(video_dir)
+        artifacts_dir = str(manual_artifacts.cache_root(video_id))
+        # Auto/Batch restart discards the full generated workspace, including
+        # immutable render revisions, never input assets or external exports.
+        if video.project_type in {"single", "batch"} and os.path.isdir(artifacts_dir):
+            if not _is_inside(artifacts_dir, video_dir) or os.path.normcase(os.path.abspath(artifacts_dir)) == os.path.normcase(os.path.abspath(video_dir)):
+                raise ValueError("Generated cache is outside its owning video workspace.")
+            shutil.rmtree(artifacts_dir, onerror=_force_remove_readonly)
         temp_dir = os.path.join(video_dir, "temp")
         if os.path.isdir(temp_dir):
             shutil.rmtree(temp_dir, onerror=_force_remove_readonly)
         os.makedirs(os.path.join(temp_dir, "voice_parts"), exist_ok=True)
 
         final_video = (video.files or {}).get("final_video") or ""
-        if final_video and _is_inside(final_video, video_dir):
+        # Manual artifacts remain immutable; Auto/Batch revisions above have
+        # been discarded. Never remove a file from a retained artifact here.
+        if final_video and _is_inside(final_video, video_dir) and not _is_inside(final_video, artifacts_dir):
             try:
                 os.remove(final_video)
             except FileNotFoundError:
@@ -1000,6 +1019,9 @@ def prepare_video_restart(video_id: str) -> Optional[VideoInfo]:
         video.files["srt_output"] = os.path.join(temp_dir, "vi.srt")
         video.files["voice_output"] = os.path.join(temp_dir, "voice_final.wav")
         video.files["transcript_json"] = os.path.join(temp_dir, "vi_segments.json")
+        if video.project_type in {"single", "batch"}:
+            video.files["final_video"] = os.path.join(temp_dir, "render.mp4")
+            video.active_artifacts = {}
         video.review_approved = False
         video.status = "pending"
         video.progress = 0

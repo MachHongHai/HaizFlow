@@ -34,7 +34,7 @@ Button {
     background: Rectangle {
         radius: Theme.radiusSmall
         color: root.down ? Theme.windowCaptionPressed
-            : root.hovered || root.activeFocus ? Theme.windowCaptionHover : "transparent"
+            : root.hovered || root.visualFocus ? Theme.windowCaptionHover : "transparent"
         border.width: 0
     }
 }

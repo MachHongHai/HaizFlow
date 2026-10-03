@@ -5,6 +5,7 @@ from __future__ import annotations
 from haizflow.core.hardware import (
     configure_translation_model,
     recommended_processing_device,
+    validate_processing_device,
 )
 from haizflow.desktop.localization import QMessageBox, _set_ui_language
 from haizflow.services import desktop_settings
@@ -13,6 +14,56 @@ from haizflow.services import desktop_settings
 class SettingsController:
     def __init__(self, host):
         self._host = host
+
+    def apply_general(self, language: str, device: str, keep_warm: bool) -> bool:
+        host = self._host
+        if language not in {"vi", "en"} or device not in {"cpu", "gpu"}:
+            return False
+        device_changed = device != host._settings_processing_device
+        if device_changed:
+            if host._processing_queue.has_work or host._device_switching:
+                host.appAlertRequested.emit("Chưa thể đổi bộ xử lý", "Tạm dừng tác vụ trước khi đổi CPU/GPU.", "warning")
+                return False
+            if not host._ensure_hardware_ready_for_action():
+                return False
+            compatible, reason = validate_processing_device(device, host._hardware_capabilities)
+            if not compatible:
+                host.appAlertRequested.emit("Không thể dùng bộ xử lý này", str(reason), "warning")
+                return False
+            resources = getattr(host, "_resource_packs", None)
+            pack = "engine-cuda128-py313" if device == "gpu" else "engine-cpu-py313"
+            if resources and resources.manager.status(pack) == "missing":
+                host.appAlertRequested.emit("Thiếu gói tài nguyên", "Cài bộ xử lý tương ứng trong Gói tài nguyên trước khi áp dụng.", "warning")
+                return False
+        old_language = host._settings_language
+        old_warm = host._keep_models_warm
+        origin = "manual" if device_changed else host._processing_device_origin
+        try:
+            desktop_settings.save_settings({"language": language, "processing_device": device,
+                "processing_device_origin": origin, "keep_models_warm": bool(keep_warm)})
+        except OSError as exc:
+            host.appAlertRequested.emit("Không lưu được cài đặt", str(exc), "warning")
+            return False
+        host._settings_language = language
+        host._settings_processing_device = device
+        host._processing_device_origin = origin
+        host._keep_models_warm = bool(keep_warm)
+        _set_ui_language(language)
+        host.activity_events.set_language(language)
+        warmup = getattr(host, "_smart_warmup", None)
+        if warmup and old_warm and not keep_warm:
+            warmup.release("setting")
+        if device_changed:
+            host._switch_processing_device(device)
+        host.settingsChanged.emit()
+        if old_language != language:
+            host.languageOptionsChanged.emit()
+            host.ttsVoiceOptionsChanged.emit()
+            host.selectedVideoChanged.emit()
+        if warmup and keep_warm and not old_warm:
+            warmup.start()
+            warmup.request_project_prediction()
+        return True
 
     def apply(self, theme, language, translation_model) -> bool:
         host = self._host
@@ -38,7 +89,7 @@ class SettingsController:
                     "theme": theme,
                     "language": language,
                     "processing_device": host._settings_processing_device,
-                    "processing_device_origin": "detected",
+                    "processing_device_origin": getattr(host, "_processing_device_origin", "detected"),
                     "translation_model": translation_model,
                     "keep_models_warm": bool(getattr(host, "_keep_models_warm", True)),
                     "manual_project_cache_gib": int(getattr(host, "_manual_project_cache_gib", 4)),
@@ -183,6 +234,42 @@ class SettingsController:
             warmup.request_project_prediction()
         else:
             warmup.release("setting")
+
+    def set_processing_device(self, preference: str) -> bool:
+        host = self._host
+        if preference not in {"cpu", "gpu"}:
+            return False
+        if host._processing_queue.has_work or getattr(host, "_device_switching", False):
+            host.appAlertRequested.emit("Bộ xử lý đang được dùng", "Tạm dừng hoặc chờ tác vụ hoàn tất trước khi đổi CPU/GPU.", "warning")
+            return False
+        ensure = getattr(host, "_ensure_hardware_ready_for_action", None)
+        if callable(ensure) and not ensure():
+            return False
+        capabilities = getattr(host, "_hardware_capabilities", None)
+        if capabilities is None:
+            return False
+        compatible, reason = validate_processing_device(preference, capabilities)
+        if not compatible:
+            host.appAlertRequested.emit("Không thể dùng bộ xử lý này", str(reason), "warning")
+            return False
+        try:
+            desktop_settings.save_settings({"processing_device": preference, "processing_device_origin": "manual"})
+        except OSError as exc:
+            host.appAlertRequested.emit("Không lưu được cài đặt", str(exc), "warning")
+            return False
+        host._processing_device_origin = "manual"
+        host._settings_processing_device = preference
+        if preference != host._active_processing_device:
+            # Mark the runtime as switching before settings signals can queue a
+            # speculative model load on the previous engine.
+            host._switch_processing_device(preference)
+            host.settingsChanged.emit()
+        else:
+            host.settingsChanged.emit()
+            warmup = getattr(host, "_smart_warmup", None)
+            if warmup:
+                warmup.request_setup_prediction()
+        return True
 
     def set_manual_cache_limits(self, project_gib: int, global_gib: int) -> None:
         host = self._host

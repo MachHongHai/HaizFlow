@@ -97,8 +97,9 @@ Item {
         "source", "translation", "subtitle", "image", "voice", "audio", "export"
     ]
     // qmllint disable missing-property
-    readonly property var toolModel: AppController.manualToolModel.length > 0
-        ? AppController.manualToolModel : [
+    readonly property var availableToolModel: AppController.manualToolModel
+    readonly property var toolModel: availableToolModel.length > 0
+        ? availableToolModel : [
             { "label": qsTr("Nguồn"), "state": "blocked", "canRun": false },
             { "label": qsTr("Nhận dạng & dịch"), "state": "blocked", "canRun": false },
             { "label": qsTr("Phụ đề"), "state": "blocked", "canRun": false },
@@ -607,6 +608,7 @@ Item {
                     sourceEditDecisions: root.editorModel.document.sequence
                         ? (root.editorModel.document.sequence.edit_decisions || []) : []
                     sequenceDurationSeconds: root.editorModel.durationMs / 1000
+                    resultUsesSequenceTimeline: String(AppController.editorPreviewBaseSource || "").length > 0
                     onPositionSecondsChanged: {
                         AppController.manualPreviewComposition.setTime(positionSeconds);
                     }

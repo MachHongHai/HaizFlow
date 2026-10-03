@@ -61,7 +61,7 @@ SpinBox {
     background: Rectangle {
         radius: Theme.radiusSmall
         color: Theme.input
-        border.width: root.activeFocus ? 2 : 1
-        border.color: root.activeFocus ? Theme.focus : Theme.outline
+        border.width: root.visualFocus ? 2 : 1
+        border.color: root.visualFocus ? Theme.focus : Theme.outline
     }
 }

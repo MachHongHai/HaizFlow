@@ -33,7 +33,8 @@ class VideoExportController(QObject):
 
     @property
     def busy(self):
-        return bool((self.worker and self.worker.is_alive()) or any(job["status"] == "rendering" for job in self.jobs))
+        return bool((self.worker and self.worker.is_alive()) or not self.events.empty()
+                    or any(job["status"] == "rendering" for job in self.jobs))
 
     def text(self, vi, en):
         return vi if self.host._settings_language == "vi" else en
@@ -52,6 +53,56 @@ class VideoExportController(QObject):
             "presets": [{"value": value, "label": item["label" if self.host._settings_language == "vi" else "en"]}
                         for value, item in EXPORT_PRESETS.items()],
         }
+
+    def batch_settings(self) -> dict:
+        videos = [video_store.get_video(key) for key in self.host._batch_video_ids]
+        videos = [video for video in videos if video]
+        result = self.settings(videos[0]) if videos else {}
+        result.update(projectKey=str(self.host._selected_project_key or ""),
+                      videoIds=[video.video_id for video in videos], count=len(videos))
+        return result
+
+    def choose_batch_directory(self) -> str:
+        directory = QFileDialog.getExistingDirectory(
+            None, self.text("Chọn thư mục xuất video", "Choose video export folder"),
+            desktop_settings.load_settings().get("last_export_directory") or native_media_dialog_directory(),
+        )
+        if not directory:
+            return ""
+        try:
+            targets = []
+            for video_id in self.host._batch_video_ids:
+                video = video_store.get_video(video_id)
+                if video:
+                    target = validate_export_destination(Path(directory) / batch_filename(video))
+                    targets.append((target, destination_identity(target)))
+            existing = sum(target.exists() for target, _identity in targets)
+            if existing and QMessageBox.question(
+                None, self.text("Thay thế video đã có?", "Replace existing videos?"),
+                self.text(f"Có {existing} tệp trùng tên trong thư mục đã chọn. Thay thế khi xuất?",
+                          f"{existing} files already exist in the selected folder. Replace them when exporting?"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) != QMessageBox.StandardButton.Yes:
+                return ""
+            for target, identity in targets:
+                self._chosen_targets[str(target)] = identity
+        except (OSError, ValueError) as exc:
+            self.alert(exc)
+            return ""
+        return str(Path(directory).resolve())
+
+    def batch_destination_exists(self, directory) -> bool:
+        return any((Path(directory) / batch_filename(video)).exists()
+                   for key in self.host._batch_video_ids if (video := video_store.get_video(key)))
+
+    def _set_jobs(self, jobs):
+        # Paused exports from another project must survive navigation and a
+        # new job. Replacing a destination for the same video is explicit.
+        identifiers = {job["videoId"] for job in jobs}
+        waiting = [job for job in self.jobs if job["status"] in {"paused", "awaiting_review"}
+                   and job["videoId"] not in identifiers]
+        self.jobs = waiting + jobs
 
     def choose_file(self, video_id) -> str:
         video = video_store.get_video(str(video_id))
@@ -94,7 +145,7 @@ class VideoExportController(QObject):
         return self.text("Không thể lưu ở vị trí này. Chọn thư mục ngoài dữ liệu dự án và thử lại. ",
                          "Cannot save here. Choose a folder outside managed project data and retry. ") + str(error)
 
-    def start(self, video_id, preset, destination, *, overwrite=False) -> bool:
+    def start(self, video_id, preset, destination, *, overwrite=False, process=False) -> bool:
         if self.busy:
             return False
         video = video_store.get_video(str(video_id))
@@ -108,28 +159,117 @@ class VideoExportController(QObject):
             return False
         if not video or self.host._processing_queue.contains(video.video_id):
             return False
+        if process and (video.project_type not in {"single", "batch"}
+                        or video.video_id != str(self.host._selected_video_id or "")):
+            return False
+        previous_preset = video.export_preset
         video_store.update_video(video.video_id, export_preset=preset)
         video = video_store.get_video(video.video_id)
         job = {"videoId": video.video_id, "name": target.name, "path": str(target),
                "status": "pending", "progress": 0, "error": "", "overwrite": bool(overwrite),
+               "process": bool(process),
                "targetIdentity": self._chosen_targets.get(str(target), destination_identity(target))}
-        self.jobs = [job]
+        previous_jobs = self.jobs
+        self._set_jobs([job])
         self.cancel.clear()
         ready = current_render(video, verify=False)
         legacy = str((video.files or {}).get("final_video") or "")
         legacy_candidate = (not (video.active_artifacts or {}).get("export") and video.status == "done"
+                            and preset == previous_preset
                             and bool(video.checkpoints.get("render")) and legacy and Path(legacy).is_file()
                             and legacy_render_owned(video, legacy))
-        if not ready:
+        if process:
+            from haizflow.desktop.project_commands_controller import ProjectCommandsController
+
+            if not ProjectCommandsController(self.host).process_for_export(video.video_id):
+                video_store.update_video(video.video_id, export_preset=previous_preset)
+                self.jobs = previous_jobs
+                self.changed()
+                return False
+            job["status"] = "rendering"
+        elif not ready:
             # A legacy copy may be adopted only on the worker, never while QML
             # paints. If a rebuild is required, reuse upstream checkpoints.
             if legacy_candidate and video.project_type != "manual":
                 self.launch([job])
             elif not self.request_render(video, job):
-                self.jobs = []
+                video_store.update_video(video.video_id, export_preset=previous_preset)
+                self.jobs = previous_jobs
                 return False
         else:
             self.launch([job])
+        self.changed()
+        return True
+
+    def start_batch_to(self, project_key, video_ids, preset, directory, *, overwrite=False, process=True) -> bool:
+        """Capture destinations and validate the whole batch before enqueueing."""
+        if (self.busy or not video_ids or project_key != str(self.host._selected_project_key or "")
+                or list(video_ids) != list(self.host._batch_video_ids)):
+            return False
+        videos = [video_store.get_video(key) for key in video_ids]
+        if any(not video or video.project_type != "batch" or video.project_key != project_key
+               or self.host._processing_queue.contains(video.video_id) or video.status == "processing"
+               for video in videos):
+            return False
+        jobs = []
+        try:
+            preset_settings(str(preset))
+            if not Path(directory).is_dir():
+                raise FileNotFoundError(directory)
+            for video in videos:
+                target = validate_export_destination(Path(directory) / batch_filename(video))
+                if target.exists() and not overwrite:
+                    raise FileExistsError(str(target))
+                jobs.append({"videoId": video.video_id, "name": target.name, "path": str(target),
+                             "status": "rendering" if process else "pending", "progress": 0, "error": "",
+                             "overwrite": bool(overwrite), "process": bool(process),
+                             "targetIdentity": self._chosen_targets.get(str(target), destination_identity(target))})
+        except (OSError, ValueError) as exc:
+            self.alert(exc)
+            return False
+        from haizflow.desktop.project_commands_controller import ProjectCommandsController
+
+        if process and not ProjectCommandsController._resources_ready_for_videos(self.host, videos):
+            return False
+        if process:
+            try:
+                # Validate every member before touching any cached result.
+                for video in videos:
+                    video_store.validate_video_restart(video.video_id)
+                for video in videos:
+                    video_store.prepare_video_restart(video.video_id)
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.alert(exc)
+                return False
+        previous_jobs = self.jobs
+        self._set_jobs(jobs)
+        self.cancel.clear()
+        for video in videos:
+            video_store.update_video(video.video_id, export_preset=str(preset))
+        if process:
+            from haizflow.pipeline.process_registry import prepare_video_resume
+
+            for video in videos:
+                prepare_video_resume(video.video_id)
+            self.host._batch_running = True
+            self.host._batch_stop_requested = False
+            if not self.host._enqueue_videos(list(video_ids)):
+                self.host._batch_running = False
+                self.jobs = previous_jobs
+                self.changed()
+                return False
+            self.host.batchChanged.emit()
+            self.host.refreshVideos()
+        else:
+            ready = []
+            for job in jobs:
+                video = video_store.get_video(job["videoId"])
+                if current_render(video, verify=False):
+                    ready.append(job)
+                elif not self.request_render(video, job):
+                    job.update(status="failed", error=self.text("Không thể dựng video.", "Cannot render video."))
+            if ready:
+                self.launch(ready)
         self.changed()
         return True
 
@@ -138,10 +278,15 @@ class VideoExportController(QObject):
             if str(self.host._selected_video_id or "") != video.video_id or not self.host.runManualTool("export"):
                 return False
         else:
+            from haizflow.desktop.project_commands_controller import ProjectCommandsController
             from haizflow.pipeline.process_registry import prepare_video_resume
 
+            if not ProjectCommandsController._resources_ready(self.host, video):
+                return False
             prepare_video_resume(video.video_id)
-            video_store.update_video(video.video_id, resume_step="rendering", error=None)
+            # A resume hint enables checkpoint reuse, not stage skipping. The
+            # pipeline still validates every upstream signature and output.
+            video_store.update_video(video.video_id, status="pending", resume_step="rendering", error=None)
             if not self.host._enqueue_video(video.video_id):
                 return False
         job["status"] = "rendering"
@@ -183,9 +328,18 @@ class VideoExportController(QObject):
             return False
         videos = [video_store.get_video(identifier) for identifier in self.host._batch_video_ids]
         videos = [video for video in videos if video]
-        if not videos:
+        ready_videos = [video for video in videos if video.status == "done"
+                        and not self.host._processing_queue.contains(video.video_id)
+                        and (current_render(video, verify=False)
+                             or (not (video.active_artifacts or {}).get("export")
+                                 and video.checkpoints.get("render")
+                                 and Path(str((video.files or {}).get("final_video") or "")).is_file()
+                                 and legacy_render_owned(video, video.files["final_video"])))]
+        if not ready_videos:
             self.alert(FileNotFoundError("No current render is available."))
             return False
+        skipped = len(videos) - len(ready_videos)
+        videos = ready_videos
         directory = QFileDialog.getExistingDirectory(None, self.text("Xuất các video đã dựng", "Export rendered videos"),
                                                      desktop_settings.load_settings().get("last_export_directory") or native_media_dialog_directory())
         if not directory:
@@ -209,6 +363,13 @@ class VideoExportController(QObject):
         self.jobs = jobs
         self.cancel.clear()
         self.launch(jobs)
+        if skipped:
+            self.host.appAlertRequested.emit(
+                self.text("Xuất hàng loạt", "Batch export"),
+                self.text(f"Xuất {len(videos)} video đã dựng. Bỏ qua {skipped} video chưa hoàn tất hoặc cần dựng lại.",
+                          f"Exporting {len(videos)} rendered videos. Skipping {skipped} unfinished or outdated videos."),
+                "info",
+            )
         self.changed()
         return True
 
@@ -227,14 +388,25 @@ class VideoExportController(QObject):
         for job in jobs:
             job.update(status="pending", progress=0, error="")
         self.cancel.clear()
-        self.launch(jobs)
+        ready = []
+        for job in jobs:
+            video = video_store.get_video(job["videoId"])
+            if video and (video.project_type == "manual" or video.status == "done") and current_render(video, verify=False):
+                ready.append(job)
+            elif video and not self.host._processing_queue.contains(video.video_id) and self.request_render(video, job):
+                continue
+            else:
+                job.update(status="failed", error=self.text("Tiếp tục xử lý trong dự án trước khi xuất lại.",
+                                                            "Resume processing in the project before retrying export."))
+        if ready:
+            self.launch(ready)
         self.changed()
         return True
 
     def cancel_all(self):
         self.cancel.set()
         for job in self.jobs:
-            if job["status"] == "rendering":
+            if job["status"] in {"rendering", "paused", "awaiting_review"}:
                 job.update(status="cancelled", error=self.error_text(ExportCancelled()))
         self.changed()
 
@@ -249,10 +421,27 @@ class VideoExportController(QObject):
                 if status == "done":
                     self.host.videoExportCompleted.emit(identifier, job["path"])
         for job in self.jobs:
-            if job["status"] != "rendering" or self.host._processing_queue.contains(job["videoId"]):
+            if job["status"] not in {"rendering", "paused", "awaiting_review"}:
+                continue
+            if self.host._processing_queue.contains(job["videoId"]):
+                if job["status"] != "rendering":
+                    job.update(status="rendering", error="")
+                    changed = True
+                continue
+            if self.worker and self.worker.is_alive():
                 continue
             video = video_store.get_video(job["videoId"])
-            if video and current_render(video, verify=False):
+            if video and video.status == "processing":
+                # The queue must remain the owner until it detaches the item.
+                continue
+            if video and video.status in {"paused", "awaiting_review"}:
+                if job["status"] != video.status:
+                    job.update(status=video.status, error=self.text(
+                        "Đang chờ tiếp tục xử lý hoặc duyệt phụ đề trong dự án.",
+                        "Waiting for processing to resume or subtitles to be approved in the project."))
+                    changed = True
+                continue
+            if video and video.status == "done" and current_render(video, verify=False):
                 job["status"] = "pending"
                 self.launch([job])
             else:

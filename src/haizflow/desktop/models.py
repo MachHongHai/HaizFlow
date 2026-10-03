@@ -423,7 +423,7 @@ class ProjectGridModel(ProjectListModel):
     ensuring every exposed row maps directly to a persisted project.
     """
 
-    IsCreateCardRole = Qt.ItemDataRole.UserRole + 10
+    IsCreateCardRole = Qt.ItemDataRole.UserRole + 11
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or index.row() < 0 or index.row() >= self.rowCount():

@@ -21,12 +21,21 @@ from haizflow.services.video_export import legacy_render_owned, preset_settings
 # Cache-contract versions are intentionally available without importing the
 # model runtimes that implement them. Importing WhisperX/torch from a QML
 # property getter used to stall the first Manual workspace paint for 20+ s.
-DETECTOR_CACHE_VERSION = 21
+DETECTOR_CACHE_VERSION = 22
 # v1 clips may have been generated before OmniVoice used a stable narrator
 # anchor. Mixing those clips with newly synthesized sentences changes timbre
 # even when every segment declares the same voice ID.
 VOICE_CLIP_CACHE_VERSION = "manual-tts-clip-v2-stable-narrator"
 VOICE_MANIFEST_CACHE_VERSION = "manual-tts-manifest-v2-stable-narrator"
+
+
+def _voice_cache_version(video, *, manifest: bool = False) -> str:
+    # The source-reference fix changes only multi-speaker synthesis. Retain
+    # good single/explicit-clone clips instead of forcing a full long rerun.
+    if str(getattr(video, "speaker_mode", "single") or "single") == "multiple":
+        from haizflow.pipeline.speaker_identity import IDENTITY_VERSION
+        return ("manual-tts-manifest-v5-" if manifest else "manual-tts-clip-v5-") + IDENTITY_VERSION
+    return VOICE_MANIFEST_CACHE_VERSION if manifest else VOICE_CLIP_CACHE_VERSION
 
 
 # Keep these names patchable for unit tests while loading every heavyweight
@@ -86,11 +95,18 @@ def detect_original_subtitle_region(*args, **kwargs):
 
 def transcribe(*args, **kwargs):
     from haizflow.core.hardware import processing_device_preference
+    from haizflow.core.model_choices import recognition_context
     from haizflow.services.external_tasks import run_external_task
 
     audio_path, output_json_path, source_language, video_id = args[:4]
     callback = kwargs.get("progress_callback")
     model_name = str(kwargs.get("model_name") or "small")
+    context = recognition_context(model_name, processing_device_preference())
+    model_name = context["model"]
+    video_store.log_to_video(
+        str(video_id), f"Preparing Whisper speech-recognition worker ({model_name}).",
+        component="WHISPERX", level="INFO",
+    )
     result = run_external_task(
         "recognition",
         "transcribe",
@@ -102,7 +118,7 @@ def transcribe(*args, **kwargs):
             "model_name": model_name,
         },
         str(video_id),
-        context={"device": processing_device_preference(), "model": model_name},
+        context=context,
         isolate_source=True,
         progress_callback=(
             (lambda status: callback(str(status.get("stage") or "processing"), str(status.get("detail") or "")))
@@ -114,7 +130,7 @@ def transcribe(*args, **kwargs):
         return list(result.get("segments") or []), str(result.get("detected_language") or "")
     from haizflow.pipeline.transcribe import transcribe as implementation
 
-    return implementation(*args, **kwargs)
+    return implementation(*args, **{**kwargs, "model_name": model_name, "device_preference": context["device"]})
 
 
 def _release_recognition_runtime() -> None:
@@ -386,7 +402,7 @@ def _voice_clip_signatures(video, segments: list[dict[str, Any]]) -> list[str]:
                 recognition,
                 index if speaker_mode == "multiple" else 0,
                 *_generation_token(video, "voice"),
-                VOICE_CLIP_CACHE_VERSION,
+                _voice_cache_version(video),
             )
         )
     return signatures
@@ -463,7 +479,7 @@ def ensure_narrator_anchor(video_id: str) -> str:
 
 def voice_signature(video, *, validate: bool = True) -> str:
     clips = _voice_clip_signatures(video, _load_segments(video, validate=validate))
-    return manual_artifacts.signature(clips, VOICE_MANIFEST_CACHE_VERSION) if clips else ""
+    return manual_artifacts.signature(clips, _voice_cache_version(video, manifest=True)) if clips else ""
 
 
 def _record_segments(record: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -959,6 +975,7 @@ def restore_cached_variants(video_id: str, *, validate: bool = True) -> list[str
     return list(dict.fromkeys(restored))
 
 
+@manual_artifacts.presentation_batch
 def tool_states(video, *, language: str = "vi") -> list[dict[str, Any]]:
     labels_vi = {
         "source": "Nguồn", "translation": "Nhận dạng & dịch", "subtitle": "Phụ đề",
@@ -1527,7 +1544,7 @@ def _run_voice(video, reporter) -> None:
     narrator_anchor = ensure_narrator_anchor(video.video_id)
     video = video_store.get_video(video.video_id) or video
     clip_signatures = _voice_clip_signatures(video, segments)
-    expected = manual_artifacts.signature(clip_signatures, VOICE_MANIFEST_CACHE_VERSION)
+    expected = manual_artifacts.signature(clip_signatures, _voice_cache_version(video, manifest=True))
     cached = manual_artifacts.resolve(video.video_id, "tts_manifest", expected)
     if not cached:
         staging = manual_artifacts.create_staging_directory(video.video_id, "tts_manifest")
@@ -1566,9 +1583,14 @@ def _run_voice(video, reporter) -> None:
 
                 def report_voice_status(stage: str, current: int, _total: int) -> None:
                     preparing_details = {
+                        "importing_runtime": "Đang khởi tạo thư viện giọng đọc",
+                        "reusing_runtime": "Đang dùng bộ tạo giọng đã khởi tạo",
                         "loading_model": "Đang nạp model giọng đọc",
                         "reusing_model": "Đang dùng model giọng đọc đã nạp",
                         "creating_voice_anchor": "Đang ổn định chất giọng",
+                        "loading_voice_reference": "Đang chuẩn bị mẫu giọng",
+                        "reusing_voice_anchor": "Đang dùng mẫu giọng đã chuẩn bị",
+                        "identifying_speakers": "Đang nhận diện người nói",
                         "launching_worker": "Đang khởi tạo bộ tạo giọng",
                     }
                     if stage in preparing_details:
@@ -1690,7 +1712,7 @@ def _publish_completed_voice_clips(video, subtitle, parts_dir: Path, clip_signat
             clip_signature,
             {"audio": str(part_path)},
             inputs=[subtitle["artifact_id"]],
-            config_fingerprint=VOICE_CLIP_CACHE_VERSION,
+            config_fingerprint=_voice_cache_version(video),
             activate_artifact=False,
         )
 
@@ -1705,7 +1727,7 @@ def _register_voice_manifest_from_parts(video, parts_dir: Path) -> dict[str, Any
     if any(not _is_valid_mp3(str(parts_dir / f"voice_{index:04d}.mp3")) for index in range(1, len(segments) + 1)):
         return None
     _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures)
-    expected = manual_artifacts.signature(clip_signatures, VOICE_MANIFEST_CACHE_VERSION)
+    expected = manual_artifacts.signature(clip_signatures, _voice_cache_version(video, manifest=True))
     cached = manual_artifacts.resolve(video.video_id, "tts_manifest", expected)
     if cached:
         manual_artifacts.activate(video.video_id, "tts_manifest", expected)

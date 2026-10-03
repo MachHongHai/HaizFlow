@@ -17,6 +17,18 @@ def candidate(frame, text, *, x=25, y=78, width=50, height=5, confidence=0.9):
 
 
 class SubtitleOcrSelectionTests(unittest.TestCase):
+    def test_scene_board_labels_do_not_enlarge_uppercase_caption(self):
+        items = [candidate(frame, f"CHANGING CAPTION {frame}", y=69, height=3.5)
+                 for frame in range(1, 29)]
+        items.extend([
+            candidate(7, "Calculus", x=36, y=65.6, width=11, height=4.2),
+            candidate(7, "Physics", x=38, y=74.4, width=9.6, height=4.3),
+            candidate(20, "TWO LINE CAPTION", y=66, height=3.5),
+        ])
+        region = select_subtitle_region(items, sample_count=36)
+        self.assertEqual(region["y_percent"], 66)
+        self.assertEqual(region["height_percent"], 6.5)
+
     def test_detector_downscales_frames_and_reports_scan_progress(self):
         captured = {}
 

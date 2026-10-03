@@ -14,7 +14,7 @@ from haizflow.services import desktop_settings
 
 
 class DesktopSettingsTests(unittest.TestCase):
-    def test_translation_model_is_global_and_migrates_manual_device_choice(self):
+    def test_translation_model_save_preserves_explicit_device_choice(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "desktop-settings.json"
             path.write_text(json.dumps({"processing_device": "cpu", "processing_device_origin": "manual"}), encoding="utf-8")
@@ -23,7 +23,7 @@ class DesktopSettingsTests(unittest.TestCase):
                 saved = desktop_settings.save_settings({"translation_model": "q4"})
                 reread = desktop_settings.load_settings()
 
-        self.assertEqual(loaded["processing_device_origin"], "detected")
+        self.assertEqual(loaded["processing_device_origin"], "manual")
         self.assertEqual(saved["translation_model"], "q4")
         self.assertEqual(reread["translation_model"], "q4")
 

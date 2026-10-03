@@ -8,6 +8,16 @@ ColumnLayout {
     id: root
     property var inspector
     spacing: Theme.space8
+    Text {
+        Layout.fillWidth: true
+        text: AppController.processingDevice === "gpu"
+            ? qsTr("Máy đang dùng GPU. Model GPU thường xử lý nhanh hơn; bạn vẫn có thể chọn CPU.")
+            : qsTr("Chế độ CPU: model GPU chưa khả dụng. Đổi bộ xử lý trong Cài đặt → Chung để sử dụng GPU.")
+        color: Theme.textMuted
+        font.pixelSize: TypeScale.metadata
+        wrapMode: Text.Wrap
+        textFormat: Text.PlainText
+    }
     SettingLabel {
         Layout.fillWidth: true
         text: qsTr("Model nhận dạng")

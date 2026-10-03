@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-Rectangle {
+Control {
     id: root
 
     required property int index
@@ -31,10 +31,14 @@ Rectangle {
     readonly property color statusColor: status === "done" ? Theme.success : status === "failed" || status === "cancelled" ? Theme.danger : status === "processing" ? Theme.warning : status === "awaiting_review" || status === "manual_ready" ? Theme.interactive : Theme.textMuted
 
     height: Math.round(width * 0.56 + 64)
-    radius: Theme.radius
-    color: hoverHandler.hovered ? Theme.surfaceMuted : Theme.surface
-    border.width: activeFocus ? 2 : 1
-    border.color: activeFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : Theme.outline
+    padding: 0
+    background: Rectangle {
+        objectName: "projectCardBackground"
+        radius: Theme.radius
+        color: hoverHandler.hovered ? Theme.surfaceMuted : Theme.surface
+        border.width: root.visualFocus ? 2 : 1
+        border.color: root.visualFocus ? Theme.focus : hoverHandler.hovered ? Theme.outlineStrong : Theme.outline
+    }
     focusPolicy: Qt.TabFocus
     Accessible.role: Accessible.Button
     Accessible.name: projectName
@@ -58,6 +62,8 @@ Rectangle {
 
         acceptedButtons: Qt.LeftButton
         onTapped: {
+            root.focus = false;
+            root.forceActiveFocus(Qt.MouseFocusReason);
             root.activated();
         }
     }
@@ -65,7 +71,8 @@ Rectangle {
     TapHandler {
         acceptedButtons: Qt.RightButton
         onTapped: function (eventPoint) {
-            root.forceActiveFocus();
+            root.focus = false;
+            root.forceActiveFocus(Qt.MouseFocusReason);
             const position = root.mapToItem(Overlay.overlay, eventPoint.position.x, eventPoint.position.y);
             projectContextMenu.x = Math.round(position.x);
             projectContextMenu.y = Math.round(position.y);
@@ -75,6 +82,7 @@ Rectangle {
 
     Menu {
         id: projectContextMenu
+        objectName: "projectContextMenu"
 
         parent: Overlay.overlay
         width: 224

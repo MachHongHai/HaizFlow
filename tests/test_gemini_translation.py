@@ -24,6 +24,30 @@ class _Response:
 
 
 class GeminiTranslationTests(unittest.TestCase):
+    def test_batch_start_is_logged_before_waiting_for_api_response(self):
+        events = []
+
+        def send_chunk(chunk, **_kwargs):
+            self.assertEqual(events[0][0], "log")
+            self.assertIn("Sending Gemini translation batch", events[0][1])
+            self.assertEqual(events[1], ("progress", 0))
+            events.append(("request", len(chunk)))
+            return ["Xin chào" for _ in chunk]
+
+        with (
+            patch.object(gemini_translation, "active_key", return_value="fixture-key"),
+            patch.object(gemini_translation, "check_cancellation"),
+            patch.object(gemini_translation, "log_to_video", side_effect=lambda _id, text, **_: events.append(("log", text))),
+            patch.object(gemini_translation, "_request_chunk", side_effect=send_chunk),
+        ):
+            result = gemini_translation.translate_texts(
+                ["Hello"], model="gemini-3.1-flash-lite", source_language="English",
+                target_language="Vietnamese", video_id="fixture",
+                progress_callback=lambda done, _total, _detail: events.append(("progress", done)),
+            )
+        self.assertEqual(result, ["Xin chào"])
+        self.assertEqual(events[-1], ("progress", 1))
+
     def test_named_keys_select_active_without_exposing_secrets(self):
         credentials = {}
         with tempfile.TemporaryDirectory() as directory:

@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from haizflow.core.hardware import available_memory_bytes, runtime_profile
+from haizflow.core.model_choices import recognition_context
 from haizflow.services.external_engine import close_shared_external_engine_pool, shared_external_engine_pool
 
 
@@ -36,6 +37,7 @@ class SmartWarmupController:
         self._resident: set[str] = set()
         self._resident_since: dict[str, float] = {}
         self._resident_contexts: dict[str, dict] = {}
+        self._validation_required: set[str] = set()
         self._events: queue.Queue[dict] = queue.Queue()
         self._active_capability = ""
         self._active_context: dict = {}
@@ -58,6 +60,14 @@ class SmartWarmupController:
         self.request_startup_prediction()
 
     def request_startup_prediction(self) -> None:
+        # Startup belongs to the app, not to whichever project was opened last.
+        device = str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu")
+        self.request("recognition", {"device": device, "model": "small"}, priority=30)
+
+    def request_setup_prediction(self) -> None:
+        """Warm the current draft, including projects without an imported video."""
+        if str(getattr(self._host, "_project_type", "single")) in {"download", "publish"}:
+            return
         device = str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu")
         model = str(getattr(self._host, "_speech_recognition_model", "small") or "small")
         # A single speculative load is enough, especially on 16 GB systems.
@@ -66,6 +76,7 @@ class SmartWarmupController:
     def request_project_prediction(self) -> None:
         video = self._host._selected_video()
         if video is None:
+            self.request_setup_prediction()
             return
         context = {
             "device": str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu"),
@@ -77,6 +88,12 @@ class SmartWarmupController:
         }
         last_tool = str(getattr(video, "manual_target_tool", "") or "")
         predicted = {"voice": "voice", "source": "separation", "image": "ocr"}.get(last_tool, "recognition")
+        if not last_tool and (getattr(video, "files", {}) or {}).get("transcript_json") and (
+            getattr(video, "status", "") == "done" or getattr(video, "resume_step", "") in {
+                "creating_voice", "building_audio_timeline", "rendering"
+            }
+        ):
+            predicted = "voice"
         self.request(predicted, context, priority=10)
 
     def request(self, capability: str, context: dict | None = None, *, priority: int = 20) -> None:
@@ -86,6 +103,28 @@ class SmartWarmupController:
         if capability not in {"recognition", "translation", "voice", "separation", "ocr"}:
             return
         context = dict(context or {})
+        if capability == "recognition":
+            try:
+                context.update(recognition_context(str(context.get("model") or "small"), str(context.get("device") or "cpu")))
+            except ValueError as exc:
+                self._events.put({"state": "skipped", "capability": capability, "detail": str(exc)})
+                return
+        if str(getattr(self._host, "_settings_processing_device", "cpu")) != "gpu" and (
+            (capability == "voice" and str(context.get("provider", "")).endswith("-gpu"))
+            or (capability == "translation" and context.get("translation_model") == "full")
+        ):
+            return
+        # Compare only inputs that affect this capability. Opening another
+        # project/language must not discard the same warmed Whisper checkpoint.
+        fields = {
+            "recognition": ("device", "model"),
+            "translation": ("device", "translation_model"),
+            "voice": ("provider",),
+            "separation": ("device",), "ocr": (),
+        }[capability]
+        context = {key: context[key] for key in fields if key in context}
+        if capability == "voice":
+            context["provider"] = "omnivoice-gpu" if str(context.get("provider") or "").endswith("-gpu") else "omnivoice-cpu"
         with self._condition:
             self._sequence += 1
             # Keep only the latest prediction. Queuing recognition and HY-MT2
@@ -107,7 +146,7 @@ class SmartWarmupController:
             if request is None:
                 self._expire_idle_residents()
                 continue
-            while self._host._processing_queue.has_work and not self._stopping:
+            while (self._host._processing_queue.has_work or getattr(self._host, "_device_switching", False)) and not self._stopping:
                 time.sleep(0.1)
             if self._stopping:
                 return
@@ -117,6 +156,7 @@ class SmartWarmupController:
                 if self._requests and self._sequence > request.sequence:
                     continue
                 existing = self._resident_contexts.get(request.capability)
+                needs_validation = request.capability in self._validation_required
             if existing is not None and existing != request.context:
                 self._release_now("model-changed", {request.capability})
             missing = self._resource_manager.missing_packs(request.capability, request.context)
@@ -149,12 +189,13 @@ class SmartWarmupController:
                         "detail": self._warming_label(request.capability),
                     }
                 )
-                if existing != request.context:
+                if existing != request.context or needs_validation:
                     self._warm(request.capability, request.context)
                 with self._condition:
                     self._resident.add(request.capability)
                     self._resident_since[request.capability] = time.monotonic()
                     self._resident_contexts[request.capability] = dict(request.context)
+                    self._validation_required.discard(request.capability)
                 self._events.put(
                     {
                         "state": "ready",
@@ -233,6 +274,17 @@ class SmartWarmupController:
                 return None
             return 300.0
         if capability == "recognition":
+            # Keeping the currently selected checkpoint useful is the purpose
+            # of this setting, even while the user prepares a new project.
+            # Live memory-pressure checks still release it before RAM runs low.
+            context = self._resident_contexts.get("recognition", {})
+            try:
+                selected = recognition_context(str(getattr(self._host, "_speech_recognition_model", "small") or "small"),
+                                               str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu"))
+            except ValueError:
+                selected = {}
+            if context == selected:
+                return None
             return 300.0
         return 90.0
 
@@ -282,7 +334,7 @@ class SmartWarmupController:
 
             requested = str(context.get("model") or "small")
             model = "large-v3-turbo" if requested in {"large-v3-turbo", "turbo"} else "small"
-            warm_whisperx_model(model)
+            warm_whisperx_model(model, device_preference=str(context.get("device") or "cpu"))
         elif capability == "separation":
             # Importing inside this worker initializes the installed engine and
             # keeps the UI process free of Torch startup work.
@@ -294,9 +346,17 @@ class SmartWarmupController:
         with self._condition:
             residents = set(self._resident if capabilities is None else self._resident.intersection(capabilities))
             self._resident.difference_update(residents)
+            self._validation_required.difference_update(residents)
             for capability in residents:
                 self._resident_since.pop(capability, None)
                 self._resident_contexts.pop(capability, None)
+        if reason in {"shutdown", "storage-move", "device-switch", "memory-pressure"} and "voice" not in residents:
+            # A foreground job may leave an imports-only worker after all
+            # speculative resident markers have been removed. It still owns
+            # SDK/DLL handles and must close before resource moves or shutdown.
+            from haizflow.pipeline.omnivoice_tts import clear_runtime
+
+            clear_runtime()
         if not residents:
             return
         external_residents = self._external_engines.release(residents)
@@ -310,9 +370,12 @@ class SmartWarmupController:
 
             release_warm_whisperx_model()
         if "voice" in bundled_residents:
-            from haizflow.pipeline.omnivoice_tts import clear_runtime
+            from haizflow.pipeline.omnivoice_tts import clear_runtime, release_model_memory
 
-            clear_runtime()
+            if reason == "foreground":
+                release_model_memory()
+            else:
+                clear_runtime()
         self._events.put(
             {
                 "state": "released",
@@ -387,7 +450,7 @@ class SmartWarmupController:
             if not self._preempt_active_warm(active):
                 self.release("foreground", {active})
 
-    def quiesce_for_foreground(self, timeout_seconds: float = 30.0) -> None:
+    def quiesce_for_foreground(self, timeout_seconds: float = 30.0, *, required_capabilities: set[str] | None = None) -> None:
         """Finish speculative cleanup before a memory-constrained job loads models.
 
         Called by the processing worker, never by the Qt/UI thread. Merely
@@ -395,11 +458,12 @@ class SmartWarmupController:
         recognition/translation worker could start while that release was
         still unloading a different model.
         """
+        required = set(required_capabilities or set())
         with self._condition:
             self._suspended = True
             self._requests.clear()
             active = self._active_capability
-        if active:
+        if active and active not in required:
             self._preempt_active_warm(active)
         deadline = time.monotonic() + max(0.5, float(timeout_seconds))
         with self._condition:
@@ -407,11 +471,23 @@ class SmartWarmupController:
                 self._condition.wait(timeout=0.1)
             if self._active_capability:
                 raise RuntimeError("Không thể giải phóng model đã chuẩn bị trước khi xử lý.")
-        self._release_now("foreground")
+        if required:
+            with self._condition:
+                speculative = self._resident.difference(required)
+                for capability in self._resident.intersection(required):
+                    self._resident_since[capability] = time.monotonic()
+            self._release_now("foreground", speculative)
+        else:
+            self._release_now("foreground")
 
     def resume_after_foreground(self) -> None:
         with self._condition:
             self._suspended = False
+            # Stages may have released their engine directly for RAM/VRAM
+            # handoff. Revalidate through warm RPC rather than reporting a
+            # stale speculative marker as ready. Existing live models reuse
+            # their own warm-runtime cache, without loading a second copy.
+            self._validation_required.update(self._resident)
             self._condition.notify_all()
         if bool(getattr(self._host, "_keep_models_warm", True)) and not self._stopping:
             self.request_project_prediction()

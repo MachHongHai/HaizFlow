@@ -65,11 +65,6 @@ def load_settings() -> dict:
                 settings["processing_device"] = "cpu"
                 settings["processing_device_origin"] = "detected"
                 migrate_legacy_settings = True
-            # The device toggle was removed. Old manual choices must no longer
-            # pin this installation to CPU or GPU without a visible control.
-            if settings.get("processing_device_origin") == "manual":
-                settings["processing_device_origin"] = "detected"
-                migrate_legacy_settings = True
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     if settings.get("theme") != "graphite":

@@ -10,6 +10,7 @@ Module {
         name: "ManualEditorDocumentModel"
         prototype: "QObject"
         accessSemantics: "reference"
+        Signal { name: "clipsChanged" }
         Property { name: "videoId"; type: "string"; isReadonly: true }
         Property { name: "document"; type: "QVariantMap"; isReadonly: true }
         Property { name: "tracks"; type: "QVariantList"; isReadonly: true }
@@ -106,6 +107,10 @@ Module {
         Method { name: "undoManualEdit"; type: "bool" }
         Method { name: "redoManualEdit"; type: "bool" }
         Method { name: "setKeepModelsWarm"; Parameter { name: "enabled"; type: "bool" } }
+        Method { name: "setProcessingDevice"; type: "bool"; Parameter { name: "preference"; type: "string" } }
+        Method { name: "applyGeneralSettings"; type: "bool"; Parameter { name: "language"; type: "string" } Parameter { name: "device"; type: "string" } Parameter { name: "keepWarm"; type: "bool" } }
+        Method { name: "voiceCloneInputDevices"; type: "QVariantList" }
+        Method { name: "selectVoiceCloneInputDevice"; type: "bool"; Parameter { name: "deviceId"; type: "string" } }
         Method { name: "checkForAppUpdates" }
         Method { name: "checkAppUpdateIfNeeded" }
         Method { name: "installAppUpdate"; type: "bool" }
@@ -2209,6 +2214,7 @@ Module {
         Property { name: "videoExportJobs"; type: "QVariantList"; read: "videoExportJobs"; notify: "exportStateChanged"; isReadonly: true }
         Signal { name: "exportStateChanged" }
         Signal { name: "videoExportRequested" }
+        Signal { name: "autoProcessingRequested" }
         Signal { name: "videoExportStarted" }
         Signal { name: "videoExportCompleted"; Parameter { name: "a1"; type: "QString" } Parameter { name: "a2"; type: "QString" } }
         Signal { name: "projectRenameRequested"; Parameter { name: "a1"; type: "QString" } Parameter { name: "a2"; type: "QString" } }
@@ -2216,6 +2222,8 @@ Module {
         Method { name: "renameProject"; type: "bool"; Parameter { name: "a1"; type: "QString" } Parameter { name: "a2"; type: "QString" } }
         Method { name: "prepareProjectCreationDirectory" }
         Method { name: "requestVideoExport" }
+        Method { name: "requestAutoProcessing" }
+        Method { name: "processVideoTo"; type: "bool"; Parameter { name: "a1"; type: "QString" } Parameter { name: "a2"; type: "QString" } Parameter { name: "a3"; type: "QString" } Parameter { name: "a4"; type: "bool" } }
         Method { name: "manualExportSettings"; type: "QVariantMap" }
         Method { name: "setManualExportPreset"; type: "bool"; Parameter { name: "a1"; type: "QString" } }
         Method { name: "chooseVideoExportDestination"; type: "QString"; Parameter { name: "a1"; type: "QString" } }
@@ -2226,5 +2234,43 @@ Module {
         Method { name: "cancelVideoExport" }
         Method { name: "openExportDestinationFolder"; Parameter { name: "a1"; type: "QString" } }
         Method { name: "openVideoFolder" }
+        Signal { name: "batchProcessingRequested"; Parameter { name: "processFirst"; type: "bool" } }
+        Method { name: "requestBatchProcessing" }
+        Method { name: "batchExportSettings"; type: "QVariantMap" }
+        Method { name: "chooseBatchExportDestination"; type: "QString" }
+        Method { name: "batchExportDestinationExists"; type: "bool"; Parameter { name: "directory"; type: "QString" } }
+        Method { name: "processBatchTo"; type: "bool"
+            Parameter { name: "projectKey"; type: "QString" }
+            Parameter { name: "videoIds"; type: "QVariantList" }
+            Parameter { name: "preset"; type: "QString" }
+            Parameter { name: "directory"; type: "QString" }
+            Parameter { name: "overwrite"; type: "bool" }
+            Parameter { name: "process"; type: "bool" }
+        }
+        Method { name: "applyBatchSettingsValues"; type: "bool"
+            Parameter { name: "projectKey"; type: "QString" }
+            Parameter { name: "values"; type: "QVariantMap" }
+            Parameter { name: "replaceOverrides"; type: "bool" }
+        }
+        Method { name: "stageBatchSettingsAsset"; type: "QString"
+            Parameter { name: "projectKey"; type: "QString" }
+            Parameter { name: "kind"; type: "QString" }
+            Parameter { name: "path"; type: "QString" }
+        }
+        Method { name: "startBatchVoiceRecording"; type: "bool"; Parameter { name: "projectKey"; type: "QString" } }
+        Method { name: "finishBatchVoiceRecording"; type: "QString"; Parameter { name: "projectKey"; type: "QString" } }
+        Method { name: "batchVoiceRecordingState"; type: "QVariantMap" }
+        Method { name: "cancelBatchVoiceRecording" }
+        Method { name: "previewBatchAudioMixWithReference"; type: "bool"
+            Parameter { name: "language"; type: "QString" }
+            Parameter { name: "provider"; type: "QString" }
+            Parameter { name: "voice"; type: "QString" }
+            Parameter { name: "separation"; type: "bool" }
+            Parameter { name: "original"; type: "int" }
+            Parameter { name: "music"; type: "int" }
+            Parameter { name: "tts"; type: "int" }
+            Parameter { name: "musicPath"; type: "QString" }
+            Parameter { name: "reference"; type: "QString" }
+        }
     }
 }

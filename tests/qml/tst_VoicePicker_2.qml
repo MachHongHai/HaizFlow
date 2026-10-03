@@ -56,7 +56,7 @@ Item {
             verify(!!popup);
             mouseClick(picker, 30, 20);
             tryCompare(popup, "opened", true);
-            compare(picker.activeCategory, "clone");
+            tryCompare(picker, "activeCategory", "natural");
             verifyPosition(picker, popup);
             dialog.preferredWidth = 680;
             tryCompare(dialog, "width", 680);

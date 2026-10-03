@@ -246,6 +246,9 @@ class ProjectWorkspaceController:
             host.videoPath = ""
             host._selected_video_id = None
             host._settings_owner_video_id = None
+            importer = getattr(host, "_project_import", None)
+            if importer is not None:
+                importer._reset_new_project_setup()
             host._clear_logs()
             host.selectedVideoChanged.emit()
             host.logsChanged.emit()

@@ -1,4 +1,3 @@
-import asyncio
 import io
 import json
 import sys
@@ -21,6 +20,65 @@ def _write_test_mp3(path: str) -> None:
 
 
 class TtsReliabilityTests(unittest.TestCase):
+    def test_short_source_fragment_uses_library_reference_not_clone(self):
+        from haizflow.pipeline import omnivoice_tts
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def synthesize(_path, request, _id, _callback):
+                self.assertEqual(request["items"][0]["reference_path"], "")
+                self.assertTrue(request["preset_reference_path"])
+                Path(request["items"][0]["wav_path"]).write_bytes(b"RIFF" + bytes(256))
+                return 0, ""
+
+            with (mock.patch.object(omnivoice_tts, "_prepare_isolated_runtime"),
+                  mock.patch.object(omnivoice_tts, "verify_omnivoice_model", return_value=root),
+                  mock.patch.object(omnivoice_tts, "_sdk_root", return_value=root),
+                  mock.patch.object(omnivoice_tts, "_run_worker_process", side_effect=synthesize),
+                  mock.patch.object(omnivoice_tts, "_encode_mp3", side_effect=lambda _wav, output, _id: _write_test_mp3(str(output))),
+                  mock.patch.object(omnivoice_tts, "log_to_video")):
+                omnivoice_tts.synthesize_batch_to_mp3([
+                    {"text": "Đây là một câu thoại ngắn.", "voice": "omnivoice:female",
+                     "output_path": str(root / "voice.mp3"), "source_audio_path": "source.wav",
+                     "source_start": "1", "source_end": "2.2", "source_text": "This is a short sentence."}
+                ], "test", language_id="vi", speaker_mode="multiple", device="cpu")
+
+    def test_packaged_reference_matches_preview_identity_and_transcript(self):
+        from haizflow.pipeline.omnivoice_tts import _preset_reference
+        path, text = _preset_reference("omnivoice:male", "en")
+        self.assertTrue(Path(path).is_file())
+        self.assertIn("Mạch Hồng Hải", text)
+        self.assertEqual(_preset_reference("../untrusted", "en"), ("", ""))
+
+    def test_completed_clips_are_committed_before_worker_pause(self):
+        from haizflow.pipeline import omnivoice_tts
+        class Paused(Exception):
+            pass
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            outputs = [root / "one.mp3", root / "two.mp3"]
+            def worker(_path, request, _video_id, callback):
+                self.assertEqual(request["inference_steps"], 16)
+                Path(request["items"][0]["wav_path"]).write_bytes(b"RIFF" + bytes(256))
+                callback(1, 2, "synthesizing")
+                self.assertTrue(tts._is_valid_mp3(str(outputs[0])))
+                raise Paused()
+            with (mock.patch.object(omnivoice_tts, "_prepare_isolated_runtime"),
+                  mock.patch.object(omnivoice_tts, "verify_omnivoice_model", return_value=root),
+                  mock.patch.object(omnivoice_tts, "_sdk_root", return_value=root),
+                  mock.patch.object(omnivoice_tts, "_run_worker_process", side_effect=worker),
+                  mock.patch.object(omnivoice_tts, "_encode_mp3", side_effect=lambda _wav, output, _id: _write_test_mp3(str(output))),
+                  mock.patch.object(omnivoice_tts, "log_to_video")):
+                with self.assertRaises(Paused):
+                    omnivoice_tts.synthesize_batch_to_mp3(
+                        [{"text": "One", "voice": "omnivoice:male", "output_path": str(outputs[0])},
+                         {"text": "Two", "voice": "omnivoice:male", "output_path": str(outputs[1])}],
+                        "fixture-video", language_id="en", device="cpu",
+                    )
+            self.assertTrue(tts._is_valid_mp3(str(outputs[0])))
+            self.assertFalse(outputs[1].exists())
+
     def test_legacy_provider_aliases_migrate_to_omnivoice(self):
         self.assertEqual(tts.resolve_tts_provider("auto", "vi"), "omnivoice")
         self.assertEqual(tts.resolve_tts_provider("vieneu", "en"), "omnivoice")
@@ -162,6 +220,9 @@ class TtsReliabilityTests(unittest.TestCase):
             )
             with (
                 mock.patch.object(tts, "get_video", return_value=video),
+                mock.patch("haizflow.pipeline.speaker_identity.prepare_speakers", side_effect=lambda audio, segments, *args: [
+                    {**item, "speaker_id": f"speaker-{i}", "speaker_voice": "omnivoice:male" if i else "omnivoice:female"}
+                    for i, item in enumerate(segments)]),
                 mock.patch.object(omnivoice_tts, "synthesize_batch_to_mp3", side_effect=synthesize_batch),
                 mock.patch.object(omnivoice_tts, "runtime_description", return_value="cpu worker"),
                 mock.patch.object(tts, "log_to_video"),
@@ -182,6 +243,8 @@ class TtsReliabilityTests(unittest.TestCase):
             "second source voice",
             "first source voice",
         ])
+        self.assertEqual([item["voice"] for item in items], ["omnivoice:male", "omnivoice:female"])
+        self.assertTrue(all(not item["source_audio_path"] for item in items))
 
     def test_omnivoice_cuda_engine_failure_triggers_cpu_fallback(self):
         from haizflow.pipeline.omnivoice_tts import _is_cuda_resource_failure
@@ -307,6 +370,25 @@ class TtsReliabilityTests(unittest.TestCase):
             self.assertEqual(len(attempts), 3)
             self.assertEqual(json.loads(status_path.read_text(encoding="utf-8"))["completed"], 6)
             self.assertEqual(list(Path(temp_dir).glob("*.part")), [])
+
+    def test_omnivoice_latency_diagnostics_accept_only_bounded_numeric_fields(self):
+        from haizflow.pipeline.omnivoice_tts import _timing_detail
+
+        self.assertEqual(_timing_detail({}), "")
+        self.assertEqual(_timing_detail({"timing_seconds": {"model_load": 12.345}}), " model_load=12.35s")
+        self.assertEqual(_timing_detail({"timing_seconds": {
+            "model_load": "not a duration", "runtime_imports": float("inf"),
+            "reference_encoding": -1, "synthesis": float("nan"),
+        }}), "")
+
+    def test_source_reference_bounds_support_chinese_without_spaces(self):
+        from haizflow.pipeline.omnivoice_tts import _usable_source_reference
+
+        self.assertTrue(_usable_source_reference(1, 5, "我们现在可以开始了。"))
+        self.assertTrue(_usable_source_reference(1, 5, "Now we can begin."))
+        self.assertFalse(_usable_source_reference(1, 2.2, "Now we can begin."))
+        self.assertFalse(_usable_source_reference(1, 5, "Go!"))
+        self.assertFalse(_usable_source_reference(1, 20, "Now we can begin."))
 
     def test_omnivoice_status_failure_never_stops_synthesis_worker(self):
         from haizflow.pipeline import omnivoice_tts

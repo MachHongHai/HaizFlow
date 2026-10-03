@@ -44,7 +44,11 @@ Rectangle {
             Layout.fillWidth: true
             from: 0
             to: Math.max(1, root.duration)
-            value: root.position
+            Binding on value {
+                when: !seekSlider.pressed
+                value: root.position
+                restoreMode: Binding.RestoreBindingOrValue
+            }
             activeFocusOnTab: true
             Accessible.name: qsTr("Vị trí xem trước")
             onMoved: root.scrubbed(value)

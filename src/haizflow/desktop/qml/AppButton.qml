@@ -58,8 +58,8 @@ Button {
         id: buttonBackground
         radius: Theme.radiusSmall
         color: !root.enabled ? Theme.surfaceMuted : root.tone === "primary" ? (root.down ? Theme.interactivePressed : root.hovered ? Theme.interactiveHover : Theme.interactive) : root.tone === "ghost" ? (root.down ? Theme.surfaceStrong : root.hovered ? Theme.surfaceMuted : "transparent") : root.tone === "danger" ? (root.down || root.hovered ? Theme.dangerMuted : "transparent") : root.down ? Theme.surfaceStrong : root.hovered ? Theme.surfaceMuted : Theme.surfaceElevated
-        border.width: root.activeFocus ? 2 : root.tone === "primary" ? 0 : 1
-        border.color: root.activeFocus ? Theme.focus : root.tone === "danger" ? Theme.danger : Theme.outline
+        border.width: root.visualFocus ? 2 : root.tone === "primary" ? 0 : 1
+        border.color: root.visualFocus ? Theme.focus : root.tone === "danger" ? Theme.danger : Theme.outline
     }
 
     Behavior on scale {

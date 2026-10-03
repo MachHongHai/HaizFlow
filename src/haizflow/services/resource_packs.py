@@ -50,6 +50,15 @@ from haizflow.services.model_bootstrap import (
 
 PACK_PROTOCOL_VERSION = 1
 RESOURCE_STATE_VERSION = 1
+
+
+def _speaker_asset() -> ModelAsset:
+    from haizflow.pipeline.speaker_identity import MODEL_FILE, MODEL_SHA256, MODEL_SIZE, MODEL_URL
+
+    return ModelAsset("speaker-identification", "Nhận diện người nói", MODEL_URL,
+                      f"speaker-identification/{MODEL_FILE}", MODEL_SIZE, MODEL_SHA256)
+
+
 ENGINE_REQUIRED_COMMANDS = {
     "engine-cpu-py313": {
         "smoke_command",
@@ -246,6 +255,13 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             ("engine-vision-onnx",),
         ),
     ]
+    speaker_asset = _speaker_asset()
+    definitions.append(ResourcePackDefinition(
+        pack_id="model-speaker-identification", label="Nhận diện người nói",
+        group="voice", version="1", capability="speaker",
+        dependencies=("engine-vision-onnx",), assets=(speaker_asset,),
+        download_size=speaker_asset.size, installed_size=speaker_asset.size,
+    ))
     release_metadata = _load_release_pack_metadata()
     resolved: list[ResourcePackDefinition] = []
     for definition in definitions:
@@ -509,8 +525,11 @@ class ResourcePackManager:
         provider = str(context.get("provider") or "omnivoice")
         voice_device = "gpu" if provider.endswith("-gpu") else "cpu"
         voice_packs = [f"engine-{'cuda128-py313' if voice_device == 'gpu' else 'cpu-py313'}", "model-omnivoice"]
+        if context.get("speaker_mode") == "multiple":
+            voice_packs.extend(["engine-vision-onnx", "model-speaker-identification"])
         recognition_model = str(context.get("model") or "small").lower()
-        recognition_device = "gpu" if recognition_model in {"turbo", "large-v3-turbo"} else device
+        recognition_device = ("cpu" if recognition_model == "small-cpu" else
+                              "gpu" if recognition_model in {"small-gpu", "turbo", "large-v3-turbo"} else device)
         engine_pack = f"engine-{'cuda128-py313' if recognition_device == 'gpu' else 'cpu-py313'}"
         whisper_pack = (
             "model-whisper-turbo" if recognition_model in {"turbo", "large-v3-turbo"}
@@ -539,6 +558,7 @@ class ResourcePackManager:
                 "model-demucs",
             ],
             "ocr": ["engine-vision-onnx", "model-subtitle-ocr"],
+            "speaker": ["engine-vision-onnx", "model-speaker-identification"],
         }
         return list(mapping.get(str(capability), []))
 
@@ -685,6 +705,10 @@ class ResourcePackManager:
             verify_demucs_model(root / "demucs")
         elif pack_id == "model-subtitle-ocr":
             verify_subtitle_ocr_models(root / "subtitle-ocr")
+        elif pack_id == "model-speaker-identification":
+            from haizflow.pipeline.speaker_identity import verify_model
+
+            verify_model(root / "speaker-identification")
 
     def install(self, pack_id: str, progress: Callable[[str, ModelProgress], None]) -> None:
         definition = self.definitions[pack_id]

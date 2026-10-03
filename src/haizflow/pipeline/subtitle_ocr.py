@@ -32,7 +32,7 @@ from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
 # source captions change length.
 SAMPLE_COUNT = 36
 MIN_CONFIDENCE = 0.68
-DETECTOR_CACHE_VERSION = 21
+DETECTOR_CACHE_VERSION = 22
 OCR_FRAME_MAX_WIDTH = 720
 
 
@@ -183,6 +183,31 @@ def select_subtitle_region(candidates: list[TextCandidate], sample_count: int = 
     placement is intentionally unrestricted so captions can appear at the
     top, centre, or bottom of a video.
     """
+    # Scene text (books, signs, classroom boards) can sit immediately beside
+    # a caption and have the same glyph height. When a repeatedly changing
+    # caption band has a strong uppercase convention, do not join title-case
+    # scene labels into its multi-line rectangle.
+    # Filter before merging: a scene label can overlap a caption's baseline,
+    # so filtering an already merged observation is too late.
+    meaningful_lines = [line for line in candidates if _is_meaningful(line.text)
+                        and 12 <= line.width <= 95 and 25 <= line.x + line.width / 2 <= 75]
+    if meaningful_lines:
+        anchor = max(meaningful_lines, key=lambda candidate: len({line.frame for line in meaningful_lines
+            if abs(line.y + line.height / 2 - candidate.y - candidate.height / 2) <= 2.5}))
+        band = [line for line in meaningful_lines
+                if abs(line.y + line.height / 2 - anchor.y - anchor.height / 2) <= 8]
+
+        def uppercase_fraction(line):
+            letters = [letter for letter in line.text if letter.isalpha()]
+            return sum(letter.isupper() for letter in letters) / max(1, len(letters))
+
+        upper = [line for line in band if uppercase_fraction(line) >= 0.8]
+        if (len(upper) >= len(band) * 0.8
+                and len({line.frame for line in upper}) >= max(3, min(12, math.ceil(sample_count * 0.12)))):
+            rejected = {id(line) for line in candidates
+                        if abs(line.y + line.height / 2 - anchor.y - anchor.height / 2) <= 8
+                        and uppercase_fraction(line) < 0.65}
+            candidates = [line for line in candidates if id(line) not in rejected]
     merged_lines = _merge_frame_lines(candidates)
     frame_blocks = _merge_frame_blocks(merged_lines)
     filtered = [

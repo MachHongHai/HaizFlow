@@ -27,7 +27,7 @@ Item {
                 iconGlyph: AppController.tiktokPublishBusy ? "\uE71A" : "\uE768"
                 variant: AppController.tiktokPublishBusy ? "danger" : "primary"
                 enabled: AppController.tiktokPublishBusy
-                    || (AppController.tiktokPublishCount > 0
+                    || (AppController.tiktokWaitingCount > 0
                         && AppController.zernioApiKeyVerified
                         && AppController.zernioAccountReady
                         && !AppController.zernioAccountSyncing)

@@ -16,6 +16,41 @@ from haizflow.pipeline import audio_separation
 
 
 class AudioSeparationTests(unittest.TestCase):
+    def test_publish_retries_transient_windows_directory_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / ".staging"
+            target = Path(directory) / "separated"
+            source.mkdir()
+            (source / "audio.wav").write_bytes(b"audio")
+            replace = audio_separation.os.replace
+            attempts = []
+
+            def locked_once(old, new):
+                attempts.append((old, new))
+                if len(attempts) == 1:
+                    raise PermissionError("Windows sharing lock")
+                return replace(old, new)
+
+            with mock.patch.object(audio_separation.os, "replace", side_effect=locked_once), \
+                 mock.patch.object(audio_separation.time, "sleep"), \
+                 mock.patch.object(audio_separation, "check_cancellation"):
+                audio_separation._replace_separation_directory(str(source), str(target), "fixture")
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual((target / "audio.wav").read_bytes(), b"audio")
+
+    def test_directory_publish_never_retries_unrelated_errors_or_moves_outside_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / ".staging"
+            destination = Path(directory) / "separated"
+            with mock.patch.object(audio_separation.os, "replace", side_effect=FileNotFoundError("missing")) as replace:
+                with self.assertRaises(FileNotFoundError):
+                    audio_separation._replace_separation_directory(str(source), str(destination))
+                replace.assert_called_once()
+            with mock.patch.object(audio_separation.os, "replace") as replace:
+                with self.assertRaises(ValueError):
+                    audio_separation._replace_separation_directory(str(source), str(Path(directory) / "other" / "separated"))
+                replace.assert_not_called()
+
     def test_frozen_demucs_uses_internal_executable_mode(self):
         with mock.patch.object(audio_separation, "is_frozen", return_value=True):
             self.assertEqual(

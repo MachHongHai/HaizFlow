@@ -302,9 +302,14 @@ class RuntimeDeviceController:
         resource_packs = getattr(host, "_resource_packs", None)
         if resource_packs is not None and resource_packs.manager.status(engine_pack) == "missing":
             host._settings_processing_device = previous_device
+            try:
+                desktop_settings.save_settings({"processing_device": previous_device})
+            except OSError:
+                pass
             host.appAlertRequested.emit(
                 "Thiếu bộ xử lý",
-                "Cài Whisper Turbo hoặc HY-MT2 GPU trong Gói tài nguyên để thiết lập môi trường NVIDIA.",
+                "Cài gói model tương ứng trong Gói tài nguyên để thiết lập môi trường GPU NVIDIA."
+                if preference == "gpu" else "Cài gói model CPU trong Gói tài nguyên để thiết lập môi trường CPU.",
                 "info",
             )
             host.settingsChanged.emit()
@@ -388,6 +393,9 @@ class RuntimeDeviceController:
                     host._warm_models_unlocked()
                 host.settingsChanged.emit()
                 host.hardwareChanged.emit()
+                provider_options_changed = getattr(host, "ttsProviderOptionsChanged", None)
+                if provider_options_changed:
+                    provider_options_changed.emit()
                 options_changed = getattr(host, "speechRecognitionModelOptionsChanged", None)
                 if options_changed:
                     options_changed.emit()

@@ -57,7 +57,7 @@ Rectangle {
                 background: Rectangle {
                     radius: Theme.radiusTiny
                     color: optionButton.selected ? Theme.surfaceStrong : optionButton.hovered ? Theme.surfaceMuted : "transparent"
-                    border.width: optionButton.activeFocus ? 2 : 0
+                    border.width: optionButton.visualFocus ? 2 : 0
                     border.color: Theme.focus
                 }
 

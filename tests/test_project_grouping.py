@@ -37,6 +37,23 @@ def _video(video_id, filename, project_name, project_type, status, progress, upd
 
 
 class ProjectGroupingTests(unittest.TestCase):
+    def test_storage_cleanup_removes_only_verified_empty_legacy_exports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = {"project_root": str(root), "project_directory": str(root.parent),
+                      "key": "project:example", "project_type": "manual"}
+            exports = root / "exports"
+            exports.mkdir()
+            self.assertFalse(project_store.remove_empty_legacy_exports(record))
+            (root / project_store.PROJECT_MANIFEST_NAME).write_text(json.dumps(record), encoding="utf-8")
+            keep = exports / "old-export.mp4"
+            keep.write_bytes(b"keep")
+            self.assertFalse(project_store.remove_empty_legacy_exports(record))
+            self.assertTrue(keep.is_file())
+            keep.unlink()
+            self.assertTrue(project_store.remove_empty_legacy_exports(record))
+            self.assertFalse(exports.exists())
+
     def test_editing_video_settings_does_not_reorder_legacy_project_cards(self):
         older_project = _video(
             "older", "older.mp4", "Older", "single", "pending", 0,
@@ -203,6 +220,9 @@ class ProjectGroupingTests(unittest.TestCase):
 
         self.assertEqual(model.rowCount(), 1)
         self.assertFalse(model.data(model.index(0, 0), ProjectGridModel.IsCreateCardRole))
+        self.assertEqual(model.data(model.index(0, 0), ProjectGridModel.ProjectKeyRole), "project:one")
+        self.assertIn(b"projectKey", model.roleNames().values())
+        self.assertEqual(len(set(model.roleNames().values())), len(model.roleNames()))
         self.assertEqual(changed_rows, [(0, 0)])
 
     def test_batch_output_uses_a_unique_folder_for_each_video(self):
@@ -791,6 +811,7 @@ class ProjectGroupingTests(unittest.TestCase):
                 old_input = Path(video.files["video_input"])
                 old_input.write_bytes(b"old-video")
                 old_export = Path(project["project_root"]) / "exports" / "dubbed_video.mp4"
+                old_export.parent.mkdir(exist_ok=True)  # Simulate the legacy layout explicitly.
                 old_export.write_bytes(b"old-export")
                 old_transcript = Path(video.files["transcript_json"])
                 old_voice = Path(video.files["voice_output"])

@@ -8,13 +8,16 @@ import "."
 FloatingToolDialog {
     id: root
 
-    expandedWidth: screen === "record" ? 540 : 410
-    expandedHeight: screen === "record"
-        ? (hasSample ? 448 : 372) + (recordingError.length > 0 ? 54 : 0) : 178
-    toolTitle: qsTr("Nhân bản giọng của tôi")
+    expandedWidth: 600
+    expandedHeight: 470 + (hasSample ? 40 : 0) + (recordingError.length > 0 ? 50 : 0)
+    toolTitle: qsTr("Nhân bản giọng")
     toolSubtitle: ""
 
-    property string screen: "source"
+    property string screen: "record"
+    property var inputDevices: []
+    property string inputDeviceId: ""
+    property real inputLevelDb: -120
+    property bool inputHasSignal: false
     property string samplePath: ""
     property string recordingError: ""
     property int recordingElapsedMs: 0
@@ -93,6 +96,8 @@ FloatingToolDialog {
         recordingError = "";
         recordingElapsedMs = 0;
         livePeaks = [];
+        inputLevelDb = -120;
+        inputHasSignal = false;
         if (!controller.startVoiceCloneRecording()) {
             recordingError = String(controller.voiceCloneRecordingState().error || "");
             return;
@@ -134,11 +139,16 @@ FloatingToolDialog {
         controller.cancelVoiceCloneRecording();
         releaseSamplePlayer();
         recording = false;
-        screen = "source";
+        screen = "record";
         recordingElapsedMs = 0;
         recordingError = "";
         loadSample(controller.voiceCloneReferencePath);
-        screen = hasSample ? "record" : "source";
+        inputDevices = typeof controller.voiceCloneInputDevices === "function" ? controller.voiceCloneInputDevices() : [];
+        inputDeviceId = "";
+        for (let i = 0; i < inputDevices.length; ++i) {
+            if (inputDevices[i].selected)
+                inputDeviceId = String(inputDevices[i].id);
+        }
         open();
     }
 
@@ -147,7 +157,7 @@ FloatingToolDialog {
         controller.cancelVoiceCloneRecording();
         recording = false;
         releaseSamplePlayer();
-        screen = "source";
+        screen = "record";
     }
 
     Connections {
@@ -175,6 +185,8 @@ FloatingToolDialog {
             const state = root.controller.voiceCloneRecordingState();
             root.livePeaks = state.peaks || [];
             root.recordingElapsedMs = Number(state.durationMs || 0);
+            root.inputLevelDb = Number(state.levelDb ?? -120);
+            root.inputHasSignal = Boolean(state.hasSignal);
             if (!state.active || String(state.error || "").length > 0) {
                 stop();
                 root.recording = false;
@@ -185,27 +197,6 @@ FloatingToolDialog {
 
     Item {
         anchors.fill: parent
-
-        RowLayout {
-            anchors.centerIn: parent
-            spacing: Theme.space8
-            visible: root.screen === "source"
-
-            StudioButton {
-                Layout.preferredWidth: 142
-                text: qsTr("Ghi âm")
-                iconGlyph: "\uE720"
-                variant: "primary"
-                onClicked: root.screen = "record"
-            }
-
-            StudioButton {
-                Layout.preferredWidth: 126
-                text: root.hasSample ? qsTr("Đổi mẫu") : qsTr("Chọn tệp")
-                iconGlyph: "\uE8B7"
-                onClicked: root.chooseReferenceFile()
-            }
-        }
 
         ColumnLayout {
             anchors.fill: parent
@@ -218,7 +209,7 @@ FloatingToolDialog {
                 spacing: Theme.space8
 
                 StudioButton {
-                    text: qsTr("Đổi mẫu")
+                    text: root.hasSample ? qsTr("Đổi mẫu") : qsTr("Chọn tệp")
                     iconGlyph: "\uE8B7"
                     variant: "secondary"
                     enabled: !root.recording
@@ -241,6 +232,7 @@ FloatingToolDialog {
                         font.pixelSize: TypeScale.control
                         font.weight: Font.DemiBold
                         textFormat: Text.PlainText
+                        wrapMode: Text.WordWrap
                     }
                     Text {
                         Layout.fillWidth: true
@@ -248,7 +240,30 @@ FloatingToolDialog {
                         color: Theme.textMuted
                         font.pixelSize: TypeScale.metadata
                         textFormat: Text.PlainText
+                        wrapMode: Text.WordWrap
                     }
+                }
+            }
+
+            SettingLabel { text: qsTr("Microphone") }
+            StudioComboBox {
+                objectName: "voiceCloneMicrophonePicker"
+                Layout.fillWidth: true
+                visible: root.inputDevices.length > 0
+                enabled: !root.recording
+                model: root.inputDevices
+                textRole: "label"
+                valueRole: "id"
+                currentIndex: {
+                    for (let i = 0; i < root.inputDevices.length; ++i) {
+                        if (root.inputDevices[i].id === root.inputDeviceId)
+                            return i;
+                    }
+                    return 0;
+                }
+                onActivated: {
+                    if (root.controller.selectVoiceCloneInputDevice(String(currentValue)))
+                        root.inputDeviceId = String(currentValue);
                 }
             }
 
@@ -308,14 +323,16 @@ FloatingToolDialog {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: root.recording ? qsTr("Đang ghi") : (root.hasSample ? qsTr("Nghe lại mẫu") : qsTr("Microphone"))
+                            text: root.recording ? (root.inputHasSignal ? qsTr("Đang ghi · %1 dB").arg(Math.round(root.inputLevelDb))
+                                : qsTr("Đang ghi · chưa có tín hiệu")) : (root.hasSample ? qsTr("Nghe lại mẫu") : qsTr("Sẵn sàng ghi"))
                             color: root.recording ? Theme.interactive : Theme.textMuted
                             font.pixelSize: TypeScale.metadata
                             textFormat: Text.PlainText
                         }
                         Text {
                             text: root.formatTime(root.recording ? root.recordingElapsedMs
-                                : root.samplePlaying || root.samplePaused ? samplePlayer.position : root.playableDurationMs)
+                                : root.samplePlaying || root.samplePaused ? samplePlayer.position
+                                : root.hasSample ? root.playableDurationMs : root.recordingElapsedMs)
                             color: Theme.text
                             font.pixelSize: TypeScale.metadata
                             font.weight: Font.DemiBold
@@ -339,44 +356,44 @@ FloatingToolDialog {
                 Layout.fillWidth: true
                 spacing: Theme.space8
 
-                Text {
-                    Layout.fillWidth: true
-                    text: root.recording ? qsTr("Dừng ghi, nghe lại rồi áp dụng mẫu")
-                        : root.hasSample ? qsTr("Mẫu đã lưu. Nhấn Áp dụng để chọn giọng nhân bản.")
-                        : qsTr("Chỉ dùng giọng của bạn hoặc người đã đồng ý")
-                    color: Theme.textMuted
-                    font.pixelSize: TypeScale.metadata
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WordWrap
-                }
-
                 StudioButton {
+                    objectName: "voiceClonePlaybackButton"
                     visible: root.hasSample && !root.recording
-                    text: qsTr("Ghi lại")
-                    variant: "ghost"
-                    onClicked: root.beginRecording()
+                    text: root.samplePlaying ? qsTr("Tạm dừng") : qsTr("Nghe lại")
+                    iconGlyph: root.samplePlaying ? "\uE769" : "\uE768"
+                    onClicked: root.toggleSamplePlayback()
                 }
 
+                Item { Layout.fillWidth: true }
+
                 StudioButton {
-                    text: root.recording ? qsTr("Dừng ghi")
-                        : root.hasSample ? (root.samplePlaying ? qsTr("Tạm dừng") : qsTr("Nghe lại")) : qsTr("Bắt đầu ghi")
-                    iconGlyph: root.recording ? "\uE71A" : root.hasSample ? "\uE768" : "\uE720"
+                    objectName: "voiceCloneRecordButton"
+                    text: root.recording ? qsTr("Dừng ghi") : root.hasSample ? qsTr("Ghi lại") : qsTr("Bắt đầu ghi")
+                    iconGlyph: root.recording ? "\uE71A" : "\uE720"
                     variant: root.hasSample && !root.recording ? "secondary" : "primary"
                     onClicked: {
                         if (root.recording)
                             root.finishRecording();
-                        else if (root.hasSample)
-                            root.toggleSamplePlayback();
                         else
                             root.beginRecording();
                     }
                 }
             }
 
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Chỉ dùng giọng của bạn hoặc người đã đồng ý.")
+                color: Theme.textMuted
+                font.pixelSize: TypeScale.metadata
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+            }
+
             StudioButton {
                 Layout.fillWidth: true
                 visible: root.hasSample && !root.recording
                 text: qsTr("Áp dụng giọng nhân bản")
+                objectName: "voiceCloneApplyButton"
                 variant: "primary"
                 onClicked: {
                     if (root.acceptReference())

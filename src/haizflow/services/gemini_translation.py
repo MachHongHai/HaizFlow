@@ -15,6 +15,7 @@ from urllib import error, request
 from haizflow.pipeline.process_registry import check_cancellation
 from haizflow.config import RUNTIME_DATA_DIR
 from haizflow.services import secure_credentials
+from haizflow.services.video_store import log_to_video
 
 CREDENTIAL_TARGET = "HaizFlow/Gemini/APIKey"
 API_KEYS_URL = "https://aistudio.google.com/api-keys"
@@ -223,11 +224,22 @@ def _request_chunk(
                 continue
             if exc.code in {401, 403}:
                 raise RuntimeError(
-                    "Gemini từ chối API key. Kiểm tra key và quyền truy cập trong Google AI Studio."
+                    "Gemini từ chối quyền truy cập (HTTP " + str(exc.code) + "). "
+                    "Kiểm tra API key, quyền dùng model và thanh toán trong Google AI Studio."
+                ) from None
+            if exc.code == 402:
+                raise RuntimeError(
+                    "Gemini yêu cầu thanh toán (HTTP 402). Kiểm tra số dư và Billing trong Google AI Studio."
                 ) from None
             if exc.code == 429:
                 raise RuntimeError(
                     "Gemini đã hết quota hoặc đang giới hạn tốc độ. Thử lại sau trong Google AI Studio."
+                ) from None
+            if exc.code == 503:
+                raise RuntimeError(
+                    "Gemini tạm thời không khả dụng (HTTP 503 UNAVAILABLE) sau khi thử lại. "
+                    "Thử lại sau hoặc chọn Gemini 3.1 Flash-Lite. Mã 503 không xác nhận lỗi thanh toán; "
+                    "kiểm tra quyền truy cập, quota và Billing trong Google AI Studio."
                 ) from None
             raise RuntimeError(f"Gemini không xử lý được yêu cầu (HTTP {exc.code}).") from None
         except (error.URLError, TimeoutError):
@@ -252,12 +264,20 @@ def translate_texts(
     output = [""] * len(texts)
     for chunk in _chunks(texts):
         check_cancellation(video_id)
+        detail = f"Sending Gemini translation batch: sentences {chunk[0][0] + 1}-{chunk[-1][0] + 1} of {len(texts)}."
+        log_to_video(video_id, detail, component="TRANSLATE", level="INFO")
+        if progress_callback:
+            progress_callback(chunk[0][0], len(texts), detail)
         values = _request_chunk(
             chunk, key=key, model=model,
             source_language=source_language, target_language=target_language,
         )
         for (index, _), value in zip(chunk, values):
             output[index] = value
+        log_to_video(
+            video_id, f"Gemini translated {chunk[-1][0] + 1} of {len(texts)} sentences.",
+            component="TRANSLATE", level="INFO",
+        )
         if progress_callback:
             progress_callback(chunk[-1][0] + 1, len(texts), "Đang dịch bằng Gemini")
     return output

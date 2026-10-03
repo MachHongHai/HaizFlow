@@ -28,7 +28,8 @@ def run_external_task(
     isolate_source: bool = False,
 ) -> dict | None:
     """Run an installed engine command, or return ``None`` for a bundled runtime."""
-    command = installed_engine_command(capability, command_name, context)
+    launcher = "subtitle_ocr" if command_name == "speaker_identification" else command_name
+    command = installed_engine_command(capability, launcher, context)
     source_worker = not command and isolate_source and os.name == "nt" and not getattr(sys, "frozen", False)
     if source_worker:
         command = [sys.executable, "-m", "haizflow.engine.main"]
@@ -43,6 +44,7 @@ def run_external_task(
         status_path = directory / "status.json"
         request = {
             "protocol_version": 1,
+            "context": dict(context or {}),
             "operation": command_name,
             "payload": dict(payload),
             "response_path": str(response_path),
@@ -54,6 +56,11 @@ def run_external_task(
 
         def execute() -> None:
             try:
+                # warm_engine_pack also resolves source-development RPC
+                # engines. Prefer that exact owner instead of launching a
+                # one-shot process that cannot see the warmed Whisper model.
+                if pool.run_file_task(capability, context, str(request_path)):
+                    return
                 if source_worker:
                     environment = os.environ.copy()
                     environment["PYTHONPATH"] = (
@@ -71,7 +78,7 @@ def run_external_task(
                     )
                     if process.returncode and not response_path.is_file():
                         raise RuntimeError(errors[-1800:] or f"{command_name} worker exited ({process.returncode}).")
-                elif not pool.run_file_task(capability, context, str(request_path)):
+                else:
                     raise RuntimeError(f"{command_name} engine is no longer installed.")
             except BaseException as exc:
                 failure.append(exc)

@@ -1,202 +1,228 @@
+# Giấy phép mã nguồn công khai HaizFlow — phiên bản 1.0
 
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
+Bản quyền (c) 2026 Mạch Hồng Hải.
+LicenseRef-HaizFlow-Source-Available-1.0.
+Giấy phép có hiệu lực từ ngày 01/10/2026. Đây không phải giấy phép nguồn mở OSI.
+Tiếng Việt được đặt trước và được ưu tiên nếu hai bản có khác biệt, trong
+giới hạn pháp luật bắt buộc và các giấy phép thành phần.
 
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+## 1. Phạm vi và thứ tự ưu tiên
 
-   1. Definitions.
+“Bên cấp phép” là Mạch Hồng Hải. Phần được cấp phép là mã ứng dụng, tài liệu,
+tập lệnh và kiểm thử HaizFlow thuộc
+quyền sở hữu Mạch Hồng Hải, theo legal/rights-inventory.json. Không gồm thư
+viện, codec, model, checkpoint, font, icon, mã vendor hay tài sản có điều khoản
+riêng. Các thông báo và giấy phép riêng vẫn áp dụng. Công khai repository
+không tạo quyền sở hữu đối với thành phần bên thứ ba.
 
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
+Giấy phép này không hạn chế quyền được cấp độc lập hoặc quyền bắt buộc theo
+pháp luật. Khi giấy phép thành phần yêu cầu quyền
+sửa đổi, thay thế, liên kết lại, gỡ lỗi, dịch ngược hoặc phân phối, những quyền
+đó được ưu tiên cho thành phần và phạm vi kết hợp bắt buộc. Không dùng giấy
+phép này để phân phối tổ hợp không đáp ứng được những quyền bắt buộc đó.
 
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
+## 2. Tiếp cận mã nguồn và sửa đổi nội bộ
 
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
+Bên cấp phép cho phép người sử dụng tiếp cận, nghiên cứu, tải mã nguồn, biên
+dịch, vận hành và sửa đổi Phần được cấp phép cho mục đích cá nhân hoặc nội bộ
+tổ chức, trên cơ sở miễn phí và không độc quyền. Sử dụng nội bộ bao gồm nhân
+viên làm việc cho cùng pháp nhân, không bao gồm cung cấp bản sao cho khách
+hàng hoặc tổ chức khác. Người sử dụng phải giữ nguyên thông báo bản quyền,
+giấy phép và thông báo của thành phần trong các bản sao.
 
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
+Quyền xem, sao chép và fork qua chức năng GitHub theo Điều khoản dịch vụ GitHub
+vẫn được giữ. Fork công khai không tự cấp quyền phân phối bộ cài hay bản ứng
+dụng đã sửa ngoài dịch vụ; quyền độc lập có thể cho phép riêng việc đó.
 
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
+## 3. Sử dụng miễn phí và tạo video thương mại
 
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
+Người sử dụng được tải bản ứng dụng chính thức, cài đặt và sử dụng miễn phí.
+Giấy phép cho phép sản xuất video cho mục đích cá nhân và thương mại, bao
+gồm tạo doanh thu từ nội dung, mà không cần xin phép Bên cấp phép đối với
+từng lần đăng tải.
 
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
+Bên cấp phép không xác lập quyền sở hữu đối với nội dung đầu vào, dự án hoặc
+video đầu ra chỉ từ việc sử dụng ứng dụng. Người sử dụng được khai thác,
+phân phối và tạo doanh thu từ nội dung trong phạm vi quyền hợp pháp của mình.
+Quyền đối với nội dung, giọng nói, âm nhạc, nhãn hiệu, mô hình và đầu ra vẫn
+được áp dụng. Giấy phép HaizFlow không thay thế hoặc loại bỏ điều kiện phi
+thương mại của mô hình có giấy phép riêng.
 
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
+## 4. Những quyền không được cấp đối với phần mềm
 
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
+Trừ các quyền được quy định tại Mục 2, quyền được cấp độc lập và ngoại lệ
+bắt buộc theo pháp luật, người sử dụng không được thực hiện các hành vi sau
+nếu chưa có chấp thuận bằng văn bản của Bên cấp phép:
 
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
+- Sao chép để phân phối, đăng tải, lưu trữ nhằm cung cấp lại hoặc chuyển giao
+  mã nguồn, bộ cài, bản biên dịch hay bản sửa đổi của Phần được cấp phép.
+- Bán, cho thuê, cấp phép lại, đóng gói lại, đổi tên hoặc đổi thương hiệu phần
+  mềm; cung cấp sản phẩm phái sinh có chứa Phần được cấp phép.
+- Khai thác phần mềm hoặc mã nguồn để cung cấp dịch vụ phần mềm có thu phí,
+  quyền truy cập có thu phí hoặc dịch vụ xử lý được vận hành cho bên thứ ba,
+  ngoài hoạt động sản xuất nội dung được cho phép tại Mục 3.
+- Xóa, che giấu hoặc sửa thông báo bản quyền; mạo nhận tác giả, chủ sở hữu,
+  nhà phát hành hoặc quan hệ bảo trợ chính thức của HaizFlow.
 
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
+Việc sử dụng HaizFlow để sản xuất video và nội dung theo Mục 3 không bị coi
+là phân phối hoặc thương mại hóa phần mềm.
 
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
+Quyền phân phối hoặc thương mại hóa phần mềm bổ sung cần thỏa thuận bằng văn
+bản với chủ thể quyền liên quan. Chia sẻ link chính thức, mô tả kiến trúc và
+trích dẫn hợp pháp không phải phân phối trái phép. Không áp hạn chế mới lên
+thành phần có giấy phép riêng hoặc quyền được cấp độc lập.
 
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
+## 5. Tác giả và danh tính chính thức
 
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
+Người sử dụng phải giữ nguyên thông tin tác giả và thông báo áp dụng; không
+được mạo nhận tác giả hoặc trình bày bản không chính thức là bản chính thức.
+Giấy phép không cấp quyền sử dụng tên hoặc biểu trưng HaizFlow ngoài phạm vi
+nhận diện trung thực cần thiết cho việc sử dụng được phép. Việc sử dụng tên
+và biểu trưng không được gây nhầm lẫn về nguồn gốc, quan hệ bảo trợ hoặc nhà
+phát hành. Điều khoản này không khẳng định tình trạng đăng ký nhãn hiệu.
 
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
+## 6. Bảo đảm và trách nhiệm
 
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
+Trong phạm vi luật cho phép, phần được cấp phép được cung cấp “nguyên trạng”,
+không bảo đảm không có lỗi, được hỗ trợ liên tục, phù hợp mọi mục đích, khả
+năng thương mại hay không xâm phạm. Hãy sao lưu và kiểm tra kết quả trước khi
+công bố. Bạn chịu trách nhiệm quyền nội dung, đồng ý chủ giọng và điều khoản
+dịch vụ. Bên cấp phép không chịu tổn thất gián tiếp hoặc hệ quả trong giới hạn
+luật cho phép. Các giới hạn này không loại trừ trách nhiệm, quyền của người
+tiêu dùng hoặc biện pháp bảo vệ mà pháp luật không cho phép loại trừ.
 
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
+## 7. Vi phạm và bản tương lai
 
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
+Việc cấp quyền phụ thuộc vào sự tuân thủ giấy phép. Đối với vi phạm có thể
+khắc phục, Bên cấp phép thông báo và dành thời hạn 30 ngày để khắc phục trước
+khi chấm dứt quyền theo giấy phép. Việc chấm dứt không làm mất quyền được cấp
+độc lập hoặc buộc tiêu hủy nội dung đầu ra hợp pháp của người sử dụng. Điều
+khoản sửa đổi chỉ áp dụng cho các phiên bản được xác định rõ, không hồi tố
+để hạn chế quyền đã được cấp độc lập.
 
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
+## 8. Hiệu lực và liên hệ
 
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
+Giấy phép này áp dụng cho Phần được cấp phép cung cấp kèm văn bản này, không
+áp dụng hồi tố để hạn chế quyền được cấp độc lập. Tài liệu được ghi nhận là
+dự thảo không làm phát sinh quyền hoặc nghĩa vụ hợp đồng.
+Repository: https://github.com/MachHongHai/HaizFlow
+Liên hệ: machhonghaipr@gmail.com.
 
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
+---
 
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
+# HaizFlow Source-Available License — version 1.0
 
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
+Copyright (c) 2026 Mach Hong Hai.
+LicenseRef-HaizFlow-Source-Available-1.0. Effective date: 2026-10-01.
+Not an OSI open-source license. Vietnamese precedes English and prevails on
+translation differences, subject to mandatory law and component licenses.
 
-   END OF TERMS AND CONDITIONS
+## 1. Scope and precedence
 
-   APPENDIX: How to apply the Apache License to your work.
+“Covered Work” means HaizFlow source, documentation and application code
+identified as owned HaizFlow work in legal/rights-inventory.json. It excludes third-party libraries, codecs, models,
+checkpoints, fonts, icons and separately licensed contributions or assets.
+Possession of this repository does not establish exclusive ownership of all
+its contents. Notices and separate licenses remain applicable.
 
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
+Independent permissions and mandatory legal rights are not restricted by
+this document. Where a third-party license requires
+modification, replacement, relinking, debugging, reverse engineering or
+redistribution rights, those rights take precedence for the covered component
+and any legally required extent of a combined work. This license must not be
+used to distribute a combination whose required rights cannot be satisfied.
 
-   Copyright [yyyy] [name of copyright owner]
+## 2. Source access and internal modification
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Subject to the scope above, the licensor grants a worldwide, royalty-free,
+nonexclusive permission to view, study, download and clone the Covered Work;
+build and run it; and make modifications for personal or internal use within
+your own organization. Internal use includes employees acting for that legal
+entity, not public distribution or supplying copies to customers or unrelated
+entities. Keep copyright, license and third-party notices with internal copies.
 
-       http://www.apache.org/licenses/LICENSE-2.0
+Viewing, reproduction and forking through GitHub's functionality as permitted
+by its Terms of Service are preserved. Public GitHub forks are not permission
+under this license to distribute installers or modified application builds
+outside the Service. Independent licenses may separately permit such conduct.
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+## 3. Free application use and commercial video creation
+
+You may download an authorized application release, install it and use it
+without paying the licensor. Personal, business and monetized video production
+are permitted under the HaizFlow permission. You need not request permission
+from Mach Hong Hai for each upload to YouTube, TikTok, Facebook or another
+platform. This permission does not license other people's media, voices,
+music, trademarks or model outputs; their applicable rights still govern.
+
+HaizFlow claims no ownership in your input media, projects or generated
+videos merely because you used it. You may use, distribute and monetize
+content to the extent you hold the necessary rights. In particular, a
+NonCommercial model license is not overridden by this permission.
+
+## 4. Rights not granted for the software itself
+
+Except for Section 2, independently granted rights and mandatory legal
+exceptions, the following activities require the licensor's prior written
+consent:
+
+- Copying for distribution, uploading, hosting for redistribution or supplying
+  source code, installers, application builds or modified copies to third parties.
+- Selling, renting, sublicensing, repackaging, renaming or rebranding the
+  Covered Work, or supplying software derivatives containing it.
+- Using the Covered Work or its source to provide paid software services,
+  paid access or processing services operated for third parties, other than
+  content production permitted under Section 3.
+- Removing, obscuring or altering copyright notices, or falsely claiming
+  authorship, ownership, official publisher status or endorsement by HaizFlow.
+
+Video and content production permitted under Section 3 does not constitute
+redistribution or commercialization of the software itself.
+
+Additional distribution or commercial software permissions require a separate
+written agreement with the relevant rights holder. Sharing links to official
+releases, describing architecture and exercising lawful quotation rights do
+not amount to unauthorized software redistribution. Third-party components
+remain redistributable under their own terms; no additional restriction is
+imposed on those components or independently granted rights.
+
+## 5. Attribution and official identity
+
+Retain truthful authorship and applicable notices. Do not falsely claim
+authorship of another person's work or represent an unofficial build as an
+official HaizFlow release. No trademark license is granted beyond truthful
+identification needed for permitted use. No assertion of a registered mark
+or exclusive worldwide trademark ownership is made. Name/logo use must not
+mislead users about origin, endorsement or publisher; statutory rights remain.
+
+## 6. Warranty and responsibility
+
+The Covered Work is provided without a contractual promise that it will be
+error-free, continuously supported or fit for every use. To the extent
+permitted by applicable law, it is provided “as is”, without implied warranties
+of merchantability, fitness or non-infringement. Back up important files and
+review generated results before publication. You remain responsible for
+obtaining content and voice consent and complying with service terms.
+
+To the extent law permits, the licensor excludes liability for indirect or
+consequential losses arising from use or inability to use the Covered Work.
+Nothing excludes liability that cannot lawfully be excluded, mandatory consumer
+rights, or other nonwaivable remedies. No governing-law, venue, arbitration,
+blanket indemnity or waiver of moral rights is imposed by this license.
+
+## 7. Breach and future versions
+
+The permissions granted by this license are conditional on compliance with
+its applicable terms. For a remediable breach, the licensor will provide
+notice and 30 days to cure before terminating these permissions. Termination
+does not extinguish independent rights or require destruction of your own
+lawful output media. Revised terms apply only to clearly identified future
+releases accepted under those terms, not retroactively to existing licenses.
+
+## 8. Effective scope and contact
+
+This license applies to the Covered Work supplied with this document. It does
+not retroactively restrict independently granted rights. Documents marked
+as drafts do not create contractual rights or obligations.
+Repository: https://github.com/MachHongHai/HaizFlow
+Contact: machhonghaipr@gmail.com.

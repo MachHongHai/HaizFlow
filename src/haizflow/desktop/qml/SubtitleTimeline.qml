@@ -490,6 +490,9 @@ Rectangle {
 
                                 Row {
                                     id: waveformRow
+                                    readonly property var peaks: editorClip.modelData.waveform || []
+                                    readonly property int barCount: Math.min(peaks.length,
+                                        Math.max(1, Math.floor(width / 3)))
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
@@ -501,14 +504,16 @@ Rectangle {
                                     opacity: layerTrack.combinedVoice ? 0.8 : 0.42
 
                                     Repeater {
-                                        model: editorClip.modelData.waveform || []
+                                        model: waveformRow.barCount
                                         delegate: Rectangle {
-                                            required property real modelData
+                                            required property int index
                                             width: Math.max(1, (waveformRow.width
-                                                - Math.max(0, (editorClip.modelData.waveform || []).length - 1)
+                                                - Math.max(0, waveformRow.barCount - 1)
                                                 * waveformRow.spacing)
-                                                / Math.max(1, (editorClip.modelData.waveform || []).length))
-                                            height: Math.max(2, waveformRow.height * Number(modelData || 0.08))
+                                                / Math.max(1, waveformRow.barCount))
+                                            height: Math.max(2, waveformRow.height * Number(
+                                                waveformRow.peaks[Math.floor(index * waveformRow.peaks.length
+                                                    / waveformRow.barCount)] || 0.08))
                                             y: (waveformRow.height - height) / 2
                                             radius: width > 2 ? 1 : 0
                                             color: layerTrack.combinedVoice ? Theme.success : Theme.text

@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, MODELS_DIR
@@ -16,6 +17,27 @@ from haizflow.core.paths import is_frozen
 from haizflow.services.video_store import log_to_video
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.external_tasks import run_external_task
+
+
+def _replace_separation_directory(source: str, destination: str, video_id: str | None = None) -> None:
+    """Publish/restore sibling staging folders despite short Windows file locks."""
+    source = os.path.abspath(source)
+    destination = os.path.abspath(destination)
+    parent = os.path.dirname(source)
+    if (os.path.normcase(parent) != os.path.normcase(os.path.dirname(destination))
+            or source == parent or destination == parent
+            or os.path.normcase(os.path.realpath(parent)) != os.path.normcase(os.path.realpath(os.path.dirname(destination)))):
+        raise ValueError("Separation staging must stay within its output parent.")
+    for attempt in range(6):
+        if video_id:
+            check_cancellation(video_id)
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if attempt == 5:
+                raise
+            time.sleep(0.05 * 2**attempt)
 
 
 def _demucs_model_directory(video_id: str) -> Path:
@@ -156,12 +178,13 @@ def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str
         if os.path.isdir(output_dir):
             backup_dir = tempfile.mkdtemp(prefix=".audio-separation-backup-", dir=output_parent)
             os.rmdir(backup_dir)
-            os.replace(output_dir, backup_dir)
+            _replace_separation_directory(output_dir, backup_dir, video_id)
         try:
-            os.replace(staging_dir, output_dir)
+            _replace_separation_directory(staging_dir, output_dir, video_id)
         except Exception:
             if backup_dir and os.path.isdir(backup_dir):
-                os.replace(backup_dir, output_dir)
+                # Restoration must work even after a pause/cancel request.
+                _replace_separation_directory(backup_dir, output_dir)
             raise
         staging_dir = ""
         if backup_dir:

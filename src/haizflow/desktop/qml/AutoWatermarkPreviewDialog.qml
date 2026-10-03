@@ -7,6 +7,7 @@ import "."
 
 FloatingToolDialog {
     id: root
+    property var controller: AppController
 
     signal watermarkSettingsEdited()
 
@@ -38,7 +39,7 @@ FloatingToolDialog {
                 id: previewImage
                 anchors.fill: parent
                 anchors.margins: 1
-                source: AppController.videoThumbnailSource
+                source: root.controller.videoThumbnailSource
                 sourceSize.width: 1280
                 sourceSize.height: 720
                 fillMode: Image.PreserveAspectFit
@@ -52,24 +53,24 @@ FloatingToolDialog {
                     previewImage.y + (previewImage.height - previewImage.paintedHeight) / 2,
                     previewImage.paintedWidth,
                     previewImage.paintedHeight)
-                watermarkKind: AppController.watermarkKind
-                watermarkText: AppController.watermarkText
-                watermarkImageSource: AppController.watermarkImageSource
-                watermarkVideoSource: AppController.watermarkVideoSource
-                fontFamily: AppController.watermarkFontFamily
-                textColor: AppController.watermarkTextColor
-                fontBold: AppController.watermarkBold
-                fontItalic: AppController.watermarkItalic
-                opacityPercent: AppController.watermarkOpacityPercent
-                outlinePercent: AppController.watermarkOutlinePercent
-                scalePercent: AppController.watermarkScalePercent
+                watermarkKind: root.controller.watermarkKind
+                watermarkText: root.controller.watermarkText
+                watermarkImageSource: root.controller.watermarkImageSource
+                watermarkVideoSource: root.controller.watermarkVideoSource
+                fontFamily: root.controller.watermarkFontFamily
+                textColor: root.controller.watermarkTextColor
+                fontBold: root.controller.watermarkBold
+                fontItalic: root.controller.watermarkItalic
+                opacityPercent: root.controller.watermarkOpacityPercent
+                outlinePercent: root.controller.watermarkOutlinePercent
+                scalePercent: root.controller.watermarkScalePercent
                 interactive: true
                 editing: true
                 onScalePreviewChanged: function(value) {
-                    AppController.watermarkScalePercent = value;
+                    root.controller.watermarkScalePercent = value;
                 }
                 onScaleCommitted: function(_before, value) {
-                    AppController.watermarkScalePercent = value;
+                    root.controller.watermarkScalePercent = value;
                     root.watermarkSettingsEdited();
                 }
             }
@@ -90,41 +91,41 @@ FloatingToolDialog {
 
                 StudioField {
                     Layout.fillWidth: true
-                    visible: AppController.watermarkKind === "text"
-                    enabled: AppController.canEditSelectedVideo
+                    visible: root.controller.watermarkKind === "text"
+                    enabled: root.controller.canEditSelectedVideo
                     maximumLength: 80
                     placeholderText: qsTr("Nội dung watermark")
-                    text: AppController.watermarkText
+                    text: root.controller.watermarkText
                     onEditingFinished: {
-                        AppController.watermarkText = text;
+                        root.controller.watermarkText = text;
                         root.watermarkSettingsEdited();
                     }
                 }
 
                 StudioButton {
                     Layout.fillWidth: true
-                    visible: AppController.watermarkKind === "image"
-                    enabled: AppController.canEditSelectedVideo
+                    visible: root.controller.watermarkKind === "image"
+                    enabled: root.controller.canEditSelectedVideo
                     variant: "secondary"
-                    text: AppController.watermarkImagePath.length > 0
+                    text: root.controller.watermarkImagePath.length > 0
                         ? qsTr("Đổi ảnh") : qsTr("Chọn ảnh")
                     onClicked: {
-                        const path = AppController.chooseWatermarkImage();
-                        if (path.length > 0 && AppController.setWatermarkImage(path))
+                        const path = root.controller.chooseWatermarkImage();
+                        if (path.length > 0 && root.controller.setWatermarkImage(path))
                             root.watermarkSettingsEdited();
                     }
                 }
 
                 StudioButton {
                     Layout.fillWidth: true
-                    visible: AppController.watermarkKind === "video"
-                    enabled: AppController.canEditSelectedVideo
+                    visible: root.controller.watermarkKind === "video"
+                    enabled: root.controller.canEditSelectedVideo
                     variant: "secondary"
-                    text: AppController.watermarkVideoPath.length > 0
+                    text: root.controller.watermarkVideoPath.length > 0
                         ? qsTr("Đổi video") : qsTr("Chọn video")
                     onClicked: {
-                        const path = AppController.chooseWatermarkVideo();
-                        if (path.length > 0 && AppController.setWatermarkVideo(path))
+                        const path = root.controller.chooseWatermarkVideo();
+                        if (path.length > 0 && root.controller.setWatermarkVideo(path))
                             root.watermarkSettingsEdited();
                     }
                 }
@@ -132,24 +133,25 @@ FloatingToolDialog {
                 SettingLabel {
                     Layout.fillWidth: true
                     text: qsTr("Độ hiển thị · %1%")
-                        .arg(AppController.watermarkOpacityPercent)
+                        .arg(root.controller.watermarkOpacityPercent)
                 }
                 StudioSlider {
                     Layout.fillWidth: true
-                    enabled: AppController.canEditSelectedVideo
+                    enabled: root.controller.canEditSelectedVideo
                     from: 0
                     to: 100
                     stepSize: 1
-                    value: AppController.watermarkOpacityPercent
+                    value: root.controller.watermarkOpacityPercent
                     Accessible.name: qsTr("Độ hiển thị watermark")
-                    onMoved: AppController.watermarkOpacityPercent = Math.round(value)
+                    onMoved: root.controller.watermarkOpacityPercent = Math.round(value)
                     onPressedChanged: if (!pressed) root.watermarkSettingsEdited()
                 }
 
                 ManualWatermarkStyleControls {
+                    controller: root.controller
                     Layout.fillWidth: true
-                    visible: AppController.watermarkKind === "text"
-                    enabled: AppController.canEditSelectedVideo
+                    visible: root.controller.watermarkKind === "text"
+                    enabled: root.controller.canEditSelectedVideo
                     onWatermarkStyleEdited: root.watermarkSettingsEdited()
                 }
             }

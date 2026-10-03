@@ -15,6 +15,23 @@ Item {
 
     property bool dropActive: false
     readonly property bool compactHeight: height < 740
+    property var settingOverrides: []
+    function refreshOverrides() { settingOverrides = AppController.batchSettingOverrides(); }
+    Component.onCompleted: refreshOverrides()
+    Connections {
+        target: AppController
+        function onBatchChanged() { root.refreshOverrides(); }
+    }
+
+    function importDrop(drop) {
+        root.dropActive = false;
+        if (!drop.urls || drop.urls.length === 0)
+            return;
+        const paths = [];
+        for (let index = 0; index < drop.urls.length; ++index)
+            paths.push(String(drop.urls[index]));
+        AppController.importBatchVideos(paths);
+    }
 
     opacity: visible ? 1 : 0
     transform: Translate {
@@ -55,12 +72,6 @@ Item {
                 onProjectFolderRequested: AppController.openProjectFolder()
                 onDeleteRequested: AppController.deleteCurrentBatch()
             }
-            StudioButton {
-                text: qsTr("Xuất video")
-                iconName: "open"
-                enabled: !AppController.videoExportBusy && AppController.batchCount > 0
-                onClicked: AppController.exportBatchVideos()
-            }
         }
 
         RowLayout {
@@ -73,14 +84,15 @@ Item {
             Rectangle {
                 id: importCard
 
-                Layout.preferredWidth: Math.min(640, Math.max(500, root.width * 0.48))
-                Layout.minimumWidth: 500
-                Layout.maximumWidth: 640
+                Layout.preferredWidth: 440
+                Layout.minimumWidth: 260
+                Layout.maximumWidth: 520
+                Layout.fillWidth: true
                 Layout.fillHeight: true
                 radius: Theme.radiusSmall
-                color: root.dropActive ? Theme.interactiveMuted : Theme.interactiveMuted
+                color: root.dropActive ? Theme.interactiveMuted : Theme.surfaceElevated
                 border.width: root.dropActive ? 2 : 1
-                border.color: root.dropActive ? Theme.focus : Theme.interactiveOutline
+                border.color: root.dropActive ? Theme.focus : Theme.outline
 
                 RowLayout {
                     anchors.fill: parent
@@ -92,14 +104,14 @@ Item {
                         Layout.preferredWidth: 24
                         Layout.preferredHeight: 24
                         radius: Theme.radiusSmall
-                        color: Theme.interactiveMuted
+                        color: Theme.surfaceMuted
 
                         AppIcon {
                             anchors.centerIn: parent
                             width: 14
                             height: 14
                             glyph: "\uE898"
-                            iconColor: Theme.interactive
+                            iconColor: Theme.textMuted
                             iconSize: Theme.iconSmall
                         }
                     }
@@ -117,7 +129,7 @@ Item {
 
                     MediaSourceImportButton {
                         Layout.preferredWidth: 132
-                        variant: "primary"
+                        variant: AppController.batchCount === 0 ? "primary" : "secondary"
                         onFileRequested: AppController.browseBatchVideos()
                         onLinkRequested: root.requestUrlImport()
                         onDownloadProjectRequested: root.requestDownloadProjectImport()
@@ -135,13 +147,7 @@ Item {
                     }
                     onExited: root.dropActive = false
                     onDropped: function (drop) {
-                        root.dropActive = false;
-                        if (!drop.urls || drop.urls.length === 0)
-                            return;
-                        const paths = [];
-                        for (let index = 0; index < drop.urls.length; ++index)
-                            paths.push(String(drop.urls[index]));
-                        AppController.importBatchVideos(paths);
+                        root.importDrop(drop);
                     }
                 }
             }
@@ -154,22 +160,26 @@ Item {
                 text: qsTr("Cài đặt hàng loạt")
                 iconGlyph: "\uE713"
                 variant: "secondary"
-                enabled: AppController.batchCount > 0 && !AppController.isBatchRunning
+                enabled: !AppController.isBatchRunning
                 onClicked: root.requestBatchSettings()
             }
 
             StudioButton {
                 visible: !AppController.isBatchRunning
-                text: AppController.batchPausedCount > 0 ? qsTr("Tiếp tục xử lý") : qsTr("Bắt đầu xử lý")
+                text: qsTr("Xử lý")
                 iconGlyph: "\uE768"
                 variant: "primary"
-                enabled: AppController.batchPendingCount > 0 || AppController.batchPausedCount > 0
-                onClicked: {
-                    if (AppController.batchPausedCount > 0)
-                        AppController.resumeBatch();
-                    else
-                        AppController.startBatch();
-                }
+                enabled: AppController.batchCount > 0 && !AppController.videoExportBusy
+                onClicked: AppController.requestBatchProcessing()
+            }
+
+            StudioButton {
+                visible: !AppController.isBatchRunning && AppController.batchPausedCount > 0
+                text: qsTr("Tiếp tục")
+                iconGlyph: "\uE768"
+                variant: "secondary"
+                enabled: !AppController.videoExportBusy
+                onClicked: AppController.resumeBatch()
             }
 
             StudioButton {
@@ -192,6 +202,14 @@ Item {
                 color: Theme.text
                 font.pixelSize: Theme.h2
                 font.weight: Font.DemiBold
+                textFormat: Text.PlainText
+            }
+
+            Text {
+                visible: root.settingOverrides.length > 0
+                text: qsTr("%1 video dùng cài đặt riêng").arg(root.settingOverrides.length)
+                color: Theme.textMuted
+                font.pixelSize: Theme.caption
                 textFormat: Text.PlainText
             }
 
@@ -223,13 +241,27 @@ Item {
         }
 
         Rectangle {
+            id: queuePanel
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: queueList.cellHeight + Theme.space12
             radius: Theme.radius
             color: Theme.surface
-            border.width: 1
-            border.color: Theme.outline
+            border.width: root.dropActive ? 2 : 1
+            border.color: root.dropActive ? Theme.focus : Theme.outline
+
+            DropArea {
+                anchors.fill: parent
+                keys: ["text/uri-list"]
+                onEntered: function (drag) {
+                    if (drag.hasUrls) {
+                        root.dropActive = true;
+                        drag.accept();
+                    }
+                }
+                onExited: root.dropActive = false
+                onDropped: function (drop) { root.importDrop(drop); }
+            }
 
             GridView {
                 id: queueList
@@ -249,6 +281,8 @@ Item {
                 cellHeight: cardHeight + Theme.space16
 
                 delegate: BatchVideoCard {
+                    required property string videoId
+                    customSettings: root.settingOverrides.some(item => item.videoId === videoId)
                     width: queueList.cardWidth
                     height: queueList.cardHeight
                     onActivated: {
@@ -273,14 +307,14 @@ Item {
                     width: 44
                     height: 44
                     radius: Theme.radius
-                    color: Theme.interactiveMuted
+                    color: Theme.surfaceMuted
 
                     AppIcon {
                         anchors.centerIn: parent
                         width: 26
                         height: 26
                         glyph: "\uE8FD"
-                        iconColor: Theme.interactive
+                        iconColor: Theme.textMuted
                         iconSize: Theme.iconLarge
                     }
                 }
@@ -297,26 +331,28 @@ Item {
 
                 Text {
                     width: parent.width
-                    text: qsTr("Thêm video ở phía trên để bắt đầu xử lý")
+                    text: qsTr("Nhập nguồn hoặc kéo video vào đây để thêm vào hàng đợi")
                     color: Theme.textMuted
                     font.pixelSize: Theme.caption
                     horizontalAlignment: Text.AlignHCenter
                     textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
                 }
             }
         }
 
         Rectangle {
             id: batchProgressPanel
+            visible: AppController.batchCount > 0
 
             Layout.fillWidth: true
             Layout.minimumHeight: 52
             Layout.preferredHeight: 52
             Layout.maximumHeight: 52
             radius: Theme.radiusSmall
-            color: Theme.interactiveMuted
+            color: Theme.surfaceElevated
             border.width: 1
-            border.color: Theme.interactiveOutline
+            border.color: Theme.outline
 
             RowLayout {
                 anchors.fill: parent
@@ -328,14 +364,14 @@ Item {
                     Layout.preferredWidth: 28
                     Layout.preferredHeight: 28
                     radius: Theme.radiusSmall
-                    color: Theme.interactiveMuted
+                    color: Theme.surfaceMuted
 
                     AppIcon {
                         anchors.centerIn: parent
                         width: 16
                         height: 16
                         glyph: "\uE9D2"
-                        iconColor: Theme.interactive
+                        iconColor: Theme.textMuted
                         iconSize: Theme.icon
                     }
                 }
@@ -349,7 +385,7 @@ Item {
                 Rectangle {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 28
-                    color: Theme.interactiveOutline
+                    color: Theme.divider
                 }
 
                 InfoRow {
@@ -399,7 +435,7 @@ Item {
 
                         Text {
                             text: qsTr("%1%").arg(AppController.batchProgress)
-                            color: AppController.batchProgress >= 100 ? Theme.success : Theme.interactive
+                            color: Theme.text
                             font.pixelSize: Theme.h3
                             font.weight: Font.DemiBold
                             textFormat: Text.PlainText

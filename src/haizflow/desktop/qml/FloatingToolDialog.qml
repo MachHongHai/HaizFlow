@@ -91,7 +91,7 @@ Dialog {
     background: Rectangle {
         color: Theme.surface
         border.width: 1
-        border.color: root.activeFocus ? Theme.focus : Theme.outlineStrong
+        border.color: Theme.outlineStrong
         radius: Theme.radius
     }
 

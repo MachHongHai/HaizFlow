@@ -70,9 +70,36 @@ class ProjectCommandsController:
 
     @staticmethod
     def _resources_ready_for_videos(host, videos) -> bool:
+        from haizflow.core.model_choices import gpu_choice_blocked
+
+        for video in videos:
+            if gpu_choice_blocked(str(getattr(host, "_settings_processing_device", "cpu")),
+                                  recognition=getattr(video, "speech_recognition_model", getattr(host, "_speech_recognition_model", "small")),
+                                  translation=getattr(video, "translation_model", getattr(host, "_translation_model", "auto")),
+                                  voice=getattr(video, "tts_provider", getattr(host, "_tts_provider", "omnivoice"))):
+                host.appAlertRequested.emit("Đang dùng chế độ CPU", "Dự án đang chọn model GPU. Chọn model CPU hoặc chuyển sang GPU trong Cài đặt → Chung.", "warning")
+                return False
         ensure_hardware = getattr(host, "_ensure_hardware_ready_for_action", None)
         if callable(ensure_hardware) and not ensure_hardware():
             return False
+        if any(str(getattr(video, "translation_model", "")).startswith("gemini-") for video in videos if video):
+            from haizflow.services.gemini_translation import key_configured
+
+            if not key_configured():
+                host.appAlertRequested.emit("Cần Gemini API key", "Thêm API key trong Cài đặt → API Key trước khi dịch.", "warning")
+                host.geminiSetupRequested.emit()
+                return False
+        for video in videos:
+            if video and getattr(video, "tts_voice", "") == "omnivoice:clone":
+                reference = str((getattr(video, "files", None) or {}).get("voice_reference") or "")
+                try:
+                    has_sample = bool(reference and os.path.isfile(reference) and os.path.getsize(reference) > 0)
+                except OSError:
+                    has_sample = False
+                if not has_sample:
+                    host.appAlertRequested.emit(
+                        "Chưa có mẫu giọng", "Nhập hoặc ghi mẫu giọng trong video cần nhân bản trước khi xử lý.", "warning")
+                    return False
         resource_controller = getattr(host, "_resource_packs", None)
         if resource_controller is None:
             return True
@@ -91,6 +118,7 @@ class ProjectCommandsController:
                 "source_language": str(
                     getattr(video, "source_language", None) or getattr(host, "_source_language", "auto")
                 ),
+                "speaker_mode": str(getattr(video, "speaker_mode", "single") or "single"),
                 "language": str(getattr(video, "target_language", None) or getattr(host, "_target_language", "vi")),
                 "provider": str(
                     getattr(video, "tts_provider", None) or getattr(host, "_tts_provider", "omnivoice")
@@ -188,6 +216,19 @@ class ProjectCommandsController:
         host.batchChanged.emit()
 
     def batch_settings_values(self) -> dict[str, object]:
+        from haizflow.services import batch_settings
+
+        host = self._host
+        videos = [video for key in host._batch_video_ids if (video := video_store.get_video(key))]
+        initial = self._legacy_batch_settings_values()
+        if not videos:
+            config = host._build_config() if hasattr(host, "_build_config") else None
+            if config:
+                initial.update({key: getattr(config, field) for key, field in batch_settings.FIELDS.items()})
+                initial.update({key: "" for key in batch_settings.ASSETS})
+        return batch_settings.stable_values(str(getattr(host, "_selected_project_key", "") or ""), initial, videos)
+
+    def _legacy_batch_settings_values(self) -> dict[str, object]:
         host = self._host
         videos = [video for video_id in host._batch_video_ids if (video := video_store.get_video(video_id))]
         if not videos:
@@ -301,6 +342,20 @@ class ProjectCommandsController:
         }
 
     def batch_setting_overrides(self) -> list[dict[str, object]]:
+        from haizflow.services import batch_settings
+
+        host = self._host
+        if not getattr(host, "_selected_project_key", ""):
+            return self._legacy_batch_setting_overrides()
+        expected = self.batch_settings_values()
+        result = []
+        for key in host._batch_video_ids:
+            video = video_store.get_video(key)
+            if video and (changed := batch_settings.differences(batch_settings.values_for(video), expected)):
+                result.append({"videoId": key, "fileName": video.original_filename, "differences": changed})
+        return result
+
+    def _legacy_batch_setting_overrides(self) -> list[dict[str, object]]:
         """List videos whose saved configuration differs from the batch default.
 
         The common (most frequent) configuration is the batch default.  This
@@ -370,6 +425,66 @@ class ProjectCommandsController:
                 )
         return overrides
 
+    def apply_batch_settings_values(self, project_key: str, values: dict, replace_overrides: bool = False) -> bool:
+        from haizflow.services import batch_settings
+        from haizflow.services.desktop_videos import (
+            set_desktop_voice_reference, set_desktop_watermark_image, set_desktop_watermark_video,
+        )
+
+        host = self._host
+        if project_key != str(host._selected_project_key or ""):
+            return False
+        videos = [video for key in host._batch_video_ids if (video := video_store.get_video(key))]
+        if any(host._processing_queue.contains(video.video_id) for video in videos):
+            return False
+        ensure_hardware = getattr(host, "_ensure_hardware_ready_for_action", None)
+        if callable(ensure_hardware) and not ensure_hardware():
+            return False
+        old_values = self.batch_settings_values()
+        normalized = {**old_values, **values}
+        selected = [video for video in videos if replace_overrides or not batch_settings.differences(
+            batch_settings.values_for(video), old_values)]
+        before = {}
+        try:
+            config = batch_settings.config_for(normalized)
+            normalized["subtitleStyle"] = {**config.subtitle_style.model_dump(), "manual": config.subtitle_layout_override}
+            for key in batch_settings.ASSETS:
+                normalized[key] = batch_settings.stage_asset(project_key, key, str(normalized.get(key) or ""))
+            config = batch_settings.config_for(normalized)
+            before = {video.video_id: host._capture_video_asset_snapshot(video, preserve=True) for video in selected}
+            for video in selected:
+                actual = batch_settings.values_for(video)
+                changed = bool(batch_settings.differences(actual, normalized))
+                if not changed:
+                    continue
+                fields = {field: getattr(config, field) for field in batch_settings.FIELDS.values()}
+                fields.update(subtitle_style=config.subtitle_style, subtitle_layout_override=config.subtitle_layout_override,
+                              source_language="auto", translator_provider=config.translator_provider)
+                video_store.update_video(video.video_id, **fields)
+                for key, setter in (("backgroundMusicPath", set_desktop_background_music),
+                                    ("voiceReferencePath", set_desktop_voice_reference),
+                                    ("watermarkImagePath", set_desktop_watermark_image),
+                                    ("watermarkVideoPath", set_desktop_watermark_video)):
+                    if batch_settings.asset_identity(actual.get(key)) != batch_settings.asset_identity(normalized[key]):
+                        setter(video_store.get_video(video.video_id), normalized[key])
+                if changed and video.status == "done":
+                    video_store.update_video(video.video_id, status="pending", progress=0, error=None,
+                                             step="ready", resume_step=video.resume_step or "starting")
+            project_store.save_batch_settings(project_key, normalized)
+        except (OSError, ValueError, RuntimeError) as exc:
+            for key, snapshot in before.items():
+                host._restore_video_asset_snapshot(key, snapshot)
+            host._show_app_alert("Cài đặt hàng loạt", str(exc), "warning")
+            return False
+        if before or old_values != normalized:
+            after = {video.video_id: host._capture_video_asset_snapshot(video_store.get_video(video.video_id), preserve=True)
+                     for video in selected}
+            host._record_batch_asset_change(project_key, before, after,
+                                            before_defaults=old_values, after_defaults=normalized)
+        host.refreshVideos()
+        host.batchChanged.emit()
+        return True
+
     def apply_batch_settings(
         self,
         workflow_mode,
@@ -406,9 +521,15 @@ class ProjectCommandsController:
             .strip()
             .lower()
         )
-        if asr_model not in {"small", "large-v3-turbo"}:
+        if asr_model not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
             asr_model = "small"
         selected_translation_model = str(translation_model or getattr(host, "_translation_model", "auto")).lower()
+        from haizflow.core.model_choices import gpu_choice_blocked
+
+        if gpu_choice_blocked(str(getattr(host, "_settings_processing_device", "cpu")),
+                              recognition=asr_model, translation=selected_translation_model, voice=provider):
+            QMessageBox.warning(None, "Đang dùng chế độ CPU", "Chọn model CPU hoặc chuyển sang GPU trong Cài đặt → Chung.")
+            return False
         if selected_translation_model not in {"auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"}:
             return False
         capabilities = getattr(host, "_hardware_capabilities", None)
@@ -530,7 +651,7 @@ class ProjectCommandsController:
                 "tts_voice": voice,
                 "speaker_mode": normalized_speaker_mode,
                 "enable_audio_separation": bool(enable_audio_separation),
-                "original_video_volume": int(original_volume),
+                "original_video_volume": max(0, min(100, int(original_volume))),
             }
             if apply_mix_volumes:
                 changes.update(
@@ -544,8 +665,16 @@ class ProjectCommandsController:
             if apply_removal_mode:
                 changes["original_subtitle_removal_mode"] = removal_mode
             if normalized_subtitle_style is not None:
-                changes["subtitle_style"] = normalized_subtitle_style
+                previous_style = getattr(video, "subtitle_style", None) or SubtitleStyle()
+                changes["subtitle_style"] = SubtitleStyle(**{
+                    **previous_style.model_dump(), **subtitle_style_payload,
+                })
                 changes["subtitle_layout_override"] = subtitle_layout_override
+            settings_changed = any(getattr(video, name, None) != value for name, value in changes.items())
+            old_music = str((getattr(video, "files", None) or {}).get("background_music") or "")
+            music_changed = apply_background_music and (
+                os.path.normcase(os.path.abspath(old_music)) if old_music else ""
+            ) != (os.path.normcase(background_music_path) if background_music_path else "")
             if apply_background_music:
                 try:
                     set_desktop_background_music(video, background_music_path)
@@ -554,6 +683,10 @@ class ProjectCommandsController:
                         None, "Background music", f"Could not apply background music to every video: {exc}"
                     )
                     return False
+            if getattr(video, "status", "") == "done" and (settings_changed or music_changed):
+                changes.update(status="pending", progress=0, error=None, step="ready",
+                               resume_step=getattr(video, "resume_step", "") or "starting",
+                               step_detail="Settings changed; ready to process with saved checkpoints")
             video_store.update_video(video_id, **changes)
             updated += 1
         if not updated:
@@ -836,6 +969,36 @@ class ProjectCommandsController:
         host.refreshVideos()
         host._enqueue_video(video.video_id)
 
+    def process_for_export(self, video_id: str) -> bool:
+        """Start a fresh Auto attempt. Only the separate Resume action reuses work."""
+        host = self._host
+        video = video_store.get_video(video_id)
+        if (not video or video.project_type not in {"single", "batch"}
+                or video_id != str(host._selected_video_id or "")
+                or video_id != str(host._settings_owner_video_id or "")
+                or host._processing_queue.contains(video_id) or video.status == "processing"):
+            return False
+        host._apply_setup_to_video(video)
+        video = video_store.get_video(video_id)
+        if not self._resources_ready(host, video):
+            return False
+        from haizflow.pipeline.process_registry import prepare_video_resume
+
+        try:
+            if video_store.prepare_video_restart(video_id) is None:
+                return False
+        except (OSError, RuntimeError, ValueError) as exc:
+            host.appAlertRequested.emit("Không thể xử lý lại", str(exc), "error")
+            return False
+        # Clear cancellation after the fresh workspace has been prepared;
+        # this does not set a checkpoint/resume hint in video metadata.
+        prepare_video_resume(video_id)
+        queued = bool(host._enqueue_video(video_id))
+        if queued:
+            host.selectedVideoChanged.emit()
+            host.refreshVideos()
+        return queued
+
     def start_project_video(self) -> bool:
         host = self._host
         if not host._video_path.strip():
@@ -889,7 +1052,7 @@ class ProjectCommandsController:
     def stop_video(self) -> None:
         host = self._host
         selected_video_id = host._selected_video_id
-        if not selected_video_id or selected_video_id != host._processing_queue.active_video_id:
+        if not selected_video_id or not host._processing_queue.contains(selected_video_id):
             return
         selected_video = video_store.get_video(selected_video_id)
         if not selected_video:
@@ -902,6 +1065,20 @@ class ProjectCommandsController:
             != QMessageBox.StandardButton.Yes
         ):
             return
+        active_id, waiting_ids = host._processing_queue.detach_pending([selected_video_id])
+        if selected_video_id in waiting_ids:
+            video_store.update_video(
+                selected_video_id, status="paused", error=None, step="paused",
+                resume_step=selected_video.resume_step or "starting",
+                step_detail="Paused while waiting in the processing queue",
+            )
+            video_store.log_to_video(selected_video_id, "Paused while waiting in the processing queue.")
+            host.selectedVideoChanged.emit()
+            host.refreshVideos()
+            return
+        if active_id != selected_video_id:
+            return
+        selected_video = video_store.get_video(selected_video_id) or selected_video
         resume_step = selected_video.step
         pause_video(selected_video_id)
         video_store.update_video(
@@ -1358,7 +1535,8 @@ class ProjectCommandsController:
             host.appAlertRequested.emit("Xóa dự án thất bại", str(exc), "error")
             return False
 
-        if host._selected_project_key == project_key:
+        was_selected = host._selected_project_key == project_key
+        if was_selected:
             host._selected_video_id = None
             host._settings_owner_video_id = None
             host._selected_project_key = ""
@@ -1375,5 +1553,6 @@ class ProjectCommandsController:
             host.logsChanged.emit()
             host.batchChanged.emit()
         host.refreshVideos()
-        host.videoDeleted.emit()
+        if was_selected:
+            host.videoDeleted.emit()
         return True

@@ -27,6 +27,7 @@ class _Host(QObject):
     exportStateChanged = Signal()
     videoExportCompleted = Signal(str, str)
     appAlertRequested = Signal(str, str, str)
+    batchChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -34,6 +35,9 @@ class _Host(QObject):
         self._processing_queue = SimpleNamespace(contains=lambda _identifier: False)
         self._selected_video_id = ""
         self._batch_video_ids = []
+        self._selected_project_key = ""
+        self._enqueue_videos = Mock(return_value=1)
+        self.refreshVideos = Mock()
         self.runManualTool = Mock(return_value=False)
         self._enqueue_video = Mock(return_value=False)
 
@@ -338,6 +342,303 @@ class RenderExportStorageTests(unittest.TestCase):
         self.assertEqual(seen, [first.video_id, second.video_id, first.video_id])
         self.assertEqual([job["status"] for job in self.exporter.jobs], ["done", "done"])
         self.assertEqual(video_store.get_video(first.video_id).status, "done")
+
+    def test_batch_export_skips_unfinished_and_outdated_videos(self):
+        _, ready = self.make_video(kind="batch")
+        _, pending = self.make_video(kind="batch")
+        _, stale = self.make_video(kind="batch")
+        video_store.update_video(pending.video_id, status="paused")
+        video_store.update_video(stale.video_id, watermark_text="changed")
+        self.host._batch_video_ids = [ready.video_id, pending.video_id, stale.video_id]
+        with patch("haizflow.desktop.video_export_controller.QFileDialog.getExistingDirectory", return_value=str(self.external)):
+            self.assertTrue(self.exporter.start_batch())
+        self.exporter.worker.join(timeout=10)
+        self.exporter.poll()
+        self.assertEqual([job["videoId"] for job in self.exporter.jobs], [ready.video_id])
+        self.assertEqual(self.exporter.jobs[0]["status"], "done")
+        self.host._enqueue_video.assert_not_called()
+
+    def test_batch_export_without_finished_video_does_not_open_picker(self):
+        _, video = self.make_video(kind="batch")
+        video_store.update_video(video.video_id, status="pending")
+        self.host._batch_video_ids = [video.video_id]
+        with patch("haizflow.desktop.video_export_controller.QFileDialog.getExistingDirectory") as choose:
+            self.assertFalse(self.exporter.start_batch())
+        choose.assert_not_called()
+
+    def test_batch_destination_replacement_requires_confirmation(self):
+        from haizflow.desktop.localization import QMessageBox
+
+        _, video = self.make_video(kind="batch")
+        self.host._batch_video_ids = [video.video_id]
+        target = self.external / video_export.batch_filename(video)
+        target.write_bytes(b"existing-export")
+        with patch("haizflow.desktop.video_export_controller.QFileDialog.getExistingDirectory", return_value=str(self.external)), \
+             patch("haizflow.desktop.video_export_controller.QMessageBox.question", return_value=QMessageBox.StandardButton.No) as confirm:
+            self.assertEqual(self.exporter.choose_batch_directory(), "")
+        confirm.assert_called_once()
+        self.assertNotIn(str(target), self.exporter._chosen_targets)
+        self.assertEqual(target.read_bytes(), b"existing-export")
+
+    def test_batch_destination_approval_captures_identity_before_processing(self):
+        from haizflow.desktop.localization import QMessageBox
+
+        _, video = self.make_video(kind="batch")
+        self.host._batch_video_ids = [video.video_id]
+        target = self.external / video_export.batch_filename(video)
+        target.write_bytes(b"existing-export")
+        identity = video_export.destination_identity(target)
+        with patch("haizflow.desktop.video_export_controller.QFileDialog.getExistingDirectory", return_value=str(self.external)), \
+             patch("haizflow.desktop.video_export_controller.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+            self.assertEqual(self.exporter.choose_batch_directory(), str(self.external.resolve()))
+        self.assertEqual(self.exporter._chosen_targets[str(target)], identity)
+        self.assertEqual(target.read_bytes(), b"existing-export")
+
+    def test_process_export_waits_for_completed_run_and_preserves_quality(self):
+        _, video = self.make_video()
+        self.host._selected_video_id = video.video_id
+        target = self.external / "processed.mp4"
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController.process_for_export", return_value=True) as process:
+            self.assertTrue(self.exporter.start(video.video_id, "720p", str(target), process=True))
+        process.assert_called_once_with(video.video_id)
+        self.assertEqual(video_store.get_video(video.video_id).export_preset, "720p")
+        self.assertIsNone(self.exporter.worker)
+        self.assertEqual(self.exporter.jobs[0]["status"], "rendering")
+        self.assertFalse(target.exists())
+
+    def test_batch_processing_checks_owner_and_destinations_before_enqueue(self):
+        project, video = self.make_video(kind="batch")
+        self.host._selected_project_key = project["key"]
+        self.host._batch_video_ids = [video.video_id]
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController._resources_ready_for_videos", return_value=True):
+            self.assertFalse(self.exporter.start_batch_to("another-project", [video.video_id], "720p", str(self.external)))
+            self.assertFalse(self.exporter.start_batch_to(project["key"], [video.video_id], "720p", str(self.external / "missing")))
+            self.host._enqueue_videos.assert_not_called()
+            self.assertTrue(self.exporter.start_batch_to(project["key"], [video.video_id], "720p", str(self.external)))
+        self.host._enqueue_videos.assert_called_once_with([video.video_id])
+        self.assertTrue(self.host._batch_running)
+        self.assertEqual(video_store.get_video(video.video_id).export_preset, "720p")
+        self.assertEqual(self.exporter.jobs[0]["status"], "rendering")
+        self.assertIsNone(self.exporter.worker)
+
+    def test_batch_processing_preflight_failure_keeps_preset_and_status(self):
+        project, video = self.make_video(kind="batch")
+        self.host._selected_project_key = project["key"]
+        self.host._batch_video_ids = [video.video_id]
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController._resources_ready_for_videos", return_value=False):
+            self.assertFalse(self.exporter.start_batch_to(project["key"], [video.video_id], "720p", str(self.external)))
+        self.assertEqual(video_store.get_video(video.video_id).export_preset, "source")
+        self.assertEqual(video_store.get_video(video.video_id).status, "done")
+        self.assertEqual(self.exporter.jobs, [])
+
+    def test_batch_runtime_pin_preflight_never_clears_another_video(self):
+        project, first = self.make_video(kind="batch")
+        config = VideoConfig(project_type="batch", project_key=project["key"], project_id=project["project_id"],
+                             project_name=project["project_name"], project_directory=project["project_directory"])
+        second = video_store.create_video(str(uuid.uuid4()), "second.mp4", config)
+        self.host._selected_project_key = project["key"]
+        self.host._batch_video_ids = [first.video_id, second.video_id]
+        old_render = Path(first.files["final_video"])
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController._resources_ready_for_videos", return_value=True), \
+             patch.object(manual_artifacts, "has_runtime_pins", side_effect=lambda key: key == second.video_id):
+            self.assertFalse(self.exporter.start_batch_to(project["key"], self.host._batch_video_ids, "source", str(self.external)))
+        self.assertTrue(old_render.exists())
+        self.assertEqual(video_store.get_video(first.video_id).checkpoints, first.checkpoints)
+        self.host._enqueue_videos.assert_not_called()
+
+    def test_fresh_batch_discards_temp_and_published_cache_but_keeps_external_export(self):
+        project, video = self.make_video(kind="batch")
+        external = self.external / "already-exported.mp4"
+        video_export.export_video(video, external)
+        temp = Path(video.files["transcript_json"]).parent
+        (temp / "original_subtitle_region.json").write_text("old OCR", encoding="utf-8")
+        (temp / "voice_parts" / "voice_0001.mp3").write_bytes(b"old voice")
+        video_store.update_video(video.video_id, status="paused", resume_step="creating_voice", processing_elapsed_seconds=130)
+        self.host._selected_project_key = project["key"]
+        self.host._batch_video_ids = [video.video_id]
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController._resources_ready_for_videos", return_value=True):
+            self.assertTrue(self.exporter.start_batch_to(project["key"], self.host._batch_video_ids, "source", str(self.external)))
+        fresh = video_store.get_video(video.video_id)
+        self.assertEqual(fresh.checkpoints, {})
+        self.assertEqual(fresh.resume_step, "")
+        self.assertEqual(fresh.processing_elapsed_seconds, 0)
+        self.assertEqual(fresh.active_artifacts, {})
+        self.assertIsNone(video_export.current_render(fresh))
+        self.assertFalse((temp / "original_subtitle_region.json").exists())
+        self.assertFalse((temp / "voice_parts" / "voice_0001.mp3").exists())
+        self.assertFalse(manual_artifacts.cache_root(video.video_id).exists())
+        self.assertEqual(Path(fresh.files["video_input"]).read_bytes(), b"owned-source")
+        self.assertEqual(external.read_bytes(), b"managed-render")
+
+    def test_new_job_in_other_project_preserves_paused_export_destination(self):
+        _, first = self.make_video()
+        _, second = self.make_video(name="Second")
+        self.host._selected_video_id = first.video_id
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController.process_for_export", return_value=True):
+            self.assertTrue(self.exporter.start(first.video_id, "source", str(self.external / "first.mp4"), process=True))
+        video_store.update_video(first.video_id, status="paused")
+        self.exporter.poll()
+        self.assertTrue(self.exporter.start(second.video_id, "source", str(self.external / "second.mp4")))
+        self.exporter.worker.join(timeout=10)
+        self.exporter.poll()
+        self.assertEqual(self.exporter.jobs[0]["videoId"], first.video_id)
+        self.assertEqual(self.exporter.jobs[0]["status"], "paused")
+        video_store.update_video(first.video_id, status="done")
+        self.exporter.poll()
+        self.exporter.worker.join(timeout=10)
+        self.exporter.poll()
+        self.assertEqual((self.external / "first.mp4").read_bytes(), b"managed-render")
+
+    def test_batch_default_is_stable_when_most_videos_are_customized(self):
+        from haizflow.services import batch_settings
+        project, video = self.make_video(kind="batch")
+        original = batch_settings.stable_values(project["key"], {}, [video])
+        video = video_store.update_video(video.video_id, target_language="en", background_music_loop=False)
+        actual = batch_settings.stable_values(project["key"], {}, [video])
+        self.assertEqual(actual, original)
+        self.assertEqual(batch_settings.differences(batch_settings.values_for(video), actual),
+                         ["targetLanguage", "backgroundMusicLoop"])
+        renamed = project_store.rename_project_by_key(project["key"], "Renamed")
+        self.assertEqual(renamed["batch_settings"]["values"], original)
+
+    def test_batch_assets_compare_content_not_same_size_or_copied_path(self):
+        from haizflow.services import batch_settings
+        project, _video = self.make_video(kind="batch")
+        first = self.external / "first.wav"
+        second = self.external / "second.wav"
+        first.write_bytes(b"same-size-A")
+        second.write_bytes(b"same-size-B")
+        staged = batch_settings.stage_asset(project["key"], "voiceReferencePath", str(first))
+        self.assertEqual(batch_settings.differences({"voiceReferencePath": staged}, {"voiceReferencePath": str(first)}), [])
+        self.assertEqual(batch_settings.differences({"voiceReferencePath": str(second)}, {"voiceReferencePath": str(first)}), ["voiceReferencePath"])
+        first.unlink()
+        self.assertEqual(Path(staged).read_bytes(), b"same-size-A")
+
+    def test_batch_config_includes_gemini_music_and_watermark_settings(self):
+        from haizflow.services import batch_settings
+        config = batch_settings.config_for({
+            "translationModel": "gemini-3.1-flash-lite", "backgroundMusicLoop": False,
+            "audioDuckingEnabled": True, "audioDuckingReductionDb": -18,
+            "watermarkKind": "image", "watermarkImagePath": "watermark.png",
+            "watermarkOpacityPercent": 75, "watermarkScalePercent": 120,
+            "ttsVoice": "omnivoice:clone", "voiceReferencePath": "sample.wav",
+        })
+        self.assertEqual(config.translator_provider, "gemini")
+        self.assertFalse(config.background_music_loop)
+        self.assertTrue(config.audio_ducking_enabled)
+        self.assertEqual(config.audio_ducking_reduction_db, -18)
+        self.assertEqual(config.watermark_image_path, "watermark.png")
+        self.assertEqual(config.voice_reference_path, "sample.wav")
+        self.assertEqual(config.watermark_opacity_percent, 75)
+        with self.assertRaises(ValueError):
+            batch_settings.config_for({"ttsVoice": "omnivoice:clone"})
+
+    def test_shared_batch_apply_preserves_private_video_until_explicit_replace(self):
+        from haizflow.desktop.project_commands_controller import ProjectCommandsController
+        from haizflow.services import batch_settings
+        project, first = self.make_video(kind="batch")
+        config = VideoConfig(project_type="batch", project_key=project["key"],
+                             project_id=project["project_id"], project_name=project["project_name"],
+                             project_directory=project["project_directory"])
+        second = video_store.create_video(str(uuid.uuid4()), "second.mp4", config)
+        self.host._selected_project_key = project["key"]
+        self.host._batch_video_ids = [first.video_id, second.video_id]
+        self.host._normalized_tts_provider = lambda language, provider: provider
+        self.host._normalized_voice_for_language = lambda language, voice, provider: voice
+        self.host._capture_video_asset_snapshot = Mock(return_value={})
+        self.host._record_batch_asset_change = Mock()
+        self.host._restore_video_asset_snapshot = Mock()
+        self.host._show_app_alert = Mock()
+        command = ProjectCommandsController(self.host)
+        baseline = command.batch_settings_values()
+        video_store.update_video(second.video_id, original_video_volume=11)
+        changed = dict(baseline, backgroundMusicLoop=False, audioDuckingEnabled=True, originalVolume=42)
+        self.assertTrue(command.apply_batch_settings_values(project["key"], changed))
+        self.assertEqual(video_store.get_video(first.video_id).original_video_volume, 42)
+        self.assertFalse(video_store.get_video(first.video_id).background_music_loop)
+        self.assertTrue(video_store.get_video(first.video_id).audio_ducking_enabled)
+        self.assertEqual(video_store.get_video(second.video_id).original_video_volume, 11)
+        self.assertEqual(command.batch_setting_overrides()[0]["videoId"], second.video_id)
+        self.assertEqual(batch_settings.stable_values(project["key"], {}, [second])["originalVolume"], 42)
+        self.assertTrue(command.apply_batch_settings_values(project["key"], changed, True))
+        self.assertEqual(video_store.get_video(second.video_id).original_video_volume, 42)
+        self.assertEqual(command.batch_setting_overrides(), [])
+        self.assertFalse(command.apply_batch_settings_values("wrong-owner", changed, True))
+
+    def test_batch_fresh_processing_exports_only_new_renders_for_each_video(self):
+        project, first = self.make_video(kind="batch")
+        config = VideoConfig(project_type="batch", project_key=project["key"], project_id=project["project_id"],
+                             project_name=project["project_name"], project_directory=project["project_directory"])
+        second = video_store.create_video(str(uuid.uuid4()), "second.mp4", config)
+        self.host._selected_project_key = project["key"]
+        self.host._batch_video_ids = [first.video_id, second.video_id]
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController._resources_ready_for_videos", return_value=True):
+            self.assertTrue(self.exporter.start_batch_to(project["key"], self.host._batch_video_ids, "source", str(self.external)))
+        first = video_store.get_video(first.video_id)
+        self.assertEqual(first.checkpoints, {})
+        self.assertEqual(first.resume_step, "")
+        revision = video_export.render_revision(first)
+        staging = manual_artifacts.create_staging_directory(first.video_id, "export")
+        (staging / "video.mp4").write_bytes(b"first-new-render")
+        record = manual_artifacts.publish(first.video_id, "export", revision, staging, {"video": "video.mp4"}, config_fingerprint=revision)
+        video_store.update_video(first.video_id, status="done", files=dict(first.files, final_video=record["resolved_outputs"]["video"]))
+        video_store.update_video(second.video_id, status="paused")
+        self.exporter.poll()
+        self.exporter.worker.join(timeout=10)
+        self.exporter.poll()
+        self.assertEqual(self.exporter.jobs[0]["status"], "done")
+        self.assertEqual(self.exporter.jobs[1]["status"], "paused")
+        revision = video_export.render_revision(second)
+        staging = manual_artifacts.create_staging_directory(second.video_id, "export")
+        (staging / "video.mp4").write_bytes(b"second-render")
+        record = manual_artifacts.publish(second.video_id, "export", revision, staging, {"video": "video.mp4"}, config_fingerprint=revision)
+        video_store.update_video(second.video_id, status="done", files=dict(second.files, final_video=record["resolved_outputs"]["video"]))
+        self.exporter.poll()
+        self.exporter.worker.join(timeout=10)
+        self.exporter.poll()
+        self.assertEqual([job["status"] for job in self.exporter.jobs], ["done", "done"])
+        self.assertEqual(Path(self.exporter.jobs[1]["path"]).read_bytes(), b"second-render")
+
+    def test_pausing_process_export_never_copies_previous_render(self):
+        _, video = self.make_video()
+        self.host._selected_video_id = video.video_id
+        target = self.external / "paused.mp4"
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController.process_for_export", return_value=True):
+            self.assertTrue(self.exporter.start(video.video_id, "source", str(target), process=True))
+        video_store.update_video(video.video_id, status="paused")
+        self.exporter.poll()
+        self.assertEqual(self.exporter.jobs[0]["status"], "paused")
+        self.assertFalse(self.exporter.busy)
+        self.assertFalse(target.exists())
+        video_store.update_video(video.video_id, status="done")
+        self.exporter.poll()
+        self.exporter.worker.join(timeout=10)
+        self.exporter.poll()
+        self.assertEqual(self.exporter.jobs[0]["status"], "done")
+        self.assertEqual(target.read_bytes(), b"managed-render")
+
+    def test_cancelled_waiting_export_does_not_resume_copy(self):
+        _, video = self.make_video()
+        self.host._selected_video_id = video.video_id
+        target = self.external / "cancelled.mp4"
+        with patch("haizflow.desktop.project_commands_controller.ProjectCommandsController.process_for_export", return_value=True):
+            self.assertTrue(self.exporter.start(video.video_id, "source", str(target), process=True))
+        video_store.update_video(video.video_id, status="paused")
+        self.exporter.poll()
+        self.exporter.cancel_all()
+        video_store.update_video(video.video_id, status="done")
+        self.exporter.poll()
+        self.assertEqual(self.exporter.jobs[0]["status"], "cancelled")
+        self.assertFalse(target.exists())
+
+    def test_undrained_copy_events_cannot_be_applied_to_a_new_job(self):
+        _, video = self.make_video()
+        self.assertTrue(self.exporter.start(video.video_id, "source", str(self.external / "first.mp4")))
+        self.exporter.worker.join(timeout=10)
+        self.assertTrue(self.exporter.busy)
+        self.assertFalse(self.exporter.start(video.video_id, "source", str(self.external / "second.mp4")))
+        self.exporter.poll()
+        self.assertFalse(self.exporter.busy)
 
     def test_project_deletion_keeps_external_export_and_shared_resources(self):
         project, video = self.make_video()

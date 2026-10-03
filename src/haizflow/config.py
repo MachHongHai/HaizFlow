@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,7 +30,7 @@ from haizflow.core.paths import (
 # Keep the Windows profile only as a read-only navigation hint for native file
 # pickers.  Runtime caches are still redirected below before any heavy library
 # is imported.
-NATIVE_WINDOWS_USERPROFILE = os.environ.get("USERPROFILE", "")
+NATIVE_WINDOWS_USERPROFILE = os.environ.get("HAIZFLOW_NATIVE_WINDOWS_USERPROFILE") or os.environ.get("USERPROFILE", "")
 
 BASE_DIR = str(package_root())
 PROJECT_ROOT = str(project_root())
@@ -181,3 +182,7 @@ for directory in (
     os.makedirs(directory, exist_ok=True)
 
 LEGACY_VIDEO_WORKSPACES_DIR = STORAGE_DIR
+
+# tempfile memoizes its first directory independently of TMP/TEMP. Qt/test
+# imports may have queried it before configuration redirected the environment.
+tempfile.tempdir = TMP_DIR

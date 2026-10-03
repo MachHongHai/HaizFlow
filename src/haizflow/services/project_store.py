@@ -632,6 +632,29 @@ def _load_index() -> list[dict[str, Any]]:
     return []
 
 
+def remove_empty_legacy_exports(record: dict[str, Any]) -> bool:
+    """Remove only the unused, empty export folder of a verified project.
+
+    Nonempty legacy exports remain importable. Managed render artifacts live
+    under each video's cache; user-chosen exported copies remain external.
+    """
+    if normalize_project_type(record.get("project_type")) not in {"single", "manual", "batch"}:
+        return False
+    try:
+        root = _record_root(record)
+        with open(os.path.join(root, PROJECT_MANIFEST_NAME), encoding="utf-8") as file:
+            manifest = json.load(file)
+        if manifest.get("key") != record.get("key"):
+            return False
+        directory = owned_path(os.path.join(root, "exports"), root)
+        if not directory.is_dir():
+            return False
+        os.rmdir(directory)  # Atomic empty-only removal; never recursive.
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any]) -> dict[str, Any]:
     """Persist one already-normalized record and its owned directory layout."""
     root = _record_root(record)
@@ -641,7 +664,6 @@ def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any])
     project_type = normalize_project_type(record.get("project_type"))
     os.makedirs(root, exist_ok=True)
     if project_type in {"single", "manual", "batch"}:
-        os.makedirs(os.path.join(root, "exports"), exist_ok=True)
         os.makedirs(os.path.join(root, "videos"), exist_ok=True)
     if project_type == "download":
         for category in ("channel", "video", "audio"):
@@ -650,6 +672,7 @@ def _write_project_record(records: list[dict[str, Any]], record: dict[str, Any])
         os.makedirs(os.path.join(root, "publishing", "media"), exist_ok=True)
         os.makedirs(os.path.join(root, "publishing", "thumbnails"), exist_ok=True)
     _write_json_atomic(os.path.join(root, PROJECT_MANIFEST_NAME), record)
+    remove_empty_legacy_exports(record)
     records = [item for item in records if item.get("key") != record["key"]]
     records.append(record)
     _save_index(records)
@@ -860,6 +883,18 @@ def touch_project_by_key(project_key_value: str) -> bool:
         record["activity_at"] = now
         _write_project_record(records, record)
         return True
+
+
+def save_batch_settings(key: str, settings: dict[str, Any]) -> None:
+    """Persist shared defaults with the immutable project, including recovery manifest."""
+    with _index_guard():
+        records = _load_index()
+        record = next((item for item in records if item.get("key") == key), None)
+        if not record or record.get("project_type") != "batch":
+            raise ValueError("The batch project is no longer available.")
+        record["batch_settings"] = {"version": 1, "values": settings}
+        record["updated_at"] = _now()
+        _write_project_record(records, record)
 
 
 def _validated_deletion_record(records: list[dict[str, Any]], key: str) -> tuple[dict[str, Any], str] | None:

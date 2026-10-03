@@ -9,19 +9,53 @@ Item {
     id: root
 
     property var projectModel: null
+    property string pageTitle: qsTr("Dự án")
     signal requestNewProject(string projectType)
     signal openProject(int index, string projectType)
 
     function resetFilters() {
         searchField.clear()
         typeFilter.currentIndex = 0
-        statusFilter.currentIndex = 0
         sortMode.currentIndex = 0
         if (root.projectModel) {
             root.projectModel.query = ""
             root.projectModel.typeFilter = "all"
             root.projectModel.statusFilter = "all"
             root.projectModel.sortMode = "activity"
+        }
+    }
+
+    function syncFilters() {
+        if (!root.projectModel || !searchField || !typeFilter || !sortMode)
+            return;
+        searchField.text = root.projectModel.query || "";
+        typeFilter.currentIndex = Math.max(0, ["all", "single", "manual", "batch", "download", "publish"].indexOf(root.projectModel.typeFilter));
+        sortMode.currentIndex = root.projectModel.sortMode === "name" ? 1 : 0;
+        root.projectModel.statusFilter = "all";
+    }
+
+    Component.onCompleted: syncFilters()
+    onVisibleChanged: {
+        if (visible)
+            syncFilters();
+        else {
+            searchField.deselect();
+            searchField.focus = false;
+        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        z: 1
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onPressed: function (mouse) {
+            const local = searchField.mapFromItem(root, mouse.x, mouse.y);
+            if (searchField.activeFocus && !searchField.contains(local)) {
+                searchField.deselect();
+                searchField.focus = false;
+                root.forceActiveFocus(Qt.MouseFocusReason);
+            }
+            mouse.accepted = false;
         }
     }
 
@@ -32,10 +66,11 @@ Item {
 
         PageHeader {
             Layout.fillWidth: true
-            title: qsTr("Dự án")
+            title: root.pageTitle
 
             StudioButton {
                 id: newProjectButton
+                objectName: "newProjectButton"
                 variant: "primary"
                 text: qsTr("Dự án mới")
                 iconName: "add"
@@ -43,6 +78,7 @@ Item {
 
                 Menu {
                     id: newProjectMenu
+                    objectName: "newProjectMenu"
                     y: newProjectButton.height + Theme.space4
                     width: 220
                     padding: Theme.space4
@@ -69,6 +105,7 @@ Item {
 
             SearchField {
                 id: searchField
+                objectName: "projectSearchField"
                 Layout.fillWidth: true
                 Layout.maximumWidth: 440
                 placeholderText: qsTr("Tìm dự án")
@@ -83,15 +120,6 @@ Item {
                 onActivated: if (root.projectModel)
                     root.projectModel.typeFilter = ["all", "single", "manual", "batch", "download", "publish"][currentIndex]
                 Accessible.name: qsTr("Loại dự án")
-            }
-
-            AppComboBox {
-                id: statusFilter
-                Layout.preferredWidth: 154
-                model: [qsTr("Mọi trạng thái"), qsTr("Đang xử lý"), qsTr("Tạm dừng"), qsTr("Hoàn tất"), qsTr("Lỗi")]
-                onActivated: if (root.projectModel)
-                    root.projectModel.statusFilter = ["all", "processing", "paused", "done", "failed"][currentIndex]
-                Accessible.name: qsTr("Trạng thái dự án")
             }
 
             AppComboBox {

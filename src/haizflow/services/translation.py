@@ -188,7 +188,7 @@ def translate_segments(
         zip(segments, source_texts, translations),
         start=1,
     ):
-        log_to_video(video_id, f"[{index}/{total}] Segment translation: '{source_text}' -> '{translated_text}'")
+        log_to_video(video_id, f"[{index}/{total}] Segment translation: '{source_text}' -> '{translated_text}'", level="INFO")
         translated_segments.append(
             {
                 "start": segment["start"],

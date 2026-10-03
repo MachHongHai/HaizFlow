@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
 from haizflow.schemas.editor import EditorDocument
 from haizflow.services import desktop_videos, editor_documents
@@ -11,6 +11,7 @@ from haizflow.services import desktop_videos, editor_documents
 
 class ManualEditorDocumentModel(QObject):
     changed = Signal()
+    clipsChanged = Signal()
     selectionChanged = Signal()
     _waveformReady = Signal(str, str, object)
 
@@ -26,6 +27,11 @@ class ManualEditorDocumentModel(QObject):
             max_workers=1, thread_name_prefix="editor-waveform"
         )
         self._closed = False
+        self._waveform_notifications = QTimer(self)
+        self._waveform_notifications.setSingleShot(True)
+        self._waveform_notifications.setInterval(250)
+        self._waveform_notifications.timeout.connect(self.clipsChanged)
+        self.changed.connect(self.clipsChanged)
         self._waveformReady.connect(self._accept_waveform)
 
     @property
@@ -89,7 +95,7 @@ class ManualEditorDocumentModel(QObject):
             return []
         return [item.model_dump() for item in sorted(self._document.tracks, key=lambda value: value.order)]
 
-    @Property("QVariantList", notify=changed)
+    @Property("QVariantList", notify=clipsChanged)
     def clips(self) -> list[dict]:
         if not self._document:
             return []
@@ -146,10 +152,12 @@ class ManualEditorDocumentModel(QObject):
         peaks = analysis.get("peaks", []) if isinstance(analysis, dict) else []
         if peaks:
             self._waveforms[key] = [max(0.0, min(1.0, float(value))) for value in peaks]
-            self.changed.emit()
+            if not self._waveform_notifications.isActive():
+                self._waveform_notifications.start()
 
     def close(self) -> None:
         self._closed = True
+        self._waveform_notifications.stop()
         self._waveform_pending.clear()
         self._waveform_executor.shutdown(wait=False, cancel_futures=True)
 

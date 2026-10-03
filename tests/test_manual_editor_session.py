@@ -195,6 +195,7 @@ class ManualEditorSessionTests(unittest.TestCase):
         self.assertEqual(commits, [])
         self.assertEqual(item.property("saveStatus"), "dirty")
         item.apply()
+        self.app.processEvents()  # Save follows the IME commit event.
         self.assertEqual(len(commits), 1)
         self.assertEqual(commits[0][1], text)
         controller.manualSubtitleSaved.emit("sentence-1", 1, commits[0][3])

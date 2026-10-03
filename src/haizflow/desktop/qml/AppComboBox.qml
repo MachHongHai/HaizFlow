@@ -64,8 +64,8 @@ ComboBox {
     background: Rectangle {
         radius: Theme.radiusSmall
         color: root.enabled && root.hovered ? Theme.surfaceMuted : Theme.input
-        border.width: root.activeFocus || root.popup.opened ? 2 : 1
-        border.color: root.activeFocus || root.popup.opened ? Theme.focus : Theme.outline
+        border.width: root.visualFocus || root.popup.opened ? 2 : 1
+        border.color: root.visualFocus || root.popup.opened ? Theme.focus : Theme.outline
     }
 
     popup: Popup {

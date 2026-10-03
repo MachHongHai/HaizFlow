@@ -205,6 +205,16 @@ class SocialPublishController:
     def posted_count(self) -> int:
         return sum(1 for item in self._state.get("items") or [] if item["status"] in {"published", "posted"})
 
+    @staticmethod
+    def _waiting_to_publish(item: dict) -> bool:
+        return (item.get("status") in {"ready", "failed", "missing"}
+                and not item.get("zernio_post_id")
+                and os.path.isfile(str(item.get("file_path") or "")))
+
+    @property
+    def waiting_count(self) -> int:
+        return sum(self._waiting_to_publish(item) for item in self._state.get("items") or [])
+
     @property
     def api_key_configured(self) -> bool:
         return bool(self._api_key())
@@ -1459,6 +1469,11 @@ class SocialPublishController:
 
     def publish_item(self, row: int, *, continue_queue: bool = False) -> bool:
         item = self._host.tiktok_publish_items.item_at(row)
+        if item and (item.get("status") in {"published", "posted", "scheduled"}
+                     or (item.get("zernio_post_id") and item.get("status") not in {"failed", "partial", "draft"})):
+            self._status = "This video already has a social post; it will not be published again."
+            self._emit_changed()
+            return False
         if not item or not self._ensure_ready_to_publish(item):
             return False
         self._auto_continue = bool(continue_queue)
@@ -1490,7 +1505,7 @@ class SocialPublishController:
 
     def publish_next(self, *, continue_queue: bool = False) -> bool:
         for row, item in enumerate(self._state.get("items") or []):
-            if item["status"] in {"ready", "failed", "missing"} and os.path.isfile(item["file_path"]):
+            if self._waiting_to_publish(item):
                 return self.publish_item(row, continue_queue=continue_queue)
         self._status = "No videos are waiting to be published."
         self._emit_changed()

@@ -65,6 +65,7 @@ Item {
             const popup = makePopup();
             popup.controller.hasAppUpdate = true;
             popup.controller.appUpdateBlocked = true;
+            popup.controller.appUpdateState = "ready";
             const install = findChild(popup, "appUpdateInstallButton");
             verify(!!install, "Object exists");
             tryCompare(install, "enabled", false);

@@ -1102,6 +1102,29 @@ def test_waveform_is_attached_to_audio_clip_without_mutating_document():
     model.close()
 
 
+def test_many_waveform_results_emit_one_clip_update_not_document_refresh():
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtTest import QSignalSpy
+
+    # Keep one GUI application for the whole test process. Creating/destroying
+    # a QCoreApplication before later QML tests is unsafe on Windows.
+    global _waveform_test_application
+    _waveform_test_application = QApplication.instance() or QApplication([])
+    model = ManualEditorDocumentModel()
+    model._document = EditorDocument(video_id="many-clips")
+    documents = QSignalSpy(model.changed)
+    clips = QSignalSpy(model.clipsChanged)
+    for index in range(50):
+        model._accept_waveform("many-clips", str(index), {"peaks": [0.1, 0.5]})
+    assert documents.count() == 0
+    assert clips.wait(1000)
+    assert clips.count() == 1
+    assert documents.count() == 0
+    assert len(model._waveforms) == 50
+    model.close()
+    assert _waveform_test_application is not None
+
+
 def test_selected_subtitle_reports_reading_and_overlap_without_false_layout_warning():
     document = EditorDocument(
         video_id="manual-warnings",

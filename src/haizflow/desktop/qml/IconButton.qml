@@ -25,7 +25,7 @@ Button {
     background: Rectangle {
         radius: Theme.radiusSmall
         color: !root.enabled ? "transparent" : root.tone === "primary" ? (root.down ? Theme.interactivePressed : root.hovered ? Theme.interactiveHover : Theme.interactive) : root.tone === "danger" && (root.hovered || root.down) ? Theme.dangerMuted : root.down ? Theme.surfaceStrong : root.hovered ? Theme.surfaceMuted : "transparent"
-        border.width: root.activeFocus ? 2 : 0
+        border.width: root.visualFocus ? 2 : 0
         border.color: Theme.focus
     }
 

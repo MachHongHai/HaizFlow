@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 PROTOCOL_VERSION = 1
@@ -47,20 +48,42 @@ def _write_atomic(path: Path, payload: dict) -> None:
             json.dump(payload, stream, ensure_ascii=False)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(name, path)
+        # A reader (or antivirus) can briefly deny replacement on Windows.
+        # Keep the old, complete JSON visible until the atomic publish succeeds.
+        for attempt in range(6):
+            try:
+                os.replace(name, path)
+                break
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.025 * (2 ** attempt))
     finally:
         Path(name).unlink(missing_ok=True)
 
 
 def _status(path: Path, **values) -> None:
-    _write_atomic(path, values)
+    try:
+        _write_atomic(path, values)
+    except OSError:
+        # Progress is advisory; the mandatory final response still propagates
+        # publication failures. Never abort inference over a locked status file.
+        pass
 
 
 def _warm(capability: str, context: dict) -> None:
+    if capability in {"recognition", "separation"}:
+        from haizflow.core.hardware import configure_processing_device
+
+        device = str(context.get("device") or "cpu")
+        if capability == "recognition" and context.get("model") in {"turbo", "large-v3-turbo"}:
+            device = "gpu"
+        configure_processing_device(device)
     if capability == "recognition":
         from haizflow.pipeline.transcribe import warm_whisperx_model
 
-        warm_whisperx_model(str(context.get("model") or "small"))
+        model = str(context.get("model") or "small")
+        warm_whisperx_model("large-v3-turbo" if model == "turbo" else model)
     elif capability == "translation":
         from haizflow.services.translation import warm_hymt2_worker
 
@@ -204,6 +227,14 @@ def run_file_request(request_path: Path) -> int:
     try:
         if request.get("protocol_version") != PROTOCOL_VERSION:
             raise ValueError("Unsupported engine protocol request.")
+        if operation in {"transcribe", "demucs_task"} and request.get("context"):
+            from haizflow.core.hardware import configure_processing_device
+
+            context = dict(request["context"])
+            device = str(context.get("device") or "cpu")
+            if operation == "transcribe" and context.get("model") in {"turbo", "large-v3-turbo"}:
+                device = "gpu"
+            configure_processing_device(device)
         if operation == "reference_transcribe":
             from haizflow.pipeline.voice_reference import recognize_reference
 
@@ -223,6 +254,15 @@ def run_file_request(request_path: Path) -> int:
                 model_name=str(payload.get("model_name") or "small"),
             )
             result = {"segments": segments, "detected_language": language}
+        elif operation == "speaker_identification":
+            from haizflow.pipeline.speaker_identity import identify
+
+            def progress(current, total):
+                _status(status_path, stage="identifying_speakers", detail="Nhận diện người nói",
+                        current=int(current), total=int(total))
+
+            result = {"segments": identify(str(payload["audio_path"]), list(payload["segments"]),
+                                           str(payload["video_id"]), progress)}
         elif operation == "subtitle_ocr":
             from haizflow.pipeline.subtitle_ocr import detect_original_subtitle_region
 

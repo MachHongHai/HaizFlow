@@ -36,7 +36,6 @@ InspectorPanel {
             cpuOnly: AppController.cpuOnly
             hasSource: AppController.videoPath.length > 0
             showCloneAction: AppController.ttsProvider.indexOf("omnivoice") === 0
-            cloneActive: AppController.ttsVoice === "omnivoice:clone"
             speechRecognitionModel: AppController.speechRecognitionModel
             translationModel: AppController.translationModel
             speechRecognitionOptions: AppController.speechRecognitionModelOptions
@@ -159,16 +158,6 @@ InspectorPanel {
                 }
             }
         }
-    }
-
-    StudioButton {
-        Layout.fillWidth: true
-        visible: !AppController.hasSelectedVideo
-        text: AppController.isProcessing ? qsTr("Đưa vào hàng đợi xử lý") : qsTr("Tạo và xử lý")
-        iconGlyph: "\uE768"
-        variant: "primary"
-        enabled: AppController.canEditSelectedVideo && AppController.videoPath.length > 0
-        onClicked: AppController.startProjectVideo()
     }
 
     Timer {

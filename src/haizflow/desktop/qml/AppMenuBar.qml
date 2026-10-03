@@ -19,6 +19,7 @@ Rectangle {
     signal undoRequested
     signal redoRequested
     signal aboutRequested
+    signal copyrightRequested
     signal backRequested
     signal forwardRequested
     signal homeRequested
@@ -29,6 +30,7 @@ Rectangle {
     property bool canUndo: false
     property bool canRedo: false
     property var updateController: AppController
+    property bool helpWasOpenOnPress: false
 
     implicitHeight: 40
     color: Theme.topBar
@@ -153,13 +155,14 @@ Rectangle {
 
             objectName: "helpButton"
             glyph: "\uE897"
-            toolTipText: qsTr("Giới thiệu")
+            toolTipText: qsTr("Thông tin HaizFlow")
+            onPressed: root.helpWasOpenOnPress = helpMenu.visible
             onClicked: {
                 projectMenu.close();
                 editMenu.close();
                 settingsMenu.close();
                 updatesPopup.close();
-                root.aboutRequested();
+                root.toggleMenu(helpMenu, helpButton, root.helpWasOpenOnPress);
             }
         }
     }
@@ -174,9 +177,11 @@ Rectangle {
         projectMenu.close();
         editMenu.close();
         settingsMenu.close();
+        helpMenu.close();
         const anchorPosition = anchorButton.mapToItem(Overlay.overlay, 0, 0);
         const barBottom = root.mapToItem(Overlay.overlay, 0, root.height);
-        menu.x = Math.round(anchorPosition.x);
+        menu.x = Math.round(Math.max(Theme.space8, Math.min(anchorPosition.x,
+            Overlay.overlay.width - menu.width - Theme.space8)));
         menu.y = Math.round(barBottom.y + Theme.space4);
         menu.open();
     }
@@ -186,6 +191,7 @@ Rectangle {
         projectMenu.close();
         editMenu.close();
         settingsMenu.close();
+        helpMenu.close();
         const position = updatesButton.mapToItem(Overlay.overlay, 0, updatesButton.height);
         updatesPopup.x = Math.max(Theme.space8, Math.min(position.x,
             Overlay.overlay.width - updatesPopup.width - Theme.space8));
@@ -197,6 +203,23 @@ Rectangle {
     AppUpdatePopup {
         id: updatesPopup
         controller: root.updateController
+    }
+
+    TopBarPopupMenu {
+        id: helpMenu
+        objectName: "helpMenuPopup"
+        parent: Overlay.overlay
+        menuContentWidth: Math.max(helpAboutItem.implicitWidth, helpCopyrightItem.implicitWidth)
+        AppMenuItem {
+            id: helpAboutItem
+            text: qsTr("Giới thiệu")
+            onTriggered: root.aboutRequested()
+        }
+        AppMenuItem {
+            id: helpCopyrightItem
+            text: qsTr("Bản quyền")
+            onTriggered: root.copyrightRequested()
+        }
     }
 
     TopBarPopupMenu {
@@ -284,7 +307,7 @@ Rectangle {
             packagesItem.implicitWidth,
             guideItem.implicitWidth,
             reportIssueItem.implicitWidth,
-            aboutItem.implicitWidth)
+            aboutItem.implicitWidth, copyrightItem.implicitWidth)
 
         AppMenuItem {
             id: settingsItem
@@ -330,6 +353,11 @@ Rectangle {
 
             text: qsTr("Giới thiệu")
             onTriggered: root.aboutRequested()
+        }
+        AppMenuItem {
+            id: copyrightItem
+            text: qsTr("Bản quyền")
+            onTriggered: root.copyrightRequested()
         }
     }
 

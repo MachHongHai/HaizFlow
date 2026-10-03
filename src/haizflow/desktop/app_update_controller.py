@@ -94,6 +94,22 @@ class AppUpdateController(QObject):
         self._last_checked = 0.0
         self._stop = threading.Event()
         self._installer_process = None
+        self._delta_layout = None
+        self._delta_token = ""
+        self._delta_process = None
+        self._invalid_delta_layout = False
+        self._recovery_reported = False
+        try:
+            from haizflow.core.paths import install_root
+            from haizflow.update.state import Layout
+            root = install_root()
+            if (root / "update-layout.json").is_file():
+                self._delta_layout = Layout(root)
+        except (OSError, ValueError):
+            self._invalid_delta_layout = True
+            # Do not silently fall back to installing over a malformed
+            # versioned layout. install() reports the required repair.
+            self._error = "Bố cục cập nhật bị hỏng. Cần sửa bản cài đặt."
 
     @property
     def current_version(self) -> str:
@@ -139,6 +155,12 @@ class AppUpdateController(QObject):
             self.check()
 
     def install(self) -> bool:
+        if self._invalid_delta_layout:
+            self._error = "Bố cục cập nhật bị hỏng. Cần sửa bản cài đặt."
+            self.changed.emit()
+            return False
+        if self._delta_layout is not None:
+            return self._install_delta()
         if self._state in {"downloading", "verifying", "installing"}:
             return False
         if self.blocked:
@@ -162,6 +184,90 @@ class AppUpdateController(QObject):
             return True
         self.changed.emit()
         return False
+
+    def _install_delta(self) -> bool:
+        from PySide6.QtCore import QCoreApplication
+        from haizflow.update.filesystem import atomic_json, child
+        from haizflow.update.updater import create_request
+        layout = self._delta_layout
+        if self._state == "ready" and self._delta_token:
+            if self.blocked:
+                self._error = "Chờ các tác vụ hoàn tất trước khi khởi động lại."
+                self.changed.emit()
+                return False
+            # Explicit user confirmation. Updater still waits for actual Core
+            # exit and never kills render/export/social work.
+            atomic_json(child(layout.ipc, self._delta_token + ".activate.json"),
+                        {"token": self._delta_token, "activate": True})
+            self._state = "restarting"
+            self.changed.emit()
+            QCoreApplication.quit()
+            return True
+        if self._state in {"downloading", "verifying", "preparing", "restarting"} or not self.available:
+            return False
+        if not getattr(sys, "frozen", False) or sys.platform != "win32":
+            self._error = "Delta update chỉ dùng khi Launcher và Updater đã được đóng gói."
+        else:
+            executable = child(layout.root, "updater/HaizFlowUpdater.exe")
+            launcher = child(layout.root, "HaizFlow.exe")
+            if not executable.is_file() or not launcher.is_file():
+                self._error = "Thiếu Launcher hoặc Updater. Chưa thể cập nhật trực tiếp ở bản này."
+            else:
+                try:
+                    self._delta_token = create_request(layout, self._latest_version)
+                    self._delta_process = subprocess.Popen([str(executable), "--install-root", str(layout.root),
+                        "--request-token", self._delta_token], cwd=layout.root, shell=False,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    self._state = "downloading"
+                    self._download_progress = 0
+                    self._error = ""
+                    self.changed.emit()
+                    return True
+                except (OSError, ValueError) as exc:
+                    self._error = str(exc)
+        self.changed.emit()
+        return False
+
+    def _poll_delta(self) -> None:
+        if self._delta_layout is None:
+            return
+        from haizflow.update.filesystem import child, read_json
+        try:
+            if self._delta_token:
+                path = child(self._delta_layout.ipc, self._delta_token + ".status.json")
+                if not path.exists():
+                    if self._delta_process and self._delta_process.poll() is not None:
+                        raise ValueError("Updater đã đóng trước khi gửi trạng thái.")
+                    return
+                data = read_json(path)
+                if data.get("token") != self._delta_token or data.get("state") not in {
+                        "downloading", "verifying", "preparing", "ready", "restarting", "failed"}:
+                    raise ValueError("Trạng thái Updater không hợp lệ.")
+                state = data["state"]
+                progress = data.get("progress")
+                if type(progress) is not int or not 0 <= progress <= 99:
+                    raise ValueError("Tiến độ cập nhật không hợp lệ.")
+                values = (state, progress, str(data.get("error") or ""))
+                if values != (self._state, self._download_progress, self._error):
+                    self._state, self._download_progress, self._error = values
+                    self.changed.emit()
+            elif not self._recovery_reported:
+                journal = self._delta_layout.journal()
+                if journal and journal["state"] == "ready":
+                    self._latest_version = journal["target"]
+                    self._state = "available"
+                    self._recovery_reported = True
+                    self.changed.emit()
+                if journal and journal["state"] in {"confirmed", "rolled_back", "failed"}:
+                    self._state = "updated" if journal["state"] == "confirmed" else journal["state"]
+                    self._recovery_reported = True
+                    self._download_progress = 100 if self._state == "updated" else 0
+                    self._error = journal.get("error", "")
+                    self.changed.emit()
+        except (OSError, ValueError) as exc:
+            self._state = "failed"
+            self._error = str(exc)
+            self.changed.emit()
 
     def _download_installer(self, asset: dict) -> None:
         from haizflow.config import TMP_DIR
@@ -213,7 +319,7 @@ class AppUpdateController(QObject):
                     pass
 
     def check(self, *, manual: bool = False) -> None:
-        if self._state in {"downloading", "verifying", "installing"}:
+        if self._state in {"downloading", "verifying", "installing", "preparing", "ready", "restarting"}:
             return
         if self._thread is not None and self._thread.is_alive():
             self._manual_request = self._manual_request or bool(manual)
@@ -225,15 +331,19 @@ class AppUpdateController(QObject):
 
         def worker() -> None:
             try:
-                request = urllib.request.Request(
-                    LATEST_RELEASE_API,
-                    headers={
-                        "Accept": "application/vnd.github+json",
-                        "User-Agent": f"HaizFlow/{self.current_version}",
-                    },
-                )
-                with urllib.request.urlopen(request, timeout=8) as response:
-                    payload = json.loads(response.read(512 * 1024).decode("utf-8"))
+                if self._delta_layout is not None:
+                    from haizflow.update.network import GitHubClient
+                    payload = GitHubClient().latest()
+                else:
+                    request = urllib.request.Request(
+                        LATEST_RELEASE_API,
+                        headers={
+                            "Accept": "application/vnd.github+json",
+                            "User-Agent": f"HaizFlow/{self.current_version}",
+                        },
+                    )
+                    with urllib.request.urlopen(request, timeout=8) as response:
+                        payload = json.loads(response.read(512 * 1024).decode("utf-8"))
                 if not isinstance(payload, dict):
                     raise ValueError("Invalid release metadata.")
                 tag = str(payload.get("tag_name") or "").strip()
@@ -265,6 +375,7 @@ class AppUpdateController(QObject):
         self._thread.start()
 
     def drain_events(self) -> None:
+        self._poll_delta()
         if self._installer_process is not None and self._installer_process.poll() is not None:
             self._installer_process = None
             self._state = "available"

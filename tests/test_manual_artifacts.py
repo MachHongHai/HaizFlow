@@ -171,6 +171,22 @@ class ManualArtifactTests(unittest.TestCase):
         self.assertIsNotNone(record)
         self.assertTrue(Path(record["resolved_outputs"]["segments"]).is_file())
 
+    def test_presentation_batch_never_caches_between_ui_evaluations(self):
+        self.publish_text("quick", "[]")
+
+        @manual_artifacts.presentation_batch
+        def evaluate():
+            return (manual_artifacts.peek("manual-video", "translation", "quick"),
+                    manual_artifacts.peek("manual-video", "translation", "quick"))
+
+        with patch.object(manual_artifacts, "_peek_structure", wraps=manual_artifacts._peek_structure) as inspect:
+            first, second = evaluate()
+            self.assertEqual(first, second)
+            self.assertEqual(inspect.call_count, 1)
+            Path(first["resolved_outputs"]["segments"]).unlink()
+            self.assertEqual(evaluate(), (None, None))
+            self.assertEqual(inspect.call_count, 2)
+
     def test_failed_request_is_recorded_without_becoming_a_cache_hit(self):
         manual_artifacts.record_error(
             "manual-video",

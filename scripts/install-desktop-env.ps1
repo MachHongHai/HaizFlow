@@ -103,5 +103,9 @@ if ($LASTEXITCODE -ne 0) {
   throw "Editable project installation failed with exit code $LASTEXITCODE."
 }
 & $Python -m pip check
+& $Python (Join-Path $PSScriptRoot "configure-dev-storage.py")
+if ($LASTEXITCODE -ne 0) {
+  throw "Development storage containment failed."
+}
 & $Python (Join-Path $PSScriptRoot "verify-dependency-lock.py")
 & $Python (Join-Path $PSScriptRoot "verify-runtime.py")

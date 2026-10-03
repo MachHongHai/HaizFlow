@@ -8,7 +8,7 @@ WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2", "gemini"]
 TranslationModel = Literal["auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
 TTSProvider = Literal["omnivoice", "omnivoice-gpu"]
-SpeechRecognitionModel = Literal["small", "large-v3-turbo"]
+SpeechRecognitionModel = Literal["small", "small-cpu", "small-gpu", "large-v3-turbo"]
 OutputFormat = Literal["keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"]
 ProjectType = Literal["single", "manual", "batch"]
 OriginalSubtitleRemovalMode = Literal["blur", "patch"]
@@ -98,6 +98,9 @@ class VideoConfig(BaseModel):
     watermark_italic: bool = True
     # An import request only; the selected file is copied into the workspace.
     background_music_path: str = Field(default="", exclude=True)
+    voice_reference_path: str = Field(default="", exclude=True)
+    watermark_image_path: str = Field(default="", exclude=True)
+    watermark_video_path: str = Field(default="", exclude=True)
     project_name: str = ""
     project_directory: str = ""
     project_type: ProjectType = "single"

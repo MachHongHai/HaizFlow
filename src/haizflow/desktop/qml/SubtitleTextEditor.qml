@@ -26,6 +26,7 @@ ColumnLayout {
     signal commitRequested(string segmentId, string text, int revision, string requestId)
     signal draftChanged(string segmentId, string text, int revision)
     signal draftCleared(string segmentId)
+    signal applied()
     spacing: 8
 
     function commitCurrentText() {
@@ -34,6 +35,7 @@ ColumnLayout {
         if (editor.text === committedText) {
             saveStatus = "saved";
             draftCleared(editingId);
+            applied();
             return;
         }
         requestId = editingId + ":" + (++serial);
@@ -46,8 +48,12 @@ ColumnLayout {
         // Commit an active Vietnamese IME composition before sampling text.
         // Button clicks can otherwise arrive one event ahead of the final
         // composed word, which makes the saved value appear to lose its tail.
-        editor.focus = false;
-        commitCurrentText();
+        // QInputMethod.commit is available at runtime; Qt's QML type
+        // metadata exposes inputMethod only as QObject.
+        // qmllint disable missing-property
+        Qt.inputMethod.commit();
+        // qmllint enable missing-property
+        Qt.callLater(root.commitCurrentText);
     }
     function dismiss() {
         editor.deselect();
@@ -137,9 +143,10 @@ ColumnLayout {
                 root.editingRevision = version;
                 root.errorMessage = "";
                 root.saveStatus = editor.text === root.committedText ? "saved" : "dirty";
-                if (root.saveStatus === "saved")
+                if (root.saveStatus === "saved") {
                     root.draftCleared(id);
-                else
+                    root.applied();
+                } else
                     root.draftChanged(id, editor.text, root.editingRevision);
             }
         }

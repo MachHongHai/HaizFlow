@@ -13,6 +13,7 @@ from queue import Empty
 
 from haizflow.config import TMP_DIR
 from haizflow.core.paths import app_data_dir
+from haizflow.core.model_choices import project_model_defaults
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import collect_batch_video_paths, create_video_thumbnail_path, normalize_video_path
 from haizflow.schemas.video import SubtitleStyle, VideoConfig
@@ -102,35 +103,17 @@ class ProjectImportController:
         host = self._host
         config = host._build_config().model_copy(deep=True)
         is_batch = force_batch or str(getattr(host, "_project_type", "")) == "batch"
-        if not is_batch or not getattr(host, "_batch_video_ids", None):
+        if not is_batch:
             return config
 
         values = host._batch_settings_values()
-        style_payload = dict(values.get("subtitleStyle") or {})
-        manual_layout = bool(style_payload.pop("manual", False))
-        remove_original_subtitles = bool(values.get("removeOriginalSubtitles", True))
-        removal_mode = str(values.get("originalSubtitleRemovalMode") or "patch")
-        return config.model_copy(
-            update={
-                "mode": "A",
-                "target_language": str(values.get("targetLanguage") or "vi"),
-                "speech_recognition_model": str(values.get("speechRecognitionModel") or "small"),
-                "tts_provider": str(values.get("ttsProvider") or "omnivoice"),
-                "tts_voice": str(values.get("ttsVoice") or ""),
-                "speaker_mode": str(values.get("speakerMode") or "single"),
-                "enable_audio_separation": bool(values.get("enableAudioSeparation", True)),
-                "original_video_volume": int(values.get("originalVolume", 60)),
-                "background_music_volume": int(values.get("backgroundMusicVolume", 30)),
-                "tts_volume": int(values.get("ttsVolume", 100)),
-                "watermark_text": str(values.get("watermarkText") or ""),
-                "remove_original_subtitles": remove_original_subtitles,
-                "original_subtitle_removal_mode": removal_mode,
-                "subtitle_style": SubtitleStyle(**style_payload),
-                "subtitle_layout_override": manual_layout and not remove_original_subtitles,
-                "background_music_path": str(values.get("backgroundMusicPath") or ""),
-                "project_type": "batch",
-            }
-        )
+        from haizflow.services.batch_settings import config_for
+
+        shared = config_for(values)
+        return shared.model_copy(update={"project_name": config.project_name,
+                                         "project_directory": config.project_directory,
+                                         "project_id": config.project_id, "project_key": config.project_key})
+
 
     def _queue_import(self, jobs: list[dict], context: dict) -> bool:
         """Run disk/FFmpeg work outside the QML thread and marshal results back."""
@@ -1141,8 +1124,7 @@ class ProjectImportController:
         defaults = {
             "_workflow_mode": "A",
             "_target_language": "vi",
-            "_speech_recognition_model": "small",
-            "_tts_provider": "omnivoice",
+            **project_model_defaults(getattr(host, "_settings_processing_device", "cpu")),
             "_tts_voice": "omnivoice:female",
             "_speaker_mode": "single",
             "_enable_audio_separation": True,
@@ -1173,6 +1155,7 @@ class ProjectImportController:
             "_workflow_mode": "workflowModeChanged",
             "_target_language": "targetLanguageChanged",
             "_speech_recognition_model": "speechRecognitionModelChanged",
+              "_translation_model": "translationModelChanged",
             "_tts_provider": "ttsProviderChanged",
             "_tts_voice": "ttsVoiceChanged",
             "_speaker_mode": "speakerModeChanged",

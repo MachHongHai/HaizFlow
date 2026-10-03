@@ -417,6 +417,31 @@ def _finish_recovered_translation(
 MANUAL_PIPELINE_STAGES = ("translation", "subtitles", "voice", "timeline", "render")
 
 
+def _translation_signature(video, video_input: str) -> str:
+    using_gemini = str(getattr(video, "translation_model", "")).startswith("gemini-")
+    return _signature(
+        _file_state(video_input), TIMING_SOURCE,
+        "gemini-batched-segments-v1" if using_gemini else "hymt2-semantic-source-context-retry-v21",
+        video.target_language, video.enable_audio_separation,
+        getattr(video, "speech_recognition_model", "small"),
+        "gemini" if using_gemini else "hymt2",
+        "gemini-segment-json-v1" if using_gemini else HYMT2_MODEL_REVISION,
+        *translation_model_signature_parts(getattr(video, "translation_model", "auto")),
+    )
+
+
+def foreground_capability(video, manual_tool: str = "") -> str:
+    """Resolve the first actual stage on the worker, not in a QML getter."""
+    if manual_tool:
+        return {"voice": "voice", "translation": "recognition", "separation": "separation",
+                "source": "separation", "image": "ocr"}.get(manual_tool, "")
+    files = getattr(video, "files", {}) or {}
+    source, transcript = files.get("video_input"), files.get("transcript_json")
+    if source and transcript and _checkpoint_valid(video, "translation", _translation_signature(video, source), [transcript]):
+        return "voice"
+    return "separation" if getattr(video, "enable_audio_separation", False) else "recognition"
+
+
 def _complete_manual_stage(video_id: str, stage: str, progress: int) -> None:
     """Leave a manual project idle with an independently reusable result."""
     video = get_video(video_id)
@@ -484,17 +509,7 @@ def process_video_sync(
         video_dir = os.path.dirname(os.path.dirname(video_input))
         temp_audio_wav = os.path.join(video_dir, "temp", "audio.wav")
         source_segments_json = os.path.join(video_dir, "temp", "source_segments.json")
-        translation_signature = _signature(
-            _file_state(video_input),
-            TIMING_SOURCE,
-            "gemini-batched-segments-v1" if using_gemini else "hymt2-semantic-source-context-retry-v21",
-            video.target_language,
-            video.enable_audio_separation,
-            getattr(video, "speech_recognition_model", "small"),
-            "gemini" if using_gemini else "hymt2",
-            "gemini-segment-json-v1" if using_gemini else HYMT2_MODEL_REVISION,
-            *translation_model_signature_parts(getattr(video, "translation_model", "auto")),
-        )
+        translation_signature = _translation_signature(video, video_input)
 
         # Clicking Dịch is an explicit recomputation request. Downstream
         # Manual modules reuse this checkpoint, but Dịch itself never does.
@@ -546,9 +561,9 @@ def process_video_sync(
         # A previous editor session may intentionally keep OmniVoice warm.
         # A fresh transcription needs that VRAM first; reviewed/checkpointed
         # downstream passes returned above and can still reuse the warm worker.
-        from haizflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice_runtime
+        from haizflow.pipeline.omnivoice_tts import release_model_memory
 
-        clear_omnivoice_runtime()
+        release_model_memory()
         profile = runtime_profile()
         if (
             using_gemini
@@ -796,6 +811,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
     effective_tts_provider = resolve_tts_provider(configured_tts_provider, target_language)
     voice_reference = str((video.files or {}).get("voice_reference") or "")
     voice_reference_transcript = str((video.files or {}).get("voice_reference_transcript") or "")
+    from haizflow.pipeline.speaker_identity import IDENTITY_VERSION
     voice_signature = _signature(
         transcript_state,
         configured_tts_provider,
@@ -808,7 +824,10 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         # Dedicated short narrator anchors are materially different from the
         # old first-segment reference. Do not combine cached voice parts made
         # by both strategies after a paused/failed run.
-        "omnivoice-dedicated-short-anchor-or-source-speaker-r5",
+        ("omnivoice-stable-speaker-map-target-language-r7"
+         if getattr(video, "speaker_mode", "single") == "multiple"
+         else "omnivoice-dedicated-short-anchor-or-source-speaker-r5"),
+        *((IDENTITY_VERSION,) if getattr(video, "speaker_mode", "single") == "multiple" else ()),
     )
     with open(transcript_json, "r", encoding="utf-8") as transcript_file:
         transcript_segments = json.load(transcript_file)
@@ -837,7 +856,10 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
                 video_id,
                 "Released translation and speech-recognition models before local TTS.",
             )
-        partial_signature_matches = video.checkpoints.get("voice_partial") == voice_signature
+        partial_signature_matches = (
+            (bool(video.resume_step) or bool(video.runtime_recovery_step) or getattr(video, "project_type", "single") == "manual")
+            and video.checkpoints.get("voice_partial") == voice_signature
+        )
         if os.path.isdir(voice_parts_dir) and not partial_signature_matches:
             shutil.rmtree(voice_parts_dir)
         os.makedirs(voice_parts_dir, exist_ok=True)
@@ -849,6 +871,14 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
             detail = f"Verified voice audio {current} of {total}"
             reporter.update(65 + round(17 * current / max(1, total)), "creating_voice", detail, current, total)
 
+        def report_voice_status(stage, current, total):
+            if stage == "identifying_speakers":
+                reporter.update(65, "creating_voice", f"Identifying speakers {current} of {total}")
+            elif stage in {"synthesizing", "completed"}:
+                report_voice_progress(current, total)
+            else:
+                reporter.update(65, "creating_voice", f"Preparing voice: {stage}")
+
         try:
             generate_voice_parts(
                 transcript_json,
@@ -856,6 +886,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
                 video.tts_voice,
                 video_id,
                 progress_callback=report_voice_progress,
+                status_callback=report_voice_status,
                 provider=configured_tts_provider,
                 target_language=target_language,
                 keep_worker_warm=effective_tts_provider == "omnivoice",
@@ -866,9 +897,9 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
                 # one warm model, then release it before FFmpeg/rendering needs
                 # the accelerator. This avoids both a second checkpoint load
                 # and a long-lived VRAM reservation.
-                from haizflow.pipeline.omnivoice_tts import clear_runtime as clear_omnivoice_runtime
+                from haizflow.pipeline.omnivoice_tts import release_model_memory
 
-                clear_omnivoice_runtime()
+                release_model_memory()
         _mark_checkpoint(video, "voice", voice_signature)
 
     if stop_after == "voice":

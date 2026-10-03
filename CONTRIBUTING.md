@@ -13,10 +13,10 @@ Focused bug reports and pull requests are welcome. Before working on a change, s
 5. Run `scripts/test.ps1` before opening a pull request.
 6. Update both English and Vietnamese documentation when user behavior changes.
 
-Do not commit models, project media, runtime data, credentials, generated build output, or private logs. By submitting a contribution, you agree that it may be distributed under the repository's Apache-2.0 license.
+Do not commit models, project media, runtime data, credentials, generated build output, or private logs. Proposed contributions require an explicit license/permission agreement before acceptance; opening a pull request alone does not grant a new redistribution license.
 
 Contributors retain copyright; a pull request is not a copyright assignment.
-The proposed restricted license is not active. Before incorporating a
+The owned HaizFlow code now uses Source-Available 1.0. Before incorporating a
 contribution into a future restricted release, maintainers must obtain and
 record sufficient permission for its exact scope, or keep it separately
 licensed. The [opt-in contributor permission draft](legal/CONTRIBUTOR-PERMISSION-DRAFT.md)

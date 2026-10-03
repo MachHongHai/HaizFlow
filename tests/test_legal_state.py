@@ -53,9 +53,9 @@ class LegalStateTests(unittest.TestCase):
 
     def test_approval_field_cannot_activate_unapproved_terms(self):
         self.update_state(proposal_status="approved", owner_approval="owner")
-        self.assertTrue(any("cannot be activated" in error for error in legal.verify(self.root)))
+        self.assertTrue(any("explicit owner approval" in error for error in legal.verify(self.root)))
 
-    def test_custom_license_cannot_silently_replace_apache(self):
+    def test_changed_license_requires_reviewed_hash(self):
         (self.root / "LICENSE").write_text("Restricted redistribution", encoding="utf-8")
         self.assertTrue(any("Active LICENSE changed" in error for error in legal.verify(self.root)))
 
@@ -93,9 +93,12 @@ class LegalStateTests(unittest.TestCase):
     def test_creator_and_legal_ui_match_current_state(self):
         about = (ROOT / "src/haizflow/desktop/qml/AboutDialog.qml").read_text(encoding="utf-8")
         self.assertIn("root.controller.currentAppVersion", about)
-        self.assertIn("Copyright (c) 2026 Mach Hong Hai", about)
-        self.assertIn('value: "Apache-2.0"', about)
-        self.assertIn("THIRD_PARTY_NOTICES.md", about)
+        self.assertNotIn("Khởi tạo bởi", about)
+        self.assertNotIn("THIRD_PARTY_NOTICES.md", about)
+        copyright = (ROOT / "src/haizflow/desktop/qml/CopyrightDialog.qml").read_text(encoding="utf-8")
+        self.assertIn("© 2026 Mạch Hồng Hải", copyright)
+        self.assertIn("HaizFlow Source-Available 1.0", copyright)
+        self.assertIn("THIRD_PARTY_NOTICES.md", copyright)
         installer = (ROOT / "installer/HaizFlow.iss").read_text(encoding="utf-8")
         self.assertIn('LicenseFile={#SourceDir}\\LICENSE.txt', installer)
         self.assertNotIn("LicenseFile={#SourceDir}\\legal", installer)

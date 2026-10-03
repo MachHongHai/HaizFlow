@@ -220,6 +220,10 @@ def main(*, smoke_test: bool = False) -> None:
                 engine.retranslate()
 
         controller.settingsChanged.connect(retranslate_ui)
+        # Health is UI readiness, not process creation or AI model loading.
+        # Source and legacy installations have no handshake and are unchanged.
+        from haizflow.update.launcher import acknowledge_ready
+        acknowledge_ready()
         if activation_pending:
             QTimer.singleShot(0, activate_window)
         if smoke_test:

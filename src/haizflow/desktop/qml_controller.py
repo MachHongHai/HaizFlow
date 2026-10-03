@@ -220,6 +220,8 @@ class HaizFlowController(QObject):
     videoExportCompleted = Signal(str, str)
     exportStateChanged = Signal()
     videoExportRequested = Signal()
+    autoProcessingRequested = Signal()
+    batchProcessingRequested = Signal(bool)
     videoExportStarted = Signal()
     manualSubtitleSaved = Signal(str, int, str)
     manualSubtitleSaveFailed = Signal(str, str, str)
@@ -411,6 +413,11 @@ class HaizFlowController(QObject):
         self._settings_theme = settings["theme"]
         self._settings_language = settings["language"]
         self._settings_processing_device = settings["processing_device"]
+        from haizflow.core.model_choices import project_model_defaults
+
+        for attribute, value in project_model_defaults(self._settings_processing_device).items():
+            setattr(self, attribute, value)
+        self._draft_processing_device = self._settings_processing_device
         self._processing_device_origin = settings["processing_device_origin"]
         self._settings_translation_model = settings["translation_model"]
         from haizflow.core.hardware import configure_translation_model
@@ -438,6 +445,11 @@ class HaizFlowController(QObject):
             signal.connect(self.appUpdateChanged.emit)
         self._smart_warmup = SmartWarmupController(self, self._resource_packs.manager)
         self.selectedVideoChanged.connect(self._smart_warmup.request_project_prediction)
+        self.speechRecognitionModelChanged.connect(self._smart_warmup.request_setup_prediction)
+        self.settingsChanged.connect(self._sync_project_model_defaults)
+        self.settingsChanged.connect(self.speechRecognitionModelOptionsChanged.emit)
+        self.settingsChanged.connect(self.speechRecognitionModelChanged.emit)
+        self.settingsChanged.connect(self.ttsProviderOptionsChanged.emit)
         _set_ui_language(self._settings_language)
         self.activity_events.set_language(self._settings_language)
         # Keep the first frame independent from Torch/CUDA initialization.  The
@@ -837,6 +849,7 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        HaizFlowController.cancelBatchVoiceRecording(self)
         exporter = getattr(self, "_video_exports", None)
         if exporter is not None:
             exporter.shutdown()
@@ -997,6 +1010,10 @@ class HaizFlowController(QObject):
     @Property(int, notify=socialPublishStateChanged)
     def tiktokPostedCount(self):
         return self._tiktok_publisher.posted_count
+
+    @Property(int, notify=socialPublishStateChanged)
+    def tiktokWaitingCount(self):
+        return self._tiktok_publisher.waiting_count
 
     @Property(int, notify=socialPublishStateChanged)
     def tiktokProjectSourceSelectedCount(self):
@@ -1317,9 +1334,12 @@ class HaizFlowController(QObject):
     @speechRecognitionModel.setter
     def speechRecognitionModel(self, value):
         requested = str(value or "small").strip().lower()
-        if requested not in {"small", "large-v3-turbo"}:
+        if requested not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
             requested = "small"
-        if requested == "large-v3-turbo" and not self._ensure_hardware_ready_for_action():
+        if requested in {"small-gpu", "large-v3-turbo"} and getattr(self, "_settings_processing_device", "cpu") != "gpu":
+            self._show_app_alert("Đang dùng chế độ CPU", "Chọn Whisper CPU hoặc chuyển sang GPU trong Cài đặt → Chung.", "warning")
+            return
+        if requested in {"small-gpu", "large-v3-turbo"} and not self._ensure_hardware_ready_for_action():
             return
         capabilities = getattr(self, "_hardware_capabilities", None)
         gpu_available = bool(
@@ -1342,7 +1362,7 @@ class HaizFlowController(QObject):
                     "warning",
                 )
         resource_packs = getattr(self, "_resource_packs", None)
-        if requested == "small" and resource_packs is not None:
+        if requested in {"small", "small-cpu", "small-gpu"} and resource_packs is not None:
             if resource_packs.manager.status("model-whisper-small") not in {"installed", "bundled"}:
                 self._show_app_alert(
                     "Thiếu Whisper Small", "Hãy cài Whisper Small trong Gói tài nguyên trước khi nhận dạng.", "warning"
@@ -1363,10 +1383,11 @@ class HaizFlowController(QObject):
             or getattr(self, "_active_processing_device", "") == "gpu"
             or getattr(self, "_settings_processing_device", "") == "gpu"
         )
-        turbo_available = gpu_available or not self._startup_hardware_resolved
+        turbo_available = getattr(self, "_settings_processing_device", "cpu") == "gpu" and gpu_available
         if getattr(self, "_settings_language", "en") == "vi":
             return [
-                {"value": "small", "label": "Whisper Small · CPU / GPU", "available": True},
+                {"value": "small-cpu", "label": "Whisper Small · CPU", "available": True},
+                {"value": "small-gpu", "label": "Whisper Small · GPU", "available": turbo_available},
                 {
                     "value": "large-v3-turbo",
                     "label": "Whisper Turbo · GPU NVIDIA",
@@ -1374,7 +1395,8 @@ class HaizFlowController(QObject):
                 },
             ]
         return [
-            {"value": "small", "label": "Whisper Small · CPU / GPU", "available": True},
+            {"value": "small-cpu", "label": "Whisper Small · CPU", "available": True},
+            {"value": "small-gpu", "label": "Whisper Small · GPU", "available": turbo_available},
             {
                 "value": "large-v3-turbo",
                 "label": "Whisper Turbo · NVIDIA GPU",
@@ -1384,7 +1406,11 @@ class HaizFlowController(QObject):
 
     @Property(int, notify=speechRecognitionModelChanged)
     def speechRecognitionModelIndex(self):
-        return 1 if self._speech_recognition_model == "large-v3-turbo" else 0
+        if self._speech_recognition_model == "large-v3-turbo":
+            return 2
+        return 1 if self._speech_recognition_model == "small-gpu" or (
+            self._speech_recognition_model == "small" and self._settings_processing_device == "gpu"
+        ) else 0
 
     @Property(str, notify=languageOptionsChanged)
     def targetLanguageLabel(self):
@@ -1397,6 +1423,9 @@ class HaizFlowController(QObject):
     @ttsProvider.setter
     def ttsProvider(self, value):
         provider = self._normalized_tts_provider(self._target_language, value)
+        if provider.endswith("-gpu") and getattr(self, "_settings_processing_device", "cpu") != "gpu":
+            self._show_app_alert("Đang dùng chế độ CPU", "Chọn OmniVoice CPU hoặc chuyển sang GPU trong Cài đặt → Chung.", "warning")
+            return
         normalized_voice = self._normalized_voice_for_language(self._target_language, self._tts_voice, provider)
         provider_changed = self._tts_provider != provider
         voice_changed = self._tts_voice != normalized_voice
@@ -2752,6 +2781,14 @@ class HaizFlowController(QObject):
     def processingDevice(self):
         return self._settings_processing_device
 
+    @Slot(str, result=bool)
+    def setProcessingDevice(self, preference):
+        return HaizFlowController._settings_delegate_for(self).set_processing_device(str(preference))
+
+    @Slot(str, str, bool, result=bool)
+    def applyGeneralSettings(self, language, device, keep_warm):
+        return HaizFlowController._settings_delegate_for(self).apply_general(str(language), str(device), bool(keep_warm))
+
     @Property(bool, notify=geminiKeyChanged)
     def geminiKeyConfigured(self):
         try:
@@ -3153,11 +3190,27 @@ class HaizFlowController(QObject):
         if not path:
             return False
         recorder = self._voice_clone_capture()
-        if recorder.start(path):
+        if recorder.start(path, str(getattr(self, "_voice_clone_input_id", ""))):
             self._voice_clone_recording_video_id = str(self._selected_video_id or "")
             return True
         HaizFlowController._project_import_for(self).discard_voice_reference_recording(path)
         return False
+
+    @Slot(result="QVariantList")
+    def voiceCloneInputDevices(self):
+        selected = str(getattr(self, "_voice_clone_input_id", ""))
+        devices = [{**item, "selected": item["id"] == selected} for item in VoiceCloneRecorder.input_devices()]
+        if selected and not any(item["selected"] for item in devices):
+            devices.append({"id": selected, "label": "Microphone đã ngắt kết nối — chọn thiết bị khác", "selected": True})
+        return devices
+
+    @Slot(str, result=bool)
+    def selectVoiceCloneInputDevice(self, device_id):
+        if self._voice_clone_capture().active or (getattr(self, "_batch_voice_recorder", None)
+                                                  and self._batch_voice_recorder.active):
+            return False
+        self._voice_clone_input_id = str(device_id)
+        return True
 
     @Slot(result="QVariantMap")
     def voiceCloneRecordingState(self):
@@ -3234,6 +3287,7 @@ class HaizFlowController(QObject):
         background_music_volume: int,
         tts_volume: int,
         background_music_path: str,
+        voice_reference_path: str = "",
     ):
         """Preview a batch draft without applying it to each video."""
         preview_video_id = next(
@@ -3259,7 +3313,13 @@ class HaizFlowController(QObject):
             voice=tts_voice,
             provider=tts_provider,
             target_language=target_language,
+            voice_reference_path=voice_reference_path,
         )
+
+    @Slot(str, str, str, bool, int, int, int, str, str, result=bool)
+    def previewBatchAudioMixWithReference(self, language, provider, voice, separation, original, music, tts, music_path, reference):
+        return HaizFlowController.previewBatchAudioMix(
+            self, language, provider, voice, separation, original, music, tts, music_path, reference)
 
     @Slot(str, result=bool)
     def replaceSelectedVideoVideo(self, path):
@@ -3428,6 +3488,21 @@ class HaizFlowController(QObject):
     def resumeBatch(self):
         HaizFlowController._project_commands_for(self).resume_batch()
 
+    def _sync_project_model_defaults(self) -> None:
+        device = self._settings_processing_device
+        previous = getattr(self, "_draft_processing_device", device)
+        self._draft_processing_device = device
+        if previous == device or self._selected_video_id:
+            return
+        from haizflow.core.model_choices import project_model_defaults
+
+        for attribute, value in project_model_defaults(device).items():
+            if getattr(self, attribute) != value:
+                setattr(self, attribute, value)
+                {"_speech_recognition_model": self.speechRecognitionModelChanged,
+                 "_translation_model": self.translationModelChanged,
+                 "_tts_provider": self.ttsProviderChanged}[attribute].emit()
+
     def _batch_settings_values(self) -> dict[str, object]:
         return HaizFlowController._project_commands_for(self).batch_settings_values()
 
@@ -3435,6 +3510,71 @@ class HaizFlowController(QObject):
     def batchSettings(self):
         """Return a batch draft without mutating shared editor state."""
         return self._batch_settings_values()
+
+    @Slot(str, "QVariantMap", bool, result=bool)
+    def applyBatchSettingsValues(self, project_key, values, replace_overrides):
+        if replace_overrides and self.batchSettingOverrides():
+            if QMessageBox.question(None,
+                    "Thay thế cài đặt riêng?" if self._settings_language == "vi" else "Replace individual settings?",
+                    "Cài đặt chung sẽ thay thế cài đặt riêng của mọi video. Bạn muốn tiếp tục?"
+                    if self._settings_language == "vi" else "Shared settings will replace every individual video setting. Continue?"
+                    ) != QMessageBox.StandardButton.Yes:
+                return False
+        return HaizFlowController._project_commands_for(self).apply_batch_settings_values(
+            str(project_key), dict(values), bool(replace_overrides))
+
+    @Slot(str, str, str, result=str)
+    def stageBatchSettingsAsset(self, project_key, kind, path):
+        if str(project_key) != str(self._selected_project_key or "") or self.isBatchRunning:
+            return ""
+        from haizflow.services.batch_settings import stage_asset
+        try:
+            return stage_asset(str(project_key), str(kind), str(path))
+        except (OSError, ValueError, RuntimeError) as exc:
+            self._show_app_alert("Cài đặt hàng loạt", str(exc), "warning")
+            return ""
+
+    @Slot(str, result=bool)
+    def startBatchVoiceRecording(self, project_key):
+        self.cancelBatchVoiceRecording()
+        if str(project_key) != str(self._selected_project_key or "") or self.isBatchRunning:
+            return False
+        from haizflow.core.storage_ownership import owned_path
+        root = project_store.project_root_for_key(str(project_key))
+        directory = owned_path(Path(root) / ".batch-settings-assets", root)
+        directory.mkdir(parents=True, exist_ok=True)
+        recorder = VoiceCloneRecorder()
+        self._batch_voice_recorder = recorder
+        self._batch_voice_owner = str(project_key)
+        self._batch_voice_capture = str(owned_path(directory / ("recording-" + uuid.uuid4().hex + ".wav"), root))
+        return recorder.start(self._batch_voice_capture, str(getattr(self, "_voice_clone_input_id", "")))
+
+    @Slot(result="QVariantMap")
+    def batchVoiceRecordingState(self):
+        recorder = getattr(self, "_batch_voice_recorder", None)
+        return recorder.poll() if recorder else {"active": False, "error": ""}
+
+    @Slot(str, result=str)
+    def finishBatchVoiceRecording(self, project_key):
+        recorder = getattr(self, "_batch_voice_recorder", None)
+        if not recorder or str(project_key) != str(getattr(self, "_batch_voice_owner", "")):
+            return ""
+        path = recorder.stop()
+        return self.stageBatchSettingsAsset(project_key, "voiceReferencePath", path) if path else ""
+
+    @Slot()
+    def cancelBatchVoiceRecording(self):
+        recorder = getattr(self, "_batch_voice_recorder", None)
+        if recorder:
+            recorder.cancel()
+        path = getattr(self, "_batch_voice_capture", "")
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._batch_voice_capture = ""
+        self._batch_voice_owner = ""
 
     @Slot(result="QVariantList")
     def batchSettingOverrides(self):
@@ -3521,7 +3661,7 @@ class HaizFlowController(QObject):
     ):
         # Keep direct Python callers from older integrations working while the
         # QML-facing signature carries the new ASR model field.
-        if speech_recognition_model not in {"small", "large-v3-turbo"}:
+        if speech_recognition_model not in {"small", "small-cpu", "small-gpu", "large-v3-turbo"}:
             legacy_provider = speech_recognition_model
             legacy_voice = tts_provider
             legacy_separation = bool(tts_voice)
@@ -3780,6 +3920,22 @@ class HaizFlowController(QObject):
         if self.hasSelectedVideo and not self.videoExportBusy:
             self.videoExportRequested.emit()
 
+    @Slot()
+    def requestAutoProcessing(self):
+        video = self._selected_video()
+        if (video and video.project_type in {"single", "batch"} and not self.videoExportBusy
+                and not self._processing_queue.contains(video.video_id)):
+            self.autoProcessingRequested.emit()
+
+    @Slot(str, str, str, bool, result=bool)
+    def processVideoTo(self, video_id, preset, destination, overwrite):
+        if str(video_id) != str(self._selected_video_id or ""):
+            return False
+        started = self._video_exports.start(video_id, preset, destination, overwrite=overwrite, process=True)
+        if started:
+            self.videoExportStarted.emit()
+        return started
+
     @Slot(str, result=str)
     def chooseVideoExportDestination(self, video_id):
         return self._video_exports.choose_file(video_id)
@@ -3797,7 +3953,33 @@ class HaizFlowController(QObject):
 
     @Slot(result=bool)
     def exportBatchVideos(self):
-        started = self._video_exports.start_batch()
+        if self._batch_video_ids and not self.isBatchRunning and not self.videoExportBusy:
+            self.batchProcessingRequested.emit(False)
+            return True
+        return False
+
+    @Slot()
+    def requestBatchProcessing(self):
+        if self._batch_video_ids and not self.isBatchRunning and not self.videoExportBusy:
+            self.batchProcessingRequested.emit(True)
+
+    @Slot(result="QVariantMap")
+    def batchExportSettings(self):
+        return self._video_exports.batch_settings()
+
+    @Slot(result=str)
+    def chooseBatchExportDestination(self):
+        return self._video_exports.choose_batch_directory()
+
+    @Slot(str, result=bool)
+    def batchExportDestinationExists(self, directory):
+        return self._video_exports.batch_destination_exists(directory)
+
+    @Slot(str, "QVariantList", str, str, bool, bool, result=bool)
+    def processBatchTo(self, project_key, video_ids, preset, directory, overwrite, process):
+        started = self._video_exports.start_batch_to(
+            str(project_key), list(video_ids), str(preset), str(directory), overwrite=bool(overwrite), process=bool(process),
+        )
         if started:
             self.videoExportStarted.emit()
         return started
@@ -3872,6 +4054,7 @@ class HaizFlowController(QObject):
             "voice": ("voice",),
         }.get(tool_id, ())
         pack_context = {
+            "speaker_mode": str(getattr(video, "speaker_mode", "single") or "single"),
             "device": str(getattr(self, "_settings_processing_device", "cpu") or "cpu"),
             "model": str(getattr(video, "speech_recognition_model", "small") or "small"),
             "translation_model": str(getattr(video, "translation_model", "auto") or "auto"),
@@ -3879,6 +4062,14 @@ class HaizFlowController(QObject):
             "language": str(getattr(video, "target_language", "") or ""),
             "provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
         }
+        from haizflow.core.model_choices import gpu_choice_blocked
+
+        if gpu_choice_blocked(pack_context["device"],
+                              recognition=pack_context["model"] if tool_id == "translation" else "small",
+                              translation=pack_context["translation_model"] if tool_id == "translation" else "auto",
+                              voice=pack_context["provider"] if tool_id == "voice" else "omnivoice"):
+            self.appAlertRequested.emit("Đang dùng chế độ CPU", "Chọn model CPU hoặc chuyển sang GPU trong Cài đặt → Chung.", "warning")
+            return False
         missing: list[str] = []
         resource_packs = getattr(self, "_resource_packs", None)
         resource_manager = getattr(resource_packs, "manager", None)
@@ -6259,11 +6450,14 @@ class HaizFlowController(QObject):
         self,
         project_key: str,
         snapshots: dict[str, dict[str, object]],
+        defaults: dict | None = None,
     ) -> bool:
         if str(self._selected_project_key or "") != str(project_key or ""):
             return False
         if not all(self._restore_video_asset_snapshot(video_id, snapshot) for video_id, snapshot in snapshots.items()):
             return False
+        if defaults is not None:
+            project_store.save_batch_settings(project_key, defaults)
         HaizFlowController._project_commands_for(self).load_batch_settings()
         self.refreshVideos()
         self.batchChanged.emit()
@@ -6274,13 +6468,14 @@ class HaizFlowController(QObject):
         project_key: str,
         before: dict[str, dict[str, object]],
         after: dict[str, dict[str, object]],
+        *, before_defaults: dict | None = None, after_defaults: dict | None = None,
     ) -> None:
-        if before == after:
+        if before == after and before_defaults == after_defaults:
             return
         self._manual_edit_history.record(
             "Cài đặt hàng loạt",
-            lambda: self._apply_batch_asset_snapshots(project_key, before),
-            lambda: self._apply_batch_asset_snapshots(project_key, after),
+            lambda: self._apply_batch_asset_snapshots(project_key, before, before_defaults),
+            lambda: self._apply_batch_asset_snapshots(project_key, after, after_defaults),
             merge_key=f"batch-assets:{project_key}",
             context_id=f"project:{project_key}",
         )
@@ -6717,7 +6912,9 @@ class HaizFlowController(QObject):
         return provider if provider in {"omnivoice", "omnivoice-gpu"} else "omnivoice"
 
     def _tts_provider_options_for_language(self, language_code):
-        return [{"provider": provider, "label": label} for provider, label in (
+        return [{"provider": provider, "label": label,
+                 "available": provider == "omnivoice" or getattr(self, "_settings_processing_device", "cpu") == "gpu"}
+                for provider, label in (
             ("omnivoice", "OmniVoice · CPU"), ("omnivoice-gpu", "OmniVoice · GPU"),
         )]
 

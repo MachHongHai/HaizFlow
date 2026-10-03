@@ -161,7 +161,7 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         options = HaizFlowController.speechRecognitionModelOptions.fget(host)
 
-        self.assertTrue(options[1]["available"])
+        self.assertTrue(next(item for item in options if item["value"] == "large-v3-turbo")["available"])
 
     def test_whisper_turbo_option_can_be_selected_to_explain_missing_pack(self):
         host = SimpleNamespace(
@@ -174,7 +174,7 @@ class MultiProjectControllerTests(unittest.TestCase):
 
         options = HaizFlowController.speechRecognitionModelOptions.fget(host)
 
-        self.assertTrue(options[1]["available"])
+        self.assertTrue(next(item for item in options if item["value"] == "large-v3-turbo")["available"])
 
     def test_whisper_turbo_readiness_uses_fast_resource_inventory(self):
         manager = SimpleNamespace(status=Mock(return_value="installed"))
@@ -533,6 +533,65 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(second.target_language, "en")
         self.assertTrue(host._batch_running)
 
+    def test_auto_process_export_validates_settings_owner_before_mutating(self):
+        video = SimpleNamespace(video_id="auto-video", project_type="single", status="done")
+        host = SimpleNamespace(
+            _selected_video_id=video.video_id, _settings_owner_video_id="different-video",
+            _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+            _apply_setup_to_video=Mock(), _enqueue_video=Mock(),
+        )
+        with patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=video):
+            self.assertFalse(ProjectCommandsController(host).process_for_export(video.video_id))
+        host._apply_setup_to_video.assert_not_called()
+        host._enqueue_video.assert_not_called()
+
+    def test_auto_process_export_starts_fresh_even_when_previous_attempt_was_paused(self):
+        video = SimpleNamespace(video_id="auto-video", project_type="single", status="paused", resume_step="creating_voice")
+        host = SimpleNamespace(
+            _selected_video_id=video.video_id, _settings_owner_video_id=video.video_id,
+            _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+            _apply_setup_to_video=Mock(), _enqueue_video=Mock(return_value=True),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()), refreshVideos=Mock(),
+        )
+        with (
+            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
+            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update,
+            patch("haizflow.desktop.project_commands_controller.video_store.prepare_video_restart") as restart,
+            patch("haizflow.pipeline.process_registry.prepare_video_resume") as resume,
+        ):
+            self.assertTrue(ProjectCommandsController(host).process_for_export(video.video_id))
+        host._apply_setup_to_video.assert_called_once_with(video)
+        host._enqueue_video.assert_called_once_with(video.video_id)
+        resume.assert_called_once_with(video.video_id)
+        restart.assert_called_once_with(video.video_id)
+        update.assert_not_called()
+
+    def test_batch_preflight_missing_api_key_does_not_enqueue_partial_batch(self):
+        videos = {"local": SimpleNamespace(video_id="local", status="pending", translation_model="q4"),
+                  "api": SimpleNamespace(video_id="api", status="pending", translation_model="gemini-3.1-flash-lite")}
+        host = SimpleNamespace(
+            _batch_video_ids=list(videos), _enqueue_videos=Mock(),
+            appAlertRequested=SimpleNamespace(emit=Mock()), geminiSetupRequested=SimpleNamespace(emit=Mock()),
+        )
+        with (
+            patch("haizflow.desktop.project_commands_controller.video_store.get_video", side_effect=videos.get),
+            patch("haizflow.services.gemini_translation.key_configured", return_value=False),
+        ):
+            ProjectCommandsController(host).start_batch()
+        host._enqueue_videos.assert_not_called()
+        host.geminiSetupRequested.emit.assert_called_once()
+        host.appAlertRequested.emit.assert_called_once()
+
+    def test_batch_preflight_missing_clone_sample_does_not_start_other_videos(self):
+        videos = {"normal": SimpleNamespace(video_id="normal", status="pending", tts_voice="omnivoice:female-natural"),
+                  "clone": SimpleNamespace(video_id="clone", status="pending", tts_voice="omnivoice:clone", files={})}
+        host = SimpleNamespace(_batch_video_ids=list(videos), _enqueue_videos=Mock(),
+                               appAlertRequested=SimpleNamespace(emit=Mock()))
+        with patch("haizflow.desktop.project_commands_controller.video_store.get_video", side_effect=videos.get):
+            ProjectCommandsController(host).start_batch()
+        host._enqueue_videos.assert_not_called()
+        host.appAlertRequested.emit.assert_called_once()
+
     def test_resume_batch_requeues_paused_and_new_pending_videos(self):
         paused = SimpleNamespace(video_id="video-paused", status="paused")
         pending = SimpleNamespace(video_id="video-pending", status="pending")
@@ -622,6 +681,25 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(update_video.call_args_list[1].kwargs["resume_step"], "translating")
         self.assertTrue(host._batch_stop_requested)
 
+    def test_auto_pause_detaches_only_selected_waiting_video(self):
+        waiting = SimpleNamespace(video_id="waiting", status="pending", step="queued", resume_step="creating_voice")
+        host = SimpleNamespace(
+            _selected_video_id=waiting.video_id, isSelectedBatchVideo=False,
+            _processing_queue=SimpleNamespace(contains=lambda key: True,
+                detach_pending=Mock(return_value=(None, [waiting.video_id]))),
+            selectedVideoChanged=SimpleNamespace(emit=Mock()), refreshVideos=Mock(),
+        )
+        with patch("haizflow.desktop.project_commands_controller.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
+                patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=waiting), \
+                patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update, \
+                patch("haizflow.desktop.project_commands_controller.video_store.log_to_video"), \
+                patch("haizflow.desktop.project_commands_controller.pause_video") as pause:
+            ProjectCommandsController(host).stop_video()
+        host._processing_queue.detach_pending.assert_called_once_with([waiting.video_id])
+        pause.assert_not_called()
+        self.assertEqual(update.call_args.kwargs["status"], "paused")
+        self.assertEqual(update.call_args.kwargs["resume_step"], "creating_voice")
+
     def test_batch_setting_overrides_identify_each_changed_video_and_field(self):
         common = dict(
             mode="A",
@@ -694,6 +772,35 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual([call.args[1] for call in set_music.call_args_list], [str(music), str(music)])
         self.assertTrue(all(call.kwargs["speaker_mode"] == "single" for call in update_video.call_args_list))
 
+    def test_batch_settings_requeues_changed_results_and_preserves_unedited_subtitle_fields(self):
+        config = VideoConfig(project_type="batch", tts_provider="omnivoice", target_language="vi",
+                             tts_voice="omnivoice:male-natural", original_video_volume=60,
+                             enable_audio_separation=False, translation_model="q4",
+                             subtitle_style=SubtitleStyle(font_family="Custom Font", bold=False))
+        video = SimpleNamespace(**{**config.model_dump(), "subtitle_style": config.subtitle_style},
+                                video_id="finished", status="done", resume_step="", files={})
+        host = SimpleNamespace(
+            _batch_video_ids=[video.video_id], _processing_queue=SimpleNamespace(contains=Mock(return_value=False)),
+            _normalized_tts_provider=Mock(return_value="omnivoice"),
+            _normalized_voice_for_language=Mock(return_value=video.tts_voice), refreshVideos=Mock(),
+            batchChanged=SimpleNamespace(emit=Mock()),
+        )
+        with (
+            patch("haizflow.desktop.project_commands_controller.video_store.get_video", return_value=video),
+            patch("haizflow.desktop.project_commands_controller.video_store.update_video") as update,
+        ):
+            self.assertTrue(ProjectCommandsController(host).apply_batch_settings(
+                "A", "vi", "omnivoice", video.tts_voice, False, 55,
+                subtitle_style={"font_size": 44}, translation_model="q4",
+            ))
+        changes = update.call_args.kwargs
+        self.assertEqual(changes["status"], "pending")
+        self.assertEqual(changes["resume_step"], "starting")
+        self.assertNotIn("checkpoints", changes)
+        self.assertEqual(changes["subtitle_style"].font_family, "Custom Font")
+        self.assertFalse(changes["subtitle_style"].bold)
+        self.assertEqual(changes["subtitle_style"].font_size, 44)
+
     def test_batch_page_exposes_settings_resume_and_bottom_progress(self):
         batch_page = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchPage.qml").read_text(encoding="utf-8")
         settings = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchSettingsDialog.qml").read_text(
@@ -709,7 +816,9 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("AppController.resumeBatch()", batch_page)
         self.assertIn("id: importCard", batch_page)
         self.assertIn("id: batchProgressPanel", batch_page)
-        self.assertIn("Layout.maximumWidth: 640", batch_page)
+        self.assertIn("Layout.maximumWidth: 520", batch_page)
+        self.assertNotIn("Layout.minimumWidth: 500", batch_page)
+        self.assertIn("root.importDrop(drop)", batch_page)
         self.assertLess(batch_page.index("id: importCard"), batch_page.index('text: qsTr("Cài đặt hàng loạt")'))
         self.assertLess(batch_page.index("id: importCard"), batch_page.index('qsTr("Hàng đợi xử lý")'))
         self.assertGreater(batch_page.index("id: batchProgressPanel"), batch_page.index("id: queueList"))
@@ -724,7 +833,8 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertIn("BatchAudioMixDialog", settings)
         self.assertIn('batchAudioMixDialogLoader.invoke("open", [])', settings)
         self.assertNotIn("AppSlider {", settings)
-        self.assertIn("onClosed: saveDraft()", settings)
+        self.assertNotIn("onClosed: saveDraft()", settings)
+        self.assertIn('text: qsTr("Áp dụng")', settings)
         self.assertNotIn('I18n.t("Apply to all videos")', settings)
 
         batch_audio_dialog = (ROOT / "src" / "haizflow" / "desktop" / "qml" / "BatchAudioMixDialog.qml").read_text(
@@ -776,6 +886,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             voice="vi-VN-HoaiMyNeural",
             provider="edge",
             target_language="vi",
+            voice_reference_path="",
         )
 
     def test_project_import_shutdown_wait_is_bounded_and_reports_live_workers(self):
@@ -873,7 +984,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         )
         self.assertIn("function loadDraft()", dialog_qml)
         self.assertIn("AppController.batchSettings()", dialog_qml)
-        self.assertIn("AppController.applyBatchSettingsDraft(", dialog_qml)
+        self.assertIn("AppController.applyBatchSettingsValues(", dialog_qml)
         self.assertIn('draftSpeakerMode: "single"', dialog_qml)
         self.assertIn("AppController.batchSettingOverrides()", dialog_qml)
         self.assertIn("onBatchChanged()", dialog_qml)
@@ -1501,6 +1612,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         delete.assert_called_once_with("project-from-proxy")
         self.assertEqual(host._selected_project_key, "another-project")
         host.refreshVideos.assert_called_once()
+        host.videoDeleted.emit.assert_not_called()
 
     def test_typed_grid_context_delete_resolves_row_without_opening_project(self):
         project = {
