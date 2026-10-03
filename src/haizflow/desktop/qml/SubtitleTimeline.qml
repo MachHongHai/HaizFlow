@@ -18,7 +18,7 @@ Rectangle {
     property bool snappingEnabled: true
     property var editorTracks: []
     property var editorClips: []
-    property bool sourceTrimEnabled: true
+    readonly property bool sourceTrimEnabled: false
     property var selectedClipIds: []
     property var visibleSegments: []
     property var visibleTicks: []
@@ -704,6 +704,8 @@ Rectangle {
                             property int gestureStartMs: previewStartMs
                             property int gestureDurationMs: previewDurationMs
                             property real gesturePointerX: 0
+                            property real gestureScale: 1
+                            property bool moving: false
                             property bool trimming: false
                             x: previewStartMs / 1000 * root.pixelsPerSecond
                             width: Math.max(8, previewDurationMs / 1000 * root.pixelsPerSecond)
@@ -714,7 +716,7 @@ Rectangle {
                                 ? Theme.focus : Theme.divider
 
                             onModelDataChanged: {
-                                if (!trimming) {
+                                if (!trimming && !moving) {
                                     previewStartMs = Number(modelData.start_ms || 0)
                                     previewDurationMs = Number(modelData.duration_ms || 0)
                                 }
@@ -724,11 +726,48 @@ Rectangle {
                                 anchors.fill: parent
                                 anchors.leftMargin: 8
                                 anchors.rightMargin: 8
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: function(mouse) {
+                                id: sourceMoveArea
+                                cursorShape: pressed && root.sourceTrimEnabled ? Qt.ClosedHandCursor
+                                    : root.sourceTrimEnabled ? Qt.OpenHandCursor : Qt.PointingHandCursor
+                                preventStealing: true
+                                onPressed: function(mouse) {
                                     root.clipSelected(sourceClip.clipId,
                                         (mouse.modifiers & Qt.ControlModifier) !== 0);
-                                    root.seekRequested(Number(sourceClip.modelData.start_ms || 0) / 1000);
+                                    if (!root.sourceTrimEnabled)
+                                        return;
+                                    sourceClip.gestureStartMs = Number(sourceClip.modelData.start_ms || 0);
+                                    sourceClip.gestureDurationMs = Number(sourceClip.modelData.duration_ms || 0);
+                                    sourceClip.gesturePointerX = mapToItem(timelineCanvas, mouse.x, mouse.y).x;
+                                    sourceClip.gestureScale = root.pixelsPerSecond;
+                                    sourceClip.moving = true;
+                                    root.editingClip = true;
+                                }
+                                onPositionChanged: function(mouse) {
+                                    if (!pressed || !root.sourceTrimEnabled) return;
+                                    const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
+                                    const delta = (point.x - sourceClip.gesturePointerX) / sourceClip.gestureScale;
+                                    sourceClip.previewStartMs = Math.round(Math.max(0,
+                                        root.snapAnyTime(sourceClip.gestureStartMs / 1000 + delta)) * 1000);
+                                }
+                                onReleased: {
+                                    if (!root.sourceTrimEnabled) {
+                                        root.seekRequested(Number(sourceClip.modelData.start_ms || 0) / 1000);
+                                        return;
+                                    }
+                                    if (sourceClip.previewStartMs !== sourceClip.gestureStartMs)
+                                        root.clipMoveCommitted(sourceClip.clipId, sourceClip.previewStartMs, "source-video");
+                                    else
+                                        root.seekRequested(sourceClip.gestureStartMs / 1000);
+                                    sourceClip.moving = false;
+                                    root.editingClip = false;
+                                    sourceClip.previewStartMs = Number(sourceClip.modelData.start_ms || 0);
+                                    sourceClip.previewDurationMs = Number(sourceClip.modelData.duration_ms || 0);
+                                }
+                                onCanceled: {
+                                    sourceClip.moving = false;
+                                    root.editingClip = false;
+                                    sourceClip.previewStartMs = Number(sourceClip.modelData.start_ms || 0);
+                                    sourceClip.previewDurationMs = Number(sourceClip.modelData.duration_ms || 0);
                                 }
                             }
 
@@ -749,6 +788,7 @@ Rectangle {
                                         sourceClip.gestureStartMs = Number(sourceClip.modelData.start_ms || 0);
                                         sourceClip.gestureDurationMs = Number(sourceClip.modelData.duration_ms || 0);
                                         sourceClip.gesturePointerX = mapToItem(timelineCanvas, mouse.x, mouse.y).x;
+                                        sourceClip.gestureScale = root.pixelsPerSecond;
                                         sourceClip.trimming = true;
                                         root.editingClip = true;
                                     }
@@ -756,11 +796,15 @@ Rectangle {
                                         if (!pressed) return;
                                         const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
                                         const deltaMs = Math.round((point.x - sourceClip.gesturePointerX)
-                                            / root.pixelsPerSecond * 1000);
-                                        const nextStart = Math.max(sourceClip.gestureStartMs,
+                                            / sourceClip.gestureScale * 1000);
+                                        const earliest = Math.max(0, sourceClip.gestureStartMs
+                                            - Number(sourceClip.modelData.source_in_ms || 0));
+                                        const snapped = Math.round(root.snapAnyTime(
+                                            (sourceClip.gestureStartMs + deltaMs) / 1000) * 1000);
+                                        const nextStart = Math.max(earliest,
                                             Math.min(sourceClip.gestureStartMs
                                                 + sourceClip.gestureDurationMs - 80,
-                                                sourceClip.gestureStartMs + deltaMs));
+                                                snapped));
                                         sourceClip.previewStartMs = nextStart;
                                         sourceClip.previewDurationMs = sourceClip.gestureDurationMs
                                             - (nextStart - sourceClip.gestureStartMs);
@@ -769,6 +813,14 @@ Rectangle {
                                         root.clipTrimCommitted(sourceClip.clipId, "left", sourceClip.previewStartMs);
                                         sourceClip.trimming = false;
                                         root.editingClip = false;
+                                        sourceClip.previewStartMs = Number(sourceClip.modelData.start_ms || 0);
+                                        sourceClip.previewDurationMs = Number(sourceClip.modelData.duration_ms || 0);
+                                    }
+                                    onCanceled: {
+                                        sourceClip.trimming = false;
+                                        root.editingClip = false;
+                                        sourceClip.previewStartMs = Number(sourceClip.modelData.start_ms || 0);
+                                        sourceClip.previewDurationMs = Number(sourceClip.modelData.duration_ms || 0);
                                     }
                                 }
                             }
@@ -790,6 +842,7 @@ Rectangle {
                                         sourceClip.gestureStartMs = Number(sourceClip.modelData.start_ms || 0);
                                         sourceClip.gestureDurationMs = Number(sourceClip.modelData.duration_ms || 0);
                                         sourceClip.gesturePointerX = mapToItem(timelineCanvas, mouse.x, mouse.y).x;
+                                        sourceClip.gestureScale = root.pixelsPerSecond;
                                         sourceClip.trimming = true;
                                         root.editingClip = true;
                                     }
@@ -797,15 +850,28 @@ Rectangle {
                                         if (!pressed) return;
                                         const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
                                         const deltaMs = Math.round((point.x - sourceClip.gesturePointerX)
-                                            / root.pixelsPerSecond * 1000);
-                                        sourceClip.previewDurationMs = Math.max(80,
-                                            sourceClip.gestureDurationMs + deltaMs);
+                                            / sourceClip.gestureScale * 1000);
+                                        const assetDuration = Number(sourceClip.modelData.asset_duration_ms || 0);
+                                        const maximum = assetDuration > 0 ? Math.max(80,
+                                            assetDuration - Number(sourceClip.modelData.source_in_ms || 0)) : sourceClip.gestureDurationMs;
+                                        const end = Math.round(root.snapAnyTime((sourceClip.gestureStartMs
+                                            + sourceClip.gestureDurationMs + deltaMs) / 1000) * 1000);
+                                        sourceClip.previewDurationMs = Math.min(maximum,
+                                            Math.max(80, end - sourceClip.gestureStartMs));
                                     }
                                     onReleased: {
                                         root.clipTrimCommitted(sourceClip.clipId, "right",
                                             sourceClip.previewStartMs + sourceClip.previewDurationMs);
                                         sourceClip.trimming = false;
                                         root.editingClip = false;
+                                        sourceClip.previewStartMs = Number(sourceClip.modelData.start_ms || 0);
+                                        sourceClip.previewDurationMs = Number(sourceClip.modelData.duration_ms || 0);
+                                    }
+                                    onCanceled: {
+                                        sourceClip.trimming = false;
+                                        root.editingClip = false;
+                                        sourceClip.previewStartMs = Number(sourceClip.modelData.start_ms || 0);
+                                        sourceClip.previewDurationMs = Number(sourceClip.modelData.duration_ms || 0);
                                     }
                                 }
                             }

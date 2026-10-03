@@ -221,7 +221,6 @@ AppDialog {
             root.draftChanged(id, text, version);
         }
         onDraftCleared: function(id) { root.draftCleared(id); }
-        onApplied: Qt.callLater(root.closeEditor)
     }
 
     RowLayout {
@@ -239,8 +238,8 @@ AppDialog {
         }
         Text {
             Layout.fillWidth: true
-            visible: subtitleEditor.saveStatus !== "saved"
-            text: subtitleEditor.saveStatus === "error"
+            text: subtitleEditor.saveStatus === "saved" ? ""
+                : subtitleEditor.saveStatus === "error"
                 ? subtitleEditor.errorMessage || qsTr("Không lưu được")
                 : subtitleEditor.saveStatus === "saving" ? qsTr("Đang lưu…")
                 : qsTr("Chưa lưu")

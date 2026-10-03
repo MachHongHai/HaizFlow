@@ -1388,8 +1388,11 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
     write_status(0, "reusing_model" if model is not None else "loading_model")
     if model is None:
         loading_started = time.monotonic()
-        from haizflow.core.dependency_security import validate_checkpoint_weight_maps
+        from haizflow.core.dependency_security import (
+            install_transformers_generation_guard, validate_checkpoint_weight_maps,
+        )
 
+        install_transformers_generation_guard()
         previous_model = runtime.pop("model", None)
         runtime.pop("model_key", None)
         if previous_model is not None:

@@ -102,6 +102,16 @@ class ProjectImportController:
         """
         host = self._host
         config = host._build_config().model_copy(deep=True)
+        from haizflow.schemas.video import subtitle_style_for_project
+
+        starting_style = subtitle_style_for_project(
+            config.project_type, config.subtitle_style, overridden=config.subtitle_layout_override,
+        )
+        if starting_style != config.subtitle_style:
+            # Manual captions have an independent starting layout. OCR still
+            # locates source text for removal, not the replacement caption.
+            config.subtitle_layout_override = True
+        config.subtitle_style = starting_style
         is_batch = force_batch or str(getattr(host, "_project_type", "")) == "batch"
         if not is_batch:
             return config
@@ -1332,8 +1342,7 @@ class ProjectImportController:
             return False
 
         if str(mode or "").strip().lower() == "batch":
-            self.import_batch_videos(paths)
-            return True
+            return bool(self.import_batch_videos(paths))
 
         # The shared single-video editor also handles an individual video
         # opened from a batch. In that case importing means replacing that
@@ -1406,7 +1415,7 @@ class ProjectImportController:
         if folder:
             self.import_batch_videos([folder])
 
-    def import_batch_videos(self, paths) -> None:
+    def import_batch_videos(self, paths) -> bool:
         host = self._host
         valid_paths, invalid_names = collect_batch_video_paths(paths)
         if not valid_paths:
@@ -1414,10 +1423,9 @@ class ProjectImportController:
                 QMessageBox.warning(None, "Some videos were skipped", self.batch_rejection_message(invalid_names))
             else:
                 QMessageBox.warning(None, "No supported videos", "Choose MP4, MOV, or MKV video files.")
-            return
+            return False
         if self._can_import_in_background():
-            self._queue_batch_paths(valid_paths, invalid_names=invalid_names)
-            return
+            return self._queue_batch_paths(valid_paths, invalid_names=invalid_names)
         created_ids, errors = [], []
         for path in valid_paths:
             try:
@@ -1439,6 +1447,7 @@ class ProjectImportController:
         rejected = invalid_names + errors
         if rejected:
             QMessageBox.warning(None, "Some videos were skipped", self.batch_rejection_message(rejected))
+        return bool(created_ids)
 
     def _prepend_batch_import(self, created_ids) -> None:
         """Persist a newly imported batch group before the existing queue.

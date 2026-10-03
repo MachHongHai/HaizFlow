@@ -5,3 +5,4 @@ setuptools==83.0.0
 wheel==0.47.0
 pyinstaller==6.21.0
 ruff==0.14.14
+pytest==9.1.1

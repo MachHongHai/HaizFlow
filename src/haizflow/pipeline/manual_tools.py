@@ -21,7 +21,7 @@ from haizflow.services.video_export import legacy_render_owned, preset_settings
 # Cache-contract versions are intentionally available without importing the
 # model runtimes that implement them. Importing WhisperX/torch from a QML
 # property getter used to stall the first Manual workspace paint for 20+ s.
-DETECTOR_CACHE_VERSION = 22
+DETECTOR_CACHE_VERSION = 24
 # v1 clips may have been generated before OmniVoice used a stable narrator
 # anchor. Mixing those clips with newly synthesized sentences changes timbre
 # even when every segment declares the same voice ID.
@@ -2193,6 +2193,18 @@ def prepare_manual_rerun(video_id: str, tool_id: str) -> bool:
     return True
 
 
+def _legacy_ocr_cache_current(path: Path, source_path: str) -> bool:
+    """Do not bless old detector results with a new artifact signature."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        state = os.stat(source_path)
+        return isinstance(payload, dict) and payload.get("version") == DETECTOR_CACHE_VERSION and payload.get("source") == {
+            "path": os.path.abspath(source_path), "size": state.st_size, "mtime_ns": state.st_mtime_ns,
+        }
+    except (OSError, UnicodeDecodeError, ValueError, TypeError):
+        return False
+
+
 def migrate_legacy_artifacts(video_id: str) -> bool:
     """Register safe schema-v16 Manual outputs without modifying their files."""
     video = video_store.get_video(video_id)
@@ -2261,7 +2273,7 @@ def migrate_legacy_artifacts(video_id: str) -> bool:
 
     video = video_store.get_video(video_id) or video
     legacy_ocr = video_dir / "temp" / "original_subtitle_region.json"
-    if manual_artifacts.file_state(legacy_ocr):
+    if manual_artifacts.file_state(legacy_ocr) and _legacy_ocr_cache_current(legacy_ocr, _video_input(video)):
         changed = bool(manual_artifacts.register_existing(
             video_id, "ocr_region", ocr_signature(video), {"region": str(legacy_ocr)},
             config_fingerprint="legacy-ocr",

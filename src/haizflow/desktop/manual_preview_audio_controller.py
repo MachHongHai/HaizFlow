@@ -92,15 +92,22 @@ def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
 
 
 def apply_source_decisions(samples, decisions):
-    """Return source PCM in sequence order without creating another decoder."""
+    """Map source PCM to sequence time, including silent gaps between clips."""
     if not decisions:
         return samples
     ranges = []
+    cursor = 0
     for decision in sorted(decisions, key=lambda item: int(item.get("sequence_start_ms", 0))):
         start = max(0, int(int(decision.get("source_start_ms", 0)) * RATE / 1000))
         end = min(len(samples), int(int(decision.get("source_end_ms", 0)) * RATE / 1000))
         if end > start:
+            target = max(0, int(int(decision.get("sequence_start_ms", 0)) * RATE / 1000))
+            if target < cursor:
+                raise ValueError("Overlapping source ranges in editor sequence")
+            if target > cursor:
+                ranges.append(np.zeros((target - cursor, *samples.shape[1:]), dtype=samples.dtype))
             ranges.append(samples[start:end])
+            cursor = target + end - start
     return np.concatenate(ranges) if ranges else np.empty((0, 2), dtype="<i2")
 
 

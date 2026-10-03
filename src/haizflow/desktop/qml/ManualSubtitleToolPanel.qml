@@ -73,8 +73,8 @@ ColumnLayout {
         Item { Layout.fillWidth: true }
 
         StudioButton {
-            text: qsTr("Mở rộng")
-            iconName: "fullscreen"
+            text: qsTr("Chỉnh sửa")
+            iconName: "edit"
             variant: "secondary"
             enabled: subtitlePane.inspector.selectedSubtitle !== null
             onClicked: subtitlePane.inspector.focusTextEditor()

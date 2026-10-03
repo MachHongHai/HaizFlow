@@ -4773,9 +4773,14 @@ class HaizFlowController(QObject):
             key=lambda item: item.start_ms,
         )
         decisions = []
-        sequence_position = 0
+        previous_end = max((item.sequence_start_ms + item.source_end_ms - item.source_start_ms
+                            for item in document.sequence.edit_decisions), default=0)
+        linked_audio = [clip for clip in document.clips if clip.track_id == "source-audio"
+                        and clip.enabled and (clip.metadata.get("follow_source") is True
+                            or ("follow_source" not in clip.metadata
+                                and clip.clip_id == "source-audio-1" and clip.start_ms == 0
+                                and clip.duration_ms == previous_end))]
         for clip in source_clips:
-            clip.start_ms = sequence_position
             clip.duration_ms = max(1, clip.duration_ms)
             clip.source_out_ms = clip.source_in_ms + clip.duration_ms
             decisions.append(
@@ -4783,11 +4788,19 @@ class HaizFlowController(QObject):
                     "decision_id": f"decision-{clip.clip_id}",
                     "source_start_ms": clip.source_in_ms,
                     "source_end_ms": clip.source_in_ms + clip.duration_ms,
-                    "sequence_start_ms": sequence_position,
+                    "sequence_start_ms": clip.start_ms,
                 }
             )
-            sequence_position += clip.duration_ms
         document.sequence.edit_decisions = [SourceEditDecision.model_validate(item) for item in decisions]
+        source_end = max((clip.start_ms + clip.duration_ms for clip in source_clips), default=0)
+        # The source bed is already mapped through these decisions. Its clip
+        # envelope spans sequence time; moving it too would delay audio twice.
+        for audio in linked_audio:
+            audio.start_ms = 0
+            audio.duration_ms = source_end
+            audio.source_in_ms = 0
+            audio.source_out_ms = source_end
+            audio.metadata["follow_source"] = True
         editor_documents.refresh_sequence_duration(document)
 
     @Slot(int, result=bool)
@@ -4886,6 +4899,8 @@ class HaizFlowController(QObject):
             return False
         current = self._manual_editor_document.document_object
         current_clip = editor_documents.clip_by_id(current, clip_id) if current else None
+        # Source edge dragging is suspended; the explicit source-cut command
+        # remains independent and saved source decisions stay renderable.
         if current_clip is None or current_clip.track_id in {"source-video", "overlays"}:
             return False
 
@@ -4915,9 +4930,9 @@ class HaizFlowController(QObject):
                 clip.duration_ms = next_end - clip.start_ms
             if clip.source_out_ms or clip.asset_id:
                 clip.source_out_ms = clip.source_in_ms + clip.duration_ms
+            if clip.track_id == "source-audio":
+                clip.metadata["follow_source"] = False
             editor_documents.refresh_sequence_duration(document)
-            if clip.track_id == "source-video":
-                self._refresh_source_sequence(document)
 
         return self._apply_editor_mutation("trim_clip", trim, merge_key=f"trim:{clip_id}:{edge}")
 
@@ -4935,8 +4950,6 @@ class HaizFlowController(QObject):
             clip = editor_documents.clip_by_id(document, clip_id)
             if clip is None or self._editor_track_locked(document, clip.track_id):
                 return
-            if clip.track_id == "source-video":
-                return
             if target_track:
                 candidate = next((track for track in document.tracks if track.track_id == target_track), None)
                 if candidate and candidate.kind == next(
@@ -4945,6 +4958,8 @@ class HaizFlowController(QObject):
                 ):
                     clip.track_id = target_track
             clip.start_ms = target_start
+            if clip.track_id == "source-audio":
+                clip.metadata["follow_source"] = False
             editor_documents.refresh_sequence_duration(document)
 
         return self._apply_editor_mutation("move_clip", move, merge_key=f"move:{clip_id}")

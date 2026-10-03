@@ -18,7 +18,7 @@ Select a preset and destination, then confirm. The default is `<project-name>.mp
 
 Batch chooses one folder and uses stable `<source-name>--<video-id>.mp4` names. Missing renders appear as individual failures rather than being silently omitted. Retry addresses failed/cancelled copies; completing missing processing remains a separate action. Changing an approved overwrite target requires new confirmation.
 
-Social import pins an internal render until it has been copied to publishing-owned media. It does not depend on external export history. Rename changes the display name while retaining IDs, roots, files and checkpoints. Index writes are canonical; a failed manifest mirror is repaired on subsequent reading.
+Social import lists each project's last completed internal render, even when later edits or processing-code changes make it ineligible for pipeline cache reuse. It captures the selected artifact signature and pins that exact snapshot until it has been verified and copied to publishing-owned media. A newer render from another project does not replace earlier projects in the catalog. Missing or corrupted artifacts are rejected; external export history is never used as a fallback. Export and processing still require a render matching the current revision. Rename changes the display name while retaining IDs, roots, files and checkpoints. Index writes are canonical; a failed manifest mirror is repaired on subsequent reading.
 
 ## Cleanup and compatibility
 

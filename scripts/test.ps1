@@ -56,7 +56,9 @@ try {
     throw "Python correctness lint failed."
   }
 
-  & $Python -m unittest discover -s (Join-Path $Root "tests") -p "test_*.py"
+  # pytest also collects the unittest suites, plus function/fixture tests that
+  # unittest discovery silently omitted from previous release gates.
+  & $Python -m pytest (Join-Path $Root "tests") -q -p no:cacheprovider --basetemp (Join-Path $TestTemp "pytest")
   if ($LASTEXITCODE -ne 0) {
     throw "Test suite failed."
   }

@@ -21,6 +21,30 @@ _TRUSTED_LIGHTNING_INSTANTIATORS = frozenset(
     }
 )
 _GUARD_MARKER = "__haizflow_instantiator_guard__"
+_GENERATION_GUARD_MARKER = "__haizflow_no_custom_generation__"
+
+
+def _guard_transformers_generation(mixin: type[Any]) -> bool:
+    """Block custom generation loading before any remote code is downloaded."""
+    original = getattr(mixin, "load_custom_generate", None)
+    if original is None or getattr(original, _GENERATION_GUARD_MARKER, False):
+        return False
+
+    @wraps(original)
+    def blocked_custom_generate(self, *args, **kwargs):
+        # from_pretrained catches OSError and keeps standard generate. Explicit
+        # custom_generate requests fail; our pinned models need no custom code.
+        raise OSError("Custom generation code is disabled by HaizFlow.")
+
+    setattr(blocked_custom_generate, _GENERATION_GUARD_MARKER, True)
+    mixin.load_custom_generate = blocked_custom_generate
+    return True
+
+
+def install_transformers_generation_guard() -> bool:
+    """Contain CVE-2026-80047 without changing compatible model versions."""
+    module = importlib.import_module("transformers.generation.utils")
+    return _guard_transformers_generation(module.GenerationMixin)
 
 
 def validate_checkpoint_weight_maps(model_directory: str | Path) -> tuple[Path, ...]:

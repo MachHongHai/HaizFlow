@@ -1067,15 +1067,14 @@ class SocialPublishController:
         for video in video_store.list_videos():
             if video.project_type not in {"single", "manual", "batch"}:
                 continue
-            if video.project_type != "manual" and video.status != "done":
-                continue
             output_path = self._output_path(video)
             if not self._supported_file(output_path):
                 continue
             width = int(getattr(video, "video_width", 0) or 0)
             height = int(getattr(video, "video_height", 0) or 0)
             project_name = projects.get(str(getattr(video, "project_key", "") or ""), {}).get("project_name") or video.project_name or Path(video.original_filename).stem
-            source = {"output_path": output_path, "display_name": f"{project_name} — {video.original_filename}", "video_id": video.video_id}
+            source = {"output_path": output_path, "display_name": f"{project_name} — {video.original_filename}", "video_id": video.video_id,
+                      "render_signature": str((video.active_artifacts or {}).get("export") or "")}
             if video.project_type == "batch":
                 group_key = str(getattr(video, "project_key", "") or getattr(video, "project_id", "") or project_name)
                 candidate = batch_groups.get(group_key)
@@ -1134,14 +1133,17 @@ class SocialPublishController:
             for source in sources:
                 identifier = str(source.get("video_id") or "")
                 video = video_store.get_video(identifier) if identifier else None
-                signature = str((getattr(video, "active_artifacts", {}) or {}).get("export") or "")
+                signature = str(source.get("render_signature") or "")
                 if not video or not signature:
-                    continue
+                    raise FileNotFoundError("Selected render metadata is unavailable.")
+                record = manual_artifacts.peek(video.video_id, "export", signature)
+                if not record or record["resolved_outputs"].get("video") != source["output_path"]:
+                    raise FileNotFoundError("Selected render is unavailable.")
                 owner = "social-import-" + uuid.uuid4().hex
                 manual_artifacts.pin(video.video_id, "export", signature, owner)
-                leases[source["output_path"]] = (video.video_id, owner)
+                leases[source["output_path"]] = (video.video_id, owner, signature)
         except (OSError, RuntimeError, ValueError):
-            for identifier, owner in leases.values():
+            for identifier, owner, _signature in leases.values():
                 manual_artifacts.unpin(identifier, owner)
             self._status = "The selected render is unavailable. Rebuild it or select another video."
             self._emit_changed()
@@ -1150,7 +1152,7 @@ class SocialPublishController:
         labels = {source["output_path"]: source["display_name"] for source in sources}
         accepted = self.add_videos([source["output_path"] for source in sources], labels)
         if not accepted:
-            for identifier, owner in leases.values():
+            for identifier, owner, _signature in leases.values():
                 manual_artifacts.unpin(identifier, owner)
             self._source_render_leases = {}
         return accepted
@@ -1270,10 +1272,11 @@ class SocialPublishController:
             try:
                 lease = getattr(self, "_source_render_leases", {}).get(source)
                 if lease:
-                    from haizflow.services.video_export import render_path
+                    from haizflow.services import manual_artifacts
 
-                    if render_path(video_store.get_video(lease[0]), verify=True) != source:
-                        raise FileNotFoundError("The selected project's current render is unavailable. Rebuild it or select another video.")
+                    record = manual_artifacts.resolve(lease[0], "export", lease[2])
+                    if not record or record["resolved_outputs"].get("video") != source:
+                        raise FileNotFoundError("The selected completed render is unavailable or corrupted.")
                 shutil.copy2(source, temporary)
                 if self._cancel.is_set():
                     raise InterruptedError
@@ -1322,7 +1325,7 @@ class SocialPublishController:
                 if lease:
                     from haizflow.services import manual_artifacts
 
-                    manual_artifacts.unpin(*lease)
+                    manual_artifacts.unpin(lease[0], lease[1])
                 for candidate in (temporary,):
                     try:
                         os.remove(candidate)
@@ -1343,7 +1346,7 @@ class SocialPublishController:
     def _release_source_render_leases(self):
         from haizflow.services import manual_artifacts
 
-        for identifier, owner in getattr(self, "_source_render_leases", {}).values():
+        for identifier, owner, _signature in getattr(self, "_source_render_leases", {}).values():
             manual_artifacts.unpin(identifier, owner)
         self._source_render_leases = {}
 
@@ -2374,6 +2377,7 @@ class SocialPublishController:
 
     @staticmethod
     def _output_path(video) -> str:
-        from haizflow.services.video_export import render_path
+        from haizflow.services.video_export import completed_render
 
-        return render_path(video)
+        record = completed_render(video, verify=False)
+        return str(record["resolved_outputs"]["video"]) if record else ""

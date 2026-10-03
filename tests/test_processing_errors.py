@@ -43,3 +43,17 @@ def test_english_ui_does_not_mix_languages():
     result = describe_failure("CUDA out of memory", "en")
     assert result["title"] == "GPU out of memory (CUDA)"
     assert "Close other GPU applications" in result["message"]
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 504])
+def test_google_service_errors_are_distinct_from_billing_and_local_backend(status):
+    result = describe_failure(f"Gemini 3.8 Flash: dịch vụ Google tạm thời không khả dụng (HTTP {status}).")
+    assert result["code"] == "google_service_unavailable"
+    assert str(status) in result["message"]
+    assert "thanh toán" not in result["message"]
+    assert len(result["message"]) < 110
+    assert "Google" in describe_failure(f"Gemini HTTP {status}", "en")["message"]
+
+
+def test_google_quota_is_not_reported_as_service_unavailable():
+    assert describe_failure("Gemini HTTP 429")['code'] != "google_service_unavailable"

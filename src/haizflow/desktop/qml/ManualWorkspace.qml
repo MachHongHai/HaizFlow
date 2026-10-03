@@ -79,6 +79,16 @@ Item {
     })
     readonly property var editorSubtitleStyle: editorModel.defaultSubtitleStyle || ({})
     readonly property var selectedEditorClip: editorModel.selectedClip || ({})
+    onSelectedEditorClipChanged: {
+        if (String(selectedEditorClip.track_id || "") !== "subtitles")
+            return;
+        const segmentId = String(selectedEditorClip.segment_id || "");
+        const index = segments.findIndex(function(segment) {
+            return String(segment.segment_id || "") === segmentId;
+        });
+        if (index >= 0)
+            selectedSubtitleIndex = index;
+    }
     readonly property var selectedEditorClipIds: editorModel.selectedClipIds || []
     readonly property bool editorHasSelection: selectedEditorClipIds.length > 0
     readonly property bool editorSourceSelected: String(selectedEditorClip.track_id || "") === "source-video"
@@ -256,6 +266,16 @@ Item {
             AppController.manualEditorDocumentModel.selectClip(clipId, false);
         const selected = AppController.manualEditorDocumentModel.selectedClip;
         const trackId = String(selected.track_id || "");
+        if (trackId === "subtitles") {
+            const segmentId = String(selected.segment_id || "");
+            const index = segments.findIndex(function(segment) {
+                return String(segment.segment_id || "") === segmentId;
+            });
+            if (index >= 0) {
+                selectSubtitle(index, false);
+                return;
+            }
+        }
         const stageByTrack = {
             "source-video": 0, "subtitles": 2, "overlays": 7,
             "voice": 4, "source-audio": 5, "music": 5
@@ -291,6 +311,8 @@ Item {
         selectedStageIndex = subtitleToolIndex;
         subtitleTransformActive = true;
         AppController.beginManualSubtitleEdit(String(segments[index].segment_id));
+        AppController.manualEditorDocumentModel.selectClip(
+            "subtitle-" + String(segments[index].segment_id), false);
         comparePreview.seekTo(Number(segments[index].start || 0));
     }
 
@@ -679,12 +701,6 @@ Item {
                     ? root.editorModel.tracks : root.emptyEditorTracks
                 editorClips: AppController.hasSelectedVideo
                     ? root.editorModel.clips : []
-                sourceTrimEnabled: Boolean(root.editorModel.document.sequence)
-                    && (root.editorModel.document.sequence.edit_decisions || []).length === 1
-                    && root.editorModel.clips.filter(function(clip) {
-                        return String(clip.track_id || "") === "source-video"
-                            && Boolean(clip.enabled);
-                    }).length === 1
                 selectedClipIds: root.editorModel.selectedClipIds
                 selectedIndex: root.selectedSubtitleIndex
                 duration: Math.max(0.1, comparePreview.durationSeconds)
@@ -722,13 +738,9 @@ Item {
                     AppController.moveClip(clipId, startMs, trackId);
                 }
                 onClipTrimCommitted: function(clipId, edge, timeMs) {
-                    const clip = root.editorModel.clips.find(function(item) {
-                        return String(item.clip_id || "") === clipId;
-                    });
-                    if (clip && String(clip.track_id || "") === "source-video")
-                        AppController.trimSourceBoundary(edge, timeMs);
-                    else
-                        AppController.trimClip(clipId, edge, timeMs);
+                    // Edge dragging is a non-ripple trim. The explicit cut
+                    // command remains separate and may shift other layers.
+                    AppController.trimClip(clipId, edge, timeMs);
                 }
                 onSeekRequested: function(seconds) {
                     comparePreview.seekTo(seconds);

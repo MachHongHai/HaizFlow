@@ -50,6 +50,14 @@ class SubtitleStyle(BaseModel):
     alignment: Literal["left", "center", "right"] = "center"
 
 
+def subtitle_style_for_project(project_type: str, style: SubtitleStyle, *, overridden: bool = False) -> SubtitleStyle:
+    """Choose a legible Manual starting layout without replacing user styling."""
+    if project_type == "manual" and not overridden and style == SubtitleStyle():
+        return style.model_copy(update={"font_size": 84, "position_y_percent": 80,
+                                        "box_height_percent": 12, "position_x_percent": 50})
+    return style.model_copy(deep=True)
+
+
 class CropSettings(BaseModel):
     zoom_percent: int = Field(default=100, ge=1, le=400)
     pan_x_percent: int = Field(default=0, ge=-100, le=100)

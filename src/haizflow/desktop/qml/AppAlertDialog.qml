@@ -7,7 +7,7 @@ AppDialog {
 
     property string alertMessage: ""
     property string severity: "information"
-    readonly property bool isError: severity === "critical" || severity === "error" || severity === "danger"
+    readonly property bool isError: severity === "critical" || severity === "error" || severity === "danger" || severity === "failed"
     readonly property color accentColor: isError ? Theme.danger
         : severity === "warning" ? Theme.warning : Theme.textMuted
 

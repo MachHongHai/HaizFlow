@@ -32,7 +32,7 @@ from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
 # source captions change length.
 SAMPLE_COUNT = 36
 MIN_CONFIDENCE = 0.68
-DETECTOR_CACHE_VERSION = 22
+DETECTOR_CACHE_VERSION = 24
 OCR_FRAME_MAX_WIDTH = 720
 
 
@@ -176,6 +176,49 @@ def _merge_frame_blocks(lines: list[TextCandidate]) -> list[TextCandidate]:
     return merged
 
 
+def _reject_moving_scene_labels(candidates: list[TextCandidate], sample_count: int) -> list[TextCandidate]:
+    """Separate text on moving objects from a stable, changing caption band.
+
+    Reject before joining rows: after a shirt/sign has been merged with a
+    changing caption, its static text is hidden inside apparently changing
+    observations. Repeated words inside the caption band remain eligible.
+    """
+    eligible = [item for item in candidates if item.confidence >= MIN_CONFIDENCE
+                and _is_meaningful(item.text) and 12 <= item.width <= 95
+                and 1 <= item.height <= 20 and 25 <= item.x + item.width / 2 <= 75]
+    if not eligible:
+        return candidates
+    minimum_frames = max(3, min(12, math.ceil(sample_count * 0.12)))
+    anchor = max(eligible, key=lambda item: len({other.frame for other in eligible
+        if abs(other.y + other.height / 2 - item.y - item.height / 2) <= 2.5}))
+    band = [item for item in eligible
+            if abs(item.y + item.height / 2 - anchor.y - anchor.height / 2) <= 2.5]
+    if (len({item.frame for item in band}) < max(minimum_frames, math.ceil(sample_count * 0.25))
+            or len({_normalise_text(item.text) for item in band}) < 3):
+        return candidates
+    centre = _percentile([item.y + item.height / 2 for item in band], 0.5)
+    tolerance = max(2.5, _percentile([item.height for item in band], 0.5) * 0.65)
+    labels: dict[str, list[TextCandidate]] = {}
+    for item in candidates:
+        if item.confidence >= MIN_CONFIDENCE and _is_meaningful(item.text):
+            labels.setdefault(_normalise_text(item.text), []).append(item)
+    rejected = set()
+    for observations in labels.values():
+        if len({item.frame for item in observations}) < minimum_frames:
+            continue
+        centres = [item.y + item.height / 2 for item in observations]
+        # Sparse labels can be recognised on only a handful of sampled frames.
+        # A 10/90 range drops both extremes in that case and hides real motion
+        # of a second clothing/sign row. Keep the 5/95 range, while still
+        # requiring repeated observations outside the changing caption band.
+        drift = _percentile(centres, 0.95) - _percentile(centres, 0.05)
+        height = _percentile([item.height for item in observations], 0.5)
+        outside = [item for item in observations if abs(item.y + item.height / 2 - centre) > tolerance]
+        if drift > max(3.0, height * 0.75) and len({item.frame for item in outside}) >= minimum_frames:
+            rejected.update(id(item) for item in outside)
+    return [item for item in candidates if id(item) not in rejected]
+
+
 def select_subtitle_region(candidates: list[TextCandidate], sample_count: int = SAMPLE_COUNT) -> dict | None:
     """Return a high-confidence normalised subtitle region, or ``None``.
 
@@ -183,6 +226,7 @@ def select_subtitle_region(candidates: list[TextCandidate], sample_count: int = 
     placement is intentionally unrestricted so captions can appear at the
     top, centre, or bottom of a video.
     """
+    candidates = _reject_moving_scene_labels(candidates, sample_count)
     # Scene text (books, signs, classroom boards) can sit immediately beside
     # a caption and have the same glyph height. When a repeatedly changing
     # caption band has a strong uppercase convention, do not join title-case

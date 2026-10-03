@@ -32,12 +32,12 @@ Rectangle {
     readonly property bool working: ["uploading", "publishing", "pending", "processing", "queued"].includes(publishStatus) || remoteInFlight
     readonly property bool awaitingUrl: published && hasRemotePost
         && (!platformPostUrlVerified || platformPostUrl.length === 0)
-    readonly property bool canPublish: !working && publishStatus !== "missing"
+    readonly property bool canPublish: !published && !working && publishStatus !== "missing"
         && publishStatus !== "scheduled"
         && (!hasRemotePost || ["failed", "partial", "draft"].includes(publishStatus))
         && !AppController.tiktokPublishBusy && !AppController.zernioAccountSyncing
         && AppController.zernioApiKeyVerified && AppController.zernioAccountReady
-    readonly property string statusLabel: published ? (awaitingUrl ? qsTr("Đang lấy liên kết") : qsTr("Đã đăng"))
+    readonly property string statusLabel: published ? (awaitingUrl ? qsTr("Đang lấy liên kết") : "")
         : working ? (publishStatus === "uploading" && uploadProgress > 0
             ? qsTr("Đang tải lên %1%").arg(uploadProgress)
             : publishStatus === "uploading" ? qsTr("Đang bắt đầu tải lên")
@@ -45,7 +45,7 @@ Rectangle {
             : qsTr("Đang chờ nền tảng"))
         : publishStatus === "failed" || publishStatus === "partial" ? qsTr("Lỗi")
         : publishStatus === "scheduled" ? qsTr("Đã hẹn giờ")
-        : publishStatus === "missing" ? qsTr("Thiếu tệp") : qsTr("Sẵn sàng")
+        : publishStatus === "missing" ? qsTr("Thiếu tệp") : ""
 
     implicitHeight: 64
     color: hoverHandler.hovered ? Theme.surfaceMuted : "transparent"
@@ -107,12 +107,14 @@ Rectangle {
             }
         }
 
-        StatusBadge {
-            Layout.preferredWidth: implicitWidth
-            status: root.published ? "done"
-                : root.publishStatus === "failed" || root.publishStatus === "partial" ? "failed"
-                : root.working ? "processing" : "ready"
-            label: root.statusLabel
+        Text {
+            visible: root.statusLabel.length > 0
+            text: root.statusLabel
+            color: root.publishStatus === "failed" || root.publishStatus === "partial"
+                || root.publishStatus === "missing" ? Theme.danger : Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.metadata
+            textFormat: Text.PlainText
         }
 
         StudioIconButton {

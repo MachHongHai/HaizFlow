@@ -280,6 +280,13 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "tiktokWaitingCount"
+            type: "int"
+            read: "tiktokWaitingCount"
+            notify: "socialPublishStateChanged"
+            isReadonly: true
+        }
+        Property {
             name: "tiktokProjectSourceSelectedCount"
             type: "int"
             read: "tiktokProjectSourceSelectedCount"

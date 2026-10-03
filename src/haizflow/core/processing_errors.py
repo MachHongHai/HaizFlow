@@ -53,6 +53,16 @@ def describe_failure(error: object, language: str = "vi") -> dict[str, str]:
                 "Retry or choose CPU; check the technical log for details."
             ),
         }
+    if "gemini" in lowered and re.search(r"HTTP\s+(?:500|502|503|504)\b", raw, re.I):
+        status = re.search(r"HTTP\s+(\d{3})", raw, re.I).group(1)
+        return {
+            "code": "google_service_unavailable",
+            "title": "Dịch vụ Google tạm thời không khả dụng" if vi else "Google service temporarily unavailable",
+            "message": (
+                f"Gemini: lỗi dịch vụ Google (HTTP {status}). Thử lại sau hoặc chọn Flash-Lite."
+                if vi else f"Gemini: Google service error (HTTP {status}). Retry later or choose Flash-Lite."
+            ),
+        }
     compact = raw[:240] + ("…" if len(raw) > 240 else "")
     title = "Tác vụ gặp lỗi" if vi else "Task failed"
     return {

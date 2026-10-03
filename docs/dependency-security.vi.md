@@ -2,7 +2,7 @@
 
 [Tài liệu](README.vi.md) · [Sẵn sàng phát hành](release-readiness.vi.md) · [English](dependency-security.md)
 
-Rà soát gần nhất: **2026-09-08**  
+Rà soát gần nhất: **2026-10-04**
 Rà soát tiếp theo: **trước mọi release và không muộn hơn 2026-10-08**
 
 Tài liệu xác định trust boundary cho Python package, native tool và model artifact. Ngoại lệ được liệt kê chỉ có hiệu lực tạm thời và không cho phép bỏ qua advisory mới.
@@ -32,6 +32,18 @@ Script audit lock của Core và từng engine phát hành riêng bằng `pip-au
 Ngoại lệ tạm: [PYSEC-2025-217](https://osv.dev/vulnerability/PYSEC-2025-217), [PYSEC-2026-2288](https://osv.dev/vulnerability/PYSEC-2026-2288), [PYSEC-2026-2289](https://osv.dev/vulnerability/PYSEC-2026-2289), [PYSEC-2026-2290](https://osv.dev/vulnerability/PYSEC-2026-2290), [CVE-2026-9856](https://github.com/advisories/GHSA-xrqw-3rrv-vx5w).
 
 Các lỗi nằm ở đường nạp checkpoint/config không tin cậy, Trainer/conversion hoặc ghi `chat_template` do caller kiểm soát qua `save_pretrained()`. Ứng dụng chỉ nạp HY-MT2 cố định đã verify, bắt buộc safetensors, chặn remote code và không gọi `save_pretrained()` của tokenizer/processor. Chỉ nâng Transformers 5 sau khi cách diễn giải cấu hình RoPE của HY-MT2 qua compatibility và translation-quality gate.
+
+### Mã sinh văn bản tùy chỉnh của Transformers: CVE-2026-80047
+
+Ngoại lệ tạm đã rà soát: [PYSEC-2026-4174](https://osv.dev/vulnerability/PYSEC-2026-4174).
+Phiên bản bị ảnh hưởng tải mã Python trước khi kiểm tra sự đồng ý. Worker HY-MT2
+và OmniVoice chặn `load_custom_generate` trước khi nạp model, không gọi hàm gốc
+và không tải tệp. Lỗi `OSError` giữ đường sinh văn bản chuẩn khi `from_pretrained`
+thăm dò; yêu cầu sinh tùy chỉnh bị từ chối. Test kiểm tra các giá trị đồng ý, tính
+lặp an toàn và hàm sinh chuẩn không bị thay đổi. Ứng dụng chỉ nhận checkpoint
+cục bộ đã khóa, không nhận repository sinh tùy chỉnh của người dùng. Rà soát lại
+trước mọi bản phát hành và chậm nhất **2026-10-08**; xóa ngoại lệ khi bản vá upstream
+qua kiểm thử tương thích model. [Bản vá upstream](https://github.com/huggingface/transformers/commit/cbc1651a032b923da7f4b44b3d0e6f68e6ba6b55).
 
 ### NLTK 3.10.3
 

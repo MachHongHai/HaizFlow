@@ -109,6 +109,7 @@ class ManualEditorDocumentModel(QObject):
             payload = item.model_dump()
             asset = editor_documents.asset_by_id(self._document, item.asset_id)
             if asset is not None:
+                payload["asset_duration_ms"] = asset.duration_ms
                 key = self._waveform_key(asset)
                 if key in self._waveforms:
                     payload["waveform"] = list(self._waveforms[key])
@@ -249,7 +250,7 @@ class ManualEditorDocumentModel(QObject):
         if cps > 20:
             warnings.append({
                 "code": "reading_speed",
-                "message": f"Tốc độ đọc {cps:.1f} ký tự/giây; nên dưới 20.",
+                "message": "Phụ đề hiện quá nhanh. Kéo dài đoạn hoặc rút gọn nội dung.",
             })
         clip_end = clip.start_ms + clip.duration_ms
         overlaps = any(

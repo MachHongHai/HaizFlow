@@ -43,7 +43,7 @@ def test_startup_warm_uses_app_mode_not_previous_project_cpu_override():
     with patch("haizflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
         warm = SmartWarmupController(host, Mock())
     warm.request_startup_prediction()
-    assert warm._requests[0].context == {"model": "small", "device": "gpu"}
+    assert warm._requests[0].context == {"model": "large-v3-turbo", "device": "gpu"}
     host._project_type = "single"
     warm.request_setup_prediction()
     assert warm._requests[0].context == {"model": "small", "device": "cpu"}

@@ -32,7 +32,7 @@ AppSurface {
         if (!AppController.zernioCanPostMore)
             return qsTr("Đã đạt giới hạn đăng")
         if (AppController.zernioAccountReady)
-            return qsTr("Sẵn sàng")
+            return ""
         return qsTr("Đang tải")
     }
 
@@ -83,9 +83,9 @@ AppSurface {
 
             Text {
                 Layout.fillWidth: true
+                visible: text.length > 0
                 text: root.connectionStatus()
-                color: root.setupComplete ? Theme.success
-                    : AppController.zernioApiKeyConfigured ? Theme.warning : Theme.textMuted
+                color: AppController.zernioApiKeyConfigured ? Theme.warning : Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.metadata
                 textFormat: Text.PlainText

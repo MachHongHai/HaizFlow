@@ -120,6 +120,86 @@ class RenderExportStorageTests(unittest.TestCase):
             video_export.export_video(video, target)
         self.assertEqual(target.read_bytes(), b"old")
 
+    def test_social_catalog_keeps_completed_projects_after_settings_change_and_new_render(self):
+        from haizflow.desktop.social_publish_controller import SocialPublishController
+
+        _, older = self.make_video(kind="manual", name="Dự án trước")
+        old_path = video_export.render_path(older)
+        older = video_store.update_video(older.video_id, watermark_text="Chỉnh sửa chưa render")
+        self.assertIsNone(video_export.current_render(older))
+        self.assertEqual(SocialPublishController._output_path(older), old_path)
+        host = Mock()
+        controller = SocialPublishController(host)
+        with patch.object(controller, "_emit_changed"):
+            controller.refresh_project_sources()
+            self.assertEqual([row["video_id"] for row in controller._project_sources], [older.video_id])
+            _, newer = self.make_video(kind="manual", name="Dự án sau")
+            controller.refresh_project_sources()
+            self.assertEqual({row["video_id"] for row in controller._project_sources},
+                             {older.video_id, newer.video_id})
+            self.assertEqual(next(row for row in controller._project_sources
+                                  if row["video_id"] == older.video_id)["output_paths"][0]["output_path"], old_path)
+            Path(old_path).unlink()
+            controller.refresh_project_sources()
+            self.assertEqual([row["video_id"] for row in controller._project_sources], [newer.video_id])
+
+    def test_social_import_pins_the_selected_snapshot_even_when_active_render_changes(self):
+        from haizflow.desktop.social_publish_controller import SocialPublishController
+
+        _, video = self.make_video(kind="manual")
+        selected_path = video_export.render_path(video)
+        signature = video.active_artifacts["export"]
+        controller = SocialPublishController(Mock())
+        controller._project_sources = [{"selected": True, "output_paths": [{
+            "video_id": video.video_id, "render_signature": signature,
+            "output_path": selected_path, "display_name": "Bản đã xuất",
+        }]}]
+        changed = video_store.update_video(video.video_id, watermark_text="next")
+        next_signature = video_export.render_revision(changed)
+        staging = manual_artifacts.create_staging_directory(video.video_id, "export")
+        (staging / "video.mp4").write_bytes(b"new-render")
+        manual_artifacts.publish(video.video_id, "export", next_signature, staging,
+                                 {"video": "video.mp4"}, config_fingerprint=next_signature)
+        with patch.object(controller, "add_videos", return_value=True) as add:
+            self.assertTrue(controller.add_selected_project_videos())
+            add.assert_called_once_with([selected_path], {selected_path: "Bản đã xuất"})
+            self.assertEqual(controller._source_render_leases[selected_path][2], signature)
+            self.assertTrue(manual_artifacts.has_runtime_pins(video.video_id))
+            self.assertIsNotNone(manual_artifacts.resolve(video.video_id, "export", signature))
+        publishing_root = self.root / "social-project"
+        publishing_root.mkdir()
+        with (
+            patch("haizflow.desktop.social_publish_controller.get_video_duration", return_value=30),
+            patch("haizflow.desktop.social_publish_controller.get_video_dimensions", return_value=(720, 1280)),
+            patch("haizflow.desktop.social_publish_controller.create_video_thumbnail_path"),
+        ):
+            controller._import_worker("social-project", str(publishing_root),
+                                      [(selected_path, "Bản đã xuất")], "Caption", "#tag", 0)
+        events = []
+        while not controller._events.empty():
+            events.append(controller._events.get_nowait())
+        finished = next(event for event in events if event["type"] == "import_finished")
+        self.assertEqual(finished["done"], 1, finished["errors"])
+        self.assertEqual(finished["errors"], [])
+        from haizflow.services import social_publish
+        imported = list(Path(social_publish.media_directory(str(publishing_root))).glob("*.mp4"))
+        self.assertEqual(len(imported), 1)
+        self.assertEqual(imported[0].read_bytes(), b"managed-render")
+        self.assertFalse(manual_artifacts.has_runtime_pins(video.video_id))
+
+    def test_social_completed_snapshot_rejects_corruption_and_external_history(self):
+        from haizflow.desktop.social_publish_controller import SocialPublishController
+
+        _, video = self.make_video()
+        path = Path(SocialPublishController._output_path(video))
+        path.write_bytes(b"broken-render")
+        self.assertIsNone(video_export.completed_render(video, verify=True))
+        self.assertEqual(SocialPublishController._output_path(video), "")
+        external = self.external / "outside.mp4"
+        external.write_bytes(b"external-export")
+        video = video_store.update_video(video.video_id, active_artifacts={},
+                                         export_history=[{"path": str(external)}])
+        self.assertEqual(SocialPublishController._output_path(video), "")
     def test_confirmed_destination_changed_during_copy_is_not_replaced(self):
         _, video = self.make_video()
         target = self.external / "changed.mp4"

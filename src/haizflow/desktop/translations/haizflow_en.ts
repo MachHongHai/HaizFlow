@@ -2425,8 +2425,8 @@ Author and owner of HaizFlow.</translation>
     </message>
     <message>
         <location line="+25"/>
-        <source>Mở rộng</source>
-        <translation>Expand</translation>
+        <source>Chỉnh sửa</source>
+        <translation>Edit</translation>
     </message>
 </context>
 <context>

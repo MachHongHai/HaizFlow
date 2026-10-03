@@ -1,3 +1,5 @@
+import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +19,31 @@ def candidate(frame, text, *, x=25, y=78, width=50, height=5, confidence=0.9):
 
 
 class SubtitleOcrSelectionTests(unittest.TestCase):
+    def test_legacy_ocr_requires_current_detector_and_unchanged_source(self):
+        from haizflow.pipeline.manual_tools import DETECTOR_CACHE_VERSION, _legacy_ocr_cache_current
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.mp4"
+            source.write_bytes(b"source")
+            cache = Path(directory) / "region.json"
+            state = source.stat()
+            payload = {
+                "version": DETECTOR_CACHE_VERSION,
+                "source": {"path": os.path.abspath(source), "size": state.st_size, "mtime_ns": state.st_mtime_ns},
+                "region": {"height_percent": 6},
+            }
+            cache.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertTrue(_legacy_ocr_cache_current(cache, str(source)))
+            payload["version"] -= 1
+            cache.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertFalse(_legacy_ocr_cache_current(cache, str(source)))
+            payload["version"] = DETECTOR_CACHE_VERSION
+            cache.write_text(json.dumps(payload), encoding="utf-8")
+            source.write_bytes(b"changed source")
+            self.assertFalse(_legacy_ocr_cache_current(cache, str(source)))
+            cache.write_text("not JSON", encoding="utf-8")
+            self.assertFalse(_legacy_ocr_cache_current(cache, str(source)))
+
     def test_scene_board_labels_do_not_enlarge_uppercase_caption(self):
         items = [candidate(frame, f"CHANGING CAPTION {frame}", y=69, height=3.5)
                  for frame in range(1, 29)]
@@ -82,6 +109,45 @@ class SubtitleOcrSelectionTests(unittest.TestCase):
         self.assertGreaterEqual(region["y_percent"], 70)
         self.assertLessEqual(region["y_percent"] + region["height_percent"], 100)
         self.assertEqual(region["samples"], 4)
+
+    def test_moving_clothing_text_does_not_become_a_second_caption_row(self):
+        items = []
+        for frame in range(1, 13):
+            items.append(candidate(frame, f"spoken caption {frame}", x=14, y=77, width=72, height=6))
+            # The same lettering moves with a character and occasionally
+            # touches a caption. Confidence is high: it is real scene text.
+            items.append(candidate(frame, "CLUB", x=32, y=52 + frame * 1.5,
+                                   width=36, height=8, confidence=0.99))
+        region = select_subtitle_region(items, sample_count=24)
+        self.assertIsNotNone(region)
+        self.assertEqual(region["y_percent"], 77)
+        self.assertEqual(region["height_percent"], 6)
+
+    def test_repeated_caption_word_in_stable_band_is_not_removed_as_scene_text(self):
+        items = []
+        for frame in range(1, 13):
+            items.append(candidate(frame, "Wait" if frame < 7 else f"reply {frame}",
+                                   x=28, y=72, width=44, height=6))
+            items.append(candidate(frame, "Wait", x=36, y=30 + frame * 2,
+                                   width=30, height=6))
+        region = select_subtitle_region(items, sample_count=24)
+        self.assertIsNotNone(region)
+        self.assertEqual(region["y_percent"], 72)
+        self.assertEqual(region["samples"], 12)
+
+    def test_sparse_second_row_on_moving_object_is_rejected_before_line_merge(self):
+        items = [candidate(frame, f"spoken caption {frame}", x=14, y=77, width=72, height=6)
+                 for frame in range(1, 31)]
+        # High-confidence second line on a shirt/sign: most sightings are close
+        # together, but two edge sightings expose its motion. The old 10/90
+        # percentile range hid that motion with only eight observations.
+        centres = [68.35, 73.05, 69.8, 69.06, 69.18, 70.59, 70.55, 65.82]
+        items.extend(candidate(frame, "League42", x=30, y=centre - 4.25,
+                               width=38, height=8.5, confidence=0.99)
+                     for frame, centre in enumerate(centres, 1))
+        region = select_subtitle_region(items, sample_count=36)
+        self.assertEqual(region["y_percent"], 77)
+        self.assertEqual(region["height_percent"], 6)
 
     def test_region_covers_the_widest_observed_caption_not_its_median_width(self):
         region = select_subtitle_region([

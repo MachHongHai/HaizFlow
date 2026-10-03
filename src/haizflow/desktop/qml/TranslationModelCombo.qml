@@ -23,7 +23,7 @@ AppComboBox {
     onActivated: {
         if (String(root.currentValue).indexOf("gemini-") === 0)
             AppController.showAppAlert(qsTr("Chi phí Gemini"),
-                qsTr("Gemini 3.1 Flash-Lite, 3.5 Flash-Lite và 3.8 Flash có hạn mức miễn phí. Nếu dự án Google đã bật thanh toán, yêu cầu có thể bị tính phí; 3.8 Flash đắt hơn Flash-Lite. Kiểm tra Usage và Billing trong AI Studio. Lỗi 503 là dịch vụ tạm thời không khả dụng, không xác nhận yêu cầu thanh toán."), "information");
+                qsTr("Có thể tính phí khi bật thanh toán. Kiểm tra Billing trong AI Studio."), "information");
         root.edited(root.currentValue);
         root.currentIndex = Qt.binding(function() {
             return root.selectedModel === "full" ? 1

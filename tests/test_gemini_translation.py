@@ -24,6 +24,25 @@ class _Response:
 
 
 class GeminiTranslationTests(unittest.TestCase):
+    def test_service_failure_has_short_model_specific_message_and_safe_retry_logs(self):
+        with (
+            patch.object(gemini_translation.request, "urlopen", side_effect=HTTPError(
+                "https://example.invalid", 503, "Unavailable", {}, None,
+            )) as send,
+            patch.object(gemini_translation.time, "sleep"),
+            patch.object(gemini_translation, "log_to_video") as log,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "Gemini 3.8 Flash.*HTTP 503") as raised:
+                gemini_translation._request_chunk(
+                    [(0, "Hello")], key="private-fixture-key", model="gemini-3.8-flash",
+                    source_language="English", target_language="Vietnamese", video_id="fixture",
+                )
+            self.assertEqual(send.call_count, 3)
+            self.assertEqual(log.call_count, 3)
+            self.assertNotIn("private-fixture-key", str(log.call_args_list))
+            self.assertNotIn("thanh toán", str(raised.exception))
+            self.assertLess(len(str(raised.exception)), 150)
+
     def test_batch_start_is_logged_before_waiting_for_api_response(self):
         events = []
 

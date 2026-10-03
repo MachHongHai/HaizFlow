@@ -6,7 +6,10 @@ RECOGNITION_CHOICES = frozenset({"small", "small-cpu", "small-gpu", "large-v3-tu
 def project_model_defaults(app_device: str) -> dict[str, str]:
     gpu = app_device == "gpu"
     return {
-        "_speech_recognition_model": "small-gpu" if gpu else "small-cpu",
+        # GPU mode is admitted only after the hardware policy's 8 GB-class
+        # VRAM check. Turbo is the default; an explicit Small/CPU choice stays
+        # project-local and is never overwritten on reopening a project.
+        "_speech_recognition_model": "large-v3-turbo" if gpu else "small-cpu",
         "_translation_model": "full" if gpu else "q4",
         "_tts_provider": "omnivoice-gpu" if gpu else "omnivoice",
     }

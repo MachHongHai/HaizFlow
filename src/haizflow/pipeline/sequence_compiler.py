@@ -73,6 +73,20 @@ def map_source_intervals(
     return mapped
 
 
+def _source_ranges_with_gaps(decisions):
+    """Keep sequence placement instead of accidentally ripple-concatenating."""
+    cursor_ms = 0
+    for index, decision in enumerate(decisions):
+        duration_ms = decision.source_end_ms - decision.source_start_ms
+        if duration_ms <= 0:
+            continue
+        if decision.sequence_start_ms < cursor_ms:
+            raise ValueError("Overlapping source ranges in editor sequence")
+        yield (index, decision.source_start_ms / 1000, decision.source_end_ms / 1000,
+               (decision.sequence_start_ms - cursor_ms) / 1000)
+        cursor_ms = decision.sequence_start_ms + duration_ms
+
+
 def materialize_source_sequence(
     video_path: str,
     audio_path: str,
@@ -92,16 +106,14 @@ def materialize_source_sequence(
     edited_audio = output_dir / "sequence-audio.wav"
     filters: list[str] = []
     concat_inputs: list[str] = []
-    for index, decision in enumerate(decisions):
-        start = decision.source_start_ms / 1000
-        end = decision.source_end_ms / 1000
-        if end <= start:
-            continue
+    for index, start, end, gap in _source_ranges_with_gaps(decisions):
+        video_gap = f",tpad=start_mode=add:start_duration={gap:.6f}" if gap else ""
+        audio_gap = f",adelay=delays={gap * 1000:.3f}:all=1" if gap else ""
         filters.append(
-            f"[0:v]trim=start={start:.6f}:end={end:.6f},setpts=PTS-STARTPTS[v{index}]"
+            f"[0:v]trim=start={start:.6f}:end={end:.6f},setpts=PTS-STARTPTS{video_gap}[v{index}]"
         )
         filters.append(
-            f"[1:a]atrim=start={start:.6f}:end={end:.6f},asetpts=PTS-STARTPTS[a{index}]"
+            f"[1:a]atrim=start={start:.6f}:end={end:.6f},asetpts=PTS-STARTPTS{audio_gap}[a{index}]"
         )
         concat_inputs.append(f"[v{index}][a{index}]")
     if not concat_inputs:
@@ -178,13 +190,10 @@ def materialize_source_video(
     edited_video = output_dir / "sequence-source.mp4"
     filters: list[str] = []
     inputs: list[str] = []
-    for index, decision in enumerate(decisions):
-        start = decision.source_start_ms / 1000
-        end = decision.source_end_ms / 1000
-        if end <= start:
-            continue
+    for index, start, end, gap in _source_ranges_with_gaps(decisions):
+        video_gap = f",tpad=start_mode=add:start_duration={gap:.6f}" if gap else ""
         filters.append(
-            f"[0:v]trim=start={start:.6f}:end={end:.6f},setpts=PTS-STARTPTS[v{index}]"
+            f"[0:v]trim=start={start:.6f}:end={end:.6f},setpts=PTS-STARTPTS{video_gap}[v{index}]"
         )
         inputs.append(f"[v{index}]")
     if not inputs:

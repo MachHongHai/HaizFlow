@@ -20,6 +20,8 @@ Item {
         PageHeader {
             id: pageHeader
             Layout.fillWidth: true
+            Layout.alignment: Qt.AlignTop
+            Layout.maximumHeight: implicitHeight
             title: AppController.projectName
 
             StudioButton {
@@ -52,6 +54,7 @@ Item {
             Layout.maximumWidth: 1680
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredHeight: setupContent.implicitHeight + Theme.space16 * 2
+            Layout.maximumHeight: Layout.preferredHeight
             radius: Theme.radiusSmall
             color: Theme.surface
             border.width: 0
@@ -125,7 +128,9 @@ Item {
 
         RowLayout {
             id: queueHeader
+            objectName: "socialQueueHeader"
             Layout.fillWidth: true
+            Layout.maximumHeight: implicitHeight
             Layout.maximumWidth: 1680
             Layout.alignment: Qt.AlignHCenter
             spacing: Theme.space8
@@ -141,9 +146,9 @@ Item {
 
             Text {
                 visible: !AppController.tiktokPublishBusy
-                text: qsTr("%1/%2 video đã đăng")
-                    .arg(AppController.tiktokPostedCount)
-                    .arg(AppController.tiktokPublishCount)
+                text: AppController.tiktokWaitingCount > 0
+                    ? qsTr("%1 video chưa đăng").arg(AppController.tiktokWaitingCount)
+                    : qsTr("%1 video").arg(AppController.tiktokPublishCount)
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.label
@@ -211,17 +216,20 @@ Item {
         }
 
         AppSurface {
+            objectName: "socialQueueSurface"
             Layout.fillWidth: true
             Layout.maximumWidth: 1680
-            Layout.alignment: Qt.AlignHCenter
+            Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
             Layout.preferredHeight: Math.min(Math.max(queueList.count * 64, 72),
                 Math.max(72, root.height
                     - pageHeader.height - setupPanel.height - queueHeader.height
                     - Theme.space16 * 3))
+            Layout.maximumHeight: Layout.preferredHeight
             padding: 0
 
             ListView {
                 id: queueList
+                objectName: "socialQueueList"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 model: AppController.tiktokPublishModel
@@ -251,6 +259,8 @@ Item {
                 textFormat: Text.PlainText
             }
         }
+
+        Item { Layout.fillHeight: true }
     }
 
     LazyDialogLoader {

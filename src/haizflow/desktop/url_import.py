@@ -113,6 +113,10 @@ class VideoUrlImportCoordinator(QObject):
         try:
             normalized_url, _platform = validate_video_url(value)
         except ValueError as exc:
+            self._generation += 1
+            self._metadata = {}
+            self._url = ""
+            self._progress = 0
             self._state = "error"
             self._status = str(exc)
             self.changed.emit()

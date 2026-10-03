@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QEvent, QObject
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QGuiApplication
+from PySide6.QtQuick import QQuickWindow
 
 
 class InputMethodCommitFilter(QObject):
@@ -46,7 +47,6 @@ class InputMethodCommitFilter(QObject):
             input_method.commit()
 
     def eventFilter(self, watched: QObject | None, event: QEvent | None) -> bool:  # noqa: N802
-        del watched
         # ``QInputMethod.commit()`` can synchronously dispatch another Qt
         # event while the original event is still crossing the Python/C++
         # boundary.  Check the re-entry guard *before* touching the nested
@@ -58,6 +58,40 @@ class InputMethodCommitFilter(QObject):
         self._committing = True
         try:
             self._commit_callback()
+            if isinstance(watched, QQuickWindow) and event.type() in {
+                QEvent.Type.MouseButtonPress, QEvent.Type.TabletPress, QEvent.Type.TouchBegin,
+            }:
+                self._dismiss_input_focus(watched, event)
         finally:
             self._committing = False
         return False
+
+    @staticmethod
+    def _dismiss_input_focus(window: QQuickWindow, event: QEvent) -> None:
+        """Blur an editable field on outside clicks without consuming the click.
+
+        Run before QML handles the press so another field can subsequently
+        receive focus. Keyboard navigation and clicks inside the editor are
+        unchanged. Commit pre-edit text before moving focus (see eventFilter).
+        """
+        focused = window.activeFocusItem()
+        if focused is None:
+            return
+        meta = focused.metaObject()
+        if meta.indexOfProperty("cursorPosition") < 0 or meta.indexOfProperty("inputMethodComposing") < 0:
+            return
+        if event.type() == QEvent.Type.TouchBegin:
+            points = event.points()
+            if not points:
+                return
+            position = points[0].position()
+        else:
+            position = event.position()
+        if focused.contains(focused.mapFromScene(position)):
+            return
+        # QML TextInput/TextEdit expose deselect as a meta-object method.
+        from PySide6.QtCore import QMetaObject
+
+        QMetaObject.invokeMethod(focused, "deselect", Qt.ConnectionType.DirectConnection)
+        focused.setFocus(False, Qt.FocusReason.MouseFocusReason)
+        window.contentItem().forceActiveFocus(Qt.FocusReason.MouseFocusReason)

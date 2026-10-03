@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from haizflow.core.hardware import available_memory_bytes, runtime_profile
-from haizflow.core.model_choices import recognition_context
+from haizflow.core.model_choices import project_model_defaults, recognition_context
 from haizflow.services.external_engine import close_shared_external_engine_pool, shared_external_engine_pool
 
 
@@ -62,7 +62,8 @@ class SmartWarmupController:
     def request_startup_prediction(self) -> None:
         # Startup belongs to the app, not to whichever project was opened last.
         device = str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu")
-        self.request("recognition", {"device": device, "model": "small"}, priority=30)
+        model = project_model_defaults(device)["_speech_recognition_model"]
+        self.request("recognition", {"device": device, "model": model}, priority=30)
 
     def request_setup_prediction(self) -> None:
         """Warm the current draft, including projects without an imported video."""

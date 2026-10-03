@@ -22,6 +22,19 @@ foreach ($DependencyLock in $DependencyLocks) {
     throw "Dependency lock is missing: $DependencyLock"
   }
 }
+$AuditCacheRoot = Join-Path $Root "build\dependency-cache"
+$PreviousAuditEnvironment = @{}
+foreach ($Name in @("UV_CACHE_DIR", "UV_TOOL_DIR", "TEMP", "TMP")) {
+  $PreviousAuditEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
+}
+foreach ($Directory in @("uv", "tools", "tmp", "pip-audit")) {
+  New-Item -ItemType Directory -Force -Path (Join-Path $AuditCacheRoot $Directory) | Out-Null
+}
+$env:UV_CACHE_DIR = Join-Path $AuditCacheRoot "uv"
+$env:UV_TOOL_DIR = Join-Path $AuditCacheRoot "tools"
+$env:TEMP = Join-Path $AuditCacheRoot "tmp"
+$env:TMP = $env:TEMP
+try {
 & $Python (Join-Path $PSScriptRoot "verify-dependency-lock.py") --no-installed-check
 if ($LASTEXITCODE -ne 0) { throw "Core dependency lock verification failed." }
 & $Python (Join-Path $PSScriptRoot "verify-engine-dependency-locks.py")
@@ -45,6 +58,10 @@ $AcceptedVulnerabilities = @(
   # HaizFlow only loads checksum-pinned local HY-MT2 safetensors with remote
   # code disabled and never calls tokenizer/processor save_pretrained().
   "CVE-2026-9856",
+  # CVE-2026-80047 downloads custom generation code before trust consent.
+  # Both loaders deny load_custom_generate before from_pretrained: no custom
+  # generation file download or execution is permitted (reviewed 2026-10-04).
+  "PYSEC-2026-4174",
   # Accelerate CVE-2026-69112 concerns caller-controlled weight_map shard
   # paths. Both HY-MT2 and OmniVoice now validate every local checkpoint index
   # and regular shard before Accelerate can access it; all model files are also
@@ -73,6 +90,7 @@ foreach ($DependencyLock in $DependencyLocks) {
     "--requirement", $DependencyLock,
     "--no-deps",
     "--disable-pip",
+    "--cache-dir", (Join-Path $AuditCacheRoot "pip-audit"),
     "--progress-spinner", "off"
   )
   foreach ($Vulnerability in $AcceptedVulnerabilities) {
@@ -116,6 +134,7 @@ try {
     "--requirement", $CanonicalRequirements,
     "--no-deps",
     "--disable-pip",
+    "--cache-dir", (Join-Path $AuditCacheRoot "pip-audit"),
     "--progress-spinner", "off"
   )
   foreach ($Vulnerability in $AcceptedCanonicalTorchVulnerabilities) {
@@ -137,3 +156,9 @@ finally {
 }
 
 Write-Output "Dependency vulnerability audit passed for the Core and three exact engine locks; reviewed exceptions are documented and PyTorch wheels were audited by canonical version."
+}
+finally {
+  foreach ($Name in $PreviousAuditEnvironment.Keys) {
+    [Environment]::SetEnvironmentVariable($Name, $PreviousAuditEnvironment[$Name], "Process")
+  }
+}

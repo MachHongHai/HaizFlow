@@ -2,7 +2,7 @@
 
 [Documentation](README.md) · [Release readiness](release-readiness.md) · [Tiếng Việt](dependency-security.vi.md)
 
-Last reviewed: **2026-09-08**
+Last reviewed: **2026-10-04**
 Next review: **before every release and no later than 2026-10-08**
 
 This policy defines the trust boundary for Python packages, native tools, and model artifacts used by HaizFlow. A listed exception is temporary and does not waive future advisories.
@@ -34,6 +34,19 @@ The script audits the Core lock and every separately shipped engine lock with a 
 Temporarily accepted: [PYSEC-2025-217](https://osv.dev/vulnerability/PYSEC-2025-217), [PYSEC-2026-2288](https://osv.dev/vulnerability/PYSEC-2026-2288), [PYSEC-2026-2289](https://osv.dev/vulnerability/PYSEC-2026-2289), [PYSEC-2026-2290](https://osv.dev/vulnerability/PYSEC-2026-2290), and [CVE-2026-9856](https://github.com/advisories/GHSA-xrqw-3rrv-vx5w).
 
 The affected paths load untrusted checkpoints/configuration, expose Trainer/conversion surfaces, or write caller-controlled `chat_template` keys through `save_pretrained()`. HaizFlow loads a fixed, checksum-verified HY-MT2 artifact, refuses remote code, requires safetensors, and never calls tokenizer or processor `save_pretrained()`. Transformers 5 is not substituted until its interpretation of the HY-MT2 RoPE configuration passes compatibility and translation-quality gates.
+
+### Transformers custom generation: CVE-2026-80047
+
+Reviewed temporary exception: [PYSEC-2026-4174](https://osv.dev/vulnerability/PYSEC-2026-4174).
+Affected versions download custom generation Python before checking consent.
+HY-MT2 and OmniVoice install a process-local denial of `load_custom_generate`
+before loading weights. The guard raises `OSError` without calling the original:
+normal `from_pretrained` retains standard generation, and explicit custom
+generation requests fail before downloading files. Tests cover consent values,
+idempotence and unchanged standard generation. HaizFlow accepts only pinned local
+checkpoints, not caller-selected generation repositories. Re-review before every
+release and by **2026-10-08**; remove the exception after a patched dependency
+passes model compatibility tests. [Upstream fix](https://github.com/huggingface/transformers/commit/cbc1651a032b923da7f4b44b3d0e6f68e6ba6b55).
 
 ### NLTK 3.10.3
 

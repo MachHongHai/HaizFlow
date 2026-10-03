@@ -607,6 +607,7 @@ ApplicationWindow {
 
     ToastStack {
         id: toastStack
+        onDetailsRequested: (title, message, tone) => appAlertDialog.showAlert(title, message, tone)
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.topMargin: Theme.space16 + (root.projectWorkspaceVisible ? UiMetrics.toolbarHeight : 40)

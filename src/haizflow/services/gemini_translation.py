@@ -165,7 +165,7 @@ def _chunks(texts: list[str]):
 
 def _request_chunk(
     chunk: list[tuple[int, str]], *, key: str, model: str,
-    source_language: str, target_language: str,
+    source_language: str, target_language: str, video_id: str = "",
 ) -> list[str]:
     entries = [{"id": index, "text": text} for index, text in chunk]
     payload = {
@@ -219,6 +219,11 @@ def _request_chunk(
                 raise RuntimeError("Gemini trả về sai thứ tự hoặc câu dịch rỗng. Dữ liệu cũ được giữ nguyên.")
             return output
         except error.HTTPError as exc:
+            if video_id:
+                log_to_video(
+                    video_id, f"Gemini {model}: HTTP {exc.code}, attempt {attempt + 1}/3.",
+                    component="TRANSLATE", level="WARNING",
+                )
             if exc.code in {408, 429, 500, 502, 503, 504} and attempt < 2:
                 time.sleep(min(8, 2 ** attempt + random.random()))
                 continue
@@ -235,11 +240,10 @@ def _request_chunk(
                 raise RuntimeError(
                     "Gemini đã hết quota hoặc đang giới hạn tốc độ. Thử lại sau trong Google AI Studio."
                 ) from None
-            if exc.code == 503:
+            if exc.code in {500, 502, 503, 504}:
                 raise RuntimeError(
-                    "Gemini tạm thời không khả dụng (HTTP 503 UNAVAILABLE) sau khi thử lại. "
-                    "Thử lại sau hoặc chọn Gemini 3.1 Flash-Lite. Mã 503 không xác nhận lỗi thanh toán; "
-                    "kiểm tra quyền truy cập, quota và Billing trong Google AI Studio."
+                    f"{MODELS[model]}: dịch vụ Google tạm thời không khả dụng (HTTP {exc.code}). "
+                    "Thử lại sau hoặc chọn Flash-Lite."
                 ) from None
             raise RuntimeError(f"Gemini không xử lý được yêu cầu (HTTP {exc.code}).") from None
         except (error.URLError, TimeoutError):
@@ -270,7 +274,7 @@ def translate_texts(
             progress_callback(chunk[0][0], len(texts), detail)
         values = _request_chunk(
             chunk, key=key, model=model,
-            source_language=source_language, target_language=target_language,
+            source_language=source_language, target_language=target_language, video_id=video_id,
         )
         for (index, _), value in zip(chunk, values):
             output[index] = value

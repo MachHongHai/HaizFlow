@@ -337,14 +337,22 @@ class SocialPublishControllerTests(unittest.TestCase):
             {
                 "selected": True,
                 "output_paths": [
-                    {"output_path": "D:/out/one.mp4", "display_name": "Batch — one.mp4"},
-                    {"output_path": "D:/out/two.mp4", "display_name": "Batch — two.mp4"},
+                    {"output_path": "D:/out/one.mp4", "display_name": "Batch — one.mp4", "video_id": "one", "render_signature": "render-one"},
+                    {"output_path": "D:/out/two.mp4", "display_name": "Batch — two.mp4", "video_id": "two", "render_signature": "render-two"},
                 ],
             }
         ]
 
-        with patch.object(self.controller, "add_videos", return_value=True) as add:
+        with (
+            patch.object(self.controller, "add_videos", return_value=True) as add,
+            patch("haizflow.desktop.social_publish_controller.video_store.get_video",
+                  side_effect=lambda identifier: MagicMock(video_id=identifier)),
+            patch("haizflow.services.manual_artifacts.peek", side_effect=lambda identifier, _kind, _signature:
+                  {"resolved_outputs": {"video": f"D:/out/{identifier}.mp4"}}),
+            patch("haizflow.services.manual_artifacts.pin") as pin,
+        ):
             self.assertTrue(self.controller.add_selected_project_videos())
+            self.assertEqual(pin.call_count, 2)
 
         add.assert_called_once_with(
             ["D:/out/one.mp4", "D:/out/two.mp4"],

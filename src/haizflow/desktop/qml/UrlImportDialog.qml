@@ -13,14 +13,22 @@ AppDialog {
     // qmllint disable stale-property-read
     readonly property var importer: AppController.urlImporter
     // qmllint enable stale-property-read
-    readonly property bool hasMetadata: importer.title.length > 0
-    readonly property bool hasStatus: importer.status.length > 0
+    readonly property bool inspectedLinkMatches: inspectedText.length > 0 && inspectedText === videoUrl.text.trim()
+    readonly property bool hasMetadata: inspectedLinkMatches && importer.title.length > 0
+    readonly property bool hasStatus: inspectedLinkMatches && importer.status.length > 0
+        && importer.state !== "ready" && importer.state !== "success"
     readonly property bool canDownload: importer.state === "ready" || importer.state === "retry"
+    readonly property bool failed: importer.state === "error" || importer.state === "retry"
+    readonly property string statusText: importer.state === "inspecting" ? qsTr("Đang lấy thông tin video…")
+        : importer.state === "downloading" ? qsTr("Đang tải video…")
+        : importer.state === "importing" ? qsTr("Đang nhập video…")
+        : importer.state === "cancelling" ? qsTr("Đang dừng tải…")
+        : failed && importer.status.length > 160 ? qsTr("Không nhập được video. Xem chi tiết lỗi.")
+        : I18n.runtimeStatus(importer.status)
 
     title: qsTr("Nhập từ liên kết")
     subtitle: qsTr("YouTube, TikTok hoặc Douyin")
     preferredWidth: 620
-    preferredHeight: hasMetadata ? 460 : hasStatus ? 340 : 270
     maximumWidth: 660
     maximumHeight: 620
     closePolicy: importer.busy ? Popup.NoAutoClose : Popup.CloseOnEscape
@@ -37,13 +45,9 @@ AppDialog {
         videoUrl.forceActiveFocus()
     }
 
-    Connections {
-        target: root.importer
-
-        function onChanged() {
-            if (root.canDownload && root.inspectedText.length === 0)
-                root.inspectedText = videoUrl.text.trim()
-        }
+    function inspectLink() {
+        inspectedText = videoUrl.text.trim()
+        importer.inspect(inspectedText)
     }
 
     Connections {
@@ -76,8 +80,7 @@ AppDialog {
 
         Keys.onReturnPressed: {
             if (!root.importer.busy && text.trim().length > 0) {
-                root.inspectedText = ""
-                root.importer.inspect(text.trim())
+                root.inspectLink()
             }
         }
     }
@@ -137,9 +140,12 @@ AppDialog {
                     Layout.fillWidth: true
                     spacing: Theme.space8
 
-                    StatusBadge {
-                        label: root.importer.platform
-                        status: "ready"
+                    Text {
+                        text: root.importer.platform
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.metadata
+                        textFormat: Text.PlainText
                     }
 
                     Text {
@@ -155,16 +161,26 @@ AppDialog {
         }
     }
 
-    InlineBanner {
+    RowLayout {
         Layout.fillWidth: true
         visible: root.hasStatus
-        tone: root.importer.state === "error" || root.importer.state === "retry" ? "danger"
-            : root.importer.state === "ready" ? "success" : "info"
-        busy: root.importer.busy
-        title: root.importer.state === "ready" ? qsTr("Liên kết hợp lệ")
-            : root.importer.state === "retry" ? qsTr("Không tải được video")
-            : ""
-        message: I18n.runtimeStatus(root.importer.status)
+        spacing: Theme.space8
+        Text {
+            Layout.fillWidth: true
+            text: root.statusText
+            color: root.failed ? Theme.danger : Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.metadata
+            wrapMode: Text.Wrap
+            textFormat: Text.PlainText
+        }
+        StudioIconButton {
+            visible: root.failed
+            iconName: "info"
+            toolTipText: qsTr("Chi tiết lỗi")
+            onClicked: AppController.showAppAlert(qsTr("Không nhập được video"),
+                I18n.runtimeStatus(root.importer.status), "warning")
+        }
     }
 
     AppProgressBar {
@@ -187,18 +203,17 @@ AppDialog {
             }
         },
         StudioButton {
-            text: root.canDownload && root.inspectedText.length > 0
+            text: root.canDownload && root.inspectedLinkMatches
                 ? (root.importer.state === "retry" ? qsTr("Thử tải lại") : qsTr("Tải và nhập"))
                 : qsTr("Kiểm tra")
-            iconName: root.canDownload && root.inspectedText.length > 0 ? "download" : "search"
+            iconName: root.canDownload && root.inspectedLinkMatches ? "download" : "search"
             variant: "primary"
             enabled: !root.importer.busy && videoUrl.text.trim().length > 0
             onClicked: {
-                if (root.canDownload && root.inspectedText.length > 0)
+                if (root.canDownload && root.inspectedLinkMatches)
                     AppController.downloadInspectedVideo()
                 else {
-                    root.inspectedText = ""
-                    root.importer.inspect(videoUrl.text.trim())
+                    root.inspectLink()
                 }
             }
         }

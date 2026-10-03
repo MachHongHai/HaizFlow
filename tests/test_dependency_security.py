@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 
 from haizflow.core.dependency_security import (
     _guard_lightning_saving_module,
+    _guard_transformers_generation,
     validate_checkpoint_weight_maps,
 )
 
@@ -14,6 +15,26 @@ class _CheckpointModel:
 
 
 class DependencySecurityTests(unittest.TestCase):
+    def test_custom_generation_guard_blocks_downloads_and_keeps_normal_generate(self):
+        requests = []
+
+        class Mixin:
+            def load_custom_generate(self, *args, **kwargs):
+                requests.append((args, kwargs))
+
+            def generate(self):
+                return "normal generation"
+
+        normal = Mixin.generate
+        self.assertTrue(_guard_transformers_generation(Mixin))
+        self.assertFalse(_guard_transformers_generation(Mixin))
+        for consent in (False, True, None):
+            with self.assertRaisesRegex(OSError, "disabled"):
+                Mixin().load_custom_generate("remote/repo", trust_remote_code=consent)
+        self.assertEqual(requests, [])
+        self.assertIs(Mixin.generate, normal)
+        self.assertEqual(Mixin().generate(), "normal generation")
+
     def _module(self):
         module = types.ModuleType("fake_lightning_saving")
 

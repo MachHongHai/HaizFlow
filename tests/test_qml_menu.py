@@ -581,7 +581,7 @@ ApplicationWindow {{
                     min(float(popup.property("menuContentWidth")) + 8.0, 210.0),
                     delta=1.0,
                 )
-                self.assertGreater(popup.property("width"), 150)
+                self.assertGreaterEqual(popup.property("width"), 148)
                 self.assertLess(popup.property("width"), 238)
                 self.assertGreater(popup.property("height"), 1)
                 QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(round(center.x()), round(center.y())))

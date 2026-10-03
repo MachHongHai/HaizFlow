@@ -109,6 +109,12 @@ def _subtitle_style(video) -> EditorTextStyle:
     style = getattr(video, "subtitle_style", None)
     if isinstance(style, dict) or style is None:
         style = SubtitleStyle.model_validate(style or {})
+    from haizflow.schemas.video import subtitle_style_for_project
+
+    style = subtitle_style_for_project(
+        getattr(video, "project_type", "single"), style,
+        overridden=bool(getattr(video, "subtitle_layout_override", False)),
+    )
     return EditorTextStyle(
         style_id="subtitle-default",
         name="Phụ đề mặc định",
@@ -183,6 +189,7 @@ def build_legacy_document(video) -> EditorDocument:
             kind="audio",
             asset_id="source",
             name="Âm thanh nguồn",
+            metadata={"follow_source": True},
             duration_ms=duration_ms,
             source_out_ms=duration_ms,
             volume_percent=int(getattr(video, "original_video_volume", 100)),

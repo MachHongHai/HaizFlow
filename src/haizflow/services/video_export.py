@@ -68,8 +68,13 @@ def render_revision(video) -> str:
     return manual_artifacts.signature("managed-render-v1", config, media, getattr(video, "export_preset", "source"), video.checkpoints.get("render"))
 
 
-def current_render(video, *, verify: bool = True) -> dict | None:
-    """Return only the current, intact managed render; never follow export history."""
+def completed_render(video, *, verify: bool = True) -> dict | None:
+    """Last completed render snapshot, independent of later editor/config changes.
+
+    Social imports consume this immutable result, not a pipeline cache hit.
+    Only the explicit active artifact is eligible; never infer a file from
+    external export history or scan obsolete render directories.
+    """
     if not video:
         return None
     signature = str((getattr(video, "active_artifacts", {}) or {}).get("export") or "")
@@ -77,11 +82,20 @@ def current_render(video, *, verify: bool = True) -> dict | None:
         return None
     try:
         record = (manual_artifacts.resolve if verify else manual_artifacts.peek)(video.video_id, "export", signature)
-        if not record or record.get("config_fingerprint") != render_revision(video):
+        if not record:
             return None
         path = record["resolved_outputs"].get("video")
         owned_path(path, video_store.get_video_dir(video.video_id))
         return record
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def current_render(video, *, verify: bool = True) -> dict | None:
+    """Current, intact pipeline result; never reuse outdated render settings."""
+    record = completed_render(video, verify=verify)
+    try:
+        return record if record and record.get("config_fingerprint") == render_revision(video) else None
     except (KeyError, OSError, RuntimeError, TypeError, ValueError):
         return None
 

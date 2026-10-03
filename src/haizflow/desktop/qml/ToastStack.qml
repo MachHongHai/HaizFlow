@@ -9,6 +9,7 @@ Item {
 
     property int maximumVisible: 4
     property int defaultDuration: 4200
+    signal detailsRequested(string title, string message, string tone)
 
     function show(title, message, tone, duration) {
         while (toastModel.count >= maximumVisible)
@@ -72,6 +73,7 @@ Item {
                         spacing: 2
 
                         Text {
+                            id: titleLabel
                             Layout.fillWidth: true
                             text: toast.titleText
                             color: Theme.text
@@ -82,6 +84,8 @@ Item {
                             elide: Text.ElideRight
                         }
                         Text {
+                            id: messageLabel
+                            objectName: "toastMessage"
                             Layout.fillWidth: true
                             text: toast.messageText
                             color: Theme.textMuted
@@ -91,6 +95,17 @@ Item {
                             wrapMode: Text.WordWrap
                             maximumLineCount: 3
                             elide: Text.ElideRight
+                        }
+                        StudioButton {
+                            objectName: "toastDetailsButton"
+                            text: qsTr("Chi tiết")
+                            visible: titleLabel.truncated || messageLabel.truncated
+                            variant: "ghost"
+                            compact: true
+                            onClicked: {
+                                root.detailsRequested(toast.titleText, toast.messageText, toast.toneName)
+                                toastModel.remove(toast.index)
+                            }
                         }
                     }
 

@@ -197,7 +197,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             )
             controller = ProjectImportController(host)
             controller.import_video = Mock(return_value=True)
-            controller.import_batch_videos = Mock()
+            controller.import_batch_videos = Mock(return_value=True)
             sources = [
                 {
                     "item_id": "one",
