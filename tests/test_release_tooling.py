@@ -188,6 +188,10 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("CPU mode works without an NVIDIA GPU", installer)
         self.assertIn("CloseApplicationsFilter=HaizFlow.exe", installer)
         self.assertIn("SetupLogging=yes", installer)
+        # Inno treats a line beginning with '[' as a section header, even
+        # inside Pascal Code. Format argument arrays must stay on that line.
+        code = installer.split("[Code]", 1)[1].split("\n[Messages]", 1)[0]
+        self.assertFalse(any(line.strip().startswith("[") for line in code.splitlines()))
         self.assertNotIn("generate-app-icon.py", build_script)
         self.assertIn('"/DSetupIconPath=$SetupIconPath"', build_script)
         self.assertIn('"/DBrandingMarkPath=$BrandingMarkPath"', build_script)

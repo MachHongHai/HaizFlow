@@ -381,8 +381,7 @@ begin
   SupportLink.Font.Style := [fsUnderline];
   SupportLink.Caption := UiText('Hỗ trợ và bản phát hành', 'Support and releases');
   SupportLink.OnClick := @SupportLinkClick;
-  Log(Format('Compatibility layout: content bottom %d, surface height %d',
-    [SupportLink.Top + SupportLink.Height, CompatibilityPage.SurfaceHeight]));
+  Log(Format('Compatibility layout: content bottom %d, surface height %d', [SupportLink.Top + SupportLink.Height, CompatibilityPage.SurfaceHeight]));
   if SupportLink.Top + SupportLink.Height > CompatibilityPage.SurfaceHeight then
     RaiseException('The system requirements page does not fit the installer window.');
 end;
