@@ -41,6 +41,8 @@ def validate_manifest(path: Path, *, strict: bool) -> dict:
         raise RuntimeError("Resource-pack manifest schema must be 1.")
     if payload.get("protocol_version") != 1:
         raise RuntimeError("Resource-pack protocol_version must be 1.")
+    if strict and payload.get("engineering_offline"):
+        raise RuntimeError("Offline catalogs are for local engineering tests only.")
     packs = payload.get("packs")
     if not isinstance(packs, dict):
         raise RuntimeError("Resource-pack manifest packs must be an object.")
@@ -68,6 +70,15 @@ def validate_manifest(path: Path, *, strict: bool) -> dict:
             raise RuntimeError(f"{pack_id}: {error}") from error
         if parts:
             ready += 1
+            continue
+        offline = record.get("offline_archive", "")
+        if offline:
+            if strict:
+                raise RuntimeError(f"{pack_id}: offline catalogs are for local engineering tests only.")
+            if not isinstance(offline, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]*\.zip", offline):
+                raise RuntimeError(f"{pack_id}: invalid offline archive filename.")
+            if url or not SHA256_PATTERN.fullmatch(digest.lower()):
+                raise RuntimeError(f"{pack_id}: offline archive requires an exact SHA-256 and no URL.")
             continue
         if bool(url) != bool(digest):
             raise RuntimeError(f"{pack_id}.url and sha256 must either both be set or both be empty.")

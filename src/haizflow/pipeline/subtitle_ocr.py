@@ -476,7 +476,7 @@ def detect_original_subtitle_region(
             "-frames:v", str(sample_count), output_pattern,
         ]
         check_cancellation(video_id)
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         _stdout, stderr = communicate_process(video_id, process, label="Original subtitle scan", timeout_seconds=600)
         check_cancellation(video_id)
         if process.returncode != 0:

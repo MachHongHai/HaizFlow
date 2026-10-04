@@ -141,23 +141,34 @@ try {
   if (Test-Path -LiteralPath $InstallerPath -PathType Leaf) {
     Remove-Item -LiteralPath $InstallerPath -Force
   }
-  & $IsccExecutable /Qp `
-    "/DSourceDir=$ArtifactPath" `
-    "/DAppVersion=$Version" `
-    "/DRequiredFreeBytes=$($Requirements.required_free_bytes)" `
-    "/DRequiredFreshBytes=$($FreshRequirements.required_free_bytes)" `
-    "/DRecommendedFreeBytes=$($Requirements.recommended_free_bytes)" `
-    "/DRecommendedFreshBytes=$($FreshRequirements.recommended_free_bytes)" `
-    "/DArtifactBytes=$($FreshRequirements.artifact_bytes)" `
-    "/DSetupIconPath=$SetupIconPath" `
-    "/DBrandingMarkPath=$BrandingMarkPath" `
-    "/DOutputBaseFilename=$OutputBaseFilename" `
-    "/DVersionedLayout=$([int]$VersionedLayout)" `
-    "/DEngineeringBuild=$([int][bool]$EngineeringBuild)" `
-    "/DSignedBuild=$([int]$SignedBuild)" `
-    @SignToolArguments `
-    $InstallerScript
+  $CompilerArguments = @('/Qp', "/DSourceDir=$ArtifactPath", "/DAppVersion=$Version",
+    "/DRequiredFreeBytes=$($Requirements.required_free_bytes)",
+    "/DRequiredFreshBytes=$($FreshRequirements.required_free_bytes)",
+    "/DRecommendedFreeBytes=$($Requirements.recommended_free_bytes)",
+    "/DRecommendedFreshBytes=$($FreshRequirements.recommended_free_bytes)",
+    "/DArtifactBytes=$($FreshRequirements.artifact_bytes)", "/DSetupIconPath=$SetupIconPath",
+    "/DBrandingMarkPath=$BrandingMarkPath", "/DOutputBaseFilename=$OutputBaseFilename",
+    "/DVersionedLayout=$([int]$VersionedLayout)", "/DEngineeringBuild=$([int][bool]$EngineeringBuild)",
+    "/DSignedBuild=$([int]$SignedBuild)") + $SignToolArguments
+  & $IsccExecutable @CompilerArguments $InstallerScript
   if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed with exit code $LASTEXITCODE." }
+  $SmokeInstallerPath = $InstallerPath
+  if ($EngineeringBuild -and !$SkipInstallerSmokeTest) {
+    # Compile a private AppId so repair/uninstall tests cannot replace the
+    # user's real test installation registration or uninstaller.
+    $SmokeId = [guid]::NewGuid().ToString()
+    $SmokeDirectory = Join-Path $Root "build\installer-fixtures\$SmokeId"
+    New-Item -ItemType Directory -Path $SmokeDirectory -Force | Out-Null
+    $SmokeName = "HaizFlow-$Version-SMOKE-$SmokeId-DEVELOPMENT-Setup"
+    $SmokeCompilerArguments = @($CompilerArguments | Where-Object { $_ -notlike '/DOutputBaseFilename=*' }) + @(
+      "/DOutputBaseFilename=$SmokeName", "/O$SmokeDirectory", "/DSmokeAppId={{$SmokeId}",
+      "/DSmokeResourceDirectory=$(Join-Path $InstallerOutputDirectory 'offline-resources')")
+    & $IsccExecutable @SmokeCompilerArguments $InstallerScript
+    if ($LASTEXITCODE -ne 0) { throw "Private installer smoke fixture compilation failed." }
+    $SmokeInstallerPath = Join-Path $SmokeDirectory "$SmokeName.exe"
+    $SmokeHash = (Get-FileHash -LiteralPath $SmokeInstallerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Set-Content -LiteralPath "$SmokeInstallerPath.sha256" -Value "$SmokeHash *$SmokeName.exe" -Encoding ascii
+  }
 }
 finally {
   $env:TEMP = $PreviousTemp
@@ -186,7 +197,7 @@ Set-Content -LiteralPath $InstallerChecksumPath -Value "$InstallerHash *$([Syste
 
 if (!$SkipInstallerSmokeTest) {
   $SmokeArguments = @{
-    InstallerPath = $InstallerPath
+    InstallerPath = $SmokeInstallerPath
   }
   if ($SignedBuild) {
     $SmokeArguments.RequireSignature = $true

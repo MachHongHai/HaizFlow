@@ -65,7 +65,7 @@ def _demucs_command() -> list[str]:
         return external
     if is_frozen():
         return [sys.executable, "--demucs-separate"]
-    return [sys.executable, "-m", "demucs.separate"]
+    return [sys.executable, "-m", "haizflow.engine.main", "--demucs-separate"]
 
 
 def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str, str]:
@@ -134,6 +134,7 @@ def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str
                 stderr=subprocess.PIPE,
                 text=True,
                 env=demucs_environment,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             _stdout, stderr = communicate_process(
                 video_id,

@@ -1807,7 +1807,8 @@ def render_video(
             monitor.start()
         try:
             process = subprocess.Popen(
-                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             _stdout, process_stderr = communicate_process(
                 process_key,

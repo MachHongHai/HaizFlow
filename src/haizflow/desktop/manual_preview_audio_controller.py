@@ -180,7 +180,7 @@ class ManualPreviewAudioController(QObject):
             return self._cache[key]
         command = [_binary("ffmpeg"), "-v", "error", "-i", str(path), "-vn"]
         if duration is not None:
-            from pydub import AudioSegment
+            from haizflow.utils.audio import AudioSegment
 
             from haizflow.pipeline.audio_timeline import _atempo_filters, trim_silence
             audio = trim_silence(AudioSegment.from_file(path))

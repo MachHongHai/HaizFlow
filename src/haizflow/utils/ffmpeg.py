@@ -25,6 +25,7 @@ def available_video_encoders() -> set[str]:
             errors="replace",
             timeout=15,
             check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except (OSError, subprocess.SubprocessError):
         return set()
@@ -51,6 +52,7 @@ def _encoder_works(encoder: str) -> bool:
             stderr=subprocess.DEVNULL,
             timeout=10,
             check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -89,6 +91,7 @@ def get_ffmpeg_version(*, timeout_seconds: float = 15.0) -> str:
             text=True,
             timeout=max(1.0, float(timeout_seconds)),
             check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if result.stdout:
             return result.stdout.splitlines()[0]
@@ -112,6 +115,7 @@ def get_video_duration(video_path: str, *, timeout_seconds: float = 15.0) -> flo
             text=True,
             timeout=max(1.0, float(timeout_seconds)),
             check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         return float(result.stdout.strip())
     except (OSError, subprocess.SubprocessError, TypeError, ValueError):
@@ -130,6 +134,7 @@ def get_video_dimensions(video_path: str, *, timeout_seconds: float = 15.0) -> t
             text=True,
             check=True,
             timeout=max(1.0, float(timeout_seconds)),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         width, height = result.stdout.strip().split(",")
         return int(width), int(height)
@@ -155,6 +160,7 @@ def get_media_stream_types(media_path: str, *, timeout_seconds: float = 15.0) ->
             text=True,
             timeout=max(1.0, float(timeout_seconds)),
             check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         payload = json.loads(result.stdout)
         return {
@@ -205,6 +211,7 @@ def validate_video_integrity(video_path: str, *, timeout_seconds: float = 900.0)
             errors="replace",
             timeout=max(30.0, float(timeout_seconds)),
             check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(

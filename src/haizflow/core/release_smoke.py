@@ -181,6 +181,18 @@ def run_release_smoke(
         details,
     )
 
+    if installed_layout:
+        try:
+            from haizflow.services.resource_packs import ResourcePackManager
+
+            manager = ResourcePackManager()
+            offline = [item.pack_id for item in manager.definitions.values() if item.offline_archive]
+            if offline:
+                _check(all(manager.archive_available(item) for item in offline),
+                       "Installer registered all checksum-pinned offline engine archives", failures, details)
+        except Exception as exc:
+            failures.append(f"Installed resource catalog failed: {type(exc).__name__}: {exc}")
+
     return {
         "event": "release_smoke",
         "ok": not failures,

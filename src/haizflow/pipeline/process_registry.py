@@ -136,6 +136,7 @@ def _kill_process_tree(process: subprocess.Popen, timeout: float = 1.5):
                 stderr=subprocess.DEVNULL,
                 timeout=max(1.0, min(timeout, 5.0)),
                 check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except (OSError, subprocess.SubprocessError):
             try:

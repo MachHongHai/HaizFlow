@@ -71,6 +71,15 @@ def _status(path: Path, **values) -> None:
         pass
 
 
+def _demucs_main():
+    from demucs import audio
+    from demucs.separate import main
+    from haizflow.utils.audio import _MediaSubprocess
+
+    audio.sp = _MediaSubprocess()
+    return main
+
+
 def _warm(capability: str, context: dict) -> None:
     if capability in {"recognition", "separation"}:
         from haizflow.core.hardware import configure_processing_device
@@ -94,7 +103,7 @@ def _warm(capability: str, context: dict) -> None:
         warm_runtime(str(context.get("language") or "vi"))
     elif capability == "separation":
         import torch
-        from demucs.separate import main as _demucs_main  # noqa: F401, PLC0415
+        _demucs_main()
 
         device = str(context.get("device") or "cpu")
         if device in {"gpu", "cuda"} and torch.cuda.is_available():
@@ -289,7 +298,7 @@ def run_file_request(request_path: Path) -> int:
             )
             result = {"region": region}
         elif operation == "demucs_task":
-            from demucs.separate import main as separate
+            separate = _demucs_main()
 
             arguments = payload.get("arguments")
             if not isinstance(arguments, list) or not all(isinstance(item, str) for item in arguments):
@@ -363,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("OmniVoice worker requires a request file.")
         return worker(["--worker", remaining[index + 1]])
     if "--demucs-separate" in remaining:
-        from demucs.separate import main as separate
+        separate = _demucs_main()
 
         index = remaining.index("--demucs-separate")
         return int(separate(remaining[index + 1 :]) or 0)

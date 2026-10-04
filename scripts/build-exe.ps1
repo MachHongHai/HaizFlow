@@ -5,6 +5,7 @@ param(
   [switch]$UnsignedRelease,
   [switch]$CoreLayout,
   [string]$PythonExecutable = "",
+  [string]$ResourcePackManifest = "",
   [string]$SignCertificatePath = "",
   [string]$SignCertificateThumbprint = "",
   [string]$TimestampServer = "http://timestamp.digicert.com"
@@ -28,6 +29,10 @@ $CompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-
 $FfmpegCompliancePath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\compliance\ffmpeg"))
 $FfmpegManifestPath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\ffmpeg-manifest.json"))
 $ResourcePackManifestPath = [System.IO.Path]::GetFullPath((Join-Path $Root "runtime\resource-pack-manifest.json"))
+if ($ResourcePackManifest) {
+  if (!$AllowUnsigned -or $UnsignedRelease) { throw "Custom resource catalogs are engineering-only." }
+  $ResourcePackManifestPath = [System.IO.Path]::GetFullPath($ResourcePackManifest)
+}
 $ReleaseTempParent = [System.IO.Path]::GetFullPath((Join-Path $Root "build\release-temp"))
 $ReleaseTemp = [System.IO.Path]::GetFullPath((Join-Path $ReleaseTempParent ([guid]::NewGuid().ToString("N"))))
 $PreviousTemp = $env:TEMP

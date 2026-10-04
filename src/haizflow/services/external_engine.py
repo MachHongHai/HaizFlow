@@ -81,6 +81,7 @@ class ExternalEngineClient:
             errors="replace",
             bufsize=1,
             startupinfo=startupinfo,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         output = self._output
 

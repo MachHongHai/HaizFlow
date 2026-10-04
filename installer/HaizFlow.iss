@@ -47,7 +47,12 @@
 #endif
 
 [Setup]
-#if EngineeringBuild == "1"
+#ifdef SmokeAppId
+  #if EngineeringBuild != "1"
+    #error SmokeAppId is engineering-only.
+  #endif
+AppId={#SmokeAppId}
+#elif EngineeringBuild == "1"
 AppId={{2E512B7B-B9A6-4FB9-A306-C836B1DA102A}
 #else
 AppId={{799AE20D-E7A5-4D79-96DE-708E161BF32A}
@@ -148,6 +153,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\HaizFlow.exe"; Tasks: desktop
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [UninstallDelete]
+Type: files; Name: "{app}\offline-resources.ini"
 #if VersionedLayout == "1"
 Type: files; Name: "{app}\update-state\launcher.lock"
 Type: files; Name: "{app}\update-state\update.lock"
@@ -438,12 +444,32 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ExitCode: Integer;
+  OfflinePath: String;
+  OfflineLines: TArrayOfString;
 begin
 #if VersionedLayout == "1"
   if CurStep = ssPostInstall then
     if (not Exec(ExpandConstant('{app}\HaizFlow.exe'), '--initialize {#AppVersion}',
       ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
       RaiseException('Could not activate the verified Core. Existing runtime data is preserved.');
+#endif
+#if EngineeringBuild == "1"
+  if CurStep = ssPostInstall then
+  begin
+#ifdef SmokeResourceDirectory
+    OfflinePath := '{#SmokeResourceDirectory}';
+#else
+    OfflinePath := ExpandConstant('{src}\offline-resources');
+#endif
+    if DirExists(OfflinePath) and not ContainsReparsePoint(OfflinePath) then
+    begin
+      SetArrayLength(OfflineLines, 2);
+      OfflineLines[0] := '[resources]';
+      OfflineLines[1] := 'path=' + OfflinePath;
+      if not SaveStringsToUTF8File(ExpandConstant('{app}\offline-resources.ini'), OfflineLines, False) then
+        RaiseException('Could not register companion resource packs. Existing runtime data is preserved.');
+    end;
+  end;
 #endif
 end;
 

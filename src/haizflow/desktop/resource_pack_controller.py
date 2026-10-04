@@ -338,7 +338,7 @@ class ResourcePackController(QObject):
                 source["detail"] = "Cần cài môi trường xử lý."
             needs_download = supporting or source.get("status") in {"missing", "paused", "failed"}
             runtime_available = all(
-                bool(self.manager.definitions[item].archive_url or self.manager.definitions[item].archive_parts) for item in supporting
+                self.manager.archive_available(item) for item in supporting
             )
             if needs_download:
                 total_download = int(source.get("downloadSize", 0)) + sum(
@@ -448,7 +448,7 @@ class ResourcePackController(QObject):
                 if self.manager.status(supporting_id) in {"installed", "bundled"}:
                     continue
                 definition = self.manager.definitions[supporting_id]
-                if not (definition.archive_url or definition.archive_parts):
+                if not self.manager.archive_available(supporting_id):
                     raise ResourcePackError(
                         f"Bản cài chưa có môi trường xử lý {definition.label}. Hãy cập nhật ứng dụng."
                     )

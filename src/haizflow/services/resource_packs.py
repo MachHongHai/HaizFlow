@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import configparser
 import importlib.metadata
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,6 +36,7 @@ from haizflow.core.model_integrity import (
 )
 from haizflow.core.paths import (
     engines_dir,
+    install_root,
     models_dir,
     resource_packages_dir,
     resource_storage_dir,
@@ -108,6 +111,7 @@ class ResourcePackDefinition:
     archive_url: str = ""
     archive_sha256: str = ""
     archive_parts: tuple[ArchivePart, ...] = ()
+    offline_archive: str = ""
     protocol_version: int = PACK_PROTOCOL_VERSION
 
 
@@ -275,6 +279,10 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
         metadata = release_metadata.get(definition.pack_id, {})
         url = str(metadata.get("url") or "")
         digest = str(metadata.get("sha256") or "").lower()
+        offline = metadata.get("offline_archive", "")
+        if not isinstance(offline, str) or (offline and not re.fullmatch(r"[a-z0-9][a-z0-9._-]*\.zip", offline)):
+            resolved.append(definition)
+            continue
         try:
             parts = parse_archive_parts(metadata)
         except ValueError:
@@ -287,13 +295,14 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
         except (TypeError, ValueError):
             download_size = definition.download_size
             installed_size = definition.installed_size
-        if definition.engine_modules and (url or parts) and len(digest) == 64:
+        if definition.engine_modules and (url or parts or offline) and re.fullmatch(r"[a-f0-9]{64}", digest):
             definition = replace(
                 definition,
                 version=str(metadata.get("version") or definition.version),
                 archive_url=url,
                 archive_sha256=digest,
                 archive_parts=parts,
+                offline_archive=offline,
                 download_size=max(0, download_size),
                 installed_size=max(0, installed_size),
             )
@@ -313,6 +322,50 @@ class ResourcePackManager:
         self._lock = threading.RLock()
         self._active: set[str] = set()
         self._cancel_events: dict[str, threading.Event] = {}
+
+    @staticmethod
+    def _offline_root() -> Path:
+        """Setup records its companion folder; fallback supports portable copies."""
+        from haizflow.update.filesystem import no_links
+
+        root = install_root()
+        pointer = root / "offline-resources.ini"
+        no_links(pointer)
+        if pointer.is_file():
+            if pointer.stat().st_size > 8192:
+                raise ResourcePackError("Vị trí gói cài đặt không hợp lệ.")
+            parser = configparser.ConfigParser(interpolation=None)
+            raw = pointer.read_bytes()
+            parser.read_string(raw.decode("utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"))
+            directory = Path(parser.get("resources", "path"))
+        else:
+            directory = root / "offline-resources"
+        if not directory.is_absolute() or str(directory).startswith("\\\\"):
+            raise ResourcePackError("Gói cài đặt phải nằm trên ổ đĩa cục bộ.")
+        no_links(directory)
+        return directory
+
+    def offline_archive_path(self, pack_id: str) -> Path | None:
+        definition = self.definitions[pack_id]
+        name = definition.offline_archive
+        if not name:
+            return None
+        try:
+            if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*\.zip", name):
+                return None
+            from haizflow.update.filesystem import no_links
+
+            path = self._offline_root() / name
+            no_links(path)
+            if path.is_file() and path.stat().st_size == definition.download_size:
+                return path
+        except (OSError, ValueError, ResourcePackError, configparser.Error):
+            pass
+        return None
+
+    def archive_available(self, pack_id: str) -> bool:
+        definition = self.definitions[pack_id]
+        return bool(definition.archive_url or definition.archive_parts or self.offline_archive_path(pack_id))
 
     @staticmethod
     def cleanup_previous_storage() -> None:
@@ -486,6 +539,8 @@ class ResourcePackManager:
         """Return bytes still needed for this install unit."""
         definition = self.definitions[pack_id]
         if definition.engine_modules:
+            if self.offline_archive_path(pack_id) is not None:
+                return 0
             package = resource_packages_dir() / f"{definition.pack_id}-{definition.version}.zip"
             partial = package.with_name(package.name + ".part")
             try:
@@ -585,7 +640,7 @@ class ResourcePackManager:
                     "totalInstalledBytes": total_installed_bytes,
                     "location": str(storage_root),
                     "dependencies": list(definition.dependencies),
-                    "canInstall": bool(definition.assets or definition.archive_url or definition.archive_parts)
+                    "canInstall": bool(definition.assets or self.archive_available(definition.pack_id))
                     and status in {"missing", "paused", "failed"},
                     "canRemove": status == "installed",
                     "blockedReason": (
@@ -759,7 +814,8 @@ class ResourcePackManager:
         )
         # Multipart downloads and their assembled ZIP coexist until all checks
         # pass. Never omit this second compressed copy from disk preflight.
-        assembly = sum(item.download_size for item in pending if item.archive_parts)
+        assembly = sum(item.download_size for item in pending
+                       if item.archive_parts and self.offline_archive_path(item.pack_id) is None)
         return {
             "downloadBytes": download,
             "installedBytes": installed,
@@ -800,7 +856,7 @@ class ResourcePackManager:
 
     def install(self, pack_id: str, progress: Callable[[str, ModelProgress], None]) -> None:
         definition = self.definitions[pack_id]
-        if definition.engine_modules and (definition.archive_url or definition.archive_parts):
+        if definition.engine_modules and self.archive_available(pack_id):
             self._install_engine_archive(definition, progress)
             return
         if not definition.assets:
@@ -887,6 +943,7 @@ class ResourcePackManager:
                 errors="replace",
                 timeout=120,
                 check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         if (staging / "runtime").exists():
             raise ResourcePackError("Bộ xử lý ghi dữ liệu vào thư mục cài đặt bất biến.")
@@ -925,19 +982,33 @@ class ResourcePackManager:
         staging = target.parent / f".{definition.version}-{os.getpid()}.partial"
         backup: Path | None = None
         try:
+            offline = self.offline_archive_path(definition.pack_id)
             part_assets = tuple(ModelAsset(
                 "engine", definition.label, part.url, package_name + f".{index:03d}", part.size, part.sha256,
             ) for index, part in enumerate(definition.archive_parts, 1))
-            archive = packages / package_name
+            archive = offline or packages / package_name
+            if offline is not None:
+                digest = hashlib.sha256()
+                with offline.open("rb") as source:
+                    completed = 0
+                    for block in iter(lambda: source.read(1024 * 1024), b""):
+                        if cancel.is_set():
+                            raise ModelBootstrapCancelled("Engine installation cancelled.")
+                        digest.update(block)
+                        completed += len(block)
+                        progress(definition.pack_id, ModelProgress(
+                            "verifying", definition.label, "Đang kiểm tra gói cài đặt", completed, asset.size))
+                if completed != asset.size or digest.hexdigest() != asset.sha256:
+                    raise ResourcePackError("Gói cài đặt bị hỏng hoặc không đúng phiên bản. Hãy tải lại bộ cài.")
             cached_multipart = bool(part_assets) and archive_matches(archive, size=asset.size, sha256=asset.sha256)
-            if not cached_multipart:
+            if offline is None and not cached_multipart:
                 install_model_assets(
                     packages,
                     part_assets or (asset,),
                     progress=lambda event: progress(definition.pack_id, event),
                     cancel_event=cancel,
                 )
-            if part_assets and not cached_multipart:
+            if offline is None and part_assets and not cached_multipart:
                 try:
                     join_archive_parts(
                         tuple((packages / part_asset.relative_path, part) for part_asset, part in zip(part_assets, definition.archive_parts)),

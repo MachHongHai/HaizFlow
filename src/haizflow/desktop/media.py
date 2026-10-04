@@ -120,6 +120,7 @@ def create_video_thumbnail_path(
                 stderr=subprocess.DEVNULL,
                 check=False,
                 timeout=timeout_seconds,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             return_code = result.returncode
         else:
@@ -127,6 +128,7 @@ def create_video_thumbnail_path(
                 command,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             deadline = time.monotonic() + max(1.0, timeout_seconds)
             while process.poll() is None:

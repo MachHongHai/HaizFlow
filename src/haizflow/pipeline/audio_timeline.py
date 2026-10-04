@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import time
 
-from pydub import AudioSegment
+from haizflow.utils.audio import AudioSegment
 
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
@@ -234,6 +234,7 @@ def fit_tempo_to_duration(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         _stdout, stderr = communicate_process(
             video_id,

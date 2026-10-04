@@ -19,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, action="append", required=True)
     parser.add_argument("--parts-manifest", type=Path)
+    parser.add_argument("--offline", action="store_true")
     args = parser.parse_args()
     parent = ROOT / "build/resource-install-smoke"
     root = parent / uuid.uuid4().hex
@@ -58,26 +59,30 @@ def main():
                                   for row in index["parts"])
                     for number, row in enumerate(index["parts"], 1):
                         shutil.copy2(args.parts_manifest.parent / row["file"], cache / (name + f".{number:03d}"))
-            if not parts:
+            if not parts and not args.offline:
                 shutil.copy2(archive, cache / name)
             definition = ResourcePackDefinition(package_id, package_id, "processor", version, "engine",
                 engine_modules=("test_clean_core_no_ai_module",), download_size=archive.stat().st_size,
-                installed_size=installed_size, archive_url="" if parts else "https://example.invalid/" + name,
-                archive_sha256=digest, archive_parts=parts)
+                installed_size=installed_size, archive_url="" if parts or args.offline else "https://example.invalid/" + name,
+                archive_sha256=digest, archive_parts=parts, offline_archive=name if args.offline else "")
             manager = ResourcePackManager((definition,))
             events = []
-            with patch("urllib.request.urlopen", side_effect=AssertionError("Network is forbidden in this cached test")):
+            with patch("urllib.request.urlopen", side_effect=AssertionError("Network is forbidden in this cached test")), \
+                    patch.object(manager, "_offline_root", return_value=archive.parent):
+                assert manager.archive_available(package_id)
                 manager.install(package_id, lambda _pack, event: events.append(event.state))
             target = engines_dir() / package_id / version
             assert manager.status(package_id) == "installed"
             assert not (target / "runtime").exists()
-            assert sha256(cache / name) == digest
+            assert sha256(archive if args.offline else cache / name) == digest
+            if args.offline:
+                assert not (cache / name).exists(), "Offline install must not duplicate the compressed archive"
             assert not list(cache.glob(name + ".00*"))
             actual_payload = sum(path.stat().st_size for path in target.rglob("*")
                                  if path.is_file() and path.name != "complete.json")
             assert actual_payload == installed_size
             assert events[-1] == "ready"
-            results.append(dict(pack_id=package_id, version=version, multipart=bool(parts),
+            results.append(dict(pack_id=package_id, version=version, multipart=bool(parts), offline=args.offline,
                 archive_bytes=archive.stat().st_size, installed_bytes=actual_payload,
                 engine_smoke_passed=True, installed_status=True, storage_exact=True))
             print("Actual cached install and frozen engine smoke passed: " + package_id, flush=True)

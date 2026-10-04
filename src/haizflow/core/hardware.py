@@ -331,6 +331,7 @@ def _read_windows_system_info() -> dict:
             errors="replace",
             timeout=8,
             check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if result.returncode != 0 or not result.stdout.strip():
             return {}

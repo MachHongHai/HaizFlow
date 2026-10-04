@@ -88,6 +88,7 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         _stdout, stderr = communicate_process(
             cancellation_id, process, label="Clone sample recognition", timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS

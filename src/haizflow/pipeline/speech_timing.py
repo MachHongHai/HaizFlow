@@ -11,7 +11,7 @@ def fitted_speech_duration_ms(raw_ms: int, slot_ms: int) -> int:
 
 @lru_cache(maxsize=512)
 def _trimmed_duration(path: str, size: int, modified_ns: int) -> int:
-    from pydub import AudioSegment
+    from haizflow.utils.audio import AudioSegment
     from haizflow.pipeline.audio_timeline import trim_silence
 
     return len(trim_silence(AudioSegment.from_file(path)))

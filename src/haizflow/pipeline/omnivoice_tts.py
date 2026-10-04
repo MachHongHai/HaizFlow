@@ -799,6 +799,7 @@ def _encode_mp3(wav_path: Path, output_path: Path, video_id: str) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     _stdout, stderr = communicate_process(
         video_id,
@@ -921,6 +922,7 @@ def synthesize_batch_to_mp3(
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 _stdout, stderr = communicate_process(
                     cancellation_id,

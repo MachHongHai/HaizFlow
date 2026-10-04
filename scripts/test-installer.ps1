@@ -82,6 +82,21 @@ if (!(Test-Path -LiteralPath $InstallerPath -PathType Leaf)) {
 if ([System.IO.Path]::GetFileName($InstallerPath) -notlike '*-DEVELOPMENT-Setup.exe' -and !$AllowRegisteredInstall) {
   throw "Test a public AppId only in a clean Windows VM; pass -AllowRegisteredInstall there."
 }
+if (!$AllowRegisteredInstall) {
+  # Never replace the registration/uninstaller of the user's installed test app.
+  foreach ($RegistryRoot in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
+    foreach ($Identity in @('{2E512B7B-B9A6-4FB9-A306-C836B1DA102A}_is1',
+        '{799AE20D-E7A5-4D79-96DE-708E161BF32A}_is1')) {
+      if (Test-Path -LiteralPath (Join-Path $RegistryRoot $Identity)) {
+        if ([System.IO.Path]::GetFileName($InstallerPath) -notlike '*-SMOKE-*-DEVELOPMENT-Setup.exe') {
+          throw 'Existing HaizFlow installation detected. Use a separately compiled SmokeAppId fixture or a clean VM.'
+        }
+      }
+    }
+  }
+}
 if (!(Test-Path -LiteralPath $ChecksumPath -PathType Leaf)) {
   throw "Installer checksum is missing: $ChecksumPath"
 }

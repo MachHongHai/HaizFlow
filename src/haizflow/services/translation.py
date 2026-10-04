@@ -459,6 +459,7 @@ def _ensure_hymt2_worker_locked():
         errors="replace",
         bufsize=1,
         startupinfo=startupinfo,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     from haizflow.config import HYMT2_MODEL, LOGS_DIR
 

@@ -13,6 +13,7 @@ import numpy as np
 import torch
 import torchaudio
 import whisperx
+import whisperx.audio as _whisper_audio
 
 from haizflow.core.dependency_security import install_lightning_checkpoint_guard
 from haizflow.core.hardware import runtime_profile
@@ -29,6 +30,10 @@ from haizflow.core.model_integrity import (
 from haizflow.pipeline.process_registry import check_cancellation, is_cancelled
 from haizflow.pipeline.timing_contract import TIMING_SOURCE
 from haizflow.services.video_store import log_to_video
+from haizflow.utils.audio import _MediaSubprocess
+
+# WhisperX decodes via its own subprocess.run, not our FFmpeg helpers.
+_whisper_audio.subprocess = _MediaSubprocess()
 
 
 # WhisperX imports Lightning before any model is opened. Backport Lightning's
