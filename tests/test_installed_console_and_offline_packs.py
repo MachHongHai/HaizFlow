@@ -70,6 +70,25 @@ class ConsoleTests(unittest.TestCase):
 
 
 class OfflinePackTests(unittest.TestCase):
+    def test_frozen_core_reads_catalog_beside_executable_not_only_internal(self):
+        from haizflow.services.resource_packs import _load_release_pack_metadata, built_in_pack_definitions
+
+        with tempfile.TemporaryDirectory() as temporary:
+            core = Path(temporary)
+            internal = core / "_internal"
+            internal.mkdir()
+            payload = dict(schema=1, protocol_version=1, packs={"engine-cpu-py313": dict(
+                version="2", url="", offline_archive="engine-cpu-py313-2.zip", sha256="a" * 64,
+                download_size=100, installed_size=200)})
+            (core / "RESOURCE-PACKS.json").write_text(json.dumps(payload), encoding="utf-8")
+            (internal / "resource-pack-manifest.json").write_text("[]", encoding="utf-8")
+            with patch("haizflow.core.paths.project_root", return_value=core), \
+                    patch("haizflow.core.paths.bundle_root", return_value=internal):
+                self.assertEqual(_load_release_pack_metadata(), payload["packs"])
+                definitions = {item.pack_id: item for item in built_in_pack_definitions()}
+                self.assertEqual(definitions["engine-cpu-py313"].offline_archive, "engine-cpu-py313-2.zip")
+                self.assertEqual(definitions["engine-cpu-py313"].version, "2")
+
     def test_installer_pointer_and_utf16_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

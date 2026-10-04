@@ -134,15 +134,19 @@ def _load_release_pack_metadata() -> dict[str, dict]:
     from haizflow.core.paths import bundle_root, project_root
 
     candidates = (
+        # PyInstaller's bundle root is _internal, but release finalization
+        # ships this inventory-pinned catalog beside HaizFlowCore.exe.
+        project_root() / "RESOURCE-PACKS.json",
         bundle_root() / "RESOURCE-PACKS.json",
+        bundle_root() / "resource-pack-manifest.json",
         project_root() / "runtime" / "resource-pack-manifest.json",
     )
     for path in candidates:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeError, json.JSONDecodeError):
             continue
-        if payload.get("schema") != 1 or payload.get("protocol_version") != PACK_PROTOCOL_VERSION:
+        if not isinstance(payload, dict) or payload.get("schema") != 1 or payload.get("protocol_version") != PACK_PROTOCOL_VERSION:
             continue
         packs = payload.get("packs")
         if isinstance(packs, dict):
