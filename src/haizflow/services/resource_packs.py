@@ -890,10 +890,14 @@ class ResourcePackManager:
                 self._cancel_events.pop(pack_id, None)
 
     @staticmethod
-    def _safe_extract_zip(archive: Path, destination: Path) -> None:
+    def _safe_extract_zip(archive: Path, destination: Path, *, progress=None, cancelled=None) -> None:
         destination = destination.resolve()
         with zipfile.ZipFile(archive) as bundle:
+            total = sum(member.file_size for member in bundle.infolist())
+            completed = 0
             for member in bundle.infolist():
+                if cancelled is not None and cancelled():
+                    raise ModelBootstrapCancelled("Engine installation cancelled.")
                 target = (destination / member.filename).resolve()
                 if not target.is_relative_to(destination):
                     raise ResourcePackError("Gói tài nguyên chứa đường dẫn không an toàn.")
@@ -902,7 +906,13 @@ class ResourcePackManager:
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with bundle.open(member) as source, target.open("wb") as output:
-                    shutil.copyfileobj(source, output)
+                    for block in iter(lambda: source.read(1024 * 1024), b""):
+                        if cancelled is not None and cancelled():
+                            raise ModelBootstrapCancelled("Engine installation cancelled.")
+                        output.write(block)
+                        completed += len(block)
+                        if progress is not None:
+                            progress(completed, total)
 
     def _verify_engine_staging(self, definition: ResourcePackDefinition, staging: Path) -> dict:
         manifest_path = staging / "engine.json"
@@ -1001,7 +1011,7 @@ class ResourcePackManager:
                         digest.update(block)
                         completed += len(block)
                         progress(definition.pack_id, ModelProgress(
-                            "verifying", definition.label, "Đang kiểm tra gói cài đặt", completed, asset.size))
+                            "verifying", definition.label, "Đang kiểm tra gói cài đặt", completed, asset.size, "transfer"))
                 if completed != asset.size or digest.hexdigest() != asset.sha256:
                     raise ResourcePackError("Gói cài đặt bị hỏng hoặc không đúng phiên bản. Hãy tải lại bộ cài.")
             cached_multipart = bool(part_assets) and archive_matches(archive, size=asset.size, sha256=asset.sha256)
@@ -1009,7 +1019,7 @@ class ResourcePackManager:
                 install_model_assets(
                     packages,
                     part_assets or (asset,),
-                    progress=lambda event: progress(definition.pack_id, event),
+                    progress=lambda event: progress(definition.pack_id, replace(event, phase="transfer")),
                     cancel_event=cancel,
                 )
             if offline is None and part_assets and not cached_multipart:
@@ -1029,7 +1039,11 @@ class ResourcePackManager:
             if staging.exists():
                 shutil.rmtree(staging)
             staging.mkdir(parents=True)
-            self._safe_extract_zip(archive, staging)
+            self._safe_extract_zip(archive, staging, cancelled=cancel.is_set,
+                progress=lambda done, total: progress(definition.pack_id, ModelProgress(
+                    "installing", definition.label, "Đang giải nén bộ xử lý", done, total, "installing")))
+            progress(definition.pack_id, ModelProgress(
+                "verifying", definition.label, "Đang kiểm tra bộ xử lý", 0, 0, "finalizing"))
             self._verify_engine_staging(definition, staging)
             if cancel.is_set():
                 raise ModelBootstrapCancelled("Engine installation cancelled.")

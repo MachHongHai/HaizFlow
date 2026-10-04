@@ -74,7 +74,7 @@ def _status(path: Path, **values) -> None:
 def _demucs_main():
     from demucs import audio
     from demucs.separate import main
-    from haizflow.utils.audio import _MediaSubprocess
+    from haizflow.utils.media_subprocess import _MediaSubprocess
 
     audio.sp = _MediaSubprocess()
     return main
@@ -157,6 +157,9 @@ def smoke_test(profile: str) -> dict:
             raise RuntimeError(f"CPU engine contains a CUDA Torch build ({cuda_version}).")
         if profile == "cuda128" and not cuda_version.startswith("12.8"):
             raise RuntimeError(f"CUDA 12.8 engine contains an incompatible Torch build ({cuda_version or 'CPU'}).")
+        # Import the actual task entrypoints, not only top-level packages.
+        _demucs_main()
+        importlib.import_module("haizflow.pipeline.transcribe")
     return {"profile": profile, "modules": versions}
 
 

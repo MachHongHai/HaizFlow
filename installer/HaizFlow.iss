@@ -25,6 +25,12 @@
 #ifndef BrandingMarkPath
   #error BrandingMarkPath must point to the installer branding PNG.
 #endif
+#ifndef SidebarArtworkPath
+  #error SidebarArtworkPath must point to installer-sized artwork.
+#endif
+#ifndef HeaderArtworkPath
+  #error HeaderArtworkPath must point to installer-sized artwork.
+#endif
 #ifndef OutputBaseFilename
   #error OutputBaseFilename must be supplied by scripts\build-installer.ps1.
 #endif
@@ -91,12 +97,14 @@ SolidCompression=yes
 DefaultDialogFontName=Segoe UI
 WizardStyle=modern dark slate includetitlebar hidebevels
 WizardSizePercent=120,120
-WizardImageFile={#BrandingMarkPath}
-WizardSmallImageFile={#BrandingMarkPath}
+WizardImageFile={#SidebarArtworkPath}
+WizardSmallImageFile={#HeaderArtworkPath}
 WizardImageBackColor=#11100F
 WizardSmallImageBackColor=#1B1A18
 WizardImageStretch=yes
 WizardKeepAspectRatio=yes
+LanguageDetectionMethod=none
+ShowLanguageDialog=yes
 UninstallDisplayIcon={app}\HaizFlow.exe
 UninstallDisplayName={#AppName}
 CloseApplications=yes
@@ -117,6 +125,10 @@ SignedUninstaller=no
 ; Do not use an Excludes wildcard here: "runtime\*" also matches dependency
 ; folders such as _internal\torch\_inductor\runtime and corrupts the install.
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Languages]
+Name: "vietnamese"; MessagesFile: "compiler:Default.isl,vendor\Vietnamese.isl"; InfoBeforeFile: "information.vi.txt"
+Name: "english"; MessagesFile: "compiler:Default.isl,vendor\English.isl"; InfoBeforeFile: "information.en.txt"
 
 [Dirs]
 ; Every HaizFlow-owned mutable path is below this directory. Inno must not
@@ -150,7 +162,7 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\HaizFlow.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\HaizFlow.exe"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:DesktopShortcut}"; GroupDescription: "{cm:Shortcuts}"; Flags: unchecked
 
 [UninstallDelete]
 Type: files; Name: "{app}\offline-resources.ini"
@@ -163,13 +175,18 @@ Type: dirifempty; Name: "{app}\versions"
 #endif
 
 [Run]
-Filename: "{app}\HaizFlow.exe"; Description: "Launch HaizFlow"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\HaizFlow.exe"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 var
   DeleteRuntimeOnUninstall: Boolean;
   CompatibilityPage: TWizardPage;
   StorageValueLabel: TNewStaticText;
+
+function UiText(const Vietnamese, English: String): String;
+begin
+  if ActiveLanguage = 'vietnamese' then Result := Vietnamese else Result := English;
+end;
 
 function RoundedUpGiB(const Bytes: Int64): String; forward;
 function RoundedUpTenthGiB(const Bytes: Int64): String; forward;
@@ -271,19 +288,19 @@ var
   IntroLabel: TNewStaticText;
   SupportLink: TNewStaticText;
 begin
-  WizardForm.Caption := 'HaizFlow Setup';
-  WizardForm.WelcomeLabel1.Caption := 'Install HaizFlow';
+  WizardForm.Caption := UiText('Cài đặt HaizFlow', 'HaizFlow Setup');
+  WizardForm.WelcomeLabel1.Caption := UiText('Cài đặt HaizFlow', 'Install HaizFlow');
   WizardForm.WelcomeLabel2.Caption :=
-    'Set up the local-first video workspace on this computer.' + #13#10 + #13#10 +
-    'The Core application is installed. Optional AI resources are managed in Settings.';
-  WizardForm.FinishedHeadingLabel.Caption := 'HaizFlow is ready';
+    UiText('Chỉnh video, dịch phụ đề và đăng mạng xã hội trên máy tính này.', 'Set up the local-first video workspace on this computer.') + #13#10 + #13#10 +
+    UiText('Bộ cài chứa ứng dụng. Cài thêm model trong Cài đặt → Gói tài nguyên sau khi mở app.', 'The Core application is installed. Optional AI resources are managed in Settings.');
+  WizardForm.FinishedHeadingLabel.Caption := UiText('Cài đặt hoàn tất', 'HaizFlow is ready');
   WizardForm.FinishedLabel.Caption :=
-    'Installation completed. Launch HaizFlow, then install only the resource packs you need.';
+    UiText('Mở HaizFlow để bắt đầu. Bạn có thể cài các gói tài nguyên cần dùng trong Cài đặt.', 'Installation completed. Launch HaizFlow, then install only the resource packs you need.');
 
   CompatibilityPage := CreateCustomPage(
     wpSelectDir,
-    'System requirements',
-    'Review the runtime requirements before installation.'
+    UiText('Cấu hình và dung lượng', 'System requirements'),
+    UiText('Kiểm tra yêu cầu trước khi cài.', 'Review the runtime requirements before installation.')
   );
 
   IntroLabel := TNewStaticText.Create(CompatibilityPage);
@@ -295,24 +312,24 @@ begin
   IntroLabel.Height := ScaleY(38);
   IntroLabel.WordWrap := True;
   IntroLabel.Caption :=
-    'Core processing runs locally. Internet is used only when you install a resource pack, import a URL, use an online voice, or publish.';
+    UiText('Các model là tùy chọn. Cài thêm sau khi mở app, trong Cài đặt → Gói tài nguyên.', 'Core processing runs locally. Internet is used only when you install a resource pack, import a URL, use an online voice, or publish.');
 
   AddRequirementRow(
     CompatibilityPage,
     'Windows',
-    'Windows 10 version 1809 or later, or Windows 11, on a 64-bit PC.',
+    UiText('Windows 10 từ phiên bản 1809 hoặc Windows 11, máy 64-bit.', 'Windows 10 version 1809 or later, or Windows 11, on a 64-bit PC.'),
     52
   );
   AddRequirementRow(
     CompatibilityPage,
-    'Processor and memory',
-    'CPU mode works without an NVIDIA GPU. 16 GB RAM is the supported minimum.',
+    UiText('Bộ xử lý và bộ nhớ', 'Processor and memory'),
+    UiText('Chế độ CPU không cần GPU NVIDIA. RAM tối thiểu: 16 GB.', 'CPU mode works without an NVIDIA GPU. 16 GB RAM is the supported minimum.'),
     110
   );
   AddRequirementRow(
     CompatibilityPage,
-    'Graphics',
-    'An NVIDIA GPU is optional. HaizFlow falls back to CPU processing when CUDA is unavailable or unsupported.',
+    UiText('Đồ họa', 'Graphics'),
+    UiText('GPU NVIDIA là tùy chọn. Model GPU cần CUDA và VRAM tương thích.', 'An NVIDIA GPU is optional. HaizFlow falls back to CPU processing when CUDA is unavailable or unsupported.'),
     168
   );
 
@@ -326,9 +343,9 @@ begin
   StorageValueLabel.WordWrap := True;
   StorageValueLabel.Font.Style := [fsBold];
   StorageValueLabel.Caption :=
-    'Core files: ' + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + ' MiB (engines/models/media not included).' + #13#10 +
-    RoundedUpGiB({#RequiredFreshBytes}) + ' GiB minimum; ' +
-    RoundedUpGiB({#RecommendedFreshBytes}) + ' GiB recommended before a new install.';
+    UiText('Ứng dụng: ', 'Core files: ') + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + UiText(' MiB (chưa gồm engine, model và video).', ' MiB (engines/models/media not included).') + #13#10 +
+    RoundedUpGiB({#RequiredFreshBytes}) + UiText(' GiB tối thiểu; ', ' GiB minimum; ') +
+    RoundedUpGiB({#RecommendedFreshBytes}) + UiText(' GiB đề nghị khi cài mới.', ' GiB recommended before a new install.');
 
   SupportLink := TNewStaticText.Create(CompatibilityPage);
   SupportLink.Parent := CompatibilityPage.Surface;
@@ -337,7 +354,7 @@ begin
   SupportLink.AutoSize := True;
   SupportLink.Cursor := crHand;
   SupportLink.Font.Style := [fsUnderline];
-  SupportLink.Caption := 'Source, releases and support';
+  SupportLink.Caption := UiText('Mã nguồn, bản phát hành và hỗ trợ', 'Source, releases and support');
   SupportLink.OnClick := @SupportLinkClick;
 end;
 
@@ -425,14 +442,14 @@ begin
   end;
   if GetSpaceOnDisk64(WizardDirValue, FreeBytes, TotalBytes) then
     StorageValueLabel.Caption :=
-      'Core files: ' + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + ' MiB (engines/models/media not included).' + #13#10 +
-      'Available: ' + RoundedDownGiB(FreeBytes) + ' GiB; minimum: ' +
-      RoundedUpGiB(RequiredBytes) + ' GiB; recommended: ' + RoundedUpGiB(RecommendedBytes) + ' GiB.'
+      UiText('Ứng dụng: ', 'Core files: ') + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + UiText(' MiB (chưa gồm engine, model và video).', ' MiB (engines/models/media not included).') + #13#10 +
+      UiText('Còn trống: ', 'Available: ') + RoundedDownGiB(FreeBytes) + UiText(' GiB · Tối thiểu: ', ' GiB; minimum: ') +
+      RoundedUpGiB(RequiredBytes) + UiText(' GiB · Đề nghị: ', ' GiB; recommended: ') + RoundedUpGiB(RecommendedBytes) + ' GiB.'
   else
     StorageValueLabel.Caption :=
-      'Core files: ' + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + ' MiB (engines/models/media not included).' + #13#10 +
-      'Storage: ' + RoundedUpGiB(RequiredBytes) + ' GiB minimum; ' + RoundedUpGiB(RecommendedBytes) +
-      ' GiB recommended. Setup verifies the selected folder before copying files.';
+      UiText('Ứng dụng: ', 'Core files: ') + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + UiText(' MiB (chưa gồm engine, model và video).', ' MiB (engines/models/media not included).') + #13#10 +
+      UiText('Dung lượng: ', 'Storage: ') + RoundedUpGiB(RequiredBytes) + UiText(' GiB tối thiểu; ', ' GiB minimum; ') + RoundedUpGiB(RecommendedBytes) +
+      UiText(' GiB đề nghị. Bộ cài kiểm tra thư mục đích trước khi sao chép.', ' GiB recommended. Setup verifies the selected folder before copying files.');
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -451,7 +468,7 @@ begin
   if CurStep = ssPostInstall then
     if (not Exec(ExpandConstant('{app}\HaizFlow.exe'), '--initialize {#AppVersion}',
       ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
-      RaiseException('Could not activate the verified Core. Existing runtime data is preserved.');
+      RaiseException(UiText('Không thể khởi tạo ứng dụng đã xác minh. Dữ liệu hiện có được giữ nguyên.', 'Could not activate the verified Core. Existing runtime data is preserved.'));
 #endif
 #if EngineeringBuild == "1"
   if CurStep = ssPostInstall then
@@ -467,7 +484,7 @@ begin
       OfflineLines[0] := '[resources]';
       OfflineLines[1] := 'path=' + OfflinePath;
       if not SaveStringsToUTF8File(ExpandConstant('{app}\offline-resources.ini'), OfflineLines, False) then
-        RaiseException('Could not register companion resource packs. Existing runtime data is preserved.');
+        RaiseException(UiText('Không thể ghi vị trí gói tài nguyên đi kèm. Dữ liệu hiện có được giữ nguyên.', 'Could not register companion resource packs. Existing runtime data is preserved.'));
     end;
   end;
 #endif
@@ -485,28 +502,28 @@ begin
 
   if UnsafePayload(WizardDirValue) then
   begin
-    Result := 'The application payload contains a link or junction. Choose a new installation folder.';
+    Result := UiText('Thư mục ứng dụng chứa liên kết hoặc junction. Hãy chọn thư mục cài khác.', 'The application payload contains a link or junction. Choose a new installation folder.');
     exit;
   end;
 
   if IsDriveRoot(WizardDirValue) then
   begin
-    Result := 'Choose an application folder such as C:\HaizFlow or D:\HaizFlow, not the root of a drive.';
+    Result := UiText('Chọn thư mục như C:\HaizFlow hoặc D:\HaizFlow, không chọn gốc ổ đĩa.', 'Choose an application folder such as C:\HaizFlow or D:\HaizFlow, not the root of a drive.');
     exit;
   end;
 
   if not ForceDirectories(WizardDirValue) then
   begin
-    Result := 'Could not create the selected installation folder. Choose a folder that your account can write to.';
+    Result := UiText('Không thể tạo thư mục cài đặt. Hãy chọn nơi tài khoản Windows của bạn có quyền ghi.', 'Could not create the selected installation folder. Choose a folder that your account can write to.');
     exit;
   end;
 
   if (not IsUpgradeTarget(WizardDirValue)) and FreshTargetHasConflictingContent(WizardDirValue) then
   begin
     Result :=
-      'The selected folder is not empty and is not an existing HaizFlow installation.' + #13#10 + #13#10 +
-      'Choose an empty folder or create a new HaizFlow subfolder. A folder containing only retained ' +
-      'HaizFlow runtime data is also safe to reuse.';
+      UiText('Thư mục đã có nội dung khác, không phải bản HaizFlow hiện có.', 'The selected folder is not empty and is not an existing HaizFlow installation.') + #13#10 + #13#10 +
+      UiText('Chọn thư mục trống hoặc tạo thư mục HaizFlow mới. Thư mục chỉ có ', 'Choose an empty folder or create a new HaizFlow subfolder. A folder containing only retained ') +
+      UiText('dữ liệu runtime được giữ lại của HaizFlow cũng có thể dùng để cài lại.', 'HaizFlow runtime data is also safe to reuse.');
     exit;
   end;
 
@@ -515,13 +532,13 @@ begin
   begin
     if not FileExists(AddBackslash(WizardDirValue) + 'update-layout.json') then
     begin
-      Result := 'This older installation uses a different layout. Back up runtime and install this version in a new folder.';
+      Result := UiText('Bản cũ dùng cấu trúc khác. Sao lưu runtime rồi cài bản này vào thư mục mới.', 'This older installation uses a different layout. Back up runtime and install this version in a new folder.');
       exit;
     end;
     if (not Exec(AddBackslash(WizardDirValue) + 'HaizFlow.exe', '--check-install {#AppVersion}',
       WizardDirValue, SW_HIDE, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
     begin
-      Result := 'Close HaizFlow and finish any pending update. A newer installation cannot be downgraded.';
+      Result := UiText('Đóng HaizFlow và hoàn tất cập nhật đang chờ. Không thể cài đè phiên bản thấp hơn.', 'Close HaizFlow and finish any pending update. A newer installation cannot be downgraded.');
       exit;
     end;
   end;
@@ -534,8 +551,8 @@ begin
      (not SaveStringToFile(ProbePath, 'write probe', False)) then
   begin
     Result :=
-      'The selected installation folder is not writable by your Windows account.' + #13#10 + #13#10 +
-      'Choose another folder, for example C:\HaizFlow or D:\HaizFlow.';
+      UiText('Tài khoản Windows không có quyền ghi vào thư mục đã chọn.', 'The selected installation folder is not writable by your Windows account.') + #13#10 + #13#10 +
+      UiText('Chọn thư mục khác, ví dụ C:\HaizFlow hoặc D:\HaizFlow.', 'Choose another folder, for example C:\HaizFlow or D:\HaizFlow.');
     exit;
   end;
   DeleteFile(ProbePath);
@@ -546,14 +563,14 @@ begin
     RequiredBytes := {#RequiredFreshBytes};
   if not GetSpaceOnDisk64(WizardDirValue, FreeBytes, TotalBytes) then
   begin
-    Result := 'Could not check free space for the selected installation folder.';
+    Result := UiText('Không thể kiểm tra dung lượng trống tại thư mục đã chọn.', 'Could not check free space for the selected installation folder.');
     exit;
   end;
   if FreeBytes < RequiredBytes then
     Result :=
-      'The selected drive does not have enough free space for a safe install or upgrade.' + #13#10 + #13#10 +
-      'Required: ' + RoundedUpGiB(RequiredBytes) + ' GiB' + #13#10 +
-      'Available: ' + RoundedDownGiB(FreeBytes) + ' GiB';
+      UiText('Ổ đĩa không đủ dung lượng trống để cài hoặc nâng cấp an toàn.', 'The selected drive does not have enough free space for a safe install or upgrade.') + #13#10 + #13#10 +
+      UiText('Cần: ', 'Required: ') + RoundedUpGiB(RequiredBytes) + ' GiB' + #13#10 +
+      UiText('Còn trống: ', 'Available: ') + RoundedDownGiB(FreeBytes) + ' GiB';
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -587,29 +604,29 @@ begin
   if UnsafePayload(ExpandConstant('{app}')) then
   begin
     Result := False;
-    MsgBox('Installation contains a link or junction. No files were removed.', mbError, MB_OK);
+    MsgBox(UiText('Thư mục cài chứa liên kết hoặc junction. Chưa có file nào bị xóa.', 'Installation contains a link or junction. No files were removed.'), mbError, MB_OK);
     exit;
   end;
   if not UninstallSilent then
     DeleteRuntimeOnUninstall :=
       MsgBox(
-        'Do you also want to permanently delete HaizFlow runtime data?' + #13#10 + #13#10 +
-        'This includes settings, logs, caches, downloaded models and the local project index. ' +
-        'Project folders stored elsewhere are not deleted.' + #13#10 + #13#10 +
-        'Choose No to keep the data for a future reinstall.',
+        UiText('Bạn có muốn xóa vĩnh viễn dữ liệu runtime của HaizFlow không?', 'Do you also want to permanently delete HaizFlow runtime data?') + #13#10 + #13#10 +
+        UiText('Gồm cài đặt, nhật ký, cache, model đã tải và chỉ mục dự án. ', 'This includes settings, logs, caches, downloaded models and the local project index. ') +
+        UiText('Không xóa các thư mục dự án lưu ở nơi khác.', 'Project folders stored elsewhere are not deleted.') + #13#10 + #13#10 +
+        UiText('Chọn Không để giữ dữ liệu khi cài lại.', 'Choose No to keep the data for a future reinstall.'),
         mbConfirmation,
         MB_YESNO or MB_DEFBUTTON2
       ) = IDYES;
   if DeleteRuntimeOnUninstall and ContainsReparsePoint(ExpandConstant('{app}\runtime')) then
   begin
-    MsgBox('Runtime data contains a link or junction. Data will be preserved.', mbError, MB_OK);
+    MsgBox(UiText('Dữ liệu runtime chứa liên kết hoặc junction. Dữ liệu sẽ được giữ nguyên.', 'Runtime data contains a link or junction. Data will be preserved.'), mbError, MB_OK);
     DeleteRuntimeOnUninstall := False;
   end;
 #if VersionedLayout == "1"
   Result := Exec(ExpandConstant('{app}\HaizFlow.exe'), '--uninstall-cores',
     ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) and (ExitCode = 0);
   if not Result then
-    MsgBox('Core could not be safely removed. Close HaizFlow or repair the installation first. Runtime data is preserved.', mbError, MB_OK);
+    MsgBox(UiText('Không thể gỡ ứng dụng an toàn. Đóng HaizFlow hoặc sửa bản cài trước. Dữ liệu được giữ nguyên.', 'Core could not be safely removed. Close HaizFlow or repair the installation first. Runtime data is preserved.'), mbError, MB_OK);
 #endif
 end;
 
@@ -622,4 +639,27 @@ begin
 end;
 
 [Messages]
-SelectDirLabel3=Choose where to install HaizFlow. The Core application and resource packs you approve stay below this folder unless you move resource storage in Settings. Existing runtime data is preserved during upgrades.
+english.SelectDirLabel3=Choose where to install HaizFlow. The Core application and resource packs you approve stay below this folder unless you move resource storage in Settings. Existing runtime data is preserved during upgrades.
+
+
+vietnamese.SelectDirLabel3=Chọn nơi cài HaizFlow. Dữ liệu runtime được giữ khi nâng cấp. Có thể chuyển nơi lưu tài nguyên trong Cài đặt.
+vietnamese.WizardInfoBefore=Trước khi cài đặt
+english.WizardInfoBefore=Before installing
+vietnamese.InfoBeforeLabel=Ứng dụng, tài nguyên và dữ liệu của bạn.
+english.InfoBeforeLabel=Application, resources and your data.
+vietnamese.WizardLicense=Giấy phép HaizFlow
+english.WizardLicense=HaizFlow license
+vietnamese.LicenseLabel3=Đọc giấy phép đầy đủ bên dưới. Đồng ý để tiếp tục cài đặt.
+english.LicenseLabel3=Read the full license below. Accept it to continue installing.
+vietnamese.WizardReady=Xác nhận cài đặt
+english.WizardReady=Confirm installation
+vietnamese.ReadyLabel1=Kiểm tra các lựa chọn trước khi cài HaizFlow.
+english.ReadyLabel1=Review your choices before installing HaizFlow.
+
+[CustomMessages]
+vietnamese.DesktopShortcut=Tạo lối tắt trên màn hình
+english.DesktopShortcut=Create a desktop shortcut
+vietnamese.Shortcuts=Lối tắt:
+english.Shortcuts=Shortcuts:
+vietnamese.LaunchApp=Mở HaizFlow
+english.LaunchApp=Launch HaizFlow

@@ -30,7 +30,7 @@ class ConsoleTests(unittest.TestCase):
                     continue
                 if path.name == "media.py" and "xdg-open" in ast.unparse(node):
                     continue
-                if path.name == "audio.py":
+                if path.name == "media_subprocess.py":
                     continue  # tested adapter below sets flags in kwargs
                 with self.subTest(path=str(path), line=node.lineno):
                     self.assertIn("creationflags", [keyword.arg for keyword in node.keywords])
@@ -40,7 +40,7 @@ class ConsoleTests(unittest.TestCase):
         from pydub import audio_segment, utils
 
         original = subprocess.Popen
-        with patch("haizflow.utils.audio.subprocess.Popen") as popen, \
+        with patch("haizflow.utils.media_subprocess.subprocess.Popen") as popen, \
                 patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True):
             audio_segment.subprocess.Popen(["ffmpeg"], creationflags=8)
             self.assertEqual(popen.call_args.kwargs["creationflags"], 0x08000008)

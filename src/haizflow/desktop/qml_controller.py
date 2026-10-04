@@ -2804,7 +2804,7 @@ class HaizFlowController(QObject):
     def resourcePackActivityText(self):
         return self._resource_packs.activityText
 
-    @Property(int, notify=resourcePacksChanged)
+    @Property(float, notify=resourcePacksChanged)
     def resourcePackActivityProgress(self):
         return self._resource_packs.activityProgress
 

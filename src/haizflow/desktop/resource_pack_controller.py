@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Property, QAbstractListModel, QModelIndex, QObject, Qt, Signal, Slot
@@ -11,6 +12,7 @@ from PySide6.QtCore import Property, QAbstractListModel, QModelIndex, QObject, Q
 from haizflow.core.hardware import validate_processing_device
 from haizflow.desktop.localization import QFileDialog
 from haizflow.desktop.presenters import format_memory_size
+from haizflow.desktop.resource_progress import InstallProgress, localized_progress, progress_copy
 from haizflow.services.model_bootstrap import ModelBootstrapCancelled, ModelProgress
 from haizflow.services.resource_packs import ResourcePackError, ResourcePackManager
 
@@ -120,11 +122,12 @@ class ResourcePackListModel(QAbstractListModel):
             "voice": "Giọng đọc",
             "image": "Hình ảnh",
         }
-        busy_states = {"checking", "downloading", "verifying", "removing"}
+        busy_states = {"checking", "downloading", "verifying", "installing", "removing"}
         return {
             **snapshot,
             "status": status,
-            "progress": int(operation.get("progress", -1)),
+            "progress": float(operation.get("progress", -1)),
+            "progressCopy": operation.get("progressCopy", {}),
             "detail": str(operation.get("detail", "")),
             "downloadSizeText": format_memory_size(snapshot["downloadSize"]),
             "installedSizeText": format_memory_size(snapshot["installedSize"]),
@@ -165,8 +168,9 @@ class ResourcePackListModel(QAbstractListModel):
             self.dataChanged.emit(model_index, model_index)
             return
 
-    def set_operation(self, pack_id: str, *, status: str, progress: int = -1, detail: str = "") -> None:
-        self._operation_state[pack_id] = {"status": status, "progress": progress, "detail": detail}
+    def set_operation(self, pack_id: str, *, status: str, progress: float = -1, detail: str = "", progress_copy=None) -> None:
+        self._operation_state[pack_id] = {"status": status, "progress": progress, "detail": detail,
+                                         "progressCopy": progress_copy or {}}
         self._update_operation_row(pack_id)
 
     def clear_operation(self, pack_id: str) -> None:
@@ -322,6 +326,8 @@ class ResourcePackController(QObject):
             if pack_id not in source_rows:
                 continue
             source = dict(source_rows[pack_id])
+            if source.get("progressCopy"):
+                source["detail"] = localized_progress(source["progressCopy"], getattr(self._host, "_settings_language", "vi"))
             if pack_id.startswith("model-whisper-"):
                 group, title = "recognition", "Nhận dạng"
             elif pack_id.startswith("model-hymt2-"):
@@ -385,29 +391,33 @@ class ResourcePackController(QObject):
 
     @Property(str, notify=changed)
     def activityText(self):
+        vi = getattr(self._host, "_settings_language", "vi") == "vi"
         if self._move_thread is not None and self._move_thread.is_alive():
-            return "Đang chuyển gói cài đặt"
+            return "Đang chuyển gói cài đặt" if vi else "Moving resource packs"
         if self._clean_thread is not None and self._clean_thread.is_alive():
-            return "Đang dọn tệp tải dở"
-        active_states = {"checking", "downloading", "verifying", "removing"}
+            return "Đang dọn tệp tải dở" if vi else "Cleaning partial downloads"
+        active_states = {"checking", "downloading", "verifying", "installing", "removing"}
         for row in self.model._rows:
             if row.get("status") not in active_states:
                 continue
             detail = str(row.get("detail") or "").strip()
+            if row.get("progressCopy"):
+                detail = localized_progress(row["progressCopy"], getattr(self._host, "_settings_language", "vi"))
+                return detail
             label = str(row.get("label") or row.get("packId") or "").strip()
             return " · ".join(part for part in (label, detail) if part)
         if self._inventory_thread is not None and self._inventory_thread.is_alive():
-            return "Đang kiểm tra gói cài đặt"
+            return "Đang kiểm tra gói cài đặt" if vi else "Checking resource packs"
         return ""
 
-    @Property(int, notify=changed)
+    @Property(float, notify=changed)
     def activityProgress(self):
         if self._move_thread is not None and self._move_thread.is_alive():
             return -1
-        active_states = {"checking", "downloading", "verifying", "removing"}
+        active_states = {"checking", "downloading", "verifying", "installing", "removing"}
         for row in self.model._rows:
             if row.get("status") in active_states:
-                return int(row.get("progress", -1))
+                return float(row.get("progress", -1))
         return -1
 
     def _start_inventory(self) -> None:
@@ -444,27 +454,32 @@ class ResourcePackController(QObject):
 
     def _run_install(self, pack_id: str) -> None:
         try:
-            for supporting_id in self._supporting_packs(pack_id):
-                if self.manager.status(supporting_id) in {"installed", "bundled"}:
-                    continue
+            units = [item for item in self._supporting_packs(pack_id)
+                     if self.manager.status(item) not in {"installed", "bundled"}]
+            units = list(dict.fromkeys([*units, pack_id]))
+            tracker = InstallProgress(tuple((item, max(1, self.manager.definitions[item].download_size)) for item in units))
+            last_report = [0.0, "", ""]
+
+            def report(unit: str, event: ModelProgress) -> None:
+                percentage = tracker.update(unit, event)
+                copy = progress_copy(unit, event)
+                now = time.monotonic()
+                # Keep the GUI queue bounded by time, not by every disk/network block.
+                if now - last_report[0] < 0.15 and (unit, copy["state"]) == tuple(last_report[1:]):
+                    return
+                last_report[:] = [now, unit, copy["state"]]
+                self._events.put({"kind": "progress", "pack_id": pack_id, "status": copy["state"],
+                                  "progress": percentage, "detail": "", "progressCopy": copy})
+
+            for supporting_id in units[:-1]:
                 definition = self.manager.definitions[supporting_id]
                 if not self.manager.archive_available(supporting_id):
                     raise ResourcePackError(
                         f"Bản cài chưa có môi trường xử lý {definition.label}. Hãy cập nhật ứng dụng."
                     )
 
-                def report_runtime(_unused_id: str, progress: ModelProgress) -> None:
-                    percentage = -1
-                    if progress.total_bytes:
-                        percentage = min(100, round(progress.completed_bytes * 100 / progress.total_bytes))
-                    self._events.put({
-                        "kind": "progress", "pack_id": pack_id,
-                        "status": progress.state, "progress": percentage,
-                        "detail": f"{definition.label} · {progress.detail}",
-                    })
-
-                self.manager.install(supporting_id, report_runtime)
-            self.manager.install(pack_id, self._report)
+                self.manager.install(supporting_id, report)
+            self.manager.install(pack_id, report)
             self._events.put({
                 "kind": "done",
                 "pack_id": pack_id,
@@ -508,7 +523,8 @@ class ResourcePackController(QObject):
             current = self._threads.get(pack_id)
             if current is not None and current.is_alive():
                 continue
-            self.model.set_operation(pack_id, status="checking", progress=0, detail="Đang kiểm tra")
+            self.model.set_operation(pack_id, status="checking", progress=0,
+                progress_copy={"unit": pack_id, "state": "checking"})
             thread = threading.Thread(
                 target=self._run_install,
                 args=(pack_id,),
@@ -548,7 +564,7 @@ class ResourcePackController(QObject):
                 "error",
             )
             return False
-        self.model.set_operation(pack_id, status="removing", detail="Đang gỡ")
+        self.model.set_operation(pack_id, status="removing", progress_copy={"unit": pack_id, "state": "removing"})
 
         def remove() -> None:
             try:
@@ -705,6 +721,7 @@ class ResourcePackController(QObject):
                     status=event["status"],
                     progress=event["progress"],
                     detail=event["detail"],
+                    progress_copy=event.get("progressCopy"),
                 )
             elif kind == "done":
                 self.model.apply_snapshot(event["snapshot"])
@@ -736,7 +753,9 @@ class ResourcePackController(QObject):
                 self._host.appAlertRequested.emit("Không thể dọn tệp", event.get("message", ""), "error")
             elif kind == "paused":
                 self.model.apply_snapshot(event.get("snapshot", []))
-                self.model.set_operation(pack_id, status="paused", detail="Đã tạm dừng")
+                previous = self.model._operation_state.get(pack_id, {}).get("progress", -1)
+                self.model.set_operation(pack_id, status="paused", progress=previous,
+                    progress_copy={"unit": pack_id, "state": "paused"})
             else:
                 self.model.apply_snapshot(event.get("snapshot", []))
                 snapshot_status = self.model._snapshots.get(pack_id, {}).get("status")

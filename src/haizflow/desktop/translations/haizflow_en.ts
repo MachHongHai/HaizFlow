@@ -3370,6 +3370,10 @@ Author and owner of HaizFlow.</translation>
 <context>
     <name>ResourcePackRow</name>
     <message>
+        <source>Đang cài đặt</source>
+        <translation>Installing</translation>
+    </message>
+    <message>
         <location filename="../qml/ResourcePackRow.qml" line="+33"/>
         <source>Đã cài</source>
         <translation>Installed</translation>

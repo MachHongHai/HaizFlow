@@ -85,7 +85,7 @@ Module {
         Property { name: "resourcePackFreeSpaceText"; type: "QString"; isReadonly: true }
         Property { name: "resourcePackBusy"; type: "bool"; isReadonly: true }
         Property { name: "resourcePackActivityText"; type: "QString"; isReadonly: true }
-        Property { name: "resourcePackActivityProgress"; type: "int"; isReadonly: true }
+        Property { name: "resourcePackActivityProgress"; type: "double"; isReadonly: true }
         Property { name: "keepModelsWarm"; type: "bool"; isReadonly: true }
         Property { name: "gpuModelsAvailable"; type: "bool"; isReadonly: true }
         Property { name: "appUpdateState"; type: "QString"; isReadonly: true }

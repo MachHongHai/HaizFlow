@@ -22,31 +22,37 @@ ProgressBar {
 
         Rectangle {
             visible: !root.indeterminate
-            width: root.visualPosition * parent.width
+            width: parent.width
             height: parent.height
             radius: 3
             color: root.value >= root.to ? Theme.success : Theme.interactive
-            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            transform: Scale {
+                origin.x: 0
+                origin.y: 0
+                xScale: root.visualPosition
+                Behavior on xScale {
+                    enabled: Theme.motionEnabled && root.visible && !root.indeterminate
+                    NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                }
+            }
         }
 
         Rectangle {
+            id: busyFill
             visible: root.indeterminate
             width: Math.max(24, parent.width * 0.28)
             height: parent.height
             radius: 3
             color: Theme.interactive
-            transform: Translate { id: busyOffset }
-            SequentialAnimation {
-                running: root.indeterminate && root.visible
+            x: (parent.width - width) / 2
+            XAnimator {
+                target: busyFill
+                running: root.indeterminate && root.visible && Theme.motionEnabled
                 loops: Animation.Infinite
-                NumberAnimation {
-                    target: busyOffset
-                    property: "x"
-                    from: -Math.max(24, root.width * 0.28)
-                    to: root.width
-                    duration: 1250
-                    easing.type: Easing.InOutCubic
-                }
+                from: -Math.max(24, root.width * 0.28)
+                to: root.width
+                duration: 1400
+                easing.type: Easing.Linear
             }
         }
     }

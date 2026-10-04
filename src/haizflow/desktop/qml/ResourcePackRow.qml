@@ -12,7 +12,7 @@ ColumnLayout {
     required property string label
     required property string version
     required property string status
-    required property int progress
+    required property real progress
     required property string detail
     required property string summary
     required property string downloadSizeText
@@ -35,6 +35,7 @@ ColumnLayout {
         case "checking": return qsTr("Đang kiểm tra");
         case "downloading": return qsTr("Đang tải");
         case "verifying": return qsTr("Đang xác minh");
+        case "installing": return qsTr("Đang cài đặt");
         case "removing": return qsTr("Đang gỡ");
         case "paused": return qsTr("Đã tạm dừng");
         case "failed": return qsTr("Lỗi");
@@ -111,11 +112,11 @@ ColumnLayout {
             }
 
             AppProgressBar {
-                visible: root.progress >= 0 && ["checking", "downloading", "verifying"].indexOf(root.status) >= 0
+                visible: ["checking", "downloading", "verifying", "installing"].indexOf(root.status) >= 0
                 Layout.fillWidth: true
                 Layout.topMargin: 2
                 value: Math.max(0, root.progress)
-                indeterminate: root.status !== "downloading" || root.progress <= 0
+                indeterminate: root.progress < 0
                 active: true
             }
         }
@@ -134,7 +135,7 @@ ColumnLayout {
                     anchors.verticalCenter: parent.verticalCenter
                     status: root.status === "installed" ? "success"
                         : root.status === "failed" ? "error"
-                        : ["checking", "downloading", "verifying", "paused", "removing"].indexOf(root.status) >= 0
+                        : ["checking", "downloading", "verifying", "installing", "paused", "removing"].indexOf(root.status) >= 0
                             ? "processing" : "ready"
                     label: root.statusLabel(root.status)
                     iconName: root.status === "installed" ? "success" : ""
@@ -147,7 +148,7 @@ ColumnLayout {
 
                 StudioButton {
                     anchors.fill: parent
-                    visible: ["checking", "downloading", "verifying"].indexOf(root.status) >= 0
+                    visible: ["checking", "downloading", "verifying", "installing"].indexOf(root.status) >= 0
                     text: qsTr("Tạm dừng")
                     iconName: "pause"
                     variant: "secondary"

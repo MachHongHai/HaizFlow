@@ -44,6 +44,10 @@ ApplicationWindow {
     readonly property bool compactNavigation: width < 1280
     readonly property bool modelStatusFailed: AppController.runtimeState === "failed"
     readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
+    readonly property string resourceActivityText: {
+        const language = I18n.language;
+        return AppController.resourcePackActivityText;
+    }
     // qmllint disable stale-property-read
     readonly property var downloader: AppController.mediaDownloader
     // qmllint enable stale-property-read
@@ -581,7 +585,7 @@ ApplicationWindow {
                 : AppController.isProcessing ? (AppController.isSelectedVideoProcessing
                     ? AppController.selectedStageLabel
                     : qsTr("Đang xử lý video khác"))
-                : AppController.resourcePackBusy ? AppController.resourcePackActivityText
+                : AppController.resourcePackBusy ? root.resourceActivityText
                 : root.modelStatusBusy ? I18n.runtimeStatus(AppController.statusMessage)
                 : root.currentRoute === root.routeDownloadWorkspace && root.downloader.currentProjectHasWork
                     ? qsTr("Đang tải nội dung")

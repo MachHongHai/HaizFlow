@@ -37,8 +37,29 @@ Item {
         const device = AppController.processingDevice;
         const selectedVideo = AppController.selectedVideoId;
         const activity = AppController.resourcePackActivityText;
+        const language = I18n.language;
         return AppController.resourcePackageRows;
     }
+    ListModel {
+        id: stableRows
+        dynamicRoles: true
+    }
+    function syncPackageRows() {
+        const rows = root.packageRows;
+        let sameOrder = stableRows.count === rows.length;
+        for (let i = 0; sameOrder && i < rows.length; ++i)
+            sameOrder = stableRows.get(i).modelData.packId === rows[i].packId;
+        if (!sameOrder) {
+            stableRows.clear();
+            for (let i = 0; i < rows.length; ++i)
+                stableRows.append({modelData: rows[i]});
+        } else {
+            for (let i = 0; i < rows.length; ++i)
+                stableRows.setProperty(i, "modelData", rows[i]);
+        }
+    }
+    onPackageRowsChanged: root.syncPackageRows()
+    Component.onCompleted: root.syncPackageRows()
 
     SettingsPageShell {
         anchors.fill: parent
@@ -101,7 +122,7 @@ Item {
 
                     Repeater {
                         id: packageRepeater
-                        model: root.packageRows
+                        model: stableRows
 
                         delegate: ResourcePackRow {
                             Layout.fillWidth: true

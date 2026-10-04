@@ -1,0 +1,9 @@
+Trước khi cài HaizFlow
+
+Bộ cài chứa ứng dụng. Sau khi mở HaizFlow, vào Cài đặt → Gói tài nguyên để cài các model cần dùng. Nhận dạng, dịch cục bộ và xử lý video chạy trên máy; các dịch vụ trực tuyến cần Internet và có thể cần API key riêng.
+
+Dữ liệu, cài đặt và chỉ mục dự án nằm trong thư mục runtime của vị trí cài app. Có thể chuyển nơi lưu tài nguyên trong Cài đặt. Cài đè giữ dữ liệu hiện có; khi gỡ app, bạn có thể chọn giữ dữ liệu để cài lại.
+
+Giấy phép HaizFlow được trình bày ở bước tiếp theo. Thư viện, codec và model có giấy phép riêng, được lưu kèm ứng dụng. Checkpoint OmniVoice có giới hạn phi thương mại. Bạn cần có quyền sử dụng video, nhạc và mẫu giọng đưa vào app.
+
+Trang này chỉ giải thích cách cài và sử dụng, không thay thế các giấy phép đầy đủ.

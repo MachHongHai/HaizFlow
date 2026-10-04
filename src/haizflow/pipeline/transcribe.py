@@ -30,7 +30,7 @@ from haizflow.core.model_integrity import (
 from haizflow.pipeline.process_registry import check_cancellation, is_cancelled
 from haizflow.pipeline.timing_contract import TIMING_SOURCE
 from haizflow.services.video_store import log_to_video
-from haizflow.utils.audio import _MediaSubprocess
+from haizflow.utils.media_subprocess import _MediaSubprocess
 
 # WhisperX decodes via its own subprocess.run, not our FFmpeg helpers.
 _whisper_audio.subprocess = _MediaSubprocess()

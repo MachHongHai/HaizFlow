@@ -104,6 +104,7 @@ class ModelProgress:
     detail: str
     completed_bytes: int
     total_bytes: int
+    phase: str = ""
 
 
 ProgressCallback = Callable[[ModelProgress], None]
@@ -555,13 +556,14 @@ def install_model_assets(
             progress=lambda event, position=position: progress(ModelProgress(
                 event.state, event.component, f"Tệp {position}/{len(assets)} · {event.detail}",
                 event.completed_bytes, event.total_bytes,
+                "transfer",
             )),
             cancel_event=cancel_event,
         )
         completed += asset.size
 
     _check_cancelled(cancel_event)
-    progress(ModelProgress("verifying", "", "Đang xác minh toàn bộ gói", total_bytes, total_bytes))
+    progress(ModelProgress("verifying", "", "Đang xác minh toàn bộ gói", total_bytes, total_bytes, "finalizing"))
     if verify_complete is not None:
         verify_complete(root)
     progress(ModelProgress("ready", "", "Gói đã sẵn sàng", total_bytes, total_bytes))

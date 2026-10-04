@@ -1,5 +1,6 @@
 param(
   [string]$ArtifactPath = "",
+  [string]$OutputDirectory = "",
   [switch]$AllowUnsigned,
   [switch]$UnsignedRelease,
   [switch]$EngineeringBuild,
@@ -15,6 +16,7 @@ $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $BuildMetadataPath = Join-Path $Root "build\release-metadata"
 $SetupIconPath = Join-Path $Root "src\haizflow\desktop\assets\branding\haizflow.ico"
 $BrandingMarkPath = Join-Path $Root "src\haizflow\desktop\assets\branding\haizflow-mark.png"
+$ArtworkDirectory = Join-Path $Root "build\installer-assets"
 $InstallerTempParent = [System.IO.Path]::GetFullPath((Join-Path $Root "build\installer-temp"))
 $InstallerTemp = [System.IO.Path]::GetFullPath((Join-Path $InstallerTempParent ([guid]::NewGuid().ToString("N"))))
 $PreviousTemp = $env:TEMP
@@ -77,6 +79,8 @@ if (!(Test-Path -LiteralPath $SetupIconPath -PathType Leaf)) {
 if (!(Test-Path -LiteralPath $BrandingMarkPath -PathType Leaf)) {
   throw "Installer branding image is missing: $BrandingMarkPath"
 }
+& $Python (Join-Path $PSScriptRoot 'generate-installer-artwork.py') --source $BrandingMarkPath --output $ArtworkDirectory
+if ($LASTEXITCODE -ne 0) { throw "Installer artwork composition failed." }
 if (!$SignCertificatePath -and !$SignCertificateThumbprint -and !$AllowUnsigned -and !$UnsignedRelease) {
   throw "Choose a signing identity, -UnsignedRelease for public unsigned packaging, or EngineeringBuild with AllowUnsigned for internal tests."
 }
@@ -105,7 +109,7 @@ if (!$IsccExecutable) {
 }
 
 $InstallerScript = Join-Path $Root "installer\HaizFlow.iss"
-$InstallerOutputDirectory = Join-Path $Root "dist\installer"
+$InstallerOutputDirectory = if ($OutputDirectory) { [System.IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $Root "dist\installer" }
 $SignedBuild = [bool]($SignCertificatePath -or $SignCertificateThumbprint)
 $OutputBaseFilename = if ($EngineeringBuild) { "HaizFlow-$Version-DEVELOPMENT-Setup" } elseif ($SignedBuild) { "HaizFlow-$Version-Setup" } else { "HaizFlow-$Version-UNSIGNED-Setup" }
 $InstallerPath = Join-Path $InstallerOutputDirectory "$OutputBaseFilename.exe"
@@ -141,13 +145,15 @@ try {
   if (Test-Path -LiteralPath $InstallerPath -PathType Leaf) {
     Remove-Item -LiteralPath $InstallerPath -Force
   }
-  $CompilerArguments = @('/Qp', "/DSourceDir=$ArtifactPath", "/DAppVersion=$Version",
+  $CompilerArguments = @('/Qp', "/O$InstallerOutputDirectory", "/DSourceDir=$ArtifactPath", "/DAppVersion=$Version",
     "/DRequiredFreeBytes=$($Requirements.required_free_bytes)",
     "/DRequiredFreshBytes=$($FreshRequirements.required_free_bytes)",
     "/DRecommendedFreeBytes=$($Requirements.recommended_free_bytes)",
     "/DRecommendedFreshBytes=$($FreshRequirements.recommended_free_bytes)",
     "/DArtifactBytes=$($FreshRequirements.artifact_bytes)", "/DSetupIconPath=$SetupIconPath",
     "/DBrandingMarkPath=$BrandingMarkPath", "/DOutputBaseFilename=$OutputBaseFilename",
+    "/DSidebarArtworkPath=$(Join-Path $ArtworkDirectory 'sidebar.png')",
+    "/DHeaderArtworkPath=$(Join-Path $ArtworkDirectory 'header.png')",
     "/DVersionedLayout=$([int]$VersionedLayout)", "/DEngineeringBuild=$([int][bool]$EngineeringBuild)",
     "/DSignedBuild=$([int]$SignedBuild)") + $SignToolArguments
   & $IsccExecutable @CompilerArguments $InstallerScript
@@ -160,7 +166,7 @@ try {
     $SmokeDirectory = Join-Path $Root "build\installer-fixtures\$SmokeId"
     New-Item -ItemType Directory -Path $SmokeDirectory -Force | Out-Null
     $SmokeName = "HaizFlow-$Version-SMOKE-$SmokeId-DEVELOPMENT-Setup"
-    $SmokeCompilerArguments = @($CompilerArguments | Where-Object { $_ -notlike '/DOutputBaseFilename=*' }) + @(
+    $SmokeCompilerArguments = @($CompilerArguments | Where-Object { $_ -notlike '/DOutputBaseFilename=*' -and $_ -notlike '/O*' }) + @(
       "/DOutputBaseFilename=$SmokeName", "/O$SmokeDirectory", "/DSmokeAppId={{$SmokeId}",
       "/DSmokeResourceDirectory=$(Join-Path $InstallerOutputDirectory 'offline-resources')")
     & $IsccExecutable @SmokeCompilerArguments $InstallerScript
