@@ -56,6 +56,12 @@ class ProgressTests(unittest.TestCase):
             spec.loader.exec_module(module)
         self.assertTrue(callable(module._MediaSubprocess().Popen))
 
+    def test_engine_collects_lightning_runtime_metadata(self):
+        script = (ROOT / "scripts/build-resource-engine.ps1").read_text(encoding="utf-8")
+        collection = script.split('"--collect-data", $Module')[0].rsplit("foreach ($Module", 1)[1]
+        for module in ("lightning", "lightning_fabric", "pytorch_lightning"):
+            self.assertIn(f'"{module}"', collection)
+
     def test_progress_delegate_is_retained_and_fill_uses_transform(self):
         page = (ROOT / "src/haizflow/desktop/qml/ResourcePacksPage.qml").read_text(encoding="utf-8")
         self.assertIn('stableRows.setProperty(i, "modelData", rows[i])', page)

@@ -122,7 +122,7 @@ try {
     # PyInstaller's Torch hooks collect native libraries. Add only data that
     # these runtimes read dynamically; collect-all would pull tests, demos and
     # unrelated scientific packages back into every engine.
-    foreach ($Module in @("whisperx", "transformers", "demucs")) {
+    foreach ($Module in @("whisperx", "transformers", "demucs", "lightning", "lightning_fabric", "pytorch_lightning")) {
       $Arguments += @("--collect-data", $Module)
     }
     foreach ($Module in @("torch", "torchaudio", "ctranslate2")) {
