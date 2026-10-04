@@ -7,6 +7,7 @@ pyannote-audio==4.0.7
 torchcodec==0.7.0
 transformers==4.57.6
 accelerate==1.14.0
+# build-resource-engine.ps1 fetches the checksum-pinned official Windows wheel.
 llama-cpp-python==0.3.34
 ctranslate2==4.8.1
 faster-whisper==1.2.1

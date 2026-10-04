@@ -41,7 +41,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_manifest(artifact_directory: Path) -> None:
+def verify_manifest(artifact_directory: Path, *, core_markers: bool = False) -> None:
     artifact = artifact_directory.resolve()
     manifest_path = artifact / "SHA256SUMS.txt"
     if not manifest_path.is_file():
@@ -58,6 +58,7 @@ def verify_manifest(artifact_directory: Path) -> None:
         path.relative_to(artifact).as_posix(): path
         for path in artifact.rglob("*")
         if path.is_file() and path != manifest_path
+        and not (core_markers and path.name in {"core-manifest.json", "core-complete.json"} and path.parent == artifact)
     }
     if set(expected) != set(actual):
         missing = sorted(set(actual) - set(expected))
@@ -102,8 +103,29 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
     and model payloads are intentionally forbidden because Resource Manager owns them.
     """
     artifact = artifact_directory.resolve()
-    verify_manifest(artifact)
     build_info = _read_build_info(artifact)
+    if str(SRC) not in sys.path:
+        sys.path.insert(0, str(SRC))
+    from haizflow.update.filesystem import no_links
+    from haizflow.update.state import Layout
+    no_links(artifact)
+    if build_info.get("layout") == "versioned":
+        verify_manifest(artifact)
+        if build_info.get("engineering") != engineering:
+            raise RuntimeError("Versioned engineering provenance does not match the installer mode.")
+        if (artifact / "runtime").exists() or (artifact / "update-state").exists():
+            raise RuntimeError("Mutable data must not be packaged in a versioned installer.")
+        layout = Layout(artifact)
+        layout.validate_core(str(build_info.get("version")))
+        for executable in (artifact / "HaizFlow.exe", artifact / "updater" / "HaizFlowUpdater.exe"):
+            if not executable.is_file() or not (executable.parent / "_internal").is_dir():
+                raise RuntimeError("Independent bootstrap is incomplete.")
+        verify_installer_eligibility(layout.core(build_info["version"]), engineering=engineering)
+        return
+    core_markers = artifact.parent.name == "versions" and (artifact / "core-complete.json").is_file()
+    if core_markers:
+        Layout(artifact.parent.parent).validate_core(artifact.name)
+    verify_manifest(artifact, core_markers=core_markers)
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
@@ -176,18 +198,18 @@ def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool 
     missing = [str(path.relative_to(artifact)) for path in required_paths if not path.is_file()]
     if missing:
         raise RuntimeError(f"Required release payload is missing: {', '.join(missing)}")
-    runtime_root = artifact / "runtime"
-    if runtime_root.exists():
-        raise RuntimeError(
-            "Mutable root runtime must not be present in the frozen artifact; "
-            "the installer creates and preserves it separately."
-        )
+    for directory in ("runtime", "update-state"):
+        if (artifact / directory).exists():
+            raise RuntimeError(
+                f"Mutable root {directory} must not be present in the frozen artifact; "
+                "the installer creates and preserves it separately."
+            )
     model_root = artifact / "_internal" / "models"
-    bundled_model_files = list(model_root.rglob("*")) if model_root.exists() else []
-    if any(path.is_file() for path in bundled_model_files):
-        raise RuntimeError(
-            "Model payload must not be bundled in the Core installer; Resource Manager owns external models."
-        )
+    from haizflow.core.bundled_models import MODEL_SHA256, verify_core_models
+    has_speaker = verify_core_models(model_root, required=bool(build_info.get("bundled_speaker_model")))
+    if has_speaker:
+        _require_build_value(build_info, "bundled_speaker_model", True)
+        _require_build_value(build_info, "speaker_model_sha256", MODEL_SHA256)
     forbidden_model_files = {
         (filename.lower(), size)
         for filename, (size, _digest) in {
@@ -250,6 +272,8 @@ def finalize(artifact_directory: Path) -> None:
     )
 
     version = _release_version()
+    from haizflow.core.bundled_models import MODEL_SHA256, verify_core_models
+    has_speaker = verify_core_models(artifact / "_internal" / "models", required=False)
     git_commit = _git_value("rev-parse", "HEAD")
     if git_commit == "unknown":
         raise RuntimeError("Cannot establish the current Git commit; refusing to finalize the release artifact.")
@@ -272,6 +296,8 @@ def finalize(artifact_directory: Path) -> None:
         "bundled_demucs_model": False,
         "bundled_alignment_models": False,
         "bundled_subtitle_ocr_models": False,
+        "bundled_speaker_model": has_speaker,
+        "speaker_model_sha256": MODEL_SHA256 if has_speaker else None,
         "hymt2_cpu_revision": HYMT2_CPU_REVISION,
         "hymt2_gpu_revision": HYMT2_GPU_REVISION,
         "whisper_revision": WHISPER_REVISION,

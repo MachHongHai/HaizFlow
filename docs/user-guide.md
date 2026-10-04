@@ -187,11 +187,20 @@ Changing tabs does not reset the active request or queue.
 
 Connect Zernio, set the caption and post options, add a local video or a completed internal render from a Manual, Automatic or Batch project, review the destination and confirm. No external export is required for project import. HaizFlow copies the selected render into publishing-owned media before upload. This sends media to a third-party service; review its terms, privacy rules, quotas and charges. A published item provides **Open post**.
 
+### OmniVoice usage limits
+
+The bundled OmniVoice checkpoint is **NonCommercial (CC-BY-NC)**. Free use
+of HaizFlow and the Apache-2.0 license of OmniVoice code do not grant commercial
+rights to the checkpoint. Obtain appropriate rights before using generated
+voices for monetized content, advertising or client work. HaizFlow does not
+grant permissions on behalf of model or voice owners. See the
+[pinned model card](https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/README.md).
+
 ## 11. Storage and cache
 
 | Item | Current limit or rule |
 | --- | ---: |
-| Current verified Core artifact | 477 MiB |
+| Core size | Measured for each release artifact; see its build report |
 | Core installation | Setup calculates the exact minimum; the current recommendation is 4 GiB free |
 | Free space retained during resource installation | 2 GiB after download, installation and rollback estimates |
 | Manual temporary data | Adapts to available disk space; inactive rebuilds are removed first |

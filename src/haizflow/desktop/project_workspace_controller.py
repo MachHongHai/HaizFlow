@@ -55,7 +55,16 @@ class ProjectWorkspaceController:
             )
         host._workflow_mode = video.mode
         host._target_language = str(video.target_language or "vi")
-        from haizflow.core.model_choices import project_recognition_choice
+        from haizflow.core.model_choices import models_for_device, project_recognition_choice
+
+        if not host._processing_queue.contains(video.video_id) and video.status != "processing":
+            compatible = models_for_device(str(getattr(host, "_settings_processing_device", "cpu")),
+                recognition=str(getattr(video, "speech_recognition_model", "small") or "small"),
+                translation=str(getattr(video, "translation_model", "auto") or "auto"),
+                voice=str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"))
+            changes = {key: value for key, value in compatible.items() if getattr(video, key, value) != value}
+            if changes:
+                video = video_store.update_video(video.video_id, **changes) or video
 
         host._speech_recognition_model = project_recognition_choice(
             str(getattr(video, "speech_recognition_model", "small") or "small"),

@@ -12,6 +12,7 @@ Hãy đọc hướng dẫn sử dụng nếu bạn cần cài đặt hoặc vậ
 | [Trạng thái trình sửa Thủ công](manual-editor-stabilization.vi.md) | xem những bảo đảm đã triển khai và các kiểm tra phần cứng còn thiếu. |
 | [An toàn dependency](dependency-security.vi.md) | rà dependency, model và các ngoại lệ bảo mật tạm thời. |
 | [Sẵn sàng phát hành](release-readiness.vi.md) | build, ký, kiểm thử và duyệt một bản có thể phân phối. |
+| [Phát hành Windows miễn phí, không ký](windows-release-setup.vi.md) | cài thử, build installer unsigned, chuẩn bị tài nguyên và phát hành GitHub Releases. |
 | [Rà soát ngày 04/10/2026](release-audit-2026-10-04.md) | xem kiểm tra đã qua và các điều kiện installer còn thiếu. |
 | [Rà soát giấy phép](licensing-review.md) | xem quyền hiện hành, dự thảo và các điều kiện pháp lý chưa giải quyết trước phát hành. |
 | [Lưu trữ và xuất video](project-storage-export.md) | phân biệt bản dựng do app quản lý và video lưu độc lập ngoài dự án. |

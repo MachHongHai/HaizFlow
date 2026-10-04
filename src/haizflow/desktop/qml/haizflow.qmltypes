@@ -1073,6 +1073,13 @@ Module {
             isReadonly: true
         }
         Property {
+            name: "isSwitchingProcessingDevice"
+            type: "bool"
+            read: "isSwitchingProcessingDevice"
+            notify: "processingChanged"
+            isReadonly: true
+        }
+        Property {
             name: "isSelectedVideoQueued"
             type: "bool"
             read: "isSelectedVideoQueued"

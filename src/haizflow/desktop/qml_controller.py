@@ -2175,6 +2175,10 @@ class HaizFlowController(QObject):
         return self._processing_queue.has_work or self._device_switching
 
     @Property(bool, notify=processingChanged)
+    def isSwitchingProcessingDevice(self):
+        return self._device_switching
+
+    @Property(bool, notify=processingChanged)
     def isSelectedVideoProcessing(self):
         return bool(self._selected_video_id and self._selected_video_id == self._processing_queue.active_video_id)
 
@@ -3588,19 +3592,48 @@ class HaizFlowController(QObject):
         HaizFlowController._project_commands_for(self).resume_batch()
 
     def _sync_project_model_defaults(self) -> None:
-        device = self._settings_processing_device
+        if getattr(self, "_device_switching", False):
+            return
+        device = getattr(self, "_active_processing_device", self._settings_processing_device)
         previous = getattr(self, "_draft_processing_device", device)
         self._draft_processing_device = device
-        if previous == device or self._selected_video_id:
+        if previous == device:
             return
-        from haizflow.core.model_choices import project_model_defaults
+        from haizflow.core.model_choices import models_for_device, project_model_defaults
 
-        for attribute, value in project_model_defaults(device).items():
+        for video_id, draft in list(getattr(self, "_manual_settings_drafts", {}).items()):
+            if not self._processing_queue.contains(video_id):
+                self._manual_settings_drafts[video_id] = draft.model_copy(update=models_for_device(device,
+                    recognition=draft.speech_recognition_model, translation=draft.translation_model,
+                    voice=draft.tts_provider))
+        if self._selected_video_id:
+            if self._processing_queue.contains(self._selected_video_id):
+                return
+            values = {"_" + key: value for key, value in models_for_device(device,
+                recognition=self._speech_recognition_model, translation=self._translation_model,
+                voice=self._tts_provider).items()}
+        else:
+            values = project_model_defaults(device)
+        changed = {}
+        for attribute, value in values.items():
             if getattr(self, attribute) != value:
                 setattr(self, attribute, value)
+                changed[attribute.removeprefix("_")] = value
                 {"_speech_recognition_model": self.speechRecognitionModelChanged,
                  "_translation_model": self.translationModelChanged,
                  "_tts_provider": self.ttsProviderChanged}[attribute].emit()
+        if changed:
+            preview = getattr(self, "_audio_preview", None)
+            if preview:
+                preview.invalidate()
+            if self._selected_video_id and getattr(self, "_settings_owner_video_id", None) == self._selected_video_id:
+                refreshed = video_store.update_video(self._selected_video_id, **changed)
+                if refreshed:
+                    self._selected_video_snapshot = refreshed
+                    self.selectedVideoChanged.emit()
+            self.ttsProviderOptionsChanged.emit()
+            self.ttsVoiceOptionsChanged.emit()
+        self.batchChanged.emit()
 
     def _batch_settings_values(self) -> dict[str, object]:
         return HaizFlowController._project_commands_for(self).batch_settings_values()

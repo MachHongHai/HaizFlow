@@ -577,6 +577,7 @@ ApplicationWindow {
                     : root.selectedTaskQueued ? "queued" : "ready"
             message: root.modelStatusFailed ? I18n.runtimeStatus(AppController.statusMessage)
                 : root.selectedTaskFailed ? AppController.selectedFailureMessage
+                : AppController.isSwitchingProcessingDevice ? qsTr("Đang chuyển CPU/GPU")
                 : AppController.isProcessing ? (AppController.isSelectedVideoProcessing
                     ? AppController.selectedStageLabel
                     : qsTr("Đang xử lý video khác"))

@@ -23,13 +23,15 @@
     },
     {
       "path": "src/haizflow/desktop/assets/branding",
-      "owner": "Not independently established",
-      "license": "Provenance review required"
+      "owner": "Redistribution rights attested by the project owner; not independently verified",
+      "license": "Owner-authorized redistribution in HaizFlow",
+      "permission_evidence": "legal/reviews/owner-assets-and-omnivoice-2026-10-04.md"
     },
     {
       "path": "src/haizflow/desktop/assets/voice_samples",
-      "owner": "Reference voices and model-output rights not established",
-      "license": "Commercial and redistribution review required"
+      "owner": "Redistribution rights attested by the project owner; not independently verified",
+      "license": "Owner-authorized preview redistribution; no blanket commercial model-use permission",
+      "permission_evidence": "legal/reviews/owner-assets-and-omnivoice-2026-10-04.md"
     },
     {
       "path": "runtime/bin",

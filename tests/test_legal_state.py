@@ -63,6 +63,16 @@ class LegalStateTests(unittest.TestCase):
         for filename in legal.DRAFTS:
             self.assertIn("NOT IN FORCE", (self.root / "legal" / filename).read_text(encoding="utf-8"))
 
+    def test_omnivoice_notice_retains_publisher_revision_and_full_nc_license(self):
+        notice = (ROOT / "licenses/OMNIVOICE-NOTICE.md").read_text(encoding="utf-8")
+        license_text = (ROOT / "licenses/CC-BY-NC-4.0.txt").read_text(encoding="utf-8")
+        self.assertIn("k2-fsa / the OmniVoice authors", notice)
+        self.assertIn("c5fdb5ccb189668d56333f77ba2629f4cd7535f4", notice)
+        self.assertIn("CC-BY-NC-4.0.txt", notice)
+        self.assertIn("Attribution-NonCommercial 4.0 International", license_text)
+        self.assertIn("Section 3 -- License Conditions.", license_text)
+        self.assertIn("Section 5 -- Disclaimer of Warranties and Limitation of Liability.", license_text)
+
     def test_draft_marker_removal_fails(self):
         (self.root / "legal" / legal.DRAFTS[0]).write_text("Active terms", encoding="utf-8")
         self.assertTrue(any("not clearly marked" in error for error in legal.verify(self.root)))

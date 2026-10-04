@@ -22,6 +22,18 @@ def project_model_defaults(app_device: str) -> dict[str, str]:
     }
 
 
+def models_for_device(app_device: str, *, recognition: str, translation: str, voice: str) -> dict[str, str]:
+    """Keep compatible project choices, replacing GPU-only choices in CPU mode."""
+    if app_device == "cpu":
+        if recognition in {"small-gpu", "large-v3-turbo"}:
+            recognition = "small-cpu"
+        if translation == "full":
+            translation = "q4"
+        if voice == "omnivoice-gpu":
+            voice = "omnivoice"
+    return {"speech_recognition_model": recognition, "translation_model": translation, "tts_provider": voice}
+
+
 def recognition_context(choice: str, app_device: str) -> dict[str, str]:
     choice = str(choice or "small").lower()
     device = "gpu" if app_device == "gpu" else "cpu"

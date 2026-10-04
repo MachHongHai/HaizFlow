@@ -6,11 +6,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from haizflow.core.resource_archive import parse_archive_parts  # noqa: E402
 DEFAULT_MANIFEST = ROOT / "runtime" / "resource-pack-manifest.json"
 ENGINE_PACKS = {
     "engine-cpu-py313",
@@ -59,6 +62,13 @@ def validate_manifest(path: Path, *, strict: bool) -> dict:
         digest = record.get("sha256")
         if not isinstance(url, str) or not isinstance(digest, str):
             raise RuntimeError(f"{pack_id}.url and sha256 must be strings.")
+        try:
+            parts = parse_archive_parts(record)
+        except ValueError as error:
+            raise RuntimeError(f"{pack_id}: {error}") from error
+        if parts:
+            ready += 1
+            continue
         if bool(url) != bool(digest):
             raise RuntimeError(f"{pack_id}.url and sha256 must either both be set or both be empty.")
         if not url:

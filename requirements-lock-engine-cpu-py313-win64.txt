@@ -1099,7 +1099,7 @@ lightning-utilities==0.15.3 \
     #   pytorch-lightning
     #   torchmetrics
 llama-cpp-python==0.3.34 \
-    --hash=sha256:d849d286d808284f1d3ec1bd6875572430d29d1f9574a010232caa4e9cef0e35
+    --hash=sha256:6526fff614e5ef7e439e6369e076a78073e45e1d791dbe1d5e5d42661f46ca1a
     # via -r requirements-engine-cpu.in
 mako==1.4.1 \
     --hash=sha256:a359d9a94a541213958742b2698d0a7757bb83551767bc468a74b9905aba9617 \

@@ -16,7 +16,7 @@ của Evil0ctal, Microsoft, Bangers, thư viện, codec hoặc model.
 
 [Rights inventory](../legal/rights-inventory.json) ghi source/scripts/installer/
 docs/tests thuộc phạm vi ứng dụng chủ sở hữu xác nhận. Vendor, icons, fonts,
-branding/voice provenance chưa xác minh và runtime binaries được loại khỏi
+branding/voice do chủ dự án xác nhận quyền phân phối (chưa xác minh độc lập) và runtime binaries được loại khỏi
 giấy phép ứng dụng. Mã nguồn công khai không có nghĩa mọi thành phần thuộc
 sở hữu độc quyền. Quyền được cấp độc lập và ngoại lệ bắt buộc vẫn được áp dụng.
 
@@ -57,9 +57,17 @@ menu Cài đặt hoặc dấu ? (Giới thiệu/Bản quyền). NOTICE giữ tê
 tác giả ứng dụng và các component notices hợp lệ riêng. Installer hiện tại
 vẫn đọc LICENSE.txt được copy từ root LICENSE, không trỏ đến draft terms.
 
-Delta updater mới là source-only; source tests/fake Core không xác nhận frozen
-build. Inno/release scripts không thay đổi trong lượt này; signing gates cũ
-giữ nguyên. Không build, commit, push hay publish.
+Ghi chú lịch sử: khi lập review ban đầu, updater mới là source-only. Đến
+2026-10-04 đã có nghiệm thu delta/health/rollback với Core frozen unsigned,
+installer DEVELOPMENT thực và chế độ build public `UnsignedRelease` giữ
+legal/resource/provenance gate. Xem [báo cáo build hiện tại](installer-build-report-2026-10-04.vi.md).
+Không suy ra binary đã được duyệt phát hành chỉ từ các test này.
+
+Chủ dự án đã xác nhận quyền phân phối branding/mẫu preview và chọn giữ
+checkpoint OmniVoice với giới hạn phi thương mại. Ghi nhận trực tiếp tại
+[hồ sơ xác nhận](../legal/reviews/owner-assets-and-omnivoice-2026-10-04.md).
+Xác nhận này không tự giải quyết hồ sơ FFmpeg/Qt hoặc cấp quyền thương mại
+cho checkpoint. Hướng dẫn người dùng đã công khai giới hạn này.
 
 ## Primary references / English summary
 

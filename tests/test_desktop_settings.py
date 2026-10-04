@@ -14,6 +14,33 @@ from haizflow.services import desktop_settings
 
 
 class DesktopSettingsTests(unittest.TestCase):
+    def test_clean_install_defaults_to_vietnamese(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "desktop-settings.json"
+            with patch.object(desktop_settings, "SETTINGS_PATH", path):
+                self.assertEqual(desktop_settings.load_settings()["language"], "vi")
+                self.assertEqual(desktop_settings.save_settings({"keep_models_warm": False})["language"], "vi")
+
+    def test_existing_english_preference_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "desktop-settings.json"
+            path.write_text(json.dumps({"language": "en"}), encoding="utf-8")
+            with patch.object(desktop_settings, "SETTINGS_PATH", path):
+                self.assertEqual(desktop_settings.load_settings()["language"], "en")
+                self.assertEqual(desktop_settings.save_settings({"keep_models_warm": False})["language"], "en")
+
+    def test_invalid_or_corrupt_language_defaults_to_vietnamese(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "desktop-settings.json"
+            with patch.object(desktop_settings, "SETTINGS_PATH", path):
+                path.write_text("{broken", encoding="utf-8")
+                self.assertEqual(desktop_settings.load_settings()["language"], "vi")
+                for value in (None, "invalid", ""):
+                    with self.subTest(value=value):
+                        path.write_text(json.dumps({"language": value}), encoding="utf-8")
+                        self.assertEqual(desktop_settings.load_settings()["language"], "vi")
+                        self.assertEqual(desktop_settings.save_settings({"language": value})["language"], "vi")
+
     def test_translation_model_save_preserves_explicit_device_choice(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "desktop-settings.json"

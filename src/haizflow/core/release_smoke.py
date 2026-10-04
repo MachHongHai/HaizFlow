@@ -117,12 +117,15 @@ def run_release_smoke(
     except Exception as exc:
         failures.append(f"Qt runtime import failed: {type(exc).__name__}: {exc}")
 
-    bundled_model_files = (
-        list((bundle / "models").rglob("*")) if (bundle / "models").exists() else []
-    )
+    try:
+        from haizflow.core.bundled_models import verify_core_models
+        core_models_valid = verify_core_models(bundle / "models", required=True)
+    except Exception as exc:
+        core_models_valid = False
+        failures.append(f"Core model verification failed: {type(exc).__name__}: {exc}")
     _check(
-        not any(path.is_file() for path in bundled_model_files),
-        "Model payload excluded from frozen artifact",
+        core_models_valid,
+        "Only pinned integrated speaker model bundled; optional models excluded",
         failures,
         details,
     )

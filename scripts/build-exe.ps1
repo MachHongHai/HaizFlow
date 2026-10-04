@@ -2,9 +2,11 @@ param(
   [switch]$SkipFrozenSmokeTest,
   [switch]$AllowDirtyBuild,
   [switch]$AllowUnsigned,
+  [switch]$UnsignedRelease,
   [switch]$CoreLayout,
   [string]$PythonExecutable = "",
   [string]$SignCertificatePath = "",
+  [string]$SignCertificateThumbprint = "",
   [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
@@ -43,36 +45,23 @@ function Invoke-PythonChecked {
 
 function Sign-ReleaseExecutable {
   param([string]$Executable)
-  if (!$SignCertificatePath) {
-    return
-  }
-  if (!(Test-Path -LiteralPath $SignCertificatePath -PathType Leaf)) {
-    throw "Authenticode certificate was not found: $SignCertificatePath"
-  }
-  if (!$env:HAIZFLOW_SIGN_CERT_PASSWORD) {
-    throw "Set HAIZFLOW_SIGN_CERT_PASSWORD before signing the release executable."
-  }
-  $SignTool = Get-Command signtool.exe -ErrorAction SilentlyContinue
-  if (!$SignTool) {
-    throw "signtool.exe is required for Authenticode signing. Install the Windows SDK."
-  }
-  & $SignTool.Source sign /fd SHA256 /f $SignCertificatePath /p $env:HAIZFLOW_SIGN_CERT_PASSWORD /tr $TimestampServer /td SHA256 $Executable
-  if ($LASTEXITCODE -ne 0) {
-    throw "Authenticode signing failed with exit code $LASTEXITCODE."
-  }
-  & $SignTool.Source verify /pa /v $Executable
-  if ($LASTEXITCODE -ne 0) {
-    throw "Authenticode verification failed with exit code $LASTEXITCODE."
-  }
+  if (!$SignCertificatePath -and !$SignCertificateThumbprint) { return }
+  & (Join-Path $PSScriptRoot "sign-windows.ps1") -FilePath $Executable `
+    -CertificatePath $SignCertificatePath -CertificateThumbprint $SignCertificateThumbprint -TimestampServer $TimestampServer
 }
 
 if (!(Test-Path $Python)) {
   throw "Project environment is missing. Run scripts\install-desktop-env.ps1 first."
 }
-if (!$SignCertificatePath -and !$AllowUnsigned) {
-  throw "A public release requires Authenticode signing. Supply -SignCertificatePath, or use -AllowUnsigned only for an internal engineering build."
+if ($UnsignedRelease -and ($AllowUnsigned -or $AllowDirtyBuild -or $SignCertificatePath -or $SignCertificateThumbprint)) {
+  throw "UnsignedRelease requires clean public provenance, no signing identity, and no engineering flags."
 }
-if (!$SignCertificatePath) {
+if (!$SignCertificatePath -and !$SignCertificateThumbprint -and !$AllowUnsigned -and !$UnsignedRelease) {
+  throw "Choose a signing identity, -UnsignedRelease for public unsigned packaging, or -AllowUnsigned for internal tests."
+}
+if ($UnsignedRelease) {
+  Write-Warning "Public unsigned build: Windows may show Unknown publisher or block execution. Legal, resource and clean-source gates remain mandatory."
+} elseif (!$SignCertificatePath -and !$SignCertificateThumbprint) {
   Write-Warning "Building an unsigned engineering artifact. Do not distribute it as a public release."
 }
 
@@ -80,7 +69,7 @@ Push-Location -LiteralPath $Root
 try {
 
 $LegalArguments = @((Join-Path $PSScriptRoot "verify-legal-state.py"))
-if ($SignCertificatePath -and !$AllowDirtyBuild) { $LegalArguments += "--public-release" }
+if ($UnsignedRelease -or (($SignCertificatePath -or $SignCertificateThumbprint) -and !$AllowDirtyBuild)) { $LegalArguments += "--public-release" }
 Invoke-PythonChecked -Arguments $LegalArguments -Label "Legal document and licensing review"
 
 if (![System.IO.Path]::GetDirectoryName($ReleaseTemp).Equals($ReleaseTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -117,7 +106,7 @@ $ResourceManifestArguments = @(
   (Join-Path $PSScriptRoot "verify-resource-pack-manifest.py"),
   "--manifest", $ResourcePackManifestPath
 )
-if ($SignCertificatePath -and !$AllowDirtyBuild) {
+if ($UnsignedRelease -or (($SignCertificatePath -or $SignCertificateThumbprint) -and !$AllowDirtyBuild)) {
   $ResourceManifestArguments += "--strict"
 }
 Invoke-PythonChecked -Arguments $ResourceManifestArguments -Label "Resource-pack manifest verification"
@@ -153,6 +142,16 @@ foreach ($RequiredFile in (
 if (Test-Path -LiteralPath $ArtifactPath) {
   if ([System.IO.Path]::GetDirectoryName($ArtifactPath) -ne $DistRoot) {
     throw "Refusing to remove an artifact outside the dist directory: $ArtifactPath"
+  }
+  if ((Test-Path -LiteralPath (Join-Path $ArtifactPath "runtime")) -or
+      (Test-Path -LiteralPath (Join-Path $ArtifactPath "update-state"))) {
+    throw "This dist artifact has been launched and contains mutable data. Back it up before replacing it; the builder will not delete user data."
+  }
+  if ((Get-Item -LiteralPath $ArtifactPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+    throw "Refusing to remove a linked artifact directory: $ArtifactPath"
+  }
+  if (Get-ChildItem -LiteralPath $ArtifactPath -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }) {
+    throw "Refusing to remove an artifact containing reparse points: $ArtifactPath"
   }
   Remove-Item -LiteralPath $ArtifactPath -Recurse -Force
 }
@@ -269,7 +268,8 @@ $ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
 $ArgsList += @("--collect-all", "yt_dlp")
 $BundledModelsPath = Join-Path $Root "build\bundled-models\speaker-identification"
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "prepare-bundled-speaker-model.py"), "--download") -Label "Bundled speaker model"
-$ArgsList += @("--add-data", "$BundledModelsPath;models\speaker-identification")
+  $BundledSpeakerFile = Join-Path $BundledModelsPath "wespeaker_en_voxceleb_resnet34.onnx"
+  $ArgsList += @("--add-data", "$BundledSpeakerFile;models\speaker-identification")
 $ArgsList += @("--collect-binaries", "onnxruntime")
 $ArgsList += @("--hidden-import", "onnxruntime", "--hidden-import", "haizflow.engine.main")
 $ArgsList += @("--hidden-import", "haizflow.pipeline.speaker_identity", "--hidden-import", "haizflow.pipeline.speaker_runtime")
@@ -331,7 +331,7 @@ foreach ($Module in $UnusedQmlModules) {
     Remove-Item -LiteralPath $ModulePath -Recurse -Force
   }
 }
-$UnusedNestedQmlModules = @("QtQuick\Pdf")
+$UnusedNestedQmlModules = @("QtQuick\Pdf", "QtQuick\Timeline", "QtQuick\VirtualKeyboard")
 foreach ($RelativePath in $UnusedNestedQmlModules) {
   $ModulePath = [System.IO.Path]::GetFullPath((Join-Path $FrozenQmlRoot $RelativePath))
   if (!$ModulePath.StartsWith("$FrozenQmlRoot\", [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -350,6 +350,8 @@ $UnusedQtLibraryPrefixes = @(
   "Qt6Pdf",
   "Qt6Positioning",
   "Qt6Quick3D",
+  "Qt6QuickTimeline",
+  "Qt6VirtualKeyboard",
   "Qt6WebEngine"
 )
 Get-ChildItem -LiteralPath $FrozenPySideRoot -File | Where-Object {
@@ -359,6 +361,15 @@ Get-ChildItem -LiteralPath $FrozenPySideRoot -File | Where-Object {
   }).Count -gt 0
 } | ForEach-Object {
   Remove-Item -LiteralPath $_.FullName -Force
+}
+# This input-context plugin belongs to the unused GPL-only Virtual Keyboard
+# module, not Windows' native IME. Keep its removal scoped to one exact file.
+$UnusedInputPlugin = [System.IO.Path]::GetFullPath((Join-Path $FrozenPySideRoot "plugins\platforminputcontexts\qtvirtualkeyboardplugin.dll"))
+if (!$UnusedInputPlugin.StartsWith("$FrozenPySideRoot\", [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Refusing to prune an unsafe Qt input-context plugin."
+}
+if (Test-Path -LiteralPath $UnusedInputPlugin -PathType Leaf) {
+  Remove-Item -LiteralPath $UnusedInputPlugin -Force
 }
 
 $ForbiddenReleasePatterns = @(

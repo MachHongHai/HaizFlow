@@ -142,6 +142,7 @@ class ReleaseToolingTests(unittest.TestCase):
             installer,
         )
         self.assertIn("DefaultDirName={localappdata}\\Programs\\{#AppName}", installer)
+        self.assertIn("engines/models/media not included", installer)
         self.assertIn("UsePreviousAppDir=yes", installer)
         self.assertIn("DisableDirPage=auto", installer)
         self.assertNotIn("ExtractFileDrive(ExpandConstant('{srcexe}'))", installer)
@@ -158,10 +159,13 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("RecommendedBytes := {#RecommendedFreeBytes}", installer)
         self.assertNotIn("CpuModelBytes", installer)
         self.assertNotIn("GpuModelBytes", installer)
-        self.assertIn("AI engines and models are optional", installer)
+        self.assertIn("Core files:", installer)
         self.assertIn("[InstallDelete]", installer)
         self.assertIn('Name: "{app}\\_internal"', installer)
-        self.assertNotIn("[UninstallDelete]", installer)
+        uninstall_delete = installer.split("[UninstallDelete]", 1)[1].split("[Run]", 1)[0]
+        self.assertNotIn("runtime", uninstall_delete)
+        self.assertNotIn("filesandordirs", uninstall_delete)
+        self.assertIn('Type: dirifempty; Name: "{app}\\versions"', uninstall_delete)
         self.assertIn('Name: "{app}\\runtime"; Flags: uninsneveruninstall', installer)
         self.assertIn("DeleteRuntimeOnUninstall", installer)
         self.assertIn("UninstallSilent", installer)
@@ -199,20 +203,42 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("DirExists(AddBackslash(Path) + '_internal');", installer)
         self.assertNotIn("DirExists(AddBackslash(Path) + 'runtime')", installer)
 
-    def test_public_builds_require_signing_and_installer_is_smoke_tested(self):
+    def test_public_unsigned_build_is_explicit_and_installer_is_smoke_tested(self):
         executable_build = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
         installer_build = (ROOT / "scripts" / "build-installer.ps1").read_text(encoding="utf-8")
         installer_smoke = (ROOT / "scripts" / "test-installer.ps1").read_text(encoding="utf-8")
 
         self.assertIn("[switch]$AllowUnsigned", executable_build)
         self.assertIn("[switch]$AllowUnsigned", installer_build)
-        self.assertIn("A public release requires Authenticode signing", executable_build)
-        self.assertIn("A public release installer requires Authenticode signing", installer_build)
+        self.assertIn("[switch]$UnsignedRelease", executable_build)
+        self.assertIn("[switch]$UnsignedRelease", installer_build)
+        self.assertIn("$UnsignedRelease -and ($AllowUnsigned -or $AllowDirtyBuild", executable_build)
+        self.assertIn("$UnsignedRelease -or (($SignCertificatePath -or $SignCertificateThumbprint)", executable_build)
+        self.assertIn('if (!$EngineeringBuild) { $LegalArguments += "--public-release" }', installer_build)
+        self.assertIn("$UnsignedRelease -and ($AllowUnsigned -or $EngineeringBuild", installer_build)
+        for name in ("build-resource-engine.ps1", "build-bootstrap.ps1"):
+            script = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+            self.assertIn("[switch]$UnsignedRelease", script)
+            self.assertIn("$UnsignedRelease -and ($AllowUnsigned", script)
+            self.assertIn("clean Git checkout", script)
+            self.assertIn("--public-release", script)
+        self.assertIn('"RESOURCE-PACKS.json") --strict', installer_build)
         self.assertIn("-UNSIGNED-Setup", installer_build)
         self.assertIn('Join-Path $PSScriptRoot "test-installer.ps1"', installer_build)
         self.assertIn('"/VERYSILENT"', installer_smoke)
         self.assertIn("-InstalledLayout", installer_smoke)
-        self.assertIn("Silent uninstall must preserve runtime data", installer_smoke)
+        self.assertIn("Assert-UserData", installer_smoke)
+        self.assertIn("Get-FileHash", installer_smoke)
+        self.assertIn('"/NOICONS"', installer_smoke)
+        self.assertIn("AllowRegisteredInstall", installer_smoke)
+        signing = (ROOT / "scripts/sign-windows.ps1").read_text(encoding="utf-8")
+        installer = (ROOT / "installer/HaizFlow.iss").read_text(encoding="utf-8")
+        self.assertIn("CertificateThumbprint", signing)
+        self.assertIn('"/fd", "SHA256"', signing)
+        self.assertIn("TimeStamperCertificate", signing)
+        self.assertIn("SignedUninstaller=yes", installer)
+        self.assertIn("--check-install", installer)
+        self.assertIn("AncestorContainsReparsePoint", installer)
 
     def test_release_build_temporary_files_stay_below_project_build_directory(self):
         executable_build = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
@@ -227,6 +253,8 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn("Frozen native dependency collision detected", executable_build)
         self.assertIn('Label "Final release disk requirements"', executable_build)
         self.assertIn('Label "Final release manifest generation"', executable_build)
+        self.assertIn("the builder will not delete user data", executable_build)
+        self.assertIn("Refusing to remove an artifact containing reparse points", executable_build)
         self.assertIn('Join-Path $Root "build\\installer-temp"', installer_build)
         self.assertIn("$env:TEMP = $InstallerTemp", installer_build)
 
@@ -242,6 +270,22 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertNotIn("--index-strategy unsafe-best-match", install_script)
         self.assertIn("--index-strategy unsafe-best-match", engine_lock_script)
         self.assertIn("--write-manifest --no-installed-check", lock_script)
+        engine_build = (ROOT / "scripts/build-resource-engine.ps1").read_text(encoding="utf-8")
+        self.assertIn('"--extra-index-url", "https://download.pytorch.org/whl/cpu"', engine_build)
+        self.assertIn('"--extra-index-url", "https://download.pytorch.org/whl/cu128"', engine_build)
+        self.assertIn("--require-hashes --index-strategy unsafe-best-match @EngineIndexArguments $Lock", engine_build)
+        self.assertIn('"--additional-hooks-dir"', engine_build)
+        cpu_lock = (ROOT / "requirements-lock-engine-cpu-py313-win64.txt").read_text(encoding="utf-8")
+        llama_hash = "6526fff614e5ef7e439e6369e076a78073e45e1d791dbe1d5e5d42661f46ca1a"
+        self.assertIn(llama_hash, engine_build)
+        self.assertIn(llama_hash, cpu_lock)
+        self.assertIn("Get-FileHash -LiteralPath $LlamaWheel -Algorithm SHA256", engine_build)
+        self.assertIn('$env:HAIZFLOW_HOME = $SmokeRoot', engine_build)
+        hook = (ROOT / "scripts/hooks/hook-rapidocr.py").read_text(encoding="utf-8")
+        self.assertIn('includes=["**/*.yaml", "**/*.yml", "**/*.txt"]', hook)
+        self.assertNotIn("*.onnx", hook)
+        llama_hook = (ROOT / "scripts/hooks/hook-llama_cpp.py").read_text(encoding="utf-8")
+        self.assertIn('collect_dynamic_libs("llama_cpp")', llama_hook)
 
     def test_release_build_enforces_dependency_vulnerability_audit(self):
         build_script = (ROOT / "scripts" / "build-exe.ps1").read_text(encoding="utf-8")
@@ -262,6 +306,11 @@ class ReleaseToolingTests(unittest.TestCase):
         self.assertIn('"pygments"', build_script)
         self.assertIn('"Qt6WebEngine"', build_script)
         self.assertIn('"Qt6Quick3D"', build_script)
+        self.assertIn('"Qt6QuickTimeline"', build_script)
+        self.assertIn('"Qt6VirtualKeyboard"', build_script)
+        self.assertIn('"QtQuick\\Timeline"', build_script)
+        self.assertIn('"QtQuick\\VirtualKeyboard"', build_script)
+        self.assertIn('plugins\\platforminputcontexts\\qtvirtualkeyboardplugin.dll', build_script)
         self.assertIn("Refusing to prune an unsafe QML module path", build_script)
         self.assertNotIn('--add-data", "$ModelPath;models', build_script)
         self.assertNotIn("--demucs-model", build_script)
@@ -321,19 +370,19 @@ class ReleaseToolingTests(unittest.TestCase):
                 finalize_release.verify_installer_eligibility(artifact)
                 model_root.mkdir(parents=True)
                 (model_root / "accidental-model.bin").write_bytes(b"model")
-                # Re-finalise so checksums are valid; eligibility must reject
-                # even an internally consistent artifact that embeds a model.
-                finalize_release.finalize(artifact)
-                with self.assertRaisesRegex(RuntimeError, "must not be bundled"):
-                    finalize_release.verify_installer_eligibility(artifact)
+                # Finalization itself now rejects unknown model payloads.
+                with self.assertRaisesRegex(RuntimeError, "Unexpected model payload"):
+                    finalize_release.finalize(artifact)
                 (model_root / "accidental-model.bin").unlink()
                 model_root.rmdir()
-                runtime_root = artifact / "runtime"
-                runtime_root.mkdir()
-                finalize_release.finalize(artifact)
-                with self.assertRaisesRegex(RuntimeError, "root runtime"):
-                    finalize_release.verify_installer_eligibility(artifact)
-                runtime_root.rmdir()
+                for name in ("runtime", "update-state"):
+                    with self.subTest(directory=name):
+                        mutable_root = artifact / name
+                        mutable_root.mkdir()
+                        finalize_release.finalize(artifact)
+                        with self.assertRaisesRegex(RuntimeError, f"root {name}"):
+                            finalize_release.verify_installer_eligibility(artifact)
+                        mutable_root.rmdir()
 
             def dirty_git(*arguments):
                 if arguments == ("status", "--porcelain"):

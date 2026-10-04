@@ -78,6 +78,7 @@ class ResourcePackManifestTests(unittest.TestCase):
                 "omnivoice_worker": ["engine.exe", "--omnivoice-worker"],
                 "omnivoice_server": ["engine.exe", "--omnivoice-server"],
                 "demucs": ["engine.exe", "--demucs-separate"],
+                "demucs_task": ["engine.exe", "--demucs-rpc"],
                 "transcribe": ["engine.exe", "--transcribe"],
                 "runtime_probe": ["engine.exe", "--runtime-probe"],
             }
@@ -116,6 +117,15 @@ class ResourcePackManifestTests(unittest.TestCase):
                 bundle.writestr("../engine.json", "{}")
             with self.assertRaisesRegex(RuntimeError, "Unsafe archive member"):
                 finalize_pack._read_engine_archive(archive, "engine-cpu-py313", "1")
+
+    def test_finalize_rejects_mutable_data_even_in_empty_directories(self):
+        for member in ("runtime/", "runtime/cache/", "runtime/data/config.json", "update-state/"):
+            with self.subTest(member=member), tempfile.TemporaryDirectory() as temp_dir:
+                archive = Path(temp_dir) / "mutable.zip"
+                with zipfile.ZipFile(archive, "w") as bundle:
+                    bundle.writestr(member, b"" if member.endswith("/") else b"{}")
+                with self.assertRaisesRegex(RuntimeError, "Mutable runtime"):
+                    finalize_pack._read_engine_archive(archive, "engine-cpu-py313", "1")
 
 
 class ResourcePackManagerTests(unittest.TestCase):

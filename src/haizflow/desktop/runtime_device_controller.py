@@ -418,6 +418,9 @@ class RuntimeDeviceController:
                 host.statusMessageChanged.emit()
             finally:
                 host._device_switching = False
+                # Synchronize project choices only after the probe succeeds or
+                # the old runtime has been restored, never on the tentative mode.
+                host.settingsChanged.emit()
                 host.processingChanged.emit()
 
         threading.Thread(target=switch_models, name="processing-device-switch", daemon=True).start()

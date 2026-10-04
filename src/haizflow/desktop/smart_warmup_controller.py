@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from haizflow.core.hardware import available_memory_bytes, runtime_profile
-from haizflow.core.model_choices import project_model_defaults, project_recognition_choice, recognition_context
+from haizflow.core.model_choices import models_for_device, project_model_defaults, project_recognition_choice, recognition_context
 from haizflow.services.external_engine import close_shared_external_engine_pool, shared_external_engine_pool
 
 
@@ -88,6 +88,10 @@ class SmartWarmupController:
             "provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
             "translation_model": str(getattr(video, "translation_model", "auto") or "auto"),
         }
+        compatible = models_for_device(context["device"], recognition=context["model"],
+                                       translation=context["translation_model"], voice=context["provider"])
+        context.update(model=compatible["speech_recognition_model"],
+                       translation_model=compatible["translation_model"], provider=compatible["tts_provider"])
         last_tool = str(getattr(video, "manual_target_tool", "") or "")
         predicted = {"voice": "voice", "source": "separation", "image": "ocr"}.get(last_tool, "recognition")
         if not last_tool and (getattr(video, "files", {}) or {}).get("transcript_json") and (

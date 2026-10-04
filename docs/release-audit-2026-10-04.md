@@ -1,5 +1,14 @@
 # Rà soát trước đóng gói — 04/10/2026
 
+Ghi chú: tài liệu này giữ kết quả của đợt rà source trước đóng gói.
+Đợt build installer sau đó được ghi riêng trong
+[báo cáo build](installer-build-report-2026-10-04.vi.md) và
+[hướng dẫn phát hành miễn phí, không ký](windows-release-setup.vi.md).
+
+Chính sách mới sau đợt rà soát này: chủ dự án chọn public unsigned; không cần mua
+chứng chỉ. Các ghi chú signing ở phần lịch sử dưới đây không còn là điều kiện
+bắt buộc; legal/resource/source/Windows acceptance vẫn giữ nguyên.
+
 ## Kết luận
 
 Môi trường phát triển Core đã qua kiểm tra. **Chưa đủ cơ sở phê duyệt bản
@@ -240,10 +249,10 @@ phát sinh request bằng API key của người dùng để kiểm tra.
 1. **Artifact engine:** dựng và kiểm thử CPU/CUDA/vision, sau đó điền URL bất biến,
    dung lượng thực và SHA-256. Không lấy hash từ gói giả hoặc tự đoán URL.
    `verify-resource-pack-manifest.py --strict` hiện chặn vì metadata trống.
-2. **Delta và installer:** source delta đã có test, nhưng chưa đóng gói
-   Launcher/Updater/Core hoặc tích hợp vào installer. Script installer hiện dùng
-   layout phẳng và các signing gates cũ; không được coi là quy trình phát hành
-   delta không Authenticode. Xem [trạng thái cập nhật](updates.md).
+2. **Delta và installer:** đã đóng gói Launcher/Updater/Core theo layout versioned
+   và nghiệm thu installer DEVELOPMENT thực. Delta local dùng binary unsigned
+   đã có kiểm inventory/health/rollback; download/update qua release GitHub
+   thật vẫn chưa được nghiệm thu. Xem [báo cáo build](installer-build-report-2026-10-04.vi.md).
 3. **Tuân thủ:** `verify-legal-state.py --public-release` còn chặn các mục
    `owned-code-and-contributor-scope`,
    `omnivoice-noncommercial-checkpoint-and-preview-assets`,
@@ -262,5 +271,6 @@ nạp được trong môi trường hiện tại. Đường VAD của HaizFlow t
 nạp trong bộ nhớ, không dựa vào decoder đó. Vẫn cần kiểm chứng luồng frozen với
 media thực; không sửa cảnh báo bằng cách đổi FFmpeg/model hàng loạt.
 
-Thay đổi source đang để người dùng duyệt. Release provenance cần được xác lập
-ở lần đóng gói chính thức; không tạo commit thay người dùng để vượt kiểm tra.
+Chủ dự án đã yêu cầu commit/push phần hoàn thiện. Commit source không tự biến
+artifact DEVELOPMENT từ working tree thành binary public; release provenance
+cần được xác lập bằng build sạch đúng commit và vượt các gate còn lại.

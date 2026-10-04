@@ -12,7 +12,7 @@ DEFAULT_SETTINGS = {
     "default_project_directory": "",
     "last_export_directory": "",
     "theme": "graphite",
-    "language": "en",
+    "language": "vi",
     "processing_device": "cpu",
     "processing_device_origin": "detected",
     "translation_model": "auto",
@@ -67,6 +67,9 @@ def load_settings() -> dict:
                 migrate_legacy_settings = True
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
+    if settings.get("language") not in {"en", "vi"}:
+        settings["language"] = DEFAULT_SETTINGS["language"]
+        migrate_legacy_settings = True
     if settings.get("theme") != "graphite":
         settings["theme"] = "graphite"
         migrate_legacy_settings = True
@@ -115,7 +118,7 @@ def save_settings(settings: dict) -> dict:
         # Always normalize legacy dark/light preferences so old installations
         # cannot silently reintroduce a second appearance.
         "theme": "graphite",
-        "language": merged.get("language") if merged.get("language") in {"en", "vi"} else "en",
+        "language": merged.get("language") if merged.get("language") in {"en", "vi"} else DEFAULT_SETTINGS["language"],
         "processing_device": (
             merged.get("processing_device")
             if merged.get("processing_device") in {"cpu", "gpu"}

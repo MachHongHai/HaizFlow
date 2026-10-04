@@ -14,19 +14,16 @@ from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, MODELS_DIR, TMP_DIR
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.utils.ffmpeg import _binary
 
-MODEL_FILE = "wespeaker_en_voxceleb_resnet34.onnx"
-MODEL_SIZE = 26_534_127
-MODEL_SHA256 = "9fea6516d7ad6bf0a76c7689f5a49b65d330fad6dde96c91bb4435ffbfe056a1"
-MODEL_REVISION = "ff1ac5bca8ef11e90662b879aa923979e0bd277b"
-MODEL_URL = (
-    "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34/resolve/" + MODEL_REVISION + "/voxceleb_resnet34.onnx"
-)
+from haizflow.core.bundled_models import MODEL_FILE, MODEL_SIZE, MODEL_SHA256, MODEL_REVISION, MODEL_URL as MODEL_URL
 IDENTITY_VERSION = "wespeaker-stable-target-voices-v2-prototypes"
 
 
 def verify_model(root: Path) -> Path:
     from haizflow.core.model_integrity import _verify
 
+    if root.resolve() == bundled_model_root().resolve():
+        from haizflow.core.bundled_models import verify_speaker
+        return verify_speaker(root)
     _verify(
         root, kind="speaker identification", revision=MODEL_REVISION, expected={MODEL_FILE: (MODEL_SIZE, MODEL_SHA256)}
     )

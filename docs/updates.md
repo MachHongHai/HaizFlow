@@ -1,14 +1,19 @@
-# Cập nhật Core vi sai — nền tảng source
+# Cập nhật Core vi sai
 
 ## Trạng thái
 
 Đã có file-level delta/full builder, manifest validation, downloader GitHub,
 staging, journal/pointer, independent launcher/updater Python entrypoints,
 health acknowledgment sau khi QML sẵn sàng, rollback và tích hợp controller/UI.
-Chỉ kiểm thử với source, thư mục tạm và Core giả. **Chưa đóng gói hay kiểm thử
-Launcher/Updater/Core frozen; chưa tích hợp installer; không production-ready.**
+Đã đóng gói Launcher/Updater/Core frozen và tích hợp installer engineering.
+Kiểm thử delta cục bộ bằng Core/launcher thật xác nhận dựng inventory đúng,
+health và rollback khi Core mới không khởi động; dữ liệu fixture được giữ nguyên.
+Phiên bản trong kiểm thử là giả lập, chưa thử download/update qua release public.
+**Chưa production-ready:** còn tài nguyên AI, review giấy phép và Windows
+acceptance. Chủ dự án đã chọn phát hành unsigned, không cần chứng chỉ. Xem [phát hành miễn phí](windows-release-setup.vi.md) và
+[báo cáo installer](installer-build-report-2026-10-04.vi.md).
 
-Legacy flat install tiếp tục cơ chế bộ cài đã có. Không xóa signing gates cũ.
+Legacy flat install tiếp tục cơ chế bộ cài đã có. Chế độ public unsigned phải chọn rõ `UnsignedRelease`; không bỏ gate giấy phép/tài nguyên/provenance.
 Chỉ installation được provision rõ bằng update-layout.json dùng delta; không
 tự chuyển một bản cài hoặc dữ liệu người dùng sang layout mới.
 
@@ -16,8 +21,8 @@ tự chuyển một bản cài hoặc dữ liệu người dùng sang layout m�
 
 ```text
 HaizFlow/
-  HaizFlow.exe                   launcher sẽ được đóng gói sau
-  updater/HaizFlowUpdater.exe     updater độc lập sẽ được đóng gói sau
+  HaizFlow.exe                   launcher độc lập
+  updater/HaizFlowUpdater.exe     updater độc lập
   update-layout.json             marker schema/product/layout cố định
   versions/
     0.1.0/HaizFlowCore.exe

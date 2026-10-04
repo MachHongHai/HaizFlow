@@ -24,6 +24,15 @@ def _subtitle_style_items(video) -> tuple[tuple[str, object], ...]:
     return tuple(values.items()) + (("manual", bool(getattr(video, "subtitle_layout_override", False))),)
 
 
+def _batch_values_for_device(values: dict, device: str) -> dict:
+    from haizflow.core.model_choices import models_for_device
+
+    compatible = models_for_device(device, recognition=values["speechRecognitionModel"],
+                                   translation=values["translationModel"], voice=values["ttsProvider"])
+    return {**values, "speechRecognitionModel": compatible["speech_recognition_model"],
+            "translationModel": compatible["translation_model"], "ttsProvider": compatible["tts_provider"]}
+
+
 def _validated_review_segments(payload: str) -> list[dict]:
     segments = json.loads(payload)
     if not isinstance(segments, list) or not segments:
@@ -70,7 +79,21 @@ class ProjectCommandsController:
 
     @staticmethod
     def _resources_ready_for_videos(host, videos) -> bool:
-        from haizflow.core.model_choices import gpu_choice_blocked
+        from haizflow.core.model_choices import gpu_choice_blocked, models_for_device
+
+        if getattr(host, "_device_switching", False):
+            host.appAlertRequested.emit("Đang chuyển CPU/GPU", "Chờ chuyển bộ xử lý hoàn tất trước khi xử lý video.", "info")
+            return False
+        videos = list(videos)
+        for index, video in enumerate(videos):
+            if video and getattr(video, "status", "") != "processing":
+                compatible = models_for_device(str(getattr(host, "_settings_processing_device", "cpu")),
+                    recognition=getattr(video, "speech_recognition_model", "small"),
+                    translation=getattr(video, "translation_model", "auto"),
+                    voice=getattr(video, "tts_provider", "omnivoice"))
+                changes = {key: value for key, value in compatible.items() if getattr(video, key, value) != value}
+                if changes and not host._processing_queue.contains(video.video_id):
+                    videos[index] = video_store.update_video(video.video_id, **changes) or video
 
         for video in videos:
             if gpu_choice_blocked(str(getattr(host, "_settings_processing_device", "cpu")),
@@ -226,7 +249,8 @@ class ProjectCommandsController:
             if config:
                 initial.update({key: getattr(config, field) for key, field in batch_settings.FIELDS.items()})
                 initial.update({key: "" for key in batch_settings.ASSETS})
-        return batch_settings.stable_values(str(getattr(host, "_selected_project_key", "") or ""), initial, videos)
+        values = batch_settings.stable_values(str(getattr(host, "_selected_project_key", "") or ""), initial, videos)
+        return _batch_values_for_device(values, str(getattr(host, "_settings_processing_device", "cpu")))
 
     def _legacy_batch_settings_values(self) -> dict[str, object]:
         host = self._host
@@ -351,7 +375,8 @@ class ProjectCommandsController:
         result = []
         for key in host._batch_video_ids:
             video = video_store.get_video(key)
-            if video and (changed := batch_settings.differences(batch_settings.values_for(video), expected)):
+            if video and (changed := batch_settings.differences(_batch_values_for_device(
+                    batch_settings.values_for(video), str(getattr(host, "_settings_processing_device", "cpu"))), expected)):
                 result.append({"videoId": key, "fileName": video.original_filename, "differences": changed})
         return result
 
@@ -443,7 +468,8 @@ class ProjectCommandsController:
         old_values = self.batch_settings_values()
         normalized = {**old_values, **values}
         selected = [video for video in videos if replace_overrides or not batch_settings.differences(
-            batch_settings.values_for(video), old_values)]
+            _batch_values_for_device(batch_settings.values_for(video),
+                                     str(getattr(host, "_settings_processing_device", "cpu"))), old_values)]
         before = {}
         try:
             config = batch_settings.config_for(normalized)

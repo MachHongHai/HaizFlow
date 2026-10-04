@@ -40,6 +40,7 @@ from haizflow.core.paths import (
     resource_storage_pointer_path,
 )
 from haizflow.core.storage_policy import MINIMUM_OPERATIONAL_FREE_BYTES
+from haizflow.core.resource_archive import ArchivePart, archive_matches, join_archive_parts, parse_archive_parts
 from haizflow.services.model_bootstrap import (
     ModelAsset,
     ModelBootstrapCancelled,
@@ -106,6 +107,7 @@ class ResourcePackDefinition:
     engine_modules: tuple[str, ...] = ()
     archive_url: str = ""
     archive_sha256: str = ""
+    archive_parts: tuple[ArchivePart, ...] = ()
     protocol_version: int = PACK_PROTOCOL_VERSION
 
 
@@ -122,7 +124,7 @@ def _load_release_pack_metadata() -> dict[str, dict]:
 
     Source checkouts intentionally ship empty engine URLs. Release automation
     writes pinned URLs, sizes, and SHA-256 values after each engine archive is
-    built and signed. This prevents the application from guessing a mutable
+    built, verified and finalized (signing is optional). This prevents guessing a mutable
     latest-release URL.
     """
     from haizflow.core.paths import bundle_root, project_root
@@ -274,17 +276,24 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
         url = str(metadata.get("url") or "")
         digest = str(metadata.get("sha256") or "").lower()
         try:
+            parts = parse_archive_parts(metadata)
+        except ValueError:
+            # Fail closed for this pack without preventing startup of Core.
+            resolved.append(definition)
+            continue
+        try:
             download_size = int(metadata.get("download_size") or definition.download_size)
             installed_size = int(metadata.get("installed_size") or definition.installed_size)
         except (TypeError, ValueError):
             download_size = definition.download_size
             installed_size = definition.installed_size
-        if definition.engine_modules and url and len(digest) == 64:
+        if definition.engine_modules and (url or parts) and len(digest) == 64:
             definition = replace(
                 definition,
                 version=str(metadata.get("version") or definition.version),
                 archive_url=url,
                 archive_sha256=digest,
+                archive_parts=parts,
                 download_size=max(0, download_size),
                 installed_size=max(0, installed_size),
             )
@@ -308,25 +317,71 @@ class ResourcePackManager:
     @staticmethod
     def cleanup_previous_storage() -> None:
         """Remove a moved resource tree; safe to run after the UI is visible."""
+        from haizflow.update.filesystem import no_links, UpdateError
+
         pointer = resource_storage_pointer_path()
         try:
             payload = json.loads(pointer.read_text(encoding="utf-8"))
-            previous = Path(str(payload.get("cleanup_previous") or "")).resolve()
-            active = Path(str(payload.get("path") or "")).resolve()
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            return
-        if not str(previous) or previous == active or str(previous).startswith("\\\\"):
+            if not isinstance(payload, dict) or payload.get("version") != RESOURCE_STATE_VERSION:
+                return
+            previous_value = payload.get("cleanup_previous")
+            active_value = payload.get("path")
+            if not isinstance(previous_value, str) or not previous_value.strip() or not isinstance(active_value, str) or not active_value.strip():
+                return
+            previous = Path(previous_value)
+            active = Path(active_value)
+            if (not previous.is_absolute() or not active.is_absolute()
+                    or str(previous).startswith("\\\\") or str(active).startswith("\\\\")):
+                return
+            for root in (previous, active):
+                no_links(root)
+            previous = previous.resolve()
+            active = active.resolve()
+            if (previous.parent == previous or active.parent == active
+                    or previous == Path.cwd().resolve()
+                    or previous == active or previous.is_relative_to(active) or active.is_relative_to(previous)):
+                return
+            for root in (previous, active):
+                for name in ("models", "engines", "packages"):
+                    tree = root / name
+                    no_links(tree)
+                    for path in tree.rglob("*"):
+                        no_links(path)
+            # Only discard the source if the active copy still contains every
+            # resource. A corrupt/missing target or concurrent source change
+            # must leave the previous copy available for recovery.
+            if ResourcePackManager._tree_fingerprint(previous) != ResourcePackManager._tree_fingerprint(active):
+                return
+            if json.loads(pointer.read_text(encoding="utf-8")) != payload:
+                return
+        except (OSError, ValueError, TypeError, json.JSONDecodeError, UpdateError):
             return
         for name in ("models", "engines", "packages"):
             candidate = (previous / name).resolve()
             if candidate.parent != previous:
                 continue
             shutil.rmtree(candidate, ignore_errors=True)
-        payload.pop("cleanup_previous", None)
+        temporary = None
         try:
-            pointer.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        except OSError:
+            if json.loads(pointer.read_text(encoding="utf-8")) != payload:
+                return
+            payload.pop("cleanup_previous", None)
+            fd, temporary_name = tempfile.mkstemp(prefix=".resource-cleanup-", suffix=".json", dir=pointer.parent)
+            temporary = Path(temporary_name)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(payload, stream, indent=2)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, pointer)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
             pass
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     @property
     def storage_root(self) -> Path:
@@ -438,6 +493,22 @@ class ResourcePackManager:
                     return 0
             except FileNotFoundError:
                 pass
+            if definition.archive_parts:
+                remaining = 0
+                for index, part in enumerate(definition.archive_parts, 1):
+                    path = package.with_name(package.name + f".{index:03d}")
+                    try:
+                        if path.stat().st_size == part.size:
+                            continue
+                    except FileNotFoundError:
+                        pass
+                    partial_part = path.with_name(path.name + ".part")
+                    try:
+                        resumed = min(part.size, partial_part.stat().st_size)
+                    except FileNotFoundError:
+                        resumed = 0
+                    remaining += part.size - resumed
+                return remaining
             try:
                 resumed = min(definition.download_size, partial.stat().st_size)
             except FileNotFoundError:
@@ -514,7 +585,7 @@ class ResourcePackManager:
                     "totalInstalledBytes": total_installed_bytes,
                     "location": str(storage_root),
                     "dependencies": list(definition.dependencies),
-                    "canInstall": bool(definition.assets or definition.archive_url)
+                    "canInstall": bool(definition.assets or definition.archive_url or definition.archive_parts)
                     and status in {"missing", "paused", "failed"},
                     "canRemove": status == "installed",
                     "blockedReason": (
@@ -686,11 +757,15 @@ class ResourcePackManager:
             for item in definitions
             if item.engine_modules and self.status(item.pack_id) not in ready_states
         )
+        # Multipart downloads and their assembled ZIP coexist until all checks
+        # pass. Never omit this second compressed copy from disk preflight.
+        assembly = sum(item.download_size for item in pending if item.archive_parts)
         return {
             "downloadBytes": download,
             "installedBytes": installed,
             "rollbackBytes": rollback,
-            "requiredBytes": download + installed + rollback + MINIMUM_OPERATIONAL_FREE_BYTES,
+            "assemblyBytes": assembly,
+            "requiredBytes": download + installed + rollback + assembly + MINIMUM_OPERATIONAL_FREE_BYTES,
             "freeBytes": shutil.disk_usage(self.storage_root).free,
         }
 
@@ -725,7 +800,7 @@ class ResourcePackManager:
 
     def install(self, pack_id: str, progress: Callable[[str, ModelProgress], None]) -> None:
         definition = self.definitions[pack_id]
-        if definition.engine_modules and definition.archive_url:
+        if definition.engine_modules and (definition.archive_url or definition.archive_parts):
             self._install_engine_archive(definition, progress)
             return
         if not definition.assets:
@@ -791,16 +866,30 @@ class ResourcePackManager:
                 raise ResourcePackError(f"Không tìm thấy chương trình cho {command_name}.")
         command = payload["smoke_command"]
         executable = (staging / command[0]).resolve()
-        result = subprocess.run(
-            [str(executable), *command[1:]],
-            cwd=staging,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-            check=False,
-        )
+        # Configuration imports create caches. Keep smoke writes outside the
+        # immutable engine and away from the user's existing projects/models.
+        with tempfile.TemporaryDirectory(prefix=".engine-smoke-", dir=staging.parent) as smoke:
+            smoke_root = Path(smoke)
+            environment = os.environ.copy()
+            environment.update({
+                "HAIZFLOW_HOME": smoke,
+                "RUNTIME_DATA_DIR": str(smoke_root / "data"),
+                "MODELS_DIR": str(smoke_root / "models"),
+                "HAIZFLOW_TMP_DIR": str(smoke_root / "tmp"),
+                "HAIZFLOW_SMOKE_TEST": "1",
+            })
+            result = subprocess.run(
+                [str(executable), *command[1:]],
+                cwd=staging, env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+                check=False,
+            )
+        if (staging / "runtime").exists():
+            raise ResourcePackError("Bộ xử lý ghi dữ liệu vào thư mục cài đặt bất biến.")
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "smoke test failed").strip()
             raise ResourcePackError(f"Bộ xử lý không vượt qua kiểm tra: {detail}")
@@ -836,18 +925,39 @@ class ResourcePackManager:
         staging = target.parent / f".{definition.version}-{os.getpid()}.partial"
         backup: Path | None = None
         try:
-            install_model_assets(
-                packages,
-                (asset,),
-                progress=lambda event: progress(definition.pack_id, event),
-                cancel_event=cancel,
-            )
+            part_assets = tuple(ModelAsset(
+                "engine", definition.label, part.url, package_name + f".{index:03d}", part.size, part.sha256,
+            ) for index, part in enumerate(definition.archive_parts, 1))
             archive = packages / package_name
+            cached_multipart = bool(part_assets) and archive_matches(archive, size=asset.size, sha256=asset.sha256)
+            if not cached_multipart:
+                install_model_assets(
+                    packages,
+                    part_assets or (asset,),
+                    progress=lambda event: progress(definition.pack_id, event),
+                    cancel_event=cancel,
+                )
+            if part_assets and not cached_multipart:
+                try:
+                    join_archive_parts(
+                        tuple((packages / part_asset.relative_path, part) for part_asset, part in zip(part_assets, definition.archive_parts)),
+                        archive, size=asset.size, sha256=asset.sha256, cancelled=cancel.is_set,
+                        progress=lambda done: progress(definition.pack_id, ModelProgress(
+                            "verifying", definition.label, "Đang kiểm tra gói bộ xử lý", done, asset.size)),
+                    )
+                except InterruptedError as error:
+                    raise ModelBootstrapCancelled(str(error)) from error
+                for part_asset in part_assets:
+                    (packages / part_asset.relative_path).unlink(missing_ok=True)
+            if cancel.is_set():
+                raise ModelBootstrapCancelled("Engine installation cancelled.")
             if staging.exists():
                 shutil.rmtree(staging)
             staging.mkdir(parents=True)
             self._safe_extract_zip(archive, staging)
             self._verify_engine_staging(definition, staging)
+            if cancel.is_set():
+                raise ModelBootstrapCancelled("Engine installation cancelled.")
             marker_payload = {
                 "schema": RESOURCE_STATE_VERSION,
                 "pack_id": definition.pack_id,
@@ -876,6 +986,13 @@ class ResourcePackManager:
                 definition.pack_id,
                 ModelProgress("ready", definition.label, "Bộ xử lý đã sẵn sàng", asset.size, asset.size),
             )
+        except Exception:
+            # If promotion failed after moving the existing engine aside,
+            # restore it before propagating the error. Never replace a target
+            # that already exists (another writer may have created it).
+            if backup is not None and backup.exists() and not target.exists():
+                os.replace(backup, target)
+            raise
         finally:
             if staging.exists():
                 shutil.rmtree(staging, ignore_errors=True)
@@ -1000,9 +1117,11 @@ class ResourcePackManager:
             return target
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
-            if promoted and backup is not None and backup.exists():
-                shutil.rmtree(target, ignore_errors=True)
-                os.replace(backup, target)
+            if backup is not None and backup.exists():
+                if promoted:
+                    shutil.rmtree(target, ignore_errors=True)
+                if not target.exists():
+                    os.replace(backup, target)
             raise
 
     @staticmethod

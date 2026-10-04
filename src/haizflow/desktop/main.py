@@ -134,7 +134,7 @@ def main(*, smoke_test: bool = False) -> None:
     input_method_commit_filter = InputMethodCommitFilter(app)
     app.setApplicationName("HaizFlow")
     app.setApplicationDisplayName("\u200B")
-    install_ui_translator(desktop_settings.load_settings().get("language", "en"))
+    install_ui_translator(desktop_settings.load_settings().get("language", "vi"))
     app_icon_path = _app_icon_path()
     app_icon = QIcon(str(app_icon_path)) if app_icon_path is not None else QIcon()
     if not app_icon.isNull():

@@ -187,11 +187,20 @@ Thêm video, đặt thiết lập chung rồi chạy hàng đợi. Mỗi dòng g
 
 Kết nối Zernio, đặt nội dung và tùy chọn bài đăng, thêm video cục bộ hoặc bản dựng hoàn tất từ dự án Thủ công, Tự động hay Hàng loạt, kiểm tra nơi đăng rồi xác nhận. Không cần xuất video ra ngoài trước khi nhập từ dự án. Ứng dụng sao chép bản dựng sang dữ liệu riêng của dự án đăng bài trước khi tải lên. Hãy đọc điều khoản, quy định riêng tư, hạn mức và chi phí của dịch vụ. Video đã đăng có nút **Mở bài đăng**.
 
+### Giới hạn của giọng OmniVoice
+
+Checkpoint OmniVoice đi kèm có điều kiện **phi thương mại (CC-BY-NC)**.
+HaizFlow miễn phí và code OmniVoice dùng Apache-2.0 không có nghĩa checkpoint
+được phép dùng thương mại. Trước khi dùng giọng tạo ra cho nội dung kiếm tiền,
+quảng cáo hoặc khách hàng, hãy bảo đảm bạn có quyền phù hợp; ứng dụng không
+cấp quyền thương mại thay cho chủ model hoặc chủ giọng.
+Xem [model card đã pin](https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/README.md).
+
 ## 11. Dung lượng và dữ liệu tạm
 
 | Hạng mục | Giới hạn hoặc quy tắc hiện tại |
 | --- | ---: |
-| Gói Core vừa được kiểm tra | 477 MiB |
+| Dung lượng Core | Tính từ artifact của từng bản phát hành; xem báo cáo build đi kèm |
 | Cài đặt Core | Setup tự tính mức tối thiểu; bản hiện tại khuyến nghị chừa 4 GiB |
 | Phần trống giữ lại khi cài tài nguyên | 2 GiB sau khi tính tải, cài và bản khôi phục |
 | Dữ liệu tạm của trình sửa Thủ công | tự điều chỉnh theo chỗ trống; ưu tiên xóa bản dựng không còn dùng |

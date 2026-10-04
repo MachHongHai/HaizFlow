@@ -10,7 +10,7 @@ through installer metadata or restrict independently granted rights.
 
 [Documentation](README.md) · [Dependency security](dependency-security.md) · [Tiếng Việt](release-readiness.vi.md)
 
-Last reviewed: **2026-09-09**
+Last reviewed: **2026-10-04**. The owner selected the no-certificate public unsigned path. See [the Windows release guide](windows-release-setup.vi.md) for the complete workflow.
 
 This is the authoritative checklist for a public Windows build. A source checkout passing unit tests is not, by itself, a releasable artifact.
 
@@ -27,7 +27,7 @@ This is the authoritative checklist for a public Windows build. A source checkou
 | 1 | Project identity and deletion | Complete | UUID identity, registered roots, legacy preservation, shared-root/path-traversal checks, and deletion tests. |
 | 2 | License and third-party compliance | **Release blocker** | Active source license, preserved earlier grants/component notices, OmniVoice checkpoint review, FFmpeg/GPL source obligations, and public release approval. |
 | 3 | Clean reproducible artifact | **Release blocker until clean build** | Committed clean tree, complete gate, isolated frozen smoke, build metadata, and verified checksums. |
-| 4 | Installer and signing | **Release blocker for public build** | Clean artifact, Windows acceptance matrix, real Authenticode certificate, signed executable/installer, signature verification. |
+| 4 | Installer and unsigned distribution | **Release blocker until acceptance** | Clean artifact, Windows acceptance matrix, explicit unsigned status and security-policy limitations. Certificate optional. |
 | 5 | Model integrity | Complete | Immutable revision, size, and SHA-256 for HY-MT2 CPU/GPU, Whisper, OmniVoice, OCR, Demucs, VAD, and alignment assets. |
 | 6 | Single instance | Complete | Per-user local server, activation handoff, stale-server recovery, and smoke isolation. |
 | 7 | Project index recovery | Complete | Interprocess lock, atomic write, backup, quarantine, manifest rebuild, and write blocking after unrecoverable corruption. |
@@ -41,7 +41,7 @@ This is the authoritative checklist for a public Windows build. A source checkou
 | 15 | Source hygiene | **Release blocker until clean build** | No obsolete source/build output, documentation matches architecture, and `git status --porcelain` is empty. |
 | 16 | Vulnerability audit | Complete with controlled exceptions | Audit gate passes with only the reviewed exceptions in [dependency-security.md](dependency-security.md). |
 | 17 | Zernio publishing | Production follow-up | Real-account end-to-end validation for each platform, quotas, failure recovery, consent, and current third-party terms. |
-| 18 | Independent AI engines | **Release blocker until archives are pinned** | Signed CPU, CUDA 12.8 and vision archives; exact URL/size/SHA-256; profile smoke; install/resume/rollback/remove acceptance. |
+| 18 | Independent AI engines | **Release blocker until archives are pinned** | CPU, CUDA 12.8 and vision archives; exact URL/size/SHA-256; profile smoke; install/resume/rollback/remove acceptance. Unsigned public mode supported. |
 
 ## License gate
 
@@ -86,8 +86,7 @@ Do not record a permanent test count here. The authoritative count is the output
 The only supported build entry point is:
 
 ```powershell
-$env:HAIZFLOW_SIGN_CERT_PASSWORD = "<certificate-password>"
-.\scripts\build-exe.ps1 -SignCertificatePath C:\secure\haizflow-signing.pfx
+.\scripts\build-exe.ps1 -CoreLayout -UnsignedRelease
 ```
 
 For an internal engineering artifact from a working tree that is still under review:
@@ -96,7 +95,7 @@ For an internal engineering artifact from a working tree that is still under rev
 .\scripts\build-exe.ps1 -AllowDirtyBuild -AllowUnsigned
 ```
 
-`-AllowUnsigned` never produces a public-release candidate. `-AllowDirtyBuild` records the dirty provenance and makes the resulting artifact ineligible for the public installer gate.
+`-AllowUnsigned` remains internal-only. `-UnsignedRelease` explicitly permits a public unsigned candidate without relaxing legal, resource or clean-source gates. `-AllowDirtyBuild` records dirty provenance and makes the artifact ineligible for the public installer gate. These modes cannot be combined.
 
 The build must:
 
@@ -105,37 +104,37 @@ The build must:
 3. remove only the validated previous artifact target;
 4. create a PyInstaller `onedir` distribution;
 5. copy licenses and notices;
-6. prove that AI engines, model payloads, and mutable runtime data are absent;
+6. prove that AI engines, large/unpinned model payloads and mutable runtime data are absent; only the explicitly checksum-pinned integrated speaker model may be included;
 7. run frozen self-tests, FFmpeg/FFprobe checks, and isolated Qt/QML startup;
 8. create `BUILD-INFO.json` and `SHA256SUMS.txt` only after smoke success;
 9. verify every declared artifact file and checksum.
 
-AI engines and models are optional resource packs and must not be folded into the Core executable distribution. Resource Manager installs only packs the user confirms, verifies their immutable checksum, and activates them after an engine smoke test. `prepare-offline-models.ps1` is a development/runtime probe helper, not packaging input.
+Large AI engines/models are optional resource packs and must not be folded into Core. The small integrated CPU speaker model is the sole pinned model exception. Resource Manager installs only packs the user confirms, verifies their immutable checksum, and activates them after an engine smoke test. `prepare-offline-models.ps1` is a development/runtime probe helper, not packaging input.
 
 ## Installer gate
 
 Build an installer only from a verified frozen artifact:
 
 ```powershell
-.\scripts\build-installer.ps1 -SignCertificatePath C:\secure\haizflow-signing.pfx
+.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-public -UnsignedRelease -SkipInstallerSmokeTest
 ```
 
 The installer must use an artifact-derived disk estimate, permit a writable local drive, reject network destinations, preserve mutable runtime data during ordinary upgrades, and delete runtime data only after a separate explicit uninstall choice. Silent uninstall retains runtime data.
 
 Disk figures have distinct meanings. Setup calculates the Core requirement from the finalized artifact, real staging space, the temporary second copy needed during an upgrade, and a 2 GiB operational reserve. It does not include optional AI packs, project media, exports, or cache. The Core release gate rejects an artifact above 1.25 GiB, a fresh-install requirement above 4 GiB, or a recommendation above 8 GiB. Resource Manager performs a separate preflight for every confirmed pack: remaining download bytes, installed bytes, rollback bytes, and the same 2 GiB reserve. Export performs its own estimate from duration, codec, bitrate, and temporary render needs. Generated manifests and the values displayed by Setup are authoritative; documentation must never substitute a stale candidate-build measurement.
 
-Public distribution requires signing with a real certificate through `-SignCertificatePath` and `HAIZFLOW_SIGN_CERT_PASSWORD`, followed by signature verification. The installer build performs an isolated silent install, installed-layout smoke test, uninstall, runtime-retention check, and checksum verification. `-SkipFrozenSmokeTest` and `-SkipInstallerSmokeTest` are diagnostic-only and invalidate a release candidate.
+Public distribution may be unsigned through the explicit `-UnsignedRelease` path. Document Unknown publisher, SmartScreen/Smart App Control and enterprise-policy limitations; do not disable Windows protection. Signing remains optional. The public installer must be smoke-tested on a clean VM with `-AllowRegisteredInstall`; omitting the build-machine smoke is acceptable only when the exact resulting installer passes that separate acceptance test. Skipping acceptance invalidates a release candidate.
 
-An unsigned installer may be produced only from an otherwise installer-eligible artifact for local engineering verification:
+An internal installer may be produced from explicitly engineering-provenance artifacts:
 
 ```powershell
-.\scripts\build-installer.ps1 -AllowUnsigned
+.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-development -AllowUnsigned -EngineeringBuild
 ```
 
-Its filename contains `UNSIGNED`. The installer smoke test can also be run explicitly:
+Its filename contains `DEVELOPMENT`. Public unsigned filenames contain `UNSIGNED`. For a public unsigned candidate, run this only on a clean VM:
 
 ```powershell
-.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HaizFlow-<version>-Setup.exe -RequireSignature
+.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HaizFlow-<version>-UNSIGNED-Setup.exe -AllowRegisteredInstall
 ```
 
 ## Windows acceptance matrix
@@ -153,10 +152,10 @@ Its filename contains `UNSIGNED`. The installer smoke test can also be run expli
 
 ## Engine-pack gate
 
-Core and engine artifacts are separate release units. Before a public Core build, build each engine from its reviewed hash lock, run its profile smoke test, sign the executable, upload the immutable ZIP, then use `finalize-resource-pack.py` to record the real URL, compressed size, installed size and SHA-256. `verify-resource-pack-manifest.py --strict` must pass; estimated or empty engine metadata is a release blocker.
+Core and engine artifacts are separate release units. Before a public Core build, build each engine from its reviewed hash lock with `-UnsignedRelease`, run its profile smoke test, upload the immutable ZIP, then use `finalize-resource-pack.py` to record the real URL, compressed size, installed size and SHA-256. `verify-resource-pack-manifest.py --strict` must pass; estimated or empty engine metadata is a release blocker. No certificate is required for the selected unsigned path.
 
 Acceptance must cover interrupted download and resume, checksum rejection, atomic activation, rollback after a failed smoke test, safe removal, storage migration to another local drive, and refusal to remove an engine in use. A Core-only machine must still open Home and edit media without importing an inference package.
 
 ## Release decision
 
-An internal engineering build may be produced for verification when its intended scope and unsigned status are explicit. Public release remains blocked until legal/license review, pinned engine archives, a clean reproducible artifact, source hygiene, Windows acceptance, and Authenticode requirements are satisfied. This checklist records engineering evidence and does not replace professional legal review.
+An internal engineering build may be produced for verification when its intended scope and unsigned status are explicit. Public release remains blocked until legal/license review, pinned engine archives, a clean reproducible artifact, source hygiene and Windows acceptance are satisfied. Unsigned public distribution is an explicit owner choice, not legal/resource clearance. This checklist records engineering evidence and does not replace professional legal review.

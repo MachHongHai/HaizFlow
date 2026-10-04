@@ -17,6 +17,42 @@ QML_DIR = ROOT / "src" / "haizflow" / "desktop" / "qml"
 
 
 class QmlMenuTests(unittest.TestCase):
+    def test_status_strip_distinguishes_device_switch_from_another_video(self):
+        source = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
+        expression = source.split('message: root.modelStatusFailed ?', 1)[1].split('            progress:', 1)[0]
+        engine = QQmlEngine()
+        state = QQmlPropertyMap()
+        for key, value in {
+            "isSwitchingProcessingDevice": True, "isProcessing": True,
+            "isSelectedVideoProcessing": False, "statusMessage": "Switching processing device",
+            "resourcePackBusy": False, "selectedStageLabel": "Đang nhận dạng",
+            "selectedProgressDetail": "", "selectedFailureMessage": "", "tiktokPublishBusy": False,
+        }.items():
+            state.insert(key, value)
+        engine.rootContext().setContextProperty("TestController", state)
+        component = QQmlComponent(engine)
+        component.setData(('import QtQuick\nimport "."\nItem { id: root\n'
+            'property bool modelStatusFailed: false; property bool selectedTaskFailed: false;'
+            'property bool modelStatusBusy: false; property bool selectedTaskPaused: false;'
+            'property bool selectedTaskQueued: false; property string currentRoute: "settings";'
+            'property string routeDownloadWorkspace: "download"; property string routePublishWorkspace: "publish";'
+            'property var downloader: ({currentProjectHasWork: false});'
+            'property string message: root.modelStatusFailed ?' + expression.replace("AppController", "TestController")
+            + '}').encode(), QUrl.fromLocalFile(str(QML_DIR / "StatusStripTest.qml")))
+        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+        item = component.create()
+        try:
+            self.assertEqual(item.property("message"), "Đang chuyển CPU/GPU")
+            state.insert("isSwitchingProcessingDevice", False)
+            self.assertEqual(item.property("message"), "Đang xử lý video khác")
+            state.insert("isSelectedVideoProcessing", True)
+            self.assertEqual(item.property("message"), "Đang nhận dạng")
+            state.insert("isProcessing", False)
+            self.assertEqual(item.property("message"), "")
+        finally:
+            item.deleteLater()
+            self.app.processEvents()
+
     @classmethod
     def setUpClass(cls):
         cls.app = QGuiApplication.instance() or QGuiApplication([])

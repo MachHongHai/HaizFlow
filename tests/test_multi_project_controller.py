@@ -112,7 +112,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         host._selected_video_id = None
         host._settings_owner_video_id = None
         host._project_directory = "D:/projects"
-        host._processing_queue = SimpleNamespace(active_video_id=None)
+        host._processing_queue = SimpleNamespace(active_video_id=None, contains=lambda _: False)
         host._video_project_key.return_value = "project-a"
         host._normalized_tts_provider.side_effect = lambda _language, provider: provider
         host._normalized_voice_for_language.side_effect = lambda _language, voice, _provider: voice

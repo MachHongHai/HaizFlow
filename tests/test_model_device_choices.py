@@ -1,15 +1,20 @@
 """Model policies independent of project names, hardware, or installed models."""
 
 from types import SimpleNamespace
+import queue
+import threading
 from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.core.model_choices import gpu_choice_blocked, project_model_defaults, project_recognition_choice, recognition_context
+from haizflow.core.model_choices import gpu_choice_blocked, models_for_device, project_model_defaults, project_recognition_choice, recognition_context
 from haizflow.core.hardware import HardwareCapabilities
 from haizflow.desktop.project_import_controller import ProjectImportController
 from haizflow.desktop.qml_controller import HaizFlowController
 from haizflow.desktop.settings_controller import SettingsController
+from haizflow.desktop.runtime_device_controller import RuntimeDeviceController
+from haizflow.desktop.project_commands_controller import ProjectCommandsController, _batch_values_for_device
+from haizflow.desktop.project_workspace_controller import ProjectWorkspaceController
 from haizflow.desktop.smart_warmup_controller import SmartWarmupController
 from haizflow.schemas.video import VideoConfig
 
@@ -66,16 +71,161 @@ def test_startup_warm_uses_app_mode_not_previous_project_cpu_override():
     assert warm._requests[0].context == {"model": "small", "device": "cpu"}
 
 
-def test_device_change_updates_only_empty_project_defaults():
-    host = SimpleNamespace(_settings_processing_device="gpu", _draft_processing_device="cpu",
+def model_host():
+    return SimpleNamespace(_settings_processing_device="gpu", _draft_processing_device="cpu",
         _selected_video_id=None, **project_model_defaults("cpu"),
-        speechRecognitionModelChanged=Mock(), translationModelChanged=Mock(), ttsProviderChanged=Mock())
+        _processing_queue=SimpleNamespace(contains=lambda _: False),
+        speechRecognitionModelChanged=Mock(), translationModelChanged=Mock(), ttsProviderChanged=Mock(),
+        ttsProviderOptionsChanged=Mock(), ttsVoiceOptionsChanged=Mock(), batchChanged=Mock(), selectedVideoChanged=Mock())
+
+
+def test_device_change_updates_empty_defaults_and_selected_gpu_models():
+    host = model_host()
     HaizFlowController._sync_project_model_defaults(host)
     assert host._tts_provider == "omnivoice-gpu"
     host._selected_video_id = "saved-video"
     host._settings_processing_device = "cpu"
     HaizFlowController._sync_project_model_defaults(host)
-    assert host._tts_provider == "omnivoice-gpu"
+    assert host._tts_provider == "omnivoice"
+    assert host._speech_recognition_model == "small-cpu"
+    assert host._translation_model == "q4"
+
+
+def test_switch_does_not_change_models_until_runtime_is_confirmed():
+    host = model_host()
+    host._device_switching = True
+    HaizFlowController._sync_project_model_defaults(host)
+    assert host._draft_processing_device == "cpu"
+    assert host._tts_provider == "omnivoice"
+    host._device_switching = False
+    host._active_processing_device = "cpu"  # Failed GPU probe restores CPU.
+    HaizFlowController._sync_project_model_defaults(host)
+    assert host._tts_provider == "omnivoice"
+
+
+def test_confirmed_cpu_switch_persists_only_model_fields_for_current_owner():
+    host = model_host()
+    host.__dict__.update(project_model_defaults("gpu"))
+    host._settings_processing_device = host._active_processing_device = "cpu"
+    host._draft_processing_device = "gpu"
+    host._selected_video_id = host._settings_owner_video_id = "video"
+    host._audio_preview = Mock()
+    host._manual_settings_drafts = {"video": VideoConfig(speech_recognition_model="large-v3-turbo",
+        translation_model="full", tts_provider="omnivoice-gpu", watermark_text="Unsaved watermark",
+        background_music_volume=15)}
+    with patch("haizflow.desktop.qml_controller.video_store.update_video") as save:
+        HaizFlowController._sync_project_model_defaults(host)
+    save.assert_called_once_with("video", speech_recognition_model="small-cpu",
+                                 translation_model="q4", tts_provider="omnivoice")
+    host._audio_preview.invalidate.assert_called_once()
+    assert recognition_context(host._speech_recognition_model, "cpu") == {"model": "small", "device": "cpu"}
+    draft = host._manual_settings_drafts["video"]
+    assert draft.speech_recognition_model == "small-cpu"
+    assert draft.translation_model == "q4"
+    assert draft.tts_provider == "omnivoice"
+    assert draft.watermark_text == "Unsaved watermark"
+    assert draft.background_music_volume == 15
+
+
+@pytest.mark.parametrize("device", ["cpu", "gpu"])
+def test_cloud_models_and_cpu_overrides_survive_device_sync(device):
+    assert models_for_device(device, recognition="small-cpu", translation="gemini-flash",
+                             voice="edge") == dict(speech_recognition_model="small-cpu",
+                                                   translation_model="gemini-flash", tts_provider="edge")
+
+
+def test_switch_flag_is_separate_from_video_processing():
+    host = SimpleNamespace(_device_switching=True, _processing_queue=SimpleNamespace(has_work=False))
+    assert HaizFlowController.isProcessing.fget(host)
+    assert HaizFlowController.isSwitchingProcessingDevice.fget(host)
+    host._device_switching = False
+    assert not HaizFlowController.isSwitchingProcessingDevice.fget(host)
+
+
+@pytest.mark.parametrize("probe_ok", [True, False])
+def test_runtime_switch_commits_cpu_models_only_after_success(probe_ok):
+    host = model_host()
+    host.__dict__.update(project_model_defaults("gpu"))
+    host._settings_processing_device = "cpu"
+    host._draft_processing_device = host._active_processing_device = "gpu"
+    host._selected_video_id = host._settings_owner_video_id = "video"
+    host._pending_processing_device = ""
+    host._model_runtime_lock = threading.Lock()
+    host._model_setup_events = queue.Queue()
+    host._settings_theme = "dark"
+    host._settings_language = "vi"
+    host._processing_device_origin = "manual"
+    host._smart_warmup = Mock()
+    host.runtimeStateChanged = host.statusMessageChanged = host.processingChanged = host.hardwareChanged = Mock()
+    host._warm_models_unlocked = lambda: setattr(host, "_runtime_state", "ready")
+    host.settingsChanged = Mock()
+    host.settingsChanged.emit.side_effect = lambda: HaizFlowController._sync_project_model_defaults(host)
+    with (patch("haizflow.desktop.runtime_device_controller.threading.Thread") as worker,
+          patch("haizflow.desktop.runtime_device_controller.probe_runtime", return_value=SimpleNamespace(ok=probe_ok, message="test")),
+          patch("haizflow.desktop.runtime_device_controller.desktop_settings.save_settings"),
+          patch("haizflow.desktop.runtime_device_controller.configure_processing_device") as configure,
+          patch("haizflow.desktop.qml_controller.video_store.update_video", return_value=None) as save):
+        RuntimeDeviceController(host)._switch_processing_device("cpu")
+        host.settingsChanged.emit()
+        assert host._tts_provider == "omnivoice-gpu"
+        save.assert_not_called()
+        worker.call_args.kwargs["target"]()
+        assert not host._device_switching
+        assert host._active_processing_device == ("cpu" if probe_ok else "gpu")
+        assert host._tts_provider == ("omnivoice" if probe_ok else "omnivoice-gpu")
+        assert configure.called is probe_ok
+        assert save.called is probe_ok
+
+
+def test_cpu_batch_values_do_not_classify_backend_conversion_as_individual_override():
+    gpu = dict(speechRecognitionModel="large-v3-turbo", translationModel="full", ttsProvider="omnivoice-gpu",
+               targetLanguage="vi", watermarkText="Keep me")
+    normalized = _batch_values_for_device(gpu, "cpu")
+    assert normalized == {**gpu, "speechRecognitionModel": "small-cpu", "translationModel": "q4", "ttsProvider": "omnivoice"}
+    assert gpu["ttsProvider"] == "omnivoice-gpu"
+
+
+def test_cpu_batch_preflight_persists_cpu_models_before_checking_resources():
+    video = SimpleNamespace(video_id="video", status="pending", speech_recognition_model="large-v3-turbo",
+                            translation_model="full", tts_provider="omnivoice-gpu")
+    converted = SimpleNamespace(**{**vars(video), **models_for_device("cpu", recognition="large-v3-turbo",
+                                                                    translation="full", voice="omnivoice-gpu")})
+    host = SimpleNamespace(_settings_processing_device="cpu", _processing_queue=SimpleNamespace(contains=lambda _: False))
+    with patch("haizflow.desktop.project_commands_controller.video_store.update_video", return_value=converted) as save:
+        assert ProjectCommandsController._resources_ready_for_videos(host, [video])
+    save.assert_called_once_with("video", speech_recognition_model="small-cpu", translation_model="q4", tts_provider="omnivoice")
+
+
+@pytest.mark.parametrize("queued", [False, True])
+def test_reopening_gpu_project_on_cpu_updates_ui_and_saved_models_without_touching_outputs(queued):
+    host = Mock()
+    host._settings_processing_device = "cpu"
+    host._selected_video_id = host._settings_owner_video_id = None
+    host._project_directory = "D:/fixture-projects"
+    host._processing_queue = SimpleNamespace(active_video_id="video" if queued else None, contains=lambda _: queued)
+    host._normalized_tts_provider.side_effect = lambda _language, provider: provider
+    host._normalized_voice_for_language.side_effect = lambda _language, voice, _provider: voice
+    host._resolve_video_file.return_value = "D:/fixture-projects/input.mp4"
+    host._read_video_logs.return_value = ""
+    video = SimpleNamespace(**VideoConfig(speech_recognition_model="large-v3-turbo", translation_model="full",
+                                         tts_provider="omnivoice-gpu", tts_voice="omnivoice:clone").model_dump(),
+                            video_id="video", status="processing" if queued else "done", original_filename="input.mp4",
+                            files={"video_output": "D:/fixture-projects/output.mp4"})
+    before = dict(video.files)
+    def update(_id, **fields):
+        video.__dict__.update(fields)
+        return video
+    with (patch("haizflow.desktop.project_workspace_controller.project_store.get_project", return_value=None),
+          patch("haizflow.desktop.project_workspace_controller.video_store.update_video", side_effect=update) as save):
+        ProjectWorkspaceController(host).select_video(video)
+    assert host._speech_recognition_model == ("large-v3-turbo" if queued else "small-cpu")
+    assert host._translation_model == ("full" if queued else "q4")
+    assert host._tts_provider == ("omnivoice-gpu" if queued else "omnivoice")
+    assert video.files == before
+    if queued:
+        save.assert_not_called()
+    else:
+        save.assert_called_once_with("video", speech_recognition_model="small-cpu", translation_model="q4", tts_provider="omnivoice")
 
 
 def test_processing_device_change_is_blocked_while_busy():

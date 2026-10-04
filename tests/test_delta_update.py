@@ -22,6 +22,7 @@ from haizflow.update.network import API, GitHubClient, RedirectPolicy, allowed_u
 from haizflow.update.packages import generate, reconstruct
 from haizflow.update.state import Layout, provision
 from haizflow.update.updater import prepare_latest
+from haizflow.update.bootstrap import check_install, initialize, uninstall_cores
 
 
 class Interrupted(BaseException):
@@ -90,6 +91,43 @@ class DeltaUpdateTests(unittest.TestCase):
                 launch(self.install, wait_for_exit=False)
         self.assertEqual(self.layout.active()["active"], "0.2.0")
         self.assertEqual(self.layout.journal()["state"], "pending_health")
+
+    def test_installer_repair_and_pre_copy_busy_gate_preserve_data(self):
+        check_install(self.install, "0.1.0")
+        initialize(self.install, "0.1.0")
+        with file_lock(child(self.layout.state, "launcher.lock")):
+            with self.assertRaises(UpdateError):
+                check_install(self.install, "0.1.0")
+        with file_lock(child(self.layout.state, "updater.lock")):
+            with self.assertRaises(UpdateError):
+                check_install(self.install, "0.1.0")
+            with self.assertRaises(UpdateError):
+                uninstall_cores(self.install)
+        self.assertEqual(self.before, self.user_data())
+
+    def test_installer_upgrade_and_downgrade_rejection(self):
+        reconstruct(self.output / self.full2.data["package_name"], self.full2, self.layout.core("0.2.0"), None)
+        initialize(self.install, "0.2.0")
+        with self.assertRaisesRegex(UpdateError, "hạ phiên bản"):
+            check_install(self.install, "0.1.0")
+        self.assertEqual(self.layout.active()["active"], "0.2.0")
+        self.assertEqual(self.before, self.user_data())
+
+    def test_uninstaller_removes_cores_but_never_user_data(self):
+        reconstruct(self.output / self.full2.data["package_name"], self.full2, self.layout.core("0.2.0"), None)
+        uninstall_cores(self.install)
+        self.assertEqual(list(self.layout.versions.iterdir()), [])
+        self.assertFalse(self.layout.active_path.exists())
+        self.assertEqual(self.before, self.user_data())
+
+    def test_uninstaller_corruption_is_detected_before_any_delete(self):
+        reconstruct(self.output / self.full2.data["package_name"], self.full2, self.layout.core("0.2.0"), None)
+        (self.layout.core("0.2.0") / "added.dat").write_bytes(b"corrupt")
+        with self.assertRaises(UpdateError):
+            uninstall_cores(self.install)
+        self.assertTrue(self.layout.core("0.1.0").exists())
+        self.assertTrue(self.layout.core("0.2.0").exists())
+        self.assertEqual(self.before, self.user_data())
 
     def fake_command(self, root):
         return [getattr(sys, "_base_executable", sys.executable), "-c", FAKE_CORE]

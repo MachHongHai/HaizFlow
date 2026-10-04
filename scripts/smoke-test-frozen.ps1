@@ -10,7 +10,17 @@ if (!$ArtifactPath) {
   $ArtifactPath = Join-Path $Root "dist\HaizFlow"
 }
 $ArtifactPath = [System.IO.Path]::GetFullPath($ArtifactPath)
+$VersionedLayout = Test-Path -LiteralPath (Join-Path $ArtifactPath "update-layout.json") -PathType Leaf
+$LauncherExecutable = Join-Path $ArtifactPath "HaizFlow.exe"
 $Executable = Join-Path $ArtifactPath "HaizFlow.exe"
+if ($VersionedLayout) {
+  if (!$InstalledLayout) {
+    throw "Do not launch a staged versioned artifact. Test an installed copy with -InstalledLayout; staging must remain immutable."
+  }
+  $ActiveVersion = (Get-Content -LiteralPath (Join-Path $ArtifactPath "update-state\active-version.json") -Raw | ConvertFrom-Json).active
+  if ($ActiveVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid installed Core pointer." }
+  $Executable = Join-Path $ArtifactPath "versions\$ActiveVersion\HaizFlowCore.exe"
+}
 if (!(Test-Path -LiteralPath $Executable -PathType Leaf)) {
   $Executable = Join-Path $ArtifactPath "HaizFlowCore.exe"
 }
@@ -104,6 +114,7 @@ try {
   $env:HAIZFLOW_SMOKE_TEST = "1"
 
   Invoke-FrozenCheck -Arguments $ReleaseArguments -Label "Frozen files and native media tools"
+  if ($VersionedLayout) { $Executable = $LauncherExecutable }
   Invoke-FrozenCheck -Arguments @("--ui-smoke-test") -Label "Frozen Qt/QML startup"
 }
 finally {

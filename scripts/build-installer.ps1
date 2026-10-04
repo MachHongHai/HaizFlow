@@ -1,8 +1,11 @@
 param(
   [string]$ArtifactPath = "",
   [switch]$AllowUnsigned,
+  [switch]$UnsignedRelease,
+  [switch]$EngineeringBuild,
   [switch]$SkipInstallerSmokeTest,
   [string]$SignCertificatePath = "",
+  [string]$SignCertificateThumbprint = "",
   [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
@@ -20,17 +23,36 @@ if (!$ArtifactPath) {
   $ArtifactPath = Join-Path $Root "dist\HaizFlow"
 }
 $ArtifactPath = [System.IO.Path]::GetFullPath($ArtifactPath)
+if ($UnsignedRelease -and ($AllowUnsigned -or $EngineeringBuild -or $SignCertificatePath -or $SignCertificateThumbprint)) {
+  throw "UnsignedRelease requires public provenance, no signing identity, and no engineering flags."
+}
+if ($AllowUnsigned -and !$EngineeringBuild) {
+  throw "AllowUnsigned is internal-only: also select EngineeringBuild, or use UnsignedRelease for a public candidate."
+}
+if ($EngineeringBuild -and (!$AllowUnsigned -or $SignCertificatePath -or $SignCertificateThumbprint)) {
+  throw "EngineeringBuild requires AllowUnsigned and no signing certificate."
+}
 if (!(Test-Path -LiteralPath (Join-Path $ArtifactPath "HaizFlow.exe") -PathType Leaf)) {
   throw "Verified frozen artifact is missing: $ArtifactPath"
 }
 
 & $Python (Join-Path $PSScriptRoot "finalize-release.py") --artifact $ArtifactPath --verify
 if ($LASTEXITCODE -ne 0) { throw "Artifact checksum verification failed." }
-$LegalArguments = @((Join-Path $PSScriptRoot "verify-legal-state.py"), "--artifact", $ArtifactPath)
-if (!$AllowUnsigned) { $LegalArguments += "--public-release" }
+$BuildInfo = Get-Content -LiteralPath (Join-Path $ArtifactPath "BUILD-INFO.json") -Raw | ConvertFrom-Json
+$VersionedLayout = $BuildInfo.layout -eq "versioned"
+$LegalArtifact = if ($VersionedLayout) { Join-Path $ArtifactPath "versions\$($BuildInfo.version)" } else { $ArtifactPath }
+$LegalArguments = @((Join-Path $PSScriptRoot "verify-legal-state.py"), "--artifact", $LegalArtifact)
+if (!$EngineeringBuild) { $LegalArguments += "--public-release" }
 & $Python @LegalArguments
 if ($LASTEXITCODE -ne 0) { throw "Installer legal documents or licensing review failed." }
-& $Python (Join-Path $PSScriptRoot "finalize-release.py") --artifact $ArtifactPath --verify-installer-eligibility
+if (!$EngineeringBuild) {
+  & $Python (Join-Path $PSScriptRoot "verify-resource-pack-manifest.py") `
+    --manifest (Join-Path $LegalArtifact "RESOURCE-PACKS.json") --strict
+  if ($LASTEXITCODE -ne 0) { throw "Public installer resource catalog is not release-ready." }
+}
+$EligibilityArguments = @((Join-Path $PSScriptRoot "finalize-release.py"), "--artifact", $ArtifactPath, "--verify-installer-eligibility")
+if ($EngineeringBuild) { $EligibilityArguments += "--engineering" }
+& $Python @EligibilityArguments
 if ($LASTEXITCODE -ne 0) { throw "Artifact provenance and payload eligibility verification failed." }
 
 $RequirementJson = & $Python (Join-Path $PSScriptRoot "release-preflight.py") --artifact $ArtifactPath
@@ -39,6 +61,15 @@ $Requirements = $RequirementJson | ConvertFrom-Json
 $FreshRequirementJson = & $Python (Join-Path $PSScriptRoot "release-preflight.py") --artifact $ArtifactPath --fresh-install
 if ($LASTEXITCODE -ne 0) { throw "Fresh-install disk preflight calculation failed." }
 $FreshRequirements = $FreshRequirementJson | ConvertFrom-Json
+$EmbeddedRequirementsPath = Join-Path $ArtifactPath "INSTALL-REQUIREMENTS.json"
+if (!(Test-Path -LiteralPath $EmbeddedRequirementsPath -PathType Leaf)) {
+  throw "The finalized artifact has no embedded storage requirements."
+}
+$EmbeddedRequirements = Get-Content -LiteralPath $EmbeddedRequirementsPath -Raw | ConvertFrom-Json
+if ([int64]$EmbeddedRequirements.artifact_bytes -ne [int64]$FreshRequirements.artifact_bytes) {
+  throw "Embedded storage size is stale. Re-finalize the artifact; do not package an inaccurate estimate."
+}
+Write-Output "Measured uncompressed payload: $($FreshRequirements.artifact_bytes) bytes. Fresh minimum includes $($FreshRequirements.working_headroom_bytes) bytes of operational reserve; optional engines/models are excluded."
 
 if (!(Test-Path -LiteralPath $SetupIconPath -PathType Leaf)) {
   throw "Installer icon is missing: $SetupIconPath"
@@ -46,11 +77,13 @@ if (!(Test-Path -LiteralPath $SetupIconPath -PathType Leaf)) {
 if (!(Test-Path -LiteralPath $BrandingMarkPath -PathType Leaf)) {
   throw "Installer branding image is missing: $BrandingMarkPath"
 }
-if (!$SignCertificatePath -and !$AllowUnsigned) {
-  throw "A public release installer requires Authenticode signing. Supply -SignCertificatePath, or use -AllowUnsigned only for an internal engineering build."
+if (!$SignCertificatePath -and !$SignCertificateThumbprint -and !$AllowUnsigned -and !$UnsignedRelease) {
+  throw "Choose a signing identity, -UnsignedRelease for public unsigned packaging, or EngineeringBuild with AllowUnsigned for internal tests."
 }
-if (!$SignCertificatePath) {
-  Write-Warning "Building an unsigned engineering installer. The filename is marked UNSIGNED and is not suitable for public distribution."
+if ($UnsignedRelease) {
+  Write-Warning "Public unsigned installer: no verified Windows publisher identity; SmartScreen or enterprise policy may block it."
+} elseif (!$SignCertificatePath -and !$SignCertificateThumbprint) {
+  Write-Warning "Building an unsigned installer marked DEVELOPMENT/UNSIGNED. It is not suitable for public distribution."
 }
 
 $Version = (& $Python -c "import tomllib, pathlib; print(tomllib.loads((pathlib.Path(r'$Root') / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version'])").Trim()
@@ -73,8 +106,13 @@ if (!$IsccExecutable) {
 
 $InstallerScript = Join-Path $Root "installer\HaizFlow.iss"
 $InstallerOutputDirectory = Join-Path $Root "dist\installer"
-$OutputBaseFilename = if ($SignCertificatePath) { "HaizFlow-$Version-Setup" } else { "HaizFlow-$Version-UNSIGNED-Setup" }
+$SignedBuild = [bool]($SignCertificatePath -or $SignCertificateThumbprint)
+$OutputBaseFilename = if ($EngineeringBuild) { "HaizFlow-$Version-DEVELOPMENT-Setup" } elseif ($SignedBuild) { "HaizFlow-$Version-Setup" } else { "HaizFlow-$Version-UNSIGNED-Setup" }
 $InstallerPath = Join-Path $InstallerOutputDirectory "$OutputBaseFilename.exe"
+$SigningEnvironment = @{}
+foreach ($Name in @("HAIZFLOW_SIGN_CERT_PATH", "HAIZFLOW_SIGN_THUMBPRINT", "HAIZFLOW_SIGN_TIMESTAMP")) {
+  $SigningEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
+}
 try {
   if (![System.IO.Path]::GetDirectoryName($InstallerTemp).Equals($InstallerTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to use an unsafe installer temporary directory: $InstallerTemp"
@@ -82,10 +120,28 @@ try {
   New-Item -ItemType Directory -Path $InstallerTemp -Force | Out-Null
   $env:TEMP = $InstallerTemp
   $env:TMP = $InstallerTemp
+  $SignToolArguments = @()
+  if ($SignedBuild) {
+    $OwnExecutables = @((Join-Path $LegalArtifact $BuildInfo.entrypoint))
+    if ($VersionedLayout) {
+      $OwnExecutables += @((Join-Path $ArtifactPath "HaizFlow.exe"), (Join-Path $ArtifactPath "updater\HaizFlowUpdater.exe"))
+    }
+    foreach ($Executable in $OwnExecutables) {
+      $Signature = Get-AuthenticodeSignature -LiteralPath $Executable
+      if ($Signature.Status -ne "Valid" -or !$Signature.TimeStamperCertificate) {
+        throw "Every HaizFlow executable must be validly signed and timestamped before assembly: $Executable"
+      }
+    }
+    $env:HAIZFLOW_SIGN_CERT_PATH = $SignCertificatePath
+    $env:HAIZFLOW_SIGN_THUMBPRINT = $SignCertificateThumbprint
+    $env:HAIZFLOW_SIGN_TIMESTAMP = $TimestampServer
+    $SigningScript = Join-Path $PSScriptRoot "sign-windows.ps1"
+    $SignToolArguments = @('/Shaizflow_release_sign=powershell.exe -NoProfile -ExecutionPolicy Bypass -File $q' + $SigningScript + '$q -FilePath $f')
+  }
   if (Test-Path -LiteralPath $InstallerPath -PathType Leaf) {
     Remove-Item -LiteralPath $InstallerPath -Force
   }
-  & $IsccExecutable `
+  & $IsccExecutable /Qp `
     "/DSourceDir=$ArtifactPath" `
     "/DAppVersion=$Version" `
     "/DRequiredFreeBytes=$($Requirements.required_free_bytes)" `
@@ -96,12 +152,19 @@ try {
     "/DSetupIconPath=$SetupIconPath" `
     "/DBrandingMarkPath=$BrandingMarkPath" `
     "/DOutputBaseFilename=$OutputBaseFilename" `
+    "/DVersionedLayout=$([int]$VersionedLayout)" `
+    "/DEngineeringBuild=$([int][bool]$EngineeringBuild)" `
+    "/DSignedBuild=$([int]$SignedBuild)" `
+    @SignToolArguments `
     $InstallerScript
   if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed with exit code $LASTEXITCODE." }
 }
 finally {
   $env:TEMP = $PreviousTemp
   $env:TMP = $PreviousTmp
+  foreach ($Name in $SigningEnvironment.Keys) {
+    [Environment]::SetEnvironmentVariable($Name, $SigningEnvironment[$Name], "Process")
+  }
   if (Test-Path -LiteralPath $InstallerTemp) {
     $ResolvedInstallerTemp = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $InstallerTemp).Path)
     if (![System.IO.Path]::GetDirectoryName($ResolvedInstallerTemp).Equals($InstallerTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -112,14 +175,9 @@ finally {
 }
 
 if (!(Test-Path -LiteralPath $InstallerPath -PathType Leaf)) { throw "Expected installer was not created: $InstallerPath" }
-if ($SignCertificatePath) {
-  if (!$env:HAIZFLOW_SIGN_CERT_PASSWORD) { throw "Set HAIZFLOW_SIGN_CERT_PASSWORD before signing the installer." }
-  $SignTool = Get-Command signtool.exe -ErrorAction SilentlyContinue
-  if (!$SignTool) { throw "signtool.exe is required for Authenticode signing." }
-  & $SignTool.Source sign /fd SHA256 /f $SignCertificatePath /p $env:HAIZFLOW_SIGN_CERT_PASSWORD /tr $TimestampServer /td SHA256 $InstallerPath
-  if ($LASTEXITCODE -ne 0) { throw "Installer signing failed." }
-  & $SignTool.Source verify /pa /v $InstallerPath
-  if ($LASTEXITCODE -ne 0) { throw "Installer signature verification failed." }
+if ($SignedBuild) {
+  $Signature = Get-AuthenticodeSignature -LiteralPath $InstallerPath
+  if ($Signature.Status -ne "Valid" -or !$Signature.TimeStamperCertificate) { throw "Installer signing verification failed." }
 }
 
 $InstallerChecksumPath = "$InstallerPath.sha256"
@@ -130,7 +188,7 @@ if (!$SkipInstallerSmokeTest) {
   $SmokeArguments = @{
     InstallerPath = $InstallerPath
   }
-  if ($SignCertificatePath) {
+  if ($SignedBuild) {
     $SmokeArguments.RequireSignature = $true
   }
   & (Join-Path $PSScriptRoot "test-installer.ps1") @SmokeArguments

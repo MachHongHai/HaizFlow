@@ -12,6 +12,7 @@ Use the user guide if you are installing or operating HaizFlow. The engineering 
 | [Manual editor status](manual-editor-stabilization.md) | review implemented guarantees and outstanding hardware tests for the editor. |
 | [Dependency security](dependency-security.md) | audit dependencies, models and temporary security exceptions. |
 | [Release readiness](release-readiness.md) | build, sign, test and approve a distributable release. |
+| [Free unsigned Windows release (Vietnamese)](windows-release-setup.vi.md) | build versioned installers without a certificate, configure resources and publish GitHub Releases. |
 | [Release audit — 2026-10-04](release-audit-2026-10-04.md) | review verified source checks and remaining installer blockers. |
 | [Licensing review](licensing-review.md) | review current rights, draft source/application terms and third-party release blockers. |
 | [Storage and export](project-storage-export.md) | distinguish managed project renders from independently saved video files. |

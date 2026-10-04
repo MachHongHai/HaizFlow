@@ -36,9 +36,22 @@
 #define AppName "HaizFlow"
 #define AppPublisher "Mach Hong Hai"
 #define AppUrl "https://github.com/MachHongHai/HaizFlow"
+#ifndef VersionedLayout
+  #define VersionedLayout "0"
+#endif
+#ifndef EngineeringBuild
+  #define EngineeringBuild "0"
+#endif
+#ifndef SignedBuild
+  #define SignedBuild "0"
+#endif
 
 [Setup]
+#if EngineeringBuild == "1"
+AppId={{2E512B7B-B9A6-4FB9-A306-C836B1DA102A}
+#else
 AppId={{799AE20D-E7A5-4D79-96DE-708E161BF32A}
+#endif
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
@@ -82,10 +95,17 @@ WizardKeepAspectRatio=yes
 UninstallDisplayIcon={app}\HaizFlow.exe
 UninstallDisplayName={#AppName}
 CloseApplications=yes
-CloseApplicationsFilter=HaizFlow.exe
+CloseApplicationsFilter=HaizFlow.exe,HaizFlowCore.exe,HaizFlowUpdater.exe
 RestartApplications=no
 RestartIfNeededByRun=no
 SetupLogging=yes
+#if SignedBuild == "1"
+SignTool=haizflow_release_sign
+SignedUninstaller=yes
+SignToolRunMinimized=yes
+#else
+SignedUninstaller=no
+#endif
 
 [Files]
 ; Release eligibility guarantees SourceDir has no root runtime directory.
@@ -99,6 +119,11 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Name: "{app}\runtime"; Flags: uninsneveruninstall
 
 [InstallDelete]
+#if VersionedLayout == "1"
+; Remove only this installer-owned immutable version after the mandatory
+; pre-copy lock/reparse gate; old rollback versions and runtime remain intact.
+Type: filesandordirs; Name: "{app}\versions\{#AppVersion}"
+#endif
 ; Remove only immutable payload from a previous release before copying the
 ; verified artifact. runtime\ is intentionally absent: it contains user
 ; projects, settings and caches and must survive upgrade/uninstall.
@@ -122,6 +147,15 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\HaizFlow.exe"; Tasks: desktop
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
+[UninstallDelete]
+#if VersionedLayout == "1"
+Type: files; Name: "{app}\update-state\launcher.lock"
+Type: files; Name: "{app}\update-state\update.lock"
+Type: files; Name: "{app}\update-state\updater.lock"
+Type: dirifempty; Name: "{app}\update-state"
+Type: dirifempty; Name: "{app}\versions"
+#endif
+
 [Run]
 Filename: "{app}\HaizFlow.exe"; Description: "Launch HaizFlow"; Flags: nowait postinstall skipifsilent
 
@@ -133,6 +167,60 @@ var
 
 function RoundedUpGiB(const Bytes: Int64): String; forward;
 function RoundedUpTenthGiB(const Bytes: Int64): String; forward;
+function GetFileAttributesW(const Name: String): Cardinal;
+  external 'GetFileAttributesW@kernel32.dll stdcall';
+
+function ContainsReparsePoint(const Path: String): Boolean;
+var
+  FindRec: TFindRec;
+  Attributes: Cardinal;
+begin
+  Result := False;
+  Attributes := GetFileAttributesW(Path);
+  if Attributes = $FFFFFFFF then exit;
+  if (Attributes and $400) <> 0 then begin Result := True; exit; end;
+  if (Attributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then exit;
+  if not FindFirst(AddBackslash(Path) + '*', FindRec) then exit;
+  try
+    repeat
+      if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+        Result := ContainsReparsePoint(AddBackslash(Path) + FindRec.Name);
+    until Result or (not FindNext(FindRec));
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+function AncestorContainsReparsePoint(const Path: String): Boolean;
+var
+  CurrentPath: String;
+  ParentPath: String;
+  Attributes: Cardinal;
+begin
+  Result := False;
+  CurrentPath := RemoveBackslashUnlessRoot(ExpandFileName(Path));
+  repeat
+    Attributes := GetFileAttributesW(CurrentPath);
+    if (Attributes <> $FFFFFFFF) and ((Attributes and $400) <> 0) then
+    begin Result := True; exit; end;
+    ParentPath := ExtractFileDir(CurrentPath);
+    if CompareText(ParentPath, CurrentPath) = 0 then exit;
+    CurrentPath := ParentPath;
+  until CurrentPath = '';
+end;
+
+function UnsafePayload(const Path: String): Boolean;
+begin
+  Result := AncestorContainsReparsePoint(Path) or
+    ContainsReparsePoint(AddBackslash(Path) + '_internal') or
+    ContainsReparsePoint(AddBackslash(Path) + 'versions') or
+    ContainsReparsePoint(AddBackslash(Path) + 'updater') or
+    ContainsReparsePoint(AddBackslash(Path) + 'licenses') or
+    ContainsReparsePoint(AddBackslash(Path) + 'sources') or
+    ContainsReparsePoint(AddBackslash(Path) + 'legal') or
+    ContainsReparsePoint(AddBackslash(Path) + 'update-state') or
+    ContainsReparsePoint(AddBackslash(Path) + 'HaizFlow.exe');
+end;
 
 procedure AddRequirementRow(
   Page: TWizardPage;
@@ -232,7 +320,7 @@ begin
   StorageValueLabel.WordWrap := True;
   StorageValueLabel.Font.Style := [fsBold];
   StorageValueLabel.Caption :=
-    'Core application: ' + RoundedUpTenthGiB({#ArtifactBytes}) + ' GiB. AI engines and models are optional.' + #13#10 +
+    'Core files: ' + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + ' MiB (engines/models/media not included).' + #13#10 +
     RoundedUpGiB({#RequiredFreshBytes}) + ' GiB minimum; ' +
     RoundedUpGiB({#RecommendedFreshBytes}) + ' GiB recommended before a new install.';
 
@@ -331,11 +419,12 @@ begin
   end;
   if GetSpaceOnDisk64(WizardDirValue, FreeBytes, TotalBytes) then
     StorageValueLabel.Caption :=
-      'Storage: ' + RoundedDownGiB(FreeBytes) + ' GiB available; ' +
-      RoundedUpGiB(RequiredBytes) + ' GiB minimum; ' + RoundedUpGiB(RecommendedBytes) +
-      ' GiB recommended for one active project.'
+      'Core files: ' + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + ' MiB (engines/models/media not included).' + #13#10 +
+      'Available: ' + RoundedDownGiB(FreeBytes) + ' GiB; minimum: ' +
+      RoundedUpGiB(RequiredBytes) + ' GiB; recommended: ' + RoundedUpGiB(RecommendedBytes) + ' GiB.'
   else
     StorageValueLabel.Caption :=
+      'Core files: ' + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + ' MiB (engines/models/media not included).' + #13#10 +
       'Storage: ' + RoundedUpGiB(RequiredBytes) + ' GiB minimum; ' + RoundedUpGiB(RecommendedBytes) +
       ' GiB recommended. Setup verifies the selected folder before copying files.';
 end;
@@ -346,14 +435,33 @@ begin
     UpdateCompatibilityStorage;
 end;
 
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ExitCode: Integer;
+begin
+#if VersionedLayout == "1"
+  if CurStep = ssPostInstall then
+    if (not Exec(ExpandConstant('{app}\HaizFlow.exe'), '--initialize {#AppVersion}',
+      ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
+      RaiseException('Could not activate the verified Core. Existing runtime data is preserved.');
+#endif
+end;
+
 function ValidateInstallTarget: String;
 var
   FreeBytes: Int64;
   TotalBytes: Int64;
   RequiredBytes: Int64;
   ProbePath: String;
+  ExitCode: Integer;
 begin
   Result := '';
+
+  if UnsafePayload(WizardDirValue) then
+  begin
+    Result := 'The application payload contains a link or junction. Choose a new installation folder.';
+    exit;
+  end;
 
   if IsDriveRoot(WizardDirValue) then
   begin
@@ -375,6 +483,23 @@ begin
       'HaizFlow runtime data is also safe to reuse.';
     exit;
   end;
+
+#if VersionedLayout == "1"
+  if IsUpgradeTarget(WizardDirValue) then
+  begin
+    if not FileExists(AddBackslash(WizardDirValue) + 'update-layout.json') then
+    begin
+      Result := 'This older installation uses a different layout. Back up runtime and install this version in a new folder.';
+      exit;
+    end;
+    if (not Exec(AddBackslash(WizardDirValue) + 'HaizFlow.exe', '--check-install {#AppVersion}',
+      WizardDirValue, SW_HIDE, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
+    begin
+      Result := 'Close HaizFlow and finish any pending update. A newer installation cannot be downgraded.';
+      exit;
+    end;
+  end;
+#endif
 
   { The application stores mutable runtime data below the selected install
     directory. Reject a folder that will not remain writable after setup exits. }
@@ -428,9 +553,17 @@ begin
 end;
 
 function InitializeUninstall(): Boolean;
+var
+  ExitCode: Integer;
 begin
   Result := True;
   DeleteRuntimeOnUninstall := False;
+  if UnsafePayload(ExpandConstant('{app}')) then
+  begin
+    Result := False;
+    MsgBox('Installation contains a link or junction. No files were removed.', mbError, MB_OK);
+    exit;
+  end;
   if not UninstallSilent then
     DeleteRuntimeOnUninstall :=
       MsgBox(
@@ -441,6 +574,17 @@ begin
         mbConfirmation,
         MB_YESNO or MB_DEFBUTTON2
       ) = IDYES;
+  if DeleteRuntimeOnUninstall and ContainsReparsePoint(ExpandConstant('{app}\runtime')) then
+  begin
+    MsgBox('Runtime data contains a link or junction. Data will be preserved.', mbError, MB_OK);
+    DeleteRuntimeOnUninstall := False;
+  end;
+#if VersionedLayout == "1"
+  Result := Exec(ExpandConstant('{app}\HaizFlow.exe'), '--uninstall-cores',
+    ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) and (ExitCode = 0);
+  if not Result then
+    MsgBox('Core could not be safely removed. Close HaizFlow or repair the installation first. Runtime data is preserved.', mbError, MB_OK);
+#endif
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

@@ -5,7 +5,9 @@ param(
   [string]$Version = "1",
   [string]$ReleaseUrl = "",
   [switch]$AllowUnsigned,
+  [switch]$UnsignedRelease,
   [string]$SignCertificatePath = "",
+  [string]$SignCertificateThumbprint = "",
   [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
@@ -36,8 +38,16 @@ $PreviousUvCache = $env:UV_CACHE_DIR
 $PreviousTemp = $env:TEMP
 $PreviousTmp = $env:TMP
 
-if (!$SignCertificatePath -and !$AllowUnsigned) {
-  throw "Public engine archives require Authenticode signing. Supply -SignCertificatePath or use -AllowUnsigned for engineering builds."
+if ($UnsignedRelease -and ($AllowUnsigned -or $SignCertificatePath -or $SignCertificateThumbprint)) {
+  throw "UnsignedRelease cannot be combined with signing or engineering flags."
+}
+if (!$SignCertificatePath -and !$SignCertificateThumbprint -and !$AllowUnsigned -and !$UnsignedRelease) {
+  throw "Choose a signing identity, UnsignedRelease for public unsigned engines, or AllowUnsigned for internal tests."
+}
+if ($UnsignedRelease) {
+  $GitStatus = & git -C $Root status --porcelain
+  if ($LASTEXITCODE -ne 0 -or $GitStatus) { throw "Public unsigned engine builds require a clean Git checkout." }
+  Write-Warning "Building a public unsigned engine; Windows policy may block its executable."
 }
 if (!(Test-Path -LiteralPath $Lock -PathType Leaf)) {
   throw "Engine lock is missing: $Lock. Run scripts\lock-engine-dependencies.ps1 -Profile $Profile."
@@ -53,18 +63,9 @@ if ($LASTEXITCODE -ne 0) { throw "Engine licensing review failed." }
 
 function Sign-EngineExecutable {
   param([string]$Executable)
-  if (!$SignCertificatePath) { return }
-  if (!(Test-Path -LiteralPath $SignCertificatePath -PathType Leaf)) {
-    throw "Authenticode certificate was not found: $SignCertificatePath"
-  }
-  if (!$env:HAIZFLOW_SIGN_CERT_PASSWORD) {
-    throw "Set HAIZFLOW_SIGN_CERT_PASSWORD before signing an engine."
-  }
-  $SignTool = Get-Command signtool.exe -ErrorAction Stop
-  & $SignTool.Source sign /fd SHA256 /f $SignCertificatePath /p $env:HAIZFLOW_SIGN_CERT_PASSWORD /tr $TimestampServer /td SHA256 $Executable
-  if ($LASTEXITCODE -ne 0) { throw "Engine signing failed." }
-  & $SignTool.Source verify /pa /v $Executable
-  if ($LASTEXITCODE -ne 0) { throw "Engine signature verification failed." }
+  if (!$SignCertificatePath -and !$SignCertificateThumbprint) { return }
+  & (Join-Path $PSScriptRoot "sign-windows.ps1") -FilePath $Executable `
+    -CertificatePath $SignCertificatePath -CertificateThumbprint $SignCertificateThumbprint -TimestampServer $TimestampServer
 }
 
 Push-Location -LiteralPath $Root
@@ -79,7 +80,27 @@ try {
     & $Uv venv $Environment --python 3.13
     if ($LASTEXITCODE -ne 0) { throw "Could not create the engine environment." }
   }
-  & $Uv pip sync --python $Python --require-hashes --index-strategy unsafe-first-match $Lock
+  # The compiled lock contains exact wheel hashes, but does not emit the vendor
+  # indexes from its input files. Supply only the reviewed profile wheel index.
+  $EngineIndexArguments = switch ($Profile) {
+    "cpu" { @("--extra-index-url", "https://download.pytorch.org/whl/cpu") }
+    "cuda128" { @("--extra-index-url", "https://download.pytorch.org/whl/cu128") }
+    default { @() }
+  }
+  if ($Profile -eq "cpu") {
+    $WheelDirectory = Join-Path $BuildRoot "wheels"
+    New-Item -ItemType Directory -Path $WheelDirectory -Force | Out-Null
+    $LlamaWheel = Join-Path $WheelDirectory "llama_cpp_python-0.3.34-py3-none-win_amd64.whl"
+    $LlamaHash = "6526fff614e5ef7e439e6369e076a78073e45e1d791dbe1d5e5d42661f46ca1a"
+    if (!(Test-Path -LiteralPath $LlamaWheel)) {
+      Invoke-WebRequest -Uri "https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.34/llama_cpp_python-0.3.34-py3-none-win_amd64.whl" -OutFile $LlamaWheel
+    }
+    if ((Get-FileHash -LiteralPath $LlamaWheel -Algorithm SHA256).Hash.ToLowerInvariant() -ne $LlamaHash) {
+      throw "The official Windows llama.cpp wheel does not match its reviewed SHA-256."
+    }
+    $EngineIndexArguments += @("--find-links", $WheelDirectory)
+  }
+  & $Uv pip sync --python $Python --require-hashes --index-strategy unsafe-best-match @EngineIndexArguments $Lock
   if ($LASTEXITCODE -ne 0) { throw "Could not install the locked engine environment." }
 
   $Arguments = @(
@@ -93,6 +114,7 @@ try {
     "--workpath", (Join-Path $BuildRoot "work"),
     "--specpath", (Join-Path $BuildRoot "spec"),
     "--paths", (Join-Path $Root "src"),
+    "--additional-hooks-dir", (Join-Path $PSScriptRoot "hooks"),
     "--exclude-module", "PySide6",
     $EntryPoint
   )
@@ -147,11 +169,35 @@ try {
   & $VerifierPython (Join-Path $PSScriptRoot "verify-legal-state.py") --artifact $Artifact
   if ($LASTEXITCODE -ne 0) { throw "Packaged engine legal documents differ from source." }
   Sign-EngineExecutable (Join-Path $Artifact "HaizFlowEngine.exe")
-  & (Join-Path $Artifact "HaizFlowEngine.exe") --smoke --profile $Profile
-  if ($LASTEXITCODE -ne 0) { throw "Frozen engine smoke test failed." }
+  $SmokeRoot = Join-Path $BuildRoot ("smoke-" + [guid]::NewGuid().ToString("N"))
+  $SmokeEnvironment = @{}
+  foreach ($Name in @("HAIZFLOW_HOME", "RUNTIME_DATA_DIR", "MODELS_DIR", "HAIZFLOW_TMP_DIR", "HAIZFLOW_SMOKE_TEST")) {
+    $SmokeEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
+  }
+  try {
+    $env:HAIZFLOW_HOME = $SmokeRoot
+    $env:RUNTIME_DATA_DIR = Join-Path $SmokeRoot "data"
+    $env:MODELS_DIR = Join-Path $SmokeRoot "models"
+    $env:HAIZFLOW_TMP_DIR = Join-Path $SmokeRoot "tmp"
+    $env:HAIZFLOW_SMOKE_TEST = "1"
+    & (Join-Path $Artifact "HaizFlowEngine.exe") --smoke --profile $Profile
+    if ($LASTEXITCODE -ne 0) { throw "Frozen engine smoke test failed." }
+  } finally {
+    foreach ($Name in $SmokeEnvironment.Keys) {
+      [Environment]::SetEnvironmentVariable($Name, $SmokeEnvironment[$Name], "Process")
+    }
+  }
+  if (Test-Path -LiteralPath (Join-Path $Artifact "runtime")) { throw "Engine smoke polluted the immutable artifact with runtime data." }
 
   if (Test-Path -LiteralPath $Archive) { Remove-Item -LiteralPath $Archive -Force }
   Compress-Archive -Path (Join-Path $Artifact "*") -DestinationPath $Archive -CompressionLevel Optimal
+  if ((Get-Item -LiteralPath $Archive).Length -ge 2GB) {
+    $PartsOutput = Join-Path $BuildRoot ("multipart-" + $Version + "-" + [guid]::NewGuid().ToString("N"))
+    & $VerifierPython (Join-Path $PSScriptRoot "split-resource-archive.py") --archive $Archive --output $PartsOutput
+    if ($LASTEXITCODE -ne 0) { throw "Could not split the engine into GitHub-sized assets." }
+    Write-Output "Upload these checksum-pinned parts, not the oversized ZIP: $PartsOutput"
+    if ($ReleaseUrl) { throw "Finalize this multipart engine with --parts-manifest and --parts-url-prefix, not a single ReleaseUrl." }
+  }
   if ($ReleaseUrl) {
     & $Python (Join-Path $PSScriptRoot "finalize-resource-pack.py") `
       --pack-id $PackId --version $Version --archive $Archive --url $ReleaseUrl
