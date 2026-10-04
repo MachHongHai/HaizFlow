@@ -170,7 +170,9 @@ def _native_exit_message(return_code: int) -> str:
 def probe_runtime(device: str, timeout_seconds: int = 240) -> RuntimeProbeResult:
     """Validate a model runtime in a child process so native crashes stay isolated."""
     requested_device = "gpu" if device == "gpu" else "cpu"
-    environment = os.environ.copy()
+    from haizflow.core.paths import engine_environment
+
+    environment = engine_environment()
     environment["HAIZFLOW_PROCESSING_DEVICE"] = requested_device
     environment.pop("HAIZFLOW_FORCE_CPU", None)
     environment["PYTHONIOENCODING"] = "utf-8"

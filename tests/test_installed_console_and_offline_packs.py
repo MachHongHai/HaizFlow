@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+import os
 import sys
 import tempfile
 import unittest
@@ -70,6 +71,45 @@ class ConsoleTests(unittest.TestCase):
 
 
 class OfflinePackTests(unittest.TestCase):
+    def test_production_engine_uses_validated_core_root_and_moved_models(self):
+        from haizflow.core import paths
+        from haizflow.update.state import provision
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = root / "app"
+            resources = root / "another-drive-resources"
+            engine = resources / "engines/cpu/3/HaizFlowEngine.exe"
+            engine.parent.mkdir(parents=True)
+            engine.touch()
+            provision(app)
+            (app / "runtime/data").mkdir(parents=True)
+            (app / "runtime/data/resource-storage.json").write_text(json.dumps({"version": 1, "path": str(resources)}))
+            environment = {"HAIZFLOW_ENGINE_APP_ROOT": str(app), "HAIZFLOW_HOME": "C:/wrong/home",
+                           "MODELS_DIR": "C:/wrong/models", "RUNTIME_DATA_DIR": "C:/wrong/data"}
+            with patch.dict(os.environ, environment, clear=True), patch.object(sys, "frozen", True, create=True), \
+                    patch.object(sys, "executable", str(engine)):
+                self.assertEqual(paths.install_root(), app.resolve())
+                self.assertEqual(paths.models_dir(), resources.resolve() / "models")
+                self.assertEqual(paths.runtime_data_dir(), app.resolve() / "runtime/data")
+                os.environ.pop("HAIZFLOW_ENGINE_APP_ROOT")
+                with self.assertRaisesRegex(ValueError, "HaizFlow"):
+                    paths.install_root()
+
+    def test_core_cleans_inherited_overrides_before_starting_engine(self):
+        from haizflow.core import paths
+
+        environment = {"HAIZFLOW_HOME": "C:/wrong/home", "MODELS_DIR": "C:/wrong/models",
+                       "HAIZFLOW_ENGINE_APP_ROOT": "C:/wrong/app", "UNRELATED_SETTING": "keep"}
+        with patch.dict(os.environ, environment, clear=True), patch.object(paths, "is_frozen", return_value=True), \
+                patch.object(paths, "install_root", return_value=Path("D:/SelectedHaizFlow")):
+            worker = paths.engine_environment()
+            self.assertEqual(worker["HAIZFLOW_ENGINE_APP_ROOT"], str(Path("D:/SelectedHaizFlow")))
+            self.assertNotIn("MODELS_DIR", worker)
+            self.assertNotIn("HAIZFLOW_HOME", worker)
+            self.assertEqual(worker["UNRELATED_SETTING"], "keep")
+            self.assertEqual(os.environ["HAIZFLOW_HOME"], environment["HAIZFLOW_HOME"])
+
     def test_frozen_core_reads_catalog_beside_executable_not_only_internal(self):
         from haizflow.services.resource_packs import _load_release_pack_metadata, built_in_pack_definitions
 

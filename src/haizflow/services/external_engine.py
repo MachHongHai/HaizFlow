@@ -48,7 +48,9 @@ class ExternalEngineClient:
         command = self._manager.engine_command(self.pack_id, "rpc_command")
         if not command:
             raise ExternalEngineError(f"Engine {self.pack_id} does not expose a valid rpc_command.")
-        environment = os.environ.copy()
+        from haizflow.core.paths import engine_environment
+
+        environment = engine_environment()
         environment.update(
             {
                 "PYTHONUTF8": "1",

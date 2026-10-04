@@ -343,7 +343,9 @@ def _worker_server_command(device: str = "") -> list[str]:
 
 
 def _worker_environment() -> dict[str, str]:
-    environment = os.environ.copy()
+    from haizflow.core.paths import engine_environment
+
+    environment = engine_environment()
     environment["PYTHONFAULTHANDLER"] = "1"
     # Transformers 5 materializes safetensors in a thread pool by default.
     # On Windows/CUDA this can crash natively during model loading and raises

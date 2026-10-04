@@ -434,7 +434,9 @@ def _ensure_hymt2_worker_locked():
         return _WORKER_PROCESS, _WORKER_OUTPUT
 
     _discard_hymt2_worker()
-    environment = os.environ.copy()
+    from haizflow.core.paths import engine_environment
+
+    environment = engine_environment()
     environment["PYTHONPATH"] = str(project_root() / "src") + os.pathsep + environment.get("PYTHONPATH", "")
     environment["OMP_NUM_THREADS"] = "1"
     environment["MKL_NUM_THREADS"] = "1"

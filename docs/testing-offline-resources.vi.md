@@ -7,9 +7,9 @@ Giữ nguyên cấu trúc thư mục:
     installer/
       HaizFlow-0.1.0-DEVELOPMENT-Setup.exe
       offline-resources/
-        engine-cpu-py313-2.zip
-        engine-cuda128-py313-3.zip
-        engine-vision-onnx-2.zip
+        engine-cpu-py313-3.zip
+        engine-cuda128-py313-4.zip
+        engine-vision-onnx-3.zip
         RESOURCE-PACKS.json
 
 1. Đóng HaizFlow đang chạy. Chạy **file Setup**, không chạy trực tiếp các EXE

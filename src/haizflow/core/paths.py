@@ -54,6 +54,17 @@ def install_root() -> Path:
         return Path(override).expanduser().resolve()
     if is_frozen():
         core = Path(sys.executable).absolute().parent
+        if Path(sys.executable).name == "HaizFlowEngine.exe" and not runtime_overrides_allowed():
+            # Optional engines may live on a different resource drive. Core
+            # explicitly supplies its provisioned app root; never infer mutable
+            # data from the immutable engine executable directory.
+            value = os.getenv("HAIZFLOW_ENGINE_APP_ROOT", "")
+            root = Path(value)
+            if not value or not root.is_absolute() or str(root).startswith("\\\\"):
+                raise ValueError("Hãy chạy bộ xử lý từ HaizFlow, không mở EXE của gói tài nguyên trực tiếp.")
+            from haizflow.update.state import Layout
+
+            return Layout(root).root
         # Infer from the executable, never trust an inherited install-root
         # environment variable. Provisioning marker and no-reparse checks are
         # required before using the persistent root.
@@ -67,6 +78,18 @@ def install_root() -> Path:
 
 def core_root() -> Path:
     return project_root()
+
+
+def engine_environment() -> dict[str, str]:
+    """Give child engines the actual Core installation, not machine overrides."""
+    environment = os.environ.copy()
+    if is_frozen() and not runtime_overrides_allowed():
+        root = install_root()
+        for name in ("HAIZFLOW_HOME", "APP_DATA_DIR", "RUNTIME_DATA_DIR", "MODELS_DIR",
+                     "HAIZFLOW_INSTALL_ROOT", "HAIZFLOW_RESOURCE_ROOT", "HAIZFLOW_SMOKE_TEST"):
+            environment.pop(name, None)
+        environment["HAIZFLOW_ENGINE_APP_ROOT"] = str(root)
+    return environment
 
 
 def update_state_dir() -> Path:
