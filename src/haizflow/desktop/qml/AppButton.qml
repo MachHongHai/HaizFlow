@@ -9,6 +9,7 @@ Button {
     property bool compact: false
     property string iconGlyph: ""
     property string toolTipText: ""
+    property bool showToolTip: false
     readonly property bool showLeadingIcon: iconGlyph.length > 0 && text.length === 0
 
     implicitHeight: compact ? UiMetrics.compactControlHeight : tone === "primary" ? UiMetrics.primaryControlHeight : UiMetrics.controlHeight
@@ -71,7 +72,7 @@ Button {
         }
     }
 
-    ToolTip.visible: hovered && toolTipText.length > 0
+    ToolTip.visible: root.showToolTip && hovered && !down && toolTipText.length > 0
     ToolTip.text: toolTipText
     ToolTip.delay: 500
 }

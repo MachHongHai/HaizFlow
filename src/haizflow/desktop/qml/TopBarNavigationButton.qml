@@ -17,7 +17,7 @@ Button {
     bottomPadding: 0
     focusPolicy: Qt.TabFocus
     Accessible.name: toolTipText
-    ToolTip.visible: hovered && toolTipText.length > 0
+    ToolTip.visible: false
     ToolTip.text: toolTipText
     ToolTip.delay: 450
 

@@ -197,6 +197,15 @@ class SocialPublishController:
     def status(self) -> str:
         return self._status
 
+    def _missing_api_key_notice(self) -> None:
+        from haizflow.desktop.resource_progress import zernio_key_notice
+
+        title, message = zernio_key_notice(getattr(self._host, "_settings_language", "vi"))
+        self._status = message
+        signal = getattr(self._host, "appAlertRequested", None)
+        if signal is not None:
+            signal.emit(title, message, "warning")
+
     @property
     def default_caption(self) -> str:
         return str(self._state.get("default_caption") or "")
@@ -835,7 +844,7 @@ class SocialPublishController:
         key = self._api_key()
         if not key:
             if not silent:
-                self._status = "Add a Zernio API key first."
+                self._missing_api_key_notice()
                 self._emit_changed()
             return False
         if silent:
@@ -1697,7 +1706,7 @@ class SocialPublishController:
         if self._account_syncing or self._creator_syncing or self._credential_busy:
             self._status = "Wait for the selected platform to finish loading."
         elif not self._api_key():
-            self._status = "Add a Zernio API key first."
+            self._missing_api_key_notice()
         elif not self._state.get("selected_account_id"):
             self._status = "Connect and select a social account first."
         elif not self._state.get("privacy_level"):

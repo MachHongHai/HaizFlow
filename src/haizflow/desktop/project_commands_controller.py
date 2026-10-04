@@ -11,7 +11,6 @@ from pathlib import Path
 
 from haizflow.core.hardware import runtime_profile
 from haizflow.desktop.localization import QMessageBox
-from haizflow.desktop.presenters import format_memory_size
 from haizflow.pipeline.process_registry import cancel_video, pause_video
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services import project_store, video_store
@@ -109,8 +108,10 @@ class ProjectCommandsController:
             from haizflow.services.gemini_translation import key_configured
 
             if not key_configured():
-                host.appAlertRequested.emit("Cần Gemini API key", "Thêm API key trong Cài đặt → API Key trước khi dịch.", "warning")
-                host.geminiSetupRequested.emit()
+                from haizflow.desktop.resource_progress import gemini_key_notice
+
+                title, message = gemini_key_notice(getattr(host, "_settings_language", "vi"))
+                host.appAlertRequested.emit(title, message, "warning")
                 return False
         for video in videos:
             if video and getattr(video, "tts_voice", "") == "omnivoice:clone":
@@ -162,33 +163,11 @@ class ProjectCommandsController:
         missing = list(dict.fromkeys(missing))
         if not missing:
             return True
-        support = [item for item in missing if item in {"model-demucs", "model-subtitle-ocr", "engine-vision-onnx"}]
-        support_models = {item for item in support if item in {"model-demucs", "model-subtitle-ocr"}}
-        if "engine-vision-onnx" in support:
-            support_models.add("model-subtitle-ocr")
-        if support_models:
-            resource_controller.installResourcePacks(sorted(support_models))
-        visible_missing = [item for item in missing if item not in support]
-        if not visible_missing:
-            host.appAlertRequested.emit(
-                "Đang chuẩn bị thành phần hỗ trợ",
-                "Ứng dụng đang cài thành phần tách giọng hoặc xử lý phụ đề. Hãy chạy lại khi hoàn tất.",
-                "info",
-            )
-            return False
-        missing = visible_missing
         summary = resource_controller.manager.requirement_summary(missing)
-        missing_labels = ", ".join(resource_controller.manager.definitions[item].label for item in missing)
-        host.appAlertRequested.emit(
-            "Cần cài thêm gói",
-            f"Thiếu {missing_labels}. Cần tải {format_memory_size(summary['downloadBytes'])}. "
-            f"Ổ lưu cần còn trống {format_memory_size(summary['requiredBytes'])} trong lúc cài. "
-            "Mở Gói tài nguyên để tiếp tục.",
-            "info",
-        )
-        signal = getattr(host, "resourcePacksRequested", None)
-        if signal is not None:
-            signal.emit(resource_controller.manager.definitions[missing[0]].group)
+        from haizflow.desktop.resource_progress import missing_resource_notice
+
+        title, message = missing_resource_notice(missing, summary, getattr(host, "_settings_language", "vi"))
+        host.appAlertRequested.emit(title, message, "info")
         return False
 
     def start_batch(self) -> None:

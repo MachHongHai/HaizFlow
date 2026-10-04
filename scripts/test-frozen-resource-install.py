@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--archive", type=Path, action="append", required=True)
     parser.add_argument("--parts-manifest", type=Path)
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--pause-resume", action="store_true")
+    parser.add_argument("--exercise-storage", action="store_true")
     args = parser.parse_args()
     parent = ROOT / "build/resource-install-smoke"
     root = parent / uuid.uuid4().hex
@@ -30,7 +32,7 @@ def main():
         TEMP=str(root), TMP=str(root))
     from haizflow.core.paths import engines_dir, resource_packages_dir
     from haizflow.core.resource_archive import ArchivePart
-    from haizflow.services.resource_packs import ResourcePackDefinition, ResourcePackManager
+    from haizflow.services.resource_packs import ResourcePackDefinition, ResourcePackManager, ModelBootstrapCancelled
     from haizflow.update.filesystem import atomic_json, no_links, remove_owned, sha256
 
     results = []
@@ -70,6 +72,18 @@ def main():
             with patch("urllib.request.urlopen", side_effect=AssertionError("Network is forbidden in this cached test")), \
                     patch.object(manager, "_offline_root", return_value=archive.parent):
                 assert manager.archive_available(package_id)
+                if args.pause_resume:
+                    def pause_during_extraction(unit, event):
+                        if event.phase == "installing" and event.completed_bytes > 2 * 1024**2:
+                            manager.cancel(unit)
+                    try:
+                        manager.install(package_id, pause_during_extraction)
+                    except ModelBootstrapCancelled:
+                        pass
+                    else:
+                        raise AssertionError("Extraction did not pause")
+                    assert manager.status(package_id) != "installed"
+                    assert not list((engines_dir() / package_id).glob("*.partial"))
                 manager.install(package_id, lambda _pack, event: events.append(event.state))
             target = engines_dir() / package_id / version
             assert manager.status(package_id) == "installed"
@@ -84,7 +98,24 @@ def main():
             assert events[-1] == "ready"
             results.append(dict(pack_id=package_id, version=version, multipart=bool(parts), offline=args.offline,
                 archive_bytes=archive.stat().st_size, installed_bytes=actual_payload,
-                engine_smoke_passed=True, installed_status=True, storage_exact=True))
+                engine_smoke_passed=True, installed_status=True, storage_exact=True,
+                pause_resume_passed=args.pause_resume))
+            if args.exercise_storage:
+                sentinel = root / "data/user-data.txt"
+                sentinel.parent.mkdir(parents=True, exist_ok=True)
+                sentinel.write_bytes(b"PRIVATE TEST DATA")
+                moved = manager.move_storage(root / "moved")
+                os.environ.pop("HAIZFLOW_RESOURCE_ROOT", None)
+                os.environ.pop("MODELS_DIR", None)
+                assert manager.storage_root == moved
+                assert manager.status(package_id) == "installed"
+                manager.verify_installed(package_id)
+                manager.cleanup_previous_storage()
+                assert sentinel.read_bytes() == b"PRIVATE TEST DATA"
+                assert manager.remove(package_id) > 0
+                assert manager.status(package_id) != "installed"
+                assert sentinel.read_bytes() == b"PRIVATE TEST DATA"
+                results[-1]["move_verify_remove_preserved_data"] = True
             print("Actual cached install and frozen engine smoke passed: " + package_id, flush=True)
         report = ROOT / "build/resource-install-reports" / root.name / "result.json"
         atomic_json(report, dict(passed=True, network_tested=False, actual_frozen_engines=True,

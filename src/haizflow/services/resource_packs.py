@@ -261,6 +261,8 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             ("demucs",),
             (),
         ),
+        model_pack("model-demucs-cpu", "Demucs CPU", "separation", "separation", ("demucs",), ("engine-cpu-py313",)),
+        model_pack("model-demucs-gpu", "Demucs GPU NVIDIA", "separation", "separation", ("demucs",), ("engine-cuda128-py313",)),
         model_pack(
             "model-subtitle-ocr",
             "OCR phụ đề",
@@ -519,6 +521,13 @@ class ResourcePackManager:
             path = bundled_model_root() / MODEL_FILE
             if path.is_file() and path.stat().st_size == MODEL_SIZE:
                 return "bundled"
+        if pack_id in {"model-demucs-cpu", "model-demucs-gpu"}:
+            try:
+                receipt = json.loads((models_dir() / "demucs/profiles" / f"{pack_id}.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                receipt = {}
+            if receipt != {"pack_id": pack_id, "version": definition.version}:
+                return "missing"
         if self._assets_present(definition):
             return "installed"
         if any((models_dir() / f"{asset.relative_path}.part").is_file() for asset in definition.assets):
@@ -697,7 +706,7 @@ class ResourcePackManager:
             "voice": voice_packs,
             "separation": [
                 f"engine-{'cuda128-py313' if device == 'gpu' else 'cpu-py313'}",
-                "model-demucs",
+                f"model-demucs-{device}",
             ],
             "ocr": ["engine-vision-onnx", "model-subtitle-ocr"],
             "speaker": speaker_packs,
@@ -849,7 +858,7 @@ class ResourcePackManager:
         elif pack_id == "model-omnivoice":
             verify_omnivoice_model(root / "omnivoice")
             verify_omnivoice_sdk(root / "omnivoice")
-        elif pack_id == "model-demucs":
+        elif pack_id.startswith("model-demucs"):
             verify_demucs_model(root / "demucs")
         elif pack_id == "model-subtitle-ocr":
             verify_subtitle_ocr_models(root / "subtitle-ocr")
@@ -884,6 +893,11 @@ class ResourcePackManager:
                 cancel_event=cancel,
                 verify_complete=lambda _root: self._verify_model_pack(definition),
             )
+            if pack_id in {"model-demucs-cpu", "model-demucs-gpu"}:
+                from haizflow.update.filesystem import atomic_json
+
+                atomic_json(models_dir() / "demucs/profiles" / f"{pack_id}.json",
+                            {"pack_id": pack_id, "version": definition.version})
         finally:
             with self._lock:
                 self._active.discard(pack_id)
@@ -1096,7 +1110,9 @@ class ResourcePackManager:
             event.set()
 
     def remove(self, pack_id: str, *, in_use: bool = False) -> int:
-        if in_use:
+        from haizflow.update.filesystem import no_links, UpdateError
+
+        if in_use or self._active:
             raise ResourcePackError("Gói đang được một tác vụ sử dụng.")
         definition = self.definitions[pack_id]
         if self.status(pack_id) == "bundled":
@@ -1104,14 +1120,31 @@ class ResourcePackManager:
         removed = 0
         if definition.engine_modules:
             root = self._engine_marker(definition).parent
+            try:
+                no_links(root)
+                for path in root.rglob("*"):
+                    no_links(path)
+            except UpdateError as error:
+                raise ResourcePackError("Vị trí gói chứa liên kết hoặc junction; không thể gỡ.") from error
             if root.is_dir():
                 removed = sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
                 shutil.rmtree(root)
             return removed
         root = models_dir()
+        candidates = [candidate for asset in definition.assets for candidate in
+                      (root / asset.relative_path, (root / asset.relative_path).with_name(Path(asset.relative_path).name + ".part"))]
+        receipt = root / "demucs/profiles" / f"{pack_id}.json" if pack_id in {"model-demucs-cpu", "model-demucs-gpu"} else None
+        if receipt is not None:
+            candidates.append(receipt)
+        try:
+            for candidate in candidates:
+                no_links(candidate)
+        except UpdateError as error:
+            raise ResourcePackError("Vị trí model chứa liên kết hoặc junction; không thể gỡ.") from error
         for asset in definition.assets:
             shared_by_installed_pack = any(
                 other.pack_id != definition.pack_id
+                and other.pack_id != "model-demucs"
                 and not other.engine_modules
                 and any(candidate.relative_path == asset.relative_path for candidate in other.assets)
                 and self.status(other.pack_id) == "installed"
@@ -1126,9 +1159,15 @@ class ResourcePackManager:
                     candidate.unlink()
                 except FileNotFoundError:
                     pass
+        if receipt is not None:
+            receipt.unlink(missing_ok=True)
         return removed
 
     def clean_unused(self, *, minimum_age_seconds: int = 0) -> int:
+        from haizflow.update.filesystem import no_links, UpdateError
+
+        if self._active:
+            return 0
         removed = 0
         cutoff = time.time() - max(0, int(minimum_age_seconds))
         for root in (models_dir(), resource_packages_dir(), engines_dir()):
@@ -1138,15 +1177,28 @@ class ResourcePackManager:
                 if not path.is_file() or not path.name.endswith((".part", ".partial", ".tmp")):
                     continue
                 try:
+                    no_links(path)
                     if path.stat().st_mtime > cutoff:
                         continue
                     removed += path.stat().st_size
                     path.unlink()
-                except OSError:
+                except (OSError, UpdateError):
                     pass
         return removed
 
+    def verify_installed(self, pack_id: str) -> None:
+        """Run a native runtime smoke test or verify the model's pinned files."""
+        definition = self.definitions[pack_id]
+        if definition.engine_modules:
+            self._verify_engine_staging(definition, self._engine_marker(definition).parent)
+        else:
+            self._verify_model_pack(definition)
+
     def move_storage(self, destination: Path) -> Path:
+        from haizflow.update.filesystem import no_links
+
+        no_links(destination.expanduser())
+        no_links(self.storage_root)
         destination = destination.expanduser().resolve()
         if str(destination).startswith("\\\\"):
             raise ResourcePackError("Không hỗ trợ ổ mạng cho gói tài nguyên.")
@@ -1156,6 +1208,15 @@ class ResourcePackManager:
         target = destination / "HaizFlowResources"
         if target.is_relative_to(source) or source.is_relative_to(target):
             raise ResourcePackError("Hãy chọn một thư mục ngoài vị trí tài nguyên hiện tại.")
+        no_links(target)
+        if target.exists() and (not target.is_dir() or any(
+                child.name not in {"models", "engines", "packages"} for child in target.iterdir())):
+            raise ResourcePackError("Thư mục đích chứa dữ liệu khác. Hãy chọn vị trí trống.")
+        for root in (source, target):
+            for name in ("models", "engines", "packages"):
+                no_links(root / name)
+                for path in (root / name).rglob("*"):
+                    no_links(path)
         destination.mkdir(parents=True, exist_ok=True)
         required = sum(
             path.stat().st_size
@@ -1167,7 +1228,7 @@ class ResourcePackManager:
             raise ResourcePackError("Ổ đích không đủ dung lượng trống.")
         staging = destination / f".haizflow-resources-{os.getpid()}.partial"
         if staging.exists():
-            shutil.rmtree(staging)
+            raise ResourcePackError("Vị trí đích còn bản chuyển dở. Hãy chọn thư mục khác.")
         staging.mkdir(parents=True)
         backup: Path | None = None
         promoted = False
@@ -1181,7 +1242,7 @@ class ResourcePackManager:
             if target.exists():
                 backup = destination / f".haizflow-resources-{os.getpid()}.backup"
                 if backup.exists():
-                    shutil.rmtree(backup)
+                    raise ResourcePackError("Vị trí đích còn bản khôi phục. Hãy chọn thư mục khác.")
                 os.replace(target, backup)
             os.replace(staging, target)
             promoted = True
@@ -1211,6 +1272,8 @@ class ResourcePackManager:
                     shutil.rmtree(target, ignore_errors=True)
                 if not target.exists():
                     os.replace(backup, target)
+            elif promoted:
+                shutil.rmtree(target, ignore_errors=True)
             raise
 
     @staticmethod

@@ -39,7 +39,7 @@ def progress_copy(unit: str, event: ModelProgress) -> dict:
             "file": int(match[1]) if match else 0, "count": int(match[2]) if match else 0}
 
 
-def localized_progress(copy: dict, language: str) -> str:
+def pack_label(unit: str, language: str) -> str:
     vi = language == "vi"
     labels = {
         "engine-cpu-py313": ("Bộ xử lý CPU", "CPU runtime"),
@@ -52,14 +52,48 @@ def localized_progress(copy: dict, language: str) -> str:
         "model-omnivoice": ("OmniVoice", "OmniVoice"),
         "model-whisperx-vad": ("Nhận diện lời nói", "Voice activity detection"),
         "model-demucs": ("Tách giọng", "Vocal separation"),
+        "model-demucs-cpu": ("Demucs CPU", "Demucs CPU"),
+        "model-demucs-gpu": ("Demucs GPU NVIDIA", "Demucs GPU NVIDIA"),
         "model-subtitle-ocr": ("Nhận dạng phụ đề", "Subtitle recognition"),
     }
+    return labels.get(unit, ("Tài nguyên hỗ trợ", "Supporting resources"))[0 if vi else 1]
+
+
+def missing_resource_notice(pack_ids, summary: dict, language: str, feature: str = "") -> tuple[str, str]:
+    from haizflow.desktop.presenters import format_memory_size
+
+    vi = language == "vi"
+    labels = ", ".join(pack_label(pack, language) for pack in pack_ids)
+    size = format_memory_size(summary["downloadBytes"])
+    space = format_memory_size(summary["requiredBytes"])
+    if vi:
+        transfer = f"Cần tải {size}." if summary["downloadBytes"] else "Gói cài đã có sẵn trên máy."
+        requirement = f"{feature}: cần {labels}." if feature else f"Cần {labels}."
+        return "Chưa cài đủ gói", f"{requirement} {transfer} Cần {space} trống để cài. Vào Cài đặt → Gói tài nguyên để cài gói này."
+    transfer = f"Download: {size}." if summary["downloadBytes"] else "The installation archive is already on this computer."
+    return "Required resources are missing", f"Required: {labels}. {transfer} Installation needs {space} of free space. Install these packs in Settings → Resource packs."
+
+
+def gemini_key_notice(language: str) -> tuple[str, str]:
+    if language == "vi":
+        return "Chưa có Gemini API key", "Để dịch bằng Gemini, thêm key tại Cài đặt → API Key → Gemini. Bạn vẫn có thể chọn HY-MT2 để dịch cục bộ."
+    return "Gemini API key is missing", "To translate with Gemini, add a key in Settings → API Key → Gemini. You can use HY-MT2 for local translation instead."
+
+
+def zernio_key_notice(language: str) -> tuple[str, str]:
+    if language == "vi":
+        return "Chưa có Zernio API key", "Để kết nối tài khoản và đăng video, thêm key tại Cài đặt → API Key → Zernio."
+    return "Zernio API key is missing", "To connect accounts and publish videos, add a key in Settings → API Key → Zernio."
+
+
+def localized_progress(copy: dict, language: str) -> str:
+    vi = language == "vi"
     states = {"checking": ("Đang kiểm tra", "Checking"), "downloading": ("Đang tải", "Downloading"),
               "verifying": ("Đang xác minh", "Verifying"), "installing": ("Đang cài đặt", "Installing"),
               "paused": ("Đã tạm dừng", "Paused"), "removing": ("Đang gỡ", "Removing")}
     parts = [states.get(copy.get("state"), states["checking"])[0 if vi else 1]]
     unit = copy.get("unit", "")
-    label = labels.get(unit, ("Tài nguyên hỗ trợ", "Supporting resources"))[0 if vi else 1]
+    label = pack_label(unit, language)
     if copy.get("count"):
         parts.append(("Tệp" if vi else "File") + f" {copy['file']}/{copy['count']}")
     parts.append(label)

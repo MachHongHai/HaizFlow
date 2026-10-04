@@ -15,6 +15,7 @@ StudioButton {
     iconGlyph: "\uE710"
     variant: "secondary"
     toolTipText: qsTr("Chọn tệp, liên kết hoặc video từ dự án tải xuống")
+    showToolTip: true
 
     function openMenu() {
         if (!enabled)

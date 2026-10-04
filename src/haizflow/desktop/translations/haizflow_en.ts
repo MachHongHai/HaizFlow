@@ -3369,6 +3369,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ResourcePackRow</name>
+    <message><source>Cài từ gói có sẵn</source><translation>Install from the local archive</translation></message>
     <message>
         <source>Đang cài đặt</source>
         <translation>Installing</translation>
@@ -3472,6 +3473,18 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ResourcePacksPage</name>
+    <message><source>Demucs CPU</source><translation>Demucs CPU</translation></message>
+    <message><source>Demucs GPU NVIDIA</source><translation>Demucs NVIDIA GPU</translation></message>
+    <message><source>Tách giọng nói khỏi nhạc trên CPU</source><translation>Separate vocals from music on CPU</translation></message>
+    <message><source>Tách giọng nói khỏi nhạc trên GPU NVIDIA</source><translation>Separate vocals from music on NVIDIA GPU</translation></message>
+    <message><source>Tách giọng nói khỏi nhạc · GPU NVIDIA</source><translation>Separate vocals from music · NVIDIA GPU</translation></message>
+    <message><source>Tách giọng nói khỏi nhạc · CPU</source><translation>Separate vocals from music · CPU</translation></message>
+    <message><source>Demucs</source><translation>Demucs</translation></message>
+    <message><source>Nhận diện phụ đề gốc</source><translation>Original subtitle detection</translation></message>
+    <message><source>Tách giọng</source><translation>Vocal separation</translation></message>
+    <message><source>Hình ảnh</source><translation>Image processing</translation></message>
+    <message><source>Tách giọng nói khỏi nhạc bằng CPU hoặc GPU</source><translation>Separate vocals from music on CPU or GPU</translation></message>
+    <message><source>Nhận diện vị trí phụ đề gốc trong video</source><translation>Detect original subtitle regions in video</translation></message>
     <message><source>Nhận diện người nói</source><translation>Speaker identification</translation></message>
     <message><source>Tích hợp trong ứng dụng, chạy trên CPU. Không cần tải gói riêng.</source><translation>Built into the application, running on CPU. No separate download.</translation></message>
     <message>

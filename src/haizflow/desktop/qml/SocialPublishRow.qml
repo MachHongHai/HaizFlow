@@ -128,6 +128,7 @@ Rectangle {
         StudioIconButton {
             iconName: "delete"
             toolTipText: qsTr("Xóa khỏi danh sách (không xóa bài trên mạng xã hội)")
+            showToolTip: true
             enabled: !AppController.tiktokPublishBusy && !root.working
             onClicked: AppController.removeTikTokPublishItem(root.index)
         }

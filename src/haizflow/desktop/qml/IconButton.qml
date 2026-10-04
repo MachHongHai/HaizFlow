@@ -8,6 +8,7 @@ Button {
     property string glyph: ""
     property string tone: "ghost"
     property string toolTipText: ""
+    property bool showToolTip: false
     property int controlSize: 30
 
     implicitWidth: controlSize
@@ -36,7 +37,7 @@ Button {
         }
     }
 
-    ToolTip.visible: hovered && toolTipText.length > 0
+    ToolTip.visible: root.showToolTip && hovered && !down && toolTipText.length > 0
     ToolTip.text: toolTipText
     ToolTip.delay: 450
 }

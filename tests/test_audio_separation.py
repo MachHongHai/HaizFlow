@@ -16,6 +16,21 @@ from haizflow.pipeline import audio_separation
 
 
 class AudioSeparationTests(unittest.TestCase):
+    def test_demucs_runtime_selection_obeys_cpu_gpu_setting(self):
+        from haizflow.core.hardware import HardwareCapabilities, runtime_profile_for
+
+        capabilities = HardwareCapabilities(
+            cuda_available=True, cuda_name="RTX 4060", total_vram_bytes=8 * 1024**3,
+            free_vram_bytes=7 * 1024**3,
+            total_ram_bytes=16 * 1024**3, logical_cpu_count=8, ac_powered=True, battery_percent=100,
+        )
+        for preference in ("cpu", "gpu"):
+            with self.subTest(preference=preference), mock.patch.object(
+                audio_separation, "runtime_profile", return_value=runtime_profile_for(capabilities, preference)
+            ), mock.patch("haizflow.services.resource_packs.installed_engine_command", return_value=["engine.exe", "--demucs-separate"]) as command:
+                self.assertEqual(audio_separation._demucs_command(), ["engine.exe", "--demucs-separate"])
+                self.assertEqual(command.call_args.args[2], {"device": preference})
+
     def test_publish_retries_transient_windows_directory_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / ".staging"

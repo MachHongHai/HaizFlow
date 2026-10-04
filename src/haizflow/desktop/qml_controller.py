@@ -2951,7 +2951,10 @@ class HaizFlowController(QObject):
 
     @Slot()
     def requestGeminiSetup(self):
-        self.geminiSetupRequested.emit()
+        from haizflow.desktop.resource_progress import gemini_key_notice
+
+        title, message = gemini_key_notice(self._settings_language)
+        self.appAlertRequested.emit(title, message, "warning")
 
     @Slot(str)
     def requestApiKeySettings(self, provider: str):
@@ -4215,20 +4218,6 @@ class HaizFlowController(QObject):
                 missing.extend(resource_manager.missing_packs(capability, pack_context))
         missing = list(dict.fromkeys(missing))
         if missing:
-            support = [item for item in missing if item in {"model-demucs", "model-subtitle-ocr", "engine-vision-onnx"}]
-            support_models = {item for item in support if item in {"model-demucs", "model-subtitle-ocr"}}
-            if "engine-vision-onnx" in support:
-                support_models.add("model-subtitle-ocr")
-            if support_models:
-                resource_packs.installResourcePacks(sorted(support_models))
-            missing = [item for item in missing if item not in support]
-            if not missing:
-                self.appAlertRequested.emit(
-                    "Đang chuẩn bị thành phần hỗ trợ",
-                    "Ứng dụng đang cài thành phần cần thiết. Hãy chạy lại khi hoàn tất.",
-                    "info",
-                )
-                return False
             summary = resource_manager.requirement_summary(missing)
             feature_label = {
                 "recognition": "Nhận dạng và dịch",
@@ -4237,15 +4226,10 @@ class HaizFlowController(QObject):
                 "image": "Che phụ đề gốc",
                 "voice": "Giọng đọc OmniVoice",
             }.get(tool_id, "Công cụ này")
-            missing_labels = ", ".join(resource_manager.definitions[item].label for item in missing)
-            self.appAlertRequested.emit(
-                "Cần cài thêm gói",
-                f"{feature_label} thiếu {missing_labels}. Cần tải {format_memory_size(summary['downloadBytes'])}. "
-                f"Ổ lưu cần còn trống {format_memory_size(summary['requiredBytes'])} trong lúc cài. "
-                "Mở Gói tài nguyên để tiếp tục.",
-                "info",
-            )
-            self.resourcePacksRequested.emit(resource_manager.definitions[missing[0]].group)
+            from haizflow.desktop.resource_progress import missing_resource_notice
+
+            title, message = missing_resource_notice(missing, summary, self._settings_language, feature_label)
+            self.appAlertRequested.emit(title, message, "info")
             return False
         if tool_id in {"subtitle", "voice", "audio", "export"}:
             ensure_current_subtitle_document(video.video_id)

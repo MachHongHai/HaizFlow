@@ -462,6 +462,7 @@ Control {
                                     : root.requestedVoice === String(voiceDelegate.modelData.voice || "")
                                         && voicePlayer.playbackState === MediaPlayer.PlayingState
                                         ? qsTr("Tạm dừng mẫu giọng") : qsTr("Phát mẫu giọng")
+                                showToolTip: !enabled
                                 onClicked: root.togglePreview(String(voiceDelegate.modelData.voice || ""))
                             }
 

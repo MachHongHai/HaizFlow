@@ -581,7 +581,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         ):
             ProjectCommandsController(host).start_batch()
         host._enqueue_videos.assert_not_called()
-        host.geminiSetupRequested.emit.assert_called_once()
+        host.geminiSetupRequested.emit.assert_not_called()
         host.appAlertRequested.emit.assert_called_once()
 
     def test_batch_preflight_missing_clone_sample_does_not_start_other_videos(self):

@@ -142,7 +142,7 @@ class ReleaseToolingTests(unittest.TestCase):
             installer,
         )
         self.assertIn("DefaultDirName={localappdata}\\Programs\\{#AppName}", installer)
-        self.assertIn("engines/models/media not included", installer)
+        self.assertIn("Storage above excludes processing runtimes, models and videos", installer)
         self.assertIn("UsePreviousAppDir=yes", installer)
         self.assertIn("DisableDirPage=auto", installer)
         self.assertNotIn("ExtractFileDrive(ExpandConstant('{srcexe}'))", installer)

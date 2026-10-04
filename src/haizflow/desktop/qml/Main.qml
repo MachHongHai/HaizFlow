@@ -339,14 +339,6 @@ ApplicationWindow {
     }
 
     ConfirmDialog {
-        id: geminiSetupDialog
-        title: qsTr("Chưa thiết lập Gemini API Key")
-        message: qsTr("Bạn cần thêm API key để dịch bằng Gemini. Mở Cài đặt → API Key ngay bây giờ?")
-        confirmText: qsTr("Mở API Key")
-        onConfirmed: AppController.requestApiKeySettings("gemini")
-    }
-
-    ConfirmDialog {
         id: appConfirmationDialog
         property bool responseSent: false
         confirmText: qsTr("Xác nhận")
@@ -420,15 +412,6 @@ ApplicationWindow {
 
         function onVideoExportCompleted(videoId, path) {
             toastStack.show(qsTr("Xuất video thành công"), path, "success", 6500);
-        }
-
-        function onResourcePacksRequested(group) {
-            root.navigate(root.routePackages);
-        }
-
-        function onGeminiSetupRequested() {
-            if (!geminiSetupDialog.visible)
-                geminiSetupDialog.open();
         }
 
         function onApiKeySettingsRequested(provider) {

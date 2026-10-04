@@ -29,12 +29,10 @@ class ProcessingLifecycleController:
             from haizflow.services.gemini_translation import key_configured
 
             if not key_configured():
-                host.appAlertRequested.emit(
-                    "Cần Gemini API key",
-                    "Thêm API key trong Cài đặt → Quản lý API Key trước khi dịch.",
-                    "warning",
-                )
-                host.geminiSetupRequested.emit()
+                from haizflow.desktop.resource_progress import gemini_key_notice
+
+                title, message = gemini_key_notice(getattr(host, "_settings_language", "vi"))
+                host.appAlertRequested.emit(title, message, "warning")
                 return False
         if video.status == "paused":
             prepare_video_resume(video_id)

@@ -1,9 +1,7 @@
 Before installing HaizFlow
 
-This installer contains the application. After launch, open Settings → Resource packs to install the models you need. Recognition, local translation and video processing run on your computer. Online services require Internet access and may require their own API keys.
+This installer contains the application. Install models in Settings → Resource packs. Online services need Internet access and their own API keys.
 
-Data, settings and the project index are stored in the runtime folder under the installation location. Resource storage can be moved in Settings. Installing over an existing copy preserves its data; uninstalling offers a choice to retain data for a later reinstall.
+Data and settings are stored in the runtime folder at the installation location. Reinstalling preserves data; uninstalling lets you choose whether to keep it.
 
-The next page displays the HaizFlow license. Libraries, codecs and models have separate licenses supplied with the application. The OmniVoice checkpoint has a non-commercial restriction. You need the appropriate rights to your videos, music and voice samples.
-
-This page explains installation and use; it does not replace the full licenses.
+The next page contains the HaizFlow license. Library, codec and model licenses are supplied with the application. The OmniVoice checkpoint is for non-commercial use only. You need the appropriate rights to your videos, music and voice samples.

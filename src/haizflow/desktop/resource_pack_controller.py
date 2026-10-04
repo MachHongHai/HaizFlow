@@ -200,6 +200,10 @@ class ResourcePackController(QObject):
         self.model = ResourcePackListModel(self.manager)
         self._events: queue.Queue[dict] = queue.Queue()
         self._threads: dict[str, threading.Thread] = {}
+        self._install_lock = threading.Lock()
+        self._install_cancellations: dict[str, threading.Event] = {}
+        self._install_units: dict[str, str] = {}
+        self._repair_requests: set[str] = set()
         self._move_thread: threading.Thread | None = None
         self._inventory_thread: threading.Thread | None = None
         self._clean_thread: threading.Thread | None = None
@@ -254,7 +258,7 @@ class ResourcePackController(QObject):
         capabilities = getattr(self._host, "_hardware_capabilities", None)
         if capabilities is None:
             return True, ""
-        if pack_id in {"engine-cuda128-py313", "model-whisper-turbo", "model-hymt2-gpu"}:
+        if pack_id in {"engine-cuda128-py313", "model-whisper-turbo", "model-hymt2-gpu", "model-demucs-gpu"}:
             compatible, reason = validate_processing_device("gpu", capabilities)
             if not compatible and getattr(self._host, "_settings_language", "vi") == "vi":
                 if not capabilities.cuda_available:
@@ -267,7 +271,7 @@ class ResourcePackController(QObject):
                 else:
                     reason = "Cấu hình NVIDIA cần máy có ít nhất 16 GB RAM."
             return compatible, reason
-        if pack_id in {"engine-cpu-py313", "model-whisper-small", "model-hymt2-cpu"}:
+        if pack_id in {"engine-cpu-py313", "model-whisper-small", "model-hymt2-cpu", "model-demucs-cpu"}:
             compatible, reason = validate_processing_device("cpu", capabilities)
             if not compatible and getattr(self._host, "_settings_language", "vi") == "vi":
                 reason = "Cấu hình CPU cần máy có ít nhất 16 GB RAM."
@@ -275,7 +279,7 @@ class ResourcePackController(QObject):
         return True, ""
 
     def _supporting_packs(self, pack_id: str) -> list[str]:
-        """Runtime downloads stay internal to the five model choices."""
+        """Each visible model installs its matching runtime as one operation."""
         context = self._display_context()
         if pack_id == "model-whisper-small":
             capability = "recognition"
@@ -292,8 +296,10 @@ class ResourcePackController(QObject):
         elif pack_id == "model-omnivoice":
             capability = "voice"
             context["provider"] = "omnivoice-gpu" if context["provider"] == "omnivoice-gpu" else "omnivoice"
-        elif pack_id == "model-demucs":
+        elif pack_id.startswith("model-demucs"):
             capability = "separation"
+            if pack_id != "model-demucs":
+                context["device"] = "gpu" if pack_id.endswith("-gpu") else "cpu"
         elif pack_id == "model-subtitle-ocr":
             capability = "ocr"
         elif pack_id == "model-speaker-identification":
@@ -303,14 +309,17 @@ class ResourcePackController(QObject):
         return [
             item for item in self.manager.required_packs(capability, context)
             if item != pack_id and item in self.manager.definitions
+            and not (pack_id.startswith("model-demucs") and item.startswith("model-demucs"))
         ]
 
     @property
     def displayRows(self) -> list[dict]:
         """Present only independently installable, large model downloads."""
+        vi = getattr(self._host, "_settings_language", "vi") == "vi"
         ordered_ids = [
             "model-whisper-small", "model-whisper-turbo",
             "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
+            "model-demucs-cpu", "model-demucs-gpu", "model-subtitle-ocr",
         ]
         source_rows = {str(row.get("packId")): row for row in self.model._rows}
         descriptions = {
@@ -319,6 +328,9 @@ class ResourcePackController(QObject):
             "model-hymt2-cpu": "Dịch cục bộ bằng bản Q4, dùng CPU.",
             "model-hymt2-gpu": "Dịch bằng model đầy đủ trên GPU NVIDIA.",
             "model-omnivoice": "Giọng đọc và nhân bản giọng. Dùng chung cho OmniVoice CPU và GPU.",
+            "model-demucs-cpu": "Tách giọng nói khỏi nhạc trên CPU.",
+            "model-demucs-gpu": "Tách giọng nói khỏi nhạc trên GPU NVIDIA.",
+            "model-subtitle-ocr": "Nhận diện vị trí phụ đề gốc trong video.",
         }
         result: list[dict] = []
         previous_group = ""
@@ -332,6 +344,10 @@ class ResourcePackController(QObject):
                 group, title = "recognition", "Nhận dạng"
             elif pack_id.startswith("model-hymt2-"):
                 group, title = "translation", "Dịch"
+            elif pack_id.startswith("model-demucs"):
+                group, title = "separation", "Tách giọng"
+            elif pack_id == "model-subtitle-ocr":
+                group, title = "image", "Hình ảnh"
             else:
                 group, title = "voice", "Giọng đọc"
             compatible, warning = self._hardware_compatibility(pack_id)
@@ -339,9 +355,13 @@ class ResourcePackController(QObject):
                 item for item in self._supporting_packs(pack_id)
                 if self.manager.status(item) not in {"installed", "bundled"}
             ]
+            for runtime in supporting:
+                runtime_compatible, runtime_warning = self._hardware_compatibility(runtime)
+                if not runtime_compatible:
+                    compatible, warning = False, runtime_warning
             if supporting and source.get("status") == "installed":
                 source["status"] = "missing"
-                source["detail"] = "Cần cài môi trường xử lý."
+                source["detail"] = "Cần cài môi trường xử lý." if vi else "The processing runtime needs to be installed."
             needs_download = supporting or source.get("status") in {"missing", "paused", "failed"}
             runtime_available = all(
                 self.manager.archive_available(item) for item in supporting
@@ -352,7 +372,8 @@ class ResourcePackController(QObject):
                 )
                 source["downloadSizeText"] = format_memory_size(total_download)
             if supporting and not runtime_available:
-                source["blockedReason"] = "Bản cài chưa có môi trường xử lý tương ứng."
+                source["blockedReason"] = ("Không tìm thấy gói môi trường xử lý. Giữ thư mục offline-resources cạnh bộ cài."
+                                           if vi else "Runtime archive not found. Keep offline-resources beside the installer.")
                 source["detail"] = source["blockedReason"]
             source.update(
                 {
@@ -362,7 +383,10 @@ class ResourcePackController(QObject):
                     "summary": descriptions.get(pack_id, ""),
                     "hardwareCompatible": compatible,
                     "hardwareWarning": warning,
-                    "canInstall": compatible and needs_download and runtime_available,
+                    "canInstall": bool(compatible and needs_download and runtime_available
+                                       and source.get("status") in {"missing", "paused", "failed"}
+                                       and not self.busy),
+                    "canRemove": bool(source.get("canRemove") and not self.busy),
                 }
             )
             result.append(source)
@@ -453,14 +477,32 @@ class ResourcePackController(QObject):
         )
 
     def _run_install(self, pack_id: str) -> None:
+        # Shared runtimes must finish before another model uses them. Keep the
+        # waiting workers off the GUI thread and cancellation scoped to a row.
+        cancellation = self._install_cancellations.setdefault(pack_id, threading.Event())
+        with self._install_lock:
+            self._maintenance_thread.join()
+            try:
+                self._run_install_transaction(pack_id, cancellation)
+            finally:
+                self._install_units.pop(pack_id, None)
+
+    def _run_install_transaction(self, pack_id: str, cancellation: threading.Event) -> None:
         try:
+            if cancellation.is_set():
+                raise ModelBootstrapCancelled("Installation paused.")
+            repair = pack_id in self._repair_requests
             units = [item for item in self._supporting_packs(pack_id)
-                     if self.manager.status(item) not in {"installed", "bundled"}]
+                     if self.manager.status(item) not in {"installed", "bundled"}
+                     or (repair and self.manager.status(item) == "installed")]
             units = list(dict.fromkeys([*units, pack_id]))
             tracker = InstallProgress(tuple((item, max(1, self.manager.definitions[item].download_size)) for item in units))
             last_report = [0.0, "", ""]
 
             def report(unit: str, event: ModelProgress) -> None:
+                if cancellation.is_set():
+                    self.manager.cancel(unit)
+                    raise ModelBootstrapCancelled("Installation paused.")
                 percentage = tracker.update(unit, event)
                 copy = progress_copy(unit, event)
                 now = time.monotonic()
@@ -472,13 +514,28 @@ class ResourcePackController(QObject):
                                   "progress": percentage, "detail": "", "progressCopy": copy})
 
             for supporting_id in units[:-1]:
+                if cancellation.is_set():
+                    raise ModelBootstrapCancelled("Installation paused.")
                 definition = self.manager.definitions[supporting_id]
+                self._install_units[pack_id] = supporting_id
+                if repair and self.manager.status(supporting_id) == "installed":
+                    report(supporting_id, ModelProgress("verifying", definition.label, "", 0, 0, "finalizing"))
+                    try:
+                        self.manager.verify_installed(supporting_id)
+                    except ResourcePackError:
+                        pass  # Repair the runtime from its pinned archive below.
+                    else:
+                        report(supporting_id, ModelProgress("ready", definition.label, "", 1, 1))
+                        continue
                 if not self.manager.archive_available(supporting_id):
                     raise ResourcePackError(
                         f"Bản cài chưa có môi trường xử lý {definition.label}. Hãy cập nhật ứng dụng."
                     )
 
                 self.manager.install(supporting_id, report)
+            if cancellation.is_set():
+                raise ModelBootstrapCancelled("Installation paused.")
+            self._install_units[pack_id] = pack_id
             self.manager.install(pack_id, report)
             self._events.put({
                 "kind": "done",
@@ -502,9 +559,18 @@ class ResourcePackController(QObject):
                 "message": str(exc),
                 "snapshot": snapshot,
             })
+        finally:
+            if not cancellation.is_set():
+                self._repair_requests.discard(pack_id)
 
     @Slot("QVariantList")
     def installResourcePacks(self, pack_ids) -> None:
+        if ((self._move_thread and self._move_thread.is_alive())
+                or (self._clean_thread and self._clean_thread.is_alive())
+                or getattr(self._host, "_device_switching", False)
+                or self._host._processing_queue.has_work):
+            self._host.appAlertRequested.emit("Không thể cài gói", "Hãy chờ tác vụ hiện tại hoàn tất.", "info")
+            return
         ensure_hardware = getattr(self._host, "_ensure_hardware_ready_for_action", None)
         if callable(ensure_hardware) and not ensure_hardware():
             return
@@ -513,6 +579,10 @@ class ResourcePackController(QObject):
             if pack_id not in self.manager.definitions:
                 continue
             compatible, reason = self._hardware_compatibility(pack_id)
+            for unit in self._supporting_packs(pack_id):
+                runtime_compatible, runtime_reason = self._hardware_compatibility(unit)
+                if not runtime_compatible:
+                    compatible, reason = False, runtime_reason
             if not compatible:
                 self._host.appAlertRequested.emit(
                     "Gói không phù hợp với máy này",
@@ -523,6 +593,7 @@ class ResourcePackController(QObject):
             current = self._threads.get(pack_id)
             if current is not None and current.is_alive():
                 continue
+            self._install_cancellations[pack_id] = threading.Event()
             self.model.set_operation(pack_id, status="checking", progress=0,
                 progress_copy={"unit": pack_id, "state": "checking"})
             thread = threading.Thread(
@@ -537,11 +608,22 @@ class ResourcePackController(QObject):
 
     @Slot(str)
     def cancelResourcePackOperation(self, pack_id: str) -> None:
+        cancellation = self._install_cancellations.get(str(pack_id))
+        if cancellation is not None:
+            cancellation.set()
         self.manager.cancel(str(pack_id))
+        unit = self._install_units.get(str(pack_id))
+        if unit is not None:
+            self.manager.cancel(unit)
 
     @Slot(str)
     def repairResourcePack(self, pack_id: str) -> None:
+        if self.busy:
+            return
+        self._repair_requests.add(str(pack_id))
         self.installResourcePacks([pack_id])
+        if str(pack_id) not in self._threads or not self._threads[str(pack_id)].is_alive():
+            self._repair_requests.discard(str(pack_id))
 
     @Slot(str, result=bool)
     def removeResourcePack(self, pack_id: str) -> bool:
@@ -555,7 +637,7 @@ class ResourcePackController(QObject):
         if pack_id not in self.manager.definitions:
             return False
         current = self._threads.get(pack_id)
-        if current is not None and current.is_alive():
+        if self.busy or (current is not None and current.is_alive()):
             return False
         if in_use:
             self._host.appAlertRequested.emit(
@@ -609,7 +691,7 @@ class ResourcePackController(QObject):
 
     @Slot(result=str)
     def cleanUnusedResourcePacks(self) -> str:
-        if self._clean_thread is not None and self._clean_thread.is_alive():
+        if self.busy:
             return ""
 
         def clean() -> None:
@@ -769,7 +851,7 @@ class ResourcePackController(QObject):
 
     def shutdown(self) -> None:
         for pack_id in tuple(self._threads):
-            self.manager.cancel(pack_id)
+            self.cancelResourcePackOperation(pack_id)
         for thread in tuple(self._threads.values()):
             if thread.is_alive():
                 thread.join(timeout=0.5)

@@ -182,6 +182,7 @@ var
   DeleteRuntimeOnUninstall: Boolean;
   CompatibilityPage: TWizardPage;
   StorageValueLabel: TNewStaticText;
+  StorageSpaceLabel: TNewStaticText;
 
 function UiText(const Vietnamese, English: String): String;
 begin
@@ -245,12 +246,12 @@ begin
     ContainsReparsePoint(AddBackslash(Path) + 'HaizFlow.exe');
 end;
 
-procedure AddRequirementRow(
+function AddRequirementRow(
   Page: TWizardPage;
   const Heading: String;
   const Detail: String;
   Top: Integer
-);
+): Integer;
 var
   HeadingLabel: TNewStaticText;
   DetailLabel: TNewStaticText;
@@ -258,22 +259,28 @@ begin
   HeadingLabel := TNewStaticText.Create(Page);
   HeadingLabel.Parent := Page.Surface;
   HeadingLabel.Left := ScaleX(0);
-  HeadingLabel.Top := ScaleY(Top);
-  HeadingLabel.Width := Page.SurfaceWidth;
+  HeadingLabel.Top := Top;
+  HeadingLabel.Width := ScaleX(122);
   HeadingLabel.AutoSize := False;
   HeadingLabel.Height := ScaleY(20);
   HeadingLabel.Font.Style := [fsBold];
   HeadingLabel.Caption := Heading;
+  HeadingLabel.WordWrap := True;
+  HeadingLabel.AdjustHeight;
 
   DetailLabel := TNewStaticText.Create(Page);
   DetailLabel.Parent := Page.Surface;
-  DetailLabel.Left := ScaleX(0);
-  DetailLabel.Top := ScaleY(Top + 21);
-  DetailLabel.Width := Page.SurfaceWidth;
+  DetailLabel.Left := ScaleX(136);
+  DetailLabel.Top := Top;
+  DetailLabel.Width := Page.SurfaceWidth - ScaleX(136);
   DetailLabel.AutoSize := False;
-  DetailLabel.Height := ScaleY(32);
+  DetailLabel.Height := ScaleY(40);
   DetailLabel.WordWrap := True;
   DetailLabel.Caption := Detail;
+  DetailLabel.AdjustHeight;
+  Result := Top + DetailLabel.Height + ScaleY(14);
+  if HeadingLabel.Height > DetailLabel.Height then
+    Result := Top + HeadingLabel.Height + ScaleY(14);
 end;
 
 procedure SupportLinkClick(Sender: TObject);
@@ -286,76 +293,98 @@ end;
 procedure InitializeWizard;
 var
   IntroLabel: TNewStaticText;
+  StorageHeading: TNewStaticText;
   SupportLink: TNewStaticText;
+  ContentTop: Integer;
 begin
   WizardForm.Caption := UiText('Cài đặt HaizFlow', 'HaizFlow Setup');
   WizardForm.WelcomeLabel1.Caption := UiText('Cài đặt HaizFlow', 'Install HaizFlow');
   WizardForm.WelcomeLabel2.Caption :=
-    UiText('Chỉnh video, dịch phụ đề và đăng mạng xã hội trên máy tính này.', 'Set up the local-first video workspace on this computer.') + #13#10 + #13#10 +
-    UiText('Bộ cài chứa ứng dụng. Cài thêm model trong Cài đặt → Gói tài nguyên sau khi mở app.', 'The Core application is installed. Optional AI resources are managed in Settings.');
-  WizardForm.FinishedHeadingLabel.Caption := UiText('Cài đặt hoàn tất', 'HaizFlow is ready');
+    UiText('Chỉnh video, dịch phụ đề và đăng mạng xã hội.', 'Edit videos, translate subtitles and publish to social media.') + #13#10 + #13#10 +
+    UiText('Chọn thư mục cài ứng dụng. Các model được cài riêng trong Cài đặt → Gói tài nguyên.', 'Choose where to install the application. Install models separately in Settings → Resource packs.');
+  WizardForm.FinishedHeadingLabel.Caption := UiText('Cài đặt hoàn tất', 'Installation complete');
   WizardForm.FinishedLabel.Caption :=
     UiText('Mở HaizFlow để bắt đầu. Bạn có thể cài các gói tài nguyên cần dùng trong Cài đặt.', 'Installation completed. Launch HaizFlow, then install only the resource packs you need.');
 
   CompatibilityPage := CreateCustomPage(
     wpSelectDir,
     UiText('Cấu hình và dung lượng', 'System requirements'),
-    UiText('Kiểm tra yêu cầu trước khi cài.', 'Review the runtime requirements before installation.')
+    UiText('Yêu cầu chạy model và dung lượng tại thư mục đã chọn.', 'Model requirements and storage at the selected location.')
   );
 
   IntroLabel := TNewStaticText.Create(CompatibilityPage);
   IntroLabel.Parent := CompatibilityPage.Surface;
   IntroLabel.Left := ScaleX(0);
-  IntroLabel.Top := ScaleY(0);
+  IntroLabel.Top := ScaleY(250);
   IntroLabel.Width := CompatibilityPage.SurfaceWidth;
   IntroLabel.AutoSize := False;
-  IntroLabel.Height := ScaleY(38);
+  IntroLabel.Height := ScaleY(40);
   IntroLabel.WordWrap := True;
   IntroLabel.Caption :=
-    UiText('Các model là tùy chọn. Cài thêm sau khi mở app, trong Cài đặt → Gói tài nguyên.', 'Core processing runs locally. Internet is used only when you install a resource pack, import a URL, use an online voice, or publish.');
+    UiText('Dung lượng trên chưa gồm môi trường xử lý, model và video. Bạn có thể chọn ổ lưu tài nguyên riêng trong ứng dụng.', 'Storage above excludes processing runtimes, models and videos. Resource packs can be stored on a separate drive.');
 
-  AddRequirementRow(
+  ContentTop := AddRequirementRow(
     CompatibilityPage,
     'Windows',
-    UiText('Windows 10 từ phiên bản 1809 hoặc Windows 11, máy 64-bit.', 'Windows 10 version 1809 or later, or Windows 11, on a 64-bit PC.'),
-    52
+    UiText('Windows 10 (1809 trở lên) hoặc Windows 11, 64-bit.', 'Windows 10 (1809 or later) or Windows 11, 64-bit.'),
+    0
   );
-  AddRequirementRow(
+  ContentTop := AddRequirementRow(
     CompatibilityPage,
-    UiText('Bộ xử lý và bộ nhớ', 'Processor and memory'),
-    UiText('Chế độ CPU không cần GPU NVIDIA. RAM tối thiểu: 16 GB.', 'CPU mode works without an NVIDIA GPU. 16 GB RAM is the supported minimum.'),
-    110
+    UiText('Bộ nhớ', 'Memory'),
+    UiText('Tối thiểu 16 GB RAM để chạy model. Chế độ CPU không cần GPU NVIDIA.', '16 GB RAM minimum for models. CPU mode works without an NVIDIA GPU.'),
+    ContentTop
   );
-  AddRequirementRow(
+  ContentTop := AddRequirementRow(
     CompatibilityPage,
-    UiText('Đồ họa', 'Graphics'),
-    UiText('GPU NVIDIA là tùy chọn. Model GPU cần CUDA và VRAM tương thích.', 'An NVIDIA GPU is optional. HaizFlow falls back to CPU processing when CUDA is unavailable or unsupported.'),
-    168
+    UiText('GPU tùy chọn', 'Optional GPU'),
+    UiText('Model GPU cần NVIDIA, CUDA và VRAM tương thích. Không bắt buộc khi dùng model CPU.', 'GPU models require compatible NVIDIA hardware, CUDA and VRAM. Not required for CPU models.'),
+    ContentTop
   );
 
   StorageValueLabel := TNewStaticText.Create(CompatibilityPage);
   StorageValueLabel.Parent := CompatibilityPage.Surface;
   StorageValueLabel.Left := ScaleX(0);
-  StorageValueLabel.Top := ScaleY(226);
+  StorageValueLabel.Top := ContentTop + ScaleY(29);
   StorageValueLabel.Width := CompatibilityPage.SurfaceWidth;
   StorageValueLabel.AutoSize := False;
-  StorageValueLabel.Height := ScaleY(48);
+  StorageValueLabel.Height := ScaleY(24);
   StorageValueLabel.WordWrap := True;
-  StorageValueLabel.Font.Style := [fsBold];
+  StorageValueLabel.Font.Style := [];
   StorageValueLabel.Caption :=
-    UiText('Ứng dụng: ', 'Core files: ') + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + UiText(' MiB (chưa gồm engine, model và video).', ' MiB (engines/models/media not included).') + #13#10 +
-    RoundedUpGiB({#RequiredFreshBytes}) + UiText(' GiB tối thiểu; ', ' GiB minimum; ') +
-    RoundedUpGiB({#RecommendedFreshBytes}) + UiText(' GiB đề nghị khi cài mới.', ' GiB recommended before a new install.');
+    UiText('Ứng dụng: ', 'Core files: ') + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + ' MiB';
+  StorageValueLabel.AdjustHeight;
+
+  StorageHeading := TNewStaticText.Create(CompatibilityPage);
+  StorageHeading.Parent := CompatibilityPage.Surface;
+  StorageHeading.Top := ContentTop + ScaleY(4);
+  StorageHeading.AutoSize := True;
+  StorageHeading.Font.Style := [fsBold];
+  StorageHeading.Caption := UiText('Dung lượng cài đặt', 'Installation storage');
+
+  StorageSpaceLabel := TNewStaticText.Create(CompatibilityPage);
+  StorageSpaceLabel.Parent := CompatibilityPage.Surface;
+  StorageSpaceLabel.Top := StorageValueLabel.Top + StorageValueLabel.Height + ScaleY(6);
+  StorageSpaceLabel.Width := CompatibilityPage.SurfaceWidth;
+  StorageSpaceLabel.AutoSize := False;
+  StorageSpaceLabel.Height := ScaleY(32);
+  StorageSpaceLabel.WordWrap := True;
+  IntroLabel.Top := StorageSpaceLabel.Top + StorageSpaceLabel.Height + ScaleY(12);
+  IntroLabel.AdjustHeight;
 
   SupportLink := TNewStaticText.Create(CompatibilityPage);
   SupportLink.Parent := CompatibilityPage.Surface;
   SupportLink.Left := ScaleX(0);
-  SupportLink.Top := ScaleY(286);
+  SupportLink.Top := IntroLabel.Top + IntroLabel.Height + ScaleY(12);
   SupportLink.AutoSize := True;
   SupportLink.Cursor := crHand;
   SupportLink.Font.Style := [fsUnderline];
-  SupportLink.Caption := UiText('Mã nguồn, bản phát hành và hỗ trợ', 'Source, releases and support');
+  SupportLink.Caption := UiText('Hỗ trợ và bản phát hành', 'Support and releases');
   SupportLink.OnClick := @SupportLinkClick;
+  Log(Format('Compatibility layout: content bottom %d, surface height %d',
+    [SupportLink.Top + SupportLink.Height, CompatibilityPage.SurfaceHeight]));
+  if SupportLink.Top + SupportLink.Height > CompatibilityPage.SurfaceHeight then
+    RaiseException('The system requirements page does not fit the installer window.');
 end;
 
 function IsDriveRoot(const Path: String): Boolean;
@@ -423,6 +452,14 @@ begin
   Result := IntToStr(Tenths div 10) + '.' + IntToStr(Tenths mod 10);
 end;
 
+function RoundedDownTenthGiB(const Bytes: Int64): String;
+var
+  Tenths: Int64;
+begin
+  Tenths := Bytes * 10 div 1073741824;
+  Result := IntToStr(Tenths div 10) + '.' + IntToStr(Tenths mod 10);
+end;
+
 procedure UpdateCompatibilityStorage;
 var
   FreeBytes: Int64;
@@ -441,15 +478,13 @@ begin
     RecommendedBytes := {#RecommendedFreshBytes};
   end;
   if GetSpaceOnDisk64(WizardDirValue, FreeBytes, TotalBytes) then
-    StorageValueLabel.Caption :=
-      UiText('Ứng dụng: ', 'Core files: ') + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + UiText(' MiB (chưa gồm engine, model và video).', ' MiB (engines/models/media not included).') + #13#10 +
-      UiText('Còn trống: ', 'Available: ') + RoundedDownGiB(FreeBytes) + UiText(' GiB · Tối thiểu: ', ' GiB; minimum: ') +
-      RoundedUpGiB(RequiredBytes) + UiText(' GiB · Đề nghị: ', ' GiB; recommended: ') + RoundedUpGiB(RecommendedBytes) + ' GiB.'
+    StorageSpaceLabel.Caption :=
+      UiText('Còn trống: ', 'Available: ') + RoundedDownTenthGiB(FreeBytes) + UiText(' GiB  ·  Cần tối thiểu: ', ' GiB  ·  Required: ') +
+      RoundedUpTenthGiB(RequiredBytes) + ' GiB'
   else
-    StorageValueLabel.Caption :=
-      UiText('Ứng dụng: ', 'Core files: ') + IntToStr(({#ArtifactBytes} + 1048575) div 1048576) + UiText(' MiB (chưa gồm engine, model và video).', ' MiB (engines/models/media not included).') + #13#10 +
-      UiText('Dung lượng: ', 'Storage: ') + RoundedUpGiB(RequiredBytes) + UiText(' GiB tối thiểu; ', ' GiB minimum; ') + RoundedUpGiB(RecommendedBytes) +
-      UiText(' GiB đề nghị. Bộ cài kiểm tra thư mục đích trước khi sao chép.', ' GiB recommended. Setup verifies the selected folder before copying files.');
+    StorageSpaceLabel.Caption :=
+      UiText('Cần tối thiểu: ', 'Required: ') + RoundedUpTenthGiB(RequiredBytes) +
+      UiText(' GiB. Không đọc được dung lượng trống của ổ đích.', ' GiB. Free space on this drive could not be read.');
 end;
 
 procedure CurPageChanged(CurPageID: Integer);

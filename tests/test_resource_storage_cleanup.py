@@ -99,3 +99,72 @@ def test_move_storage_restores_existing_destination_on_promotion_failure(tmp_pat
     assert pointer.read_bytes() == before
     assert (source / "models/model.bin").read_bytes() == b"SOURCE"
     assert (target / "models/model.bin").read_bytes() == b"PREVIOUS DESTINATION"
+
+
+@pytest.mark.parametrize("existing_destination", [False, True])
+def test_move_storage_pointer_failure_rolls_back_without_losing_either_copy(tmp_path, existing_destination):
+    import os
+
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    target = destination / "HaizFlowResources"
+    (source / "models").mkdir(parents=True)
+    (source / "models/model.bin").write_bytes(b"SOURCE")
+    if existing_destination:
+        (target / "models").mkdir(parents=True)
+        (target / "models/model.bin").write_bytes(b"DESTINATION")
+    pointer = tmp_path / "pointer.json"
+    pointer.write_text(json.dumps(dict(version=RESOURCE_STATE_VERSION, path=str(source))), encoding="utf-8")
+    before = pointer.read_bytes()
+    replace = os.replace
+
+    def fail_pointer(origin, dest):
+        if Path(dest) == pointer:
+            raise PermissionError("Synthetic pointer write failure")
+        return replace(origin, dest)
+
+    with (patch.object(ResourcePackManager, "storage_root", new_callable=PropertyMock, return_value=source),
+          patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer),
+          patch("haizflow.services.resource_packs.os.replace", side_effect=fail_pointer)):
+        with pytest.raises(PermissionError):
+            ResourcePackManager().move_storage(destination)
+    assert pointer.read_bytes() == before
+    assert (source / "models/model.bin").read_bytes() == b"SOURCE"
+    if existing_destination:
+        assert (target / "models/model.bin").read_bytes() == b"DESTINATION"
+    else:
+        assert not target.exists()
+
+
+def test_move_storage_never_replaces_a_destination_containing_user_files(tmp_path):
+    from haizflow.services.resource_packs import ResourcePackError
+
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    target = destination / "HaizFlowResources"
+    source.mkdir()
+    target.mkdir(parents=True)
+    (target / "important.txt").write_bytes(b"KEEP")
+    with patch.object(ResourcePackManager, "storage_root", new_callable=PropertyMock, return_value=source):
+        with pytest.raises(ResourcePackError, match="dữ liệu khác"):
+            ResourcePackManager().move_storage(destination)
+    assert (target / "important.txt").read_bytes() == b"KEEP"
+
+
+def test_move_storage_verified_copy_and_cleanup_preserve_app_data(tmp_path):
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    for name in ("models", "engines", "packages", "data", "projects"):
+        (source / name).mkdir(parents=True)
+        (source / name / "file.bin").write_bytes(name.encode())
+    pointer = tmp_path / "pointer.json"
+    with (patch.object(ResourcePackManager, "storage_root", new_callable=PropertyMock, return_value=source),
+          patch("haizflow.services.resource_packs.resource_storage_pointer_path", return_value=pointer)):
+        target = ResourcePackManager().move_storage(destination)
+        ResourcePackManager.cleanup_previous_storage()
+    for name in ("models", "engines", "packages"):
+        assert (target / name / "file.bin").read_bytes() == name.encode()
+        assert not (source / name).exists()
+    for name in ("data", "projects"):
+        assert (source / name / "file.bin").read_bytes() == name.encode()
+        assert not (target / name).exists()

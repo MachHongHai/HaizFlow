@@ -102,6 +102,7 @@ ColumnLayout {
                     : root.status === "bundled" ? ""
                     : root.blockedReason.length > 0 ? root.blockedReason
                     : root.status === "installed" ? qsTr("Dung lượng %1").arg(root.installedSizeText)
+                    : root.downloadSizeText === "--" ? qsTr("Cài từ gói có sẵn")
                     : qsTr("Cần tải %1").arg(root.downloadSizeText)
                 color: root.status === "failed" || !root.hardwareCompatible
                     ? Theme.warning : Theme.textSubtle
@@ -199,6 +200,7 @@ ColumnLayout {
 
         AppMenuItem {
             id: repairItem
+            enabled: !AppController.resourcePackBusy
             text: qsTr("Kiểm tra và sửa")
             iconGlyph: IconCatalog.glyph("refresh")
             onTriggered: AppController.repairResourcePack(root.packId)
