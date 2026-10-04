@@ -10,6 +10,7 @@ SpinBox {
     leftPadding: 38
     rightPadding: 38
     font.pixelSize: Theme.body
+    font.family: Theme.fontFamily
     activeFocusOnTab: true
 
     contentItem: TextInput {

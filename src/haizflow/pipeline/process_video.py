@@ -263,9 +263,7 @@ def _resolve_audio_mix(video, fallback_audio_path: str) -> tuple[str, int]:
 
 
 def _manual_subtitle_layout_for_render(video) -> bool:
-    """Auto cover owns subtitle placement, including older saved overrides."""
-    if getattr(video, "project_type", "single") != "manual" and getattr(video, "remove_original_subtitles", False):
-        return False
+    """Cover removal and caption placement are independent user choices."""
     return bool(getattr(video, "subtitle_layout_override", False))
 
 
@@ -966,10 +964,8 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
     crop_data = video.crop.model_dump() if hasattr(video.crop, "model_dump") else video.crop.dict()
     remove_original_subtitles = bool(getattr(video, "remove_original_subtitles", True))
     original_subtitle_removal_mode = str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch")
-    # Old project metadata may contain both flags after a user positioned
-    # subtitles in keep-original mode and later enabled OCR covering.  OCR
-    # placement must always win in cover mode, even before that metadata is
-    # opened and normalized by the desktop UI.
+    # Hiding source captions and positioning translated captions are separate
+    # choices. The alignment checkbox controls whether the OCR region wins.
     manual_subtitle_layout = _manual_subtitle_layout_for_render(video)
     original_subtitle_region = _original_subtitle_region_for_render(video, reporter, video_dir)
     original_subtitle_intervals = _source_subtitle_intervals(
@@ -985,6 +981,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
         # luma-only result is never reused as a valid final export.
         "static-largest-original-subtitle-ocr-v19-temporal-visibility",
         "captions-follow-generated-speech-v1",
+        "caption-box-glyph-capacity-v2-win-metrics",
         remove_original_subtitles,
         original_subtitle_removal_mode,
         original_subtitle_region,

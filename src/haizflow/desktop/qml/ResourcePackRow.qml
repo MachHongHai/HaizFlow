@@ -22,7 +22,6 @@ ColumnLayout {
     required property string blockedReason
     required property bool hardwareCompatible
     required property string hardwareWarning
-    required property bool recommended
     required property bool groupFirst
     required property string groupTitle
 
@@ -81,25 +80,6 @@ ColumnLayout {
                     textFormat: Text.PlainText
                 }
 
-                Rectangle {
-                    visible: root.recommended
-                    Layout.preferredWidth: recommendedText.implicitWidth + Theme.space16
-                    Layout.preferredHeight: 24
-                    radius: 5
-                    color: Theme.surfaceStrong
-                    border.color: Theme.outlineStrong
-                    border.width: 1
-                    Text {
-                        id: recommendedText
-                        anchors.centerIn: parent
-                        text: qsTr("Khuyên dùng")
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.metadata
-                        textFormat: Text.PlainText
-                    }
-                }
-
                 Item { Layout.fillWidth: true }
             }
 
@@ -116,8 +96,8 @@ ColumnLayout {
             Text {
                 Layout.fillWidth: true
                 visible: text.length > 0
-                text: root.detail.length > 0 ? root.detail
-                    : !root.hardwareCompatible ? root.hardwareWarning
+                text: !root.hardwareCompatible ? root.hardwareWarning
+                    : root.detail.length > 0 ? root.detail
                     : root.status === "bundled" ? ""
                     : root.blockedReason.length > 0 ? root.blockedReason
                     : root.status === "installed" ? qsTr("Dung lượng %1").arg(root.installedSizeText)

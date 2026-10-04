@@ -98,7 +98,7 @@ class NativeMediaDialogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             downloaded = Path(temporary) / "downloaded.m4a"
             downloaded.write_bytes(b"music")
-            selected = SimpleNamespace(video_id="video-1")
+            selected = SimpleNamespace(video_id="video-1", project_type="manual", manual_completed_stages=[])
             changed = mock.Mock()
             preview = SimpleNamespace(invalidate=mock.Mock())
             host = SimpleNamespace(
@@ -112,12 +112,14 @@ class NativeMediaDialogTests(unittest.TestCase):
                 backgroundMusicChanged=SimpleNamespace(emit=changed),
                 backgroundMusicImportChanged=SimpleNamespace(emit=mock.Mock()),
                 refreshVideos=mock.Mock(),
+                _manual_editor_document=SimpleNamespace(set_document=mock.Mock()),
             )
             controller = ProjectImportController(host)
             controller._background_music_task = {"task_id": "task-1", "video_id": "video-1"}
 
             with (
                 patch("haizflow.desktop.project_import_controller.video_store.get_video", return_value=selected),
+                patch("haizflow.desktop.project_import_controller.editor_documents.ensure", return_value="document") as ensure,
                 patch(
                     "haizflow.desktop.project_import_controller.set_desktop_background_music",
                     return_value="D:/project/input/background_music.m4a",
@@ -133,6 +135,33 @@ class NativeMediaDialogTests(unittest.TestCase):
         self.assertEqual(host._background_music_path, "D:/project/input/background_music.m4a")
         changed.assert_called_once_with()
         preview.invalidate.assert_called_once_with()
+        ensure.assert_called_once_with(selected)
+        host._manual_editor_document.set_document.assert_called_once_with("document")
+
+    def test_file_music_import_replace_and_clear_refresh_manual_document_immediately(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            music = Path(temporary) / "music.wav"
+            music.write_bytes(b"audio")
+            selected = SimpleNamespace(video_id="video-1", project_type="manual", manual_completed_stages=[])
+            host = SimpleNamespace(
+                _selected_video_id=selected.video_id,
+                _processing_queue=SimpleNamespace(contains=lambda _video_id: False),
+                _manual_editor_document=SimpleNamespace(set_document=mock.Mock()),
+                _capture_video_asset_snapshot=mock.Mock(return_value={}),
+                _record_video_asset_change=mock.Mock(), refreshVideos=mock.Mock(),
+                selectedVideoChanged=mock.Mock(), backgroundMusicChanged=mock.Mock(),
+                _audio_preview=SimpleNamespace(invalidate=mock.Mock()),
+            )
+            controller = ProjectImportController(host)
+            with (
+                patch("haizflow.desktop.project_import_controller.video_store.get_video", return_value=selected),
+                patch("haizflow.desktop.project_import_controller.set_desktop_background_music", side_effect=[str(music), str(music), ""]),
+                patch("haizflow.desktop.project_import_controller.editor_documents.ensure", side_effect=["imported", "replaced", "cleared"]),
+            ):
+                for path in (str(music), str(music), ""):
+                    self.assertTrue(controller.set_background_music(path))
+            self.assertEqual(host._manual_editor_document.set_document.call_args_list,
+                             [mock.call("imported"), mock.call("replaced"), mock.call("cleared")])
 
     def test_finished_batch_music_link_creates_one_project_owned_draft(self):
         with tempfile.TemporaryDirectory() as temporary:

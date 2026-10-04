@@ -46,17 +46,8 @@ Rectangle {
         spacing: Theme.space12
         visible: true
 
-        FluentIcon {
-            Layout.preferredWidth: 16
-            Layout.preferredHeight: 16
-            name: root.activityState === "failed" ? "error" : "info"
-            iconColor: root.activityState === "failed" ? Theme.danger
-                : root.activityState === "processing" ? Theme.interactive
-                : root.activityState === "paused" || root.activityState === "queued"
-                    ? Theme.warning : Theme.success
-            iconSize: 15
-        }
         Text {
+            objectName: "activityStatusLabel"
             text: root.stateLabel(root.activityState)
             color: Theme.text
             font.family: Theme.fontFamily

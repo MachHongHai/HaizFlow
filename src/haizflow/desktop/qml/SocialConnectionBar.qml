@@ -19,10 +19,12 @@ AppSurface {
     readonly property string platform: AppController.zernioSelectedPlatform
 
     function connectionStatus() {
+        if (AppController.zernioCredentialBusy)
+            return qsTr("Đang kiểm tra kết nối")
         if (!AppController.zernioApiKeyConfigured)
-            return qsTr("Chưa có API key")
+            return qsTr("Thêm Zernio API key trong Cài đặt để đăng video.")
         if (!AppController.zernioApiKeyVerified)
-            return qsTr("API key không hợp lệ")
+            return qsTr("Cần kiểm tra kết nối Zernio")
         if (AppController.zernioOauthSyncPending)
             return qsTr("Đang chờ kết nối")
         if (AppController.zernioAccountSyncing)
@@ -55,15 +57,6 @@ AppSurface {
             visible: root.hasSelectedPlatform
         }
 
-        FluentIcon {
-            Layout.preferredWidth: 18
-            Layout.preferredHeight: 18
-            visible: !root.hasSelectedPlatform
-            name: "publish"
-            iconColor: Theme.textMuted
-            iconSize: 17
-        }
-
         ColumnLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
@@ -85,7 +78,7 @@ AppSurface {
                 Layout.fillWidth: true
                 visible: text.length > 0
                 text: root.connectionStatus()
-                color: AppController.zernioApiKeyConfigured ? Theme.warning : Theme.textMuted
+                color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: TypeScale.metadata
                 textFormat: Text.PlainText
@@ -95,9 +88,16 @@ AppSurface {
 
         StudioButton {
             variant: "secondary"
-            text: root.hasSelectedPlatform ? qsTr("Đổi tài khoản") : qsTr("Chọn tài khoản")
-            enabled: AppController.zernioApiKeyVerified && !AppController.tiktokPublishBusy
-            onClicked: root.connectionPickerRequested()
+            text: !AppController.zernioApiKeyConfigured ? qsTr("Thêm API key")
+                : !AppController.zernioApiKeyVerified ? qsTr("Kiểm tra kết nối")
+                : root.hasSelectedPlatform ? qsTr("Đổi tài khoản") : qsTr("Chọn tài khoản")
+            enabled: !AppController.tiktokPublishBusy && !AppController.zernioCredentialBusy
+            onClicked: {
+                if (!AppController.zernioApiKeyVerified)
+                    root.apiKeyManagementRequested();
+                else
+                    root.connectionPickerRequested();
+            }
         }
 
         StudioIconButton {

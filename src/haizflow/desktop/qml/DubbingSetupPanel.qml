@@ -147,6 +147,16 @@ InspectorPanel {
         id: subtitlePreviewDialogLoader
         sourceComponent: Component {
             SubtitlePreviewDialog {
+                coverEnabled: AppController.removeOriginalSubtitles
+                autoAlignToCover: !AppController.subtitleLayoutOverride
+                coverLayout: (AppController.reviewPreviewMedia || ({})).subtitleAutoCoverLayout || ({})
+                onAutoAlignmentEdited: function(enabled) {
+                    AppController.subtitleLayoutOverride = !enabled;
+                    root.scheduleVideoSettingsSave();
+                }
+                onSubtitleAppearanceEdited: function(patch) {
+                    if (AppController.applySubtitleAppearance(patch)) root.scheduleVideoSettingsSave();
+                }
                 onClosed: subtitlePreviewDialogLoader.release()
                 onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
                     AppController.subtitleFontSize = fontSize

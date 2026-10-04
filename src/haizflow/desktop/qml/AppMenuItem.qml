@@ -27,7 +27,7 @@ MenuItem {
 
         AppIcon {
             id: menuIcon
-            visible: root.iconGlyph.length > 0
+            visible: root.iconGlyph.length > 0 && root.text.length === 0
             Layout.preferredWidth: visible ? Theme.icon : 0
             Layout.preferredHeight: 22
             glyph: root.iconGlyph
@@ -41,6 +41,7 @@ MenuItem {
             Layout.fillWidth: true
             Layout.preferredHeight: 22
             text: root.text
+            font.family: Theme.fontFamily
             color: !root.enabled ? Theme.textDisabled : root.tone === "danger" ? Theme.danger : Theme.text
             font.pixelSize: Theme.caption
             font.weight: Font.Medium

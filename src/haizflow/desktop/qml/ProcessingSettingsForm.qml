@@ -90,7 +90,7 @@ GridLayout {
             Text {
                 Layout.fillWidth: true
                 text: AppController.processingDevice === "gpu"
-                    ? qsTr("Máy đang dùng GPU. Model GPU thường xử lý nhanh hơn; bạn vẫn có thể chọn CPU.")
+                ? qsTr("Chế độ GPU: có thể chọn model GPU hoặc CPU.")
                     : qsTr("Chế độ CPU: model GPU chưa khả dụng. Đổi bộ xử lý trong Cài đặt → Chung để sử dụng GPU.")
                 color: Theme.textMuted
                 font.pixelSize: TypeScale.metadata
@@ -239,7 +239,6 @@ GridLayout {
             StudioButton {
                 Layout.alignment: Qt.AlignRight
                 text: qsTr("Chỉnh phụ đề")
-                visible: !root.removeOriginalSubtitles
                 compact: true
                 variant: "secondary"
                 enabled: root.editable && root.hasSource

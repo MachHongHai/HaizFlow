@@ -50,6 +50,8 @@ Module {
         accessSemantics: "reference"
         Property { name: "frame"; type: "QVariantMap"; isReadonly: true }
         Method { name: "configure"; Parameter { name: "payload"; type: "string" } Parameter { name: "layout"; type: "string" } Parameter { name: "fixed"; type: "bool" } }
+        Method { name: "configure"; Parameter { name: "payload"; type: "string" } Parameter { name: "layout"; type: "string" } Parameter { name: "fixed"; type: "bool" } Parameter { name: "preserveFrame"; type: "bool" } }
+        Method { name: "clear" }
         Method { name: "seek"; Parameter { name: "seconds"; type: "double" } }
         Method { name: "release" }
     }
@@ -68,6 +70,7 @@ Module {
         name: "HaizFlowController"
         Property { name: "manualSubtitleModel"; type: "ManualSubtitleModel"; isPointer: true; isReadonly: true }
         Property { name: "subtitleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
+        Property { name: "subtitleSampleOverlayRenderer"; type: "SubtitleOverlayRenderer"; isPointer: true; isReadonly: true }
         Property { name: "manualPreviewAudio"; type: "ManualPreviewAudioController"; isPointer: true; isReadonly: true }
         Property { name: "manualEditorDocumentModel"; type: "ManualEditorDocumentModel"; isPointer: true; isReadonly: true }
         Property { name: "manualPreviewComposition"; type: "ManualPreviewCompositionController"; isPointer: true; isReadonly: true }
@@ -84,6 +87,7 @@ Module {
         Property { name: "resourcePackActivityText"; type: "QString"; isReadonly: true }
         Property { name: "resourcePackActivityProgress"; type: "int"; isReadonly: true }
         Property { name: "keepModelsWarm"; type: "bool"; isReadonly: true }
+        Property { name: "gpuModelsAvailable"; type: "bool"; isReadonly: true }
         Property { name: "appUpdateState"; type: "QString"; isReadonly: true }
         Method { name: "applyVoiceCloneReference"; type: "bool"; Parameter { name: "videoId"; type: "string" } Parameter { name: "provider"; type: "string" } }
         Property { name: "hasAppUpdate"; type: "bool"; isReadonly: true }
@@ -146,6 +150,7 @@ Module {
         Method { name: "updateClipTransform"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "patch"; type: "QVariantMap" } Parameter { name: "commit"; type: "bool" } }
         Method { name: "updateClipProperties"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "patch"; type: "QVariantMap" } }
         Method { name: "setAudioDucking"; type: "bool"; Parameter { name: "enabled"; type: "bool" } Parameter { name: "reductionDb"; type: "double" } Parameter { name: "attackMs"; type: "int" } Parameter { name: "releaseMs"; type: "int" } }
+        Method { name: "setMusicLoop"; type: "bool"; Parameter { name: "enabled"; type: "bool" } }
         Method { name: "setClipKeyframe"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "propertyName"; type: "string" } Parameter { name: "timeMs"; type: "int" } Parameter { name: "value"; type: "double" } Parameter { name: "interpolation"; type: "string" } }
         Method { name: "removeClipKeyframe"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "propertyName"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
         Method { name: "moveClipKeyframe"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "keyframeId"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
@@ -310,6 +315,22 @@ Module {
             index: 16
             isReadonly: true
         }
+        Property { name: "zernioApiKeys"; type: "QVariantList"; notify: "zernioAccountsChanged"; isReadonly: true }
+        Property { name: "zernioCredentialBusy"; type: "bool"; notify: "zernioAccountsChanged"; isReadonly: true }
+        Method {
+            name: "addZernioApiKey"
+            type: "bool"
+            Parameter { name: "label"; type: "string" }
+            Parameter { name: "key"; type: "string" }
+        }
+        Method { name: "selectZernioApiKey"; type: "bool"; Parameter { name: "id"; type: "string" } }
+        Method { name: "removeZernioApiKey"; type: "bool"; Parameter { name: "id"; type: "string" } }
+        Property { name: "zernioCredentialResult"; type: "string"; notify: "zernioAccountsChanged"; isReadonly: true }
+        Signal { name: "apiKeySettingsRequested"; Parameter { name: "provider"; type: "string" } }
+        Signal { name: "apiKeyGuideRequested"; Parameter { name: "provider"; type: "string" } }
+        Signal { name: "geminiSetupRequested" }
+        Method { name: "requestApiKeySettings"; Parameter { name: "provider"; type: "string" } }
+        Method { name: "requestApiKeyGuide"; Parameter { name: "provider"; type: "string" } }
         Property {
             name: "zernioConnectedAccountCount"
             type: "int"
@@ -900,11 +921,14 @@ Module {
         Property { name: "subtitleBold"; type: "bool"; read: "subtitleBold"; write: "subtitleBold"; notify: "subtitleSettingsChanged" }
         Property { name: "subtitleItalic"; type: "bool"; read: "subtitleItalic"; write: "subtitleItalic"; notify: "subtitleSettingsChanged" }
         Property { name: "subtitleUppercase"; type: "bool"; read: "subtitleUppercase"; write: "subtitleUppercase"; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitleAppearance"; type: "QVariantMap"; read: "subtitleAppearance"; isReadonly: true; notify: "subtitleSettingsChanged" }
+        Property { name: "subtitlePreviewFontScale"; type: "double"; read: "subtitlePreviewFontScale"; notify: "subtitleSettingsChanged"; isReadonly: true }
         Property { name: "subtitleShadow"; type: "int"; read: "subtitleShadow"; write: "subtitleShadow"; notify: "subtitleSettingsChanged" }
         Property {
             name: "subtitleLayoutOverride"
             type: "bool"
             read: "subtitleLayoutOverride"
+            write: "subtitleLayoutOverride"
             notify: "subtitleSettingsChanged"
             index: 167
         }
@@ -2061,6 +2085,9 @@ Module {
             Parameter { name: "outline"; type: "int" }
         }
         Method { name: "adoptSubtitlePreviewLayout"; type: "bool" }
+        Method { name: "subtitleSampleText"; type: "string"; Parameter { name: "text"; type: "string" } Parameter { name: "fontSize"; type: "int" } Parameter { name: "boxWidth"; type: "int" } Parameter { name: "boxHeight"; type: "int" } Parameter { name: "width"; type: "int" } Parameter { name: "height"; type: "int" } }
+        Method { name: "subtitleSampleText"; type: "string"; Parameter { name: "text"; type: "string" } Parameter { name: "fontSize"; type: "int" } Parameter { name: "boxWidth"; type: "int" } Parameter { name: "boxHeight"; type: "int" } Parameter { name: "width"; type: "int" } Parameter { name: "height"; type: "int" } Parameter { name: "appearance"; type: "QVariantMap" } }
+        Method { name: "applySubtitleAppearance"; type: "bool"; Parameter { name: "patch"; type: "QVariantMap" } }
         Method { name: "clearVoiceCloneReference"; type: "bool" }
         Method {
             name: "selectVideo"
@@ -2135,6 +2162,7 @@ Module {
             Parameter { name: "a1"; type: "QString" }
         }
         Method { name: "clearZernioApiKey"; type: "bool" }
+        Method { name: "verifyZernioApiKey"; type: "bool" }
         Method { name: "connectZernioTikTok"; type: "bool" }
         Method {
             name: "connectZernioPlatform"

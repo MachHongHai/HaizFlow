@@ -29,17 +29,6 @@ Rectangle {
         anchors.margins: 10
         spacing: Theme.space8
 
-        FluentIcon {
-            visible: !root.busy
-            Layout.preferredWidth: 20
-            Layout.preferredHeight: 20
-            name: root.tone === "danger" ? "error"
-                : root.tone === "warning" ? "warning"
-                : root.tone === "success" ? "success" : "info"
-            iconColor: root.accent
-            iconSize: 18
-        }
-
         BusyIndicator {
             visible: root.busy
             running: visible

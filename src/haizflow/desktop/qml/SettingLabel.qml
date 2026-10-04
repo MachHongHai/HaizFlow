@@ -18,6 +18,7 @@ RowLayout {
         Layout.fillWidth: true
         text: root.text
         color: Theme.textMuted
+        font.family: Theme.fontFamily
         font.pixelSize: Theme.caption
         textFormat: Text.PlainText
     }

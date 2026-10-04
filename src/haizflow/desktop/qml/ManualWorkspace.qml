@@ -71,7 +71,14 @@ Item {
     readonly property var captionSegments: editorModel.subtitleSegments.length > 0
         ? editorModel.subtitleSegments : segments
     readonly property var voiceTimings: AppController.manualPreviewAudio.voiceTimings
-    readonly property var rendererSegments: captionSegments.map(function(segment) {
+    readonly property var rendererSegments: captionSegments.filter(function(segment) {
+        return !root.subtitleTransformDraft || (Number(segment.start || 0) <= comparePreview.positionSeconds
+            && Number(segment.end || 0) > comparePreview.positionSeconds);
+    }).map(function(segment) {
+        if (root.subtitleTransformDraft)
+            segment = Object.assign({}, segment, {
+                _style: Object.assign({}, segment._style || root.editorSubtitleStyle, root.subtitleTransformDraft)
+            });
         const timing = root.voiceTimings[String(segment.segment_id || segment.id || "")];
         if (!timing || timing.text !== segment.text || Math.abs(timing.start - segment.start) > 0.02)
             return segment;
@@ -96,6 +103,7 @@ Item {
     property string previewVideoId: ""
     property bool applyingSubtitleEdit: false
     property bool subtitleTransformActive: false
+    property var subtitleTransformDraft: null
     property bool watermarkTransformActive: false
     property bool subtitleAudioRefreshPending: false
     property bool subtitleVisualRefreshPending: false
@@ -129,17 +137,24 @@ Item {
     readonly property var previewRenderLayout: previewMedia.subtitleRenderLayout || ({})
     readonly property bool subtitleLayoutOverride: Boolean(AppController.subtitleLayoutOverride)
     readonly property int activeSubtitleFontSize: Number(
-        editorSubtitleStyle.font_size !== undefined ? editorSubtitleStyle.font_size
+        subtitleTransformDraft ? subtitleTransformDraft.font_size
+        : editorSubtitleStyle.font_size !== undefined ? editorSubtitleStyle.font_size
         : (previewRenderLayout.fontSize || AppController.subtitleFontSize))
     readonly property int activeSubtitlePositionX: Number(
-        editorSubtitleStyle.position_x_percent !== undefined ? editorSubtitleStyle.position_x_percent
+        subtitleTransformDraft ? subtitleTransformDraft.position_x_percent
+        : editorSubtitleStyle.position_x_percent !== undefined ? editorSubtitleStyle.position_x_percent
         : (previewRenderLayout.positionXPercent || AppController.subtitlePositionXPercent))
     readonly property int activeSubtitlePositionY: Number(
-        editorSubtitleStyle.position_y_percent !== undefined ? editorSubtitleStyle.position_y_percent
+        subtitleTransformDraft ? subtitleTransformDraft.position_y_percent
+        : editorSubtitleStyle.position_y_percent !== undefined ? editorSubtitleStyle.position_y_percent
         : (previewRenderLayout.positionYPercent || AppController.subtitlePositionYPercent))
     readonly property int activeSubtitleBoxWidth: Number(
-        editorSubtitleStyle.max_width_percent !== undefined ? editorSubtitleStyle.max_width_percent
+        subtitleTransformDraft ? subtitleTransformDraft.max_width_percent
+        : editorSubtitleStyle.max_width_percent !== undefined ? editorSubtitleStyle.max_width_percent
         : (previewRenderLayout.boxWidthPercent || AppController.subtitleBoxWidthPercent))
+    readonly property int activeSubtitleBoxHeight: Number(subtitleTransformDraft
+        ? subtitleTransformDraft.box_height_percent : editorSubtitleStyle.box_height_percent !== undefined
+        ? editorSubtitleStyle.box_height_percent : AppController.subtitleBoxHeightPercent)
     readonly property int activeSubtitleOutline: Number(
         editorSubtitleStyle.outline_width !== undefined ? editorSubtitleStyle.outline_width
         : (previewRenderLayout.outline || Math.max(2, Math.round(activeSubtitleFontSize * 0.09))))
@@ -163,10 +178,7 @@ Item {
     readonly property int subtitleLayoutWidth: Math.max(
         24, Math.round(subtitleOutputWidth * activeSubtitleBoxWidth / 100))
     readonly property int subtitleLayoutHeight: Math.max(20, Math.round(
-        subtitleOutputHeight * Number(
-            editorSubtitleStyle.box_height_percent !== undefined
-                ? editorSubtitleStyle.box_height_percent
-                : AppController.subtitleBoxHeightPercent) / 100))
+        subtitleOutputHeight * activeSubtitleBoxHeight / 100))
     readonly property var previewSubtitleFrame: AppController.subtitleOverlayRenderer.frame
     readonly property ActivityLogDialog technicalLogDialog: technicalLogLoader.item as ActivityLogDialog
     readonly property string previewSubtitleFragment: String(previewSubtitleFrame.text || "")
@@ -242,6 +254,7 @@ Item {
     }
 
     function dismissSubtitleEditor() {
+        subtitleTransformDraft = null;
         stageInspector.dismissTextEditor();
         subtitleTransformActive = false;
         AppController.endManualSubtitleEdit();
@@ -342,14 +355,19 @@ Item {
             Math.abs(Number(editorSubtitleStyle.shadow_offset_y || AppController.subtitleShadow))
         )
     })
-    onOverlayLayoutJsonChanged: overlayTimer.restart()
-    onRendererSegmentsChanged: overlayTimer.restart()
+    function requestSubtitleOverlay() {
+        if (!subtitleTransformDraft) overlayTimer.restart();
+        else if (!overlayTimer.running) overlayTimer.start();
+    }
+    onOverlayLayoutJsonChanged: requestSubtitleOverlay()
+    onRendererSegmentsChanged: requestSubtitleOverlay()
     Timer {
         id: overlayTimer
-        interval: root.initialMediaLoad ? 300 : 160
+        interval: root.subtitleTransformDraft ? 90 : root.initialMediaLoad ? 300 : 160
         onTriggered: {
             AppController.subtitleOverlayRenderer.configure(
-                JSON.stringify(root.rendererSegments), root.overlayLayoutJson, true);
+                JSON.stringify(root.rendererSegments), root.overlayLayoutJson, true,
+                Boolean(root.subtitleTransformDraft));
             AppController.subtitleOverlayRenderer.seek(comparePreview.positionSeconds);
         }
     }
@@ -424,6 +442,7 @@ Item {
                 root.selectedStageIndex = 0;
                 root.selectedSubtitleIndex = -1;
                 root.subtitleTransformActive = false;
+                root.subtitleTransformDraft = null;
                 root.watermarkTransformActive = false;
                 root.subtitleAudioRefreshPending = false;
                 root.subtitleVisualRefreshPending = false;
@@ -600,6 +619,7 @@ Item {
                     subtitlePositionXPercent: root.activeSubtitlePositionX
                     subtitlePositionYPercent: root.activeSubtitlePositionY
                     subtitleBoxWidthPercent: root.activeSubtitleBoxWidth
+                    subtitleBoxHeightPercent: root.activeSubtitleBoxHeight
                     subtitleOutline: root.activeSubtitleOutline
                     subtitleLayoutWidth: root.subtitleLayoutWidth
                     subtitleLayoutHeight: root.subtitleLayoutHeight
@@ -649,22 +669,25 @@ Item {
                         AppController.saveSelectedVideoSettings();
                         AppController.recordManualWatermarkScaleChange(beforeValue, afterValue);
                     }
-                    onSubtitleLayoutPreviewChanged: function(fontSize, positionX, positionY) {
-                        if (!AppController.subtitleLayoutOverride)
-                            AppController.adoptSubtitlePreviewLayout();
-                        root.subtitleVisualRefreshPending = true;
-                        AppController.subtitleFontSize = fontSize;
-                        AppController.subtitlePositionXPercent = positionX;
-                        AppController.subtitlePositionYPercent = positionY;
+                    onSubtitleLayoutPreviewChanged: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                        root.subtitleTransformDraft = {font_size: fontSize, position_x_percent: positionX,
+                            position_y_percent: positionY, max_width_percent: boxWidth, box_height_percent: boxHeight};
                     }
-                    onSubtitleLayoutCommitted: function(fontSize, positionX, positionY) {
-                        if (!AppController.subtitleLayoutOverride)
-                            AppController.adoptSubtitlePreviewLayout();
+                    onSubtitleLayoutCommitted: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                        const patch = {font_size: fontSize, position_x_percent: positionX,
+                            position_y_percent: positionY, max_width_percent: boxWidth, box_height_percent: boxHeight};
+                        if (!AppController.applyTextStyle([], patch, "project")) {
+                            root.subtitleTransformDraft = null;
+                            return;
+                        }
                         root.subtitleVisualRefreshPending = true;
                         AppController.subtitleFontSize = fontSize;
                         AppController.subtitlePositionXPercent = positionX;
                         AppController.subtitlePositionYPercent = positionY;
+                        AppController.subtitleBoxWidthPercent = boxWidth;
+                        AppController.subtitleBoxHeightPercent = boxHeight;
                         AppController.saveSelectedVideoSettings();
+                        root.subtitleTransformDraft = null;
                         root.schedulePreview();
                     }
                 }

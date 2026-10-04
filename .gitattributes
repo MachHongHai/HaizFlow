@@ -6,6 +6,7 @@
 *.toml text eol=lf
 *.json text eol=lf
 *.ps1 text eol=lf
+requirements-lock*.txt text eol=lf
 
 *.jpg binary
 *.jpeg binary

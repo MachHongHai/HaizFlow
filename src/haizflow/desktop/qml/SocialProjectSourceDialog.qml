@@ -83,7 +83,7 @@ AppDialog {
                     Text {
                         Layout.fillWidth: true
                         text: sourceDelegate.projectType === "batch"
-                            ? qsTr("%1 video sẵn sàng").arg(sourceDelegate.sourceVideoCount)
+                            ? qsTr("%1 video đã xuất").arg(sourceDelegate.sourceVideoCount)
                             : sourceDelegate.fileName
                         color: Theme.textMuted
                         font.family: Theme.fontFamily

@@ -31,25 +31,6 @@ AppDialog {
         Layout.fillWidth: true
         spacing: Theme.space12
 
-        Rectangle {
-            Layout.alignment: Qt.AlignTop
-            Layout.preferredWidth: 40
-            Layout.preferredHeight: 40
-            radius: Theme.radius
-            color: Theme.successMuted
-            border.width: 1
-            border.color: Theme.success
-
-            FluentIcon {
-                anchors.centerIn: parent
-                width: 20
-                height: 20
-                name: "success"
-                iconColor: Theme.success
-                iconSize: 18
-            }
-        }
-
         ColumnLayout {
             Layout.fillWidth: true
             spacing: Theme.space4

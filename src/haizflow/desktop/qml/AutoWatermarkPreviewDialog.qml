@@ -89,15 +89,15 @@ FloatingToolDialog {
                 width: parent.width
                 spacing: Theme.space12
 
-                StudioField {
+                AutoSaveTextField {
                     Layout.fillWidth: true
                     visible: root.controller.watermarkKind === "text"
                     enabled: root.controller.canEditSelectedVideo
                     maximumLength: 80
                     placeholderText: qsTr("Nội dung watermark")
                     text: root.controller.watermarkText
-                    onEditingFinished: {
-                        root.controller.watermarkText = text;
+                    onValueCommitted: function(value) {
+                        root.controller.watermarkText = value;
                         root.watermarkSettingsEdited();
                     }
                 }

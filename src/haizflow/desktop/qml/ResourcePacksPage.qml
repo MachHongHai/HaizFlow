@@ -45,6 +45,9 @@ Item {
         title: qsTr("Gói tài nguyên")
         showHeader: false
         contentMaximumWidth: 920
+        pageInset: 0
+        horizontalInset: 0
+        alignLeft: false
 
         SettingRow {
                     Layout.fillWidth: true
@@ -117,7 +120,6 @@ Item {
                             blockedReason: String(modelData.blockedReason || "")
                             hardwareCompatible: Boolean(modelData.hardwareCompatible)
                             hardwareWarning: String(modelData.hardwareWarning || "")
-                            recommended: Boolean(modelData.recommended)
                             groupFirst: Boolean(modelData.groupFirst)
                             groupTitle: root.packageGroupTitle(String(modelData.group || ""))
                         }

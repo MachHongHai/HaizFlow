@@ -136,7 +136,15 @@ def generate_voice_parts(
             )
         from haizflow.pipeline.speaker_identity import prepare_speakers
 
+        speaker_runtime_state = None
+
         def report_speakers(status):
+            nonlocal speaker_runtime_state
+            state = (status.get("device"), status.get("fallback_reason"))
+            if state[0] and state != speaker_runtime_state:
+                speaker_runtime_state = state
+                log_to_video(video_id, f"[SPEAKERS][RUNTIME] device={state[0]}"
+                             + (f" · Chuyển sang CPU: {state[1]}" if state[1] else ""))
             current = int(status.get("current") or 0)
             total_sources = int(status.get("total") or len(source_segments))
             if status_callback is not None:

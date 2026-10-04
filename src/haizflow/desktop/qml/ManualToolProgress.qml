@@ -37,14 +37,6 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.space8
 
-        FluentIcon {
-            Layout.preferredWidth: 16
-            Layout.preferredHeight: 16
-            name: root.phase === "queued" ? "pause" : root.phase === "preparing" ? "refresh" : "play"
-            iconColor: root.phase === "running" ? Theme.interactive : Theme.textMuted
-            iconSize: 14
-        }
-
         Text {
             Layout.fillWidth: true
             text: root.phaseTitle

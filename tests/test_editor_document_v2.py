@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from haizflow.desktop.manual_editor_document_model import ManualEditorDocumentModel
-from haizflow.desktop.manual_preview_audio_controller import RATE, apply_source_decisions
+from haizflow.desktop.manual_preview_audio_controller import RATE, apply_source_decisions, mix_frames
 from haizflow.desktop.manual_preview_composition_controller import ManualPreviewCompositionController
 from haizflow.desktop.qml_controller import HaizFlowController
 from haizflow.pipeline.sequence_compiler import (
@@ -461,6 +461,60 @@ def test_existing_document_reconciles_music_added_after_migration(tmp_path):
     assert music_clip.asset_id == music_asset.asset_id
     assert music_clip.duration_ms == 4200
     assert music_asset.path == str(music)
+
+
+@pytest.mark.parametrize("loop", [False, True])
+def test_new_music_clip_inherits_loop_setting_and_existing_edit_survives(tmp_path, loop):
+    music = tmp_path / "music.wav"
+    music.write_bytes(b"audio")
+    video = _video(tmp_path)
+    video.files["background_music"] = str(music)
+    video.background_music_loop = loop
+    document = EditorDocument(video_id=video.video_id, sequence=EditorSequence(duration_ms=4200))
+    document = editor_documents._reconcile_media_assets(video, document)
+    clip = next(item for item in document.clips if item.track_id == "music")
+    assert clip.loop is loop
+    clip.loop = not loop
+    clip.start_ms = 400
+    clip.duration_ms = 3200
+    assert editor_documents._reconcile_media_assets(video, document) is document
+    assert clip.loop is not loop
+    assert (clip.start_ms, clip.duration_ms) == (400, 3200)
+
+
+def test_music_loop_mutation_updates_only_music_and_supports_undo():
+    document = EditorDocument(video_id="music-test", clips=[
+        EditorClip(clip_id="music-1", track_id="music", kind="audio", loop=False),
+        EditorClip(clip_id="voice-1", track_id="voice", kind="voice", loop=False),
+    ])
+    history = []
+
+    def mutate(label, callback, **kwargs):
+        before = document.model_copy(deep=True)
+        callback(document)
+        history.append((label, kwargs["merge_key"], before))
+        return True
+
+    host = SimpleNamespace(_apply_editor_mutation=mutate)
+    assert HaizFlowController.setMusicLoop(host, True)
+    assert document.clips[0].loop and not document.clips[1].loop
+    assert history[0][:2] == ("music_loop", "music-loop")
+    assert not history[0][2].clips[0].loop
+    assert HaizFlowController.setMusicLoop(host, False)
+    assert not document.clips[0].loop
+
+
+@pytest.mark.parametrize("loop, expected", [
+    (True, [1000, 2000, 1000, 2000, 1000, 0]),
+    (False, [1000, 2000, 0, 0, 0, 0]),
+])
+def test_manual_preview_loop_repeats_music_only_inside_clip_duration(loop, expected):
+    samples = np.array([[1000, 1000], [2000, 2000]], dtype=np.int16)
+    track = {"id": "music", "kind": "music", "start": 0, "loop": loop,
+             "duration_frames": 5, "samples": samples}
+    pcm = mix_frames([track], 0, 6, {"music": 1.0})
+    mixed = np.frombuffer(pcm, dtype="<i2").reshape(-1, 2)
+    np.testing.assert_array_equal(mixed[:, 0], expected)
 
 
 def test_existing_document_reattaches_compatible_published_voice(tmp_path):

@@ -60,14 +60,6 @@ Item {
                     anchors.rightMargin: Theme.space8
                     spacing: Theme.space12
 
-                    FluentIcon {
-                        Layout.preferredWidth: 18
-                        Layout.preferredHeight: 18
-                        name: toast.toneName === "failed" || toast.toneName === "critical" ? "error" : "info"
-                        iconColor: toast.toneName === "failed" || toast.toneName === "critical" ? Theme.danger
-                            : toast.toneName === "warning" ? Theme.warning : Theme.interactive
-                    }
-
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2

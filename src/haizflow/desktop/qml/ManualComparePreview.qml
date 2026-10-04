@@ -45,6 +45,7 @@ Rectangle {
     property int subtitlePositionXPercent: 50
     property int subtitlePositionYPercent: 88
     property int subtitleBoxWidthPercent: 72
+    property int subtitleBoxHeightPercent: 12
     property int subtitleOutline: 5
     property int subtitleLayoutWidth: 0
     property int subtitleLayoutHeight: 0
@@ -82,8 +83,8 @@ Rectangle {
         && decisionIndexForSequence(positionSeconds * 1000) < 0
     signal subtitleActivated()
     signal subtitleEditingDismissed()
-    signal subtitleLayoutPreviewChanged(int fontSize, int positionX, int positionY)
-    signal subtitleLayoutCommitted(int fontSize, int positionX, int positionY)
+    signal subtitleLayoutPreviewChanged(int fontSize, int positionX, int positionY, int boxWidth, int boxHeight)
+    signal subtitleLayoutCommitted(int fontSize, int positionX, int positionY, int boxWidth, int boxHeight)
     signal watermarkActivated()
     signal watermarkEditingDismissed()
     signal watermarkScalePreviewChanged(int scalePercent)
@@ -767,6 +768,7 @@ Rectangle {
                 positionXPercent: root.subtitlePositionXPercent
                 positionYPercent: root.subtitlePositionYPercent
                 boxWidthPercent: root.subtitleBoxWidthPercent
+                boxHeightPercent: root.subtitleBoxHeightPercent
                 outlineWidth: root.subtitleOutline
                 layoutWidthPixels: root.subtitleLayoutWidth
                 layoutHeightPixels: root.subtitleLayoutHeight
@@ -780,11 +782,11 @@ Rectangle {
                 livePreviewVisible: root.fullscreenResult && root.subtitleLivePreviewEnabled && !root.resultSourceSwitching
                 onActivated: root.activateSubtitleEditor()
                 onEditingDismissed: root.subtitleEditingDismissed()
-                onLayoutPreviewChanged: function(fontSize, positionX, positionY) {
-                    root.subtitleLayoutPreviewChanged(fontSize, positionX, positionY);
+                onLayoutPreviewChanged: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                    root.subtitleLayoutPreviewChanged(fontSize, positionX, positionY, boxWidth, boxHeight);
                 }
-                onLayoutCommitted: function(fontSize, positionX, positionY) {
-                    root.subtitleLayoutCommitted(fontSize, positionX, positionY);
+                onLayoutCommitted: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                    root.subtitleLayoutCommitted(fontSize, positionX, positionY, boxWidth, boxHeight);
                 }
             }
 
@@ -1189,6 +1191,7 @@ Rectangle {
             positionXPercent: root.subtitlePositionXPercent
             positionYPercent: root.subtitlePositionYPercent
             boxWidthPercent: root.subtitleBoxWidthPercent
+            boxHeightPercent: root.subtitleBoxHeightPercent
             outlineWidth: root.subtitleOutline
             layoutWidthPixels: root.subtitleLayoutWidth
             layoutHeightPixels: root.subtitleLayoutHeight
@@ -1202,11 +1205,11 @@ Rectangle {
             livePreviewVisible: pane === resultPane && root.subtitleLivePreviewEnabled && !root.resultSourceSwitching
             onActivated: root.activateSubtitleEditor()
             onEditingDismissed: root.subtitleEditingDismissed()
-            onLayoutPreviewChanged: function(fontSize, positionX, positionY) {
-                root.subtitleLayoutPreviewChanged(fontSize, positionX, positionY);
+            onLayoutPreviewChanged: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                root.subtitleLayoutPreviewChanged(fontSize, positionX, positionY, boxWidth, boxHeight);
             }
-            onLayoutCommitted: function(fontSize, positionX, positionY) {
-                root.subtitleLayoutCommitted(fontSize, positionX, positionY);
+            onLayoutCommitted: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
+                root.subtitleLayoutCommitted(fontSize, positionX, positionY, boxWidth, boxHeight);
             }
         }
 

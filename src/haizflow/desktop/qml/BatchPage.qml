@@ -100,22 +100,6 @@ Item {
                     anchors.rightMargin: Theme.space12
                     spacing: Theme.space8
 
-                    Rectangle {
-                        Layout.preferredWidth: 24
-                        Layout.preferredHeight: 24
-                        radius: Theme.radiusSmall
-                        color: Theme.surfaceMuted
-
-                        AppIcon {
-                            anchors.centerIn: parent
-                            width: 14
-                            height: 14
-                            glyph: "\uE898"
-                            iconColor: Theme.textMuted
-                            iconSize: Theme.iconSmall
-                        }
-                    }
-
                     Text {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
@@ -302,23 +286,6 @@ Item {
                 spacing: Theme.space8
                 visible: AppController.batchCount === 0
 
-                Rectangle {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 44
-                    height: 44
-                    radius: Theme.radius
-                    color: Theme.surfaceMuted
-
-                    AppIcon {
-                        anchors.centerIn: parent
-                        width: 26
-                        height: 26
-                        glyph: "\uE8FD"
-                        iconColor: Theme.textMuted
-                        iconSize: Theme.iconLarge
-                    }
-                }
-
                 Text {
                     width: parent.width
                     text: qsTr("Hàng đợi đang trống")
@@ -359,22 +326,6 @@ Item {
                 anchors.leftMargin: Theme.space12
                 anchors.rightMargin: Theme.space12
                 spacing: Theme.space12
-
-                Rectangle {
-                    Layout.preferredWidth: 28
-                    Layout.preferredHeight: 28
-                    radius: Theme.radiusSmall
-                    color: Theme.surfaceMuted
-
-                    AppIcon {
-                        anchors.centerIn: parent
-                        width: 16
-                        height: 16
-                        glyph: "\uE9D2"
-                        iconColor: Theme.textMuted
-                        iconSize: Theme.icon
-                    }
-                }
 
                 InfoRow {
                     Layout.preferredWidth: 78

@@ -1,6 +1,6 @@
 # WeSpeaker speaker-identity model
 
-HaizFlow's optional speaker-identification pack uses the ONNX VoxCeleb ResNet34
+HaizFlow bundles the ONNX VoxCeleb ResNet34 speaker-identification
 checkpoint published by the WeSpeaker project. It runs on CPU to assign speech
 segments to approximate speaker identities; it does not clone a source voice.
 
@@ -12,7 +12,7 @@ segments to approximate speaker identities; it does not clone a source voice.
 - License declared by the publisher at this revision: Apache License 2.0.
 - License text: [Apache-2.0.txt](Apache-2.0.txt).
 
-The pack stores the file under `wespeaker_en_voxceleb_resnet34.onnx`; the
+The application stores the file under `wespeaker_en_voxceleb_resnet34.onnx`; the
 checkpoint bytes are unchanged. HaizFlow's application license does not replace
 the model's independent license. Retain this notice and the upstream license
-when distributing this resource pack.
+when distributing the application or a resource pack containing this model.

@@ -30,15 +30,16 @@ AppDialog {
         text: qsTr("Nội dung watermark")
     }
 
-    StudioField {
+    AutoSaveTextField {
         id: watermarkField
         Layout.fillWidth: true
         maximumLength: 80
         placeholderText: qsTr("Nhập nội dung watermark")
         accessibleName: qsTr("Nội dung watermark")
         selectByMouse: true
+        onValueCommitted: function(value) { root.watermarkAccepted(value.trim()); }
         Keys.onReturnPressed: {
-            root.watermarkAccepted(text.trim());
+            commitEdits();
             root.close();
         }
     }
@@ -55,15 +56,15 @@ AppDialog {
 
     footerActions: [
         StudioButton {
-            text: qsTr("Hủy")
+            text: qsTr("Đóng")
             variant: "ghost"
-            onClicked: root.close()
+            onClicked: { watermarkField.commitEdits(); root.close(); }
         },
         StudioButton {
             text: qsTr("Lưu")
             variant: "primary"
             onClicked: {
-                root.watermarkAccepted(watermarkField.text.trim());
+                watermarkField.commitEdits();
                 root.close();
             }
         }

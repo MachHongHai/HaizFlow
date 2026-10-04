@@ -7,38 +7,48 @@ import "."
 
 AppDialog {
     id: root
+    objectName: "backgroundMusicLinkDialog"
 
     property bool batchMode: false
+    property var controller: AppController
+    property bool submitted: false
+    readonly property bool busy: controller.backgroundMusicImportBusy
+    readonly property string importStatus: String(controller.backgroundMusicImportStatus || "")
+    readonly property bool hasError: submitted && !busy && importStatus.length > 0
+        && importStatus !== "Background music imported"
     signal batchMusicReady(string path)
 
-    preferredWidth: 520
-    maximumWidth: 560
-    title: qsTr("Nhập nhạc nền từ liên kết")
-    closePolicy: AppController.backgroundMusicImportBusy
+    preferredWidth: 620
+    maximumWidth: 660
+    title: qsTr("Nhạc nền từ liên kết")
+    subtitle: qsTr("YouTube, TikTok hoặc Douyin")
+    closePolicy: root.busy
         ? Popup.NoAutoClose : Popup.CloseOnEscape
 
     function startImport() {
         const url = musicUrl.text.trim()
-        if (url.length === 0 || AppController.backgroundMusicImportBusy)
+        if (url.length === 0 || root.busy)
             return
+        submitted = true
         if (root.batchMode)
-            AppController.importBatchBackgroundMusicFromLink(url)
+            controller.importBatchBackgroundMusicFromLink(url)
         else
-            AppController.importBackgroundMusicFromLink(url)
+            controller.importBackgroundMusicFromLink(url)
     }
 
     onOpened: {
         musicUrl.clear()
+        submitted = root.busy
         musicUrl.forceActiveFocus()
     }
 
     Connections {
-        target: AppController
+        target: root.controller
 
         function onBackgroundMusicImportChanged() {
-            if (root.opened && !AppController.backgroundMusicImportBusy
+            if (root.opened && root.submitted && !root.busy
                     && !root.batchMode
-                    && AppController.backgroundMusicImportStatus === "Background music imported")
+                    && root.importStatus === "Background music imported")
                 root.close()
         }
 
@@ -57,40 +67,63 @@ AppDialog {
 
     StudioField {
         id: musicUrl
+        objectName: "backgroundMusicLinkField"
         Layout.fillWidth: true
-        enabled: !AppController.backgroundMusicImportBusy
-        placeholderText: qsTr("Dán liên kết video")
+        enabled: !root.busy
+        placeholderText: "https://…"
         accessibleName: qsTr("Liên kết nhạc nền")
         selectByMouse: true
+        onTextEdited: if (!root.busy) root.submitted = false
         Keys.onReturnPressed: root.startImport()
     }
 
-    InlineBanner {
+    RowLayout {
         Layout.fillWidth: true
-        visible: AppController.backgroundMusicImportBusy
-            || AppController.backgroundMusicImportStatus.length > 0
-        tone: AppController.backgroundMusicImportBusy ? "info" : "danger"
-        message: I18n.runtimeStatus(AppController.backgroundMusicImportStatus)
-        busy: AppController.backgroundMusicImportBusy
+        visible: root.busy || root.hasError
+        spacing: Theme.space8
+        Text {
+            Layout.fillWidth: true
+            text: root.busy ? qsTr("Đang tải âm thanh…")
+                : root.importStatus.length > 160 ? qsTr("Không nhập được nhạc nền. Xem chi tiết lỗi.")
+                : I18n.runtimeStatus(root.importStatus)
+            color: root.hasError ? Theme.danger : Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: TypeScale.metadata
+            wrapMode: Text.Wrap
+            textFormat: Text.PlainText
+        }
+        StudioIconButton {
+            visible: root.hasError
+            iconName: "info"
+            toolTipText: qsTr("Chi tiết lỗi")
+            onClicked: root.controller.showAppAlert(qsTr("Không nhập được nhạc nền"),
+                I18n.runtimeStatus(root.importStatus), "warning")
+        }
+    }
+
+    AppProgressBar {
+        Layout.fillWidth: true
+        visible: root.busy
+        indeterminate: true
+        active: root.busy
     }
 
     footerActions: [
         StudioButton {
-            text: AppController.backgroundMusicImportBusy
-                ? qsTr("Hủy") : qsTr("Đóng")
-            variant: AppController.backgroundMusicImportBusy ? "danger" : "ghost"
+            text: root.busy ? qsTr("Dừng tải") : qsTr("Hủy")
+            variant: root.busy ? "danger" : "secondary"
             onClicked: {
-                if (AppController.backgroundMusicImportBusy)
-                    AppController.cancelBackgroundMusicLinkImport()
+                if (root.busy)
+                    root.controller.cancelBackgroundMusicLinkImport()
                 else
                     root.close()
             }
         },
         StudioButton {
-            text: qsTr("Tải nhạc nền")
+            text: qsTr("Nhập nhạc nền")
             variant: "primary"
             enabled: musicUrl.text.trim().length > 0
-                && !AppController.backgroundMusicImportBusy
+                && !root.busy
             onClicked: root.startImport()
         }
     ]

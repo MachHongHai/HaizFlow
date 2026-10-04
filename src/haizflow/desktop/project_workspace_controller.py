@@ -55,7 +55,12 @@ class ProjectWorkspaceController:
             )
         host._workflow_mode = video.mode
         host._target_language = str(video.target_language or "vi")
-        host._speech_recognition_model = str(getattr(video, "speech_recognition_model", "small") or "small")
+        from haizflow.core.model_choices import project_recognition_choice
+
+        host._speech_recognition_model = project_recognition_choice(
+            str(getattr(video, "speech_recognition_model", "small") or "small"),
+            str(getattr(host, "_settings_processing_device", "cpu")),
+        )
         host._translation_model = str(getattr(video, "translation_model", "auto") or "auto")
         host._tts_provider = host._normalized_tts_provider(
             host._target_language, getattr(video, "tts_provider", "omnivoice")

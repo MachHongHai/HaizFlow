@@ -32,6 +32,7 @@ ColumnLayout {
     }
 
     TextColorStrip {
+        objectName: "subtitleTextColorStrip"
         Layout.fillWidth: true
         label: qsTr("Màu chữ")
         selectedColor: String(root.style.text_color || "#FFFFFF")
@@ -39,6 +40,7 @@ ColumnLayout {
     }
 
     TextColorStrip {
+        objectName: "subtitleKaraokeColorStrip"
         Layout.fillWidth: true
         visible: root.karaokeEnabled
         label: qsTr("Màu karaoke")
@@ -65,6 +67,7 @@ ColumnLayout {
     }
 
     TextColorStrip {
+        objectName: "subtitleOutlineColorStrip"
         Layout.fillWidth: true
         visible: root.karaokeEnabled
         label: qsTr("Màu viền")

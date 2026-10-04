@@ -59,6 +59,7 @@ Rectangle {
         }
 
         StudioIconButton {
+            objectName: "manualUndoButton"
             visible: root.hasVideo
             controlSize: 40
             iconName: "undo"
@@ -67,6 +68,7 @@ Rectangle {
             onClicked: root.undoRequested()
         }
         StudioIconButton {
+            objectName: "manualRedoButton"
             visible: root.hasVideo
             controlSize: 40
             iconName: "redo"
@@ -75,9 +77,8 @@ Rectangle {
             onClicked: root.redoRequested()
         }
 
-        Item { Layout.fillWidth: true }
-
         StudioButton {
+            objectName: "manualCompareButton"
             visible: root.hasVideo
             text: qsTr("So sánh")
             iconName: "video"
@@ -87,7 +88,11 @@ Rectangle {
             toolTipText: qsTr("Hiện hoặc ẩn video nguồn")
             onClicked: root.compareToggled()
         }
+
+        Item { Layout.fillWidth: true }
+
         StudioButton {
+            objectName: "manualExportButton"
             visible: root.hasVideo
             text: qsTr("Xuất")
             iconName: "open"

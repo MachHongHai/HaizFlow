@@ -18,20 +18,31 @@ Item {
 
         PageHeader {
             Layout.fillWidth: true
+            Layout.maximumWidth: 920
+            Layout.alignment: Qt.AlignHCenter
             title: qsTr("Cài đặt")
         }
-        SegmentedControl {
-            Layout.preferredWidth: 390
-            currentValue: root.currentRoute
-            options: [
-                { label: qsTr("Chung"), value: "settings" },
-                { label: qsTr("API Key"), value: "api-keys" },
-                { label: qsTr("Gói tài nguyên"), value: "packages" }
-            ]
-            onActivated: function(value) { root.navigateRequested(value); }
+        Item {
+            Layout.fillWidth: true
+            Layout.maximumWidth: 920
+            Layout.alignment: Qt.AlignHCenter
+            implicitHeight: tabs.implicitHeight
+            NavigationTabs {
+                id: tabs
+                anchors.left: parent.left
+                currentValue: root.currentRoute
+                options: [
+                    { label: qsTr("Chung"), value: "settings" },
+                    { label: qsTr("API Key"), value: "api-keys" },
+                    { label: qsTr("Gói tài nguyên"), value: "packages" }
+                ]
+                onActivated: function(value) { root.navigateRequested(value); }
+            }
         }
         Rectangle {
             Layout.fillWidth: true
+            Layout.maximumWidth: 920
+            Layout.alignment: Qt.AlignHCenter
             Layout.preferredHeight: 1
             color: Theme.divider
         }

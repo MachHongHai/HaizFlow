@@ -1,234 +1,199 @@
 pragma ComponentBehavior: Bound
 // qmllint disable missing-property
-
 import QtQuick
 import QtQuick.Layouts
 import "."
 
 Item {
     id: root
-    property bool keyVisible: false
-    property bool focusRequested: false
-    onVisibleChanged: {
-        if (visible && focusRequested) {
-            focusRequested = false
-            Qt.callLater(function() { keyInput.forceActiveFocus(); })
+    property string provider: "gemini"
+    property bool editingKey: false
+    readonly property bool zernio: provider === "zernio"
+    readonly property var apiKeys: zernio ? AppController.zernioApiKeys : AppController.geminiApiKeys
+    readonly property bool configured: apiKeys.length > 0
+    readonly property bool credentialLocked: zernio && (AppController.zernioCredentialBusy
+        || AppController.tiktokPublishBusy || AppController.zernioAccountSyncing)
+    readonly property string checkResult: String(AppController.zernioCredentialResult || "")
+    readonly property bool checkFinished: zernio && !AppController.zernioCredentialBusy
+        && checkResult.length > 0
+    onProviderChanged: { entryForm.clear(); editingKey = false; }
+    onVisibleChanged: { if (!visible) { entryForm.clear(); editingKey = false; } }
+    function zernioMessage() {
+        if (AppController.zernioCredentialBusy) return qsTr("Đang kiểm tra kết nối…");
+        switch (AppController.zernioCredentialResult) {
+        case "verified": return qsTr("Kiểm tra thành công");
+        case "format-error": return qsTr("Kiểm tra thất bại · Key chưa đầy đủ.");
+        case "invalid": return qsTr("Kiểm tra thất bại · Key không hợp lệ hoặc đã bị thu hồi.");
+        case "permissions": return qsTr("Kiểm tra thất bại · Key thiếu quyền đọc và ghi.");
+        case "rate-limit": return qsTr("Kiểm tra thất bại · Zernio đang giới hạn yêu cầu.");
+        case "unavailable": return qsTr("Kiểm tra thất bại · Chưa kết nối được Zernio.");
+        case "storage-error": return qsTr("Lưu thất bại · Không thể lưu key trên máy.");
+        default: return root.configured && !AppController.zernioApiKeyConfigured ? qsTr("Chọn key để kết nối tài khoản đăng bài.")
+            : root.configured ? qsTr("Đã lưu key · Chưa kiểm tra kết nối")
+            : qsTr("Chưa có key. Thêm key để kết nối tài khoản đăng bài.");
         }
     }
-
     Connections {
         target: AppController
-        function onGeminiSetupRequested() {
-            root.focusRequested = true;
-            if (root.visible) {
-                root.focusRequested = false;
-                Qt.callLater(function() { keyInput.forceActiveFocus(); });
-            }
+        function onApiKeySettingsRequested(provider) { root.provider = provider; }
+        function onApiKeyGuideRequested(provider) {
+            root.provider = provider;
+            Qt.callLater(function() {
+                if (provider === "zernio") zernioGuideLoader.invoke("open", []);
+                else geminiGuideLoader.invoke("open", []);
+            });
         }
+        function onGeminiSetupRequested() { root.provider = "gemini"; }
     }
-
     SettingsPageShell {
         anchors.fill: parent
-        title: qsTr("API Key")
         showHeader: false
-        contentMaximumWidth: 920
+        pageInset: 0
+        horizontalInset: 0
+        alignLeft: false
+        contentMaximumWidth: 760
+        contentSpacing: Theme.space20
 
+        NavigationTabs {
+            objectName: "apiKeyProviderSelector"
+            options: [{ label: "Gemini", value: "gemini" }, { label: "Zernio", value: "zernio" }]
+            currentValue: root.provider
+            onActivated: function(value) { root.provider = value; }
+        }
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: Theme.space16
-            Layout.bottomMargin: Theme.space12
-            spacing: Theme.space12
+            spacing: Theme.space16
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: Theme.space4
+                spacing: Theme.space8
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Gemini API Key")
+                    text: root.zernio ? qsTr("Zernio API key") : qsTr("Gemini API key")
                     color: Theme.text
                     font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.section
+                    font.pixelSize: TypeScale.title
                     font.weight: Font.DemiBold
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Lưu nhiều key trên máy và chọn key dùng để dịch trong các dự án.")
+                    text: root.zernio ? qsTr("Kết nối đăng bài. Chọn tài khoản trong dự án.")
+                        : qsTr("Dịch bằng Gemini. Chọn model trong dự án.")
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
-                    font.pixelSize: TypeScale.label
+                    font.pixelSize: TypeScale.body
                     wrapMode: Text.WordWrap
                 }
             }
             StudioButton {
+                objectName: "apiKeyGuideButton"
                 text: qsTr("Hướng dẫn")
-                variant: "secondary"
-                onClicked: guideLoader.invoke("open", [])
-            }
-        }
-
-        Text {
-            Layout.fillWidth: true
-            visible: AppController.geminiApiKeys.length === 0
-            text: qsTr("Chưa có key. Thêm một key từ Google AI Studio để bắt đầu.")
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.label
-            wrapMode: Text.WordWrap
-        }
-
-        Repeater {
-            model: AppController.geminiApiKeys
-            delegate: Rectangle {
-                id: keyRow
-                required property var modelData
-                Layout.fillWidth: true
-                Layout.preferredHeight: 64
-                color: modelData.active ? Theme.interactiveMuted : Theme.surface
-                radius: Theme.radiusSmall
-                border.width: 1
-                border.color: modelData.active ? Theme.interactiveOutline : Theme.outline
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: Theme.space16
-                    anchors.rightMargin: Theme.space12
-                    spacing: Theme.space12
-                    Text {
-                        Layout.fillWidth: true
-                        text: keyRow.modelData.label
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.control
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        visible: keyRow.modelData.active
-                        text: qsTr("Đang dùng")
-                        color: Theme.success
-                        font.family: Theme.fontFamily
-                        font.pixelSize: TypeScale.label
-                    }
-                    StudioButton {
-                        visible: !keyRow.modelData.active
-                        text: qsTr("Sử dụng")
-                        variant: "secondary"
-                        onClicked: AppController.selectGeminiApiKey(keyRow.modelData.id)
-                    }
-                    StudioButton {
-                        text: qsTr("Xóa")
-                        variant: "danger"
-                        onClicked: removeLoader.invoke("confirm", [keyRow.modelData.id, keyRow.modelData.label])
-                    }
+                onClicked: {
+                    if (root.zernio) zernioGuideLoader.invoke("open", []);
+                    else geminiGuideLoader.invoke("open", []);
                 }
             }
-        }
-
-        SettingsSectionHeader {
-            Layout.fillWidth: true
-            Layout.topMargin: Theme.space24
-            title: qsTr("Thêm key")
-        }
-        Text {
-            Layout.fillWidth: true
-            text: qsTr("Tên key")
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.label
-        }
-        AppTextField {
-            id: nameInput
-            Layout.fillWidth: true
-            placeholderText: qsTr("Tên để phân biệt, ví dụ: Cá nhân")
-            accessibleName: qsTr("Tên API key")
-        }
-        Text {
-            Layout.fillWidth: true
-            Layout.topMargin: Theme.space8
-            text: qsTr("API key")
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.label
-        }
-        AppTextField {
-            id: keyInput
-            Layout.fillWidth: true
-            placeholderText: qsTr("Dán Gemini API key")
-            accessibleName: qsTr("Gemini API key")
-            echoMode: root.keyVisible ? TextInput.Normal : TextInput.Password
-            inputMethodHints: Qt.ImhHiddenText | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
         }
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: Theme.space8
+            visible: !root.configured || root.zernio && root.editingKey && root.checkFinished
+                && root.checkResult !== "verified"
             spacing: Theme.space8
-            StudioButton {
-                text: root.keyVisible ? qsTr("Ẩn") : qsTr("Hiện")
-                variant: "secondary"
-                enabled: keyInput.text.length > 0
-                onClicked: root.keyVisible = !root.keyVisible
+            Text {
+                objectName: "credentialStatus"
+                Layout.fillWidth: true
+                text: root.zernio ? root.zernioMessage() : qsTr("Chưa có key. Bạn vẫn có thể dùng model dịch cục bộ.")
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.body
+                wrapMode: Text.WordWrap
             }
-            Item { Layout.fillWidth: true }
-            StudioButton {
-                text: qsTr("Lưu và sử dụng")
-                variant: "primary"
-                enabled: nameInput.text.trim().length > 0 && keyInput.text.trim().length > 0
-                onClicked: {
-                    if (AppController.addGeminiApiKey(nameInput.text, keyInput.text)) {
-                        nameInput.clear();
-                        keyInput.clear();
-                        root.keyVisible = false;
-                    }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.space12
+            visible: root.configured
+            Repeater {
+                model: root.apiKeys
+                delegate: ApiKeyListRow {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    credential: modelData
+                    zernio: root.zernio
+                    locked: root.credentialLocked
+                    onRemoveRequested: function(id, label) { removeLoader.invoke("confirm", [id, label, root.zernio]); }
                 }
             }
         }
-
-        Text {
+        RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: Theme.space20
-            text: qsTr("Key được lưu trong Windows Credential Manager, không nằm trong tệp dự án. HaizFlow chỉ gửi văn bản theo lô, không gửi video hoặc âm thanh. Cả ba model Gemini trong ứng dụng có hạn mức miễn phí. Dự án đã bật thanh toán có thể phát sinh phí; Flash-Lite có giá thấp hơn Flash. Hạn mức áp dụng theo dự án Google, không theo số key.")
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.label
-            wrapMode: Text.WordWrap
+            visible: root.configured && !root.editingKey
+            spacing: Theme.space8
+            StudioButton {
+                objectName: "editApiKeyButton"
+                text: qsTr("Thêm key")
+                enabled: !root.credentialLocked
+                onClicked: root.editingKey = true
+            }
+            StudioButton {
+                objectName: "checkAllZernioKeysButton"
+                visible: root.zernio
+                text: AppController.zernioCredentialBusy ? qsTr("Đang kiểm tra…") : qsTr("Kiểm tra kết nối")
+                enabled: !root.credentialLocked
+                onClicked: AppController.verifyZernioApiKey()
+            }
         }
+        ApiKeyEntryForm {
+            id: entryForm
+            objectName: "apiKeyEntryForm"
+            Layout.fillWidth: true
+            visible: root.editingKey || !root.configured
+            zernio: root.zernio
+            locked: root.credentialLocked
+            onAccepted: root.editingKey = false
+            onCancelled: root.editingKey = false
+        }
+        Item { Layout.preferredHeight: Theme.space16 }
     }
-
     LazyDialogLoader {
-        id: guideLoader
-        parent: root
+        id: geminiGuideLoader
+        sourceComponent: Component { GeminiApiGuideDialog { onClosed: geminiGuideLoader.release() } }
+    }
+    LazyDialogLoader {
+        id: zernioGuideLoader
         sourceComponent: Component {
-            GeminiApiGuideDialog { onClosed: guideLoader.release() }
+            ZernioGuideDialog {
+                onClosed: zernioGuideLoader.release()
+            }
         }
     }
     LazyDialogLoader {
         id: removeLoader
-        parent: root
         sourceComponent: Component {
             AppDialog {
                 id: dialog
                 property string keyId: ""
-                function confirm(id, label) {
-                    keyId = id;
-                    subtitle = label;
-                    open();
-                }
+                property bool zernio: false
+                function confirm(id, label, isZernio) { keyId = id; zernio = isZernio; subtitle = label; open(); }
                 title: qsTr("Xóa API key?")
                 preferredWidth: 440
                 onClosed: removeLoader.release()
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Key này sẽ bị xóa khỏi Windows Credential Manager. Các key khác vẫn được giữ nguyên.")
+                    text: qsTr("Chỉ xóa key trên máy này. Dự án và tài khoản trên dịch vụ vẫn được giữ nguyên.")
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
                     font.pixelSize: TypeScale.label
                     wrapMode: Text.WordWrap
                 }
                 footerActions: [
-                    StudioButton { text: qsTr("Hủy"); variant: "secondary"; onClicked: dialog.close() },
+                    StudioButton { text: qsTr("Hủy"); onClicked: dialog.close() },
                     StudioButton {
                         text: qsTr("Xóa key")
                         variant: "danger"
                         onClicked: {
-                            AppController.removeGeminiApiKey(dialog.keyId);
-                            dialog.close();
+                            const removed = dialog.zernio ? AppController.removeZernioApiKey(dialog.keyId)
+                                : AppController.removeGeminiApiKey(dialog.keyId);
+                            if (removed) dialog.close();
                         }
                     }
                 ]

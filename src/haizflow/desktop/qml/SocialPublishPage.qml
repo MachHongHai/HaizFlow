@@ -32,6 +32,7 @@ Item {
                     || (AppController.tiktokWaitingCount > 0
                         && AppController.zernioApiKeyVerified
                         && AppController.zernioAccountReady
+                        && !AppController.zernioCredentialBusy
                         && !AppController.zernioAccountSyncing)
                 onClicked: {
                     if (AppController.tiktokPublishBusy)
@@ -68,8 +69,8 @@ Item {
                 SocialConnectionBar {
                     id: zernioSetupPanel
                     Layout.fillWidth: true
-                    onSetupGuideRequested: zernioGuideLoader.invoke("open", [])
-                    onApiKeyManagementRequested: apiKeyDialogLoader.invoke("openForConfiguration", [])
+            onSetupGuideRequested: AppController.requestApiKeyGuide("zernio")
+                    onApiKeyManagementRequested: AppController.requestApiKeySettings("zernio")
                     onConnectionPickerRequested: connectionDialogLoader.invoke("openForSelection", [])
                 }
 
@@ -283,36 +284,11 @@ Item {
     }
 
     LazyDialogLoader {
-        id: zernioGuideLoader
-        sourceComponent: Component {
-            ZernioGuideDialog {
-                onClosed: zernioGuideLoader.release()
-                onConfigureApiKeyRequested: {
-                    close()
-                    apiKeyDialogLoader.invoke("openForConfiguration", [])
-                }
-                onChooseConnectionRequested: {
-                    close()
-                    connectionDialogLoader.invoke("openForSelection", [])
-                }
-            }
-        }
-    }
-
-    LazyDialogLoader {
         id: connectionDialogLoader
         sourceComponent: Component {
             ZernioConnectionDialog { onClosed: connectionDialogLoader.release() }
         }
     }
-
-    LazyDialogLoader {
-        id: apiKeyDialogLoader
-        sourceComponent: Component {
-            ZernioApiKeyDialog { onClosed: apiKeyDialogLoader.release() }
-        }
-    }
-
     LazyDialogLoader {
         id: publishConfirmationLoader
         sourceComponent: Component {

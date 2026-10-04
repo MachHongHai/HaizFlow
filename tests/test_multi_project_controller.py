@@ -150,9 +150,10 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(host._speech_recognition_model, "turbo")
         host.speechRecognitionModelChanged.emit.assert_called_once_with()
 
-    def test_whisper_turbo_option_uses_verified_model_and_selected_gpu(self):
+    def test_whisper_turbo_option_waits_for_async_hardware_probe_before_disabling_gpu(self):
         host = SimpleNamespace(
             _hardware_capabilities=SimpleNamespace(cuda_available=False),
+            _startup_hardware_resolved=False,
             _active_processing_device="gpu",
             _settings_processing_device="gpu",
             _whisper_turbo_model_ready=True,
@@ -165,7 +166,8 @@ class MultiProjectControllerTests(unittest.TestCase):
 
     def test_whisper_turbo_option_can_be_selected_to_explain_missing_pack(self):
         host = SimpleNamespace(
-            _hardware_capabilities=SimpleNamespace(cuda_available=True),
+            _hardware_capabilities=SimpleNamespace(cuda_available=True, cuda_name="GPU",
+                total_vram_bytes=8 * 1024**3, total_ram_bytes=16 * 1024**3),
             _active_processing_device="gpu",
             _settings_processing_device="gpu",
             _whisper_turbo_model_ready=False,
@@ -410,7 +412,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(config.watermark_text, "batch")
         self.assertTrue(config.remove_original_subtitles)
         self.assertEqual(config.original_subtitle_removal_mode, "patch")
-        self.assertFalse(config.subtitle_layout_override)
+        self.assertTrue(config.subtitle_layout_override)
         self.assertEqual(config.subtitle_style.font_size, 64)
         self.assertEqual(config.background_music_path, "music.mp3")
 

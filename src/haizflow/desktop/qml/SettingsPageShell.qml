@@ -11,12 +11,15 @@ Item {
     property string title: ""
     property bool showHeader: true
     property int contentMaximumWidth: 920
-    readonly property int horizontalInset: UiMetrics.pageMargin
+    property int pageInset: UiMetrics.pageMargin
+    property int horizontalInset: UiMetrics.pageMargin
+    property bool alignLeft: false
+    property int contentSpacing: 0
     default property alias content: contentColumn.data
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: UiMetrics.pageMargin
+        anchors.margins: root.pageInset
         spacing: 0
 
         PageHeader {
@@ -48,9 +51,9 @@ Item {
 
                 width: Math.min(root.contentMaximumWidth,
                     Math.max(1, scrollView.availableWidth - root.horizontalInset * 2))
-                x: Math.max(root.horizontalInset,
+                x: root.alignLeft ? root.horizontalInset : Math.max(root.horizontalInset,
                     Math.round((scrollView.availableWidth - width) / 2))
-                spacing: 0
+                spacing: root.contentSpacing
             }
         }
     }

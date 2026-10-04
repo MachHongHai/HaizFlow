@@ -860,11 +860,17 @@ def synthesize_batch_to_mp3(
         "detail=Checking the local model and isolated SDK runtime.",
     )
     prepared_items = [dict(item) for item in items]
+    reference_texts: dict[str, str] = {}
     for item in prepared_items:
         if item.get("reference_path") and not str(item.get("reference_text") or "").strip():
             from haizflow.pipeline.voice_reference import transcribe_reference
 
-            item["reference_text"] = transcribe_reference(str(item["reference_path"]), video_id, process_registry_id=cancellation_id)
+            reference_path = str(item["reference_path"])
+            if reference_path not in reference_texts:
+                reference_texts[reference_path] = transcribe_reference(
+                    reference_path, video_id, process_registry_id=cancellation_id,
+                    device=device or processing_device_preference())
+            item["reference_text"] = reference_texts[reference_path]
     items = prepared_items
     _prepare_isolated_runtime()
     model_root = verify_omnivoice_model(Path(MODELS_DIR) / "omnivoice")

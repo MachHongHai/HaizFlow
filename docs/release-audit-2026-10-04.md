@@ -11,7 +11,8 @@ người dùng trong đợt rà soát này. Kết quả source không thay thế
 
 | Hạng mục | Kết quả | Phạm vi |
 | --- | --- | --- |
-| Kiểm thử Python | 1.181 qua; 1 bỏ qua; 150 subtest qua | Source, dữ liệu kiểm thử cô lập; không chạy lại pipeline dự án người dùng |
+| Kiểm thử Python | 1.244 qua; 1 bỏ qua; 150 subtest qua | Source, dữ liệu kiểm thử cô lập; không chạy lại pipeline dự án người dùng |
+| UI Qt cô lập | 15 qua | Cài đặt/Áp dụng, API key, bản quyền, chỉnh phụ đề/karaoke nhiều dòng, lặp nhạc và thanh trạng thái; ảnh kiểm tra trên D: |
 | Qt Quick Test | 77 qua | Điều khiển preview, clone giọng, popup và các component hiện có |
 | Python lint/compile | Qua | Source và script; kiểm tra tên chưa định nghĩa và cú pháp |
 | QML lint | Qua, không diagnostic | Toàn bộ tệp QML cấp ứng dụng |
@@ -31,6 +32,60 @@ riêng và không còn diagnostic.
 
 ## Những lỗi đã sửa trong đợt này
 
+- Karaoke nhiều dòng trong editor không còn tô đồng thời từ đầu của từng dòng.
+  Preview tách vùng tô theo biên glyph từng dòng và lấy thứ tự/thời lượng từ
+  clock ASS xuất. Tua lùi giữ đúng trạng thái; delegate ảnh được giữ giữa các
+  nhịp phát, không chạy FFmpeg lại theo playhead. Cache sprite chuyển sang v3
+  để không dùng lại metadata cũ. Auto dùng chung overlay; mẫu 45% cũng theo
+  một clock liên tục thay vì 45% ở tất cả các dòng. Kiểm thử Qt thực kiểm tra
+  kéo tăng hàng và tái sử dụng delegate; FFmpeg kiểm tra pixel màu trên ba
+  thời điểm của ASS nhiều dòng, xác nhận dòng sau không đổi màu trước lượt.
+  Không xuất lại dự án người dùng hoặc làm mất cache nhận dạng/dịch/giọng.
+- Auto và Batch dùng bộ chỉnh kiểu chữ tương ứng Manual: màu chữ/karaoke/
+  viền, đậm và nghiêng. Lược điều khiển phông, bóng, giãn ký tự, căn chữ,
+  in hoa và ô cỡ chữ; các góc khung vẫn điều chỉnh cỡ chữ. Giá trị đã lưu
+  trong project cũ được giữ nguyên, không xóa dữ liệu style.
+  Preview dùng raster libass cùng đường xuất video, worker riêng không thay
+  thế overlay của editor. Đóng cửa sổ giải phóng trạng thái mẫu; refresh khi
+  kéo được gom lại, không tạo worker theo mỗi sự kiện con trỏ.
+- Cài đặt → API Key quản lý Gemini và Zernio; project giữ model dịch, lựa chọn
+  tài khoản, nội dung và tùy chọn đăng. Khi chưa có key, chức năng cục bộ vẫn
+  sử dụng được; thao tác cần dịch vụ có hướng dẫn đến đúng mục cài đặt.
+  Lược banner trạng thái màu, huy hiệu và đoạn giải thích dài trong UI key.
+- Kiểm tra Zernio độc lập với project, không tạo hồ sơ trên dịch vụ khi kiểm tra.
+  Key thay thế chỉ được ghi vào Credential Manager sau khi kiểm tra đọc hồ sơ/
+  tài khoản thành công; lỗi xác thực, kết nối hoặc lưu giữ nguyên key cũ.
+  Kiểm tra này không khẳng định quyền POST; hướng dẫn yêu cầu key đọc và ghi.
+  Xóa key không sửa lựa chọn tài khoản, nội dung hoặc hàng đợi trong project.
+  Kiểm thử dùng client/credential store giả, không dùng key người dùng hoặc đăng bài thật.
+  Hướng dẫn quyền key và định dạng key giới hạn được đối chiếu với
+  [tài liệu Zernio](https://docs.zernio.com/api-keys/create-api-key).
+- Cài đặt chung Batch được chỉnh trong bản nháp đến khi Áp dụng. Kiểu chữ
+  và layout được lưu đầy đủ, video có cài đặt riêng được giữ nguyên trừ khi
+  người dùng xác nhận thay thế. Kiểm thử filesystem kiểm tra lưu/mở lại,
+  giữ/thay thế override và từ chối dữ liệu sai trước khi ghi. Backend của
+  luồng Áp dụng mới chặn model GPU khi app đang dùng CPU; khóa chỉnh trong
+  lúc Batch chạy. Không chạy pipeline thật hoặc xuất lại video người dùng.
+- Lược icon trang trí và icon cạnh nút/menu đã có nhãn, kể cả trạng thái,
+  thông báo và Batch. Giữ điều khiển icon-only (phát/dừng, đóng, điều hướng,
+  menu), tay nắm, checkbox, mũi tên dropdown và logo nền tảng. Kiểm thử GUI
+  xác nhận icon của nút có nhãn bị ẩn và nút icon-only vẫn hiển thị.
+- Tay nắm cạnh phụ đề nằm đúng trên khung chữ, không bị đẩy ra ngoài khi
+  chữ thấp. Chiều rộng dùng kích thước khung mới để xác định số từ; phép đo
+  glyph theo Win ascent/descent của libass, không nhầm với kích thước EM của
+  Pillow/Qt. Đã đối chiếu với raster thật. Chỉ đổi kích thước chứa chữ, không
+  đổi thời gian đọc hoặc phóng ngang glyph. Bản render cũ dùng thuật toán
+  phân dòng trước sửa không được coi là cache hợp lệ cho lần render mới;
+  các checkpoint nhận dạng, dịch, giọng và âm thanh vẫn giữ nguyên.
+- Auto vẫn mở được Chỉnh phụ đề khi bật che phụ đề gốc. Checkbox căn theo
+  ô che khóa thao tác thủ công; bỏ chọn dùng layout đã lưu trong render.
+  Preview dùng câu mẫu dài, chung cách chia từ/dòng với render, nhận đủ
+  chiều rộng/cao sau khi kéo. Test GUI kiểm tra kéo ngang thêm từ, kéo dọc
+  thêm dòng, giữ cỡ chữ và khóa/mở thao tác qua checkbox.
+- Cửa sổ nhập nhạc nền từ liên kết dùng bố cục/điều khiển chung với cửa sổ
+  nhập video. Mỗi lần mở có trạng thái hiển thị riêng, không biến kết quả
+  thành công/lỗi của lần trước thành cảnh báo cho lần mới. Trạng thái tải
+  gọn, lỗi dài có Chi tiết; test GUI kiểm tra mở lại sau thành công và thất bại.
 - Bấm ngoài ô nhập bỏ focus và selection, bao gồm API key và watermark. Commit
   bộ đệm IME trước khi chuyển focus; không nuốt click nút và giữ thao tác bàn phím.
 - Thông báo chi phí Gemini ngắn hơn; toast bị cắt có nút **Chi tiết** mở toàn bộ
@@ -52,8 +107,9 @@ riêng và không còn diagnostic.
 ## Bổ sung editor, import và OCR
 
 - Mặc định project GPU và warm lúc khởi động cùng chọn Whisper large-v3-turbo;
-  CPU vẫn chọn Small CPU. Không thay thế lựa chọn model đã được lưu riêng trong
-  dự án. Kiểm tra request warm bằng test; chưa chạy inference Turbo thật trong
+  CPU vẫn chọn Small CPU. Giá trị mặc định cũ `small` theo cấu hình ứng dụng;
+  giữ nguyên lựa chọn tường minh Small CPU/Small GPU/Turbo của dự án.
+  Kiểm tra request warm bằng test; chưa chạy inference Turbo thật trong
   đợt này. Các giới hạn bộ nhớ và ưu tiên tác vụ đang xử lý được giữ nguyên.
 - Project Manual mới dùng phụ đề 84 px, vị trí dọc 80%, vùng cao 12%; vùng OCR
   dùng để xóa chữ nguồn, không thay thế bố cục phụ đề dịch. Không sửa bố cục đã
@@ -107,7 +163,79 @@ phát sinh request bằng API key của người dùng để kiểm tra.
 [Tài liệu xử lý lỗi Google](https://ai.google.dev/gemini-api/docs/troubleshooting),
 [model Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash).
 
+## Bổ sung nhận dạng mẫu giọng và thao tác phụ đề
+
+- Log clone của `discord` cho thấy 46 giây nhận dạng mẫu trên CPU trước khi
+  worker OmniVoice được gọi bằng `cuda:0`; tác vụ dừng trong bước import runtime,
+  chưa có bằng chứng OmniVoice tự chuyển sang CPU trong lần chạy này.
+- Nhận dạng mẫu theo thiết bị của OmniVoice. Whisper CUDA dùng float16;
+  CPU dùng int8. Nếu CUDA thiếu tài nguyên, chỉ bước nhận dạng mẫu được thử lại
+  trên CPU và có log riêng; không đổi cấu hình TTS. Nội dung của cùng một mẫu
+  được chuẩn bị một lần cho cả danh sách đoạn.
+- Thử inference Whisper Small CUDA trên mẫu giọng đóng gói: hai lần khoảng
+  11,85 và 8,75 giây, không fallback CPU. Không so trực tiếp với 46 giây của
+  mẫu người dùng khác, không suy ra thời gian toàn bộ luồng clone từ phép thử này.
+  Kiểm thử tiếp qua request file và subprocess thật: 10,14 giây, worker xác nhận
+  `device=cuda compute_type=float16`; log và cache kiểm thử ở thư mục build trên D.
+- Khung phụ đề có bốn tay nắm ngang/dọc độc lập, giữ cạnh đối diện và có điều
+  khiển bàn phím. Các góc vẫn đổi cỡ chữ. Chiều rộng/cao điều chỉnh sức chứa
+  cụm chữ; khung cao hỗ trợ tối đa ba dòng, không đổi đồng hồ từ hoặc âm thanh.
+  Preview chỉ dựng đoạn hiện tại khi kéo, giữ raster hợp lệ trong lúc thay thế;
+  lưu document/history khi thả chuột, không theo từng sự kiện di chuyển.
+- Sửa khung chọn bám theo alpha bounds của chữ render, không bao cả vùng chứa
+  câu. Kéo cạnh ngang thay đổi sức chứa từ, không đổi cỡ chữ; giữ hệ tọa độ
+  kéo ổn định khi raster được thay thế. Tay nắm không chồng nhau ở chữ một dòng
+  nhỏ. Chia cụm theo độ rộng glyph/font và khoảng cách chữ, thay vì đếm ký tự;
+  giữ đồng hồ từ, tránh cụm một từ khi có cách chia phù hợp. Kiểm tra bằng
+  libass raster thật, thao tác Qt và test tăng/giảm sức chứa ngang.
+- Ô watermark lưu khi mất focus hoặc Enter, có kiểm tra nhập tiếng Việt, nhiều
+  lần sửa và chống lưu lặp. Dialog dùng nhãn Đóng do nội dung được tự lưu.
+- Chuẩn hóa LF cho các dependency locks theo hash đã duyệt; thêm thuộc tính Git
+  để checkout Windows không biến đổi hash vì CRLF. Không thay phiên bản gói,
+  không sửa manifest hash nhằm bỏ qua kiểm tra toàn vẹn.
+
 ## Điều kiện còn thiếu trước phát hành
+
+### Cài đặt, API key và nhận diện người nói
+
+- Cài đặt sử dụng tab điều hướng; nội dung và thanh Áp dụng được căn giữa.
+  Áp dụng nằm ngoài vùng cuộn, thay đổi ngôn ngữ/thiết bị chỉ lưu khi xác nhận.
+- Gemini và Zernio dùng chung bố cục danh sách key có tên, chọn mặc định và
+  form thêm key được che nội dung. Zernio kiểm tra kết nối trước khi đổi mặc định;
+  thao tác bị khóa khi đang đăng. Key cũ trong Credential Manager vẫn dùng được.
+  Tệp metadata chỉ chứa ID/tên, không chứa secret. Đổi key không tự chuyển
+  đích đăng của dự án; tài khoản không khả dụng cần được người dùng chọn lại.
+- WeSpeaker model và ONNX CPU được cấu hình đóng gói trong Core; không còn mục
+  tải riêng trong danh sách tài nguyên. Chưa dựng installer để xác nhận artifact.
+- Đã benchmark CPU/CUDA trên âm thanh thật ở ba lượt/process mới: nhận diện CPU
+  nhanh hơn cả video ngắn lẫn dài, embedding gần trùng và cluster trùng nhau.
+  Giữ CPU cho tính năng này, không thêm ONNX GPU vào engine CUDA.
+  Xem [phương pháp và số liệu benchmark](speaker-backend-benchmark-2026-10-04.md).
+  Kiểm thử request thực qua RPC Core với mẫu giọng đóng gói cũng trả về
+  `speaker-1` và báo `device=cpu`; không chạy pipeline/cache dự án người dùng.
+- Cửa sổ bản quyền tự vừa nội dung, chỉ cuộn ở màn hình thấp. Card dự án đăng
+  hiển thị số lượng theo dạng “7 bài đăng”, bỏ dấu gạch không cần thiết.
+
+### Bổ sung UI và nhạc nền editor
+
+- Hướng dẫn Zernio chỉ được tạo tại Cài đặt API Key. Menu dự án điều hướng
+  tới đúng trang và mở cùng cửa sổ; không còn cửa sổ hướng dẫn riêng ở dự án.
+- Kết quả kiểm tra key hiển thị thành công/thất bại kèm chấm xanh/đỏ.
+  Kết quả lần kiểm tra mới không được lấy từ cờ xác thực của key cũ.
+- Bỏ dòng thay đổi chưa lưu, nhãn Khuyên dùng và phần giới thiệu nhận diện
+  người nói trên trang tài nguyên; giữ tính năng nhận diện CPU tích hợp.
+  Thanh trạng thái hiển thị lại Sẵn sàng và giữ nguyên chiều cao giữa các trạng thái.
+- Lựa chọn GPU đối chiếu kết quả dò phần cứng thay vì chỉ dùng giá trị đã lưu.
+  Trong lúc dò chưa xong, lựa chọn được giữ; thao tác GPU vẫn chờ xác minh.
+  Gói môi trường Whisper Small/OmniVoice đi theo lựa chọn CPU/GPU của dự án.
+- Nhập/đổi/xóa nhạc nền đồng bộ document editor và model timeline ngay,
+  không cần bật tự giảm nhạc. Editor có công tắc lặp nhạc, lưu vào clip;
+  preview và bộ trộn khi xuất đều đọc trạng thái này. Hỗ trợ lịch sử hoàn tác.
+- Dữ liệu Discord chỉ được đọc để kiểm tra sự lệch giữa video metadata và
+  editor document. Không chạy lại pipeline hoặc thay đổi file dự án người dùng.
+  Kiểm thử hồi quy dùng dữ liệu tổng quát, không gắn tên hay nội dung một video.
+
+### Các gate còn lại
 
 1. **Artifact engine:** dựng và kiểm thử CPU/CUDA/vision, sau đó điền URL bất biến,
    dung lượng thực và SHA-256. Không lấy hash từ gói giả hoặc tự đoán URL.

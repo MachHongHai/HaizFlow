@@ -41,7 +41,7 @@ ColumnLayout {
             imagePane.inspector.scheduleSave();
         }
     }
-    StudioField {
+    AutoSaveTextField {
         Layout.fillWidth: true
         visible: imagePane.draftWatermarkKind === "text"
             && imagePane.draftWatermarkKind === imagePane.appliedWatermarkKind
@@ -49,8 +49,8 @@ ColumnLayout {
         placeholderText: qsTr("Nhập watermark")
         text: AppController.watermarkText
         maximumLength: 80
-        onEditingFinished: {
-            AppController.watermarkText = text;
+        onValueCommitted: function(value) {
+            AppController.watermarkText = value;
             imagePane.inspector.scheduleSave();
         }
     }

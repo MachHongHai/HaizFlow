@@ -65,8 +65,184 @@ class _Model:
 
 class SocialPublishControllerTests(unittest.TestCase):
     def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        index_patch = patch("haizflow.services.zernio_keys.INDEX_PATH", Path(directory.name) / "keys.json")
+        index_patch.start()
+        self.addCleanup(index_patch.stop)
+        secret_patch = patch("haizflow.services.secure_credentials.read_secret", return_value="")
+        secret_patch.start()
+        self.addCleanup(secret_patch.stop)
         self.host = _Host()
         self.controller = SocialPublishController(self.host)
+
+    def test_named_key_selection_checks_connection_before_switching(self):
+        candidate = "sk_" + "b" * 64
+        self.controller._api_key_cache = "previous"
+        client = MagicMock()
+        client.list_profiles.return_value = []
+        client.list_accounts.return_value = []
+        with (patch("haizflow.desktop.social_publish_controller.zernio_keys.key_value", return_value=candidate),
+              patch("haizflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
+              patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client)):
+            self.assertTrue(self.controller.select_api_key("named-id"))
+            self.controller._credential_worker_thread.join(timeout=2)
+            self.assertEqual(self.controller._api_key_cache, "previous")
+            select.assert_not_called()
+            self.controller.drain_events()
+            select.assert_called_once_with("named-id")
+            self.assertEqual(self.controller._api_key_cache, candidate)
+        self.assertTrue(self.controller._require_explicit_account_selection)
+        client.create_profile.assert_not_called()
+
+    def test_failed_named_key_verification_does_not_change_saved_default(self):
+        self.controller._api_key_cache = "previous"
+        client = MagicMock()
+        client.list_profiles.side_effect = zernio.ZernioError("private", status=401)
+        with (patch("haizflow.desktop.social_publish_controller.zernio_keys.key_value", return_value="candidate"),
+              patch("haizflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
+              patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client)):
+            self.assertTrue(self.controller.select_api_key("named-id"))
+            self.controller._credential_worker_thread.join(timeout=2)
+            self.controller.drain_events()
+            select.assert_not_called()
+        self.assertEqual(self.controller._api_key_cache, "previous")
+        self.assertEqual(self.controller.credential_result, "invalid")
+
+    def test_key_management_is_disabled_during_publishing(self):
+        self.controller._busy = True
+        with patch("haizflow.desktop.social_publish_controller.zernio_keys.remove_key") as delete:
+            self.assertFalse(self.controller.add_api_key("Team", "sk_" + "a" * 64))
+            self.assertFalse(self.controller.select_api_key("named-id"))
+            self.assertFalse(self.controller.remove_api_key("named-id"))
+            delete.assert_not_called()
+
+    def test_removing_inactive_key_notifies_the_qml_list(self):
+        self.controller._api_key_cache = "active-secret"
+        self.controller._emit_changed()
+        emissions = self.host.zernioAccountsChanged.emissions
+        with (patch("haizflow.desktop.social_publish_controller.zernio_keys.active_id", return_value="active-id"),
+              patch("haizflow.desktop.social_publish_controller.zernio_keys.remove_key", return_value=True)):
+            self.assertTrue(self.controller.remove_api_key("inactive-id"))
+        self.assertEqual(self.host.zernioAccountsChanged.emissions, emissions + 1)
+        self.assertEqual(self.controller._api_key_cache, "active-secret")
+
+    def test_refresh_never_redirects_queue_to_another_account_after_key_switch_or_restart(self):
+        self.controller._project_key = "publish-project"
+        self.controller._project_root = "D:/test/publish-project"
+        self.controller._state.update(selected_account_id="previous-account", selected_platform="youtube")
+        self.controller._events.put(dict(type="accounts", project_key="publish-project",
+                                         accounts=[{"_id": "other-account", "platform": "youtube"}], profiles=[]))
+        with (patch("haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
+              patch.object(self.controller, "_poll_connected_accounts")):
+            self.controller.drain_events()
+            update.assert_not_called()
+        self.assertEqual(self.controller._state["selected_account_id"], "previous-account")
+        self.assertEqual(self.controller.selected_account_index, -1)
+        self.assertFalse(self.controller.account_ready)
+
+    def test_global_credential_validation_is_read_only_and_survives_project_switch(self):
+        candidate = "sk_" + "a" * 64
+        client = MagicMock()
+        client.list_profiles.return_value = []
+        client.list_accounts.return_value = []
+        with (
+            patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client),
+            patch("haizflow.services.secure_credentials.write_secret") as write,
+            patch("haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
+        ):
+            self.assertTrue(self.controller.save_api_key(candidate))
+            self.controller._credential_worker_thread.join(timeout=2)
+            write.assert_not_called()
+            self.controller.detach_project()
+            self.controller.drain_events()
+            write.assert_called_once_with(ZERNIO_CREDENTIAL_TARGET, candidate, username="Zernio API")
+            update.assert_not_called()
+        self.assertTrue(self.controller.api_key_verified)
+        self.assertFalse(self.controller.credential_busy)
+        client.create_profile.assert_not_called()
+
+    def test_failed_replacement_preserves_working_key_and_does_not_echo_secret(self):
+        previous = "sk_" + "b" * 64
+        candidate = "sk_" + "a" * 64
+        self.controller._api_key_cache = previous
+        self.controller._api_key_verified = True
+        client = MagicMock()
+        client.list_profiles.side_effect = zernio.ZernioError(candidate, status=401)
+        with (
+            patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client),
+            patch("haizflow.services.secure_credentials.write_secret") as write,
+        ):
+            self.assertTrue(self.controller.save_api_key(candidate))
+            self.controller._credential_worker_thread.join(timeout=2)
+            self.controller.drain_events()
+            write.assert_not_called()
+        self.assertEqual(self.controller._api_key_cache, previous)
+        self.assertTrue(self.controller.api_key_verified)
+        self.assertEqual(self.controller.credential_result, "invalid")
+        self.assertNotIn(candidate, self.controller.status)
+
+    def test_credential_save_failure_preserves_previous_key(self):
+        self.controller._api_key_cache = "old"
+        self.controller._api_key_verified = True
+        self.controller._credential_generation = 1
+        self.controller._credential_busy = True
+        self.controller._events.put(dict(type="credential", generation=1, replace=True,
+                                         result="verified", key="new", profiles=[], accounts=[]))
+        with patch("haizflow.services.secure_credentials.write_secret",
+                   side_effect=OSError("private details")):
+            self.controller.drain_events()
+        self.assertEqual(self.controller._api_key_cache, "old")
+        self.assertTrue(self.controller.api_key_verified)
+        self.assertEqual(self.controller.credential_result, "storage-error")
+        self.assertNotIn("private details", self.controller.status)
+
+    def test_invalid_format_is_not_sent_to_server_and_restricted_key_is_accepted(self):
+        with patch.object(self.controller, "_start_credential_check", return_value=True) as start:
+            self.assertFalse(self.controller.save_api_key("partial"))
+            start.assert_not_called()
+            self.assertTrue(self.controller.save_api_key("zrk_" + "c" * 64))
+            start.assert_called_once()
+
+    def test_clear_credential_preserves_project_selection_and_queued_posts(self):
+        self.controller._api_key_cache = "old"
+        self.controller._state.update(selected_account_id="account", privacy_level="PUBLIC",
+                                      items=[dict(id="queued", status="ready")])
+        original = dict(self.controller._state)
+        with (
+            patch("haizflow.services.secure_credentials.delete_secret"),
+            patch("haizflow.desktop.social_publish_controller.tiktok_publish.update_publish_settings") as update,
+        ):
+            self.assertTrue(self.controller.clear_api_key())
+            update.assert_not_called()
+        self.assertEqual(self.controller._state, original)
+        self.assertFalse(self.controller.api_key_configured)
+
+    def test_stale_credential_event_after_shutdown_cannot_write_secret(self):
+        self.controller._credential_generation = 1
+        self.controller._events.put(dict(type="credential", generation=1, replace=True,
+                                         result="verified", key="new"))
+        self.controller.shutdown()
+        with patch("haizflow.services.secure_credentials.write_secret") as write:
+            self.controller.drain_events()
+            write.assert_not_called()
+
+    def test_regular_account_refresh_does_not_create_remote_profile(self):
+        client = MagicMock()
+        client.list_profiles.return_value = []
+        client.list_accounts.return_value = []
+        with patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient", return_value=client):
+            self.controller._account_worker("refresh", "fake", "")
+        client.create_profile.assert_not_called()
+        self.controller.drain_events()
+
+    def test_credential_check_blocks_publish_and_concurrent_key_changes(self):
+        self.controller._credential_busy = True
+        with patch.object(self.controller, "_ensure_publish_project", return_value=True):
+            self.assertFalse(self.controller._ensure_ready_to_publish({}))
+        self.assertFalse(self.controller.clear_api_key())
+        self.assertFalse(self.controller.save_api_key("sk_" + "a" * 64))
+        self.assertFalse(self.controller.refresh_accounts())
 
     def test_publish_all_excludes_done_and_ambiguous_remote_posts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -149,7 +325,7 @@ class SocialPublishControllerTests(unittest.TestCase):
     def test_api_key_is_read_from_windows_credential_store_once(self):
         key = "sk_" + "a" * 64
         with patch(
-            "haizflow.desktop.social_publish_controller.secure_credentials.read_secret",
+            "haizflow.services.secure_credentials.read_secret",
             return_value=key,
         ) as read_secret:
             self.assertEqual(self.controller._api_key(), key)

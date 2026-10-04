@@ -5,7 +5,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from haizflow.core.model_choices import gpu_choice_blocked, project_model_defaults, recognition_context
+from haizflow.core.model_choices import gpu_choice_blocked, project_model_defaults, project_recognition_choice, recognition_context
+from haizflow.core.hardware import HardwareCapabilities
 from haizflow.desktop.project_import_controller import ProjectImportController
 from haizflow.desktop.qml_controller import HaizFlowController
 from haizflow.desktop.settings_controller import SettingsController
@@ -22,6 +23,22 @@ def test_new_project_defaults_match_app_device(device):
     for attribute, value in project_model_defaults(device).items():
         assert getattr(host, attribute) == value
     assert recognition_context(host._speech_recognition_model, device)["device"] == device
+
+
+@pytest.mark.parametrize("device, expected", [("gpu", "large-v3-turbo"), ("cpu", "small-cpu")])
+def test_legacy_automatic_recognition_follows_device_but_explicit_choices_survive(device, expected):
+    assert project_recognition_choice("small", device) == expected
+    for explicit in ("small-cpu", "small-gpu", "large-v3-turbo"):
+        assert project_recognition_choice(explicit, device) == explicit
+
+
+def test_opened_legacy_project_warms_same_turbo_choice_as_gpu_ui():
+    video = SimpleNamespace(speech_recognition_model="small", manual_target_tool="translation")
+    host = SimpleNamespace(_keep_models_warm=True, _settings_processing_device="gpu", _selected_video=lambda: video)
+    with patch("haizflow.desktop.smart_warmup_controller.shared_external_engine_pool"):
+        warm = SmartWarmupController(host, Mock())
+    warm.request_project_prediction()
+    assert warm._requests[0].context == {"model": "large-v3-turbo", "device": "gpu"}
 
 
 def test_gpu_mode_allows_explicit_cpu_model_without_warming_gpu_instead():
@@ -98,3 +115,37 @@ def test_no_model_load_is_queued_before_runtime_switch_starts():
          patch("haizflow.desktop.settings_controller.desktop_settings.save_settings"):
         assert SettingsController(host).set_processing_device("gpu")
     assert events == ["switch", "settings"]
+
+
+@pytest.mark.parametrize("device, cuda, vram, ram, pending, expected", [
+    ("cpu", True, 8, 16, False, False),
+    ("gpu", True, 8, 16, False, True),
+    ("gpu", False, 8, 16, False, False),
+    ("gpu", True, 4, 16, False, False),
+    ("gpu", True, 8, 8, False, False),
+    ("gpu", False, 0, 16, True, True),
+])
+def test_gpu_options_use_resolved_hardware_not_only_saved_preference(device, cuda, vram, ram, pending, expected):
+    capabilities = HardwareCapabilities(
+        cuda_available=cuda, cuda_name="GPU" if cuda else "", total_vram_bytes=vram * 1024**3,
+        free_vram_bytes=vram * 1024**3, total_ram_bytes=ram * 1024**3,
+        logical_cpu_count=8, ac_powered=True, battery_percent=None,
+    )
+    host = SimpleNamespace(_settings_processing_device=device, _settings_language="vi",
+                           _startup_hardware_resolved=not pending, _hardware_capabilities=capabilities)
+    assert HaizFlowController._project_gpu_available(host) is expected
+    choices = HaizFlowController.speechRecognitionModelOptions.fget(host)
+    assert choices[0]["available"]
+    assert all(choice["available"] is expected for choice in choices[1:])
+
+
+def test_api_guide_navigates_to_single_owner_before_opening():
+    events = []
+    host = SimpleNamespace(
+        apiKeySettingsRequested=SimpleNamespace(emit=lambda provider: events.append(("navigate", provider))),
+        apiKeyGuideRequested=SimpleNamespace(emit=lambda provider: events.append(("guide", provider))),
+    )
+    HaizFlowController.requestApiKeyGuide(host, "zernio")
+    assert events == [("navigate", "zernio"), ("guide", "zernio")]
+    HaizFlowController.requestApiKeyGuide(host, "unknown")
+    assert len(events) == 2

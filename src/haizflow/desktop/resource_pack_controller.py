@@ -233,6 +233,10 @@ class ResourcePackController(QObject):
                 or "small"
             ),
             "source_language": str(getattr(selected_video, "source_language", "") or ""),
+            "provider": str(
+                getattr(selected_video, "tts_provider", "")
+                or getattr(self._host, "_tts_provider", "omnivoice")
+            ),
             "language": str(
                 getattr(selected_video, "target_language", "")
                 or getattr(self._host, "_target_language", "")
@@ -271,7 +275,7 @@ class ResourcePackController(QObject):
         context = self._display_context()
         if pack_id == "model-whisper-small":
             capability = "recognition"
-            context["model"] = "small"
+            context["model"] = "small-cpu" if context["model"] == "small-cpu" else "small"
         elif pack_id == "model-whisper-turbo":
             capability = "recognition"
             context.update(device="gpu", model="large-v3-turbo")
@@ -283,7 +287,7 @@ class ResourcePackController(QObject):
             context["translation_model"] = "full"
         elif pack_id == "model-omnivoice":
             capability = "voice"
-            context["provider"] = "omnivoice"
+            context["provider"] = "omnivoice-gpu" if context["provider"] == "omnivoice-gpu" else "omnivoice"
         elif pack_id == "model-demucs":
             capability = "separation"
         elif pack_id == "model-subtitle-ocr":
@@ -300,16 +304,9 @@ class ResourcePackController(QObject):
     @property
     def displayRows(self) -> list[dict]:
         """Present only independently installable, large model downloads."""
-        context = self._display_context()
-        device = "gpu" if context["device"] == "gpu" else "cpu"
-        hardware_resolved = bool(getattr(self._host, "_startup_hardware_resolved", True))
-        capabilities = getattr(self._host, "_hardware_capabilities", None)
-        gpu_vram = getattr(capabilities, "total_vram_bytes", 0) if capabilities else 0
-        turbo_recommended = device == "gpu" and gpu_vram >= 7 * 1024**3
-        full_translation_recommended = device == "gpu" and gpu_vram >= 12 * 1024**3
         ordered_ids = [
             "model-whisper-small", "model-whisper-turbo",
-            "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice", "model-speaker-identification",
+            "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
         ]
         source_rows = {str(row.get("packId")): row for row in self.model._rows}
         descriptions = {
@@ -318,7 +315,6 @@ class ResourcePackController(QObject):
             "model-hymt2-cpu": "Dịch cục bộ bằng bản Q4, dùng CPU.",
             "model-hymt2-gpu": "Dịch bằng model đầy đủ trên GPU NVIDIA.",
             "model-omnivoice": "Giọng đọc và nhân bản giọng. Dùng chung cho OmniVoice CPU và GPU.",
-            "model-speaker-identification": "Nhận diện người nói trên CPU và giữ giọng đọc ổn định theo từng người.",
         }
         result: list[dict] = []
         previous_group = ""
@@ -360,12 +356,6 @@ class ResourcePackController(QObject):
                     "summary": descriptions.get(pack_id, ""),
                     "hardwareCompatible": compatible,
                     "hardwareWarning": warning,
-                    "recommended": hardware_resolved and compatible and (
-                        (pack_id == "model-whisper-turbo" and turbo_recommended)
-                        or (pack_id == "model-whisper-small" and not turbo_recommended)
-                        or (pack_id == "model-hymt2-gpu" and full_translation_recommended)
-                        or (pack_id == "model-hymt2-cpu" and not full_translation_recommended)
-                    ),
                     "canInstall": compatible and needs_download and runtime_available,
                 }
             )

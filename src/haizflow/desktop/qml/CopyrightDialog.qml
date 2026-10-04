@@ -7,15 +7,17 @@ import "."
 
 AppDialog {
     id: root
+    objectName: "copyrightDialog"
     title: qsTr("Bản quyền")
     subtitle: "HaizFlow"
     preferredWidth: 650
-    preferredHeight: 520
+    preferredHeight: Math.ceil(content.implicitHeight + headerHeight + footerHeight + Theme.space20 * 2 + 4)
     maximumWidth: 680
     maximumHeight: 620
 
     ScrollView {
         id: scroll
+        objectName: "copyrightScroll"
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.minimumHeight: 0
@@ -23,8 +25,10 @@ AppDialog {
         contentHeight: content.implicitHeight
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
         ColumnLayout {
             id: content
+            objectName: "copyrightTextContent"
             width: scroll.availableWidth
             spacing: Theme.space16
             Text {

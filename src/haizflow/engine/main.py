@@ -238,7 +238,8 @@ def run_file_request(request_path: Path) -> int:
         if operation == "reference_transcribe":
             from haizflow.pipeline.voice_reference import recognize_reference
 
-            result = {"text": recognize_reference(str(payload["audio_path"]), str(payload["model_root"]))}
+            result = {"text": recognize_reference(str(payload["audio_path"]), str(payload["model_root"]),
+                       device=str(payload.get("device") or "cpu"))}
         elif operation == "transcribe":
             from haizflow.pipeline.transcribe import transcribe
 
@@ -257,12 +258,23 @@ def run_file_request(request_path: Path) -> int:
         elif operation == "speaker_identification":
             from haizflow.pipeline.speaker_identity import identify
 
+            runtime_device, fallback_reason = "cpu", ""
+
+            def report_runtime(device, reason):
+                nonlocal runtime_device, fallback_reason
+                runtime_device, fallback_reason = device, reason
+                _status(status_path, stage="identifying_speakers", current=0, total=len(payload["segments"]),
+                        device=device, fallback_reason=reason, detail=f"Nhận diện người nói · {device.upper()}")
+
             def progress(current, total):
-                _status(status_path, stage="identifying_speakers", detail="Nhận diện người nói",
+                _status(status_path, stage="identifying_speakers", device=runtime_device,
+                        fallback_reason=fallback_reason, detail=f"Nhận diện người nói · {runtime_device.upper()}",
                         current=int(current), total=int(total))
 
             result = {"segments": identify(str(payload["audio_path"]), list(payload["segments"]),
-                                           str(payload["video_id"]), progress)}
+                                           str(payload["video_id"]), progress,
+                                           model_directory=str(payload.get("model_directory") or ""),
+                                           runtime_callback=report_runtime)}
         elif operation == "subtitle_ocr":
             from haizflow.pipeline.subtitle_ocr import detect_original_subtitle_region
 

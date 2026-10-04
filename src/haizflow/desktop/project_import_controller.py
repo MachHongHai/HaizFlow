@@ -17,7 +17,7 @@ from haizflow.core.model_choices import project_model_defaults
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import collect_batch_video_paths, create_video_thumbnail_path, normalize_video_path
 from haizflow.schemas.video import SubtitleStyle, VideoConfig
-from haizflow.services import manual_artifacts, project_store, social_publish, video_store
+from haizflow.services import editor_documents, manual_artifacts, project_store, social_publish, video_store
 from haizflow.services.channel_import import normalize_remote_url
 from haizflow.services.desktop_videos import (
     create_desktop_video,
@@ -71,6 +71,14 @@ class ProjectImportController:
     def _can_import_in_background(self) -> bool:
         """Keep the small controller doubles used by unit tests synchronous."""
         return hasattr(self._host, "_media_import_events")
+
+    def _sync_manual_music_document(self, video) -> None:
+        if getattr(video, "project_type", "") != "manual":
+            return
+        document = editor_documents.ensure(video)
+        model = getattr(self._host, "_manual_editor_document", None)
+        if model is not None and self._host._selected_video_id == video.video_id:
+            model.set_document(document)
 
     @staticmethod
     def _invalidate_manual_audio_mix(video) -> None:
@@ -297,6 +305,7 @@ class ProjectImportController:
             stored_path = set_desktop_background_music(selected, source_path)
             self._invalidate_manual_audio_mix(selected)
             refreshed = video_store.get_video(selected.video_id) or selected
+            self._sync_manual_music_document(refreshed)
             history_before = task.get("history_before")
             if history_before:
                 host._record_video_asset_change(
@@ -1094,10 +1103,11 @@ class ProjectImportController:
             try:
                 stored_path = set_desktop_background_music(selected, source_path)
                 self._invalidate_manual_audio_mix(selected)
+                refreshed = video_store.get_video(selected.video_id) or selected
+                self._sync_manual_music_document(refreshed)
             except (OSError, RuntimeError, ValueError) as exc:
                 QMessageBox.warning(None, "Background music", str(exc))
                 return False
-            refreshed = video_store.get_video(selected.video_id) or selected
             host._record_video_asset_change(
                 selected.video_id,
                 history_before,

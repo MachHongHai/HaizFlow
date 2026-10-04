@@ -127,10 +127,44 @@ def export_events(segments, layout, fixed, directory):
     return first_header, events
 
 
+def _karaoke_line_regions(body, alpha):
+    """Pair disjoint ink bands with the continuous clock in export's ASS tags."""
+    lines = body.split(r"\N")
+    bounds = alpha.getbbox() or (0, 0, 1, 1)
+    top, bottom = bounds[1], bounds[3]
+    rows = alpha.getprojection()[1]
+    gaps = []
+    gap_start = None
+    for y in range(top, bottom):
+        if not rows[y] and gap_start is None:
+            gap_start = y
+        elif rows[y] and gap_start is not None:
+            gaps.append((y - gap_start, (y + gap_start) // 2))
+            gap_start = None
+    # Accent gaps are smaller than inter-line gaps. Never let one line's mask
+    # overlap another; even touching heavy outlines get disjoint fallback bands.
+    if len(gaps) >= len(lines) - 1:
+        cuts = sorted(midpoint for _, midpoint in sorted(gaps, reverse=True)[:len(lines) - 1])
+    else:
+        cuts = [round(top + (bottom - top) * i / len(lines)) for i in range(1, len(lines))]
+    edges = [top, *cuts, bottom]
+    result = []
+    clock = 0
+    for index, line in enumerate(lines):
+        y0, y1 = edges[index:index + 2]
+        ink = alpha.crop((0, y0, alpha.width, y1)).getbbox()
+        x0, ink_y0, x1, ink_y1 = ink or (0, 0, 0, y1 - y0)
+        duration = sum(int(value) for value in re.findall(r"\\k[fFoO]?(\d+)", line))
+        result.append(dict(x=x0, y=y0 + ink_y0, width=x1 - x0, height=ink_y1 - ink_y0,
+                           startCs=clock, durationCs=duration))
+        clock += duration
+    return result
+
+
 def rasterize(header, body, layout, directory):
     # Bump this prefix whenever sprite composition changes. Otherwise a frame
     # produced by an older renderer can silently survive an application update.
-    key = hashlib.sha256(("subtitle-sprite-v2\n" + header + body).encode()).hexdigest()[:24]
+    key = hashlib.sha256(("subtitle-sprite-v3\n" + header + body).encode()).hexdigest()[:24]
     directory = directory / key
     directory.mkdir(parents=True, exist_ok=True)
     marker = directory / "complete.json"
@@ -168,13 +202,16 @@ def rasterize(header, body, layout, directory):
     subprocess.run(command, cwd=directory, check=True, capture_output=True, timeout=20,
                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     with Image.open(directory / "normal.png") as image:
-        bounds = image.getchannel("A").getbbox() or (0, 0, 1, 1)
+        alpha = image.getchannel("A")
+        bounds = alpha.getbbox() or (0, 0, 1, 1)
+        karaoke_lines = _karaoke_line_regions(body, alpha)
     value = {"normal": QUrl.fromLocalFile(str(directory / "normal.png")).toString(),
              "karaoke": QUrl.fromLocalFile(str(directory / "karaoke.png")).toString(),
              "x": bounds[0], "y": bounds[1], "width": bounds[2] - bounds[0],
              "height": bounds[3] - bounds[1], "fontSize": int(layout["fontSize"]),
              "outputWidth": width, "outputHeight": height,
-             "positionXPercent": layout["positionXPercent"], "positionYPercent": layout["positionYPercent"]}
+             "positionXPercent": layout["positionXPercent"], "positionYPercent": layout["positionYPercent"],
+             "karaokeLines": karaoke_lines, "lineCount": len(karaoke_lines)}
     marker.write_text(json.dumps(value), encoding="utf-8")
     return value
 
@@ -197,6 +234,9 @@ class SubtitleOverlayRenderer(QObject):
         self._pending = set()
         self._futures = set()
         self._closed = False
+        self._reconfiguring = False
+        self._retain_frame = False
+        self._frame_window = None
         self._ready.connect(self._accept)
         self._root = Path(RUNTIME_DATA_DIR) / "cache" / "subtitle-overlays"
 
@@ -205,18 +245,22 @@ class SubtitleOverlayRenderer(QObject):
         return dict(self._frame)
 
     @Slot(str, str, bool)
-    def configure(self, payload, layout_json, fixed):
+    @Slot(str, str, bool, bool)
+    def configure(self, payload, layout_json, fixed, preserve_frame=False):
         key = hashlib.sha256((payload + layout_json + str(fixed)).encode()).hexdigest()
         if key == self._key:
+            self._retain_frame = preserve_frame
             return
         self._key = key
         self._generation += 1
         generation = self._generation
+        self._reconfiguring = True
+        self._retain_frame = preserve_frame
         self._events = []
         self._pending.clear()
         for future in tuple(self._futures):
             future.cancel()
-        if self._frame:
+        if self._frame and not preserve_frame:
             self._frame = {}
             self.changed.emit()
         segments, layout = json.loads(payload), json.loads(layout_json)
@@ -246,9 +290,24 @@ class SubtitleOverlayRenderer(QObject):
         if not self._closed and not future.cancelled():
             self._ready.emit(future.result())
 
+    @Slot()
+    def clear(self):
+        """Release a closed sample dialog without tearing down its worker pool."""
+        self.release()
+        self._cache.clear()
+
     @Slot(float)
     def seek(self, seconds):
         self._time = seconds
+        can_retain = self._retain_frame and self._frame_window is not None \
+            and self._frame_window[0] <= seconds < self._frame_window[1]
+        if self._reconfiguring and can_retain:
+            return
+        if self._reconfiguring:
+            if self._frame:
+                self._frame = {}
+                self.changed.emit()
+            return
         event = next((e for e in self._events if e["start"] <= seconds < e["end"]), None)
         if event is None:
             if self._frame:
@@ -262,14 +321,22 @@ class SubtitleOverlayRenderer(QObject):
         if key not in self._cache and legacy_key in self._cache:
             key = legacy_key
         if key in self._cache:
+            self._frame_window = (event["start"], event["end"])
             frame = dict(self._cache[key])
             frame["text"] = re.sub(r"\{[^}]*\}", "", event["body"]).replace(r"\N", "\n")
             frame["progress"] = min(1, max(0, (seconds-event["start"])/max(.01, event["end"]-event["start"])))
+            elapsed_cs = (seconds - event["start"]) * 100
+            frame["karaokeLines"] = [
+                dict(line, progress=min(1, max(0,
+                    (elapsed_cs - line["startCs"]) / line["durationCs"]
+                    if line["durationCs"] else float(elapsed_cs >= line["startCs"]))))
+                for line in frame.get("karaokeLines", [])
+            ]
             if frame != self._frame:
                 self._frame = frame
                 self.changed.emit()
         else:
-            if self._frame:
+            if self._frame and not can_retain:
                 self._frame = {}
                 self.changed.emit()
             self._request_frame(event)
@@ -299,7 +366,11 @@ class SubtitleOverlayRenderer(QObject):
     @Slot(object)
     def _accept(self, result):
         if result[0] == "events" and result[1] == self._generation:
+            self._reconfiguring = False
             self._header, self._events = result[2:]
+            self.seek(self._time)
+        elif result[0] == "error" and result[1] == self._generation:
+            self._reconfiguring = False
             self.seek(self._time)
         elif result[0] == "frame":
             self._pending.discard(result[1])
@@ -315,6 +386,9 @@ class SubtitleOverlayRenderer(QObject):
     def release(self):
         """Detach editor state while retaining reusable raster cache entries."""
         self._generation += 1
+        self._reconfiguring = False
+        self._retain_frame = False
+        self._frame_window = None
         self._key = ""
         self._events = []
         self._header = ""

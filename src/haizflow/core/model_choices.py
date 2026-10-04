@@ -3,6 +3,13 @@
 RECOGNITION_CHOICES = frozenset({"small", "small-cpu", "small-gpu", "large-v3-turbo"})
 
 
+def project_recognition_choice(choice: str, app_device: str) -> str:
+    """Resolve the old automatic default without replacing explicit choices."""
+    if not choice or choice == "small":
+        return project_model_defaults(app_device)["_speech_recognition_model"]
+    return choice
+
+
 def project_model_defaults(app_device: str) -> dict[str, str]:
     gpu = app_device == "gpu"
     return {

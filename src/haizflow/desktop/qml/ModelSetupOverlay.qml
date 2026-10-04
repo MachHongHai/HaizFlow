@@ -43,26 +43,6 @@ FocusScope {
             Layout.fillWidth: true
             spacing: Theme.space16
 
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: Theme.radiusSmall
-                color: AppController.modelSetupState === "failed"
-                    || AppController.modelSetupState === "cancelled"
-                    ? Theme.dangerMuted : Theme.interactiveMuted
-
-                AppIcon {
-                    anchors.centerIn: parent
-                    glyph: AppController.modelSetupState === "failed"
-                        || AppController.modelSetupState === "cancelled"
-                        ? "\uEA39" : "\uE896"
-                    iconColor: AppController.modelSetupState === "failed"
-                        || AppController.modelSetupState === "cancelled"
-                        ? Theme.danger : Theme.interactive
-                    iconSize: Theme.icon
-                }
-            }
-
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space4

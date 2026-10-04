@@ -21,20 +21,20 @@ Rectangle {
         : AppController.selectedStatus === "cancelled"
             ? qsTr("Đã dừng")
             : AppController.selectedStatus === "done" && root.hasOutput
-                ? qsTr("Video xuất đã sẵn sàng")
+                ? qsTr("Video đã xuất")
                 : AppController.selectedStatus === "awaiting_review"
                     ? qsTr("Cần duyệt phụ đề")
                     : root.pausePending
                         ? qsTr("Đang tạm dừng…")
                     : AppController.selectedStatus === "paused"
-                        ? qsTr("Đã tạm dừng · Kết quả xử lý được giữ lại")
+                        ? qsTr("Đã tạm dừng")
                     : AppController.selectedStatus === "pending" && !root.selectedQueued
-                        ? qsTr("Sẵn sàng xử lý")
+                        ? qsTr("Chưa xử lý")
                     : root.selectedQueued && !root.selectedProcessing
                         ? qsTr("Đang chờ xử lý")
                     : AppController.hasSelectedVideo
                         ? AppController.selectedStageLabel
-                        : qsTr("Sẵn sàng xử lý")
+                        : qsTr("Chưa chọn video")
 
     implicitHeight: 44
     color: "transparent"

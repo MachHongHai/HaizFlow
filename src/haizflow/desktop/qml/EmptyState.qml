@@ -12,23 +12,6 @@ ColumnLayout {
 
     spacing: Theme.space8
 
-    Rectangle {
-        Layout.alignment: Qt.AlignHCenter
-        Layout.preferredWidth: 44
-        Layout.preferredHeight: 44
-        radius: Theme.radius
-        color: Theme.interactiveMuted
-
-        FluentIcon {
-            anchors.centerIn: parent
-            width: 22
-            height: 22
-            name: root.iconName
-            iconColor: Theme.interactive
-            iconSize: 21
-        }
-    }
-
     Text {
         Layout.fillWidth: true
         text: root.title

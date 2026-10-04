@@ -201,7 +201,6 @@ $ExcludedModules = @(
   "ctranslate2",
   "faster_whisper",
   "demucs",
-  "onnxruntime",
   "rapidocr",
   "psutil",
   "soundfile",
@@ -264,6 +263,12 @@ if (!(Test-Path -LiteralPath $SubtitleFontPath -PathType Leaf)) {
 $ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
 
 $ArgsList += @("--collect-all", "yt_dlp")
+$BundledModelsPath = Join-Path $Root "build\bundled-models\speaker-identification"
+Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "prepare-bundled-speaker-model.py"), "--download") -Label "Bundled speaker model"
+$ArgsList += @("--add-data", "$BundledModelsPath;models\speaker-identification")
+$ArgsList += @("--collect-binaries", "onnxruntime")
+$ArgsList += @("--hidden-import", "onnxruntime", "--hidden-import", "haizflow.engine.main")
+$ArgsList += @("--hidden-import", "haizflow.pipeline.speaker_identity", "--hidden-import", "haizflow.pipeline.speaker_runtime")
 $ArgsList += @("--hidden-import", "haizflow.pipeline.omnivoice_tts")
 $ArgsList += @("--hidden-import", "haizflow.services.douyin_channel_worker")
 $ArgsList += @("--hidden-import", "haizflow.vendor.douyin_xbogus")
@@ -373,7 +378,7 @@ if ($MutableFiles) {
 
 $ForbiddenCoreNames = @(
   "torch", "torchaudio", "torchvision", "whisperx", "pyannote", "transformers",
-  "accelerate", "llama_cpp", "ctranslate2", "demucs", "onnxruntime", "rapidocr",
+  "accelerate", "llama_cpp", "ctranslate2", "demucs", "rapidocr",
   "psutil", "soundfile", "rich", "pygments"
 )
 foreach ($Name in $ForbiddenCoreNames) {

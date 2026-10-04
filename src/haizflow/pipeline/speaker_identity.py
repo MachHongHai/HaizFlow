@@ -33,6 +33,20 @@ def verify_model(root: Path) -> Path:
     return root / MODEL_FILE
 
 
+def bundled_model_root() -> Path:
+    from haizflow.core.paths import bundle_root, project_root
+    import sys
+
+    base = bundle_root() / "models" if getattr(sys, "frozen", False) else project_root() / "build" / "bundled-models"
+    return base / "speaker-identification"
+
+
+def model_root() -> Path:
+    """Prefer the immutable Core asset; retain existing development storage."""
+    bundled = bundled_model_root()
+    return bundled if (bundled / MODEL_FILE).is_file() else Path(MODELS_DIR) / "speaker-identification"
+
+
 def _features(audio):
     """Kaldi-compatible 80-bin, 25/10 ms, Hamming filterbank + CMN."""
     import numpy as np
@@ -113,16 +127,14 @@ def _assign_identities(vectors, anchors, anchor_labels):
     return labels, scores
 
 
-def identify(audio_path: str, segments: list[dict], video_id: str, progress=None) -> list[dict]:
-    """Run on CPU in the ONNX engine, then discard its weights before TTS."""
+def identify(audio_path: str, segments: list[dict], video_id: str, progress=None, *,
+             model_directory: str = "", runtime_callback=None) -> list[dict]:
+    """Use the built-in CPU backend in an isolated worker; release before TTS."""
     import numpy as np
-    import onnxruntime as ort
+    from haizflow.pipeline.speaker_runtime import SpeakerSession
 
-    model = verify_model(Path(MODELS_DIR) / "speaker-identification")
-    options = ort.SessionOptions()
-    options.intra_op_num_threads = 2
-    options.inter_op_num_threads = 1
-    session = ort.InferenceSession(str(model), sess_options=options, providers=["CPUExecutionProvider"])
+    model = verify_model(Path(model_directory) if model_directory else model_root())
+    session = SpeakerSession(model, runtime_callback)
     embeddings, valid_indices, pitches = [], [], {}
     with tempfile.TemporaryDirectory(prefix="speaker-audio-", dir=TMP_DIR) as directory:
         decoded = Path(directory) / "speech.wav"
@@ -164,7 +176,7 @@ def identify(audio_path: str, segments: list[dict], video_id: str, progress=None
                 audio = np.frombuffer(stream.readframes(end - start), dtype="<i2").astype(np.float32)
                 if np.sqrt(np.mean(audio**2)) < 20:
                     continue
-                embedding = session.run(None, {"feats": _features(audio)[None, :, :]})[0].reshape(-1)
+                embedding = session.run(_features(audio)[None, :, :])[0].reshape(-1)
                 if not np.isfinite(embedding).all():
                     raise RuntimeError("Speaker model returned invalid embeddings.")
                 embeddings.append(embedding)
@@ -292,8 +304,10 @@ def prepare_speakers(audio_path: str, segments: list[dict], video_id: str, progr
     """Persist a source-bound map, independent of translated text and edits."""
     from haizflow.services.external_tasks import run_external_task
     from haizflow.services.external_engine import shared_external_engine_pool
-
-    verify_model(Path(MODELS_DIR) / "speaker-identification")
+    # CPU has a lower cold-load cost and turn latency on real speech.
+    selected_device = "cpu"
+    directory = model_root()
+    verify_model(directory)
     stat = Path(audio_path).stat()
     key = hashlib.sha256(
         json.dumps(
@@ -313,8 +327,10 @@ def prepare_speakers(audio_path: str, segments: list[dict], video_id: str, progr
         result = run_external_task(
             "speaker",
             "speaker_identification",
-            {"audio_path": audio_path, "segments": segments, "video_id": video_id},
+            {"audio_path": audio_path, "segments": segments, "video_id": video_id,
+             "model_directory": str(directory), "device": selected_device},
             video_id,
+            context={"device": selected_device},
             progress_callback=progress,
             isolate_source=True,
         )

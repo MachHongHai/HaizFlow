@@ -67,7 +67,7 @@ def config_for(values: dict) -> VideoConfig:
     payload["project_type"] = "batch"
     payload["translator_provider"] = "gemini" if str(values.get("translationModel", "")).startswith("gemini-") else "hymt2"
     style = dict(values.get("subtitleStyle") or {})
-    payload["subtitle_layout_override"] = bool(style.pop("manual", False)) and not bool(values.get("removeOriginalSubtitles", True))
+    payload["subtitle_layout_override"] = bool(style.pop("manual", False))
     payload["subtitle_style"] = style
     payload.update({field + "_path": str(values.get(key) or "") for key, field in ASSETS.items()})
     if payload.get("target_language", "vi") not in {"vi", "en", "zh"}:

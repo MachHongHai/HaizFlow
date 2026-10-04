@@ -20,16 +20,6 @@ Rectangle {
         anchors.fill: parent
         spacing: Theme.space8
 
-        FluentIcon {
-            Layout.preferredWidth: 16
-            Layout.preferredHeight: 16
-            name: root.severity === "error" ? "error"
-                : root.severity === "warning" ? "warning" : "info"
-            iconColor: root.severity === "error" ? Theme.danger
-                : root.severity === "warning" ? Theme.warning : Theme.textMuted
-            iconSize: 14
-        }
-
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 1

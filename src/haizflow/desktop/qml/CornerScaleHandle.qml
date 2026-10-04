@@ -14,6 +14,7 @@ Item {
     property real minimumValue: 10
     property real maximumValue: 300
     property string objectNamePrefix: "scaleHandle"
+    property real scaleReferenceExtent: 0
     readonly property bool pressed: resizeArea.pressed
 
     signal resizeStarted(real value)
@@ -60,7 +61,8 @@ Item {
             root.previewValue = root.currentValue;
             root.pixelsPerUnit = Math.max(
                 0.1,
-                Math.max(root.selectionItem.width, root.selectionItem.height)
+                (root.scaleReferenceExtent > 0 ? root.scaleReferenceExtent
+                    : Math.max(root.selectionItem.width, root.selectionItem.height))
                     / Math.max(1, root.currentValue)
             );
             root.resizeStarted(root.startValue);

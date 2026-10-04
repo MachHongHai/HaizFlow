@@ -29,15 +29,6 @@ Rectangle {
         anchors.centerIn: parent
         spacing: 5
 
-        FluentIcon {
-            Layout.preferredWidth: root.iconName.length > 0 ? 12 : 0
-            Layout.preferredHeight: 12
-            visible: root.iconName.length > 0
-            name: root.iconName
-            iconColor: root.foreground
-            iconSize: 11
-        }
-
         Text {
             text: root.label
             color: root.foreground

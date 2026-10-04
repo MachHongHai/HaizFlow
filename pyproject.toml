@@ -16,6 +16,7 @@ dependencies = [
   "python-dotenv==1.2.2",
   "packaging==26.2",
   "numpy==2.5.1",
+  "onnxruntime==1.23.2",
   "Pillow==12.3.0",
   "audioop-lts==0.2.2; python_version >= '3.13'",
   "websockets==16.0",

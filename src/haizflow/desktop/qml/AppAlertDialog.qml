@@ -25,16 +25,6 @@ AppDialog {
         Layout.fillWidth: true
         spacing: Theme.space12
 
-        FluentIcon {
-            Layout.alignment: Qt.AlignTop
-            Layout.preferredWidth: 20
-            Layout.preferredHeight: 20
-            name: root.isError ? "error"
-                : root.severity === "warning" ? "warning" : "info"
-            iconColor: root.accentColor
-            iconSize: 18
-        }
-
         Text {
             Layout.fillWidth: true
             text: root.alertMessage

@@ -95,6 +95,9 @@ class SpeakerIdentityTests(unittest.TestCase):
                 edited = [{**segments[0], "end": 1.5}]
                 identity.prepare_speakers(str(audio), edited, "fixture")
                 self.assertEqual(task.call_count, 2)
+                self.assertEqual(task.call_args.kwargs["context"]["device"],
+                                 task.call_args.args[2]["device"])
+                self.assertEqual(task.call_args.args[2]["device"], "cpu")
                 self.assertEqual(len(list(Path(directory).glob("speaker-map-*.json"))), 2)
                 for cache in Path(directory).glob("speaker-map-*.json"):
                     self.assertIsInstance(json.loads(cache.read_text(encoding="utf-8")), list)

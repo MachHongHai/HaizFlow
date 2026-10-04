@@ -28,7 +28,7 @@ def run_external_task(
     isolate_source: bool = False,
 ) -> dict | None:
     """Run an installed engine command, or return ``None`` for a bundled runtime."""
-    launcher = "subtitle_ocr" if command_name == "speaker_identification" else command_name
+    launcher = "rpc_command" if command_name == "speaker_identification" else command_name
     command = installed_engine_command(capability, launcher, context)
     source_worker = not command and isolate_source and os.name == "nt" and not getattr(sys, "frozen", False)
     if source_worker:

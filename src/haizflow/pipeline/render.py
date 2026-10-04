@@ -2,6 +2,7 @@ import math
 import os
 import re
 import subprocess
+import struct
 import tempfile
 import unicodedata
 import hashlib
@@ -282,6 +283,12 @@ def _karaoke_part_timelines(
     cursor = 0
     for index, part in enumerate(parts):
         part_units = _karaoke_units(part)
+        # Preserve visual line breaks without changing the source word clock.
+        line_cursor = 0
+        for line in part.split("\n")[:-1]:
+            line_cursor += len(_karaoke_units(line))
+            if 0 < line_cursor <= len(part_units):
+                part_units[line_cursor - 1] = part_units[line_cursor - 1].rstrip() + "\n"
         count = len(part_units)
         if index == len(parts) - 1:
             durations = full_durations[cursor:]
@@ -423,13 +430,14 @@ def _subtitle_parts_for_region(
     *,
     fixed_font_size: bool = False,
 ):
-    """Split a long cue over time, never into two simultaneous text rows."""
+    """Fit temporal phrases to the caption box without stretching glyphs."""
     content = " ".join(subtitle.content.split())
     inner_width = max(24, layout.width - subtitle_style.outline * 4)
     text_row_height = min(layout.height, layout.line_height or layout.height)
     inner_height = max(20, text_row_height - subtitle_style.outline * 2)
     display_font = (
-        subtitle_style.font_size if fixed_font_size else min(subtitle_style.font_size, int(inner_height / 1.05))
+        min(subtitle_style.font_size, int(max(10, text_row_height - subtitle_style.outline * 2) / 1.05))
+        if fixed_font_size else min(subtitle_style.font_size, int(inner_height / 1.05))
     )
     display_font = max(10, display_font)
     # Split early enough that each phrase keeps large, normally proportioned
@@ -437,7 +445,14 @@ def _subtitle_parts_for_region(
     # Prefer readable multi-word phrases. If the region is narrow, the fitting
     # step reduces the font mildly instead of flashing isolated words.
     max_chars = max(10, int(inner_width / (display_font * 0.48)))
-    parts = _split_subtitle_words(content, max_chars, strict_max_chars=fixed_font_size)
+    parts = (_split_caption_lines_by_width(content, inner_width, display_font, subtitle_style)
+             if fixed_font_size else _split_subtitle_words(content, max_chars))
+    if fixed_font_size:
+        # Standard caption boxes remain one row. Taller boxes admit up to
+        # three rows; changing width/height changes phrase capacity, not audio.
+        rows = max(1, min(3, int(max(20, layout.height - subtitle_style.outline * 2)
+                                 / (display_font * 1.45))))
+        parts = ["\n".join(parts[index:index + rows]) for index in range(0, len(parts), rows)]
     duration_seconds = max(0.0, (subtitle.end - subtitle.start).total_seconds())
     part_timelines = _karaoke_part_timelines(content, parts, duration_seconds)
     if fixed_font_size:
@@ -448,7 +463,7 @@ def _subtitle_parts_for_region(
                 end = subtitle.end
             else:
                 end = cursor + timedelta(seconds=sum(timeline[1]) / 100)
-            result.append((cursor, end, part, subtitle_style.font_size, 100))
+            result.append((cursor, end, part, display_font, 100))
             cursor = end
         return result
     if len(parts) == 1:
@@ -484,6 +499,81 @@ def _subtitle_parts_for_region(
         result.append((cursor, end, text, stable_font_size, 100))
         cursor = end
     return result
+
+
+@lru_cache(maxsize=64)
+def _caption_measurement_font(path: str, size: int):
+    from PIL import ImageFont
+
+    return ImageFont.truetype(path, size)
+
+
+@lru_cache(maxsize=128)
+def _ass_font_em_scale(path: str) -> float:
+    """Convert ASS's Win ascender/descender size to a Qt/Pillow EM size."""
+    try:
+        with open(path, "rb") as stream:
+            header = stream.read(12)
+            if header[:4] == b"ttcf":
+                # Pillow and our font resolver use the first collection face.
+                offset = struct.unpack(">I", stream.read(4))[0]
+                stream.seek(offset)
+                header = stream.read(12)
+            count = struct.unpack_from(">H", header, 4)[0]
+            if count > 256:
+                return 1.0
+            tables = {}
+            for _ in range(count):
+                tag, _checksum, offset, length = struct.unpack(">4sIII", stream.read(16))
+                tables[tag] = (offset, length)
+
+            def read_table(tag, limit):
+                offset, length = tables.get(tag, (0, 0))
+                stream.seek(offset)
+                return stream.read(min(length, limit))
+
+            head = read_table(b"head", 54)
+            em = struct.unpack_from(">H", head, 18)[0]
+            os2 = read_table(b"OS/2", 78)
+            height = sum(struct.unpack_from(">hh", os2, 74)) if len(os2) >= 78 else 0
+            if height <= 0:
+                hhea = read_table(b"hhea", 10)
+                ascent, descent = struct.unpack_from(">hh", hhea, 4)
+                height = ascent - descent
+            return em / height if em > 0 and height > 0 else 1.0
+    except (OSError, struct.error, ValueError):
+        return 1.0
+
+
+def _split_caption_lines_by_width(
+    text: str, width: float, font_size: int, style: SubtitleStyle,
+) -> list[str]:
+    """Pack visible words by glyph advances; changing capacity never scales text."""
+    font_path, _exact = _font_path_details(style.font_family, style.bold, style.italic)
+    # libass normalizes \fs to Win ascent+descent, not unitsPerEm. Measuring
+    # at an unadjusted EM size makes narrow fonts reject words that fit on screen.
+    font = _caption_measurement_font(str(font_path), 1024)
+    advance_scale = font_size * _ass_font_em_scale(str(font_path)) / 1024
+    units = _karaoke_units(text)
+    if not units:
+        return [""]
+    # Minimum phrase count first, then avoid isolated words and balance widths.
+    # This keeps a wider box from producing more temporal fragments.
+    best = {len(units): ((0, 0, 0.0), [])}
+    for start in range(len(units) - 1, -1, -1):
+        candidate = ""
+        for end in range(start + 1, len(units) + 1):
+            candidate += units[end - 1]
+            visible = candidate.rstrip().upper() if style.uppercase else candidate.rstrip()
+            advance = font.getlength(visible) * advance_scale + max(0, len(visible) - 1) * style.letter_spacing
+            if advance > width and end > start + 1:
+                break
+            tail_cost, tail_lines = best[end]
+            cost = (1 + tail_cost[0], int(end == start + 1) + tail_cost[1],
+                    max(0, width - advance) ** 2 + tail_cost[2])
+            if start not in best or cost < best[start][0]:
+                best[start] = (cost, [candidate.rstrip(), *tail_lines])
+    return best[0][1]
 
 
 @lru_cache(maxsize=512)

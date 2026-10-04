@@ -70,7 +70,7 @@ assert QCoreApplication.translate('DownloadDestinationRow', 'Lưu vào') == 'Sav
         self.assertIn("? root.editorModel.clips : []", workspace)
         self.assertIn("asynchronous: true", settings)
         self.assertIn("geminiSetupDialog.open()", main)
-        self.assertIn("onConfirmed: root.navigate(root.routeApiKeys)", main)
+        self.assertIn('onConfirmed: AppController.requestApiKeySettings("gemini")', main)
         self.assertNotIn("onAboutToHide: acceptReference()", voice)
         self.assertIn("controller.applyVoiceCloneReference(openedVideoId, preferredProvider)", voice)
         self.assertIn("if (root.acceptReference())", voice)
@@ -167,14 +167,25 @@ for name in ('AutoWatermarkPreviewDialog.qml', 'SubtitlePreviewDialog.qml',
     def test_settings_has_three_sections_and_named_api_keys(self):
         workspace = (QML_DIR / "SettingsWorkspace.qml").read_text(encoding="utf-8")
         api_page = (QML_DIR / "ApiKeysPage.qml").read_text(encoding="utf-8")
+        api_form = (QML_DIR / "ApiKeyEntryForm.qml").read_text(encoding="utf-8")
+        api_row = (QML_DIR / "ApiKeyListRow.qml").read_text(encoding="utf-8")
         menu = (QML_DIR / "AppMenuBar.qml").read_text(encoding="utf-8")
         for section in ("Chung", "API Key", "Gói tài nguyên"):
             self.assertIn(f'qsTr("{section}")', workspace)
         self.assertIn("ApiKeysPage {", workspace)
         self.assertIn("AppController.geminiApiKeys", api_page)
-        self.assertIn("AppController.addGeminiApiKey", api_page)
-        self.assertIn("AppController.selectGeminiApiKey", api_page)
+        self.assertIn("AppController.addGeminiApiKey", api_form)
+        self.assertIn("AppController.selectGeminiApiKey", api_row)
         self.assertIn("AppController.removeGeminiApiKey", api_page)
+        self.assertIn("AppController.addZernioApiKey", api_form)
+        self.assertIn("AppController.zernioApiKeys", api_page)
+        self.assertIn("AppController.selectZernioApiKey", api_row)
+        self.assertIn("AppController.removeZernioApiKey", api_page)
+        self.assertIn("AppController.verifyZernioApiKey", api_page)
+        self.assertNotIn("forceActiveFocus", api_page)
+        self.assertNotIn("InlineBanner", api_page)
+        self.assertIn("NavigationTabs {", workspace)
+        self.assertIn("NavigationTabs {", api_page)
         self.assertIn("root.apiKeysRequested()", menu)
 
     def test_ui_gallery_renders_at_supported_dpi_scales(self):
@@ -417,7 +428,7 @@ window.close()
             "DubbingSetupPanel.qml": 5,
             "ManualStageInspector.qml": 3,
             "BatchSettingsDialog.qml": 4,
-            "SocialPublishPage.qml": 7,
+            "SocialPublishPage.qml": 5,
         }
         for filename, minimum_count in expected_loaders.items():
             source = (QML_DIR / filename).read_text(encoding="utf-8")
@@ -551,7 +562,8 @@ window.close()
         self.assertNotIn("approveTranslationReview", workspace)
         self.assertIn("AppController.subtitleOverlayRenderer.frame", workspace)
         self.assertIn("AppController.manualPreviewAudio.positionSeconds", workspace)
-        self.assertIn("AppController.adoptSubtitlePreviewLayout()", workspace)
+        self.assertIn('AppController.applyTextStyle([], patch, "project")', workspace)
+        self.assertIn("root.subtitleTransformDraft =", workspace)
         self.assertIn("previewMedia.subtitleRenderLayout", workspace)
         self.assertIn("subtitleAudioRefreshPending", workspace)
         activated_block = workspace[
@@ -1023,7 +1035,9 @@ app.processEvents()
         for label in ("Whisper Small", "Whisper Turbo", "HY-MT2 CPU", "HY-MT2 GPU", "OmniVoice"):
             self.assertIn(f'qsTr("{label}")', page)
         self.assertNotIn('qsTr("Bộ xử lý NVIDIA")', page)
-        self.assertIn('qsTr("Khuyên dùng")', raw_row)
+        self.assertNotIn('qsTr("Khuyên dùng")', raw_row)
+        self.assertNotIn('qsTr("Nhận diện người nói")', page)
+        self.assertNotIn('qsTr("Có thay đổi chưa lưu")', settings)
         self.assertIn("AppController.installResourcePacks([root.packId])", raw_row)
         self.assertIn("Layout.alignment: Qt.AlignRight | Qt.AlignVCenter", raw_row)
         self.assertNotIn("Bộ xử lý này thuộc bản cài cũ", raw_row)

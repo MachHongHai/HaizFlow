@@ -339,7 +339,7 @@ ApplicationWindow {
         title: qsTr("Chưa thiết lập Gemini API Key")
         message: qsTr("Bạn cần thêm API key để dịch bằng Gemini. Mở Cài đặt → API Key ngay bây giờ?")
         confirmText: qsTr("Mở API Key")
-        onConfirmed: root.navigate(root.routeApiKeys)
+        onConfirmed: AppController.requestApiKeySettings("gemini")
     }
 
     ConfirmDialog {
@@ -425,6 +425,10 @@ ApplicationWindow {
         function onGeminiSetupRequested() {
             if (!geminiSetupDialog.visible)
                 geminiSetupDialog.open();
+        }
+
+        function onApiKeySettingsRequested(provider) {
+            root.navigate(root.routeApiKeys);
         }
 
         function onProjectPrepared() {

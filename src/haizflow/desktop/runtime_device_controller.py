@@ -127,6 +127,9 @@ class RuntimeDeviceController:
         subtitle_overlay = getattr(host, "_subtitle_overlay", None)
         if subtitle_overlay:
             subtitle_overlay.close()
+        sample_overlay = getattr(host, "_subtitle_sample_overlay", None)
+        if sample_overlay:
+            sample_overlay.close()
         manual_audio = getattr(host, "_manual_audio", None)
         if manual_audio:
             manual_audio.close()

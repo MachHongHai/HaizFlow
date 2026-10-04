@@ -410,7 +410,7 @@ class ManualWorkflowTests(unittest.TestCase):
         self.assertEqual(changes["status"], "manual_ready")
         self.assertEqual(changes["step"], "manual_ready")
 
-    def test_auto_cover_uses_detected_box_but_manual_keeps_explicit_layout(self):
+    def test_cover_alignment_is_independent_of_project_type(self):
         manual_video = SimpleNamespace(
             project_type="manual",
             subtitle_layout_override=True,
@@ -423,7 +423,10 @@ class ManualWorkflowTests(unittest.TestCase):
         )
 
         self.assertTrue(process_video._manual_subtitle_layout_for_render(manual_video))
+        self.assertTrue(process_video._manual_subtitle_layout_for_render(automatic_video))
+        automatic_video.subtitle_layout_override = False
         self.assertFalse(process_video._manual_subtitle_layout_for_render(automatic_video))
+        automatic_video.subtitle_layout_override = True
         automatic_video.remove_original_subtitles = False
         self.assertTrue(process_video._manual_subtitle_layout_for_render(automatic_video))
 

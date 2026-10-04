@@ -9,6 +9,7 @@ Button {
     property bool compact: false
     property string iconGlyph: ""
     property string toolTipText: ""
+    readonly property bool showLeadingIcon: iconGlyph.length > 0 && text.length === 0
 
     implicitHeight: compact ? UiMetrics.compactControlHeight : tone === "primary" ? UiMetrics.primaryControlHeight : UiMetrics.controlHeight
     implicitWidth: Math.max(compact ? 64 : 80, buttonContent.implicitWidth + leftPadding + rightPadding)
@@ -18,7 +19,7 @@ Button {
     font.pixelSize: TypeScale.control
     font.weight: Font.DemiBold
     focusPolicy: Qt.TabFocus
-    Accessible.name: text
+    Accessible.name: text.length > 0 ? text : toolTipText
     Accessible.description: toolTipText
     scale: down ? 0.98 : 1
 
@@ -31,12 +32,13 @@ Button {
         Row {
             id: buttonContent
             anchors.centerIn: parent
-            spacing: root.iconGlyph.length > 0 && root.text.length > 0 ? 8 : 0
+            spacing: 0
 
             AppIcon {
-                width: root.iconGlyph.length > 0 ? Theme.icon : 0
+                objectName: "buttonLeadingIcon"
+                width: root.showLeadingIcon ? Theme.icon : 0
                 height: parent.height
-                visible: root.iconGlyph.length > 0
+                visible: root.showLeadingIcon
                 glyph: root.iconGlyph
                 iconColor: root.foregroundColor
                 iconSize: root.compact ? Theme.iconSmall : Theme.icon

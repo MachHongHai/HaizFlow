@@ -122,14 +122,6 @@ AppSurface {
         Layout.fillWidth: true
         spacing: Theme.space12
 
-        AppIcon {
-            Layout.preferredWidth: 22
-            Layout.preferredHeight: 22
-            glyph: AppController.videoPath.length > 0 ? "\uE73E" : "\uE7BA"
-            iconColor: AppController.videoPath.length > 0 ? Theme.success : Theme.textSubtle
-            iconSize: Theme.iconSmall
-        }
-
         ColumnLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 0

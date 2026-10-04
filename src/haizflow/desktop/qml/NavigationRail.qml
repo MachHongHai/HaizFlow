@@ -113,6 +113,7 @@ Rectangle {
                     spacing: Theme.space12
 
                     FluentIcon {
+                        visible: root.compact
                         Layout.preferredWidth: root.compact ? parent.width : 18
                         Layout.preferredHeight: 18
                         name: navItem.modelData.icon

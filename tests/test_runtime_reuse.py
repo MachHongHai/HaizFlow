@@ -94,7 +94,8 @@ class RuntimeReuseTests(unittest.TestCase):
         multiple = manager.required_packs("voice", {"provider": "omnivoice-cpu", "speaker_mode": "multiple"})
         self.assertNotIn("model-speaker-identification", single)
         self.assertIn("model-speaker-identification", multiple)
-        self.assertIn("engine-vision-onnx", multiple)
+        self.assertIn("engine-speaker-bundled", multiple)
+        self.assertNotIn("engine-vision-onnx", multiple)
 
     def test_first_foreground_capability_uses_valid_translation_checkpoint(self):
         video = SimpleNamespace(

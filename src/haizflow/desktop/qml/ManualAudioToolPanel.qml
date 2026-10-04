@@ -48,6 +48,19 @@ ColumnLayout {
         spacing: Theme.space8
         readonly property var editorDocument: AppController.manualEditorDocumentModel.document || ({})
         readonly property bool duckingEnabled: Boolean(editorDocument.audio_ducking_enabled)
+        readonly property var musicClip: (editorDocument.clips || []).find(function(clip) {
+            return clip.track_id === "music";
+        }) || ({})
+
+        PropertyRow {
+            label: qsTr("Lặp nhạc nền")
+            AppSwitch {
+                objectName: "manualMusicLoopSwitch"
+                checked: Boolean(duckingSection.musicClip.loop)
+                enabled: root.inspector.editable && AppController.backgroundMusicPath.length > 0
+                onToggled: AppController.setMusicLoop(checked)
+            }
+        }
 
         PropertyRow {
             label: qsTr("Tự giảm nhạc khi có lời")

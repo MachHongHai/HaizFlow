@@ -632,18 +632,64 @@ class RenderExportStorageTests(unittest.TestCase):
         command = ProjectCommandsController(self.host)
         baseline = command.batch_settings_values()
         video_store.update_video(second.video_id, original_video_volume=11)
-        changed = dict(baseline, backgroundMusicLoop=False, audioDuckingEnabled=True, originalVolume=42)
+        subtitle_style = dict(baseline["subtitleStyle"], font_family="Arial", font_size=84,
+                              text_color="#EF5350", karaoke_color="#FFEF00", outline_color="#FFFFFF",
+                              outline=8, bold=True, italic=True, uppercase=True, shadow=4,
+                              letter_spacing=1.5, alignment="left", box_width_percent=65,
+                              box_height_percent=18, position_x_percent=40, position_y_percent=75, manual=True)
+        changed = dict(baseline, backgroundMusicLoop=False, audioDuckingEnabled=True, originalVolume=42,
+                       subtitleStyle=subtitle_style)
         self.assertTrue(command.apply_batch_settings_values(project["key"], changed))
         self.assertEqual(video_store.get_video(first.video_id).original_video_volume, 42)
         self.assertFalse(video_store.get_video(first.video_id).background_music_loop)
         self.assertTrue(video_store.get_video(first.video_id).audio_ducking_enabled)
+        self.assertEqual(batch_settings.values_for(video_store.get_video(first.video_id))["subtitleStyle"], subtitle_style)
         self.assertEqual(video_store.get_video(second.video_id).original_video_volume, 11)
+        self.assertEqual(batch_settings.values_for(video_store.get_video(second.video_id))["subtitleStyle"], baseline["subtitleStyle"])
         self.assertEqual(command.batch_setting_overrides()[0]["videoId"], second.video_id)
         self.assertEqual(batch_settings.stable_values(project["key"], {}, [second])["originalVolume"], 42)
         self.assertTrue(command.apply_batch_settings_values(project["key"], changed, True))
         self.assertEqual(video_store.get_video(second.video_id).original_video_volume, 42)
+        self.assertEqual(batch_settings.values_for(video_store.get_video(second.video_id))["subtitleStyle"], subtitle_style)
         self.assertEqual(command.batch_setting_overrides(), [])
         self.assertFalse(command.apply_batch_settings_values("wrong-owner", changed, True))
+
+    def test_batch_cpu_mode_rejects_gpu_choices_before_any_settings_write(self):
+        from haizflow.desktop.project_commands_controller import ProjectCommandsController
+        project, video = self.make_video(kind="batch")
+        self.host._selected_project_key = project["key"]
+        self.host._batch_video_ids = [video.video_id]
+        self.host._settings_processing_device = "cpu"
+        self.host._show_app_alert = Mock()
+        self.host._normalized_tts_provider = lambda language, provider: provider
+        self.host._normalized_voice_for_language = lambda language, voice, provider: voice
+        command = ProjectCommandsController(self.host)
+        baseline = command.batch_settings_values()
+        for patch_values in ({"speechRecognitionModel": "large-v3-turbo"},
+                             {"translationModel": "full"}, {"ttsProvider": "omnivoice-gpu"}):
+            with patch.object(video_store, "update_video") as write:
+                self.assertFalse(command.apply_batch_settings_values(project["key"], patch_values))
+                write.assert_not_called()
+            self.assertEqual(project_store.get_project(project["key"])["batch_settings"]["values"], baseline)
+        self.assertEqual(self.host._show_app_alert.call_count, 3)
+
+    def test_batch_invalid_subtitle_style_does_not_partially_apply_or_replace_overrides(self):
+        from haizflow.desktop.project_commands_controller import ProjectCommandsController
+        project, video = self.make_video(kind="batch")
+        self.host._selected_project_key = project["key"]
+        self.host._batch_video_ids = [video.video_id]
+        self.host._show_app_alert = Mock()
+        self.host._normalized_tts_provider = lambda language, provider: provider
+        self.host._normalized_voice_for_language = lambda language, voice, provider: voice
+        command = ProjectCommandsController(self.host)
+        baseline = command.batch_settings_values()
+        with patch.object(video_store, "update_video") as write:
+            self.assertFalse(command.apply_batch_settings_values(project["key"], {
+                "originalVolume": 23,
+                "subtitleStyle": {**baseline["subtitleStyle"], "text_color": "invalid"},
+            }, True))
+            write.assert_not_called()
+        self.assertEqual(project_store.get_project(project["key"])["batch_settings"]["values"], baseline)
 
     def test_batch_fresh_processing_exports_only_new_renders_for_each_video(self):
         project, first = self.make_video(kind="batch")

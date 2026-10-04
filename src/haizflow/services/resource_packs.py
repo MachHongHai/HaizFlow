@@ -205,6 +205,11 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             installed_size=260_000_000,
             engine_modules=("onnxruntime", "rapidocr"),
         ),
+        ResourcePackDefinition(
+            pack_id="engine-speaker-bundled", label="Nhận diện người nói tích hợp",
+            group="processor", version="1", capability="engine", backend="cpu",
+            engine_modules=("onnxruntime", "numpy"),
+        ),
         model_pack(
             "model-whisper-small",
             "Whisper Small",
@@ -259,7 +264,7 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
     definitions.append(ResourcePackDefinition(
         pack_id="model-speaker-identification", label="Nhận diện người nói",
         group="voice", version="1", capability="speaker",
-        dependencies=("engine-vision-onnx",), assets=(speaker_asset,),
+        dependencies=("engine-speaker-bundled",), assets=(speaker_asset,),
         download_size=speaker_asset.size, installed_size=speaker_asset.size,
     ))
     release_metadata = _load_release_pack_metadata()
@@ -396,6 +401,12 @@ class ResourcePackManager:
             if self._engine_is_valid(definition):
                 return "installed"
             return "bundled" if self._bundled_engine_available(definition) else "missing"
+        if pack_id == "model-speaker-identification":
+            from haizflow.pipeline.speaker_identity import bundled_model_root, MODEL_FILE, MODEL_SIZE
+
+            path = bundled_model_root() / MODEL_FILE
+            if path.is_file() and path.stat().st_size == MODEL_SIZE:
+                return "bundled"
         if self._assets_present(definition):
             return "installed"
         if any((models_dir() / f"{asset.relative_path}.part").is_file() for asset in definition.assets):
@@ -525,8 +536,9 @@ class ResourcePackManager:
         provider = str(context.get("provider") or "omnivoice")
         voice_device = "gpu" if provider.endswith("-gpu") else "cpu"
         voice_packs = [f"engine-{'cuda128-py313' if voice_device == 'gpu' else 'cpu-py313'}", "model-omnivoice"]
+        speaker_packs = ["engine-speaker-bundled", "model-speaker-identification"]
         if context.get("speaker_mode") == "multiple":
-            voice_packs.extend(["engine-vision-onnx", "model-speaker-identification"])
+            voice_packs.extend(speaker_packs)
         recognition_model = str(context.get("model") or "small").lower()
         recognition_device = ("cpu" if recognition_model == "small-cpu" else
                               "gpu" if recognition_model in {"small-gpu", "turbo", "large-v3-turbo"} else device)
@@ -558,9 +570,9 @@ class ResourcePackManager:
                 "model-demucs",
             ],
             "ocr": ["engine-vision-onnx", "model-subtitle-ocr"],
-            "speaker": ["engine-vision-onnx", "model-speaker-identification"],
+            "speaker": speaker_packs,
         }
-        return list(mapping.get(str(capability), []))
+        return list(dict.fromkeys(mapping.get(str(capability), [])))
 
     def missing_packs(self, capability: str, context: dict | None = None) -> list[str]:
         ready_states = {"installed", "bundled"}
@@ -606,7 +618,8 @@ class ResourcePackManager:
         """Run a source/development AI runtime behind the engine boundary."""
 
         profile = ENGINE_PROFILE_BY_PACK.get(definition.pack_id, "")
-        base = [sys.executable, "-m", "haizflow.engine.main"]
+        base = ([sys.executable, "--engine-worker"] if getattr(sys, "frozen", False)
+                else [sys.executable, "-m", "haizflow.engine.main"])
         if command_name == "smoke_command":
             return [*base, "--smoke", "--profile", profile] if profile else []
         if command_name == "rpc_command":
@@ -619,7 +632,7 @@ class ResourcePackManager:
             return [*base, "--omnivoice-server"]
         if command_name == "demucs":
             return [*base, "--demucs-separate"]
-        if command_name in {"demucs_task", "transcribe", "subtitle_ocr"}:
+        if command_name in {"demucs_task", "transcribe", "subtitle_ocr", "speaker_identification"}:
             return base
         if command_name == "runtime_probe":
             return [*base, "--runtime-probe"]
@@ -881,7 +894,7 @@ class ResourcePackManager:
             raise ResourcePackError("Gói đang được một tác vụ sử dụng.")
         definition = self.definitions[pack_id]
         if self.status(pack_id) == "bundled":
-            raise ResourcePackError("Không thể gỡ bộ xử lý được đóng gói trong bản cài cũ.")
+            raise ResourcePackError("Không thể gỡ tài nguyên tích hợp trong ứng dụng.")
         removed = 0
         if definition.engine_modules:
             root = self._engine_marker(definition).parent
@@ -1024,4 +1037,6 @@ def installed_engine_command(capability: str, command_name: str, context: dict |
     """Resolve a command from the currently active external engine."""
     manager = ResourcePackManager()
     pack_id = manager.external_engine_pack(str(capability), dict(context or {}))
+    if not pack_id and capability == "speaker":
+        pack_id = manager.warm_engine_pack(capability, context)
     return manager.engine_command(pack_id, str(command_name)) if pack_id else []

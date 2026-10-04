@@ -227,9 +227,9 @@ Control {
                 Text {
                     Layout.fillWidth: true
                     text: root.projectType === "batch"
-                        ? qsTr("%1 - %2").arg(root.videoCount).arg(qsTr("video"))
+                        ? qsTr("%1 video").arg(root.videoCount)
                         : root.projectType === "publish"
-                            ? qsTr("%1 - %2").arg(root.videoCount).arg(qsTr("bài đăng"))
+                            ? qsTr("%1 bài đăng").arg(root.videoCount)
                             : root.statusLabel
                     color: root.status === "failed" ? Theme.danger : Theme.textMuted
                     font.pixelSize: Theme.caption

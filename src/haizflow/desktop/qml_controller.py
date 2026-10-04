@@ -212,6 +212,8 @@ class HaizFlowController(QObject):
     appAlertRequested = Signal(str, str, str)
     resourcePacksRequested = Signal(str)
     geminiSetupRequested = Signal()
+    apiKeySettingsRequested = Signal(str)
+    apiKeyGuideRequested = Signal(str)
     geminiKeyChanged = Signal()
     appConfirmationRequested = Signal(str, str)
     editorPreviewChanged = Signal()
@@ -435,6 +437,7 @@ class HaizFlowController(QObject):
         self._resource_packs = ResourcePackController(self)
         self._resource_packs.changed.connect(self.resourcePacksChanged.emit)
         self.hardwareChanged.connect(self.resourcePacksChanged.emit)
+        self.hardwareChanged.connect(self.ttsProviderOptionsChanged.emit)
         self._app_updates = AppUpdateController(self)
         self._video_exports = VideoExportController(self)
         self.exportStateChanged.connect(self.appUpdateChanged.emit)
@@ -868,6 +871,9 @@ class HaizFlowController(QObject):
         overlay = getattr(self, "_subtitle_overlay", None)
         if overlay is not None:
             overlay.close()
+        sample_overlay = getattr(self, "_subtitle_sample_overlay", None)
+        if sample_overlay is not None:
+            sample_overlay.close()
         subtitles = getattr(self, "_manual_subtitles", None)
         if subtitles is not None:
             subtitles.close()
@@ -1023,9 +1029,21 @@ class HaizFlowController(QObject):
     def zernioApiKeyConfigured(self):
         return self._tiktok_publisher.api_key_configured
 
+    @Property("QVariantList", notify=zernioAccountsChanged)
+    def zernioApiKeys(self):
+        return self._tiktok_publisher.api_keys
+
     @Property(bool, notify=zernioAccountsChanged)
     def zernioApiKeyVerified(self):
         return self._tiktok_publisher.api_key_verified
+
+    @Property(bool, notify=zernioAccountsChanged)
+    def zernioCredentialBusy(self):
+        return self._tiktok_publisher.credential_busy
+
+    @Property(str, notify=zernioAccountsChanged)
+    def zernioCredentialResult(self):
+        return self._tiktok_publisher.credential_result
 
     @Property(int, notify=zernioAccountsChanged)
     def zernioConnectedAccountCount(self):
@@ -1327,6 +1345,18 @@ class HaizFlowController(QObject):
         # The option model and selected index depend on both language and voice.
         self.ttsVoiceOptionsChanged.emit()
 
+    def _project_gpu_available(self) -> bool:
+        if getattr(self, "_settings_processing_device", "cpu") != "gpu":
+            return False
+        capabilities = getattr(self, "_hardware_capabilities", None)
+        if capabilities is not None and getattr(self, "_startup_hardware_resolved", True):
+            return validate_processing_device("gpu", capabilities)[0]
+        return True  # The asynchronous probe has not confirmed the adapter yet.
+
+    @Property(bool, notify=ttsProviderOptionsChanged)
+    def gpuModelsAvailable(self):
+        return HaizFlowController._project_gpu_available(self)
+
     @Property(str, notify=speechRecognitionModelChanged)
     def speechRecognitionModel(self):
         return self._speech_recognition_model
@@ -1342,25 +1372,17 @@ class HaizFlowController(QObject):
         if requested in {"small-gpu", "large-v3-turbo"} and not self._ensure_hardware_ready_for_action():
             return
         capabilities = getattr(self, "_hardware_capabilities", None)
-        gpu_available = bool(
-            (capabilities and capabilities.cuda_available)
-            or getattr(self, "_active_processing_device", "") == "gpu"
-            or getattr(self, "_settings_processing_device", "") == "gpu"
-        )
-        if requested == "large-v3-turbo":
-            if not gpu_available or self._settings_processing_device != "gpu":
-                self._show_app_alert(
-                    "Máy không đáp ứng",
-                    "Whisper Turbo cần chạy bằng GPU NVIDIA. Đã giữ Whisper Small.",
-                    "warning",
-                )
-                requested = "small"
-            elif not getattr(self, "_whisper_turbo_model_ready", False):
-                self._show_app_alert(
-                    "Thiếu Whisper Turbo",
-                    "Hãy cài Whisper Turbo trong Gói tài nguyên trước khi nhận dạng.",
-                    "warning",
-                )
+        gpu_available = HaizFlowController._project_gpu_available(self)
+        if requested in {"small-gpu", "large-v3-turbo"} and not gpu_available:
+            reason = validate_processing_device("gpu", capabilities)[1] if capabilities else "GPU NVIDIA chưa khả dụng."
+            self._show_app_alert("Máy không đáp ứng", reason, "warning")
+            return
+        if requested == "large-v3-turbo" and not getattr(self, "_whisper_turbo_model_ready", False):
+            self._show_app_alert(
+                "Thiếu Whisper Turbo",
+                "Hãy cài Whisper Turbo trong Gói tài nguyên trước khi nhận dạng.",
+                "warning",
+            )
         resource_packs = getattr(self, "_resource_packs", None)
         if requested in {"small", "small-cpu", "small-gpu"} and resource_packs is not None:
             if resource_packs.manager.status("model-whisper-small") not in {"installed", "bundled"}:
@@ -1377,13 +1399,7 @@ class HaizFlowController(QObject):
         # therefore reports CUDA as unavailable.  This property is evaluated
         # after the asynchronous hardware probe as well, so use its cached,
         # authoritative result instead of permanently disabling Turbo.
-        capabilities = getattr(self, "_hardware_capabilities", None)
-        gpu_available = bool(
-            (capabilities and capabilities.cuda_available)
-            or getattr(self, "_active_processing_device", "") == "gpu"
-            or getattr(self, "_settings_processing_device", "") == "gpu"
-        )
-        turbo_available = getattr(self, "_settings_processing_device", "cpu") == "gpu" and gpu_available
+        turbo_available = HaizFlowController._project_gpu_available(self)
         if getattr(self, "_settings_language", "en") == "vi":
             return [
                 {"value": "small-cpu", "label": "Whisper Small · CPU", "available": True},
@@ -1426,6 +1442,12 @@ class HaizFlowController(QObject):
         if provider.endswith("-gpu") and getattr(self, "_settings_processing_device", "cpu") != "gpu":
             self._show_app_alert("Đang dùng chế độ CPU", "Chọn OmniVoice CPU hoặc chuyển sang GPU trong Cài đặt → Chung.", "warning")
             return
+        if provider.endswith("-gpu"):
+            if not self._ensure_hardware_ready_for_action():
+                return
+            if not HaizFlowController._project_gpu_available(self):
+                self._show_app_alert("Máy không đáp ứng", "OmniVoice GPU cần GPU NVIDIA tương thích.", "warning")
+                return
         normalized_voice = self._normalized_voice_for_language(self._target_language, self._tts_voice, provider)
         provider_changed = self._tts_provider != provider
         voice_changed = self._tts_voice != normalized_voice
@@ -1934,8 +1956,69 @@ class HaizFlowController(QObject):
 
     @Property(bool, notify=subtitleSettingsChanged)
     def subtitleLayoutOverride(self):
-        """Whether Manual is using an explicit user-positioned caption box."""
+        """Use the saved caption layout instead of automatic OCR placement."""
         return self._subtitle_layout_override
+
+    @subtitleLayoutOverride.setter
+    def subtitleLayoutOverride(self, value):
+        normalized = bool(value)
+        if self._subtitle_layout_override != normalized:
+            self._subtitle_layout_override = normalized
+            self.subtitleSettingsChanged.emit()
+
+    @Property("QVariantMap", notify=subtitleSettingsChanged)
+    def subtitleAppearance(self):
+        return self._subtitle_style.model_dump()
+
+    @Slot("QVariantMap", result=bool)
+    def applySubtitleAppearance(self, patch):
+        allowed = {"font_family", "font_size", "text_color", "karaoke_color", "outline_color",
+                   "outline", "bold", "italic", "uppercase", "shadow", "letter_spacing", "alignment"}
+        if not isinstance(patch, dict) or not patch or set(patch) - allowed:
+            return False
+        try:
+            style = SubtitleStyle.model_validate({**self._subtitle_style.model_dump(), **patch})
+        except (ValueError, TypeError):
+            return False
+        if style.font_size > 240:
+            return False
+        if style != self._subtitle_style:
+            # Appearance changes must not disable OCR alignment or replace
+            # geometry. The dialog's checkbox owns that independent choice.
+            self._subtitle_style = style
+            self.subtitleSettingsChanged.emit()
+        return True
+
+    @Property(QObject, constant=True)
+    def subtitleSampleOverlayRenderer(self):
+        renderer = getattr(self, "_subtitle_sample_overlay", None)
+        if renderer is None:
+            renderer = self._subtitle_sample_overlay = SubtitleOverlayRenderer(self)
+        return renderer
+
+    @Property(float, notify=subtitleSettingsChanged)
+    def subtitlePreviewFontScale(self):
+        from haizflow.pipeline.render import _ass_font_em_scale, _font_path_details
+
+        style = self._subtitle_style
+        path, _exact = _font_path_details(style.font_family, style.bold, style.italic)
+        return _ass_font_em_scale(str(path))
+
+    @Slot(str, int, int, int, int, int, result=str)
+    @Slot(str, int, int, int, int, int, "QVariantMap", result=str)
+    def subtitleSampleText(self, text, font_size, box_width, box_height, width, height, appearance=None):
+        from datetime import timedelta
+        import srt
+        from haizflow.pipeline.render import SubtitleRegionLayout, _subtitle_parts_for_region
+
+        style = SubtitleStyle.model_validate({**self._subtitle_style.model_dump(), **(appearance or {}),
+                                             "font_size": max(10, min(240, font_size))})
+        cue = srt.Subtitle(1, timedelta(0), timedelta(seconds=10), str(text))
+        parts = _subtitle_parts_for_region(cue, SubtitleRegionLayout(
+            0, 0, max(24, width * box_width / 100), max(20, height * box_height / 100)),
+            style, fixed_font_size=True)
+        content = parts[0][2] if parts else ""
+        return content.upper() if style.uppercase else content
 
     @Property(int, notify=subtitleSettingsChanged)
     def subtitlePositionXPercent(self):
@@ -2292,6 +2375,11 @@ class HaizFlowController(QObject):
             "subtitleStyle": serializable_settings(subtitle_style),
             "subtitleLayoutOverride": bool(getattr(video, "subtitle_layout_override", False)),
             "subtitleRenderLayout": subtitle_render_layout,
+            "subtitleAutoCoverLayout": resolve_subtitle_preview_layout(
+                ocr_region, max(0, int(getattr(video, "video_width", 0) or 0)),
+                max(0, int(getattr(video, "video_height", 0) or 0)),
+                str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
+                crop or CropSettings(), subtitle_style or SubtitleStyle(), False),
             "outputFormat": str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
             "crop": serializable_settings(crop),
             "audioSeparationEnabled": separation_enabled,
@@ -2860,6 +2948,17 @@ class HaizFlowController(QObject):
     @Slot()
     def requestGeminiSetup(self):
         self.geminiSetupRequested.emit()
+
+    @Slot(str)
+    def requestApiKeySettings(self, provider: str):
+        if provider in {"gemini", "zernio"}:
+            self.apiKeySettingsRequested.emit(provider)
+
+    @Slot(str)
+    def requestApiKeyGuide(self, provider: str):
+        if provider in {"gemini", "zernio"}:
+            self.apiKeySettingsRequested.emit(provider)
+            self.apiKeyGuideRequested.emit(provider)
 
     @Property(str, notify=translationModelChanged)
     def translationModel(self):
@@ -5501,6 +5600,15 @@ class HaizFlowController(QObject):
             merge_key=f"keyframe-easing:{clip_id}:{int(time_ms)}",
         )
 
+    @Slot(bool, result=bool)
+    def setMusicLoop(self, enabled: bool) -> bool:
+        def update(document):
+            for clip in document.clips:
+                if clip.track_id == "music":
+                    clip.loop = bool(enabled)
+
+        return self._apply_editor_mutation("music_loop", update, merge_key="music-loop")
+
     @Slot(bool, float, int, int, result=bool)
     def setAudioDucking(self, enabled: bool, reduction_db: float, attack_ms: int, release_ms: int) -> bool:
         def update(document):
@@ -5992,6 +6100,22 @@ class HaizFlowController(QObject):
     @Slot(str, result=bool)
     def saveZernioApiKey(self, api_key: str):
         return self._tiktok_publisher.save_api_key(api_key)
+
+    @Slot(str, str, result=bool)
+    def addZernioApiKey(self, label: str, api_key: str):
+        return self._tiktok_publisher.add_api_key(label, api_key)
+
+    @Slot(str, result=bool)
+    def selectZernioApiKey(self, key_id: str):
+        return self._tiktok_publisher.select_api_key(key_id)
+
+    @Slot(str, result=bool)
+    def removeZernioApiKey(self, key_id: str):
+        return self._tiktok_publisher.remove_api_key(key_id)
+
+    @Slot(result=bool)
+    def verifyZernioApiKey(self):
+        return self._tiktok_publisher.verify_api_key()
 
     @Slot(result=bool)
     def clearZernioApiKey(self):
@@ -6496,9 +6620,7 @@ class HaizFlowController(QObject):
         )
 
     def _build_config(self):
-        manual_subtitle_layout = bool(self._subtitle_layout_override) and not (
-            self._project_type != "manual" and self._remove_original_subtitles
-        )
+        manual_subtitle_layout = bool(self._subtitle_layout_override)
         return VideoConfig(
             # Auto and Batch no longer expose the legacy pre-TTS review mode.
             # Manual projects provide the explicit, checkpointed editing flow.
@@ -6928,7 +7050,7 @@ class HaizFlowController(QObject):
 
     def _tts_provider_options_for_language(self, language_code):
         return [{"provider": provider, "label": label,
-                 "available": provider == "omnivoice" or getattr(self, "_settings_processing_device", "cpu") == "gpu"}
+                 "available": provider == "omnivoice" or HaizFlowController._project_gpu_available(self)}
                 for provider, label in (
             ("omnivoice", "OmniVoice · CPU"), ("omnivoice-gpu", "OmniVoice · GPU"),
         )]

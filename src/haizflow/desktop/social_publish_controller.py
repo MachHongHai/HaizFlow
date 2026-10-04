@@ -11,6 +11,7 @@ import shutil
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from PySide6.QtGui import QGuiApplication
@@ -18,7 +19,7 @@ from PySide6.QtGui import QGuiApplication
 from haizflow.desktop.external_links import open_external_url
 from haizflow.desktop.localization import QFileDialog, QMessageBox, native_media_dialog_directory
 from haizflow.desktop.media import create_video_thumbnail_path, normalize_video_path, thumbnail_source
-from haizflow.services import project_store, secure_credentials, video_store, zernio
+from haizflow.services import project_store, video_store, zernio, zernio_keys
 from haizflow.services import social_publish as tiktok_publish
 from haizflow.utils.ffmpeg import get_video_dimensions, get_video_duration
 
@@ -37,7 +38,7 @@ PLATFORM_LABELS = {
     "facebook": "Facebook Reels",
     "instagram": "Instagram Reels",
 }
-_API_KEY_PATTERN = re.compile(r"^sk_[0-9a-fA-F]{64}$")
+_API_KEY_PATTERN = re.compile(r"^(?:sk|zrk)_[0-9a-fA-F]{64}$")
 _POLLABLE_POST_STATUSES = frozenset({"uploading", "publishing", "pending", "processing", "queued"})
 _SUCCESS_POST_STATUSES = frozenset({"published", "posted"})
 _FAILED_POST_STATUSES = frozenset({"failed", "partial", "cancelled", "deleted"})
@@ -159,6 +160,13 @@ class SocialPublishController:
         self._profile_name = ""
         self._api_key_cache: str | None = None
         self._api_key_verified = False
+        self._api_keys_revision = 0
+        self._credential_generation = 0
+        self._credential_busy = False
+        self._credential_result = ""
+        self._credential_checks: dict[str, str] = {}
+        self._credential_worker_thread: threading.Thread | None = None
+        self._require_explicit_account_selection = False
         self._privacy_levels: list[str] = []
         self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
         self._creator_info_loaded = False
@@ -222,6 +230,14 @@ class SocialPublishController:
     @property
     def api_key_verified(self) -> bool:
         return self.api_key_configured and self._api_key_verified
+
+    @property
+    def credential_busy(self) -> bool:
+        return self._credential_busy
+
+    @property
+    def credential_result(self) -> str:
+        return self._credential_result
 
     @property
     def connected_account_count(self) -> int:
@@ -466,6 +482,9 @@ class SocialPublishController:
             self._consent_confirmed,
         )
         account_snapshot = (
+            self._api_keys_revision,
+            self._credential_busy,
+            self._credential_result,
             self._account_syncing,
             self.api_key_configured,
             self.api_key_verified,
@@ -516,45 +535,209 @@ class SocialPublishController:
         self._host.tiktokPublishChanged.emit()
 
     def save_api_key(self, value: str) -> bool:
-        if self._busy or self._account_syncing or self._creator_syncing:
+        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         key = str(value or "").strip()
         if not _API_KEY_PATTERN.fullmatch(key):
-            self._status = "Zernio API key must use the sk_ prefix followed by 64 hexadecimal characters."
+            self._credential_result = "format-error"
+            self._status = "Check the complete Zernio API key."
             self._emit_changed()
+            return False
+        return self._start_credential_check(key, replace=True)
+
+    @property
+    def api_keys(self):
+        try:
+            return [{**item, "check_result": self._credential_checks.get(item["id"], "")}
+                    for item in zernio_keys.list_keys()]
+        except OSError:
+            return []
+
+    def add_api_key(self, label: str, value: str) -> bool:
+        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+            return False
+        label, key = str(label or "").strip(), str(value or "").strip()
+        if not label or len(label) > 64 or not _API_KEY_PATTERN.fullmatch(key):
+            self._credential_result = "format-error"
+            self._emit_changed()
+            return False
+        return self._start_credential_check(key, replace=True, label=label)
+
+    def select_api_key(self, key_id: str) -> bool:
+        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         try:
-            secure_credentials.write_secret(ZERNIO_CREDENTIAL_TARGET, key, username="Zernio API")
-        except (OSError, ValueError) as exc:
-            self._status = f"Could not save the Zernio API key securely: {exc}"
+            key = zernio_keys.key_value(key_id)
+        except (OSError, ValueError):
+            self._credential_result = "invalid"
             self._emit_changed()
             return False
-        self._api_key_cache = key
-        self._accounts = []
-        self._profiles = []
-        self._profile_id = ""
-        self._profile_name = ""
-        self._api_key_verified = False
-        self._privacy_levels = []
-        self._interaction_settings = {"comment": False, "duet": False, "stitch": False}
-        self._creator_info_loaded = False
-        self._can_post_more = True
-        self._creator_cache.clear()
-        self._stop_oauth_sync()
-        self._stop_post_status_poll()
-        self._status = "Zernio API key saved. Verifying the connection..."
+        return self._start_credential_check(key, replace=True, key_id=key_id)
+
+    def remove_api_key(self, key_id: str) -> bool:
+        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+            return False
+        try:
+            active = zernio_keys.active_id() == key_id
+            zernio_keys.remove_key(key_id)
+            self._credential_checks.pop(key_id, None)
+        except (OSError, ValueError):
+            self._credential_result = "storage-error"
+            self._emit_changed()
+            return False
+        if active:
+            self._reset_credential_state()
+        self._api_keys_revision += 1
         self._emit_changed()
-        return self.refresh_accounts()
+        return True
+
+    def verify_api_key(self) -> bool:
+        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
+            return False
+        key_ids = [item["id"] for item in self.api_keys]
+        if not key_ids:
+            return False
+        self._credential_generation += 1
+        self._credential_busy = True
+        self._credential_result = ""
+        self._credential_checks = dict.fromkeys(key_ids, "checking")
+        self._api_keys_revision += 1
+        self._emit_changed()
+        worker = threading.Thread(target=self._credential_batch_worker,
+            args=(key_ids, self._credential_generation), name="haizflow-zernio-key-checks", daemon=True)
+        self._credential_worker_thread = worker
+        worker.start()
+        return True
+
+    def _credential_batch_worker(self, key_ids: list[str], generation: int) -> None:
+        def check(key_id):
+            event = dict(type="credential-batch-key", generation=generation, key_id=key_id, replace=False)
+            try:
+                key = zernio_keys.key_value(key_id)
+                if not _API_KEY_PATTERN.fullmatch(key):
+                    event["result"] = "format-error"
+                else:
+                    self._check_credential(key, event)
+            except (OSError, ValueError):
+                event["result"] = "invalid"
+            return event
+
+        # Independent keys do not need serial network waits; cap concurrency
+        # to avoid flooding the service. No POST/DELETE endpoint is exercised.
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="zernio-check") as executor:
+            futures = [executor.submit(check, key_id) for key_id in key_ids]
+            for future in as_completed(futures):
+                if generation != self._credential_generation:
+                    for pending in futures:
+                        pending.cancel()
+                    break
+                self._events.put(future.result())
+        self._events.put(dict(type="credential-batch-done", generation=generation))
+
+    def _start_credential_check(self, key: str, *, replace: bool, label: str = "", key_id: str = "") -> bool:
+        """Credential checks belong to the app, never to a project or OAuth flow."""
+        self._credential_generation += 1
+        self._credential_busy = True
+        self._credential_result = ""
+        self._status = "Checking the Zernio connection..."
+        self._emit_changed()
+        worker = threading.Thread(
+            target=self._credential_worker,
+            args=(key, self._credential_generation, replace, label, key_id),
+            name="haizflow-zernio-credential",
+            daemon=True,
+        )
+        self._credential_worker_thread = worker
+        worker.start()
+        return True
+
+    def _credential_worker(self, key: str, generation: int, replace: bool, label: str = "", key_id: str = "") -> None:
+        event = {"type": "credential", "generation": generation, "replace": replace, "label": label, "key_id": key_id}
+        self._check_credential(key, event)
+        self._events.put(event)
+
+    @staticmethod
+    def _check_credential(key: str, event: dict) -> None:
+        try:
+            client = zernio.ZernioClient(key)
+            event["profiles"] = client.list_profiles()
+            event["accounts"] = client.list_accounts(platforms=SUPPORTED_PLATFORMS)
+            event["key"] = key
+            event["result"] = "verified"
+        except (OSError, ValueError, zernio.ZernioError) as exc:
+            # Never echo server responses here: they may include credential material.
+            status = getattr(exc, "status", 0)
+            event["result"] = (
+                "invalid" if status == 401 else "permissions" if status == 403
+                else "rate-limit" if status == 429 else "unavailable"
+            )
+
+    def _accept_credential_event(self, event: dict) -> None:
+        if event.get("type") != "credential-batch-key":
+            self._credential_busy = False
+            self._credential_worker_thread = None
+        result = str(event["result"])
+        checked_id = str(event.get("key_id") or "")
+        if result == "verified" and event["replace"]:
+            try:
+                if event.get("label"):
+                    checked_id = zernio_keys.add_named_key(event["label"], event["key"])
+                elif event.get("key_id"):
+                    zernio_keys.select_key(event["key_id"])
+                else:
+                    zernio_keys.save_legacy_key(event["key"])
+                    checked_id = "legacy"
+            except (OSError, ValueError):
+                result = "storage-error"
+        self._credential_result = result
+        if checked_id:
+            self._credential_checks[checked_id] = result
+            self._api_keys_revision += 1
+        if result == "verified":
+            if event["replace"]:
+                self._api_keys_revision += 1
+            if event["replace"] and self._api_key_cache != event["key"]:
+                self._require_explicit_account_selection = True
+                self._stop_post_status_poll()
+            self._account_generation += 1
+            self._background_account_refreshing = False
+            self._background_account_worker_thread = None
+            self._api_key_cache = event["key"]
+            self._api_key_verified = True
+            self._profiles = list(event.get("profiles") or [])
+            self._accounts = self._deduplicate_accounts(event.get("accounts") or [])
+            profile = self._connection_profile(self._profiles) or {}
+            self._profile_id = self._object_id(profile)
+            self._profile_name = str(profile.get("name") or "")
+            self._creator_cache.clear()
+            self._invalidate_creator_sync()
+            self._creator_info_loaded = False
+            self._privacy_levels = []
+            self._stop_oauth_sync()
+            self._status = "Zernio connection checked."
+            # Restore project-specific posting options through the normal read-only refresh.
+            if self._project_root:
+                self.reconcile_accounts()
+        else:
+            if not event["replace"] and result in {"invalid", "permissions"}:
+                self._api_key_verified = False
+            self._status = "Could not check Zernio. The saved key was not changed."
 
     def clear_api_key(self) -> bool:
-        if self._busy or self._account_syncing or self._creator_syncing:
+        if self._busy or self._account_syncing or self._creator_syncing or self._credential_busy:
             return False
         try:
-            secure_credentials.delete_secret(ZERNIO_CREDENTIAL_TARGET)
+            zernio_keys.remove_key(zernio_keys.active_id() or "legacy")
         except OSError as exc:
             self._status = f"Could not remove the Zernio API key: {exc}"
             self._emit_changed()
             return False
+        self._reset_credential_state()
+        self._api_keys_revision += 1
+        self._emit_changed()
+        return True
+
+    def _reset_credential_state(self) -> None:
         self._api_key_cache = ""
         self._accounts = []
         self._profiles = []
@@ -568,15 +751,9 @@ class SocialPublishController:
         self._api_key_verified = False
         self._stop_oauth_sync()
         self._stop_post_status_poll()
-        if self._project_root and os.path.isdir(self._project_root):
-            self._state = tiktok_publish.update_publish_settings(
-                self._project_root,
-                selected_account_id="",
-                privacy_level="",
-            )
+        self._credential_result = ""
+        self._account_generation += 1
         self._status = "Zernio API key removed."
-        self._emit_changed()
-        return True
 
     def connect_tiktok(self) -> bool:
         return self.connect_platform("tiktok")
@@ -649,7 +826,7 @@ class SocialPublishController:
         account_id: str = "",
         silent: bool = False,
     ) -> bool:
-        if self._busy:
+        if self._busy or self._credential_busy:
             return False
         if silent and (self._background_account_refreshing or self._account_syncing):
             return False
@@ -774,13 +951,9 @@ class SocialPublishController:
             profiles = client.list_profiles()
             api_key_verified = True
             profile = self._connection_profile(profiles)
-            if not profile:
-                profile = client.create_profile("HaizFlow", "Social publishing from HaizFlow")
-                profiles = [profile]
+            profile = profile or {}
             profile_id = self._object_id(profile)
-            if not profile_id:
-                raise zernio.ZernioError("Zernio did not return a profile ID.")
-            profile_name = str(profile.get("name") or "Zernio profile")
+            profile_name = str(profile.get("name") or "")
             if action == "disconnect":
                 client.disconnect_account(account_id)
             # Accounts connected in the Zernio dashboard may belong to any
@@ -848,6 +1021,7 @@ class SocialPublishController:
         if not account_id:
             return False
         platform = self._account_platform(self._accounts[index])
+        self._require_explicit_account_selection = False
         previous_account_id = str(self._state.get("selected_account_id") or "")
         previous_platform = self.selected_platform
         if account_id == previous_account_id and platform == previous_platform and self._creator_info_loaded:
@@ -1520,7 +1694,7 @@ class SocialPublishController:
     def _ensure_ready_to_publish(self, item: dict) -> bool:
         if self._busy or not self._ensure_publish_project():
             return False
-        if self._account_syncing or self._creator_syncing:
+        if self._account_syncing or self._creator_syncing or self._credential_busy:
             self._status = "Wait for the selected platform to finish loading."
         elif not self._api_key():
             self._status = "Add a Zernio API key first."
@@ -1773,6 +1947,25 @@ class SocialPublishController:
                 event = self._events.get_nowait()
             except queue.Empty:
                 break
+            if event.get("type") == "credential":
+                if event.get("generation") == self._credential_generation:
+                    self._accept_credential_event(event)
+                    changed = True
+                continue
+            if event.get("type") in {"credential-batch-key", "credential-batch-done"}:
+                if event.get("generation") != self._credential_generation:
+                    continue
+                if event["type"] == "credential-batch-done":
+                    self._credential_busy = False
+                    self._credential_worker_thread = None
+                else:
+                    key_id = event["key_id"]
+                    self._credential_checks[key_id] = event["result"]
+                    self._api_keys_revision += 1
+                    if key_id == zernio_keys.active_id():
+                        self._accept_credential_event(event)
+                changed = True
+                continue
             if event.get("project_key") != self._project_key:
                 continue
             kind = event["type"]
@@ -1833,7 +2026,10 @@ class SocialPublishController:
                 selected_id = str(self._state.get("selected_account_id") or "")
                 selected_changed = False
                 platform_changed = False
-                if self._accounts and not any(self._object_id(item) == selected_id for item in self._accounts):
+                if (self._require_explicit_account_selection or selected_id) and self.selected_account_index < 0:
+                    # Changing credentials must not redirect the project's queued posts.
+                    selected_id = ""
+                elif self._project_root and self._accounts and not any(self._object_id(item) == selected_id for item in self._accounts):
                     selected_id = self._object_id(self._accounts[0])
                     selected_changed = True
                     platform = self._account_platform(self._accounts[0])
@@ -1843,7 +2039,7 @@ class SocialPublishController:
                         selected_account_id=selected_id,
                         selected_platform=platform,
                     )
-                elif not self._accounts and selected_id:
+                elif self._project_root and not self._accounts and selected_id:
                     selected_id = ""
                     selected_changed = True
                     self._privacy_levels = []
@@ -1857,7 +2053,7 @@ class SocialPublishController:
                         selected_platform="",
                         privacy_level="",
                     )
-                elif selected_id:
+                elif self._project_root and selected_id:
                     selected_account = next(
                         (item for item in self._accounts if self._object_id(item) == selected_id),
                         {},
@@ -1880,6 +2076,8 @@ class SocialPublishController:
                         if self._accounts
                         else "No supported publishing account is available."
                     )
+                if not selected_id and self._accounts and self._state.get("selected_account_id"):
+                    self._status = "Choose a publishing account for the current Zernio key."
                 if selected_id:
                     selected_index = self.selected_account_index
                     platform = (
@@ -2125,20 +2323,21 @@ class SocialPublishController:
         self._emit_changed()
 
     def shutdown(self) -> None:
+        self._credential_generation += 1
+        self._credential_busy = False
         self._auto_continue = False
         self._cancel.set()
         self._stop_post_status_poll()
 
     def _api_key(self) -> str:
-        environment_key = str(os.environ.get("ZERNIO_API_KEY") or "").strip()
-        if environment_key:
-            return environment_key
         if self._api_key_cache is not None:
             return self._api_key_cache
         try:
-            self._api_key_cache = secure_credentials.read_secret(ZERNIO_CREDENTIAL_TARGET)
+            self._api_key_cache = zernio_keys.active_key()
         except OSError:
             self._api_key_cache = ""
+        if not self._api_key_cache and not zernio_keys.INDEX_PATH.exists():
+            self._api_key_cache = str(os.environ.get("ZERNIO_API_KEY") or "").strip()
         return self._api_key_cache
 
     def _stop_oauth_sync(self) -> None:

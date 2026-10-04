@@ -10,6 +10,7 @@ Item {
     property string subtitleText: ""
     property string sampleText: ""
     property string sampleFontFamily: Theme.fontFamily
+    property real sampleFontScale: 1
     property color sampleTextColor: "white"
     property color sampleOutlineColor: "black"
     property bool sampleBold: false
@@ -20,6 +21,7 @@ Item {
     property int positionXPercent: 50
     property int positionYPercent: 88
     property int boxWidthPercent: 72
+    property int boxHeightPercent: 12
     property int outlineWidth: 5
     property int layoutWidthPixels: 0
     property int layoutHeightPixels: 0
@@ -30,18 +32,27 @@ Item {
     property bool livePreviewVisible: true
     signal activated()
     signal editingDismissed()
-    signal layoutPreviewChanged(int fontSize, int positionX, int positionY)
-    signal layoutCommitted(int fontSize, int positionX, int positionY)
+    signal layoutPreviewChanged(int fontSize, int positionX, int positionY, int boxWidth, int boxHeight)
+    signal layoutCommitted(int fontSize, int positionX, int positionY, int boxWidth, int boxHeight)
 
     property int draftFontSize: fontSize
     property real draftPositionX: positionXPercent
     property real draftPositionY: positionYPercent
+    property real draftBoxWidth: boxWidthPercent
+    property real draftBoxHeight: boxHeightPercent
+    property bool boxResizeActive: false
+    property rect boxResizeRect
+    property rect boxResizeStartRect
+    property real boxResizeStartWidth: 72
+    property real boxResizeStartHeight: 12
+    property real boxResizeStartX: 50
+    property real boxResizeStartY: 88
     readonly property real referenceHeight: referenceHeightPixels > 0
         ? referenceHeightPixels
         : videoCanvas.height > videoCanvas.width ? 1920 : 1080
     readonly property real previewFontSize: Math.max(
         10,
-        draftFontSize * videoCanvas.height / Math.max(1, referenceHeight)
+        draftFontSize * sampleFontScale * videoCanvas.height / Math.max(1, referenceHeight)
     )
     readonly property real referenceWidth: referenceWidthPixels > 0
         ? referenceWidthPixels
@@ -60,14 +71,56 @@ Item {
         && videoRect.height > 0
 
     onFontSizeChanged: if (!moveArea.pressed && !resizeInProgress()) draftFontSize = fontSize
-    onPositionXPercentChanged: if (!moveArea.pressed) draftPositionX = positionXPercent
-    onPositionYPercentChanged: if (!moveArea.pressed) draftPositionY = positionYPercent
+    onPositionXPercentChanged: if (!moveArea.pressed && !resizeInProgress()) draftPositionX = positionXPercent
+    onPositionYPercentChanged: if (!moveArea.pressed && !resizeInProgress()) draftPositionY = positionYPercent
+    onBoxWidthPercentChanged: if (!resizeInProgress()) draftBoxWidth = boxWidthPercent
+    onBoxHeightPercentChanged: if (!resizeInProgress()) draftBoxHeight = boxHeightPercent
+
+    function beginBoxResize() {
+        activateEditor();
+        boxResizeStartRect = Qt.rect(selection.x, selection.y, selection.width, selection.height);
+        boxResizeRect = boxResizeStartRect;
+        boxResizeStartWidth = draftBoxWidth;
+        boxResizeStartHeight = draftBoxHeight;
+        boxResizeStartX = draftPositionX;
+        boxResizeStartY = draftPositionY;
+        boxResizeActive = true;
+    }
+
+    function previewBox(rectangle) {
+        // The handles surround visible glyphs, not the (usually much larger)
+        // phrase-capacity region. Use the new visible width as word capacity;
+        // legacy 100% capacity must not lock a smaller on-screen frame.
+        boxResizeRect = rectangle;
+        if (Math.abs(rectangle.width - boxResizeStartRect.width) > 0.01)
+            draftBoxWidth = clamp(rectangle.width / videoCanvas.width * 100, 20, 100);
+        draftBoxHeight = clamp(boxResizeStartHeight * rectangle.height / Math.max(1, boxResizeStartRect.height), 1, 100);
+        draftPositionX = boxResizeStartX + (rectangle.x + rectangle.width / 2
+            - boxResizeStartRect.x - boxResizeStartRect.width / 2) / videoCanvas.width * 100;
+        draftPositionY = boxResizeStartY + (rectangle.y + rectangle.height / 2
+            - boxResizeStartRect.y - boxResizeStartRect.height / 2) / videoCanvas.height * 100;
+        publishPreview();
+    }
+
+    function cancelBoxResize() {
+        draftBoxWidth = boxResizeStartWidth;
+        draftBoxHeight = boxResizeStartHeight;
+        draftPositionX = boxResizeStartX;
+        draftPositionY = boxResizeStartY;
+        boxResizeActive = false;
+        publishPreview();
+    }
 
     function clamp(value, minimum, maximum) {
         return Math.max(minimum, Math.min(maximum, value));
     }
 
     function resizeInProgress() {
+        if (boxResizeActive) return true;
+        for (let i = 0; i < edgeHandles.count; ++i) {
+            const handle = edgeHandles.itemAt(i) as SubtitleBoxHandle;
+            if (handle && handle.pressed) return true;
+        }
         return topLeftHandle.pressed
             || topRightHandle.pressed
             || bottomLeftHandle.pressed
@@ -80,19 +133,23 @@ Item {
         layoutCommitted(
             Math.round(clamp(draftFontSize, 10, 240)),
             Math.round(clamp(draftPositionX, 0, 100)),
-            Math.round(clamp(draftPositionY, 0, 100))
+            Math.round(clamp(draftPositionY, 0, 100)),
+            Math.round(clamp(draftBoxWidth, 20, 100)),
+            Math.round(clamp(draftBoxHeight, 1, 100))
         );
     }
 
     function publishPreview() {
-        previewDebounce.restart();
+        if (!previewDebounce.running) previewDebounce.start();
     }
 
     function emitPreview() {
         layoutPreviewChanged(
             Math.round(clamp(draftFontSize, 10, 240)),
             Math.round(clamp(draftPositionX, 0, 100)),
-            Math.round(clamp(draftPositionY, 0, 100))
+            Math.round(clamp(draftPositionY, 0, 100)),
+            Math.round(clamp(draftBoxWidth, 20, 100)),
+            Math.round(clamp(draftBoxHeight, 1, 100))
         );
     }
 
@@ -148,20 +205,28 @@ Item {
             id: selection
             objectName: "subtitleTransformSelection"
             readonly property real rasterScale: root.previewScale * root.draftFontSize / Math.max(1, Number(root.sprite.fontSize || root.fontSize))
-            width: root.sampleMode ? sampleLabel.implicitWidth + Theme.space12
-                : Math.max(1, Number(root.sprite.width || 1) * rasterScale)
-            height: root.sampleMode ? sampleLabel.implicitHeight + Theme.space8
-                : Math.max(1, Number(root.sprite.height || 1) * rasterScale)
-            x: root.sampleMode
-                ? videoCanvas.width * root.draftPositionX / 100 - width / 2
-                : videoCanvas.width * root.draftPositionX / 100
+            readonly property real rasterX: videoCanvas.width * root.draftPositionX / 100
                 + (Number(root.sprite.x || 0) - Number(root.sprite.outputWidth || 1)
-                   * Number(root.sprite.positionXPercent || 50) / 100) * rasterScale
-            y: root.sampleMode
-                ? videoCanvas.height * root.draftPositionY / 100 - height / 2
-                : videoCanvas.height * root.draftPositionY / 100
+                * Number(root.sprite.positionXPercent || 50) / 100) * rasterScale
+            readonly property real rasterY: videoCanvas.height * root.draftPositionY / 100
                 + (Number(root.sprite.y || 0) - Number(root.sprite.outputHeight || 1)
-                   * Number(root.sprite.positionYPercent || 88) / 100) * rasterScale
+                * Number(root.sprite.positionYPercent || 88) / 100) * rasterScale
+            readonly property real fontScaleExtent: root.sampleMode
+                ? Math.max(sampleLabel.contentWidth, sampleLabel.contentHeight)
+                : Math.max(Number(root.sprite.width || 1), Number(root.sprite.height || 1)) * rasterScale
+            readonly property real glyphPadding: root.editing ? 3 : 0
+            width: root.boxResizeActive ? root.boxResizeRect.width
+                : root.sampleMode ? sampleLabel.contentWidth + glyphPadding * 2
+                : Math.max(1, Number(root.sprite.width || 1) * rasterScale) + glyphPadding * 2
+            height: root.boxResizeActive ? root.boxResizeRect.height
+                : root.sampleMode ? sampleLabel.contentHeight + glyphPadding * 2
+                : Math.max(1, Number(root.sprite.height || 1) * rasterScale) + glyphPadding * 2
+            x: root.boxResizeActive ? root.boxResizeRect.x : root.sampleMode
+                ? videoCanvas.width * root.draftPositionX / 100 - width / 2
+                : rasterX - glyphPadding
+            y: root.boxResizeActive ? root.boxResizeRect.y : root.sampleMode
+                ? videoCanvas.height * root.draftPositionY / 100 - height / 2
+                : rasterY - glyphPadding
             color: "transparent"
             border.width: root.editing && root.livePreviewVisible ? 1 : 0
             border.color: root.editing ? Theme.focus : Theme.outlineStrong
@@ -181,16 +246,18 @@ Item {
                 font.pixelSize: root.previewFontSize
                 font.bold: root.sampleBold
                 font.italic: root.sampleItalic
+                width: Math.max(1, videoCanvas.width * root.draftBoxWidth / 100)
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
                 textFormat: Text.PlainText
             }
             Item {
                 anchors.fill: parent
                 visible: root.livePreviewVisible
-                clip: true
                 Image {
                     objectName: "subtitleTransformSprite"
-                    x: -Number(root.sprite.x || 0) * selection.rasterScale
-                    y: -Number(root.sprite.y || 0) * selection.rasterScale
+                    x: selection.rasterX - selection.x - Number(root.sprite.x || 0) * selection.rasterScale
+                    y: selection.rasterY - selection.y - Number(root.sprite.y || 0) * selection.rasterScale
                     width: Number(root.sprite.outputWidth || 1) * selection.rasterScale
                     height: Number(root.sprite.outputHeight || 1) * selection.rasterScale
                     source: root.sprite.normal || ""
@@ -198,18 +265,33 @@ Item {
                     sourceSize: Qt.size(Number(root.sprite.outputWidth || 1), Number(root.sprite.outputHeight || 1))
                     asynchronous: true
                 }
-                Item {
-                    width: parent.width * root.clamp(Number(root.sprite.progress || 0), 0, 1)
-                    height: parent.height
-                    clip: true
-                    Image {
-                        x: -Number(root.sprite.x || 0) * selection.rasterScale
-                        y: -Number(root.sprite.y || 0) * selection.rasterScale
-                        width: Number(root.sprite.outputWidth || 1) * selection.rasterScale
-                        height: Number(root.sprite.outputHeight || 1) * selection.rasterScale
-                        source: root.sprite.karaoke || ""
-                        sourceSize: Qt.size(Number(root.sprite.outputWidth || 1), Number(root.sprite.outputHeight || 1))
-                        asynchronous: true
+                Repeater {
+                    // An integer model preserves image delegates during playback.
+                    // Only mask widths change; no raster work runs on a video tick.
+                    model: Math.max(1, Number(root.sprite.lineCount || 1))
+                    delegate: Item {
+                        id: karaokeLine
+                        required property int index
+                        z: 1
+                        readonly property var line: (root.sprite.karaokeLines || [])[index] || root.sprite
+                        objectName: "subtitleKaraokeLine" + index
+                        x: selection.rasterX - selection.x
+                            + (Number(line.x || 0) - Number(root.sprite.x || 0)) * selection.rasterScale
+                        y: selection.rasterY - selection.y
+                            + (Number(line.y || 0) - Number(root.sprite.y || 0)) * selection.rasterScale
+                        width: Number(line.width || 0) * selection.rasterScale
+                            * root.clamp(Number(line.progress || 0), 0, 1)
+                        height: Number(line.height || 0) * selection.rasterScale
+                        clip: true
+                        Image {
+                            x: -Number(karaokeLine.line.x || 0) * selection.rasterScale
+                            y: -Number(karaokeLine.line.y || 0) * selection.rasterScale
+                            width: Number(root.sprite.outputWidth || 1) * selection.rasterScale
+                            height: Number(root.sprite.outputHeight || 1) * selection.rasterScale
+                            source: root.sprite.karaoke || ""
+                            sourceSize: Qt.size(Number(root.sprite.outputWidth || 1), Number(root.sprite.outputHeight || 1))
+                            asynchronous: true
+                        }
                     }
                 }
             }
@@ -255,8 +337,8 @@ Item {
                 onPressed: function(mouse) {
                     root.activateEditor();
                     const point = mapToItem(videoCanvas, mouse.x, mouse.y);
-                    offsetX = point.x - (selection.x + selection.width / 2);
-                    offsetY = point.y - (selection.y + selection.height / 2);
+                    offsetX = point.x - videoCanvas.width * root.draftPositionX / 100;
+                    offsetY = point.y - videoCanvas.height * root.draftPositionY / 100;
                     moved = false;
                 }
                 onPositionChanged: function(mouse) {
@@ -298,10 +380,10 @@ Item {
                 Text {
                     id: measurementText
                     anchors.centerIn: parent
-                    text: qsTr("%1 px · X %2% · Y %3%")
+                    text: qsTr("%1 px · %2% × %3%")
                         .arg(Math.round(root.draftFontSize))
-                        .arg(Math.round(root.draftPositionX))
-                        .arg(Math.round(root.draftPositionY))
+                        .arg(Math.round(root.draftBoxWidth))
+                        .arg(Math.round(root.draftBoxHeight))
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: TypeScale.metadata
@@ -310,8 +392,33 @@ Item {
                 }
             }
 
+            Repeater {
+                id: edgeHandles
+                model: [{h: -1, v: 0}, {h: 1, v: 0}, {h: 0, v: -1}, {h: 0, v: 1}]
+                delegate: SubtitleBoxHandle {
+                    required property var modelData
+                    selectionItem: selection
+                    canvasItem: videoCanvas
+                    horizontalDirection: modelData.h
+                    verticalDirection: modelData.v
+                    minimumWidthPixels: Math.min(root.boxResizeStartRect.width, videoCanvas.width * 0.2)
+                    maximumWidthPixels: videoCanvas.width
+                    minimumHeightPixels: Math.max(4, root.boxResizeStartRect.height / Math.max(1, root.boxResizeStartHeight))
+                    maximumHeightPixels: root.boxResizeStartRect.height * 100 / Math.max(1, root.boxResizeStartHeight)
+                    visible: root.editing
+                    onResizeStarted: root.beginBoxResize()
+                    onRectanglePreviewed: function(rectangle) { root.previewBox(rectangle); }
+                    onRectangleCommitted: function(rectangle) {
+                        root.previewBox(rectangle);
+                        root.commit();
+                        root.boxResizeActive = false;
+                    }
+                    onResizeCanceled: root.cancelBoxResize()
+                }
+            }
             CornerScaleHandle {
                 id: topLeftHandle
+                z: 6
                 selectionItem: selection
                 coordinateItem: root
                 horizontalDirection: -1
@@ -320,6 +427,7 @@ Item {
                 minimumValue: 10
                 maximumValue: 240
                 objectNamePrefix: "subtitleScaleHandle"
+                scaleReferenceExtent: selection.fontScaleExtent
                 visible: root.editing
                 onResizeStarted: root.activateEditor()
                 onValuePreviewed: function(value) {
@@ -333,6 +441,7 @@ Item {
             }
             CornerScaleHandle {
                 id: topRightHandle
+                z: 6
                 selectionItem: selection
                 coordinateItem: root
                 horizontalDirection: 1
@@ -341,6 +450,7 @@ Item {
                 minimumValue: 10
                 maximumValue: 240
                 objectNamePrefix: "subtitleScaleHandle"
+                scaleReferenceExtent: selection.fontScaleExtent
                 visible: root.editing
                 onResizeStarted: root.activateEditor()
                 onValuePreviewed: function(value) {
@@ -354,6 +464,7 @@ Item {
             }
             CornerScaleHandle {
                 id: bottomLeftHandle
+                z: 6
                 selectionItem: selection
                 coordinateItem: root
                 horizontalDirection: -1
@@ -362,6 +473,7 @@ Item {
                 minimumValue: 10
                 maximumValue: 240
                 objectNamePrefix: "subtitleScaleHandle"
+                scaleReferenceExtent: selection.fontScaleExtent
                 visible: root.editing
                 onResizeStarted: root.activateEditor()
                 onValuePreviewed: function(value) {
@@ -375,6 +487,7 @@ Item {
             }
             CornerScaleHandle {
                 id: bottomRightHandle
+                z: 6
                 selectionItem: selection
                 coordinateItem: root
                 horizontalDirection: 1
@@ -383,6 +496,7 @@ Item {
                 minimumValue: 10
                 maximumValue: 240
                 objectNamePrefix: "subtitleScaleHandle"
+                scaleReferenceExtent: selection.fontScaleExtent
                 visible: root.editing
                 onResizeStarted: root.activateEditor()
                 onValuePreviewed: function(value) {

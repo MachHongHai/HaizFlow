@@ -6,14 +6,11 @@ import "."
 
 AppDialog {
     id: root
-
-    signal configureApiKeyRequested()
-    signal chooseConnectionRequested()
+    objectName: "zernioApiGuide"
 
     title: qsTr("Thiết lập Zernio")
     subtitle: qsTr("Kết nối tài khoản để đăng video")
     preferredWidth: 620
-    preferredHeight: 450
     maximumWidth: 660
     maximumHeight: 620
 
@@ -22,8 +19,6 @@ AppDialog {
         stepNumber: 1
         title: qsTr("Đăng nhập Zernio")
         description: qsTr("Mở trang quản lý Zernio trong trình duyệt.")
-        statusText: qsTr("Trình duyệt")
-        statusTone: "muted"
 
         StudioButton {
             variant: "secondary"
@@ -36,37 +31,20 @@ AppDialog {
         Layout.fillWidth: true
         stepNumber: 2
         title: qsTr("Thêm API key")
-        description: qsTr("Lưu key có quyền đọc và ghi trong HaizFlow.")
-        statusText: !AppController.zernioApiKeyConfigured
-            ? qsTr("Bắt buộc")
-            : AppController.zernioApiKeyVerified ? qsTr("Đã xác minh") : qsTr("Cần xác minh")
-        statusTone: AppController.zernioApiKeyVerified ? "success" : "warning"
+        description: qsTr("Tạo key có quyền đọc và ghi. Sao chép ngay khi tạo; Zernio chỉ hiển thị key một lần.")
 
         StudioButton {
-            variant: AppController.zernioApiKeyVerified ? "secondary" : "primary"
-            text: qsTr("Quản lý API key")
-            onClicked: root.configureApiKeyRequested()
+            variant: "secondary"
+            text: qsTr("Mở trang API key")
+            onClicked: AppController.openZernioApiKeys()
         }
     }
 
     ZernioSetupStep {
         Layout.fillWidth: true
         stepNumber: 3
-        title: qsTr("Kết nối nền tảng")
-        description: AppController.zernioConnectedAccountCount > 0
-            ? qsTr("Tài khoản đã kết nối sẵn sàng để đăng.")
-            : qsTr("Chọn nền tảng và xác nhận trong trình duyệt.")
-        statusText: AppController.zernioConnectedAccountCount > 0
-            ? qsTr("Đã kết nối: %1").arg(AppController.zernioConnectedAccountCount)
-            : qsTr("Chưa kết nối")
-        statusTone: AppController.zernioConnectedAccountCount > 0 ? "success" : "muted"
-
-        StudioButton {
-            variant: AppController.zernioConnectedAccountCount > 0 ? "secondary" : "primary"
-            text: qsTr("Quản lý kết nối")
-            enabled: AppController.zernioApiKeyVerified && !AppController.tiktokPublishBusy
-            onClicked: root.chooseConnectionRequested()
-        }
+        title: qsTr("Lưu key và chọn tài khoản")
+        description: qsTr("Lưu key tại Cài đặt → API Key → Zernio. Sau đó mở dự án đăng mạng xã hội và chọn tài khoản.")
     }
 
     footerActions: [

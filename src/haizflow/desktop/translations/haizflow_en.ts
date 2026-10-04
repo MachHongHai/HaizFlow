@@ -188,122 +188,57 @@
 </context>
 <context>
     <name>ApiKeysPage</name>
-    <message><source>Key được lưu trong Windows Credential Manager, không nằm trong tệp dự án. HaizFlow chỉ gửi văn bản theo lô, không gửi video hoặc âm thanh. Cả ba model Gemini trong ứng dụng có hạn mức miễn phí. Dự án đã bật thanh toán có thể phát sinh phí; Flash-Lite có giá thấp hơn Flash. Hạn mức áp dụng theo dự án Google, không theo số key.</source><translation>Keys are stored in Windows Credential Manager, not in project files. HaizFlow sends batched text, not video or audio. All three Gemini models in the app have free-tier limits. Projects with billing enabled may incur charges; Flash-Lite costs less than Flash. Limits apply per Google project, not per key.</translation></message>
-    <message>
-        <location filename="../qml/ApiKeysPage.qml" line="+32"/>
-        <source>API Key</source>
-        <translation>API Key</translation>
-    </message>
-    <message>
-        <location line="+14"/>
-        <source>Gemini API Key</source>
-        <translation>Gemini API Key</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Lưu nhiều key trên máy và chọn key dùng để dịch trong các dự án.</source>
-        <translation>Store multiple keys on this computer and select the one used for project translation.</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Hướng dẫn</source>
-        <translation>Guide</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Chưa có key. Thêm một key từ Google AI Studio để bắt đầu.</source>
-        <translation>No key yet. Add one from Google AI Studio to get started.</translation>
-    </message>
-    <message>
-        <location line="+33"/>
-        <source>Đang dùng</source>
-        <translation>Active</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Sử dụng</source>
-        <translation>Use</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Xóa</source>
-        <translation>Remove</translation>
-    </message>
-    <message>
-        <location line="+11"/>
-        <source>Thêm key</source>
-        <translation>Add a key</translation>
-    </message>
-    <message>
-        <location line="+4"/>
-        <source>Tên key</source>
-        <translation>Key name</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Tên để phân biệt, ví dụ: Cá nhân</source>
-        <translation>Label, for example: Personal</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Tên API key</source>
-        <translation>API key label</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>API key</source>
-        <translation>API key</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Dán Gemini API key</source>
-        <translation>Paste Gemini API key</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Gemini API key</source>
-        <translation>Gemini API key</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Ẩn</source>
-        <translation>Hide</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Hiện</source>
-        <translation>Show</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Lưu và sử dụng</source>
-        <translation>Save and use</translation>
-    </message>
-    <message>
-        <location line="+16"/>
-        <source>Key được lưu trong Windows Credential Manager, không nằm trong tệp dự án. HaizFlow chỉ gửi câu thoại theo lô, không gửi video hoặc âm thanh. Gemini 3.1 Flash-Lite là lựa chọn chi phí thấp; giá và quota do Google quản lý.</source>
-        <translation>Keys are stored in Windows Credential Manager, not in project files. HaizFlow sends subtitle text in batches, not video or audio. Gemini 3.1 Flash-Lite is a lower-cost option; Google manages pricing and quotas.</translation>
-    </message>
-    <message>
-        <location line="+27"/>
-        <source>Xóa API key?</source>
-        <translation>Remove API key?</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Key này sẽ bị xóa khỏi Windows Credential Manager. Các key khác vẫn được giữ nguyên.</source>
-        <translation>This key will be removed from Windows Credential Manager. Other keys will remain.</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Hủy</source>
-        <translation>Cancel</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Xóa key</source>
-        <translation>Remove key</translation>
-    </message>
+    <message><source>Kiểm tra thành công</source><translation>Connection successful</translation></message>
+    <message><source>Kiểm tra thất bại · Key chưa đầy đủ.</source><translation>Check failed · Incomplete key.</translation></message>
+    <message><source>Kiểm tra thất bại · Key không hợp lệ hoặc đã bị thu hồi.</source><translation>Check failed · The key is invalid or revoked.</translation></message>
+    <message><source>Kiểm tra thất bại · Key thiếu quyền đọc và ghi.</source><translation>Check failed · The key needs read and write access.</translation></message>
+    <message><source>Kiểm tra thất bại · Zernio đang giới hạn yêu cầu.</source><translation>Check failed · Zernio is rate-limiting requests.</translation></message>
+    <message><source>Kiểm tra thất bại · Chưa kết nối được Zernio.</source><translation>Check failed · Could not reach Zernio.</translation></message>
+    <message><source>Lưu thất bại · Không thể lưu key trên máy.</source><translation>Save failed · Could not store the key on this computer.</translation></message>
+    <message><source>Chọn key để kết nối tài khoản đăng bài.</source><translation>Select a key to connect publishing accounts.</translation></message>
+    <message><source>Kết nối đăng bài. Chọn tài khoản trong dự án.</source><translation>Connect for publishing. Choose accounts in the project.</translation></message>
+    <message><source>Dịch bằng Gemini. Chọn model trong dự án.</source><translation>Translate with Gemini. Choose the model in the project.</translation></message>
+    <message><source>Thêm key</source><translation>Add key</translation></message>
+    <message><source>Đang kiểm tra kết nối…</source><translation>Checking connection…</translation></message>
+    <message><source>Key chưa đầy đủ. Sao chép lại từ Zernio.</source><translation>Incomplete key. Copy it again from Zernio.</translation></message>
+    <message><source>Key không hợp lệ hoặc đã bị thu hồi.</source><translation>The key is invalid or has been revoked.</translation></message>
+    <message><source>Key thiếu quyền truy cập hồ sơ hoặc tài khoản.</source><translation>The key cannot access profiles or accounts.</translation></message>
+    <message><source>Zernio đang giới hạn yêu cầu. Thử lại sau.</source><translation>Zernio is rate-limiting requests. Try again later.</translation></message>
+    <message><source>Chưa kết nối được Zernio. Kiểm tra mạng rồi thử lại.</source><translation>Could not reach Zernio. Check your connection and try again.</translation></message>
+    <message><source>Không thể lưu key vào Windows Credential Manager.</source><translation>Could not save the key in Windows Credential Manager.</translation></message>
+    <message><source>Kết nối đã kiểm tra</source><translation>Connection checked</translation></message>
+    <message><source>Đã lưu key · Chưa kiểm tra kết nối</source><translation>Key saved · Connection not checked</translation></message>
+    <message><source>Chưa có key. Thêm key để kết nối tài khoản đăng bài.</source><translation>No key yet. Add a key to connect publishing accounts.</translation></message>
+    <message><source>API Key</source><translation>API Key</translation></message>
+    <message><source>Zernio API key</source><translation>Zernio API key</translation></message>
+    <message><source>Gemini API key</source><translation>Gemini API key</translation></message>
+    <message><source>Kết nối đăng bài. Tài khoản và nội dung được chọn trong từng dự án.</source><translation>Connect for publishing. Choose accounts and content in each project.</translation></message>
+    <message><source>Dùng chung cho dịch bằng Gemini. Model dịch được chọn trong từng dự án.</source><translation>Shared for Gemini translation. Choose the translation model in each project.</translation></message>
+    <message><source>Hướng dẫn</source><translation>Guide</translation></message>
+    <message><source>Chưa có key. Bạn vẫn có thể dùng model dịch cục bộ.</source><translation>No key yet. You can still use local translation models.</translation></message>
+    <message><source>Kiểm tra kết nối</source><translation>Check connection</translation></message>
+    <message><source>Xóa key</source><translation>Remove key</translation></message>
+    <message><source>Mặc định</source><translation>Default</translation></message>
+    <message><source>Sử dụng</source><translation>Use</translation></message>
+    <message><source>Xóa</source><translation>Remove</translation></message>
+    <message><source>Thay API key</source><translation>Replace API key</translation></message>
+    <message><source>Thêm API key</source><translation>Add API key</translation></message>
+    <message><source>Tên key</source><translation>Key name</translation></message>
+    <message><source>Ví dụ: Cá nhân</source><translation>For example: Personal</translation></message>
+    <message><source>Tên API key</source><translation>API key label</translation></message>
+    <message><source>API key</source><translation>API key</translation></message>
+    <message><source>Dán Zernio API key</source><translation>Paste Zernio API key</translation></message>
+    <message><source>Dán Gemini API key</source><translation>Paste Gemini API key</translation></message>
+    <message><source>Ẩn key</source><translation>Hide key</translation></message>
+    <message><source>Hiện key</source><translation>Show key</translation></message>
+    <message><source>Kiểm tra và lưu</source><translation>Check and save</translation></message>
+    <message><source>Lưu và sử dụng</source><translation>Save and use</translation></message>
+    <message><source>Key mới chỉ thay key hiện tại khi kiểm tra thành công. Dùng key có quyền đọc và ghi.</source><translation>The new key replaces the current key only after a successful check. Use a read-write key.</translation></message>
+    <message><source>Gemini chỉ nhận văn bản cần dịch. Kiểm tra hạn mức và chi phí trong Google AI Studio.</source><translation>Gemini receives only translation text. Check limits and costs in Google AI Studio.</translation></message>
+    <message><source>Key lưu trong Windows Credential Manager, không nằm trong tệp dự án.</source><translation>Keys are stored in Windows Credential Manager, not in project files.</translation></message>
+    <message><source>Xóa API key?</source><translation>Remove API key?</translation></message>
+    <message><source>Chỉ xóa key trên máy này. Dự án và tài khoản trên dịch vụ vẫn được giữ nguyên.</source><translation>Remove the key from this computer only. Projects and service accounts are kept.</translation></message>
+    <message><source>Hủy</source><translation>Cancel</translation></message>
 </context>
 <context>
     <name>AppAlertDialog</name>
@@ -752,6 +687,14 @@
 </context>
 <context>
     <name>BackgroundMusicLinkDialog</name>
+    <message><source>Nhạc nền từ liên kết</source><translation>Music from a link</translation></message>
+    <message><source>YouTube, TikTok hoặc Douyin</source><translation>YouTube, TikTok or Douyin</translation></message>
+    <message><source>Đang tải âm thanh…</source><translation>Downloading audio…</translation></message>
+    <message><source>Không nhập được nhạc nền. Xem chi tiết lỗi.</source><translation>Couldn't import music. See error details.</translation></message>
+    <message><source>Chi tiết lỗi</source><translation>Error details</translation></message>
+    <message><source>Không nhập được nhạc nền</source><translation>Couldn't import music</translation></message>
+    <message><source>Dừng tải</source><translation>Stop download</translation></message>
+    <message><source>Nhập nhạc nền</source><translation>Import music</translation></message>
     <message>
         <location filename="../qml/BackgroundMusicLinkDialog.qml" line="+16"/>
         <source>Nhập nhạc nền từ liên kết</source>
@@ -1699,78 +1642,18 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>GeminiApiGuideDialog</name>
-    <message><source>Free Tier có hạn mức riêng. HaizFlow không xác định được gói thanh toán từ API key. Kiểm tra giá và hạn mức trước khi chạy tác vụ dài.</source><translation>Free Tier has its own limits. HaizFlow cannot determine the billing plan from an API key. Check pricing and limits before running long tasks.</translation></message>
+    <message><source>Lấy Gemini API key</source><translation>Get a Gemini API key</translation></message>
+    <message><source>Google AI Studio</source><translation>Google AI Studio</translation></message>
+    <message><source>Mở Google AI Studio</source><translation>Open Google AI Studio</translation></message>
+    <message><source>Đăng nhập tài khoản Google và mở trang API keys.</source><translation>Sign in with your Google account and open the API keys page.</translation></message>
+    <message><source>Mở trang API keys</source><translation>Open API keys page</translation></message>
+    <message><source>Tạo và sao chép key</source><translation>Create and copy a key</translation></message>
+    <message><source>Chọn dự án Google của bạn, tạo key mới và sao chép. Kiểm tra hạn mức sử dụng trong AI Studio.</source><translation>Select your Google project, create a new key, and copy it. Check your usage limits in AI Studio.</translation></message>
+    <message><source>Lưu key trong HaizFlow</source><translation>Save the key in HaizFlow</translation></message>
+    <message><source>Trong Cài đặt → API Key → Gemini, đặt tên key rồi chọn Lưu và sử dụng.</source><translation>Under Settings → API Key → Gemini, name the key and choose Save and use.</translation></message>
+    <message><source>Chi phí và hạn mức phụ thuộc dự án Google của bạn.</source><translation>Costs and limits depend on your Google project.</translation></message>
     <message><source>Bảng giá và hạn mức Gemini</source><translation>Gemini pricing and limits</translation></message>
-    <message>
-        <location filename="../qml/GeminiApiGuideDialog.qml" line="+10"/>
-        <source>Lấy Gemini API key</source>
-        <translation>Get a Gemini API key</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Google AI Studio</source>
-        <translation>Google AI Studio</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Mở Google AI Studio</source>
-        <translation>Open Google AI Studio</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đăng nhập tài khoản Google và mở trang API keys.</source>
-        <translation>Sign in with your Google account and open the API keys page.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Trình duyệt</source>
-        <translation>Browser</translation>
-    </message>
-    <message>
-        <location line="+3"/>
-        <source>Mở trang API keys</source>
-        <translation>Open API keys page</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Tạo và sao chép key</source>
-        <translation>Create and copy a key</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Chọn dự án Google của bạn, tạo key mới và sao chép. Kiểm tra hạn mức sử dụng trong AI Studio.</source>
-        <translation>Select your Google project, create a new key, and copy it. Check your usage limits in AI Studio.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>AI Studio</source>
-        <translation>AI Studio</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Lưu key trong HaizFlow</source>
-        <translation>Save the key in HaizFlow</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đặt tên, dán và lưu key trong Cài đặt → API Key. Bạn có thể thêm nhiều key và chọn key đang dùng. Key không nằm trong dự án.</source>
-        <translation>Name, paste, and save the key under Settings → API Key. You can add multiple keys and choose the active one. Keys are not stored in projects.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đã lưu</source>
-        <translation>Saved</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Chưa lưu</source>
-        <translation>Not saved</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Đóng</source>
-        <translation>Close</translation>
-    </message>
+    <message><source>Đóng</source><translation>Close</translation></message>
 </context>
 <context>
     <name>HelpPopover</name>
@@ -1905,6 +1788,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualAudioToolPanel</name>
+    <message><source>Lặp nhạc nền</source><translation>Loop background music</translation></message>
     <message>
         <location filename="../qml/ManualAudioToolPanel.qml" line="+15"/>
         <source>Âm nền</source>
@@ -2872,6 +2756,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ProcessingSettingsForm</name>
+    <message><source>Chế độ GPU: có thể chọn model GPU hoặc CPU.</source><translation>GPU mode: GPU and CPU models are available.</translation></message>
     <message><source>Máy đang dùng GPU. Model GPU thường xử lý nhanh hơn; bạn vẫn có thể chọn CPU.</source><translation>GPU mode is enabled. GPU models are usually faster; you can still choose CPU.</translation></message>
     <message><source>Chế độ CPU: model GPU chưa khả dụng. Đổi bộ xử lý trong Cài đặt → Chung để sử dụng GPU.</source><translation>CPU mode: GPU models are unavailable. Change the processing device in Settings → General to use GPU.</translation></message>
     <message>
@@ -3077,6 +2962,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ProjectCard</name>
+    <message><source>%1 video</source><translation>%1 videos</translation></message>
+    <message><source>%1 bài đăng</source><translation>%1 posts</translation></message>
     <message>
         <location filename="../qml/ProjectCard.qml" line="+26"/>
         <source>Đang chờ</source>
@@ -3581,6 +3468,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ResourcePacksPage</name>
+    <message><source>Nhận diện người nói</source><translation>Speaker identification</translation></message>
+    <message><source>Tích hợp trong ứng dụng, chạy trên CPU. Không cần tải gói riêng.</source><translation>Built into the application, running on CPU. No separate download.</translation></message>
     <message>
         <location filename="../qml/ResourcePacksPage.qml" line="+74"/>
         <source>%1 · Đang dùng %2 · Còn trống %3</source>
@@ -3727,6 +3616,11 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SettingsPage</name>
+    <message><source>Giao diện</source><translation>Interface</translation></message>
+    <message><source>Xử lý</source><translation>Processing</translation></message>
+    <message><source>Dùng cho nhận dạng, dịch và tạo giọng.</source><translation>Used for recognition, translation and speech generation.</translation></message>
+    <message><source>Ứng dụng</source><translation>Application</translation></message>
+    <message><source>Có thay đổi chưa lưu</source><translation>Unsaved changes</translation></message>
     <message><source>Áp dụng</source><translation>Apply</translation></message>
     <message><source>Hủy thay đổi</source><translation>Discard changes</translation></message>
     <message><source>GPU NVIDIA yêu cầu bộ xử lý và gói tài nguyên tương thích.</source><translation>NVIDIA GPU requires compatible hardware and resource packs.</translation></message>
@@ -3828,76 +3722,22 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SocialConnectionBar</name>
-    <message>
-        <location filename="../qml/SocialConnectionBar.qml" line="+23"/>
-        <source>Chưa có API key</source>
-        <translation>No API key</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>API key không hợp lệ</source>
-        <translation>Invalid API key</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Đang chờ kết nối</source>
-        <translation>Waiting for connection</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Đang đồng bộ</source>
-        <translation>Syncing</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Chưa kết nối nền tảng</source>
-        <translation>No platform connected</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Đã đạt giới hạn đăng</source>
-        <translation>Publishing limit reached</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Sẵn sàng</source>
-        <translation>Ready</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đang tải</source>
-        <translation>Loading</translation>
-    </message>
-    <message>
-        <location line="+39"/>
-        <source>Kết nối đăng bài</source>
-        <translation>Publishing connection</translation>
-    </message>
-    <message>
-        <location line="+23"/>
-        <source>Đổi tài khoản</source>
-        <translation>Switch account</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Chọn tài khoản</source>
-        <translation>Choose account</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Thiết lập đăng bài</source>
-        <translation>Set up publishing</translation>
-    </message>
-    <message>
-        <location line="+24"/>
-        <source>Hướng dẫn</source>
-        <translation>Guide</translation>
-    </message>
-    <message>
-        <location line="-5"/>
-        <source>API key</source>
-        <translation>API key</translation>
-    </message>
+    <message><source>Thêm Zernio API key trong Cài đặt để đăng video.</source><translation>Add a Zernio API key in Settings to publish videos.</translation></message>
+    <message><source>Cần kiểm tra kết nối Zernio</source><translation>Check the Zernio connection</translation></message>
+    <message><source>Đang kiểm tra kết nối</source><translation>Checking connection</translation></message>
+    <message><source>Đang chờ kết nối</source><translation>Waiting for connection</translation></message>
+    <message><source>Đang đồng bộ</source><translation>Syncing</translation></message>
+    <message><source>Chưa kết nối nền tảng</source><translation>No platform connected</translation></message>
+    <message><source>Đã đạt giới hạn đăng</source><translation>Publishing limit reached</translation></message>
+    <message><source>Đang tải</source><translation>Loading</translation></message>
+    <message><source>Kết nối đăng bài</source><translation>Publishing connection</translation></message>
+    <message><source>Thêm API key</source><translation>Add API key</translation></message>
+    <message><source>Kiểm tra kết nối</source><translation>Check connection</translation></message>
+    <message><source>Đổi tài khoản</source><translation>Switch account</translation></message>
+    <message><source>Chọn tài khoản</source><translation>Choose account</translation></message>
+    <message><source>Thiết lập đăng bài</source><translation>Set up publishing</translation></message>
+    <message><source>API key</source><translation>API key</translation></message>
+    <message><source>Hướng dẫn</source><translation>Guide</translation></message>
 </context>
 <context>
     <name>SocialDefaultsDialog</name>
@@ -4009,6 +3849,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SocialProjectSourceDialog</name>
+    <message><source>%1 video đã xuất</source><translation>%1 exported videos</translation></message>
     <message>
         <location filename="../qml/SocialProjectSourceDialog.qml" line="+11"/>
         <source>Thêm video từ dự án</source>
@@ -4410,6 +4251,11 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SubtitlePreviewDialog</name>
+    <message><source>Chỉnh phụ đề</source><translation>Edit subtitles</translation></message>
+    <message><source>Phụ đề được căn theo vùng che khi xử lý</source><translation>Subtitles follow the covered region during processing</translation></message>
+    <message><source>Kéo hai bên để đổi số từ · Kéo góc để đổi cỡ</source><translation>Drag the sides to change word capacity · Drag a corner to resize</translation></message>
+    <message><source>Tự động căn chỉnh phụ đề vào ô che</source><translation>Align subtitles to the covered region automatically</translation></message>
+    <message><source>Một buổi sáng, chúng tôi cùng nhau đi qua con phố nhỏ để khám phá những câu chuyện thú vị. Kéo rộng khung để hiển thị nhiều từ hơn trên mỗi dòng, hoặc kéo cao khung để xem phụ đề trên nhiều dòng.</source><translation>One morning, we walked along a quiet street together to discover interesting stories. Widen the frame to show more words on each line, or increase its height to display subtitles across several lines.</translation></message>
     <message>
         <location filename="../qml/SubtitlePreviewDialog.qml" line="+33"/>
         <source>Xem trước phụ đề</source>
@@ -4471,8 +4317,8 @@ Author and owner of HaizFlow.</translation>
     </message>
     <message>
         <location line="+130"/>
-        <source>%1 px · X %2% · Y %3%</source>
-        <translation>%1 px · X %2% · Y %3%</translation>
+        <source>%1 px · %2% × %3%</source>
+        <translation>%1 px · %2% × %3%</translation>
     </message>
 </context>
 <context>
@@ -4687,6 +4533,10 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>VideoCommandBar</name>
+    <message><source>Video đã xuất</source><translation>Video exported</translation></message>
+    <message><source>Đã tạm dừng</source><translation>Paused</translation></message>
+    <message><source>Chưa xử lý</source><translation>Not processed</translation></message>
+    <message><source>Chưa chọn video</source><translation>No video selected</translation></message>
     <message><source>Xử lý lại</source><translation>Process again</translation></message>
     <message>
         <location filename="../qml/VideoCommandBar.qml" line="+24"/>
@@ -5099,6 +4949,10 @@ Author and owner of HaizFlow.</translation>
 <context>
     <name>WatermarkDialog</name>
     <message>
+        <source>Đóng</source>
+        <translation>Close</translation>
+    </message>
+    <message>
         <location filename="../qml/WatermarkDialog.qml" line="+15"/>
         <source>Watermark chữ</source>
         <translation>Text watermark</translation>
@@ -5145,87 +4999,9 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ZernioApiKeyDialog</name>
-    <message>
-        <location filename="../qml/ZernioApiKeyDialog.qml" line="+14"/>
-        <source>Quản lý API key</source>
-        <translation>Manage API key</translation>
-    </message>
-    <message>
-        <location line="+19"/>
-        <source>API key đã được xác thực</source>
-        <translation>API key verified</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>API key đã lưu; cần xác thực</source>
-        <translation>API key saved; verification required</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Chưa lưu API key</source>
-        <translation>No API key is saved</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Lưu trong Windows Credential Manager</source>
-        <translation>Stored in Windows Credential Manager</translation>
-    </message>
-    <message>
-        <location line="+6"/>
-        <source>Xóa</source>
-        <translation>Remove</translation>
-    </message>
-    <message>
-        <location line="+17"/>
-        <source>Tạo key đọc-ghi trên Zernio rồi dán đầy đủ vào bên dưới. Zernio chỉ hiển thị key một lần.</source>
-        <translation>Create a read-write key on Zernio, then paste the full value below. Zernio displays it only once.</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Mở trang API key</source>
-        <translation>Open API keys</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>API key thay thế</source>
-        <translation>Replacement API key</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <location line="+15"/>
-        <source>API key</source>
-        <translation>API key</translation>
-    </message>
-    <message>
-        <location line="-1"/>
-        <source>Dán key thay thế</source>
-        <translation>Paste a replacement key</translation>
-    </message>
-    <message>
-        <location line="+7"/>
-        <source>Ẩn</source>
-        <translation>Hide</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Hiện</source>
-        <translation>Show</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Không chia sẻ API key này.</source>
-        <translation>Keep this API key private.</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Đóng</source>
-        <translation>Close</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Lưu và xác thực</source>
-        <translation>Save and verify</translation>
-    </message>
+    <message><source>Zernio API key</source><translation>Zernio API key</translation></message>
+    <message><source>Quản lý key trong Cài đặt → API Key → Zernio.</source><translation>Manage keys under Settings → API Key → Zernio.</translation></message>
+    <message><source>Mở Cài đặt</source><translation>Open Settings</translation></message>
 </context>
 <context>
     <name>ZernioConnectionDialog</name>
@@ -5309,106 +5085,20 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ZernioGuideDialog</name>
-    <message>
-        <location filename="../qml/ZernioGuideDialog.qml" line="+13"/>
-        <source>Thiết lập Zernio</source>
-        <translation>Set up Zernio</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Kết nối tài khoản để đăng video</source>
-        <translation>Connect accounts to publish videos</translation>
-    </message>
-    <message>
-        <location line="+9"/>
-        <source>Đăng nhập Zernio</source>
-        <translation>Sign in to Zernio</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Mở trang quản lý Zernio trong trình duyệt.</source>
-        <translation>Open the Zernio dashboard in your browser.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Trình duyệt</source>
-        <translation>Browser</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Mở Zernio</source>
-        <translation>Open Zernio</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Thêm API key</source>
-        <translation>Add an API key</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Lưu key có quyền đọc và ghi trong HaizFlow.</source>
-        <translation>Save a read-write key in HaizFlow.</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Bắt buộc</source>
-        <translation>Required</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Đã xác minh</source>
-        <translation>Verified</translation>
-    </message>
-    <message>
-        <location line="+0"/>
-        <source>Cần xác minh</source>
-        <translation>Verification required</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Quản lý API key</source>
-        <translation>Manage API key</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Kết nối nền tảng</source>
-        <translation>Connect platforms</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Tài khoản đã kết nối sẵn sàng để đăng.</source>
-        <translation>Connected accounts are ready for publishing.</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Chọn nền tảng và xác nhận trong trình duyệt.</source>
-        <translation>Choose a platform and authorize it in the browser.</translation>
-    </message>
-    <message>
-        <location line="+2"/>
-        <source>Đã kết nối: %1</source>
-        <translation>Connected: %1</translation>
-    </message>
-    <message>
-        <location line="+1"/>
-        <source>Chưa kết nối</source>
-        <translation>Not connected</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Quản lý kết nối</source>
-        <translation>Manage connections</translation>
-    </message>
-    <message>
-        <location line="+8"/>
-        <source>Tài liệu Zernio</source>
-        <translation>Zernio documentation</translation>
-    </message>
-    <message>
-        <location line="+5"/>
-        <source>Đóng</source>
-        <translation>Close</translation>
-    </message>
+    <message><source>Thiết lập Zernio</source><translation>Set up Zernio</translation></message>
+    <message><source>Kết nối tài khoản để đăng video</source><translation>Connect accounts to publish videos</translation></message>
+    <message><source>Đăng nhập Zernio</source><translation>Sign in to Zernio</translation></message>
+    <message><source>Mở trang quản lý Zernio trong trình duyệt.</source><translation>Open the Zernio dashboard in your browser.</translation></message>
+    <message><source>Mở Zernio</source><translation>Open Zernio</translation></message>
+    <message><source>Thêm API key</source><translation>Add API key</translation></message>
+    <message><source>Tạo key có quyền đọc và ghi. Sao chép ngay khi tạo; Zernio chỉ hiển thị key một lần.</source><translation>Create a read-write key. Copy it immediately; Zernio displays it only once.</translation></message>
+    <message><source>Mở trang API key</source><translation>Open API keys</translation></message>
+    <message><source>Lưu key và chọn tài khoản</source><translation>Save the key and choose an account</translation></message>
+    <message><source>Lưu key tại Cài đặt → API Key → Zernio. Sau đó mở dự án đăng mạng xã hội và chọn tài khoản.</source><translation>Save the key under Settings → API Key → Zernio. Then open a social publishing project and choose an account.</translation></message>
+    <message><source>Quản lý kết nối</source><translation>Manage connections</translation></message>
+    <message><source>Mở Cài đặt API key</source><translation>Open API key settings</translation></message>
+    <message><source>Tài liệu Zernio</source><translation>Zernio documentation</translation></message>
+    <message><source>Đóng</source><translation>Close</translation></message>
 </context>
 <context>
     <name>ZernioPostOptionsDialog</name>
@@ -5493,5 +5183,47 @@ Author and owner of HaizFlow.</translation>
         <source>Đóng</source>
         <translation>Close</translation>
     </message>
+</context>
+<context>
+    <name>SubtitleBoxHandle</name>
+    <message>
+        <source>Chiều rộng phụ đề</source>
+        <translation>Subtitle width</translation>
+    </message>
+    <message>
+        <source>Chiều cao phụ đề</source>
+        <translation>Subtitle height</translation>
+    </message>
+</context>
+<context>
+    <name>ApiKeyEntryForm</name>
+    <message><source>Thay API key</source><translation>Replace API key</translation></message>
+    <message><source>Thêm API key</source><translation>Add API key</translation></message>
+    <message><source>Tên key</source><translation>Key name</translation></message>
+    <message><source>Ví dụ: Cá nhân</source><translation>For example: Personal</translation></message>
+    <message><source>Tên API key</source><translation>API key label</translation></message>
+    <message><source>API key</source><translation>API key</translation></message>
+    <message><source>Dán Zernio API key</source><translation>Paste Zernio API key</translation></message>
+    <message><source>Dán Gemini API key</source><translation>Paste Gemini API key</translation></message>
+    <message><source>Zernio API key</source><translation>Zernio API key</translation></message>
+    <message><source>Gemini API key</source><translation>Gemini API key</translation></message>
+    <message><source>Ẩn</source><translation>Hide</translation></message>
+    <message><source>Hiện</source><translation>Show</translation></message>
+    <message><source>Ẩn API key</source><translation>Hide API key</translation></message>
+    <message><source>Hiện API key</source><translation>Show API key</translation></message>
+    <message><source>Kiểm tra và lưu</source><translation>Check and save</translation></message>
+    <message><source>Lưu và sử dụng</source><translation>Save and use</translation></message>
+    <message><source>Hủy</source><translation>Cancel</translation></message>
+    <message><source>Lưu trên máy bằng Windows Credential Manager.</source><translation>Stored locally in Windows Credential Manager.</translation></message>
+</context>
+<context>
+    <name>ApiKeyListRow</name>
+    <message><source>Mặc định</source><translation>Default</translation></message>
+    <message><source>Sử dụng</source><translation>Use</translation></message>
+    <message><source>Xóa</source><translation>Remove</translation></message>
+</context>
+<context>
+    <name>NavigationTabs</name>
+    <message><source>Mục đang mở</source><translation>Current section</translation></message>
 </context>
 </TS>

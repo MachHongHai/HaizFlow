@@ -64,6 +64,7 @@ if str(SRC) not in sys.path:
 import haizflow.config as _runtime_config  # noqa: E402,F401
 
 _INTERNAL_STREAM_MODES = {
+    "--engine-worker",
     "--douyin-channel-worker",
     "--demucs-separate",
     "--hymt2-worker",
@@ -75,6 +76,11 @@ _INTERNAL_STREAM_MODES = {
 }
 if any(mode in sys.argv for mode in _INTERNAL_STREAM_MODES):
     _restore_internal_standard_streams()
+
+if "--engine-worker" in sys.argv:
+    from haizflow.engine.main import main as run_engine_worker
+
+    raise SystemExit(run_engine_worker([argument for argument in sys.argv[1:] if argument != "--engine-worker"]))
 
 if "--hymt2-worker" in sys.argv:
     from haizflow.services.hymt2_worker import main as run_hymt2_worker

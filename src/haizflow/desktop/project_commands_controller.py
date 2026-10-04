@@ -447,6 +447,12 @@ class ProjectCommandsController:
         before = {}
         try:
             config = batch_settings.config_for(normalized)
+            from haizflow.core.model_choices import gpu_choice_blocked
+
+            if gpu_choice_blocked(str(getattr(host, "_settings_processing_device", "cpu")),
+                                  recognition=config.speech_recognition_model,
+                                  translation=config.translation_model, voice=config.tts_provider):
+                raise ValueError("Chọn model CPU hoặc chuyển sang GPU trong Cài đặt → Chung.")
             normalized["subtitleStyle"] = {**config.subtitle_style.model_dump(), "manual": config.subtitle_layout_override}
             for key in batch_settings.ASSETS:
                 normalized[key] = batch_settings.stage_asset(project_key, key, str(normalized.get(key) or ""))

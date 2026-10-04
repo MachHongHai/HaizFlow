@@ -16,7 +16,8 @@ from haizflow.pipeline.process_registry import check_cancellation, communicate_p
 from haizflow.services.video_store import log_to_video
 
 
-def transcribe_reference(path: str, video_id: str, *, process_registry_id: str | None = None) -> str:
+def transcribe_reference(path: str, video_id: str, *, process_registry_id: str | None = None,
+                         device: str | None = None) -> str:
     cancellation_id = process_registry_id or video_id
     reference = Path(path).resolve()
     digest = hashlib.sha256(reference.read_bytes()).hexdigest()
@@ -40,7 +41,9 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
             continue
     if model_root is None:
         raise RuntimeError("Cần cài Whisper Small hoặc Whisper Turbo để nhận dạng nội dung mẫu giọng.")
-    log_to_video(video_id, "[TTS][PREPARE] stage=transcribing_reference detail=Nhận dạng mẫu giọng trên CPU.")
+    recognition_device = "gpu" if device in {"gpu", "cuda", "cuda:0"} else "cpu"
+    log_to_video(video_id, f"[CLONE-ASR][START] model={model_name} device={recognition_device} "
+                 "detail=Nhận dạng nội dung mẫu giọng; đây không phải bước tạo giọng OmniVoice.")
     cache.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="clone-asr-", dir=TMP_DIR) as directory:
         root = Path(directory)
@@ -51,7 +54,8 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
                 {
                     "protocol_version": 1,
                     "operation": "reference_transcribe",
-                    "payload": {"audio_path": str(reference), "model_root": str(model_root)},
+                    "payload": {"audio_path": str(reference), "model_root": str(model_root),
+                                "device": recognition_device},
                     "response_path": str(response),
                     "status_path": str(root / "status.json"),
                 }
@@ -59,8 +63,10 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
             encoding="utf-8",
         )
         command = installed_engine_command(
-            "recognition", "transcribe", {"device": "cpu", "model": model_name}
-        ) or installed_engine_command("recognition", "transcribe", {"device": "gpu", "model": model_name})
+            "recognition", "transcribe", {"device": recognition_device, "model": model_name}
+        )
+        if not command and recognition_device == "cpu":
+            command = installed_engine_command("recognition", "transcribe", {"device": "gpu", "model": model_name})
         if not command:
             if getattr(sys, "frozen", False):
                 raise RuntimeError("Cần cài môi trường Whisper trong Gói tài nguyên để nhận dạng mẫu giọng.")
@@ -95,18 +101,36 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
         if not text:
             raise RuntimeError("Mẫu giọng chưa có lời nói rõ. Hãy thu lại 5–15 giây trong môi trường yên tĩnh.")
         cache.write_text(json.dumps({"text": text}, ensure_ascii=False), encoding="utf-8")
+        for line in stderr.splitlines():
+            if line.startswith("[CLONE-ASR]"):
+                log_to_video(video_id, line)
+        log_to_video(video_id, "[CLONE-ASR][DONE] Nội dung mẫu đã sẵn sàng; tiếp tục tạo giọng OmniVoice.")
         return text
 
 
-def recognize_reference(audio_path: str, model_root: str) -> str:
+def recognize_reference(audio_path: str, model_root: str, *, device: str = "cpu") -> str:
     from faster_whisper import WhisperModel
 
-    model = WhisperModel(
-        model_root,
-        device="cpu",
-        compute_type="int8",
-        local_files_only=True,
-        cpu_threads=max(1, min(4, (os.cpu_count() or 4) - 1)),
-    )
-    segments, _info = model.transcribe(audio_path, beam_size=3, vad_filter=True, condition_on_previous_text=False)
-    return " ".join(segment.text.strip() for segment in segments).strip()
+    def recognize(target):
+        model = WhisperModel(
+            model_root, device=target, compute_type="float16" if target == "cuda" else "int8",
+            local_files_only=True, cpu_threads=max(1, min(4, (os.cpu_count() or 4) - 1)),
+        )
+        print(f"[CLONE-ASR][DEVICE] device={target} compute_type={'float16' if target == 'cuda' else 'int8'}",
+              file=sys.stderr, flush=True)
+        segments, _info = model.transcribe(audio_path, beam_size=3, vad_filter=True, condition_on_previous_text=False)
+        return " ".join(segment.text.strip() for segment in segments).strip()
+
+    target = "cuda" if device == "gpu" else "cpu"
+    try:
+        return recognize(target)
+    except RuntimeError as exc:
+        # The small auxiliary ASR may share VRAM with a resident TTS worker.
+        # Only resource/CUDA availability failures permit a visible CPU retry.
+        if target != "cuda" or not any(token in str(exc).lower() for token in (
+            "out of memory", "cuda failed", "cublas", "cudnn", "cuda driver", "no cuda",
+        )):
+            raise
+        print("[CLONE-ASR][WARN] GPU không đủ tài nguyên hoặc chưa khả dụng; nhận dạng mẫu trên CPU. "
+              "Thiết bị tạo giọng OmniVoice không thay đổi.", file=sys.stderr, flush=True)
+        return recognize("cpu")

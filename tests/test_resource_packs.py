@@ -119,6 +119,24 @@ class ResourcePackManifestTests(unittest.TestCase):
 
 
 class ResourcePackManagerTests(unittest.TestCase):
+    def test_speaker_backend_remains_bundled_cpu_for_both_device_preferences(self):
+        manager = ResourcePackManager()
+        self.assertEqual(manager.required_packs("speaker", {"device": "cpu"}),
+                         ["engine-speaker-bundled", "model-speaker-identification"])
+        self.assertEqual(manager.required_packs("speaker", {"device": "gpu"}),
+                         ["engine-speaker-bundled", "model-speaker-identification"])
+        packs = manager.required_packs("voice", {"device": "gpu", "provider": "omnivoice", "speaker_mode": "multiple"})
+        self.assertIn("engine-cpu-py313", packs)
+        self.assertIn("engine-speaker-bundled", packs)
+        self.assertNotIn("engine-cuda128-py313", packs)
+        self.assertNotIn("engine-vision-onnx", packs)
+
+    def test_bundled_speaker_worker_has_a_frozen_entrypoint(self):
+        manager = ResourcePackManager()
+        with patch.object(sys, "frozen", True, create=True):
+            command = manager.engine_command("engine-speaker-bundled", "rpc_command")
+        self.assertEqual(command, [sys.executable, "--engine-worker", "--rpc"])
+
     def test_bundled_development_engine_still_runs_out_of_process(self):
         definition = ResourcePackDefinition(
             "engine-test",
@@ -162,7 +180,7 @@ class ResourcePackManagerTests(unittest.TestCase):
             self.assertEqual(len(pack_ids), len(set(pack_ids)))
             self.assertEqual(pack_ids, [
                 "model-whisper-small", "model-whisper-turbo",
-                "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice", "model-speaker-identification",
+                "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
             ])
             self.assertTrue(all("packIds" not in row for row in rows))
         finally:
@@ -250,6 +268,19 @@ class ResourcePackManagerTests(unittest.TestCase):
         manager = ResourcePackManager((definition,))
         with self.assertRaisesRegex(ResourcePackError, "manifest"):
             manager.install("engine-test", lambda *_args: None)
+
+    def test_model_download_runtime_respects_project_cpu_override_and_gpu_voice(self):
+        from haizflow.desktop.resource_pack_controller import ResourcePackController
+
+        manager = ResourcePackManager()
+        host = SimpleNamespace(_settings_processing_device="gpu", _speech_recognition_model="small-cpu",
+                               _tts_provider="omnivoice-gpu", _target_language="vi")
+        controller = SimpleNamespace(_host=host, manager=manager)
+        controller._display_context = lambda: ResourcePackController._display_context(controller)
+        self.assertEqual(ResourcePackController._supporting_packs(controller, "model-whisper-small"),
+                         ["engine-cpu-py313"])
+        self.assertEqual(ResourcePackController._supporting_packs(controller, "model-omnivoice"),
+                         ["engine-cuda128-py313"])
 
     def test_requirement_summary_uses_download_install_rollback_and_reserve(self):
         definition = ResourcePackDefinition(

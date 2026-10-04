@@ -252,7 +252,7 @@ def build_legacy_document(video) -> EditorDocument:
                 name="Nhạc nền",
                 duration_ms=duration_ms,
                 source_out_ms=duration_ms,
-                loop=True,
+                loop=bool(getattr(video, "background_music_loop", True)),
                 volume_percent=int(getattr(video, "background_music_volume", 30)),
             )
         )
@@ -420,7 +420,7 @@ def _reconcile_media_assets(video, document: EditorDocument) -> EditorDocument:
                     name="Nhạc nền",
                     duration_ms=changed.sequence.duration_ms,
                     source_out_ms=changed.sequence.duration_ms,
-                    loop=True,
+                    loop=bool(getattr(video, "background_music_loop", True)),
                     volume_percent=int(getattr(video, "background_music_volume", 30)),
                 )
             )

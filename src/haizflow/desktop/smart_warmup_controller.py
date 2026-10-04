@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 from haizflow.core.hardware import available_memory_bytes, runtime_profile
-from haizflow.core.model_choices import project_model_defaults, recognition_context
+from haizflow.core.model_choices import project_model_defaults, project_recognition_choice, recognition_context
 from haizflow.services.external_engine import close_shared_external_engine_pool, shared_external_engine_pool
 
 
@@ -81,7 +81,8 @@ class SmartWarmupController:
             return
         context = {
             "device": str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu"),
-            "model": str(getattr(video, "speech_recognition_model", "small") or "small"),
+            "model": project_recognition_choice(str(getattr(video, "speech_recognition_model", "small") or "small"),
+                         str(getattr(self._host, "_settings_processing_device", "cpu") or "cpu")),
             "source_language": str(getattr(video, "source_language", "auto") or "auto"),
             "language": str(getattr(video, "target_language", "") or ""),
             "provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),

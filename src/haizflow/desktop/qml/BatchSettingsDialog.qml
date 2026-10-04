@@ -84,7 +84,7 @@ FloatingToolDialog {
             .filter(item => item.voice !== "omnivoice:clone");
         if (root.draftVoiceReferencePath.length > 0)
             voices.push({"voice": "omnivoice:clone", "label": qsTr("Giọng đã nhân bản"),
-                "category": "clone", "categoryLabel": qsTr("Giọng của tôi"), "available": true, "previewAvailable": true});
+                "category": "clone", "categoryLabel": qsTr("Giọng của tôi"), "available": true, "previewAvailable": false});
         return voices;
     }
 
@@ -249,12 +249,15 @@ FloatingToolDialog {
                     color: Theme.text
                     font.pixelSize: Theme.caption
                     font.weight: Font.DemiBold
+                    wrapMode: Text.Wrap
                 }
                 Text {
+                    Layout.fillWidth: true
                     text: root.replaceOverrides ? qsTr("Sẽ thay thế cài đặt riêng sau khi xác nhận")
                         : qsTr("Cài đặt riêng của từng video được giữ nguyên")
                     color: Theme.interactive
                     font.pixelSize: Theme.label
+                    wrapMode: Text.Wrap
                 }
             }
         }
@@ -271,7 +274,7 @@ FloatingToolDialog {
             ProcessingSettingsForm {
                 id: settingsForm
                 width: settingsScroll.width
-                editable: true
+                editable: !AppController.isBatchRunning
                 cpuOnly: AppController.cpuOnly
                 hasSource: AppController.batchCount > 0 && AppController.videoPath.length > 0
                 showCloneAction: true
@@ -360,6 +363,7 @@ FloatingToolDialog {
             visible: root.settingOverrides.length > 0
             text: qsTr("Thay thế cả cài đặt riêng bằng cài đặt chung")
             checked: root.replaceOverrides
+            enabled: !AppController.isBatchRunning
             onToggled: root.replaceOverrides = checked
         }
         RowLayout {
@@ -369,6 +373,7 @@ FloatingToolDialog {
             StudioButton {
                 text: qsTr("Áp dụng")
                 variant: "primary"
+                enabled: !AppController.isBatchRunning
                 onClicked: if (root.saveDraft()) root.close()
             }
         }
@@ -494,6 +499,18 @@ FloatingToolDialog {
         id: batchSubtitlePreviewDialogLoader
         sourceComponent: Component {
             SubtitlePreviewDialog {
+                appearance: Object.assign({}, root.draftSubtitleStyle, {
+                    font_size: root.draftSubtitleFontSize, outline: root.draftSubtitleOutline
+                })
+                coverEnabled: root.draftRemoveOriginalSubtitles
+                autoAlignToCover: !root.draftSubtitleManual
+                coverLayout: (AppController.reviewPreviewMedia || ({})).subtitleAutoCoverLayout || ({})
+                onAutoAlignmentEdited: function(enabled) { root.draftSubtitleManual = !enabled; }
+                onSubtitleAppearanceEdited: function(patch) {
+                    root.draftSubtitleStyle = Object.assign({}, root.draftSubtitleStyle, patch);
+                    if (patch.font_size !== undefined) root.draftSubtitleFontSize = Number(patch.font_size);
+                    if (patch.outline !== undefined) root.draftSubtitleOutline = Number(patch.outline);
+                }
                 onClosed: batchSubtitlePreviewDialogLoader.release()
                 onSubtitleLayoutEdited: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
                     root.draftSubtitleFontSize = fontSize

@@ -37,6 +37,7 @@ Rectangle {
         && (!hasRemotePost || ["failed", "partial", "draft"].includes(publishStatus))
         && !AppController.tiktokPublishBusy && !AppController.zernioAccountSyncing
         && AppController.zernioApiKeyVerified && AppController.zernioAccountReady
+        && !AppController.zernioCredentialBusy
     readonly property string statusLabel: published ? (awaitingUrl ? qsTr("Đang lấy liên kết") : "")
         : working ? (publishStatus === "uploading" && uploadProgress > 0
             ? qsTr("Đang tải lên %1%").arg(uploadProgress)
