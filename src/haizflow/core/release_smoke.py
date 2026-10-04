@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from haizflow.core.paths import bundle_root, project_root
+from haizflow.core.paths import bundle_root, project_root, install_root
 
 
 def _check(condition: bool, message: str, failures: list[str], details: list[str]) -> None:
@@ -97,7 +97,7 @@ def run_release_smoke(
         _check(path.exists(), label, failures, details)
     if installed_layout:
         _check(
-            (artifact / "runtime").is_dir(),
+            (install_root() / "runtime").is_dir(),
             "Installer-created mutable runtime directory",
             failures,
             details,

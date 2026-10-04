@@ -86,6 +86,13 @@ ManualSubtitleEditorDialog {
         editor = window.findChild(QQuickItem, "manualSubtitleTextInput")
         save = window.findChild(QQuickItem, "manualSubtitleSaveButton")
         self.assertGreater(save.width(), 0)
+        self.assertFalse(save.isEnabled())
+        editor.setProperty("text", "Đổi rồi hoàn tác")
+        QTest.qWait(20)
+        self.assertTrue(save.isEnabled())
+        editor.setProperty("text", "Đoạn đầu")
+        QTest.qWait(20)
+        self.assertFalse(save.isEnabled())
         original_x = save.mapToScene(QPointF()).x()
         self.assertGreater(original_x, dialog.property("x") + dialog.property("width") * 0.7)
         for index, text in enumerate(("Nội dung mới tiếng Việt", "Chỉnh thêm lần nữa", "Phụ đề thứ hai")):
@@ -94,18 +101,86 @@ ManualSubtitleEditorDialog {
                                                 "revision": 1, "start": 3, "end": 5})
                 dialog.setProperty("selectedIndex", 1)
                 QTest.qWait(40)
+                self.assertFalse(save.isEnabled())
             editor.setProperty("text", text)
             QTest.qWait(40)
+            self.assertTrue(save.isEnabled())
             self.assertAlmostEqual(save.mapToScene(QPointF()).x(), original_x, delta=1)
             save.clicked.emit()
             QTest.qWait(60)
             self.assertTrue(dialog.property("visible"))
             self.assertEqual(dialog.property("segment").toVariant()["text"], text)
             self.assertEqual(editor.property("text"), text)
+            self.assertFalse(save.isEnabled())
             self.assertAlmostEqual(save.mapToScene(QPointF()).x(), original_x, delta=1)
         save.clicked.emit()  # Saving unchanged text must also stay open.
         QTest.qWait(40)
         self.assertTrue(dialog.property("visible"))
+
+    def test_manual_history_group_is_centered_independently_of_title_and_export(self):
+        window = self.create_window('''
+ManualEditorToolbar {
+    objectName: "toolbar"; width: parent.width; hasVideo: true
+    projectTitle: "Tên dự án dài để kiểm tra căn giữa độc lập"
+}
+''')
+        group = window.findChild(QQuickItem, "manualHistoryGroup")
+        export = window.findChild(QQuickItem, "manualExportButton")
+        for width in (800, 1120, 1600):
+            window.setWidth(width)
+            QTest.qWait(30)
+            self.assertAlmostEqual(group.mapToScene(QPointF()).x() + group.width() / 2,
+                                   width / 2, delta=1)
+            self.assertLess(group.mapToScene(QPointF()).x() + group.width(),
+                            export.mapToScene(QPointF()).x())
+
+    def test_auto_settings_fit_without_any_scrolling(self):
+        controller = QQmlPropertyMap()
+        values = {
+            "processingDevice": "cpu", "canEditSelectedVideo": True, "cpuOnly": True,
+            "hasSelectedVideo": False, "isSelectedVideoQueued": False, "videoPath": "",
+            "speechRecognitionModel": "small", "translationModel": "auto", "targetLanguage": "vi",
+            "ttsProvider": "edge", "ttsVoice": "", "speakerMode": "single", "watermarkKind": "text",
+            "removeOriginalSubtitles": True, "originalSubtitleRemovalMode": "patch",
+            "enableAudioSeparation": True, "backgroundMusicPath": "", "backgroundMusicLoop": True,
+            "audioDuckingEnabled": False, "audioDuckingReductionDb": -12,
+            "audioPreviewSource": "", "audioPreviewState": "idle", "watermarkText": "",
+            "watermarkImagePath": "", "watermarkVideoPath": "",
+            "speechRecognitionModelIndex": 0, "ttsProviderIndex": 0,
+        }
+        for name in ("speechRecognitionModelOptions", "targetLanguageOptions", "ttsProviderOptions", "ttsVoiceOptions"):
+            values[name] = []
+        for filename in ("CreateVideoPage.qml", "SourceMediaPanel.qml", "VideoCommandBar.qml"):
+            for name in re.findall(r"AppController\.([A-Za-z]\w*)", (QML_DIR / filename).read_text(encoding="utf-8")):
+                values.setdefault(name, "")
+        for name, value in values.items():
+            controller.insert(name, value)
+        self.engine.rootContext().setContextProperty("AppController", controller)
+        window = self.create_window('CreateVideoPage { objectName: "autoPage"; width: parent.width; height: parent.height - 74; y: 40 }')
+        form = window.findChild(QQuickItem, "autoProcessingSettingsForm")
+        previous_spacing = 0
+        for width, height in ((1120, 720), (1440, 900), (1706, 960)):
+            window.setWidth(width)
+            window.setHeight(height)
+            QTest.qWait(40)
+            spacing = form.property("mediaSpacing")
+            self.assertGreater(spacing, previous_spacing)
+            previous_spacing = spacing
+            panel = form.parentItem().parentItem().parentItem()
+            self.assertAlmostEqual(form.mapToScene(QPointF()).y() - panel.mapToScene(QPointF()).y(),
+                                   12, delta=1)
+            self.assertLessEqual(form.mapToScene(QPointF(0, form.height())).y(),
+                                 window.height() - 34 - 44 - 12 - 16)
+            page = window.findChild(QQuickItem, "autoPage")
+            for child in page.findChildren(QQuickItem):
+                self.assertNotIn("Flickable", child.metaObject().className())
+            preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
+            if preview_directory:
+                window.grabWindow().save(str(Path(preview_directory) / f"auto-settings-{width}.png"))
+            controller.insert("backgroundMusicPath", "D:/music.mp3")
+            controller.insert("audioDuckingEnabled", True)
+            QTest.qWait(30)
+            self.assertLessEqual(form.mapToScene(QPointF(0, form.height())).y(), window.height() - 34 - 44 - 12 - 16)
 
     def test_labeled_buttons_drop_redundant_icons_but_icon_only_actions_remain(self):
         window = self.create_window('''
@@ -303,8 +378,7 @@ CopyrightDialog { id: dialog; Component.onCompleted: open(); }
         secret = window.findChild(QQuickItem, "apiKeySecretInput")
         save = window.findChild(QQuickItem, "saveApiKeyButton")
         status = window.findChild(QQuickItem, "credentialStatus")
-        dot = window.findChild(QQuickItem, "credentialStatusDot")
-        self.assertFalse(dot.isVisible())
+        self.assertIsNone(window.findChild(QQuickItem, "credentialStatusDot"))
         self.assertFalse(save.isEnabled())
         self.assertFalse(secret.hasActiveFocus())
         echo_mode, _ = QQmlExpression(self.engine.rootContext(), secret, "Number(echoMode)").evaluate()
@@ -333,28 +407,42 @@ CopyrightDialog { id: dialog; Component.onCompleted: open(); }
         self.assertIn("Đang kiểm tra", status.property("text"))
         controller.checking = False
         controller.configured = True
-        controller.social_keys = [dict(id="social", label="Đăng bài", active=True)]
+        controller.social_keys = [dict(id="social", label="Đăng bài", active=True, check_result="verified"),
+                                  dict(id="second", label="Dự phòng", active=False, check_result="invalid")]
         controller.verified = True
         controller.result = "verified"
         controller.changed.emit()
         QTest.qWait(50)
-        self.assertEqual("Kiểm tra thành công", status.property("text"))
+        self.assertFalse(status.isVisible())
+        def visual_find(item, object_name):
+            if item.objectName() == object_name:
+                return item
+            for child in item.childItems():
+                found = visual_find(child, object_name)
+                if found is not None:
+                    return found
+            return None
+        dot = visual_find(window.contentItem(), "zernioKeyStatusDot_social")
+        failed_dot = visual_find(window.contentItem(), "zernioKeyStatusDot_second")
         self.assertTrue(dot.isVisible())
+        self.assertTrue(failed_dot.isVisible())
         success_color = dot.property("color")
+        self.assertNotEqual(success_color, failed_dot.property("color"))
         self.assertLess(save.mapToScene(QPointF()).y() + save.height(), window.height())
         preview_directory = os.environ.get("HAIZFLOW_UI_PREVIEWS")
         if preview_directory:
             window.grabWindow().save(str(Path(preview_directory) / "zernio-api-settings.png"))
         # A failed replacement attempt must not inherit the old key's green state.
+        page.setProperty("editingKey", True)
         controller.result = "invalid"
         controller.changed.emit()
         QTest.qWait(30)
         self.assertIn("Kiểm tra thất bại", status.property("text"))
-        self.assertNotEqual(success_color, dot.property("color"))
+        self.assertEqual(success_color, dot.property("color"))  # The saved key is unchanged.
         controller.checking = True
         controller.changed.emit()
         QTest.qWait(30)
-        self.assertFalse(dot.isVisible())
+        self.assertFalse(status.isVisible())
         controller.checking = False
         controller.result = "verified"
         controller.changed.emit()

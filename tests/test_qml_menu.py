@@ -718,18 +718,17 @@ ApplicationWindow {{
         self.assertIn("AppController.originalVolume / 100.0", audio_dialog)
         self.assertIn("AppController.ttsVolume / 100.0", audio_dialog)
         self.assertIn("AppController.backgroundMusicVolume / 100.0", audio_dialog)
-        # The desktop workspace is fixed; only compact layouts may scroll the
-        # page while the individual panels keep their own local overflow.
-        self.assertIn("interactive: !root.wideLayout", create_page)
-        self.assertIn("policy: root.wideLayout ? ScrollBar.AlwaysOff", create_page)
-        self.assertIn("Flickable {", setup)
+        self.assertNotIn("Flickable {", create_page)
+        self.assertNotIn("ScrollBar", create_page)
+        self.assertNotIn("Flickable {", setup)
+        self.assertIn("availableHeight:", setup)
 
     def test_workspace_keeps_one_progress_card_and_moves_logs_to_header_menu(self):
         create_page = (QML_DIR / "CreateVideoPage.qml").read_text(encoding="utf-8")
         log_dialog = (QML_DIR / "ActivityLogDialog.qml").read_text(encoding="utf-8")
 
         self.assertIn("Layout.preferredWidth: root.wideLayout ? 1040 : 600", create_page)
-        self.assertIn("Layout.maximumWidth: root.wideLayout ? 440", create_page)
+        self.assertIn("Layout.maximumWidth: root.wideLayout ? 400", create_page)
         self.assertNotIn("ActivityFeed {", create_page)
         self.assertNotIn("ActivityTray {", create_page)
         self.assertIn("showTechnicalLog: true", create_page)

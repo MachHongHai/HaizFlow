@@ -10,6 +10,11 @@ GridLayout {
     property bool hasSource: false
     property bool showCloneAction: false
     property bool showMusicPlaybackSettings: true
+    property real availableHeight: 0
+    readonly property real voiceSpacing: Math.max(Theme.space8, Math.min(Theme.space20,
+        Theme.space8 + (availableHeight - 500) / 18))
+    readonly property real mediaSpacing: Math.max(6, Math.min(Theme.space16,
+        6 + (availableHeight - 500) / 24))
     property string speechRecognitionModel: "small"
     property string translationModel: "auto"
     property var speechRecognitionOptions: []
@@ -58,7 +63,7 @@ GridLayout {
     signal watermarkKindEdited(string value)
     signal watermarkRequested()
 
-    columns: width >= 760 ? 2 : 1
+    columns: width >= 650 ? 2 : 1
     columnSpacing: Theme.space20
     rowSpacing: Theme.space16
 
@@ -75,7 +80,7 @@ GridLayout {
             anchors.top: parent.top
             anchors.leftMargin: Theme.space4
             anchors.rightMargin: Theme.space4
-            spacing: Theme.space8
+            spacing: root.voiceSpacing
 
             Text {
                 text: qsTr("Ngôn ngữ và giọng")
@@ -189,7 +194,7 @@ GridLayout {
             anchors.top: parent.top
             anchors.leftMargin: Theme.space4
             anchors.rightMargin: Theme.space4
-            spacing: Theme.space8
+            spacing: root.mediaSpacing
 
             Text {
                 text: qsTr("Hình ảnh và âm thanh")
@@ -201,9 +206,17 @@ GridLayout {
 
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
-            SettingLabel {
+            RowLayout {
                 Layout.fillWidth: true
-                text: qsTr("Phụ đề gốc")
+                SettingLabel {
+                    Layout.fillWidth: true
+                    text: qsTr("Phụ đề gốc")
+                }
+                StudioButton {
+                    text: qsTr("Chỉnh phụ đề")
+                    enabled: root.editable && root.hasSource
+                    onClicked: root.subtitleLayoutRequested()
+                }
             }
             SegmentedControl {
                 Layout.fillWidth: true
@@ -217,32 +230,25 @@ GridLayout {
                 onActivated: function(value) { root.removeOriginalSubtitlesEdited(value === "remove") }
             }
 
-            SettingLabel {
+            RowLayout {
                 Layout.fillWidth: true
                 visible: root.removeOriginalSubtitles
-                text: qsTr("Cách xóa")
-                helpText: qsTr("Làm mờ làm nhòe chữ được nhận diện. Vá nền dùng vùng ảnh sạch lân cận để lấp chữ.")
-            }
-            SegmentedControl {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 38
-                visible: root.removeOriginalSubtitles
-                enabled: root.editable
-                currentValue: root.subtitleRemovalMode
-                options: [
-                    { "label": qsTr("Làm mờ"), "value": "blur" },
-                    { "label": qsTr("Vá nền lân cận"), "value": "patch" }
-                ]
-                onActivated: function(value) { root.subtitleRemovalModeEdited(value) }
-            }
-
-            StudioButton {
-                Layout.alignment: Qt.AlignRight
-                text: qsTr("Chỉnh phụ đề")
-                compact: true
-                variant: "secondary"
-                enabled: root.editable && root.hasSource
-                onClicked: root.subtitleLayoutRequested()
+                spacing: Theme.space8
+                SettingLabel {
+                    text: qsTr("Cách xóa")
+                    helpText: qsTr("Làm mờ làm nhòe chữ được nhận diện. Vá nền dùng vùng ảnh sạch lân cận để lấp chữ.")
+                }
+                SegmentedControl {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 38
+                    enabled: root.editable
+                    currentValue: root.subtitleRemovalMode
+                    options: [
+                        { "label": qsTr("Làm mờ"), "value": "blur" },
+                        { "label": qsTr("Vá nền lân cận"), "value": "patch" }
+                    ]
+                    onActivated: function(value) { root.subtitleRemovalModeEdited(value) }
+                }
             }
 
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
@@ -282,19 +288,12 @@ GridLayout {
                 wrapMode: Text.WordWrap
             }
 
-            SettingLabel {
-                Layout.fillWidth: true
-                text: qsTr("Nhạc nền")
-            }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space8
-                Text {
+                SettingLabel {
                     Layout.fillWidth: true
-                    text: root.backgroundMusicPath.length > 0 ? root.backgroundMusicPath : qsTr("Chưa có nhạc nền")
-                    color: root.backgroundMusicPath.length > 0 ? Theme.text : Theme.textMuted
-                    font.pixelSize: Theme.label
-                    elide: Text.ElideMiddle
+                    text: qsTr("Nhạc nền")
                 }
                 StudioButton { text: qsTr("Tệp"); enabled: root.editable; onClicked: root.backgroundMusicFileRequested() }
                 StudioButton { text: qsTr("Liên kết"); enabled: root.editable; onClicked: root.backgroundMusicLinkRequested() }
@@ -307,8 +306,17 @@ GridLayout {
                 }
             }
 
+            Text {
+                Layout.fillWidth: true
+                text: root.backgroundMusicPath.length > 0 ? root.backgroundMusicPath : qsTr("Chưa có nhạc nền")
+                color: root.backgroundMusicPath.length > 0 ? Theme.text : Theme.textMuted
+                font.pixelSize: Theme.label
+                elide: Text.ElideMiddle
+            }
+
             MusicPlaybackSettings {
                 Layout.fillWidth: true
+                compact: root.availableHeight < 580
                 visible: root.showMusicPlaybackSettings
                 editable: root.editable
                 hasMusic: root.backgroundMusicPath.length > 0
@@ -321,9 +329,18 @@ GridLayout {
                 onMusicRequired: AppController.appAlertRequested(qsTr("Nhạc nền"), qsTr("Hãy nhập nhạc nền trước."), "info")
             }
 
-            SettingLabel {
+            RowLayout {
                 Layout.fillWidth: true
-                text: qsTr("Watermark")
+                SettingLabel {
+                    Layout.fillWidth: true
+                    text: qsTr("Watermark")
+                }
+                StudioButton {
+                    objectName: "autoWatermarkEditButton"
+                    text: qsTr("Chỉnh sửa")
+                    enabled: root.editable
+                    onClicked: root.watermarkRequested()
+                }
             }
             SegmentedControl {
                 Layout.fillWidth: true
@@ -352,12 +369,6 @@ GridLayout {
                         ? Theme.text : Theme.textMuted
                     font.pixelSize: Theme.label
                     elide: Text.ElideRight
-                }
-                StudioButton {
-                    text: qsTr("Chỉnh sửa")
-                    compact: true
-                    enabled: root.editable
-                    onClicked: root.watermarkRequested()
                 }
             }
         }

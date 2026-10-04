@@ -9,12 +9,13 @@ ColumnLayout {
     property bool hasMusic: false
     property bool loopMusic: true
     property bool ducking: false
+    property bool compact: false
     property int reductionDb: -12
     signal loopEdited(bool value)
     signal duckingEdited(bool value)
     signal reductionEdited(int value)
     signal musicRequired()
-    spacing: Theme.space8
+    spacing: root.compact ? Theme.space4 : Theme.space8
 
     Repeater {
         model: [qsTr("Lặp nhạc nền"), qsTr("Tự giảm nhạc khi có lời")]
@@ -23,6 +24,7 @@ ColumnLayout {
             required property int index
             required property string modelData
             Layout.fillWidth: true
+            Layout.minimumHeight: root.compact ? 30 : 40
             label: modelData
             contentItem: Item {
                 implicitWidth: 48
@@ -44,6 +46,7 @@ ColumnLayout {
     }
     PropertyRow {
         Layout.fillWidth: true
+        Layout.minimumHeight: root.compact ? 30 : 40
         visible: root.hasMusic && root.ducking
         label: qsTr("Mức giảm")
         contentItem: NumericField {

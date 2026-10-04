@@ -242,7 +242,7 @@ AppDialog {
                 : subtitleEditor.saveStatus === "error"
                 ? subtitleEditor.errorMessage || qsTr("Không lưu được")
                 : subtitleEditor.saveStatus === "saving" ? qsTr("Đang lưu…")
-                : qsTr("Chưa lưu")
+                : ""
             color: subtitleEditor.saveStatus === "error" ? Theme.danger : Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.metadata
@@ -259,7 +259,7 @@ AppDialog {
             objectName: "manualSubtitleSaveButton"
             text: subtitleEditor.saveStatus === "error" ? qsTr("Thử lưu") : qsTr("Lưu")
             variant: "primary"
-            enabled: root.segment && subtitleEditor.saveStatus !== "saving"
+            enabled: subtitleEditor.canSave
             onClicked: subtitleEditor.apply()
         }
     }

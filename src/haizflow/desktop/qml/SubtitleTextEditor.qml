@@ -23,6 +23,8 @@ ColumnLayout {
     property string errorMessage: ""
     property int minimumEditorHeight: 220
     property int editorFontSize: TypeScale.body
+    readonly property bool hasChanges: editingId === segmentId && editor.text !== committedText
+    readonly property bool canSave: segmentId.length > 0 && hasChanges && saveStatus !== "saving"
     signal commitRequested(string segmentId, string text, int revision, string requestId)
     signal draftChanged(string segmentId, string text, int revision)
     signal draftCleared(string segmentId)

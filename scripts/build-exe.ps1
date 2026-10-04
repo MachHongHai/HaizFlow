@@ -2,15 +2,19 @@ param(
   [switch]$SkipFrozenSmokeTest,
   [switch]$AllowDirtyBuild,
   [switch]$AllowUnsigned,
+  [switch]$CoreLayout,
+  [string]$PythonExecutable = "",
   [string]$SignCertificatePath = "",
   [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
-$Python = Join-Path $Root ".venv\Scripts\python.exe"
+$Python = if ($PythonExecutable) { [System.IO.Path]::GetFullPath($PythonExecutable) } else { Join-Path $Root ".venv\Scripts\python.exe" }
+$BuildEnvironment = Split-Path -Parent (Split-Path -Parent $Python)
 $DistRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "dist"))
-$ArtifactPath = [System.IO.Path]::GetFullPath((Join-Path $DistRoot "HaizFlow"))
+$ArtifactName = if ($CoreLayout) { "HaizFlowCore" } else { "HaizFlow" }
+$ArtifactPath = [System.IO.Path]::GetFullPath((Join-Path $DistRoot $ArtifactName))
 $PyInstallerRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "build\pyinstaller"))
 $PyInstallerWorkPath = Join-Path $PyInstallerRoot "work"
 $PyInstallerSpecPath = Join-Path $PyInstallerRoot "spec"
@@ -108,7 +112,7 @@ Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "generate-version-res
 if ($LASTEXITCODE -ne 0) {
   throw "Source test and QML lint gate failed with exit code $LASTEXITCODE."
 }
-Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-runtime.py"), "--for-build", "--profile", "core") -Label "Core runtime verification"
+Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-runtime.py"), "--for-build", "--profile", "core", "--environment-root", $BuildEnvironment) -Label "Core runtime verification"
 $ResourceManifestArguments = @(
   (Join-Path $PSScriptRoot "verify-resource-pack-manifest.py"),
   "--manifest", $ResourcePackManifestPath
@@ -159,7 +163,7 @@ $ArgsList = @(
   "--clean",
   "--windowed",
   "--onedir",
-  "--name", "HaizFlow",
+  "--name", $ArtifactName,
   "--distpath", $DistRoot,
   "--workpath", $PyInstallerWorkPath,
   "--specpath", $PyInstallerSpecPath,
@@ -297,7 +301,7 @@ finally {
   $env:PATH = $PreviousPath
 }
 
-if (!(Test-Path -LiteralPath (Join-Path $ArtifactPath "HaizFlow.exe") -PathType Leaf)) {
+if (!(Test-Path -LiteralPath (Join-Path $ArtifactPath "$ArtifactName.exe") -PathType Leaf)) {
   throw "PyInstaller did not create the expected artifact: $ArtifactPath"
 }
 
@@ -405,7 +409,7 @@ foreach ($Library in $ForbiddenRootLibraries) {
   }
 }
 
-Sign-ReleaseExecutable -Executable (Join-Path $ArtifactPath "HaizFlow.exe")
+Sign-ReleaseExecutable -Executable (Join-Path $ArtifactPath "$ArtifactName.exe")
 
 Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination (Join-Path $ArtifactPath "LICENSE.txt") -Force
 Copy-Item -LiteralPath (Join-Path $Root "NOTICE") -Destination (Join-Path $ArtifactPath "NOTICE.txt") -Force

@@ -93,8 +93,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     artifact = args.artifact.resolve()
-    if not (artifact / "HaizFlow.exe").is_file():
-        raise SystemExit(f"Frozen artifact is missing HaizFlow.exe: {artifact}")
+    if not any((artifact / name).is_file() for name in ("HaizFlow.exe", "HaizFlowCore.exe")):
+        raise SystemExit(f"Frozen artifact is missing its executable: {artifact}")
     if args.write:
         payload, serialized_payload = requirements_with_embedded_manifest(
             artifact,

@@ -53,6 +53,7 @@ def check(condition: bool, message: str, failures: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate the HaizFlow source/build runtime.")
     parser.add_argument("--for-build", action="store_true")
+    parser.add_argument("--environment-root", type=Path, default=ROOT / ".venv")
     parser.add_argument(
         "--profile",
         choices=("core", "full"),
@@ -79,7 +80,7 @@ def main() -> int:
     )
 
     check(sys.version_info[:2] == (3, 13), f"Python {sys.version.split()[0]}", failures)
-    expected_venv = (ROOT / ".venv").resolve()
+    expected_venv = args.environment_root.resolve()
     check(Path(sys.prefix).resolve() == expected_venv, f"Project virtual environment: {expected_venv}", failures)
 
     for distribution, expected in expected_packages().items():

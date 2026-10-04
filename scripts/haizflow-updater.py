@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from haizflow.update.state import Layout
 from haizflow.update.updater import run_request
+from haizflow.update.bootstrap import report_error
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
@@ -16,11 +17,13 @@ if __name__ == "__main__":
         if args.recover:
             layout = Layout(args.install_root)
             with layout.lock():
-                print(layout.recover())
+                result = layout.recover()
+                if sys.stdout is not None:
+                    print(result)
         elif args.request_token:
             run_request(args.install_root, args.request_token)
         else:
             parser.error("--request-token or --recover is required")
     except (OSError, ValueError) as error:
-        print(str(error), file=sys.stderr)
+        report_error(str(error))
         raise SystemExit(1)

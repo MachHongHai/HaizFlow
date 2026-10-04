@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -15,11 +14,6 @@ Item {
     readonly property bool editingBatchVideo: AppController.isSelectedBatchVideo
     readonly property bool wideLayout: width >= 980
     readonly property ActivityLogDialog technicalLogDialog: technicalLogLoader.item as ActivityLogDialog
-
-    onWideLayoutChanged: {
-        if (wideLayout)
-            workspaceScroll.contentY = 0
-    }
 
     opacity: visible ? 1 : 0
     transform: Translate {
@@ -35,7 +29,7 @@ Item {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: UiMetrics.pageMargin
-        spacing: Theme.space16
+        spacing: Theme.space12
 
         PageHeader {
             Layout.fillWidth: true
@@ -74,24 +68,17 @@ Item {
             }
         }
 
-        Flickable {
-            id: workspaceScroll
+        Item {
+            id: workspaceBody
 
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 0
-            clip: true
-            contentWidth: width
-            contentHeight: root.wideLayout ? height : workspaceGrid.implicitHeight
-            boundsBehavior: Flickable.StopAtBounds
-            flickableDirection: Flickable.VerticalFlick
-            interactive: !root.wideLayout
 
             GridLayout {
                 id: workspaceGrid
 
-                width: workspaceScroll.width
-                height: root.wideLayout ? workspaceScroll.height : implicitHeight
+                anchors.fill: parent
                 columns: 2
                 columnSpacing: Theme.space12
                 rowSpacing: Theme.space12
@@ -102,9 +89,9 @@ Item {
                     Layout.columnSpan: root.wideLayout ? 1 : 2
                     Layout.fillWidth: true
                     Layout.fillHeight: false
-                    Layout.minimumWidth: root.wideLayout ? 340 : 0
-                    Layout.preferredWidth: root.wideLayout ? 380 : 600
-                    Layout.maximumWidth: root.wideLayout ? 440 : 16777215
+                    Layout.minimumWidth: root.wideLayout ? 280 : 0
+                    Layout.preferredWidth: root.wideLayout ? 320 : 600
+                    Layout.maximumWidth: root.wideLayout ? 400 : 16777215
                     Layout.minimumHeight: implicitHeight
                     Layout.preferredHeight: implicitHeight
                     Layout.alignment: Qt.AlignTop
@@ -122,15 +109,12 @@ Item {
                     Layout.fillHeight: true
                     Layout.minimumWidth: root.wideLayout ? 650 : 0
                     Layout.preferredWidth: root.wideLayout ? 1040 : 600
-                    Layout.minimumHeight: 440
+                    Layout.minimumHeight: implicitHeight
                     Layout.preferredHeight: root.wideLayout ? 650 : 620
                 }
 
             }
 
-            ScrollBar.vertical: ScrollBar {
-                policy: root.wideLayout ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
-            }
         }
 
         VideoCommandBar {

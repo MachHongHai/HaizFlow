@@ -38,25 +38,26 @@ Rectangle {
         color: Theme.divider
     }
 
-    RowLayout {
-        anchors.fill: parent
+    Text {
+        anchors.left: parent.left
         anchors.leftMargin: Theme.space16
-        anchors.rightMargin: Theme.space12
-        spacing: Theme.space8
+        anchors.verticalCenter: parent.verticalCenter
+        width: Math.max(0, historyGroup.x - Theme.space16 * 2)
+        text: root.projectTitle
+        color: Theme.text
+        font.family: Theme.fontFamily
+        font.pixelSize: TypeScale.control
+        font.weight: Font.DemiBold
+        elide: Text.ElideMiddle
+        textFormat: Text.PlainText
+        Accessible.name: root.projectTitle
+    }
 
-        Text {
-            Layout.fillWidth: true
-            Layout.minimumWidth: 100
-            Layout.maximumWidth: Math.max(140, root.width * 0.28)
-            text: root.projectTitle
-            color: Theme.text
-            font.family: Theme.fontFamily
-            font.pixelSize: TypeScale.control
-            font.weight: Font.DemiBold
-            elide: Text.ElideMiddle
-            textFormat: Text.PlainText
-            Accessible.name: root.projectTitle
-        }
+    RowLayout {
+        id: historyGroup
+        objectName: "manualHistoryGroup"
+        anchors.centerIn: parent
+        spacing: Theme.space8
 
         StudioIconButton {
             objectName: "manualUndoButton"
@@ -88,8 +89,13 @@ Rectangle {
             toolTipText: qsTr("Hiện hoặc ẩn video nguồn")
             onClicked: root.compareToggled()
         }
+    }
 
-        Item { Layout.fillWidth: true }
+    RowLayout {
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.space12
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: Theme.space8
 
         StudioButton {
             objectName: "manualExportButton"

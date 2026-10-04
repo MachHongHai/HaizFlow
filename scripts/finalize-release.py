@@ -94,7 +94,7 @@ def _require_build_value(build_info: dict[str, object], name: str, expected: obj
         )
 
 
-def verify_installer_eligibility(artifact_directory: Path) -> None:
+def verify_installer_eligibility(artifact_directory: Path, *, engineering: bool = False) -> None:
     """Reject a stale, partial, dirty, or differently-versioned frozen build.
 
     A checksum proves files did not change after finalization. This gate also
@@ -135,7 +135,7 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
         raise RuntimeError("Cannot establish the current Git commit; refusing installer packaging.")
     if current_status == "unknown":
         raise RuntimeError("Cannot establish Git worktree status; refusing installer packaging.")
-    if current_status:
+    if current_status and not engineering:
         raise RuntimeError("Git worktree is dirty; refusing installer packaging.")
 
     for name, expected in (
@@ -143,7 +143,7 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
         ("version", _release_version()),
         ("build_id", f"{_release_version()}+{current_commit[:12]}"),
         ("git_commit", current_commit),
-        ("git_dirty", False),
+        ("git_dirty", bool(current_status) if engineering else False),
         ("packaging", "PyInstaller onedir"),
         ("model_delivery", "resource-packs"),
         ("model_storage", "external-resource-root"),
@@ -169,7 +169,10 @@ def verify_installer_eligibility(artifact_directory: Path) -> None:
     ):
         _require_build_value(build_info, name, expected)
 
-    required_paths = (artifact / "HaizFlow.exe",)
+    entrypoint = build_info.get("entrypoint", "HaizFlow.exe")
+    if entrypoint not in {"HaizFlow.exe", "HaizFlowCore.exe"}:
+        raise RuntimeError("Invalid frozen entrypoint.")
+    required_paths = (artifact / entrypoint,)
     missing = [str(path.relative_to(artifact)) for path in required_paths if not path.is_file()]
     if missing:
         raise RuntimeError(f"Required release payload is missing: {', '.join(missing)}")
@@ -229,6 +232,8 @@ def finalize(artifact_directory: Path) -> None:
     artifact = artifact_directory.resolve()
     executable = artifact / "HaizFlow.exe"
     if not executable.is_file():
+        executable = artifact / "HaizFlowCore.exe"
+    if not executable.is_file():
         raise RuntimeError(f"Frozen executable is missing: {executable}")
 
     if str(SRC) not in sys.path:
@@ -278,6 +283,7 @@ def finalize(artifact_directory: Path) -> None:
             language: digest for language, (_bundle_name, _filename, _size, digest) in ALIGNMENT_MODELS.items()
         },
         "packaging": "PyInstaller onedir",
+        "entrypoint": "HaizFlowCore.exe" if (artifact / "HaizFlowCore.exe").is_file() else "HaizFlow.exe",
     }
     (artifact / "BUILD-INFO.json").write_text(
         json.dumps(build_info, ensure_ascii=True, indent=2) + "\n",
@@ -304,13 +310,15 @@ def main(argv=None) -> int:
     parser.add_argument("--artifact", type=Path, required=True)
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--verify-installer-eligibility", action="store_true")
+    parser.add_argument("--engineering", action="store_true",
+                        help="Allow dirty provenance only for explicitly labelled internal test installers")
     args = parser.parse_args(argv)
     if args.verify and args.verify_installer_eligibility:
         parser.error("--verify and --verify-installer-eligibility cannot be combined")
     if args.verify:
         verify_manifest(args.artifact)
     elif args.verify_installer_eligibility:
-        verify_installer_eligibility(args.artifact)
+        verify_installer_eligibility(args.artifact, engineering=args.engineering)
     else:
         finalize(args.artifact)
     return 0

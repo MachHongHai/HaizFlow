@@ -12,6 +12,9 @@ if (!$ArtifactPath) {
 $ArtifactPath = [System.IO.Path]::GetFullPath($ArtifactPath)
 $Executable = Join-Path $ArtifactPath "HaizFlow.exe"
 if (!(Test-Path -LiteralPath $Executable -PathType Leaf)) {
+  $Executable = Join-Path $ArtifactPath "HaizFlowCore.exe"
+}
+if (!(Test-Path -LiteralPath $Executable -PathType Leaf)) {
   throw "Frozen executable is missing: $Executable"
 }
 

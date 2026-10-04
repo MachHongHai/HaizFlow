@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
@@ -10,6 +9,7 @@ InspectorPanel {
     property string pendingSettingsVideoId: ""
 
     title: qsTr("Cài đặt xử lý")
+    showTitle: false
 
     function scheduleVideoSettingsSave() {
         if (AppController.hasSelectedVideo && !AppController.isSelectedVideoQueued) {
@@ -19,19 +19,14 @@ InspectorPanel {
         }
     }
 
-    Flickable {
-        id: setupScroll
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        Layout.minimumHeight: 0
-        contentWidth: width
-        contentHeight: settingsForm.implicitHeight
-        boundsBehavior: Flickable.StopAtBounds
-        clip: true
-
         ProcessingSettingsForm {
             id: settingsForm
-            width: setupScroll.width
+            objectName: "autoProcessingSettingsForm"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: implicitHeight
+            Layout.alignment: Qt.AlignTop
+            availableHeight: Math.max(0, root.height - root.padding * 2)
             editable: AppController.canEditSelectedVideo
             cpuOnly: AppController.cpuOnly
             hasSource: AppController.videoPath.length > 0
@@ -100,13 +95,9 @@ InspectorPanel {
             onWatermarkRequested: watermarkDialogLoader.invoke("openForSelectedVideo", [])
         }
 
-        ScrollBar.vertical: ScrollBar {
-            policy: setupScroll.contentHeight > setupScroll.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-        }
-    }
-
     LazyDialogLoader {
         id: audioMixDialogLoader
+        parent: root
         sourceComponent: Component {
             AudioMixDialog { onClosed: audioMixDialogLoader.release() }
         }
@@ -114,6 +105,7 @@ InspectorPanel {
 
     LazyDialogLoader {
         id: backgroundMusicLinkDialogLoader
+        parent: root
         sourceComponent: Component {
             BackgroundMusicLinkDialog { onClosed: backgroundMusicLinkDialogLoader.release() }
         }
@@ -121,6 +113,7 @@ InspectorPanel {
 
     LazyDialogLoader {
         id: voiceCloneDialogLoader
+        parent: root
         sourceComponent: Component {
             VoiceCloneDialog {
                 onReferenceAccepted: function(path) {
@@ -135,6 +128,7 @@ InspectorPanel {
 
     LazyDialogLoader {
         id: watermarkDialogLoader
+        parent: root
         sourceComponent: Component {
             AutoWatermarkPreviewDialog {
                 onClosed: watermarkDialogLoader.release()
@@ -145,6 +139,7 @@ InspectorPanel {
 
     LazyDialogLoader {
         id: subtitlePreviewDialogLoader
+        parent: root
         sourceComponent: Component {
             SubtitlePreviewDialog {
                 coverEnabled: AppController.removeOriginalSubtitles

@@ -117,6 +117,49 @@ class SocialPublishControllerTests(unittest.TestCase):
             self.assertFalse(self.controller.remove_api_key("named-id"))
             delete.assert_not_called()
 
+    def test_connection_check_checks_all_keys_and_preserves_default_and_queue(self):
+        entries = [dict(id="good", label="One", active=True),
+                   dict(id="bad", label="Two", active=False),
+                   dict(id="missing", label="Three", active=False)]
+        self.controller._state["items"] = [dict(id="queued", status="pending")]
+        original = dict(self.controller._state)
+        good = MagicMock()
+        good.list_profiles.return_value = []
+        good.list_accounts.return_value = []
+        bad = MagicMock()
+        bad.list_profiles.side_effect = zernio.ZernioError("private-secret", status=401)
+        values = {"good": "sk_" + "a" * 64, "bad": "sk_" + "b" * 64}
+        with (patch("haizflow.desktop.social_publish_controller.zernio_keys.list_keys", return_value=entries),
+              patch("haizflow.desktop.social_publish_controller.zernio_keys.active_id", return_value="good"),
+              patch("haizflow.desktop.social_publish_controller.zernio_keys.key_value",
+                    side_effect=lambda key_id: values[key_id] if key_id in values else (_ for _ in ()).throw(ValueError("missing"))),
+              patch("haizflow.desktop.social_publish_controller.zernio.ZernioClient",
+                    side_effect=lambda key: good if key == values["good"] else bad),
+              patch("haizflow.desktop.social_publish_controller.zernio_keys.select_key") as select,
+              patch("haizflow.services.secure_credentials.write_secret") as write):
+            self.assertTrue(self.controller.verify_api_key())
+            self.assertFalse(self.controller.verify_api_key())
+            self.controller._credential_worker_thread.join(timeout=2)
+            self.controller.detach_project()
+            self.controller.drain_events()
+            results = {item["id"]: item["check_result"] for item in self.controller.api_keys}
+            self.assertEqual(results, {"good": "verified", "bad": "invalid", "missing": "invalid"})
+            self.assertFalse(self.controller.credential_busy)
+            select.assert_not_called()
+            write.assert_not_called()
+            good.create_profile.assert_not_called()
+            good.create_video_post.assert_not_called()
+            good.list_accounts.assert_called_once_with(platforms=("tiktok", "youtube", "facebook", "instagram"))
+        self.assertEqual(original["items"], [dict(id="queued", status="pending")])
+
+    def test_stale_bulk_key_results_after_shutdown_are_ignored(self):
+        self.controller._credential_generation = 3
+        self.controller._events.put(dict(type="credential-batch-key", generation=3,
+                                        key_id="one", result="verified"))
+        self.controller.shutdown()
+        self.controller.drain_events()
+        self.assertEqual(self.controller._credential_checks, {})
+
     def test_removing_inactive_key_notifies_the_qml_list(self):
         self.controller._api_key_cache = "active-secret"
         self.controller._emit_changed()
