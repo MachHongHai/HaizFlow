@@ -704,7 +704,10 @@ def _translate_with_hymt2_worker(
             registered = True
             if process.stdin is None:
                 raise RuntimeError("HY-MT2 worker input channel is unavailable.")
-            process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            # Frozen Windows interpreters can ignore PYTHONIOENCODING for
+            # stdin. ASCII JSON escapes preserve every language even when
+            # the child reads the pipe using its system code page.
+            process.stdin.write(json.dumps(payload, ensure_ascii=True) + "\n")
             process.stdin.flush()
             deadline = time.monotonic() + HYMT2_REQUEST_TIMEOUT_SECONDS
             while True:

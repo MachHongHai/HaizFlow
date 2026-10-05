@@ -1,4 +1,6 @@
 import json
+import io
+import queue
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -7,6 +9,34 @@ import pytest
 from haizflow.services import gemini_translation, hymt2_worker, translation
 from haizflow.services.translation_progress import TranslationProgress
 from haizflow.pipeline import process_video
+
+
+def test_frozen_worker_request_preserves_unicode_with_windows_system_code_page():
+    process = Mock()
+    process.stdin = io.StringIO()
+    process.poll.return_value = None
+    output = queue.Queue()
+    output.put(json.dumps({"event": "response", "request_id": "fixture",
+                           "translations": ["Chào bạn", "Cảm ơn"]}))
+    with (
+        patch.object(translation, "_ensure_hymt2_worker", return_value=(process, output)),
+        patch.object(translation, "_WORKER_PROCESS", process),
+        patch.object(translation.uuid, "uuid4", return_value=SimpleNamespace(hex="fixture")),
+        patch.object(translation, "register_process"),
+        patch.object(translation, "unregister_process"),
+        patch.object(translation, "_schedule_worker_idle_shutdown"),
+        patch.object(translation, "log_to_video"),
+    ):
+        result = translation._translate_with_hymt2_worker(
+            ["你好", "谢谢"], video_id="fixture", source_languages=["Chinese", "Chinese"],
+            target_language_name="Vietnamese", initial_translations=["Chào bạn", None],
+        )
+    line = process.stdin.getvalue()
+    assert line.isascii()
+    decoded = json.loads(line.encode("utf-8").decode("cp1252"))["payload"]
+    assert decoded["texts"] == ["你好", "谢谢"]
+    assert decoded["initial_translations"] == ["Chào bạn", None]
+    assert result == ["Chào bạn", "Cảm ơn"]
 
 
 def test_partial_translation_survives_pause_without_publishing_and_resumes_missing_only(tmp_path):
