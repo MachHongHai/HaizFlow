@@ -843,13 +843,16 @@ class ResourcePackManager:
         # pass. Never omit this second compressed copy from disk preflight.
         assembly = sum(item.download_size for item in pending
                        if item.archive_parts and self.offline_archive_path(item.pack_id) is None)
+        usage_path = self.storage_root
+        while not usage_path.exists() and usage_path.parent != usage_path:
+            usage_path = usage_path.parent
         return {
             "downloadBytes": download,
             "installedBytes": installed,
             "rollbackBytes": rollback,
             "assemblyBytes": assembly,
             "requiredBytes": download + installed + rollback + assembly + MINIMUM_OPERATIONAL_FREE_BYTES,
-            "freeBytes": shutil.disk_usage(self.storage_root).free,
+            "freeBytes": shutil.disk_usage(usage_path).free,
         }
 
     def _verify_model_pack(self, definition: ResourcePackDefinition) -> None:
@@ -1010,7 +1013,15 @@ class ResourcePackManager:
         if definition.download_size <= 0 or len(definition.archive_sha256) != 64:
             raise ResourcePackError("Manifest của gói bộ xử lý chưa đầy đủ.")
         summary = self.requirement_summary((definition.pack_id,))
-        if summary["freeBytes"] < summary["requiredBytes"]:
+        # Repair stages a full replacement even when the completion marker
+        # still says installed (for example, a native DLL fails its smoke test).
+        # Do not let the normal healthy-pack/no-download summary omit that copy.
+        repair_assembly = definition.download_size if (
+            definition.archive_parts and self.offline_archive_path(definition.pack_id) is None
+        ) else 0
+        required_bytes = max(summary["requiredBytes"], definition.installed_size
+            + self.download_bytes(definition.pack_id) + repair_assembly + MINIMUM_OPERATIONAL_FREE_BYTES)
+        if summary["freeBytes"] < required_bytes:
             raise ResourcePackError("Không đủ dung lượng trống để tải, cài và giữ bản khôi phục an toàn.")
         with self._lock:
             if definition.pack_id in self._active:

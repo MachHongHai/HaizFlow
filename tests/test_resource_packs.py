@@ -129,6 +129,37 @@ class ResourcePackManifestTests(unittest.TestCase):
 
 
 class ResourcePackManagerTests(unittest.TestCase):
+    def test_disk_preflight_survives_a_removed_resource_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            missing = root / "removed/resources"
+            manager = ResourcePackManager(())
+            with patch("haizflow.services.resource_packs.resource_storage_dir", return_value=missing):
+                summary = manager.requirement_summary(())
+            self.assertGreater(summary["freeBytes"], 0)
+            self.assertFalse(missing.exists(), "A read-only preflight must not recreate storage")
+
+    def test_engine_repair_reserves_staging_space_even_when_status_is_installed(self):
+        from dataclasses import replace
+        from haizflow.services.resource_packs import MINIMUM_OPERATIONAL_FREE_BYTES
+
+        manager = ResourcePackManager()
+        pack_id = "engine-cpu-py313"
+        definition = replace(manager.definitions[pack_id], archive_sha256="a" * 64)
+        manager.definitions[pack_id] = definition
+        with patch.object(manager, "status", return_value="installed"), \
+                patch.object(manager, "archive_available", return_value=True), \
+                patch.object(manager, "download_bytes", return_value=0), \
+                patch.object(manager, "requirement_summary", return_value={
+                    "freeBytes": MINIMUM_OPERATIONAL_FREE_BYTES + 1,
+                    "requiredBytes": MINIMUM_OPERATIONAL_FREE_BYTES}), \
+                patch.object(manager, "_safe_extract_zip") as extract:
+            self.assertGreater(definition.installed_size, 1)
+            with self.assertRaisesRegex(ResourcePackError, "Không đủ dung lượng"):
+                manager.install(pack_id, lambda *_: None, repair=True)
+            extract.assert_not_called()
+        self.assertFalse(manager._active)
+
     def test_healthy_model_install_is_a_noop_without_network_or_disk_preflight(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -147,6 +178,45 @@ class ResourcePackManagerTests(unittest.TestCase):
             summary.assert_not_called()
             self.assertEqual([event.state for event in events], ["ready", "ready"])
             self.assertEqual((root / "model.bin").read_bytes(), b"data")
+
+    def test_model_dedup_allows_healthy_repair_corrupt_repair_and_remove_reinstall(self):
+        import io
+
+        class Response(io.BytesIO):
+            status = 200
+            headers = {"Content-Length": "4"}
+
+            def getcode(self):
+                return 200
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            asset = ModelAsset("test", "Test", "https://example.invalid/model", "model.bin", 4,
+                               hashlib.sha256(b"data").hexdigest())
+            definition = ResourcePackDefinition("model-test", "Test", "tools", "1", "voice", assets=(asset,))
+            manager = ResourcePackManager((definition,))
+            target = root / asset.relative_path
+            with patch("haizflow.services.resource_packs.models_dir", return_value=root), \
+                    patch("haizflow.services.resource_packs.resource_storage_dir", return_value=root), \
+                    patch("haizflow.services.model_bootstrap._open_download",
+                          side_effect=lambda *_: Response(b"data")) as download:
+                manager.install("model-test", lambda *_: None)
+                stamp = target.stat().st_mtime_ns
+                manager.install("model-test", lambda *_: None)
+                manager.install("model-test", lambda *_: None, repair=True)
+                self.assertEqual(download.call_count, 1)
+                self.assertEqual(target.stat().st_mtime_ns, stamp)
+                target.write_bytes(b"bad!")
+                self.assertEqual(manager.status("model-test"), "missing")
+                manager.install("model-test", lambda *_: None, repair=True)
+                self.assertEqual(target.read_bytes(), b"data")
+                self.assertEqual(download.call_count, 2)
+                manager.remove("model-test")
+                self.assertFalse(target.exists())
+                manager.install("model-test", lambda *_: None)
+                self.assertEqual(manager.status("model-test"), "installed")
+                self.assertEqual(download.call_count, 3)
+                self.assertFalse(target.with_name("model.bin.part").exists())
 
     def test_healthy_engine_install_is_noop_but_explicit_repair_remains_available(self):
         manager = ResourcePackManager()

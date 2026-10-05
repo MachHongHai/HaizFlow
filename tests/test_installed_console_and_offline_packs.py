@@ -172,7 +172,7 @@ class OfflinePackTests(unittest.TestCase):
                 stack.enter_context(patch("haizflow.services.resource_packs.engines_dir", return_value=root / "engines"))
                 stack.enter_context(patch("haizflow.services.resource_packs.resource_packages_dir", return_value=root / "packages"))
                 stack.enter_context(patch.object(manager, "_verify_engine_staging", return_value=engine))
-                stack.enter_context(patch.object(manager, "requirement_summary", return_value={"freeBytes": 10, "requiredBytes": 1}))
+                stack.enter_context(patch.object(manager, "requirement_summary", return_value={"freeBytes": 10**12, "requiredBytes": 1}))
                 network = stack.enter_context(patch("urllib.request.urlopen", side_effect=AssertionError("Network forbidden")))
                 self.assertTrue(manager.archive_available(definition.pack_id))
                 self.assertEqual(manager.download_bytes(definition.pack_id), 0)
@@ -191,7 +191,7 @@ class OfflinePackTests(unittest.TestCase):
             archive.write_bytes(b"x" * archive.stat().st_size)
             manager = ResourcePackManager((definition,))
             with patch.object(manager, "_offline_root", return_value=archive.parent), \
-                    patch.object(manager, "requirement_summary", return_value={"freeBytes": 10, "requiredBytes": 1}), \
+                    patch.object(manager, "requirement_summary", return_value={"freeBytes": 10**12, "requiredBytes": 1}), \
                     patch.object(manager, "_verify_engine_staging") as smoke:
                 with self.assertRaisesRegex(ResourcePackError, "bị hỏng"):
                     manager.install(definition.pack_id, lambda *_: None)
