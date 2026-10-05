@@ -34,6 +34,7 @@ class EngineEntrypointTests(unittest.TestCase):
             for module in ("whisperx.asr", "whisperx.alignment", "whisperx.vads"):
                 self.assertIn(module, engine_main.SMOKE_MODULES[profile])
         hook = (ROOT / "scripts/hooks/hook-whisperx.py").read_text(encoding="utf-8")
+        self.assertIn('copy_metadata("whisperx", recursive=True)', hook)
         for module in ("whisperx.asr", "whisperx.alignment", "whisperx.vads"):
             self.assertIn(f'"{module}"', hook)
 
