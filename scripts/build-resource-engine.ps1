@@ -189,8 +189,8 @@ try {
   }
   if (Test-Path -LiteralPath (Join-Path $Artifact "runtime")) { throw "Engine smoke polluted the immutable artifact with runtime data." }
 
-  if (Test-Path -LiteralPath $Archive) { Remove-Item -LiteralPath $Archive -Force }
-  Compress-Archive -Path (Join-Path $Artifact "*") -DestinationPath $Archive -CompressionLevel Optimal
+  & $VerifierPython (Join-Path $PSScriptRoot "archive-resource-engine.py") --artifact $Artifact --output $Archive
+  if ($LASTEXITCODE -ne 0) { throw "Streaming engine archive verification failed." }
   if ((Get-Item -LiteralPath $Archive).Length -ge 2GB) {
     $PartsOutput = Join-Path $BuildRoot ("multipart-" + $Version + "-" + [guid]::NewGuid().ToString("N"))
     & $VerifierPython (Join-Path $PSScriptRoot "split-resource-archive.py") --archive $Archive --output $PartsOutput

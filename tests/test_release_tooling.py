@@ -2,6 +2,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,9 +25,27 @@ release_preflight = load_script("release-preflight.py")
 finalize_release = load_script("finalize-release.py")
 generate_version = load_script("generate-version-resource.py")
 download_ffmpeg = load_script("download_ffmpeg.py")
+archive_resource_engine = load_script("archive-resource-engine.py")
 
 
 class ReleaseToolingTests(unittest.TestCase):
+    def test_engine_archive_streams_payload_and_rejects_nested_output(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            artifact = root / "engine"
+            artifact.mkdir()
+            (artifact / "engine.json").write_text("{}", encoding="utf-8")
+            (artifact / "HaizFlowEngine.exe").write_bytes(b"engine")
+            (artifact / "_internal").mkdir()
+            (artifact / "_internal/data.bin").write_bytes(b"payload" * 100000)
+            output = root / "engine.zip"
+            archive_resource_engine.archive_engine(artifact, output)
+            with zipfile.ZipFile(output) as bundle:
+                self.assertIsNone(bundle.testzip())
+                self.assertEqual(bundle.read("_internal/data.bin"), b"payload" * 100000)
+            with self.assertRaisesRegex(ValueError, "outside"):
+                archive_resource_engine.archive_engine(artifact, artifact / "nested.zip")
+
     def test_ffmpeg_downloader_rejects_unapproved_or_non_https_sources(self):
         with (
             tempfile.TemporaryDirectory() as temp_dir,
