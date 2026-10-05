@@ -29,6 +29,16 @@ write_manifest = load_script("write-engine-manifest.py")
 
 
 class EngineEntrypointTests(unittest.TestCase):
+    def test_frozen_entrypoint_reconfigures_stdio_for_unicode_paths(self):
+        streams = [SimpleNamespace(reconfigure=unittest.mock.Mock()) for _ in range(3)]
+        with patch.object(engine_main.sys, "stdin", streams[0]), \
+             patch.object(engine_main.sys, "stdout", streams[1]), \
+             patch.object(engine_main.sys, "stderr", streams[2]), \
+             patch.object(engine_main, "rpc_server", return_value=0):
+            self.assertEqual(engine_main.main(["--rpc"]), 0)
+        for stream in streams:
+            stream.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
+
     def test_external_voice_audio_dependency_is_frozen_and_smoke_checked(self):
         for profile in ("cpu", "cuda128"):
             self.assertIn("pydub.silence", engine_main.SMOKE_MODULES[profile])

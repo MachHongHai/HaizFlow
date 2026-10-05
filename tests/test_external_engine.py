@@ -59,6 +59,23 @@ class _Manager:
 
 
 class ExternalEngineTests(unittest.TestCase):
+    def test_rpc_request_paths_survive_a_legacy_windows_decoder(self):
+        # ASCII JSON remains portable even before the child reconfigures stdin.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            unicode_root = root / "Mẫu giọng 日本語"
+            unicode_root.mkdir()
+            request, response = unicode_root / "request.json", unicode_root / "response.json"
+            request.write_text(json.dumps({"response_path": str(response)}), encoding="utf-8")
+            manager = _Manager(root)
+            manager.engine_command = lambda *_: [sys.executable, "-u", "-c",
+                "import sys; sys.stdin.reconfigure(encoding='cp1252'); " + FAKE_ENGINE]
+            client = ExternalEngineClient(manager, "engine-test")
+            try:
+                client.request("file_task", {"request_path": str(request)})
+            finally:
+                client.close()
+            self.assertTrue(json.loads(response.read_text(encoding="utf-8"))["ok"])
     def test_translation_handoff_retires_shared_asr_and_separation_process(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             pool = ExternalEnginePool(_Manager(Path(temp_dir)))

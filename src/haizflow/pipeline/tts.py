@@ -101,15 +101,14 @@ def generate_voice_parts(
         return
     total = len(requested_segments)
     document_total = len(segments)
-    log_to_video(
-        video_id,
-        f"[TTS][SESSION_START] provider={backend} backend=local device={device} voice={voice}",
-    )
     os.makedirs(voice_parts_dir, exist_ok=True)
     pending = []
     current_video = get_video(video_id)
     current_files = dict((current_video.files if current_video else {}) or {})
     speaker_mode = str(getattr(current_video, "speaker_mode", "single") or "single")
+    session_voice = "per-speaker" if speaker_mode == "multiple" else voice
+    log_to_video(video_id, f"[TTS][SESSION_START] provider={backend} backend=local device={device} "
+                 f"speaker_mode={speaker_mode} voice={session_voice}")
     if speaker_mode == "multiple" and voice == "omnivoice:clone":
         raise ValueError("Hãy chọn Giọng nhân bản hoặc Nhận diện nhiều người nói, không dùng cả hai cùng lúc.")
     clone_reference = str(current_files.get("voice_reference") or "")
@@ -152,6 +151,8 @@ def generate_voice_parts(
 
         source_segments = prepare_speakers(source_audio_path, source_segments,
                                           process_registry_id or video_id, report_speakers)
+        voice_map = dict((s["speaker_id"], s["speaker_voice"]) for s in source_segments)
+        log_to_video(video_id, "[SPEAKERS][VOICE_MAP] " + " ".join(f"{key}={value}" for key, value in voice_map.items()))
         log_to_video(video_id, f"Identified {len({s['speaker_id'] for s in source_segments})} speakers; "
                      "using stable target-language voices, not per-sentence source clones.")
         uncertain = sum(bool(s.get("speaker_uncertain")) for s in source_segments)
@@ -187,14 +188,16 @@ def generate_voice_parts(
         part_path = os.path.join(voice_parts_dir, f"voice_{index:04d}.mp3")
         if not _is_valid_mp3(part_path):
             _remove_file(part_path)
+            source_reference = source_reference_for(segment)
+            segment_voice = str(source_reference.get("speaker_voice") or voice)
             log_to_video(
                 video_id,
-                f"[TTS][QUEUED] provider={backend} segment={index}/{document_total} voice={voice}",
+                f"[TTS][QUEUED] provider={backend} segment={index}/{document_total} voice={segment_voice} "
+                f"speaker={source_reference.get('speaker_id') or 'narrator'}",
             )
-            source_reference = source_reference_for(segment)
             pending.append({
                 "text": preprocess_text_for_tts(text),
-                "voice": str(source_reference.get("speaker_voice") or voice),
+                "voice": segment_voice,
                 "output_path": part_path,
                 "index": str(index),
                 "reference_path": clone_reference if voice == "omnivoice:clone" else "",

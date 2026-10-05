@@ -26,6 +26,7 @@ from haizflow.schemas.video import (
     SubtitleStyle,
 )
 from haizflow.services import project_store
+from haizflow.utils.atomic_file import atomic_json
 
 
 _VIDEO_LOCKS: dict[str, threading.RLock] = {}
@@ -294,21 +295,7 @@ def _video_data(video_info: VideoInfo) -> dict:
 
 
 def _write_json_atomic(path: str, data: dict) -> None:
-    directory = os.path.dirname(path)
-    os.makedirs(directory, exist_ok=True)
-    handle, temporary_path = tempfile.mkstemp(prefix=".video-", suffix=".json.tmp", dir=directory)
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as file:
-            json.dump(data, file, ensure_ascii=False, indent=2)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary_path, path)
-    except Exception:
-        try:
-            os.remove(temporary_path)
-        except FileNotFoundError:
-            pass
-        raise
+    atomic_json(path, data, indent=2)
 
 
 class VideoMetadataError(RuntimeError):

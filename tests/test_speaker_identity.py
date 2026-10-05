@@ -12,6 +12,53 @@ from haizflow.pipeline import speaker_identity as identity
 
 
 class SpeakerIdentityTests(unittest.TestCase):
+    def test_short_only_dialogue_is_not_forced_to_one_person(self):
+        vectors = np.array([[1, 0], [0, 1], [.99, .02], [.01, .99]], dtype=np.float32)
+        vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+        segments = [{"start": i, "end": i + .9} for i in range(4)]
+        labels, _scores = identity._label_turns(vectors, list(range(4)), segments)
+        self.assertEqual(labels, [0, 1, 0, 1])
+
+    def test_short_turns_match_existing_reliable_speakers(self):
+        vectors = np.array([[1, 0], [0, 1], [.99, .02]], dtype=np.float32)
+        vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+        segments = [{"start": 0, "end": 3}, {"start": 3, "end": 6}, {"start": 6, "end": 6.7}]
+        labels, _scores = identity._label_turns(vectors, list(range(3)), segments)
+        self.assertEqual(labels, [0, 1, 0])
+
+    def test_multiple_speaker_logs_match_voices_sent_to_worker(self):
+        from types import SimpleNamespace
+        from haizflow.pipeline import tts
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            segments = [{"start": i * 3, "end": i * 3 + 3, "text": "A sentence."} for i in range(2)]
+            transcript = root / "translated.json"
+            source = root / "source.json"
+            for path in (transcript, source):
+                path.write_text(json.dumps(segments), encoding="utf-8")
+            audio = root / "audio.wav"
+            audio.touch()
+            mapped = [{**item, "speaker_id": f"speaker-{i + 1}", "speaker_voice": voice}
+                      for i, (item, voice) in enumerate(zip(segments, ["omnivoice:male", "omnivoice:female"]))]
+            video = SimpleNamespace(speaker_mode="multiple", files={"source_segments": str(source),
+                                    "speech_audio": str(audio)})
+            def synthesize(items, *_args, **_kwargs):
+                for item in items:
+                    Path(item["output_path"]).write_bytes(b"ID3" + bytes(600))
+            with patch.object(tts, "get_video", return_value=video), patch.object(tts, "log_to_video") as log, \
+                 patch.object(identity, "prepare_speakers", return_value=mapped), \
+                 patch("haizflow.pipeline.omnivoice_tts.synthesize_batch_to_mp3", side_effect=synthesize) as worker:
+                tts.generate_voice_parts(str(transcript), str(root / "parts"), "omnivoice:female", "fixture")
+            self.assertEqual([item["voice"] for item in worker.call_args.args[0]],
+                             ["omnivoice:male", "omnivoice:female"])
+            messages = [call.args[1] for call in log.call_args_list]
+            session = next(message for message in messages if "SESSION_START" in message)
+            self.assertIn("speaker_mode=multiple voice=per-speaker", session)
+            queued = [message for message in messages if "QUEUED" in message]
+            self.assertIn("voice=omnivoice:male speaker=speaker-1", queued[0])
+            self.assertIn("voice=omnivoice:female speaker=speaker-2", queued[1])
+
     def test_conflicting_voice_for_one_speaker_is_rejected(self):
         segments = [{"start": i, "end": i + 1, "text": "Neutral."} for i in range(2)]
         mapped = [{**item, "speaker_id": "speaker-1", "speaker_voice": voice}

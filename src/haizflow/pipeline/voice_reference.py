@@ -14,19 +14,21 @@ from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, MODELS_DIR, TMP_DIR
 from haizflow.core.model_integrity import verify_whisper_model, verify_whisper_turbo_model
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
+from haizflow.utils.atomic_file import atomic_json
 
 
 def transcribe_reference(path: str, video_id: str, *, process_registry_id: str | None = None,
                          device: str | None = None) -> str:
     cancellation_id = process_registry_id or video_id
+    check_cancellation(cancellation_id)
     reference = Path(path).resolve()
     digest = hashlib.sha256(reference.read_bytes()).hexdigest()
     cache = Path(TMP_DIR) / "voice-reference-transcripts" / f"{digest}.json"
     try:
-        text = str(json.loads(cache.read_text(encoding="utf-8"))["text"]).strip()
-        if text:
-            return text
-    except (OSError, ValueError, KeyError):
+        text = json.loads(cache.read_text(encoding="utf-8"))["text"]
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    except (OSError, ValueError, KeyError, TypeError):
         pass
     from haizflow.services.resource_packs import installed_engine_command
 
@@ -86,6 +88,8 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         _stdout, stderr = communicate_process(
@@ -99,7 +103,8 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
         text = str(result.get("result", {}).get("text") or "").strip()
         if not text:
             raise RuntimeError("Mẫu giọng chưa có lời nói rõ. Hãy thu lại 5–15 giây trong môi trường yên tĩnh.")
-        cache.write_text(json.dumps({"text": text}, ensure_ascii=False), encoding="utf-8")
+        check_cancellation(cancellation_id)
+        atomic_json(cache, {"text": text})
         for line in stderr.splitlines():
             if line.startswith("[CLONE-ASR]"):
                 log_to_video(video_id, line)

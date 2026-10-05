@@ -9,6 +9,19 @@ import pytest
 from haizflow.pipeline import omnivoice_tts, voice_reference
 
 
+def test_cancelled_reference_does_not_return_a_cached_transcript(tmp_path):
+    import hashlib
+    sample = tmp_path / "sample.wav"
+    sample.write_bytes(b"authorized-sample")
+    cache = tmp_path / "voice-reference-transcripts" / f"{hashlib.sha256(sample.read_bytes()).hexdigest()}.json"
+    cache.parent.mkdir()
+    cache.write_text(json.dumps({"text": "sample text"}), encoding="utf-8")
+    with patch.object(voice_reference, "TMP_DIR", str(tmp_path)), \
+         patch.object(voice_reference, "check_cancellation", side_effect=RuntimeError("cancelled")):
+        with pytest.raises(RuntimeError, match="cancelled"):
+            voice_reference.transcribe_reference(str(sample), "video", device="cpu")
+
+
 @pytest.mark.parametrize("device, compute", [("gpu", "float16"), ("cpu", "int8")])
 def test_reference_recognition_uses_selected_device(device, compute):
     model = Mock()

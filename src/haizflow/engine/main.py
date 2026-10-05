@@ -368,6 +368,11 @@ def run_file_request(request_path: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Frozen Windows interpreters do not necessarily honour PYTHONUTF8.
+    # Parent pipes always use UTF-8, including Unicode request-file paths.
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--rpc", action="store_true")
     parser.add_argument("--smoke", action="store_true")

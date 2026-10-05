@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import subprocess
 import tempfile
 import wave
@@ -13,9 +12,10 @@ from pathlib import Path
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, MODELS_DIR, TMP_DIR
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.utils.ffmpeg import _binary
+from haizflow.utils.atomic_file import atomic_json
 
 from haizflow.core.bundled_models import MODEL_FILE, MODEL_SIZE, MODEL_SHA256, MODEL_REVISION, MODEL_URL as MODEL_URL
-IDENTITY_VERSION = "wespeaker-stable-target-voices-v2-prototypes"
+IDENTITY_VERSION = "wespeaker-stable-target-voices-v3-short-dialogue"
 
 
 def verify_model(root: Path) -> Path:
@@ -124,6 +124,20 @@ def _assign_identities(vectors, anchors, anchor_labels):
     return labels, scores
 
 
+def _label_turns(vectors, valid_indices, segments):
+    import numpy as np
+
+    # Prefer full turns so phonetic variation in tiny fragments does not
+    # create extra people; do not collapse a dialogue with only short turns.
+    anchors = [i for i, index in enumerate(valid_indices)
+               if float(segments[index]["end"]) - float(segments[index]["start"]) >= 1.8]
+    if not anchors:
+        anchors = list(range(len(valid_indices)))
+    if len(anchors) > 192:
+        anchors = [anchors[i] for i in np.linspace(0, len(anchors) - 1, 192, dtype=int)]
+    return _assign_identities(vectors, anchors, _cluster(vectors[anchors]))
+
+
 def identify(audio_path: str, segments: list[dict], video_id: str, progress=None, *,
              model_directory: str = "", runtime_callback=None) -> list[dict]:
     """Use the built-in CPU backend in an isolated worker; release before TTS."""
@@ -195,19 +209,7 @@ def identify(audio_path: str, segments: list[dict], video_id: str, progress=None
         raise RuntimeError("Không đủ lời nói rõ để nhận diện người nói. Hãy chọn một giọng đọc.")
     vectors = np.asarray(embeddings, dtype=np.float32)
     vectors /= np.maximum(np.linalg.norm(vectors, axis=1, keepdims=True), 1e-8)
-    # Very short turns are useful for assignment, not for creating speakers:
-    # their phonetic content dominates the embedding and fragments identities.
-    anchors = [
-        i
-        for i, index in enumerate(valid_indices)
-        if float(segments[index]["end"]) - float(segments[index]["start"]) >= 1.8
-    ]
-    if not anchors:
-        anchors = [int(np.argmax([float(segments[i]["end"]) - float(segments[i]["start"]) for i in valid_indices]))]
-    if len(anchors) > 192:
-        anchors = [anchors[i] for i in np.linspace(0, len(anchors) - 1, 192, dtype=int)]
-    anchor_labels = _cluster(vectors[anchors])
-    labels, scores = _assign_identities(vectors, anchors, anchor_labels)
+    labels, scores = _label_turns(vectors, valid_indices, segments)
     label_by_index = dict(zip(valid_indices, labels))
     male = [
         "omnivoice:male",
@@ -262,7 +264,8 @@ def identify(audio_path: str, segments: list[dict], video_id: str, progress=None
                 "speaker_id": f"speaker-{label + 1}",
                 "speaker_voice": voices[label],
                 "speaker_confidence": confidence,
-                "speaker_uncertain": confidence < 0.55 or margin < 0.10,
+                "speaker_uncertain": confidence < 0.55 or margin < 0.10
+                or float(segment["end"]) - float(segment["start"]) < 1.8,
             }
         )
     return result
@@ -338,11 +341,5 @@ def prepare_speakers(audio_path: str, segments: list[dict], video_id: str, progr
             raise RuntimeError("Speaker engine returned an invalid identity map.")
     finally:
         shared_external_engine_pool().release({"speaker"})
-    descriptor, name = tempfile.mkstemp(prefix=".speaker-map-", suffix=".tmp", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(identified, stream, ensure_ascii=False)
-        os.replace(name, path)
-    finally:
-        Path(name).unlink(missing_ok=True)
+    atomic_json(path, identified)
     return identified

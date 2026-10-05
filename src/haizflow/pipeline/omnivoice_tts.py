@@ -1632,6 +1632,8 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
 
 def _worker_server_main() -> int:
     """Serve request files over stdin while retaining the loaded SDK model."""
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8", errors="strict")
     runtime: dict[str, Any] = {}
     for raw_line in sys.stdin:
         request_path = raw_line.strip()

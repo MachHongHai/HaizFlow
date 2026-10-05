@@ -116,7 +116,7 @@ class ExternalEngineClient:
             }
             try:
                 assert process.stdin is not None
-                process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
+                process.stdin.write(json.dumps(message, ensure_ascii=True) + "\n")
                 process.stdin.flush()
             except (OSError, ValueError) as exc:
                 self.terminate()
