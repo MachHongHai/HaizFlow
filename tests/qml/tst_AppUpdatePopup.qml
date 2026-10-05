@@ -19,7 +19,10 @@ Item {
             property bool appUpdateBlocked: false
             property int installCalls: 0
             property int checkCalls: 0
-            function installAppUpdate() { installCalls++; appUpdateState = "downloading"; }
+            function confirmAppUpdate(version, state) {
+                if (version !== latestAppVersion || state !== appUpdateState) return false;
+                installCalls++; appUpdateState = "downloading"; return true;
+            }
             function checkForAppUpdates() { checkCalls++; appUpdateState = "checking"; }
         }
     }
@@ -41,16 +44,16 @@ Item {
             const popup = makePopup();
             const message = findChild(popup, "appUpdateMessage");
             verify(!!message, "Object exists");
-            compare(message.message, qsTr("Hiện tại chưa có phiên bản mới, chi tiết bản cập nhật gần nhất:"));
+            compare(message.message, qsTr("Bạn đang dùng phiên bản mới nhất. Xem chi tiết tại:"));
             compare(message.textFormat, Text.RichText);
             verify(message.text.indexOf('<a href="https://haizflow.pages.dev/"') >= 0);
             verify(message.text.indexOf('color: ' + Theme.interactive) >= 0);
             verify(!findChild(popup, "appUpdateLandingLink"), "Landing page is an inline link, not a button");
             popup.controller.hasAppUpdate = true;
             popup.controller.appUpdateState = "available";
-            tryCompare(message, "message", qsTr("Đã có phiên bản mới, hãy cập nhật ngay, chi tiết bản cập nhật xem tại:"));
+            tryCompare(message, "message", qsTr("Có phiên bản mới. Xem thay đổi tại:"));
         }
-        function test_install_click_starts_download_and_disables_repeat() {
+        function test_install_click_requires_confirmation_then_disables_repeat() {
             const popup = makePopup();
             popup.controller.hasAppUpdate = true;
             popup.controller.appUpdateState = "available";
@@ -58,8 +61,28 @@ Item {
             verify(!!install, "Object exists");
             tryCompare(install, "visible", true);
             mouseClick(install);
+            tryCompare(popup.controller, "installCalls", 0);
+            const confirmation = findChild(popup, "appUpdateConfirmationDialog");
+            verify(!!confirmation, "Object exists");
+            tryCompare(confirmation, "opened", true);
+            confirmation.confirmed();
+            confirmation.accept();
             tryCompare(popup.controller, "installCalls", 1);
             tryCompare(install, "enabled", false);
+        }
+        function test_cancel_confirmation_does_not_download() {
+            const popup = makePopup();
+            popup.controller.hasAppUpdate = true;
+            popup.controller.appUpdateState = "available";
+            const install = findChild(popup, "appUpdateInstallButton");
+            verify(!!install, "Object exists");
+            mouseClick(install);
+            const confirmation = findChild(popup, "appUpdateConfirmationDialog");
+            verify(!!confirmation, "Object exists");
+            tryCompare(confirmation, "opened", true);
+            confirmation.reject();
+            tryCompare(popup.controller, "installCalls", 0);
+            tryCompare(popup, "state", "available");
         }
         function test_active_jobs_prevent_install() {
             const popup = makePopup();

@@ -99,6 +99,7 @@ class AppUpdateController(QObject):
         self._delta_process = None
         self._invalid_delta_layout = False
         self._recovery_reported = False
+        self._last_blocked = None
         try:
             from haizflow.core.paths import install_root
             from haizflow.update.state import Layout
@@ -399,6 +400,10 @@ class AppUpdateController(QObject):
         self._thread.start()
 
     def drain_events(self) -> None:
+        blocked = self.blocked
+        if blocked != self._last_blocked:
+            self._last_blocked = blocked
+            self.changed.emit()
         self._poll_delta()
         if self._installer_process is not None and self._installer_process.poll() is not None:
             self._installer_process = None

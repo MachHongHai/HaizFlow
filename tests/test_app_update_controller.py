@@ -35,6 +35,19 @@ class Response(BytesIO):
 
 
 class AppUpdateControllerTests(unittest.TestCase):
+    def test_task_changes_refresh_update_blocked_binding_without_update_events(self):
+        host = Host()
+        controller = AppUpdateController(host)
+        changes = []
+        controller.changed.connect(lambda: changes.append(controller.blocked))
+        controller.drain_events()
+        host.isProcessing = True
+        controller.drain_events()
+        controller.drain_events()
+        host.isProcessing = False
+        controller.drain_events()
+        self.assertEqual(changes, [False, True, False])
+
     def test_confirmation_launches_independent_updater_with_versioned_request(self):
         from haizflow.update.state import Layout, provision
 

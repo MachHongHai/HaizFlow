@@ -18,7 +18,10 @@ Item {
             property string appUpdateError: ""
             property bool appUpdateBlocked: false
             property int installCalls: 0
-            function installAppUpdate() { installCalls++; appUpdateState = "restarting"; }
+            function confirmAppUpdate(version, state) {
+                if (version !== latestAppVersion || state !== appUpdateState || appUpdateBlocked) return false;
+                installCalls++; appUpdateState = "restarting"; return true;
+            }
             function checkForAppUpdates() { appUpdateState = "checking"; }
         }
     }
@@ -47,6 +50,12 @@ Item {
             popup.controller.appUpdateBlocked = false;
             tryCompare(install, "enabled", true);
             mouseClick(install);
+            tryCompare(popup.controller, "installCalls", 0);
+            const confirmation = findChild(popup, "appUpdateConfirmationDialog");
+            verify(!!confirmation, "Object exists");
+            tryCompare(confirmation, "opened", true);
+            confirmation.confirmed();
+            confirmation.accept();
             tryCompare(popup.controller, "installCalls", 1);
             tryCompare(popup, "state", "restarting");
         }
