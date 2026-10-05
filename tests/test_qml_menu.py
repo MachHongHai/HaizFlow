@@ -17,6 +17,47 @@ QML_DIR = ROOT / "src" / "haizflow" / "desktop" / "qml"
 
 
 class QmlMenuTests(unittest.TestCase):
+    def test_busy_progress_sweeps_the_complete_track_and_survives_resize(self):
+        engine = QQmlEngine()
+        component = QQmlComponent(engine)
+        component.loadUrl(QUrl.fromLocalFile(str(QML_DIR / "AppProgressBar.qml")))
+        self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
+        bar = component.create()
+        window = QQuickWindow()
+        bar.setParentItem(window.contentItem())
+        bar.setWidth(400)
+        bar.setHeight(6)
+        bar.setProperty("indeterminate", True)
+        # Keep motion stopped to inspect exact geometry at a stable phase.
+        bar.setVisible(False)
+        bar.setProperty("sweepPhase", 0.9)
+        try:
+            self.app.processEvents()
+            track = bar.property("contentItem")
+            fill = bar.findChild(QQuickItem, "busyProgressFill")
+            self.assertIsNotNone(fill)
+            for width in (400, 640, 240):
+                bar.setWidth(width)
+                self.app.processEvents()
+                self.assertAlmostEqual(fill.x(), -fill.width() + (track.width() + fill.width()) * 0.9)
+                self.assertGreater(fill.x(), track.width() * 0.8)
+                self.assertGreater(fill.x() + fill.width(), track.width())
+            window.resize(640, 20)
+            bar.setWidth(640)
+            bar.setVisible(True)
+            window.show()
+            positions = []
+            for _ in range(44):
+                QTest.qWait(40)
+                positions.append(fill.x())
+            self.assertLess(min(positions), 0)
+            self.assertGreater(max(positions), track.width() * 0.9)
+            self.assertTrue(any(after < before for before, after in zip(positions, positions[1:])))
+        finally:
+            bar.deleteLater()
+            window.close()
+            self.app.processEvents()
+
     def test_status_strip_distinguishes_device_switch_from_another_video(self):
         source = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
         expression = source.split('message: root.modelStatusFailed ?', 1)[1].split('            progress:', 1)[0]

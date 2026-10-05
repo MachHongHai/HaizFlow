@@ -306,6 +306,17 @@ def _verify(
     return root
 
 
+def verify_pack_assets(root: Path, pack_id: str, version: str, assets) -> Path:
+    """Reuse cached integrity only while every pinned file fingerprint matches.
+
+    Inventory runs off the GUI thread. Existing/legacy payloads can be reused,
+    but file size alone must never authorize inference or an installed badge.
+    """
+    return _verify(root, kind=pack_id, revision=version,
+                   expected={asset.relative_path: (asset.size, asset.sha256) for asset in assets},
+                   marker_name=f".haizflow-{pack_id}-integrity.json")
+
+
 def verify_cpu_model(model_path: Path) -> Path:
     model_path = model_path.expanduser().resolve()
     _verify(

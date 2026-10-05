@@ -29,6 +29,14 @@ write_manifest = load_script("write-engine-manifest.py")
 
 
 class EngineEntrypointTests(unittest.TestCase):
+    def test_external_voice_audio_dependency_is_frozen_and_smoke_checked(self):
+        for profile in ("cpu", "cuda128"):
+            self.assertIn("pydub.silence", engine_main.SMOKE_MODULES[profile])
+            self.assertIn("audioop", engine_main.SMOKE_MODULES[profile])
+        script = (ROOT / "scripts/build-resource-engine.ps1").read_text(encoding="utf-8")
+        for module in ('"pydub"', '"pydub.silence"', '"audioop"'):
+            self.assertIn(module, script)
+
     def test_smoke_exercises_whisperx_lazy_inference_modules(self):
         for profile in ("cpu", "cuda128"):
             self.assertIn("onnxruntime", engine_main.SMOKE_MODULES[profile])

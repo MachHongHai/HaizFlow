@@ -13,3 +13,6 @@ demucs==4.0.1
 soundfile==0.14.0
 soxr==1.1.0
 nltk==3.10.3
+# Imported by the external OmniVoice SDK, invisible to PyInstaller's graph.
+pydub==0.25.1
+audioop-lts==0.2.2

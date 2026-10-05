@@ -193,7 +193,7 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             download_size=1_300_000_000,
             installed_size=2_000_000_000,
             engine_modules=("torch", "ctranslate2", "llama_cpp", "onnxruntime", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
-            runtime_contract=3,
+            runtime_contract=4,
         ),
         ResourcePackDefinition(
             pack_id="engine-cuda128-py313",
@@ -205,7 +205,7 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             download_size=4_500_000_000,
             installed_size=5_500_000_000,
             engine_modules=("torch", "torchaudio", "torchvision", "onnxruntime", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
-            runtime_contract=3,
+            runtime_contract=4,
         ),
         ResourcePackDefinition(
             pack_id="engine-vision-onnx",
@@ -503,12 +503,16 @@ class ResourcePackManager:
 
     @staticmethod
     def _assets_present(definition: ResourcePackDefinition) -> bool:
+        from haizflow.core.model_integrity import ModelIntegrityError, verify_pack_assets
+
         root = models_dir()
-        return bool(definition.assets) and all(
-            (root / asset.relative_path).is_file()
-            and (root / asset.relative_path).stat().st_size == asset.size
-            for asset in definition.assets
-        )
+        if not definition.assets:
+            return False
+        try:
+            verify_pack_assets(root, definition.pack_id, definition.version, definition.assets)
+        except (OSError, ModelIntegrityError):
+            return False
+        return True
 
     def status(self, pack_id: str) -> str:
         definition = self.definitions[pack_id]
@@ -877,8 +881,14 @@ class ResourcePackManager:
 
             verify_model(root / "speaker-identification")
 
-    def install(self, pack_id: str, progress: Callable[[str, ModelProgress], None]) -> None:
+    def install(self, pack_id: str, progress: Callable[[str, ModelProgress], None], *, repair: bool = False) -> None:
         definition = self.definitions[pack_id]
+        # A repeated click/queued dependency must not unpack another copy of a
+        # healthy engine. Explicit repair can still replace a failed native
+        # runtime; model repair itself only downloads invalid pinned files.
+        if not repair and self.status(pack_id) in {"installed", "bundled"}:
+            progress(pack_id, ModelProgress("ready", definition.label, "", 1, 1))
+            return
         if definition.engine_modules and self.archive_available(pack_id):
             self._install_engine_archive(definition, progress)
             return

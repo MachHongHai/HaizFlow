@@ -134,6 +134,9 @@ try {
       "haizflow.pipeline.omnivoice_tts",
       "haizflow.services.translation",
       "haizflow.services.hymt2_worker"
+      "pydub"
+      "pydub.silence"
+      "audioop"
     )) {
       $Arguments += @("--hidden-import", $Module)
     }

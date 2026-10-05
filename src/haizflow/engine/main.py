@@ -31,6 +31,8 @@ SMOKE_MODULES = {
         "pyannote.audio.models.segmentation.PyanNet",
         "demucs",
         "llama_cpp",
+        "pydub.silence",
+        "audioop",
     ),
     "cuda128": (
         "torch",
@@ -47,6 +49,8 @@ SMOKE_MODULES = {
         "whisperx.vads",
         "pyannote.audio.models.segmentation.PyanNet",
         "demucs",
+        "pydub.silence",
+        "audioop",
     ),
     "vision": ("onnxruntime", "rapidocr"),
 }
@@ -177,6 +181,21 @@ def smoke_test(profile: str) -> dict:
         importlib.import_module("haizflow.services.hymt2_worker")
         importlib.import_module("faster_whisper.vad").get_vad_model()
     return {"profile": profile, "modules": versions}
+
+
+def voice_sdk_smoke(site_packages: Path) -> dict:
+    """Exercise the downloaded SDK in a fresh worker, before loading weights."""
+    if not (site_packages / "omnivoice/__init__.py").is_file():
+        raise ValueError("The isolated OmniVoice SDK is missing.")
+    sys.path.insert(0, str(site_packages.resolve()))
+    from omnivoice import OmniVoice
+    from transformers import HiggsAudioV2TokenizerModel, AutoFeatureExtractor
+    from pydub import AudioSegment
+    from pydub.silence import detect_nonsilent
+
+    return {"sdk": OmniVoice.__name__, "tokenizer": HiggsAudioV2TokenizerModel.__name__,
+            "feature_extractor": AutoFeatureExtractor.__name__,
+            "audio": bool(AudioSegment and detect_nonsilent)}
 
 
 def rpc_server() -> int:
@@ -354,7 +373,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--profile", choices=sorted(SMOKE_MODULES))
     parser.add_argument("--request", type=Path)
+    parser.add_argument("--voice-sdk-smoke", type=Path)
     args, remaining = parser.parse_known_args(argv)
+    if args.voice_sdk_smoke:
+        result = voice_sdk_smoke(args.voice_sdk_smoke)
+        print(json.dumps({"protocol_version": PROTOCOL_VERSION, "ok": True, **result}), flush=True)
+        return 0
     if args.smoke:
         if not args.profile:
             parser.error("--smoke requires --profile.")

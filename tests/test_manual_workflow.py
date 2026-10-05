@@ -195,6 +195,29 @@ class ManualWorkflowTests(unittest.TestCase):
         sync.assert_called_once_with(video, subtitles.segments)
         host._manual_editor_document.set_document.assert_called_once_with("updated")
 
+    def test_preflight_uses_current_project_configuration_before_queueing(self):
+        for tool, provider, model in (("voice", "omnivoice-gpu", "q4"),
+                                      ("translation", "omnivoice", "full"),
+                                      ("image", "omnivoice", "q4")):
+            with self.subTest(tool=tool):
+                video = SimpleNamespace(video_id="manual-test", project_type="manual",
+                    tts_provider="omnivoice", translation_model="q4")
+                manager = Mock()
+                manager.required_packs.return_value = ["missing-test-pack"]
+                manager.missing_packs.return_value = ["missing-test-pack"]
+                manager.requirement_summary.return_value = {"downloadBytes": 0, "requiredBytes": 0}
+                host = SimpleNamespace(_selected_video=lambda: video, _project_type="manual",
+                    _settings_processing_device="gpu", _settings_language="vi", appAlertRequested=Mock(),
+                    _build_config=lambda: SimpleNamespace(tts_provider=provider, translation_model=model),
+                    _resource_packs=SimpleNamespace(manager=manager,
+                        _hardware_compatibility=lambda _pack: (True, "")))
+                with patch("haizflow.desktop.qml_controller.video_store.update_video") as update:
+                    self.assertFalse(HaizFlowController.runManualTool(host, tool))
+                self.assertEqual(manager.required_packs.call_args.args[1]["provider"], provider)
+                self.assertEqual(manager.required_packs.call_args.args[1]["translation_model"], model)
+                host.appAlertRequested.emit.assert_called_once()
+                update.assert_not_called()
+
     def test_retranslation_requires_confirmation_when_voice_is_active(self):
         video = SimpleNamespace(
             video_id="manual-video",

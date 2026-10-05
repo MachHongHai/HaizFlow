@@ -6,6 +6,7 @@ ProgressBar {
     id: root
 
     property bool active: false
+    property real sweepPhase: 0.5
     implicitHeight: 6
     from: 0
     to: 100
@@ -17,6 +18,7 @@ ProgressBar {
     }
 
     contentItem: Item {
+        id: track
         implicitHeight: 6
         clip: true
 
@@ -39,18 +41,20 @@ ProgressBar {
 
         Rectangle {
             id: busyFill
+            objectName: "busyProgressFill"
             visible: root.indeterminate
             width: Math.max(24, parent.width * 0.28)
             height: parent.height
             radius: 3
             color: Theme.interactive
-            x: (parent.width - width) / 2
-            XAnimator {
-                target: busyFill
+            x: -width + (track.width + width) * root.sweepPhase
+            NumberAnimation {
+                target: root
+                property: "sweepPhase"
                 running: root.indeterminate && root.visible && Theme.motionEnabled
                 loops: Animation.Infinite
-                from: -Math.max(24, root.width * 0.28)
-                to: root.width
+                from: 0
+                to: 1
                 duration: 1400
                 easing.type: Easing.Linear
             }

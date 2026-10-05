@@ -4171,9 +4171,13 @@ class HaizFlowController(QObject):
         if tool_id not in allowed:
             self.appAlertRequested.emit("Thủ công", "Công cụ này không khả dụng.", "warning")
             return False
+        # Validate the exact configuration that will be queued below, not a
+        # stale persisted snapshot left behind while editing project options.
+        build_config = getattr(self, "_build_config", None)
+        effective_config = build_config() if callable(build_config) else video
         if (
             tool_id == "translation"
-            and str(getattr(video, "translation_model", "auto")).startswith("gemini-")
+            and str(getattr(effective_config, "translation_model", "auto")).startswith("gemini-")
             and not self.geminiKeyConfigured
         ):
             self.requestGeminiSetup()
@@ -4189,14 +4193,14 @@ class HaizFlowController(QObject):
             "voice": ("voice",),
         }.get(tool_id, ())
         pack_context = {
-            "voice_clone": str(getattr(video, "tts_voice", "")) == "omnivoice:clone",
-            "speaker_mode": str(getattr(video, "speaker_mode", "single") or "single"),
+            "voice_clone": str(getattr(effective_config, "tts_voice", "")) == "omnivoice:clone",
+            "speaker_mode": str(getattr(effective_config, "speaker_mode", "single") or "single"),
             "device": str(getattr(self, "_settings_processing_device", "cpu") or "cpu"),
-            "model": str(getattr(video, "speech_recognition_model", "small") or "small"),
-            "translation_model": str(getattr(video, "translation_model", "auto") or "auto"),
-            "source_language": str(getattr(video, "source_language", "auto") or "auto"),
-            "language": str(getattr(video, "target_language", "") or ""),
-            "provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
+            "model": str(getattr(effective_config, "speech_recognition_model", "small") or "small"),
+            "translation_model": str(getattr(effective_config, "translation_model", "auto") or "auto"),
+            "source_language": str(getattr(effective_config, "source_language", "auto") or "auto"),
+            "language": str(getattr(effective_config, "target_language", "") or ""),
+            "provider": str(getattr(effective_config, "tts_provider", "omnivoice") or "omnivoice"),
         }
         from haizflow.core.model_choices import gpu_choice_blocked
 

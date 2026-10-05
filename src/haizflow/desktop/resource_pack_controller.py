@@ -532,11 +532,17 @@ class ResourcePackController(QObject):
                         f"Bản cài chưa có môi trường xử lý {definition.label}. Hãy cập nhật ứng dụng."
                     )
 
-                self.manager.install(supporting_id, report)
+                if repair:
+                    self.manager.install(supporting_id, report, repair=True)
+                else:
+                    self.manager.install(supporting_id, report)
             if cancellation.is_set():
                 raise ModelBootstrapCancelled("Installation paused.")
             self._install_units[pack_id] = pack_id
-            self.manager.install(pack_id, report)
+            if repair:
+                self.manager.install(pack_id, report, repair=True)
+            else:
+                self.manager.install(pack_id, report)
             self._events.put({
                 "kind": "done",
                 "pack_id": pack_id,

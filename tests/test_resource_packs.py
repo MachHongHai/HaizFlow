@@ -129,6 +129,35 @@ class ResourcePackManifestTests(unittest.TestCase):
 
 
 class ResourcePackManagerTests(unittest.TestCase):
+    def test_healthy_model_install_is_a_noop_without_network_or_disk_preflight(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "model.bin").write_bytes(b"data")
+            asset = ModelAsset("test", "Test", "https://example.invalid/model", "model.bin", 4,
+                               hashlib.sha256(b"data").hexdigest())
+            manager = ResourcePackManager((ResourcePackDefinition(
+                "model-test", "Test", "tools", "1", "voice", assets=(asset,)),))
+            events = []
+            with patch("haizflow.services.resource_packs.models_dir", return_value=root), \
+                    patch("haizflow.services.resource_packs.install_model_assets") as install, \
+                    patch.object(manager, "requirement_summary") as summary:
+                manager.install("model-test", lambda _pack, event: events.append(event))
+                manager.install("model-test", lambda _pack, event: events.append(event))
+            install.assert_not_called()
+            summary.assert_not_called()
+            self.assertEqual([event.state for event in events], ["ready", "ready"])
+            self.assertEqual((root / "model.bin").read_bytes(), b"data")
+
+    def test_healthy_engine_install_is_noop_but_explicit_repair_remains_available(self):
+        manager = ResourcePackManager()
+        with patch.object(manager, "status", return_value="installed"), \
+                patch.object(manager, "archive_available", return_value=True), \
+                patch.object(manager, "_install_engine_archive") as install:
+            manager.install("engine-cpu-py313", lambda *_args: None)
+            install.assert_not_called()
+            manager.install("engine-cpu-py313", lambda *_args: None, repair=True)
+            install.assert_called_once()
+
     def test_speaker_backend_remains_bundled_cpu_for_both_device_preferences(self):
         manager = ResourcePackManager()
         self.assertEqual(manager.required_packs("speaker", {"device": "cpu"}),
@@ -494,7 +523,8 @@ class ResourcePackManagerTests(unittest.TestCase):
     def test_removing_a_model_pack_deletes_its_complete_and_partial_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            asset = ModelAsset("test", "Test", "https://example.invalid/model", "test/model.bin", 4, "0" * 64)
+            asset = ModelAsset("test", "Test", "https://example.invalid/model", "test/model.bin", 4,
+                               hashlib.sha256(b"data").hexdigest())
             definition = ResourcePackDefinition(
                 pack_id="model-test",
                 label="Test model",
@@ -516,6 +546,41 @@ class ResourcePackManagerTests(unittest.TestCase):
                 self.assertFalse(complete.exists())
                 self.assertFalse(partial.exists())
                 self.assertEqual(manager.status("model-test"), "missing")
+
+    def test_voice_translation_and_ocr_status_requires_pinned_content(self):
+        for pack_id, capability in (("model-omnivoice", "voice"), ("model-hymt2-cpu", "translation"),
+                                    ("model-hymt2-gpu", "translation"), ("model-subtitle-ocr", "ocr")):
+            with self.subTest(pack_id=pack_id), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                asset = ModelAsset("test", "Test", "https://example.invalid/model", "model.bin", 4,
+                                   hashlib.sha256(b"data").hexdigest())
+                manager = ResourcePackManager((ResourcePackDefinition(
+                    pack_id, "Test", "tools", "1", capability, assets=(asset,)),))
+                manager.required_packs = lambda *_args: [pack_id]
+                with patch("haizflow.services.resource_packs.models_dir", return_value=root):
+                    self.assertEqual(manager.missing_packs(capability), [pack_id])
+                    (root / "model.bin").write_bytes(b"oops")
+                    self.assertEqual(manager.status(pack_id), "missing")
+                    (root / "model.bin").write_bytes(b"data")
+                    self.assertEqual(manager.status(pack_id), "installed")
+                    self.assertEqual(manager.missing_packs(capability), [])
+                    # A previous successful check must not bless a same-size rewrite.
+                    (root / "model.bin").write_bytes(b"oops")
+                    self.assertEqual(manager.status(pack_id), "missing")
+                    self.assertEqual(manager.missing_packs(capability), [pack_id])
+
+    def test_old_voice_runtime_is_not_ready_despite_a_completion_marker(self):
+        definition = ResourcePackManager().definitions["engine-cuda128-py313"]
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "complete.json"
+            marker.write_text(json.dumps(dict(pack_id=definition.pack_id, version=definition.version,
+                protocol_version=1)), encoding="utf-8")
+            (marker.parent / "engine.json").write_text(json.dumps(dict(pack_id=definition.pack_id,
+                version=definition.version, profile="cuda128", protocol_version=1, runtime_contract=3)), encoding="utf-8")
+            manager = ResourcePackManager((definition,))
+            with patch.object(manager, "_engine_marker", return_value=marker), \
+                    patch.object(manager, "_bundled_engine_available", return_value=False):
+                self.assertEqual(manager.status(definition.pack_id), "missing")
 
 
 if __name__ == "__main__":

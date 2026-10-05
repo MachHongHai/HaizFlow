@@ -97,10 +97,17 @@ def main():
                                  if path.is_file() and path.name != "complete.json")
             assert actual_payload == installed_size
             assert events[-1] == "ready"
+            before_repeat = {path.relative_to(target).as_posix(): (path.stat().st_size, path.stat().st_mtime_ns)
+                             for path in target.rglob("*") if path.is_file()}
+            with patch.object(manager, "_safe_extract_zip", side_effect=AssertionError("Duplicate extraction")):
+                manager.install(package_id, lambda _pack, event: events.append(event.state))
+            after_repeat = {path.relative_to(target).as_posix(): (path.stat().st_size, path.stat().st_mtime_ns)
+                            for path in target.rglob("*") if path.is_file()}
+            assert before_repeat == after_repeat, "A repeated install rewrote the existing pack"
             results.append(dict(pack_id=package_id, version=version, multipart=bool(parts), offline=args.offline,
                 archive_bytes=archive.stat().st_size, installed_bytes=actual_payload,
                 engine_smoke_passed=True, installed_status=True, storage_exact=True,
-                pause_resume_passed=args.pause_resume))
+                pause_resume_passed=args.pause_resume, duplicate_install_noop=True))
             if args.exercise_storage:
                 sentinel = root / "data/user-data.txt"
                 sentinel.parent.mkdir(parents=True, exist_ok=True)
