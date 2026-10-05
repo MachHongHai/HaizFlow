@@ -2,11 +2,18 @@
 
 [Repository](../README.md) · [User guide](user-guide.md) · [Tiếng Việt](README.vi.md)
 
-Use the user guide if you are installing or operating HaizFlow. The engineering documents describe the implementation, its security boundaries and the checks required before a release.
+## For users
+
+- [Install HaizFlow](install.md): installer, CPU/GPU, resource packs, API keys and data.
+- [Use HaizFlow](user-guide.md): your first project, captions, voice and export.
+- [Report an issue](https://github.com/MachHongHai/HaizFlow/issues): include the version and steps, never API keys.
+
+## For developers and maintainers
+
+The documents below cover implementation, testing, licensing and packaging requirements.
 
 | Document | Read it when you need to… |
 | --- | --- |
-| [User guide](user-guide.md) | install the application, create a project, edit a video or resolve a common problem. |
 | [Architecture](architecture.md) | understand processes, saved data, caches, concurrency and network boundaries. |
 | [Development guide](development.md) | prepare a checkout, run tests or contribute source changes. |
 | [Manual editor status](manual-editor-stabilization.md) | review implemented guarantees and outstanding hardware tests for the editor. |

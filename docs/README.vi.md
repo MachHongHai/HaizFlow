@@ -2,11 +2,18 @@
 
 [Trang chính](../README.vi.md) · [Hướng dẫn sử dụng](user-guide.vi.md) · [English](README.md)
 
-Hãy đọc hướng dẫn sử dụng nếu bạn cần cài đặt hoặc vận hành HaizFlow. Các tài liệu kỹ thuật trình bày cách phần mềm được xây dựng, ranh giới an toàn và những kiểm tra bắt buộc trước khi phát hành.
+## Dành cho người dùng
+
+- [Cài đặt HaizFlow](install.vi.md): bộ cài, CPU/GPU, gói tài nguyên, API key và dữ liệu.
+- [Sử dụng HaizFlow](user-guide.vi.md): từ dự án đầu tiên đến phụ đề, giọng đọc và xuất video.
+- [Báo lỗi](https://github.com/MachHongHai/HaizFlow/issues): gửi phiên bản và bước thực hiện, không gửi API key.
+
+## Dành cho người phát triển và bảo trì
+
+Các tài liệu dưới đây trình bày cách phần mềm được xây dựng và các điều kiện kiểm thử, giấy phép, đóng gói trước phát hành.
 
 | Tài liệu | Dùng khi cần… |
 | --- | --- |
-| [Hướng dẫn sử dụng](user-guide.vi.md) | cài ứng dụng, tạo dự án, chỉnh video hoặc xử lý một lỗi thường gặp. |
 | [Kiến trúc](architecture.vi.md) | tìm hiểu process, dữ liệu lưu, cache, xử lý đồng thời và kết nối mạng. |
 | [Hướng dẫn phát triển](development.vi.md) | chuẩn bị source, chạy kiểm thử hoặc đóng góp mã. |
 | [Trạng thái trình sửa Thủ công](manual-editor-stabilization.vi.md) | xem những bảo đảm đã triển khai và các kiểm tra phần cứng còn thiếu. |

@@ -144,7 +144,11 @@ class DeltaUpdateTests(unittest.TestCase):
     def test_end_to_end_health_success_confirms_and_preserves_user_data(self):
         self.prepare()
         self.activate()
-        self.assertEqual(launch(self.install, command_for=self.fake_command, timeout=3), 0)
+        ready = []
+        self.assertEqual(launch(self.install, command_for=self.fake_command, timeout=3,
+                               on_starting=lambda: ready.append("starting"),
+                               on_ready=lambda: ready.append("ready")), 0)
+        self.assertEqual(ready, ["starting", "ready"])
         self.assertEqual(self.layout.journal()["state"], "confirmed")
         self.assertEqual(self.layout.active()["active"], "0.2.0")
         self.assertEqual(self.before, self.user_data())

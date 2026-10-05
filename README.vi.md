@@ -1,169 +1,60 @@
 <div align="center">
-  <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="128" alt="Logo HaizFlow">
+  <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="Logo HaizFlow">
   <h1>HaizFlow</h1>
-  <p><strong>Bộ công cụ miễn phí để dịch, lồng tiếng và hoàn thiện video trên Windows.</strong></p>
-  <p>Chỉnh phụ đề, giọng đọc, hình ảnh và âm thanh trong một ứng dụng. Các bộ xử lý cục bộ không cần API suy luận trả phí.</p>
-
-  <p>
-    <a href="LICENSE"><img alt="HaizFlow Source-Available" src="https://img.shields.io/badge/Gi%E1%BA%A5y%20ph%C3%A9p-Source--Available-C4915E?style=flat-square"></a>
-    <img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-4B5563?style=flat-square">
-    <img alt="Python 3.13" src="https://img.shields.io/badge/Python-3.13-4B5563?style=flat-square">
-    <img alt="Không cần trả phí API suy luận" src="https://img.shields.io/badge/X%E1%BB%AD%20l%C3%BD%20c%E1%BB%A5c%20b%E1%BB%99-Kh%C3%B4ng%20ph%C3%AD%20API-587052?style=flat-square">
-  </p>
-
-  <p>
-    <a href="https://github.com/MachHongHai/HaizFlow"><strong>Mã nguồn</strong></a> ·
-    <a href="docs/user-guide.vi.md"><strong>Hướng dẫn sử dụng</strong></a> ·
-    <a href="https://github.com/MachHongHai/HaizFlow/issues"><strong>Báo lỗi</strong></a> ·
-    <a href="README.md"><strong>English</strong></a>
-  </p>
+  <p><strong>Dịch video. Chỉnh phụ đề. Hoàn thiện bản dựng.</strong></p>
+  <p>Một không gian làm việc cho phụ đề, giọng đọc và âm thanh trên Windows.</p>
+  <p><a href="docs/install.vi.md">Cài đặt</a> · <a href="docs/user-guide.vi.md">Hướng dẫn sử dụng</a> · <a href="https://github.com/MachHongHai/HaizFlow/issues">Hỗ trợ</a> · <a href="README.md">English</a></p>
 </div>
 
----
+## Từ video gốc đến bản dựng của bạn
 
-## Giới thiệu
+HaizFlow giúp bạn nhận dạng lời nói, dịch nội dung và chỉnh lại từng câu ngay trên video. Kết hợp phụ đề karaoke, giọng đọc, nhạc nền và watermark, rồi xem trước và xuất bản dựng tại một nơi.
 
-HaizFlow là ứng dụng Windows dành cho việc dịch và hoàn thiện video. Ứng dụng kết hợp nhận dạng lời nói, dịch, chỉnh phụ đề, tạo giọng đọc, phối âm, che phụ đề gốc và xuất video mà không buộc người dùng gửi công việc qua một API suy luận trả phí.
+Bạn có thể để ứng dụng chạy theo thiết lập đã chọn, hoặc chủ động chỉnh từng bước trong trình sửa Thủ công. Không cần tạo giọng hay dịch nội dung nếu công việc của bạn chỉ là chỉnh phụ đề và phối âm.
 
-Whisper, HY-MT2, OmniVoice, Demucs và OCR chạy trên máy sau khi người dùng cài gói tài nguyên tương ứng. Dự án, tệp làm việc và video xuất được lưu tại vị trí do người dùng quản lý. Edge TTS, nhập video từ liên kết công khai và đăng mạng xã hội vẫn cần kết nối Internet vì phụ thuộc dịch vụ bên ngoài.
+## Làm được gì với HaizFlow?
 
-Dự án đang trong quá trình phát triển. Hãy giữ một bản sao riêng của video nguồn quan trọng và đọc [điều kiện sẵn sàng phát hành](docs/release-readiness.vi.md) trước khi phân phối bản build.
+- **Dịch và chỉnh phụ đề:** nhận dạng lời nói bằng Whisper, dịch cục bộ bằng HY-MT2 hoặc dùng Gemini với API key của bạn; chỉnh nội dung, thời gian, font và hiệu ứng karaoke.
+- **Hoàn thiện âm thanh:** tách giọng bằng Demucs, điều chỉnh âm lượng, thêm và lặp nhạc nền, tự giảm nhạc khi có lời.
+- **Tạo giọng đọc:** dùng giọng dựng sẵn, phân biệt nhiều người nói để giữ giọng nhất quán, hoặc tạo giọng từ mẫu bạn có quyền sử dụng.
+- **Chỉnh hình ảnh:** che phụ đề gốc bằng làm mờ hoặc vá nền, thêm watermark và so sánh với video gốc.
+- **Xử lý nhiều video:** chạy hàng đợi Hàng loạt, theo dõi kết quả từng video và thử lại công việc lỗi.
+- **Chuẩn bị đăng bài:** nhập từ tệp hoặc liên kết được hỗ trợ; kết nối Zernio để đăng mạng xã hội.
 
-## Chức năng chính
+Kết quả nhận dạng, dịch và phân biệt người nói cần được xem lại trước khi xuất, nhất là video có tiếng ồn hoặc nhiều người nói chồng nhau.
 
-| Khu vực | Dùng khi nào |
-| --- | --- |
-| **Tự động** | Thiết lập một video rồi để HaizFlow thực hiện các tác vụ đã chọn theo thứ tự. Có thể tạm dừng và tiếp tục. |
-| **Trình sửa Thủ công** | Chỉnh phụ đề, hình ảnh, giọng đọc và âm thanh độc lập, theo bất kỳ thứ tự nào. Video xuất phản ánh bản chỉnh sửa hiện tại. |
-| **Hàng loạt** | Dùng một cấu hình cho nhiều video nhưng vẫn theo dõi tiến trình và lỗi riêng của từng tệp. |
-| **Tải xuống** | Lưu video, kênh hoặc âm thanh từ liên kết công khai được hỗ trợ thành dự án. |
-| **Đăng mạng xã hội** | Chuẩn bị và gửi video hoàn chỉnh qua tài khoản Zernio do người dùng cung cấp. |
+## Bắt đầu
 
-Trình sửa Thủ công không bắt buộc chạy đủ mọi công cụ. Phụ đề dịch có thể xuất hiện trước khi che phụ đề gốc hoặc tạo giọng đọc. Đổi âm lượng không làm video dịch lại; đổi thời gian phụ đề không tạo lại giọng; quay về một cách xử lý hình ảnh đã dùng sẽ lấy kết quả đã lưu nếu kết quả đó còn phù hợp.
+Bản 0.1.0 đang được kiểm thử trước phát hành; chưa có bộ cài công khai được duyệt cho bản này. Nếu bạn đang thử bản do tác giả cung cấp, dùng [hướng dẫn cài đặt](docs/install.vi.md). Khi phát hành, tải bộ cài từ [GitHub Releases chính thức](https://github.com/MachHongHai/HaizFlow/releases), không dùng các EXE của gói tài nguyên để mở ứng dụng.
 
-## Cài đặt từ mã nguồn
+1. Cài HaizFlow và mở ứng dụng. Giao diện mặc định là tiếng Việt.
+2. Chọn CPU hoặc GPU NVIDIA trong **Cài đặt → Chung**, rồi cài các gói cần dùng trong **Gói tài nguyên**.
+3. Tạo dự án **Thủ công** để làm quen với từng công cụ, hoặc **Tự động** để chạy theo thiết lập.
+4. Kiểm tra bản dịch, phụ đề và âm thanh. Chọn **Xuất** để lưu video ra thư mục của bạn.
 
-### Yêu cầu
+## Chạy trên máy của bạn
 
-- Windows 10 phiên bản 1809 trở lên hoặc Windows 11, bản x64.
-- Python 3.13 x64, Git và PowerShell.
-- RAM từ 16 GiB.
-- GPU NVIDIA không bắt buộc. Model lớn chạy nhanh hơn trên GPU tương thích; các chế độ CPU được hỗ trợ vẫn có thể sử dụng.
-- Đủ chỗ trống cho ứng dụng Core, các gói tài nguyên đã chọn, video dự án và tệp xuất.
+HaizFlow hỗ trợ Windows 10 phiên bản 1809 trở lên và Windows 11, bản x64. Không cần cài Python khi dùng bộ cài. Máy chỉ có CPU vẫn mở được ứng dụng và dùng các lựa chọn CPU; tính năng GPU yêu cầu NVIDIA tương thích cùng gói tương ứng.
 
-Gói Core vừa được kiểm tra có dung lượng 477 MiB. Setup khuyến nghị chừa 4 GiB và tự tính mức tối thiểu từ đúng bản sắp cài. Bộ xử lý, model, video dự án và tệp xuất được đo riêng; các phần này không bị cộng lẫn vào yêu cầu của Core.
+Các công cụ cục bộ chạy trên máy sau khi cài gói. Internet cần cho việc tải gói, kiểm tra cập nhật, nhập từ liên kết và các dịch vụ trực tuyến. Gemini, Zernio và những dịch vụ bên ngoài có điều khoản, hạn mức và chi phí riêng.
 
-### Chuẩn bị môi trường phát triển
+Bộ cài hiển thị dung lượng ứng dụng; gói tài nguyên, video và tệp xuất cần thêm chỗ trống. Bạn có thể chuyển vị trí lưu tài nguyên trong Cài đặt. [Xem cách chọn gói và quản lý dung lượng](docs/install.vi.md).
 
-```powershell
-git clone https://github.com/MachHongHai/HaizFlow.git
-cd HaizFlow
-powershell -ExecutionPolicy Bypass -File .\scripts\install-desktop-env.ps1
-```
+## Sử dụng cho nội dung thương mại
 
-### Mở ứng dụng
+HaizFlow miễn phí sử dụng theo [giấy phép ứng dụng](LICENSE). Quyền đối với video, nhạc, mẫu giọng và model vẫn áp dụng riêng.
 
-```powershell
-.\.venv\Scripts\python.exe .\haizflow_desktop.py
-```
+**Checkpoint OmniVoice hiện tại có giới hạn phi thương mại.** Không mặc định dùng chức năng này cho video kiếm tiền, quảng cáo hoặc công việc khách hàng khi chưa có quyền phù hợp. Việc công khai mã nguồn hoặc miễn phí ứng dụng không cấp thêm quyền thương mại cho model. Các công cụ khác cần được xem xét theo giấy phép riêng; HaizFlow không tuyên bố mọi quy trình đều được cấp phép thương mại.
 
-Mở **Cài đặt → Gói tài nguyên** để cài đúng bộ xử lý và model cần sử dụng. Tệp tải có thể tiếp tục sau khi bị gián đoạn và chỉ được kích hoạt sau khi khớp dung lượng cùng mã SHA-256 đã công bố.
+## Tài liệu và hỗ trợ
 
-HaizFlow hiển thị Trang chủ trước khi chuẩn bị model. Khi bật **Giữ model sẵn sàng**, một tiến trình riêng sẽ nạp những model đã cài có khả năng được dùng tiếp theo, sau khi giao diện đã phản hồi ổn định. Lệnh xử lý của người dùng luôn được ưu tiên hơn việc chuẩn bị nền.
+- [Hướng dẫn cài đặt](docs/install.vi.md): máy CPU/GPU, gói tài nguyên, API key và dữ liệu.
+- [Hướng dẫn sử dụng](docs/user-guide.vi.md): dự án đầu tiên, phụ đề, giọng đọc và xuất video.
+- [Báo lỗi](https://github.com/MachHongHai/HaizFlow/issues): gửi bước thực hiện, phiên bản và ảnh lỗi; không gửi API key.
+- [Tài liệu phát triển](docs/development.vi.md) và [kiến trúc](docs/architecture.vi.md): dành cho người đóng góp và bảo trì.
 
-### Chạy kiểm tra
+HaizFlow do **Mạch Hồng Hải** phát triển. Nếu ứng dụng hữu ích, bạn có thể [đánh dấu sao repository](https://github.com/MachHongHai/HaizFlow) hoặc góp ý để cải thiện trải nghiệm.
 
-```powershell
-.\scripts\test.ps1
-```
+### Giấy phép và thông báo
 
-Lệnh trên biên dịch mã Python, chạy bộ kiểm thử tự động và kiểm tra các tệp QML.
-
-## Tạo dự án đầu tiên
-
-1. Mở **Dự án** và chọn **Dự án mới**.
-2. Chọn **Tự động**, **Thủ công** hoặc **Hàng loạt**.
-3. Nhập video từ máy hoặc từ một liên kết công khai được hỗ trợ.
-4. Chọn ngôn ngữ cùng những tùy chọn thực sự cần cho video này.
-5. Chạy tác vụ cần dùng và theo dõi tiến trình bên cạnh công cụ đang hoạt động.
-6. Kiểm tra kết quả. Trong dự án Thủ công, có thể sửa riêng phụ đề, hình ảnh, giọng đọc và âm thanh.
-7. Chọn **Xuất video**, sau đó phát video hoàn chỉnh hoặc mở thư mục chứa tệp.
-
-[Hướng dẫn sử dụng](docs/user-guide.vi.md) trình bày chi tiết từng loại dự án, trình sửa Thủ công, gói tài nguyên, dung lượng và cách xử lý các lỗi thường gặp. Bản [tiếng Anh](docs/user-guide.md) được đặt trước trong repository.
-
-## Cách trình sửa Thủ công tổ chức dữ liệu
-
-```mermaid
-flowchart LR
-    A[Video nguồn] --> B[Nhận dạng và dịch]
-    B --> C[Tài liệu phụ đề]
-    C --> D[Các đoạn giọng đọc]
-    A --> E[Nhận diện phụ đề gốc]
-    A --> F[Âm thanh gốc hoặc các track đã tách]
-    C --> G[Xem trước và xuất]
-    D --> H[Bản phối âm]
-    F --> H
-    E --> G
-    H --> G
-```
-
-Mỗi lệnh chỉ thực hiện đúng việc ghi trên công cụ. Kết quả đã lưu được nhận diện bằng đầu vào và thiết lập đã dùng, vì vậy thay đổi một lớp không làm mất công việc ở lớp khác. Khi xuất, HaizFlow không tự chạy những công cụ tùy chọn còn thiếu mà kết xuất đúng trạng thái hợp lệ đang hiển thị trong trình sửa.
-
-## Kết nối mạng và quyền riêng tư
-
-HaizFlow không vận hành máy chủ xử lý video cho người dùng. Các bộ xử lý cục bộ đọc dữ liệu dự án từ bộ nhớ của máy. Ứng dụng chỉ kết nối mạng cho những chức năng cần thiết:
-
-- tải gói tài nguyên sau khi người dùng xác nhận;
-- kiểm tra hoặc tải nội dung từ liên kết và kênh công khai;
-- gửi nội dung phụ đề tới Gemini khi người dùng chọn dịch bằng API;
-- đăng nhập, tải lên và đăng bài qua Zernio.
-
-Thông tin đăng nhập được lưu bằng Windows Credential Manager. Gói chẩn đoán không chứa video dự án và lọc các trường bí mật đã biết. Chi tiết được trình bày tại [Kiến trúc: kết nối mạng và quyền riêng tư](docs/architecture.vi.md#10-ranh-giới-mạng-và-quyền-riêng-tư).
-
-## Tài liệu
-
-| Tài liệu | Dành cho | Nội dung |
-| --- | --- | --- |
-| [Hướng dẫn sử dụng](docs/user-guide.vi.md) · [English](docs/user-guide.md) | Người dùng và người kiểm thử | Cài đặt, dự án, chỉnh sửa, tải xuống, đăng bài và xử lý lỗi. |
-| [Kiến trúc](docs/architecture.vi.md) · [English](docs/architecture.md) | Kỹ sư | Ranh giới process, lưu dữ liệu, cache, xử lý đồng thời và an toàn. |
-| [Phát triển](docs/development.vi.md) · [English](docs/development.md) | Người đóng góp | Chuẩn bị môi trường, kiểm thử, quy ước mã nguồn và yêu cầu duyệt. |
-| [An toàn dependency](docs/dependency-security.vi.md) · [English](docs/dependency-security.md) | Người duyệt bảo mật | Phiên bản thư viện đã khóa, cảnh báo bảo mật, biện pháp giảm thiểu và độ tin cậy của model. |
-| [Sẵn sàng phát hành](docs/release-readiness.vi.md) · [English](docs/release-readiness.md) | Maintainer | Build, installer, giấy phép và điều kiện phát hành. |
-| [Đóng góp](CONTRIBUTING.vi.md) · [English](CONTRIBUTING.md) | Người đóng góp | Cách đề xuất, kiểm thử và ghi tài liệu cho một thay đổi. |
-| [Chính sách bảo mật](SECURITY.vi.md) · [English](SECURITY.md) | Người báo lỗi bảo mật | Phiên bản được hỗ trợ và cách báo lỗi riêng tư. |
-
-## Tổng quan kỹ thuật
-
-- **Ứng dụng:** Python 3.13, PySide6 và Qt Quick/QML.
-- **Nhận dạng:** WhisperX, faster-whisper và CTranslate2.
-- **Dịch:** HY-MT2.
-- **Giọng đọc:** OmniVoice chạy cục bộ.
-- **Âm thanh:** Demucs, FFmpeg, PyDub và SoundFile.
-- **Hình ảnh và phụ đề:** RapidOCR, FFmpeg và renderer tương thích libass.
-- **Nhập video công khai:** yt-dlp với kiểm tra dữ liệu và số lần thử lại có giới hạn.
-
-Ứng dụng Core và các bộ xử lý AI được đóng gói riêng. Bộ xử lý chạy trong process riêng qua một giao thức có phiên bản; nhờ đó thư viện suy luận lớn không nằm trong quá trình khởi động ứng dụng và DLL của chúng không can thiệp Qt.
-
-## Đóng góp
-
-Repository hoan nghênh issue rõ ràng và pull request có phạm vi cụ thể. Thay đổi liên quan dữ liệu dự án, khóa cache, cách nạp model hoặc giao tiếp QML/controller cần có kiểm thử hồi quy và cập nhật tài liệu tương ứng. Hãy bắt đầu từ [hướng dẫn phát triển](docs/development.vi.md) và [tài liệu kiến trúc](docs/architecture.vi.md).
-
-## Giấy phép
-
-[Giấy phép HaizFlow Source-Available 1.0](LICENSE) cho phép sử dụng miễn phí, nghiên cứu, biên dịch và chỉnh sửa cho cá nhân hoặc nội bộ. Không được phân phối lại, đóng gói lại, đổi thương hiệu, bán, cho thuê, mạo nhận phần mềm hoặc cung cấp dịch vụ phần mềm có thu phí khi chưa có chấp thuận bằng văn bản của chủ sở hữu, trừ quyền và ngoại lệ quy định trong giấy phép. Đây không phải giấy phép nguồn mở OSI. Giấy phép riêng của thành phần bên thứ ba vẫn được áp dụng. [Các điều khoản chưa có hiệu lực](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) không thay thế LICENSE ở thư mục gốc.
-
-Mã nguồn được công khai để minh bạch kỹ thuật, học tập và đánh giá kiến trúc. HaizFlow không nhận quyền sở hữu video của người dùng. Giấy phép HaizFlow cho phép tạo video kiếm tiền mà không cần xin phép từng video, **nhưng vẫn phải đáp ứng quyền về model, nội dung và giọng nói**: checkpoint OmniVoice hiện tại có điều kiện phi thương mại, khác SDK Apache. Đây là vướng mắc chưa giải quyết cho luồng thương mại và phát hành, không được giấy phép HaizFlow ghi đè.
-
-Bản chính thức được nhận diện qua [repository](https://github.com/MachHongHai/HaizFlow), [GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases) và [trang web](https://haizflow.pages.dev/). Dự án vẫn đang phát triển, chưa có tuyên bố sẵn sàng production. Xem [NOTICE](NOTICE), [thành phần bên thứ ba](THIRD_PARTY_NOTICES.md) và [rà soát giấy phép, điều kiện kích hoạt](docs/licensing-review.md).
-
-## Nhà phát triển
-
-HaizFlow do **Mạch Hồng Hải** phát triển. Bản quyền (c) 2026 Mạch Hồng Hải cho phần mã thuộc sở hữu. Thành phần có giấy phép riêng giữ nguyên thông báo áp dụng.
-
-<p>
-  <a href="https://github.com/MachHongHai"><img alt="GitHub của Mạch Hồng Hải" src="https://img.shields.io/badge/GitHub-MachHongHai-24292F?style=for-the-badge&logo=github"></a>
-  <a href="https://www.linkedin.com/in/machhonghai/"><img alt="LinkedIn của Mạch Hồng Hải" src="https://img.shields.io/badge/LinkedIn-M%E1%BA%A1ch%20H%E1%BB%93ng%20H%E1%BA%A3i-0A66C2?style=for-the-badge&logo=linkedin"></a>
-  <a href="mailto:machhonghaipr@gmail.com"><img alt="Email Mạch Hồng Hải" src="https://img.shields.io/badge/Email-machhonghaipr%40gmail.com-6B6258?style=for-the-badge&logo=gmail"></a>
-</p>
-
-Nếu HaizFlow hữu ích với bạn, hãy [tặng repository một sao](https://github.com/MachHongHai/HaizFlow) hoặc giúp dự án tốt hơn bằng một issue ngắn gọn, có các bước tái hiện rõ ràng.
+HaizFlow Source-Available 1.0 không phải giấy phép nguồn mở OSI. Điều kiện phân phối lại, đóng gói lại và kinh doanh phần mềm được quy định trong [LICENSE](LICENSE). Xem [NOTICE](NOTICE) và [thành phần bên thứ ba](THIRD_PARTY_NOTICES.md). [Dự thảo không có hiệu lực](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) và [hồ sơ rà soát giấy phép](docs/licensing-review.md) được lưu riêng cho công việc bảo trì.

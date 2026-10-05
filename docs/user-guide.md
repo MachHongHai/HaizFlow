@@ -1,250 +1,103 @@
-# HaizFlow user guide
+# Use HaizFlow
 
-[Documentation](README.md) · [Repository](../README.md) · [Tiếng Việt](user-guide.vi.md)
+[Home](../README.md) · [Installation](install.md) · [Tiếng Việt](user-guide.vi.md)
 
-This guide covers installation, projects, editing and routine troubleshooting. You do not need to know which internal model or file format HaizFlow uses.
+## Your first video
 
-## 1. Before installation
+1. Choose **New project → Manual**, name it and import a local video.
+2. Open **Recognition & translation**, choose recognition and translation models and a target language, then run.
+3. Review the captions. Correct recognition errors before generating voice.
+4. If needed, use the picture tool to detect and cover original captions and the voice tool to generate speech.
+5. Preview the result, check timing and levels, then choose **Export** and a destination.
 
-HaizFlow supports Windows 10 version 1809 or later and Windows 11 on x64 computers. The official minimum is 16 GiB RAM. An NVIDIA GPU is optional; it shortens processing time for compatible models but is not required for the Core application.
+You do not need to run every tool. Caption-only or audio-only edits can also be exported.
 
-Allow space for four separate items:
+## Choose a workspace
 
-1. the Core application;
-2. the engines and models you choose in Resource packs;
-3. source videos and exports;
-4. temporary editing data.
+- **Manual:** work on each tool independently and review detailed edits.
+- **Automatic:** choose language, models, voice, picture and audio settings before processing a video.
+- **Batch:** queue multiple videos with common settings and track each result separately.
+- **Downloads:** import videos, channels or audio from supported public links.
+- **Social publishing:** prepare posts and publish through your Zernio account.
 
-Setup displays the measured requirement for its exact build. The current verified Core artifact is 477 MiB and Setup recommends 4 GiB of free space. Optional resource packs and project media are measured separately and are not included in the Core figure.
+Back/Forward navigate pages. Undo/Redo in the editor apply to supported edits, not page history.
 
-HaizFlow can perform recognition, translation, local speech, audio separation and OCR on the computer after the appropriate packs are installed. Optional Gemini translation, public-link imports, resource downloads and social publishing require an Internet connection.
+## Recognition and translation
 
-## 2. Install and open
+Choose recognition and translation models and the target language in the recognition tool.
 
-For a published build, start Setup and use the location suggested by Windows unless you have a reason to choose another local drive. Do not place engines or models on a network drive.
+Whisper recognizes speech; HY-MT2 translates locally; Gemini uses an online service with your key. Choose models compatible with the CPU/GPU mode applied in Settings. If a pack or key is missing, read the warning and open Settings to add it; the app does not navigate away from your project automatically.
 
-To run from source:
+After vocal separation, check the recognition-source label to see whether it uses the separated voice track or source audio. Review noisy recordings, loud background music and overlapping speech carefully.
 
-```powershell
-git clone https://github.com/MachHongHai/HaizFlow.git
-cd HaizFlow
-powershell -ExecutionPolicy Bypass -File .\scripts\install-desktop-env.ps1
-.\.venv\Scripts\python.exe .\haizflow_desktop.py
-```
+## Edit captions
 
-The Home page opens without waiting for an AI model. If **Keep models ready** is enabled, HaizFlow prepares installed models in a separate process once the interface is responsive. This preparation does not start work on a video.
+Select a caption on the timeline to adjust text, timing and style. The text-editing dialog lets you navigate between segments. **Save** is enabled only after a change; **Discard changes** restores the saved text.
 
-## 3. Install resource packs
+Adjust font, size, color, outline, shadow and caption area. Drag the caption area in the preview to change its layout. Karaoke follows each word's timing; wrapped lines do not begin highlighting together.
 
-Open **Settings → Installation packages**. The page shows a complete NVIDIA profile and a complete CPU profile, followed by optional voice and picture tools. HaizFlow recommends the profile that matches the detected hardware. Speech recognition, translation and their language-alignment data are installed together, so language files do not appear as separate choices.
+Bangers is bundled. Other fonts must be available on the computer to preserve their appearance in exports. If the app reports a missing or changed font, select a suitable font before exporting.
 
-Each row shows download size, installed size, version, location and current state. Before installation, HaizFlow also counts extraction space, the previous version retained for rollback and 2 GiB of free-space reserve.
+Review translations and names. If you change wording after generating voice, regenerate the affected segments so speech and captions agree.
 
-- **Install** downloads and verifies a pack.
-- **Pause** and **Resume** control a download without discarding valid partial data.
-- **Repair** checks and replaces damaged files.
-- **Remove** deletes a pack that no worker is using.
-- **Move storage** transfers all managed resources to another local drive, verifies the copy and only then removes the old copy.
+## Picture and original captions
 
-HaizFlow does not download a missing pack automatically. If a tool needs one, the message names the missing packs and opens the correct section in Settings. Return to the project and run the command after installation.
+In the picture tool, choose whether to preserve the original video or cover its captions. For coverage, choose blur or background patching, review the detected area and apply it.
 
-## 4. Navigate the application
+OCR detects text regions but is not perfect in every frame. Check the coverage at several points. The preview updates after processing so you can review the result without exporting the whole video.
 
-The top bar contains Home, Back, Forward, Projects, Edit, Settings and Help.
+Watermarks may be text, images or video. Only use assets you have permission to use; preview their position, size and opacity.
 
-- **Back** and **Forward** move through pages you have visited.
-- **Undo** and **Redo**, under Edit, reverse supported edits. They do not act as page navigation.
-- **Help** opens the About window and support links.
+## Voice
 
-The side navigation is visible on Home, Projects, Downloads and Social publishing. It is hidden inside a project to leave more space for the video and timeline. Use Home or Projects in the top bar to leave a project.
+Select a voice before choosing **Generate voice**. Listen to samples before processing the whole video.
 
-## 5. Create a project
+- **Built-in voice:** use one voice for the selected speech.
+- **Multiple speakers:** group speakers from the source recording and assign consistent voices. This does not automatically clone their original voices.
+- **Reference/voice cloning:** use a selected sample you have permission to use. Clear speech from one person with little background music is generally easier to process.
 
-Select **New project**, then choose the type that matches the work.
+Speaker identification is bundled with the app and runs on CPU. Short turns, overlapping speech and similar voices can be misassigned; review the dialogue, not just its first sentence.
 
-- **Automatic:** one video, one set of options and an ordered processing job. It supports pause, resume and validated recovery.
-- **Manual:** independent tools for source, translation, subtitles, picture, voice, sound and export.
-- **Batch:** several videos with a shared base configuration and a separate result for each video.
-- **Download:** video, channel or audio acquisition from a supported public source.
-- **Social publishing:** preparation and submission through a Zernio account supplied by the user.
+The current OmniVoice checkpoint is **noncommercial**. Do not assume it can be used for ads, monetized videos or client work. You also need appropriate permission for any reference voice.
 
-Home lists recent projects. The Projects page keeps the full collection in a searchable, filterable card grid.
+## Audio and background music
 
-## 6. Import a video
+Vocal separation uses Demucs according to the app's CPU/GPU mode. Install its matching pack before running it.
 
-### From a file
+Check the source, voice and music tracks on the timeline. Adjust levels and mute tracks as needed to avoid hearing both original and replacement speech.
 
-1. Select **From file**.
-2. Choose a supported video.
-3. Wait until the thumbnail and duration appear.
-4. Check that the video can be played before starting a long operation.
+Import music from a file or supported link. Its track appears on import. Enable music looping to cover the video, and automatic ducking to lower music under speech. These options are also available in Automatic settings.
 
-Do not rename, move or delete files inside an open project directory.
+## Pause, continue and rerun
 
-### From a public link
+**Pause** stops at a point where completed work can be saved. Valid completed results are retained so **Continue** does not need to start everything over.
 
-1. Select **From link**.
-2. Paste a public video URL. Text containing one supported URL is accepted as well.
-3. Select **Check**.
-4. Review the title, platform, creator, duration and thumbnail.
-5. Select **Download and import**.
+Do not change settings and continue an old run. The app warns and blocks continuation with a changed configuration. Choose **Rerun** to process using the new settings. Rerunning may replace a tool's current result; review the confirmation.
 
-HaizFlow retries temporary DNS, timeout, HTTP and expired-media errors with a fresh yt-dlp session. It does not endlessly retry a private, removed, region-restricted or login-protected video.
+Video-processing status appears in the app status strip. Resource download/install progress stays on the Resource packs page rather than sharing the video strip.
 
-If inspection fails, open the URL in a browser first. Confirm that the content is public, update platform authentication if the service requires it, and try again after a short wait if the service is limiting requests.
+## Preview and export
 
-## 7. Automatic projects
+Seek using the timeline or preview controls. **Compare** sits with Undo/Redo in the center toolbar, separate from **Export**.
 
-1. Add the source video.
-2. Choose the source and target languages and recognition model.
-3. Choose an OmniVoice preset for local speech.
-4. Decide whether to keep, blur or patch the original subtitles.
-5. Keep the source sound or separate speech from the background.
-6. Add music or a watermark if required.
-7. Set the source, voice and music levels.
-8. Start processing.
+Review the first caption, speaker changes, music sections and the end of the video. Check fonts, caption placement, watermark and audio levels.
 
-The command bar distinguishes model preparation from video processing. A model reaching the ready state does not complete the task progress bar. Pausing retains completed checkpoints; restarting deliberately discards results that depend on the restarted operation.
+Choose **Export**, quality and destination. Existing files require overwrite confirmation. Save exports outside HaizFlow's managed project folders to keep an independent copy. Export does not automatically run additional AI tools you did not select.
 
-## 8. Manual editor
+## Social publishing
 
-Manual tools are not numbered steps. Select any tool whose required input is available.
+Add and check Zernio keys in **Settings → API Key**. Green/red dots indicate the check result for each key.
 
-### Source
+Create a publishing project, choose the account and post content, add local videos or renders from projects, and verify the destination before confirming. Use **Open post** after successful publication to check it.
 
-Replace the video from a file or link. **Keep original audio** uses the source track. **Separate vocals** runs Demucs and stores both the speech and background variants. Moving between variants reuses a valid saved result and does not start recognition.
+Platforms and Zernio have their own limits, charges and rules. Ensure you have content rights before publishing.
 
-### Recognition & translation
+## Manage and troubleshoot
 
-Choose the languages and recognition model, then run **Recognize and translate**. The result is timed subtitle text without a generated voice.
+- **Missing pack:** install the matching CPU/GPU pack or use **Check and repair**.
+- **Invalid key:** verify the complete key, permissions and account; never include keys in issue reports.
+- **No sound:** check that the needed track exists, is not muted and has a nonzero level.
+- **Memory error:** close other apps, select a smaller model or disable **Keep models ready**. It reduces repeated loading; it does not increase available memory.
+- **Low disk space:** move resources using Settings and keep copies of important media. Do not manually remove active packs or project folders.
 
-Running the command again replaces the subtitle text after confirmation. The existing subtitle style and position, source-subtitle treatment, watermark, music and levels remain unchanged. Generated speech is marked out of date because it no longer matches the new text.
-
-### Subtitles
-
-Select a clip on the timeline or click the subtitle in the result video. The editor opens the complete text for that segment.
-
-- Type normally; Vietnamese IME composition is committed before save or focus changes.
-- The draft saves 500 ms after typing stops and immediately when you click elsewhere.
-- **Saving**, **Saved** or a retry message shows the actual state.
-- Drag the subtitle on the video to move the project subtitle position.
-- Drag its handle to change the project subtitle size.
-- Drag a clip edge on the timeline to change its start or end time.
-
-Clicking an empty part of the video saves the draft, removes text focus and hides the transform frame. Text changes make only that segment's voice out of date. Timing and style changes do not synthesize speech again.
-
-Undo and Redo cover supported text, timing, picture, voice, sound and project-setting changes. They are separate from Back and Forward.
-
-### Picture
-
-Choose **Keep** to leave the source picture untouched, or **Conceal** and then choose **Blur** or **Patch**. Selecting concealment runs the required analysis only after the method has been chosen. The concealed region remains below the translated subtitle layer.
-
-Watermark controls also belong here. Subtitle text and size are edited directly from the subtitle or the Subtitles tool, not from Picture.
-
-### Voice
-
-Before speech exists, select **Generate voice**. Once speech exists, use **Change voice** or **Regenerate**. These actions open a dialog; changing a field in the dialog does not alter the video until you confirm.
-
-Choose **This segment** to affect only the selected subtitle or **Entire video** to use one voice throughout. Unchanged segments keep their valid audio. When multi-speaker recognition is off, regenerated segments use the same voice configuration as the rest of the video.
-
-OmniVoice runs locally after its packs are installed. Voice samples in Automatic projects are prerecorded; opening a sample does not run a model.
-
-### Sound
-
-Source, voice and music level controls are always visible. Changes are heard against the current video without running translation or TTS. Add music from a local file or a supported link.
-
-If a voice clip is missing, HaizFlow identifies the affected subtitle instead of creating it without confirmation.
-
-### Export
-
-Select **Export video** to render the current edit. Translated subtitles, concealed source subtitles, generated speech, music and watermark are optional. Export does not run an omitted AI tool on your behalf.
-
-Choose a quality preset, select a destination using Save As, then confirm **Export**. The suggested filename is the project name. An existing destination requires explicit overwrite approval. The jobs window shows the actual saved path and offers **Open folder** and **Close**. Re-export reuses the matching internal render; changing or deleting an exported file does not affect editing. Export outside managed project roots so deleting a project cannot remove your copy.
-
-## 9. Preview and timeline
-
-The source and result players have separate play, pause, stop, mute and fullscreen controls. **Play both** starts them from the same position for comparison.
-
-Drag the player slider, click the timeline or drag the playhead to seek. During dragging, the thumb follows the pointer immediately; player seeks are combined to keep the interface responsive. Releasing the pointer applies the exact final position.
-
-When a preview source changes, the last valid frame remains visible until its replacement is ready. Background model work must not take ownership of the player or sound output.
-
-## 10. Batch, Downloads and publishing
-
-### Batch
-
-Add videos, set the shared options and start the queue. Every row keeps its own status and progress. Retry a failed video without discarding successful outputs. A temporary per-video override does not silently become the base configuration for future imports.
-
-### Downloads
-
-- **Video:** inspect one URL, review its details and download it.
-- **Channel:** inspect a public channel or profile, select items and add them to the queue.
-- **Audio:** download supported audio or extract sound from a local media file.
-
-Changing tabs does not reset the active request or queue.
-
-### Social publishing
-
-Connect Zernio, set the caption and post options, add a local video or a completed internal render from a Manual, Automatic or Batch project, review the destination and confirm. No external export is required for project import. HaizFlow copies the selected render into publishing-owned media before upload. This sends media to a third-party service; review its terms, privacy rules, quotas and charges. A published item provides **Open post**.
-
-### OmniVoice usage limits
-
-The bundled OmniVoice checkpoint is **NonCommercial (CC-BY-NC)**. Free use
-of HaizFlow and the Apache-2.0 license of OmniVoice code do not grant commercial
-rights to the checkpoint. Obtain appropriate rights before using generated
-voices for monetized content, advertising or client work. HaizFlow does not
-grant permissions on behalf of model or voice owners. See the
-[pinned model card](https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/README.md).
-
-## 11. Storage and cache
-
-| Item | Current limit or rule |
-| --- | ---: |
-| Core size | Measured for each release artifact; see its build report |
-| Core installation | Setup calculates the exact minimum; the current recommendation is 4 GiB free |
-| Free space retained during resource installation | 2 GiB after download, installation and rollback estimates |
-| Manual temporary data | Adapts to available disk space; inactive rebuilds are removed first |
-
-These Core figures do not include optional engines, models, source videos, exports or render temporary files. Resource packs and exports run their own free-space check using measured or estimated bytes.
-
-HaizFlow maintains Manual temporary data automatically. It keeps an operational free-space reserve, reduces its cache allowance when the drive fills and removes inactive previews or old mixes before reusable model results. Source media, exports, active edits and revisions required by Undo and Redo are never cache-cleanup targets.
-
-Source users may set `HAIZFLOW_HOME` in `.env` to place managed models, cache, data and temporary files under another local directory.
-
-## 12. Common problems
-
-### A model is being prepared
-
-You may continue using the interface. Preparation and video processing have separate status messages. If preparation fails, open the technical log and check free space, network access, file verification and available RAM or VRAM.
-
-### A public URL cannot be imported
-
-Open it in a browser and confirm that it is still public. Private, removed, restricted or login-protected content needs the appropriate access; pressing the button repeatedly cannot bypass that restriction. For a temporary service error, wait briefly and try once more.
-
-### The result has no sound
-
-Check that the intended source, voice and music tracks exist, are not muted and have a non-zero level. In a Manual project, generating a voice and choosing the sound mix are separate actions.
-
-### The result looks like the source for a moment
-
-Wait for the saved preview to load. The result should keep its last valid frame and replace it only with a complete preview. If it remains incorrect, open the technical log and report the project state.
-
-### Vietnamese input loses the last word
-
-Current builds commit Windows IME text before saving. If this still occurs, report the Windows version, input method, affected field and exact text used to reproduce it.
-
-### The application becomes slow
-
-Stop jobs you no longer need and check available RAM, VRAM and disk space. HaizFlow reduces rebuildable cache automatically when space is low. Avoid editing an active project from a slow network location.
-
-## 13. Report a problem
-
-Open [GitHub Issues](https://github.com/MachHongHai/HaizFlow/issues) and include:
-
-- the action you performed;
-- what you expected and what happened instead;
-- the visible error and a relevant excerpt from the technical log;
-- Windows, GPU and HaizFlow versions;
-- a small sample only when you have permission to share it.
-
-Do not publish passwords, API keys, private links, complete project metadata or copyrighted media without permission.
+See [Installation](install.md) for resources, data and updates. If the problem persists, [report an issue](https://github.com/MachHongHai/HaizFlow/issues) with the version, steps and error screenshot. Hide personal information and keys.

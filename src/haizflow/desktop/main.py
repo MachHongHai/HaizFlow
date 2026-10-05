@@ -168,6 +168,8 @@ def main(*, smoke_test: bool = False) -> None:
         coordinator.activationRequested.connect(activate_window)
 
     try:
+        from haizflow.startup_splash import opening_interface
+        opening_interface()
         engine = QQmlApplicationEngine()
         engine.warnings.connect(
             lambda warnings: qml_errors.extend(str(warning.toString()) for warning in warnings)
@@ -224,12 +226,16 @@ def main(*, smoke_test: bool = False) -> None:
         # Source and legacy installations have no handshake and are unchanged.
         from haizflow.update.launcher import acknowledge_ready
         acknowledge_ready()
+        from haizflow.startup_splash import finish
+        finish()
         if activation_pending:
             QTimer.singleShot(0, activate_window)
         if smoke_test:
             QTimer.singleShot(1500, app.quit)
         exit_code = app.exec()
     except Exception as exc:
+        from haizflow.startup_splash import finish
+        finish()
         logging.getLogger(__name__).exception("HaizFlow desktop startup failed")
         if not smoke_test:
             QMessageBox.critical(

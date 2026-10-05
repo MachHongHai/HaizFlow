@@ -87,7 +87,7 @@ def start_core(layout: Layout, value: str, *, timeout: float = 90, popen=subproc
 
 
 def launch(root: Path, *, timeout: float = 90, popen=subprocess.Popen, command_for=None,
-           wait_for_exit: bool = True):
+           wait_for_exit: bool = True, on_ready=None, on_starting=None):
     layout = Layout(root)
     # Keep this lock for the full Core lifetime in the real launcher.
     with file_lock(child(layout.state, "launcher.lock")):
@@ -124,6 +124,8 @@ def launch(root: Path, *, timeout: float = 90, popen=subprocess.Popen, command_f
             if pending:
                 pending = layout.transition(pending, "pending_health", attempts=1)
         try:
+            if on_starting is not None:
+                on_starting()
             process = start_core(layout, pointer["active"], timeout=timeout, popen=popen, command_for=command_for)
         except CoreStillRunningError:
             raise
@@ -138,6 +140,8 @@ def launch(root: Path, *, timeout: float = 90, popen=subprocess.Popen, command_f
             if pending:
                 with layout.lock():
                     layout.confirm(pending)
+        if on_ready is not None:
+            on_ready()
         if wait_for_exit:
             # Normal exit or crash AFTER confirmation never rolls back.
             return process.wait()

@@ -1570,10 +1570,9 @@ def render_video(
     rel_video = _ffmpeg_path(video_path, video_temp_dir)
     rel_voice = _ffmpeg_path(voice_wav_path, video_temp_dir)
     rel_ass = _ffmpeg_path(ass_path, video_temp_dir)
-    rel_font_directory = _ffmpeg_path(
-        str(_karaoke_font_directory()),
-        video_temp_dir,
-    )
+    # libass's Windows directory enumeration does not reliably normalize deep
+    # ../ chains. It silently falls back to Arial even when the TTF exists.
+    rel_font_directory = _karaoke_font_directory().resolve().as_posix()
     output_directory = os.path.dirname(os.path.abspath(output_path))
     os.makedirs(output_directory, exist_ok=True)
     output_extension = os.path.splitext(output_path)[1] or ".mp4"

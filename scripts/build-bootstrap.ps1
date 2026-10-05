@@ -46,6 +46,7 @@ try {
       --name $Entry[0] --distpath $OutputDirectory --workpath (Join-Path $Work $Entry[0]) `
       --specpath $Work --paths (Join-Path $Root "src") `
       --version-file $VersionResource `
+      --add-data "$(Join-Path $Root 'src\haizflow\desktop\assets\branding\haizflow.ico');." `
       --exclude-module PySide6 --exclude-module torch --exclude-module numpy `
       --icon (Join-Path $Root "src\haizflow\desktop\assets\branding\haizflow.ico") `
       (Join-Path $PSScriptRoot $Entry[1])

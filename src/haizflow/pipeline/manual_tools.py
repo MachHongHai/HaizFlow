@@ -725,7 +725,7 @@ def export_signature(video, *, validate: bool = True) -> str:
         editor_document.model_dump() if editor_document else {},
         getattr(video, "export_preset", "source"),
         *_generation_token(video, "export"),
-        "manual-export-v8-caption-glyph-capacity-win-metrics",
+        "manual-export-v9-absolute-libass-font-directory",
     )
 
 

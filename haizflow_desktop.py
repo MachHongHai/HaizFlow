@@ -137,8 +137,13 @@ if "--ui-smoke-test" in sys.argv:
         raise
     raise SystemExit(0)
 
-from haizflow.desktop.main import main  # noqa: E402,I001
-
-
 if __name__ == "__main__":
-    main()
+    from haizflow.startup_splash import start, finish
+    if os.getenv("HAIZFLOW_STARTUP_HEALTH_PENDING") != "1":
+        start(settings_path=Path(_runtime_config.RUNTIME_DATA_DIR) / "desktop-settings.json",
+              icon_path=Path(_runtime_config.BASE_DIR) / "desktop/assets/branding/haizflow.ico")
+    try:
+        from haizflow.desktop.main import main
+        main()
+    finally:
+        finish()

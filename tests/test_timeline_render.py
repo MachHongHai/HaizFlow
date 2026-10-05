@@ -314,6 +314,8 @@ class TimelineRenderTests(unittest.TestCase):
         self.assertIn("drawtext=fontfile=", command[command.index("-filter_complex") + 1])
         self.assertIn("text='HaizFlow'", command[command.index("-filter_complex") + 1])
         self.assertIn("fontsdir=", command[command.index("-filter_complex") + 1])
+        font_directory = render._karaoke_font_directory().resolve().as_posix().replace(":", "\\:")
+        self.assertIn(f"fontsdir='{font_directory}'", filter_graph)
         self.assertIn("\\an5\\pos(960,886)\\fs", ass_text)
         self.assertIn("\\fscx100", ass_text)
         self.assertIn("Style: Default,Bangers,", ass_text)
