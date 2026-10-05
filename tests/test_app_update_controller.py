@@ -6,7 +6,7 @@ import unittest
 import urllib.error
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from PySide6.QtCore import QObject, Signal
 
@@ -35,6 +35,113 @@ class Response(BytesIO):
 
 
 class AppUpdateControllerTests(unittest.TestCase):
+    def test_confirmation_launches_independent_updater_with_versioned_request(self):
+        from haizflow.update.state import Layout, provision
+
+        controller = AppUpdateController(Host())
+        controller._latest_version = "99.0.0"
+        controller._state = "available"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provision(root)
+            (root / "HaizFlow.exe").touch()
+            (root / "updater").mkdir()
+            (root / "updater/HaizFlowUpdater.exe").touch()
+            controller._delta_layout = Layout(root)
+            with (patch("haizflow.desktop.app_update_controller.sys.frozen", True, create=True),
+                  patch("haizflow.desktop.app_update_controller.sys.platform", "win32"),
+                  patch("haizflow.desktop.app_update_controller.subprocess.Popen") as launch):
+                self.assertTrue(controller.confirm_install("99.0.0", "available"))
+                request = json.loads((controller._delta_layout.ipc / (controller._delta_token + ".update.json")).read_text())
+                self.assertEqual(request["target"], "99.0.0")
+                self.assertEqual(launch.call_args.args[0], [str(root / "updater/HaizFlowUpdater.exe"),
+                    "--install-root", str(root), "--request-token", request["token"]])
+                self.assertFalse(list(controller._delta_layout.ipc.glob("*.activate.json")))
+                self.assertEqual(controller.state, "downloading")
+                self.assertFalse(controller.confirm_install("99.0.0", "available"))
+                launch.assert_called_once()
+
+    def test_confirmation_is_bound_to_version_and_action(self):
+        controller = AppUpdateController(Host())
+        controller._latest_version = "99.0.0"
+        controller._state = "available"
+        with patch.object(controller, "install", return_value=True) as install:
+            self.assertFalse(controller.confirm_install("98.0.0", "available"))
+            self.assertFalse(controller.confirm_install("99.0.0", "ready"))
+            install.assert_not_called()
+            self.assertTrue(controller.confirm_install("99.0.0", "available"))
+            install.assert_called_once()
+            controller._state = "downloading"
+            self.assertFalse(controller.confirm_install("99.0.0", "available"))
+            install.assert_called_once()
+
+    def test_delta_download_is_blocked_when_video_or_resource_work_is_running(self):
+        host = Host()
+        controller = AppUpdateController(host)
+        controller._delta_layout = Mock()
+        controller._latest_version = "99.0.0"
+        controller._state = "available"
+        with patch("haizflow.desktop.app_update_controller.subprocess.Popen") as launch:
+            for property_name in ("isProcessing", "resourcePackBusy", "editorPreviewBusy"):
+                setattr(host, property_name, True)
+                self.assertFalse(controller.confirm_install("99.0.0", "available"))
+                setattr(host, property_name, False)
+            launch.assert_not_called()
+
+    def test_failed_activation_reports_error_without_closing_core(self):
+        host = Host()
+        notifications = []
+        host.appUpdateAvailable.connect(lambda: notifications.append(True))
+        controller = AppUpdateController(host)
+        controller._delta_layout = Mock()
+        controller._state = "ready"
+        controller._latest_version = "99.0.0"
+        controller._delta_token = "a" * 64
+        with (patch("haizflow.update.filesystem.child", return_value=Path("unused.json")),
+              patch("haizflow.update.filesystem.atomic_json", side_effect=PermissionError("Denied")),
+              patch("PySide6.QtCore.QCoreApplication.quit") as quit_app):
+            self.assertFalse(controller.confirm_install("99.0.0", "ready"))
+            quit_app.assert_not_called()
+        self.assertEqual(controller.state, "ready")
+        self.assertEqual(controller.error, "Denied")
+        self.assertEqual(notifications, [True])
+
+    def test_ready_notification_emits_once_and_does_not_activate(self):
+        host = Host()
+        notifications = []
+        host.appUpdateAvailable.connect(lambda: notifications.append(True))
+        controller = AppUpdateController(host)
+        controller._delta_layout = Mock()
+        controller._delta_token = "a" * 64
+        controller._state = "downloading"
+        data = {"token": controller._delta_token, "state": "ready", "progress": 90}
+        with (patch("haizflow.update.filesystem.child", return_value=Mock(exists=lambda: True)),
+              patch("haizflow.update.filesystem.read_json", return_value=data),
+              patch("haizflow.update.filesystem.atomic_json") as activate,
+              patch("PySide6.QtCore.QCoreApplication.quit") as quit_app):
+            controller.drain_events()
+            controller.drain_events()
+            controller.check_if_needed()
+            activate.assert_not_called()
+            quit_app.assert_not_called()
+        self.assertEqual(controller.state, "ready")
+        self.assertEqual(notifications, [True])
+
+    def test_restart_confirmation_only_writes_permission_after_safe_confirmation(self):
+        controller = AppUpdateController(Host())
+        controller._delta_layout = Mock()
+        controller._delta_token = "b" * 64
+        controller._latest_version = "99.0.0"
+        controller._state = "ready"
+        with (patch("haizflow.update.filesystem.child", return_value=Path("activate.json")),
+              patch("haizflow.update.filesystem.atomic_json") as activate,
+              patch("PySide6.QtCore.QCoreApplication.quit") as quit_app):
+            self.assertTrue(controller.confirm_install("99.0.0", "ready"))
+            activate.assert_called_once_with(Path("activate.json"), {"token": "b" * 64, "activate": True})
+            quit_app.assert_called_once()
+            self.assertFalse(controller.confirm_install("99.0.0", "ready"))
+            quit_app.assert_called_once()
+
     def test_version_key_compares_stable_tags(self):
         self.assertGreater(version_key("v1.2.0"), version_key("1.1.9"))
         self.assertGreater(version_key("1.2.0"), version_key("1.2.0-rc.1"))

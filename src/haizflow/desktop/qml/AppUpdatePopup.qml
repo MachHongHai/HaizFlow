@@ -17,6 +17,30 @@ Popup {
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
+    function confirmUpdate() {
+        confirmationLoader.requestedVersion = root.controller.latestAppVersion;
+        confirmationLoader.requestedState = root.state;
+        confirmationLoader.invoke("open", []);
+    }
+
+    LazyDialogLoader {
+        id: confirmationLoader
+        property string requestedVersion: ""
+        property string requestedState: ""
+        sourceComponent: ConfirmDialog {
+            objectName: "appUpdateConfirmationDialog"
+            title: confirmationLoader.requestedState === "ready"
+                ? qsTr("Khởi động lại để cập nhật?") : qsTr("Tải bản cập nhật?")
+            message: confirmationLoader.requestedState === "ready"
+                ? qsTr("HaizFlow sẽ đóng và mở lại để áp dụng phiên bản %1. Lưu các thay đổi đang chỉnh sửa trước khi tiếp tục.").arg(confirmationLoader.requestedVersion)
+                : qsTr("Tải và kiểm tra phiên bản %1. HaizFlow sẽ hỏi lại trước khi khởi động lại; dự án và gói tài nguyên được giữ nguyên.").arg(confirmationLoader.requestedVersion)
+            confirmText: confirmationLoader.requestedState === "ready"
+                ? qsTr("Khởi động lại") : qsTr("Tải cập nhật")
+            onConfirmed: root.controller.confirmAppUpdate(confirmationLoader.requestedVersion, confirmationLoader.requestedState)
+            onClosed: confirmationLoader.release()
+        }
+    }
+
     function updateError(source) {
         const messages = {
             "Dừng hoặc chờ các tác vụ hoàn tất trước khi cập nhật.": qsTr("Dừng hoặc chờ các tác vụ hoàn tất trước khi cập nhật."),
@@ -24,7 +48,9 @@ Popup {
             "Bản phát hành chưa có bộ cài Windows kèm mã kiểm tra. Hãy xem chi tiết cập nhật.": qsTr("Bản phát hành chưa có bộ cài Windows kèm mã kiểm tra. Hãy xem chi tiết cập nhật."),
             "Bộ cài chưa có chữ ký hợp lệ. Không thể cập nhật tự động.": qsTr("Bộ cài chưa có chữ ký hợp lệ. Không thể cập nhật tự động."),
             "Bộ cài tải xuống chưa đầy đủ hoặc mã kiểm tra không khớp. Hãy thử lại.": qsTr("Bộ cài tải xuống chưa đầy đủ hoặc mã kiểm tra không khớp. Hãy thử lại."),
-            "Bộ cài đã đóng. Nếu cập nhật thành công, hãy khởi động lại HaizFlow.": qsTr("Bộ cài đã đóng. Nếu cập nhật thành công, hãy khởi động lại HaizFlow.")
+            "Bộ cài đã đóng. Nếu cập nhật thành công, hãy khởi động lại HaizFlow.": qsTr("Bộ cài đã đóng. Nếu cập nhật thành công, hãy khởi động lại HaizFlow."),
+            "Trạng thái cập nhật đã thay đổi. Kiểm tra lại trước khi xác nhận.": qsTr("Trạng thái cập nhật đã thay đổi. Kiểm tra lại trước khi xác nhận."),
+            "Không thể tải bản cập nhật. Kiểm tra kết nối mạng rồi thử lại.": qsTr("Không thể tải bản cập nhật. Kiểm tra kết nối mạng rồi thử lại.")
         };
         return messages[source] || source;
     }
@@ -65,9 +91,10 @@ Popup {
                 ? qsTr("Đang kiểm tra phiên bản mới…")
                 : root.state === "error"
                     ? qsTr("Không thể kiểm tra phiên bản mới. Kiểm tra kết nối mạng rồi thử lại.")
+                    : root.state === "no_release" ? qsTr("Chưa có bản phát hành công khai.")
                     : root.controller.hasAppUpdate
-                        ? qsTr("Đã có phiên bản mới, hãy cập nhật ngay, chi tiết bản cập nhật xem tại:")
-                        : qsTr("Hiện tại chưa có phiên bản mới, chi tiết bản cập nhật gần nhất:")
+                        ? qsTr("Có phiên bản mới. Xem thay đổi tại:")
+                        : qsTr("Bạn đang dùng phiên bản mới nhất. Xem chi tiết tại:")
             text: message + (root.state === "checking" || root.state === "idle" || root.state === "error"
                 ? "" : ' <a href="https://haizflow.pages.dev/" style="color: '
                     + Theme.interactive + ';">haizflow.pages.dev</a>')
@@ -134,7 +161,7 @@ Popup {
             Layout.fillWidth: true
             visible: root.controller.appUpdateError.length > 0 && root.state !== "error"
             text: root.updateError(root.controller.appUpdateError)
-            color: Theme.textMuted
+            color: Theme.danger
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.metadata
             textFormat: Text.PlainText
@@ -168,8 +195,8 @@ Popup {
                 text: root.state === "ready" ? qsTr("Khởi động lại") : qsTr("Cập nhật")
                 variant: "primary"
                 implicitHeight: 32
-                enabled: !root.updating && root.state !== "checking" && (root.state !== "ready" || !root.controller.appUpdateBlocked)
-                onClicked: root.controller.installAppUpdate()
+                enabled: !root.updating && root.state !== "checking" && !root.controller.appUpdateBlocked
+                onClicked: root.confirmUpdate()
             }
         }
     }

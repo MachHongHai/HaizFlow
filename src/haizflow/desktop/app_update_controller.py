@@ -151,8 +151,19 @@ class AppUpdateController(QObject):
         ))
 
     def check_if_needed(self) -> None:
+        if self._state == "ready":
+            return
         if self._state in {"idle", "error"} or time.monotonic() - self._last_checked > 15 * 60:
             self.check()
+
+    def confirm_install(self, expected_version: str, expected_state: str) -> bool:
+        """Execute only the version and action shown in the confirmation dialog."""
+        if (expected_version != self._latest_version or expected_state != self._state
+                or self._state not in {"available", "ready", "failed"}):
+            self._error = "Trạng thái cập nhật đã thay đổi. Kiểm tra lại trước khi xác nhận."
+            self.changed.emit()
+            return False
+        return self.install()
 
     def install(self) -> bool:
         if self._invalid_delta_layout:
@@ -160,7 +171,13 @@ class AppUpdateController(QObject):
             self.changed.emit()
             return False
         if self._delta_layout is not None:
-            return self._install_delta()
+            try:
+                return self._install_delta()
+            except (OSError, ValueError) as exc:
+                self._error = str(exc)
+                self.changed.emit()
+                self._host.appUpdateAvailable.emit()
+                return False
         if self._state in {"downloading", "verifying", "installing"}:
             return False
         if self.blocked:
@@ -190,11 +207,11 @@ class AppUpdateController(QObject):
         from haizflow.update.filesystem import atomic_json, child
         from haizflow.update.updater import create_request
         layout = self._delta_layout
+        if self.blocked:
+            self._error = "Dừng hoặc chờ các tác vụ hoàn tất trước khi cập nhật."
+            self.changed.emit()
+            return False
         if self._state == "ready" and self._delta_token:
-            if self.blocked:
-                self._error = "Chờ các tác vụ hoàn tất trước khi khởi động lại."
-                self.changed.emit()
-                return False
             # Explicit user confirmation. Updater still waits for actual Core
             # exit and never kills render/export/social work.
             atomic_json(child(layout.ipc, self._delta_token + ".activate.json"),
@@ -249,8 +266,11 @@ class AppUpdateController(QObject):
                     raise ValueError("Tiến độ cập nhật không hợp lệ.")
                 values = (state, progress, str(data.get("error") or ""))
                 if values != (self._state, self._download_progress, self._error):
+                    previous_state = self._state
                     self._state, self._download_progress, self._error = values
                     self.changed.emit()
+                    if state != previous_state and state in {"ready", "failed"}:
+                        self._host.appUpdateAvailable.emit()
             elif not self._recovery_reported:
                 journal = self._delta_layout.journal()
                 if journal and journal["state"] == "ready":
@@ -264,10 +284,14 @@ class AppUpdateController(QObject):
                     self._download_progress = 100 if self._state == "updated" else 0
                     self._error = journal.get("error", "")
                     self.changed.emit()
+                    self._host.appUpdateAvailable.emit()
         except (OSError, ValueError) as exc:
+            changed = self._state != "failed" or self._error != str(exc)
             self._state = "failed"
             self._error = str(exc)
-            self.changed.emit()
+            if changed:
+                self.changed.emit()
+                self._host.appUpdateAvailable.emit()
 
     def _download_installer(self, asset: dict) -> None:
         from haizflow.config import TMP_DIR
@@ -419,6 +443,7 @@ class AppUpdateController(QObject):
             self._state = "available"
             self._error = event.get("message", "")
             self.changed.emit()
+            self._host.appUpdateAvailable.emit()
             return
         self._last_checked = time.monotonic()
         if event["kind"] == "result":

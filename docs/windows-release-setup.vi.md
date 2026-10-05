@@ -214,6 +214,17 @@ Giữ Full trong mọi release để fallback. Delta chỉ cập nhật Core, **
 
 Updater kiểm nguồn GitHub repo cố định, metadata digest, SHA-256 package/từng tệp và inventory; staging riêng, không patch Core đang chạy; health xác nhận rồi mới chấp nhận phiên bản. Đây là kiểm toàn vẹn + nguồn HTTPS/repository, **không phải chữ ký detached của manifest hoặc hệ thống TUF**. Bảo vệ GitHub bằng 2FA/passkey, hạn chế quyền release, bảo vệ tag và runner/signing identity.
 
+### Luồng cập nhật trong app
+
+- Nút **Phiên bản mới** trên thanh menu và **Cập nhật HaizFlow** trong Cài đặt mở cùng một cửa sổ trạng thái.
+- **Cập nhật** hỏi xác nhận phiên bản trước khi tải. Hủy hoặc Escape không tải và không đóng app.
+- Bản cài versioned gọi `HaizFlowUpdater.exe`: tải Full/Delta phù hợp, kiểm checksum và chuẩn bị Core riêng. Không mở trang web để thay thế thao tác cập nhật.
+- Khi tải xong, app thông báo sẵn sàng; **Khởi động lại** hỏi xác nhận lần nữa và nhắc lưu thay đổi đang chỉnh sửa. Chỉ sau xác nhận mới cấp quyền kích hoạt và đóng Core.
+- Khi đang xử lý video, xuất video, nhập media hoặc cài gói, cập nhật bị chặn. Backend kiểm lại ngay lúc xác nhận; xác nhận cũ không được dùng cho phiên bản/trạng thái mới.
+- Lỗi tải/kiểm tra/kích hoạt được hiển thị; Core cũ không bị đóng nếu không ghi được yêu cầu kích hoạt. Khởi động bản mới lỗi sẽ rollback theo health check.
+- Versioned delta không đòi Authenticode; vẫn bắt buộc nguồn GitHub cố định, HTTPS, digest và inventory đúng. Nhánh installer legacy vẫn yêu cầu chữ ký và không được dùng làm đường cập nhật unsigned.
+- Phiên bản `0.1.0` không tự cập nhật sang bytes mới cũng mang số `0.1.0`. Lần phát hành tiếp theo phải tăng phiên bản và cung cấp Full manifest/package; thêm Delta từ baseline đã phát hành nếu phù hợp.
+
 Kiểm thử delta local:
 
 ```powershell

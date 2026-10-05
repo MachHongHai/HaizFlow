@@ -2848,6 +2848,10 @@ class HaizFlowController(QObject):
     def installAppUpdate(self):
         return self._app_updates.install()
 
+    @Slot(str, str, result=bool)
+    def confirmAppUpdate(self, version, state):
+        return self._app_updates.confirm_install(version, state)
+
     @Slot()
     def checkForAppUpdates(self):
         self._app_updates.check(manual=True)

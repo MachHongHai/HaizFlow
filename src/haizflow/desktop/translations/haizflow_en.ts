@@ -382,6 +382,38 @@
 <context>
     <name>AppUpdatePopup</name>
     <message>
+        <source>Khởi động lại để cập nhật?</source>
+        <translation>Restart to update?</translation>
+    </message>
+    <message>
+        <source>Tải bản cập nhật?</source>
+        <translation>Download the update?</translation>
+    </message>
+    <message>
+        <source>HaizFlow sẽ đóng và mở lại để áp dụng phiên bản %1. Lưu các thay đổi đang chỉnh sửa trước khi tiếp tục.</source>
+        <translation>HaizFlow will close and reopen to apply version %1. Save any changes you are editing before continuing.</translation>
+    </message>
+    <message>
+        <source>Tải và kiểm tra phiên bản %1. HaizFlow sẽ hỏi lại trước khi khởi động lại; dự án và gói tài nguyên được giữ nguyên.</source>
+        <translation>Download and verify version %1. HaizFlow will ask again before restarting; your projects and resource packs will be kept.</translation>
+    </message>
+    <message>
+        <source>Tải cập nhật</source>
+        <translation>Download update</translation>
+    </message>
+    <message>
+        <source>Trạng thái cập nhật đã thay đổi. Kiểm tra lại trước khi xác nhận.</source>
+        <translation>The update status has changed. Check again before confirming.</translation>
+    </message>
+    <message>
+        <source>Không thể tải bản cập nhật. Kiểm tra kết nối mạng rồi thử lại.</source>
+        <translation>Could not download the update. Check your connection and try again.</translation>
+    </message>
+    <message>
+        <source>Chưa có bản phát hành công khai.</source>
+        <translation>No public release is available yet.</translation>
+    </message>
+    <message>
         <location filename="../qml/AppUpdatePopup.qml" line="+22"/>
         <source>Dừng hoặc chờ các tác vụ hoàn tất trước khi cập nhật.</source>
         <translation>Stop or wait for your tasks to finish before updating.</translation>
@@ -428,13 +460,13 @@
     </message>
     <message>
         <location line="+2"/>
-        <source>Đã có phiên bản mới, hãy cập nhật ngay, chi tiết bản cập nhật xem tại:</source>
-        <translation>A new version is available. Update now; see the release details at:</translation>
+        <source>Có phiên bản mới. Xem thay đổi tại:</source>
+        <translation>A new version is available. See what's changed at:</translation>
     </message>
     <message>
         <location line="+1"/>
-        <source>Hiện tại chưa có phiên bản mới, chi tiết bản cập nhật gần nhất:</source>
-        <translation>No new version is available. See the latest release details at:</translation>
+        <source>Bạn đang dùng phiên bản mới nhất. Xem chi tiết tại:</source>
+        <translation>You are using the latest version. See details at:</translation>
     </message>
     <message>
         <location line="+36"/>
