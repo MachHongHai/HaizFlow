@@ -38,4 +38,4 @@ def test_workers_never_show_startup_ui():
     entry = (Path(__file__).parents[1] / "haizflow_desktop.py").read_text(encoding="utf-8")
     assert entry.index('if "--release-smoke"') < entry.index("from haizflow.startup_splash")
     assert entry.index('if "--omnivoice-server"') < entry.index("from haizflow.startup_splash")
-    assert 'os.getenv("HAIZFLOW_STARTUP_HEALTH_PENDING") != "1"' in entry
+    assert 'os.getenv("HAIZFLOW_STARTUP_SPLASH") != "1"' in entry

@@ -1,60 +1,67 @@
 <div align="center">
   <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="HaizFlow logo">
   <h1>HaizFlow</h1>
-  <p><strong>Translate video. Edit captions. Finish your cut.</strong></p>
-  <p>One Windows workspace for subtitles, voice and audio.</p>
-  <p><a href="docs/install.md">Installation</a> · <a href="docs/user-guide.md">User guide</a> · <a href="https://github.com/MachHongHai/HaizFlow/issues">Support</a> · <a href="README.vi.md">Tiếng Việt</a></p>
+  <p><strong>A free Windows app for downloading, translating, subtitling and dubbing videos.</strong></p>
+  <p><a href="docs/install.md">Installation</a> · <a href="docs/user-guide.md">User guide</a> · <a href="https://github.com/MachHongHai/HaizFlow/issues">Report an issue</a> · <a href="README.vi.md">Tiếng Việt</a></p>
 </div>
 
-## From the original video to your own edit
+## About HaizFlow
 
-HaizFlow brings speech recognition, translation and caption editing into the same workspace. Add karaoke subtitles, voice, background music and a watermark, then preview and export your video.
+HaizFlow helps you download videos, translate speech, create subtitles and add translated voice tracks. Process one video or a batch, cover original subtitles and assign different voices to different speakers. You can publish processed videos to social media through Zernio.
 
-Run the steps you select automatically, or work on each part independently in the Manual editor. Translation and voice generation are optional: you can use HaizFlow just to edit captions and mix audio.
+Automatic mode runs the steps you select. The Manual editor lets you review and correct captions or voice tracks before exporting.
 
-## What can you do?
+## Main features
 
-- **Translate and edit captions:** recognize speech with Whisper, translate locally with HY-MT2 or use Gemini with your own API key; adjust wording, timing, fonts and karaoke.
-- **Finish the audio:** separate vocals with Demucs, adjust levels, add and loop music, and lower music under speech.
-- **Create voice tracks:** use built-in voices, distinguish speakers for consistent voice assignments, or use a reference sample you have permission to use.
-- **Edit the picture:** cover original captions with blur or background patching, add a watermark and compare against the original.
-- **Work through a batch:** queue multiple videos, follow each result and retry failed work.
-- **Prepare publishing:** import local files or supported links and connect Zernio for social publishing.
+| Feature | What you can do |
+| --- | --- |
+| **Batch video downloads** | Select multiple videos from supported public channels or profiles and queue them for download. |
+| **Video translation** | Recognize speech with Whisper; translate locally with HY-MT2 or use Gemini. Review translations before exporting. |
+| **Subtitle creation** | Create captions from video speech; edit text, timing, fonts and karaoke highlighting. |
+| **Video dubbing** | Generate speech for translated text using built-in voices or a reference sample you have permission to use. |
+| **Automatic processing** | Choose languages, models and voice settings, then run your selected recognition, translation, dubbing and caption-coverage steps. |
+| **Batch processing** | Apply common settings to multiple videos, track each result and rerun failed videos. |
+| **Cover original subtitles** | Detect caption regions with OCR and cover them using blur or background patching. |
+| **Multiple-speaker detection** | Group speakers and assign a separate voice to each group instead of using one voice for the entire conversation. |
+| **Social publishing** | Select an account, prepare the post and publish through Zernio. You can use processed videos directly from projects. |
 
-Review recognition, translation and speaker assignments before export, especially when speech overlaps or the recording is noisy.
+Manual tools run independently: dubbing is optional when you only need translated captions.
 
-## Get started
+Recognition, translation and speaker detection can make mistakes, particularly with noise or overlapping speech. Review results before exporting or publishing.
 
-Version 0.1.0 is being tested ahead of release; a public installer for this version has not yet been approved. If you are testing a build supplied by the author, follow the [installation guide](docs/install.md). Once published, download from [official GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases). Resource-pack executables are not application launchers.
+## Local translation without per-call API charges
+
+Whisper and HY-MT2 run on your computer after their resource packs are installed. They do not require API keys or per-call translation fees. Gemini is an additional option for online translation.
+
+Computers without an NVIDIA GPU can use supported CPU options. Compatible NVIDIA GPUs can use GPU models. CPU/GPU resources are packaged separately, and the app warns when a required pack is missing.
+
+Gemini, Zernio and other external services have their own terms, limits and charges. OmniVoice has the usage restriction described below.
+
+## Install and get started
+
+Version 0.1.0 is being tested and is not publicly released yet. Testers should use the installer supplied by the author. Once available, download from [official GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases).
 
 1. Install and open HaizFlow. Vietnamese is the default; English is available in Settings.
 2. Choose CPU or NVIDIA GPU in **Settings → General**, then install the resource packs you need.
-3. Start a **Manual** project to learn each tool, or an **Automatic** project to run your selected workflow.
-4. Review the translation, captions and sound. Choose **Export** to save the video to your own folder.
+3. Create an **Automatic**, **Manual** or **Batch** project and add videos.
+4. Select language, models and voice if needed. Process, review and **Export** the video.
 
-## Runs on your computer
+Supported systems are Windows 10 version 1809 or later and Windows 11 x64, with at least 16 GiB RAM. Installer users do not need Python. Resource packs, projects and exports need additional storage; Setup and the Resource packs page show their corresponding requirements.
 
-HaizFlow supports Windows 10 version 1809 or later and Windows 11, x64. Installer users do not need Python. CPU-only computers can open the app and use supported CPU options; GPU features require compatible NVIDIA hardware and their matching packs.
+See [Installation](docs/install.md) for CPU/GPU packs, API keys and storage. See the [User guide](docs/user-guide.md) for projects, captions, dubbing and publishing.
 
-Local tools run on your computer after their packs are installed. Internet access is needed for downloads, updates, importing links and online services. Gemini, Zernio and other external services have their own terms, limits and charges.
+## License and commercial use
 
-The installer shows the application space requirement. Resource packs, projects and exported videos need additional space. You can move resource storage in Settings. [Learn how to choose packs and manage storage](docs/install.md).
+HaizFlow is free to use under [HaizFlow Source-Available 1.0](LICENSE). This is not an OSI open-source license. Redistribution, repackaging and commercial software conditions are specified in LICENSE.
 
-## Commercial content
+**The current OmniVoice model is licensed for noncommercial use only.** Do not assume it can be used for advertising, monetized videos or client work without appropriate permission. HaizFlow's license does not replace the model license.
 
-HaizFlow is free to use under its [application license](LICENSE). Video, music, voice samples and models have separate rights and conditions.
+You need permission to use imported video, music and voice samples. See [NOTICE](NOTICE) and [third-party notices](THIRD_PARTY_NOTICES.md). The [licensing review](docs/licensing-review.md) and [inactive draft terms](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) are retained separately.
 
-**The current OmniVoice checkpoint is restricted to noncommercial use.** Do not assume it is licensed for monetized videos, advertising or client work without suitable permission. Free application access and public source code do not grant commercial model rights. Other tools also have their own licenses; HaizFlow does not claim that every workflow is commercially cleared.
+## Support and contributions
 
-## Guides and support
+[Report a problem or suggest a change](https://github.com/MachHongHai/HaizFlow/issues) with the version, steps and error screenshot. Never include keys or private data.
 
-- [Installation](docs/install.md): CPU/GPU, resource packs, API keys and data.
-- [User guide](docs/user-guide.md): your first project, captions, voice and export.
-- [Report an issue](https://github.com/MachHongHai/HaizFlow/issues): include steps, version and a screenshot; never include API keys.
-- [Development guide](docs/development.md) and [architecture](docs/architecture.md): for contributors and maintainers.
+Source installation, testing and packaging are covered in the [development guide](docs/development.md). See the [technical documentation](docs/README.md) to contribute code.
 
-Created by **Mạch Hồng Hải (Mach Hong Hai)**. If HaizFlow helps your workflow, [star the repository](https://github.com/MachHongHai/HaizFlow) or share feedback.
-
-### License and notices
-
-HaizFlow Source-Available 1.0 is not an OSI open-source license. Redistribution, repackaging and commercial software restrictions are set out in [LICENSE](LICENSE). See [NOTICE](NOTICE) and [third-party notices](THIRD_PARTY_NOTICES.md). [Inactive draft terms](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) and the [licensing review](docs/licensing-review.md) are retained separately for maintainers.
+Created by **Mạch Hồng Hải (Mach Hong Hai)**. [Star the repository](https://github.com/MachHongHai/HaizFlow) to follow the project.

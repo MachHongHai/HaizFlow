@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import time
@@ -58,6 +59,10 @@ class StartupSplash:
         from ctypes import wintypes as w
 
         user, gdi, kernel = c.windll.user32, c.windll.gdi32, c.windll.kernel32
+        set_dpi_context = getattr(user, "SetThreadDpiAwarenessContext", None)
+        if set_dpi_context is not None:
+            set_dpi_context.argtypes, set_dpi_context.restype = [c.c_void_p], c.c_void_p
+            set_dpi_context(c.c_void_p(-4))  # crisp text without changing Qt's main-thread DPI policy
         callback_type = c.WINFUNCTYPE(c.c_ssize_t, w.HWND, w.UINT, w.WPARAM, w.LPARAM)
 
         class WindowClass(c.Structure):
@@ -207,6 +212,8 @@ _active: StartupSplash | None = None
 def start(*, settings_path: Path, icon_path: Path | None = None):
     global _active
     _active = StartupSplash(language=settings_language(settings_path), icon_path=icon_path).show()
+    if _active._hwnd:
+        os.environ["HAIZFLOW_STARTUP_SPLASH"] = "1"
     return _active
 
 
@@ -215,6 +222,7 @@ def finish():
     if _active is not None:
         _active.close()
         _active = None
+        os.environ.pop("HAIZFLOW_STARTUP_SPLASH", None)
 
 
 def opening_interface():

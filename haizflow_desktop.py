@@ -139,7 +139,7 @@ if "--ui-smoke-test" in sys.argv:
 
 if __name__ == "__main__":
     from haizflow.startup_splash import start, finish
-    if os.getenv("HAIZFLOW_STARTUP_HEALTH_PENDING") != "1":
+    if os.getenv("HAIZFLOW_STARTUP_SPLASH") != "1":
         start(settings_path=Path(_runtime_config.RUNTIME_DATA_DIR) / "desktop-settings.json",
               icon_path=Path(_runtime_config.BASE_DIR) / "desktop/assets/branding/haizflow.ico")
     try:
