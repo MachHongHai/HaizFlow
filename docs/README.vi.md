@@ -6,7 +6,7 @@
 
 - [Cài đặt HaizFlow](install.vi.md): bộ cài, CPU/GPU, gói tài nguyên, API key và dữ liệu.
 - [Sử dụng HaizFlow](user-guide.vi.md): từ dự án đầu tiên đến phụ đề, giọng đọc và xuất video.
-- [Báo lỗi](https://github.com/MachHongHai/HaizFlow/issues): gửi phiên bản và bước thực hiện, không gửi API key.
+- [Trợ giúp](support.vi.md): quản lý gói, API key, dữ liệu và liên hệ hỗ trợ.
 
 ## Dành cho người phát triển và bảo trì
 
@@ -29,4 +29,4 @@ Các tài liệu dưới đây trình bày cách phần mềm được xây dự
 
 Repository hiển thị tài liệu tiếng Anh trước; tệp `.vi.md` tương ứng là bản tiếng Việt. Command, đường dẫn, tên thiết lập, trường schema và mã lỗi được giữ nguyên khi dịch có thể gây nhầm lẫn.
 
-Nếu tài liệu có chỗ sai, hãy mở [issue về tài liệu](https://github.com/MachHongHai/HaizFlow/issues) và ghi rõ trang cùng mục cần sửa.
+Bạn có thể [góp ý cho tài liệu](https://github.com/MachHongHai/HaizFlow/issues) và ghi rõ trang cùng mục muốn bổ sung.

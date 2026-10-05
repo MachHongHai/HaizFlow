@@ -47,6 +47,8 @@ assert app.installTranslator(translator)
 assert QCoreApplication.translate('HomePage', 'Trang chủ') == 'Home'
 assert QCoreApplication.translate('ProjectSetupDialog', 'Tạo dự án') == 'Create project'
 assert QCoreApplication.translate('DownloadDestinationRow', 'Lưu vào') == 'Save to'
+assert QCoreApplication.translate('AppUpdatePopup', 'Thông tin chi tiết xem tại:') == 'More information:'
+assert QCoreApplication.translate('AppUpdatePopup', 'Có phiên bản mới.') == 'A new version is available.'
 """
         result = subprocess.run(
             [sys.executable, "-c", script],

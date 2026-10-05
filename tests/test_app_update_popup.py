@@ -39,6 +39,14 @@ ApplicationWindow {
     state = window.findChild(QObject, "updateState")
     try:
         app.processEvents()
+        details = window.findChild(QObject, "appUpdateDetailsLink")
+        assert details is not None and details.property("visible")
+        assert details.property("text") == "haizflow.pages.dev"
+        assert details.property("destination").toString() == "https://haizflow.pages.dev/"
+        for checking_state in ("idle", "checking", "error", "no_release", "available"):
+            state.setProperty("appUpdateState", checking_state)
+            app.processEvents()
+            assert details.property("visible")
         button = window.findChild(QObject, "appUpdateInstallButton")
         assert button.property("enabled")
         assert QMetaObject.invokeMethod(button, "clicked", Qt.DirectConnection)

@@ -26,7 +26,7 @@ def test_native_splash_draws_and_closes_without_qt(language):
         assert splash.error is None
         assert splash._hwnd
         splash.opening_interface()
-        assert splash.status == ("Opening workspace…" if language == "en" else "Đang mở giao diện…")
+        assert splash.status == ("Opening interface…" if language == "en" else "Đang mở giao diện…")
     finally:
         splash.close()
     assert not splash._thread.is_alive()

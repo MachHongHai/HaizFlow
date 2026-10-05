@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, Literal, Optional
 
 
 VIDEO_METADATA_SCHEMA_VERSION = 19
 VIDEO_METADATA_TYPE = "haizflow.video"
+SUBTITLE_FONT_FAMILY = "Bangers"
 WorkflowMode = Literal["A", "review"]
 TranslatorProvider = Literal["hymt2", "gemini"]
 TranslationModel = Literal["auto", "q4", "full", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
@@ -38,7 +39,7 @@ class SubtitleStyle(BaseModel):
     position_y_percent: int = Field(default=96, ge=0, le=100)
     box_width_percent: int = Field(default=72, ge=20, le=100)
     box_height_percent: int = Field(default=6, ge=1, le=100)
-    font_family: str = Field(default="Bangers", max_length=80)
+    font_family: str = Field(default=SUBTITLE_FONT_FAMILY, max_length=80)
     text_color: str = Field(default="#FFFFFF", pattern=r"^#[0-9A-Fa-f]{6}$")
     karaoke_color: str = Field(default="#FFEF00", pattern=r"^#[0-9A-Fa-f]{6}$")
     outline_color: str = Field(default="#000000", pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -48,6 +49,11 @@ class SubtitleStyle(BaseModel):
     shadow: int = Field(default=2, ge=0, le=100)
     letter_spacing: float = Field(default=0.0, ge=-20, le=100)
     alignment: Literal["left", "center", "right"] = "center"
+
+    @field_validator("font_family", mode="before")
+    @classmethod
+    def bundled_subtitle_font(cls, value):
+        return SUBTITLE_FONT_FAMILY
 
 
 def subtitle_style_for_project(project_type: str, style: SubtitleStyle, *, overridden: bool = False) -> SubtitleStyle:

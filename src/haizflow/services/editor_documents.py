@@ -785,10 +785,12 @@ def resolved_text_style(document: EditorDocument, clip: EditorClip) -> EditorTex
     if style is None:
         target = "subtitle" if clip.kind == "subtitle" else "text_overlay"
         style = EditorTextStyle(style_id=f"fallback-{target}", target_type=target)
-    if not clip.style_override:
+    if not clip.style_override and clip.kind != "subtitle":
         return style
     payload = style.model_dump()
     payload.update(clip.style_override)
+    if clip.kind == "subtitle":
+        payload["target_type"] = "subtitle"
     return EditorTextStyle.model_validate(payload)
 
 

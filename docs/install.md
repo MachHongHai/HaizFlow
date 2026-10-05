@@ -10,7 +10,7 @@ Allow space for the app, packs, source videos and exports. Setup shows the requi
 
 ## 2. Install the app
 
-Version 0.1.0 is currently being tested and is not publicly released. Testers should use the installer supplied by the author. Once published, download only from [official GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases).
+Official downloads: [HaizFlow GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases). Choose a version and its Windows installer under **Assets**.
 
 1. Open **Setup.exe**, select the language and read the terms.
 2. Choose an installation folder on a drive with enough free space.
@@ -41,9 +41,9 @@ Open **Settings → Resource packs** and choose **Install**:
 | Original-caption detection | OCR |
 | Local voice generation | OmniVoice and its matching processing environment |
 
-The app identifies missing dependencies. Existing packs may already supply some resources, so **Installed** does not necessarily mean you downloaded a separate pack yourself.
+The app lists the resources needed for each tool. Some resources are shared between packs; **Installed** means that resource is available and ready to use.
 
-Wait for download, verification and installation to finish. **Pause** preserves valid download data; **Continue** resumes it. For damaged packs, use **… → Check and repair**. You can remove and reinstall a pack or repair it; avoid manually deleting files inside it.
+Wait for download, verification and installation to finish. **Pause** preserves downloaded data; **Continue** resumes it. The **…** menu provides **Check and repair** and **Remove pack** for resource management. Use these actions rather than manually deleting files inside a pack.
 
 The project has one vocal-separation option, but Demucs has separate CPU/GPU packs. It follows the app's applied mode. Installing its GPU pack does not replace its CPU pack.
 
@@ -54,7 +54,7 @@ Local Whisper, HY-MT2, Demucs and OCR do not require Gemini or Zernio keys.
 - **Gemini:** for Gemini translation.
 - **Zernio:** for social publishing.
 
-Open **Settings → API Key**, select a provider, add and check your keys. Zernio connection checks test the listed keys: green dots indicate valid keys; red dots indicate failures. Select the key to use.
+Open **Settings → API Key**, select a provider, add and check your keys. Zernio connection checks test the listed keys: green dots indicate valid keys; red dots indicate keys that need checking. Select the key to use.
 
 Keys are stored in Windows Credential Manager. Never include them in screenshots, public logs or issues. You manage external service accounts and any associated charges.
 
@@ -62,14 +62,10 @@ Keys are stored in Windows Credential Manager. Never include them in screenshots
 
 Keep independent copies of important source and exported videos. Working data lives in the installation's runtime folder. Use **Move location** in Resource packs to move resource storage; let the operation finish and do not move folders during processing.
 
-Update checks notify you when a new version is available. Confirm the download, then confirm restarting to apply it. Finish or stop active work before updating. A public GitHub update has not yet been available for end-to-end testing.
+Update checks notify you when a new version is available. Confirm the download, then confirm restarting to apply it. Finish or pause active work before updating.
 
-## If a tool will not run
+## Start using HaizFlow
 
-1. Check the applied CPU/GPU mode and matching pack.
-2. Install or repair any missing pack in Settings. Warnings do not automatically take you away from the project.
-3. Check free space, network access and folder write permissions.
-4. For memory errors, close other apps or choose a smaller model; you can turn off **Keep models ready**.
-5. [Report the issue](https://github.com/MachHongHai/HaizFlow/issues) with the version, steps and error. Do not include keys or private media.
+Follow the [User guide](user-guide.md) to create your first project, edit captions, dub and publish videos. [Help](support.md) covers resource management and contacting support.
 
-**Voice licensing:** the current OmniVoice checkpoint is noncommercial. Read the [commercial-content notice](../README.md#commercial-content) before using it for monetized videos or client work.
+**Voice licensing:** the current OmniVoice checkpoint is noncommercial. Read the [license and commercial-use notice](../README.md#license-and-commercial-use) before using it for monetized videos or client work.

@@ -1890,7 +1890,8 @@ class HaizFlowController(QObject):
 
     @subtitleFontFamily.setter
     def subtitleFontFamily(self, value):
-        self._set_subtitle_style_option("font_family", str(value or "Bangers").strip()[:80] or "Bangers")
+        from haizflow.schemas.video import SUBTITLE_FONT_FAMILY
+        self._set_subtitle_style_option("font_family", SUBTITLE_FONT_FAMILY)
 
     @Property(str, notify=subtitleSettingsChanged)
     def subtitleTextColor(self):
@@ -5688,6 +5689,9 @@ class HaizFlowController(QObject):
         targets = {str(value) for value in (target_ids or []) if str(value or "")}
         patch = dict(style or {})
         scope = str(scope or "project")
+        if "font_family" in patch:
+            from haizflow.schemas.video import SUBTITLE_FONT_FAMILY
+            patch["font_family"] = SUBTITLE_FONT_FAMILY
 
         def with_font_fingerprint(payload: dict) -> dict:
             if "font_family" not in patch:

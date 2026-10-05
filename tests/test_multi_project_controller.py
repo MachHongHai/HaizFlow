@@ -805,7 +805,7 @@ class MultiProjectControllerTests(unittest.TestCase):
         self.assertEqual(changes["status"], "pending")
         self.assertEqual(changes["resume_step"], "starting")
         self.assertNotIn("checkpoints", changes)
-        self.assertEqual(changes["subtitle_style"].font_family, "Custom Font")
+        self.assertEqual(changes["subtitle_style"].font_family, "Bangers")
         self.assertFalse(changes["subtitle_style"].bold)
         self.assertEqual(changes["subtitle_style"].font_size, 44)
 

@@ -742,6 +742,10 @@ def _write_positioned_ass(
     cue_styles: dict[int, tuple[SubtitleStyle, SubtitleRegionLayout]] | None = None,
 ):
     """Convert SRT to ASS so a dragged preview position is reproduced exactly in FFmpeg."""
+    subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
+    if cue_styles:
+        cue_styles = {index: (SubtitleStyle.model_validate(style.model_dump()), layout)
+                      for index, (style, layout) in cue_styles.items()}
     with open(srt_path, "r", encoding="utf-8") as file:
         subtitles = list(srt.parse(file.read()))
     if not subtitles:
@@ -1073,6 +1077,8 @@ def resolve_subtitle_preview_layout(
         crop = CropSettings(**dict(crop or {}))
     if not isinstance(subtitle_style, SubtitleStyle):
         subtitle_style = SubtitleStyle(**dict(subtitle_style or {}))
+    else:
+        subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
     _crop_x, _crop_y, cropped_width, cropped_height = _crop_geometry(
         source_width,
         source_height,
@@ -1475,6 +1481,7 @@ def render_video(
     encoding_quality: int | None = None,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
+    subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
     process_key = str(process_registry_id or video_id)
     log_to_video(video_id, f"Starting video render. Format selected: '{output_format}'")
     supported_formats = {"keep_ratio", "tiktok_9_16_crop", "blur_background_9_16"}

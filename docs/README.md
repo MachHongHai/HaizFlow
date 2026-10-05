@@ -6,7 +6,7 @@
 
 - [Install HaizFlow](install.md): installer, CPU/GPU, resource packs, API keys and data.
 - [Use HaizFlow](user-guide.md): your first project, captions, voice and export.
-- [Report an issue](https://github.com/MachHongHai/HaizFlow/issues): include the version and steps, never API keys.
+- [Help](support.md): resource packs, API keys, data management and contacting support.
 
 ## For developers and maintainers
 
@@ -29,4 +29,4 @@ The documents below cover implementation, testing, licensing and packaging requi
 
 English documents are listed first. Their `.vi.md` counterparts provide the same information in Vietnamese. Commands, paths, setting names, schema fields and error codes retain their source spelling where translating them would make the instructions ambiguous.
 
-If a document is inaccurate, open a [documentation issue](https://github.com/MachHongHai/HaizFlow/issues) and name the page and section that need correction.
+You can [suggest documentation improvements](https://github.com/MachHongHai/HaizFlow/issues) and name the page and section you would like to expand.

@@ -643,6 +643,7 @@ class RenderExportStorageTests(unittest.TestCase):
         self.assertEqual(video_store.get_video(first.video_id).original_video_volume, 42)
         self.assertFalse(video_store.get_video(first.video_id).background_music_loop)
         self.assertTrue(video_store.get_video(first.video_id).audio_ducking_enabled)
+        subtitle_style = {**subtitle_style, "font_family": "Bangers"}
         self.assertEqual(batch_settings.values_for(video_store.get_video(first.video_id))["subtitleStyle"], subtitle_style)
         self.assertEqual(video_store.get_video(second.video_id).original_video_volume, 11)
         self.assertEqual(batch_settings.values_for(video_store.get_video(second.video_id))["subtitleStyle"], baseline["subtitleStyle"])

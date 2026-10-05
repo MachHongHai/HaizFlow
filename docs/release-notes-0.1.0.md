@@ -1,51 +1,61 @@
-# HaizFlow 0.1.0 — DRAFT, chưa phát hành
+<!-- Prepared release copy. Publication status and approvals are tracked in release-readiness.vi.md and legal/license-state.json. -->
 
-Không dùng bản ghi này để xác nhận binary đã đủ điều kiện public. Chỉ bỏ
-nhãn DRAFT sau khi đúng artifact upload đã qua legal/resource/provenance
-gate và nghiệm thu cài đặt/cập nhật trên máy sạch.
+# HaizFlow 0.1.0
 
-## Nội dung dự kiến
+Ứng dụng miễn phí để tải, dịch, tạo phụ đề và lồng tiếng video trên Windows.
 
-- Cài mới mặc định tiếng Việt; giữ lựa chọn ngôn ngữ đã lưu khi cài lại.
-- Bảo vệ dữ liệu khi thay engine/đổi ổ lưu tài nguyên; không dọn nguồn nếu
-  bản sao chưa được xác minh, khôi phục bản cũ khi promotion lỗi.
-- Sửa đồng bộ CPU/GPU giữa cài đặt app, model trong dự án và model nạp trước.
-  Nhận diện nhiều người nói vẫn dùng CPU.
-- Installer versioned với launcher/updater riêng; repair và uninstall bảo
-  toàn dữ liệu, không đụng dự án/tài nguyên ngoài thư mục app.
-- Delta Core không yêu cầu Authenticode. Kiểm SHA-256, inventory, startup
-  health và rollback vẫn bắt buộc. Release đầu dùng Full Core; delta chỉ
-  dành cho các phiên bản phát hành thật tiếp theo.
-- Engine GPU lớn được chia thành các asset dưới 2 GiB; ứng dụng kiểm từng
-  phần và toàn ZIP trước khi giải nén/cài. Gói CPU và vision dùng ZIP đơn.
+## Chức năng
 
-## Cài đặt và dữ liệu
+- **Tải video hàng loạt:** chọn video từ kênh hoặc trang cá nhân công khai được hỗ trợ và tải theo hàng đợi.
+- **Dịch video:** nhận dạng bằng Whisper, dịch trên máy bằng HY-MT2 hoặc dùng Gemini.
+- **Tạo phụ đề:** dùng font Bangers; chỉnh nội dung, thời gian, kích thước, màu và hiệu ứng karaoke.
+- **Lồng tiếng:** dùng giọng có sẵn hoặc mẫu giọng bạn có quyền sử dụng.
+- **Xử lý tự động:** chọn các bước xử lý và ngôn ngữ trước khi chạy.
+- **Xử lý hàng loạt:** dùng thiết lập chung cho nhiều video và theo dõi từng kết quả.
+- **Che phụ đề gốc:** tìm vùng chữ bằng OCR, làm mờ hoặc vá nền.
+- **Nhận diện nhiều người nói:** phân nhóm và chọn giọng đọc riêng cho từng nhóm.
+- **Đăng mạng xã hội:** chuẩn bị nội dung và đăng video qua Zernio.
 
-Windows x64, Windows 10 build 17763 hoặc mới hơn. Chọn thư mục app có quyền
-ghi; Setup tính payload thực và chỗ trống dự phòng. Engine, model và media
-là dung lượng bổ sung, không nằm trong số dung lượng Core. Runtime dưới
-thư mục cài đặt được giữ khi gỡ mặc định. API key nằm trong Windows
-Credential Manager, không nằm trong file dự án hay release.
+Máy không có GPU NVIDIA vẫn dùng được các công cụ CPU. Whisper và HY-MT2 xử lý trên máy, không cần API key hay phí dịch theo lượt. Gemini và Zernio là dịch vụ ngoài với điều khoản và chi phí riêng.
 
-## Bản không ký
+## Cài đặt
 
-Bản phát hành dự kiến không có chứng chỉ Authenticode, không cần mua chứng
-chỉ để dùng cơ chế delta. Windows có thể cảnh báo Unknown publisher hoặc
-chặn theo Smart App Control/chính sách tổ chức. Không khuyên người dùng
-tắt bảo vệ, cài trusted root tự ký hoặc bỏ qua checksum.
+1. Trong **Assets**, tải bộ cài Windows `HaizFlow-0.1.0-UNSIGNED-Setup.exe` và tệp SHA-256 đi kèm.
+2. Mở bộ cài, chọn ngôn ngữ và thư mục cài trên ổ còn đủ dung lượng.
+3. Mở HaizFlow; giao diện mặc định là tiếng Việt. Chọn CPU/GPU trong **Cài đặt → Chung**.
+4. Cài các gói cần dùng trong **Gói tài nguyên**. Thêm Gemini/Zernio key khi dùng các dịch vụ này.
+5. Tạo dự án, thêm video, chọn công cụ và xem trước kết quả trước khi xuất.
 
-## Giấy phép và giới hạn
+Windows 10 phiên bản 1809 trở lên hoặc Windows 11 x64; RAM từ 16 GiB. Không cần cài Python hoặc CUDA Toolkit riêng. Dung lượng của gói tài nguyên, video và tệp xuất được tính riêng với ứng dụng.
 
-HaizFlow Source-Available 1.0; component có giấy phép độc lập. Checkpoint
-OmniVoice tại revision `c5fdb5ccb189668d56333f77ba2629f4cd7535f4` có điều
-kiện **phi thương mại (CC-BY-NC)**. Việc app miễn phí hoặc SDK dùng
-Apache-2.0 không cấp quyền thương mại cho checkpoint. Cần quyền phù hợp
-trước khi dùng giọng tạo ra cho nội dung kiếm tiền, quảng cáo hoặc khách
-hàng. [Model card đã pin](https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/README.md).
+Bộ cài không ký số. Windows có thể hiện nhà phát hành không xác định hoặc chặn ứng dụng chưa ký theo chính sách máy. Kiểm tra nguồn tải và SHA-256; không tắt bảo vệ Windows.
 
-## Trạng thái nghiệm thu
+[Cài đặt chi tiết](https://github.com/MachHongHai/HaizFlow/blob/test/docs/install.vi.md) · [Hướng dẫn sử dụng](https://github.com/MachHongHai/HaizFlow/blob/test/docs/user-guide.vi.md) · [Trợ giúp](https://github.com/MachHongHai/HaizFlow/blob/test/docs/support.vi.md)
 
-Xem [báo cáo build](installer-build-report-2026-10-04.vi.md) và
-[quy trình miễn phí](windows-release-setup.vi.md). Hiện chưa xác nhận
-installer public/GitHub update end-to-end hoặc mọi pipeline AI frozen trên
-VM sạch. Không tải installer DEVELOPMENT lên làm stable Latest.
+## Giấy phép
+
+HaizFlow miễn phí sử dụng theo HaizFlow Source-Available 1.0. **Model OmniVoice hiện tại chỉ được cấp phép cho mục đích phi thương mại.** Giấy phép ứng dụng không thay thế điều kiện của model, video hoặc mẫu giọng.
+
+---
+
+## English
+
+HaizFlow is a free Windows app for batch video downloads, translation, subtitle creation and dubbing. It includes automatic and batch processing, OCR-based original-caption coverage, multiple-speaker detection and social publishing through Zernio.
+
+Whisper and HY-MT2 run locally without API keys or per-call translation charges. CPU options work without an NVIDIA GPU. Gemini and Zernio are optional external services with their own terms and charges.
+
+### Installation
+
+1. Download `HaizFlow-0.1.0-UNSIGNED-Setup.exe` and its SHA-256 file from **Assets**.
+2. Run Setup and choose a language and installation folder with sufficient free space.
+3. Open HaizFlow and select CPU/GPU in **Settings → General**. Vietnamese is the default; English is available in Settings.
+4. Install the resources you need and add Gemini/Zernio keys when using those services.
+5. Create a project, add videos, process and preview before export.
+
+Requires Windows 10 version 1809 or later, or Windows 11 x64, and at least 16 GiB RAM. No separate Python or CUDA Toolkit installation is needed. Resource packs and media require additional storage.
+
+The installer is unsigned. Windows may show an unknown publisher or block execution under device policy. Verify the download source and SHA-256; do not disable Windows protection.
+
+[Installation](https://github.com/MachHongHai/HaizFlow/blob/test/docs/install.md) · [User guide](https://github.com/MachHongHai/HaizFlow/blob/test/docs/user-guide.md) · [Help](https://github.com/MachHongHai/HaizFlow/blob/test/docs/support.md)
+
+HaizFlow is free to use under HaizFlow Source-Available 1.0. **The current OmniVoice model is for noncommercial use only.** Application terms do not replace model or imported-content licenses.

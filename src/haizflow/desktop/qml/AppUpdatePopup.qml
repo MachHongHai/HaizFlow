@@ -93,30 +93,31 @@ Popup {
                     ? qsTr("Không thể kiểm tra phiên bản mới. Kiểm tra kết nối mạng rồi thử lại.")
                     : root.state === "no_release" ? qsTr("Chưa có bản phát hành công khai.")
                     : root.controller.hasAppUpdate
-                        ? qsTr("Có phiên bản mới. Xem thay đổi tại:")
-                        : qsTr("Bạn đang dùng phiên bản mới nhất. Xem chi tiết tại:")
-            text: message + (root.state === "checking" || root.state === "idle" || root.state === "error"
-                ? "" : ' <a href="https://haizflow.pages.dev/" style="color: '
-                    + Theme.interactive + ';">haizflow.pages.dev</a>')
+                        ? qsTr("Có phiên bản mới.")
+                        : qsTr("Bạn đang dùng phiên bản mới nhất.")
+            text: message
             color: Theme.textMuted
-            linkColor: Theme.interactive
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.control
-            textFormat: Text.RichText
+            textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            activeFocusOnTab: true
-            Accessible.role: Accessible.Link
-            Accessible.name: message + " haizflow.pages.dev"
-            onLinkActivated: link => {
-                if (link === "https://haizflow.pages.dev/")
-                    Qt.openUrlExternally(link);
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.space4
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Thông tin chi tiết xem tại:")
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: TypeScale.control
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
             }
-            Keys.onReturnPressed: {
-                if (root.state !== "checking" && root.state !== "idle" && root.state !== "error")
-                    Qt.openUrlExternally("https://haizflow.pages.dev/");
-            }
-            HoverHandler {
-                cursorShape: updateMessage.hoveredLink ? Qt.PointingHandCursor : Qt.ArrowCursor
+            ExternalTextLink {
+                objectName: "appUpdateDetailsLink"
+                text: "haizflow.pages.dev"
+                destination: "https://haizflow.pages.dev/"
             }
         }
         ColumnLayout {

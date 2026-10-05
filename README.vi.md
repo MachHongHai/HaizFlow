@@ -2,7 +2,7 @@
   <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="Logo HaizFlow">
   <h1>HaizFlow</h1>
   <p><strong>Ứng dụng miễn phí để tải, dịch, tạo phụ đề và lồng tiếng video trên Windows.</strong></p>
-  <p><a href="docs/install.vi.md">Cài đặt</a> · <a href="docs/user-guide.vi.md">Hướng dẫn sử dụng</a> · <a href="https://github.com/MachHongHai/HaizFlow/issues">Báo lỗi</a> · <a href="README.md">English</a></p>
+  <p><a href="docs/install.vi.md">Cài đặt</a> · <a href="docs/user-guide.vi.md">Hướng dẫn sử dụng</a> · <a href="docs/support.vi.md">Trợ giúp</a> · <a href="README.md">English</a></p>
 </div>
 
 ## Giới thiệu
@@ -17,29 +17,29 @@ HaizFlow giúp bạn tải video, dịch nội dung, tạo phụ đề và lồn
 | --- | --- |
 | **Tải video hàng loạt** | Chọn nhiều video từ kênh hoặc trang cá nhân công khai được hỗ trợ và tải theo hàng đợi. |
 | **Dịch video** | Nhận dạng lời nói bằng Whisper; dịch bằng HY-MT2 trên máy hoặc Gemini. Sửa bản dịch trước khi xuất. |
-| **Tạo phụ đề** | Tạo phụ đề từ lời nói trong video; chỉnh nội dung, thời gian, font chữ và hiệu ứng karaoke. |
+| **Tạo phụ đề** | Tạo phụ đề từ lời nói trong video; chỉnh nội dung, thời gian, kiểu chữ Bangers và hiệu ứng karaoke. |
 | **Lồng tiếng** | Tạo giọng đọc cho nội dung đã dịch, chọn giọng có sẵn hoặc dùng mẫu giọng bạn có quyền sử dụng. |
 | **Xử lý tự động** | Chọn ngôn ngữ, model và giọng đọc, rồi để ứng dụng chạy các bước nhận dạng, dịch, tạo giọng và che phụ đề đã chọn. |
-| **Xử lý hàng loạt** | Áp dụng thiết lập chung cho nhiều video, theo dõi từng video và chạy lại những video lỗi. |
+| **Xử lý hàng loạt** | Áp dụng thiết lập chung cho nhiều video, theo dõi tiến trình và kết quả của từng video. |
 | **Che phụ đề gốc** | Dùng OCR tìm vùng phụ đề, sau đó làm mờ hoặc vá nền để che chữ gốc. |
 | **Nhận diện nhiều người nói** | Phân nhóm người nói trong video và gán giọng đọc riêng cho từng nhóm, thay vì dùng một giọng cho cả hội thoại. |
 | **Đăng mạng xã hội** | Chọn tài khoản, chuẩn bị nội dung và đăng video qua Zernio. Có thể lấy video đã xử lý trực tiếp từ dự án. |
 
 Các công cụ trong trình sửa Thủ công chạy độc lập: không bắt buộc lồng tiếng nếu bạn chỉ cần video có phụ đề dịch.
 
-Nhận dạng, dịch và nhận diện người nói có thể sai, đặc biệt khi có tiếng ồn hoặc lời nói chồng nhau. Hãy xem lại kết quả trước khi xuất hoặc đăng.
+Xem trước video, chỉnh phụ đề và chọn giọng đọc phù hợp trước khi xuất hoặc đăng.
 
 ## Dịch trên máy, không cần trả phí API theo lượt
 
 Whisper và HY-MT2 chạy trên máy sau khi cài gói tài nguyên, không cần API key hoặc phí dịch theo lượt gọi. Gemini là lựa chọn thêm nếu bạn muốn dùng dịch vụ trực tuyến.
 
-Máy không có GPU NVIDIA vẫn dùng được các lựa chọn CPU. Với GPU NVIDIA tương thích, bạn có thể chọn các model GPU. HaizFlow có gói CPU/GPU riêng và thông báo nếu thiếu gói cần dùng.
+Máy không có GPU NVIDIA vẫn dùng được các lựa chọn CPU. Với GPU NVIDIA tương thích, bạn có thể chọn các model GPU. Chọn chế độ trong Cài đặt và cài các gói tương ứng với công cụ bạn muốn dùng.
 
 Gemini, Zernio và các dịch vụ bên ngoài có điều khoản, hạn mức và chi phí riêng. Giọng OmniVoice có giới hạn sử dụng nêu ở phần giấy phép bên dưới.
 
 ## Cài đặt và bắt đầu
 
-Bản 0.1.0 đang được kiểm thử, chưa phát hành công khai. Người tham gia thử nghiệm dùng bộ cài do tác giả cung cấp. Khi có bản phát hành, tải từ [GitHub Releases chính thức](https://github.com/MachHongHai/HaizFlow/releases).
+Trang tải chính thức: [GitHub Releases của HaizFlow](https://github.com/MachHongHai/HaizFlow/releases). Mỗi phiên bản có bộ cài Windows và hướng dẫn đi kèm.
 
 1. Cài và mở HaizFlow. Giao diện mặc định là tiếng Việt.
 2. Chọn CPU hoặc GPU NVIDIA trong **Cài đặt → Chung** và cài các gói cần dùng trong **Gói tài nguyên**.
@@ -60,7 +60,7 @@ Bạn cần có quyền sử dụng video, nhạc và mẫu giọng được đ�
 
 ## Hỗ trợ và đóng góp
 
-[Báo lỗi hoặc góp ý](https://github.com/MachHongHai/HaizFlow/issues) kèm phiên bản, bước thực hiện và ảnh thông báo. Không gửi API key hoặc dữ liệu riêng tư.
+Xem [Trợ giúp](docs/support.vi.md) để quản lý tài nguyên, API key và dữ liệu. Bạn cũng có thể [gửi góp ý hoặc yêu cầu hỗ trợ](https://github.com/MachHongHai/HaizFlow/issues). Không gửi API key hoặc dữ liệu riêng tư.
 
 Phần cài đặt từ mã nguồn, kiểm thử và đóng gói nằm trong [hướng dẫn phát triển](docs/development.vi.md). Xem [tài liệu kỹ thuật](docs/README.vi.md) nếu bạn muốn đóng góp mã.
 

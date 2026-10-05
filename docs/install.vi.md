@@ -10,7 +10,7 @@ Chọn ổ còn đủ chỗ cho ứng dụng, tài nguyên, video nguồn và vi
 
 ## 2. Cài ứng dụng
 
-Bản 0.1.0 hiện đang kiểm thử, chưa phát hành công khai. Dùng bộ cài được tác giả cung cấp nếu bạn tham gia thử nghiệm. Khi có bản phát hành, chỉ tải từ [GitHub Releases chính thức](https://github.com/MachHongHai/HaizFlow/releases).
+Trang tải chính thức: [GitHub Releases của HaizFlow](https://github.com/MachHongHai/HaizFlow/releases). Chọn phiên bản và bộ cài Windows trong mục **Assets** của bản phát hành.
 
 1. Mở tệp **Setup.exe**, chọn ngôn ngữ và đọc điều kiện sử dụng.
 2. Chọn thư mục cài. Có thể dùng ổ D hoặc ổ khác còn đủ chỗ.
@@ -41,9 +41,9 @@ Mở **Cài đặt → Gói tài nguyên**, chọn **Cài đặt** cạnh công 
 | Tìm vùng phụ đề gốc | OCR |
 | Tạo giọng cục bộ | OmniVoice và môi trường xử lý tương ứng |
 
-Nếu thiếu gói phụ thuộc, ứng dụng hiển thị gói cần bổ sung. Một số tài nguyên có thể đã được đáp ứng bởi các gói hiện có; trạng thái **Đã cài** không nhất thiết có nghĩa bạn vừa tải chúng riêng.
+Ứng dụng hiển thị các tài nguyên cần cho mỗi công cụ. Một số tài nguyên được dùng chung giữa các gói; trạng thái **Đã cài** cho biết tài nguyên đã có và sẵn sàng sử dụng.
 
-Chờ tải, xác minh và cài hoàn tất. **Tạm dừng** giữ phần tải hợp lệ; **Tiếp tục** tải tiếp. Nếu gói bị hỏng, mở menu **… → Kiểm tra và sửa**. Muốn cài lại, gỡ gói rồi cài lại hoặc dùng thao tác sửa. Không xóa thủ công các tệp bên trong gói.
+Chờ tải, xác minh và cài hoàn tất. **Tạm dừng** giữ phần đã tải; **Tiếp tục** tải tiếp. Menu **…** có **Kiểm tra và sửa** và **Gỡ gói** để quản lý tài nguyên ngay trong ứng dụng. Dùng các thao tác này thay vì xóa thủ công tệp bên trong gói.
 
 Demucs là một lựa chọn tách giọng trong dự án, nhưng có hai gói CPU/GPU. Ứng dụng dùng gói theo chế độ đã áp dụng. Việc cài gói GPU không thay thế gói CPU.
 
@@ -54,7 +54,7 @@ Whisper, HY-MT2, Demucs và OCR không cần Gemini hoặc Zernio key.
 - **Gemini:** thêm key nếu dùng dịch qua Gemini.
 - **Zernio:** thêm key nếu dùng Đăng mạng xã hội.
 
-Mở **Cài đặt → API Key**, chọn nhà cung cấp, thêm key và kiểm tra. Với Zernio, kiểm tra kết nối kiểm tra các key trong danh sách: chấm xanh là hợp lệ, chấm đỏ là lỗi. Chọn key muốn dùng.
+Mở **Cài đặt → API Key**, chọn nhà cung cấp, thêm key và kiểm tra. Với Zernio, thao tác kiểm tra kết nối kiểm tra các key trong danh sách: chấm xanh là hợp lệ; chấm đỏ cho biết key cần được kiểm tra lại. Chọn key muốn dùng.
 
 Key được lưu trong Windows Credential Manager. Không gửi key trong ảnh, log công khai hoặc issue. Tài khoản và chi phí của các dịch vụ ngoài do bạn quản lý.
 
@@ -62,14 +62,10 @@ Key được lưu trong Windows Credential Manager. Không gửi key trong ảnh
 
 Giữ một bản sao độc lập của video nguồn và video xuất quan trọng. Dữ liệu làm việc của bản cài nằm trong thư mục runtime của ứng dụng; tài nguyên có thể được chuyển qua **Chuyển vị trí** trong Gói tài nguyên. Để ứng dụng hoàn tất thao tác, không di chuyển thư mục khi đang xử lý.
 
-Nút kiểm tra cập nhật sẽ thông báo khi có phiên bản mới. Bạn xác nhận tải và xác nhận khởi động lại để áp dụng. Hoàn tất hoặc dừng công việc đang chạy trước khi cập nhật. Hiện chưa có bản phát hành công khai để kiểm thử cập nhật qua GitHub.
+Nút kiểm tra cập nhật sẽ thông báo khi có phiên bản mới. Bạn xác nhận tải và xác nhận khởi động lại để áp dụng. Hoàn tất hoặc tạm dừng công việc đang chạy trước khi cập nhật.
 
-## Nếu không chạy được một công cụ
+## Bắt đầu sử dụng
 
-1. Kiểm tra CPU/GPU đang dùng và gói tương ứng.
-2. Nếu app báo thiếu gói, vào Gói tài nguyên để cài hoặc sửa. Thông báo không tự chuyển bạn khỏi dự án.
-3. Kiểm tra chỗ trống, kết nối mạng và quyền ghi thư mục.
-4. Nếu báo thiếu bộ nhớ, đóng ứng dụng khác hoặc chọn model nhỏ hơn; có thể tắt **Giữ model sẵn sàng**.
-5. Gửi [báo lỗi](https://github.com/MachHongHai/HaizFlow/issues) kèm phiên bản, bước thực hiện và lỗi. Không gửi API key hoặc video riêng tư.
+Mở [hướng dẫn sử dụng](user-guide.vi.md) để tạo dự án đầu tiên, chỉnh phụ đề, lồng tiếng và đăng video. Trang [Trợ giúp](support.vi.md) hướng dẫn quản lý tài nguyên và liên hệ hỗ trợ.
 
-**Lưu ý về giọng đọc:** checkpoint OmniVoice hiện tại giới hạn phi thương mại. Xem [điều kiện sử dụng](../README.vi.md#sử-dụng-cho-nội-dung-thương-mại) trước khi tạo giọng cho nội dung kiếm tiền hoặc công việc khách hàng.
+**Lưu ý về giọng đọc:** checkpoint OmniVoice hiện tại giới hạn phi thương mại. Xem [điều kiện sử dụng](../README.vi.md#giấy-phép-và-sử-dụng-thương-mại) trước khi tạo giọng cho nội dung kiếm tiền hoặc công việc khách hàng.

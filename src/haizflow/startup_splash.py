@@ -31,7 +31,7 @@ class StartupSplash:
         return self
 
     def opening_interface(self):
-        self.status = self._text("Đang mở giao diện…", "Opening workspace…")
+        self.status = self._text("Đang mở giao diện…", "Opening interface…")
         if self._hwnd:
             import ctypes
             ctypes.windll.user32.SetWindowTextW(self._hwnd, "HaizFlow — " + self.status)
@@ -95,6 +95,12 @@ class StartupSplash:
             (gdi.DeleteObject, [w.HANDLE], w.BOOL),
             (gdi.SetTextColor, [w.HDC, w.DWORD], w.DWORD),
             (gdi.SetBkMode, [w.HDC, c.c_int], c.c_int),
+            (gdi.GetTextExtentPoint32W, [w.HDC, w.LPCWSTR, c.c_int, c.POINTER(w.SIZE)], w.BOOL),
+            (gdi.CreateCompatibleDC, [w.HDC], w.HDC),
+            (gdi.CreateCompatibleBitmap, [w.HDC, c.c_int, c.c_int], w.HBITMAP),
+            (gdi.DeleteDC, [w.HDC], w.BOOL),
+            (gdi.BitBlt, [w.HDC, c.c_int, c.c_int, c.c_int, c.c_int,
+                         w.HDC, c.c_int, c.c_int, w.DWORD], w.BOOL),
         ]
         for function, arguments, result in signatures:
             function.argtypes, function.restype = arguments, result
@@ -115,12 +121,12 @@ class StartupSplash:
 
         scale = getattr(user, "GetDpiForSystem", lambda: 96)() / 96
         px = lambda value: round(value * scale)
-        width, height = px(480), px(244)
+        width, height = px(500), px(280)
         color = lambda rgb: int(rgb[1:3], 16) | int(rgb[3:5], 16) << 8 | int(rgb[5:7], 16) << 16
-        brushes = [gdi.CreateSolidBrush(color(value)) for value in ("#1B1A18", "#332F2A", "#C4915E")]
+        brushes = [gdi.CreateSolidBrush(color(value)) for value in ("#1B1A18", "#332F2A", "#C4915E", "#211F1C")]
         fonts = [gdi.CreateFontW(-px(size), 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, 5, 0,
-                                "Segoe UI") for size, weight in ((28, 600), (16, 400))]
-        icon = user.LoadImageW(None, str(self.icon_path), 1, px(56), px(56), 0x10) if self.icon_path else None
+                                "Segoe UI") for size, weight in ((32, 600), (16, 400))]
+        icon = user.LoadImageW(None, str(self.icon_path), 1, px(64), px(64), 0x10) if self.icon_path else None
         started = time.monotonic()
         animation = w.BOOL(True)
         user.SystemParametersInfoW(0x1042, 0, c.byref(animation), 0)
@@ -132,30 +138,53 @@ class StartupSplash:
         def procedure(hwnd, message, wp, lp):
             if message == 0x000F:
                 paint = Paint()
-                dc = user.BeginPaint(hwnd, c.byref(paint))
+                screen_dc = user.BeginPaint(hwnd, c.byref(paint))
+                dc = gdi.CreateCompatibleDC(screen_dc)
+                bitmap = gdi.CreateCompatibleBitmap(screen_dc, width, height)
+                previous_bitmap = gdi.SelectObject(dc, bitmap)
                 fill(dc, (0, 0, width, height), brushes[0])
                 fill(dc, (0, 0, width, px(1)), brushes[1])
                 fill(dc, (0, height - px(1), width, height), brushes[1])
                 fill(dc, (0, 0, px(1), height), brushes[1])
                 fill(dc, (width - px(1), 0, width, height), brushes[1])
+                fill(dc, (px(1), px(1), width - px(1), px(4)), brushes[2])
+                fill(dc, (px(1), px(220), width - px(1), height - px(1)), brushes[3])
                 gdi.SetBkMode(dc, 1)
                 if icon:
-                    user.DrawIconEx(dc, (width - px(56)) // 2, px(32), icon, px(56), px(56), 0, None, 3)
-                for text, y, font, shade in (("HaizFlow", 104, fonts[0], "#F2EFE9"),
-                                            (self.status, 151, fonts[1], "#B8B1A6")):
+                    user.DrawIconEx(dc, (width - px(64)) // 2, px(36), icon, px(64), px(64), 0, None, 3)
+                previous_font = gdi.SelectObject(dc, fonts[0])
+                sizes = []
+                for part in ("Haiz", "Flow"):
+                    size = w.SIZE()
+                    gdi.GetTextExtentPoint32W(dc, part, len(part), c.byref(size))
+                    sizes.append(size.cx)
+                wordmark_x = (width - sum(sizes)) // 2
+                for part, part_width, shade in zip(("Haiz", "Flow"), sizes, ("#F2EFE9", "#C4915E")):
+                    gdi.SetTextColor(dc, color(shade))
+                    rect = w.RECT(wordmark_x, px(116), wordmark_x + part_width, px(158))
+                    user.DrawTextW(dc, part, -1, c.byref(rect), 4 | 32)
+                    wordmark_x += part_width
+                gdi.SelectObject(dc, previous_font)
+                for text, y, font, shade in ((self.status, 172, fonts[1], "#B8B1A6"),):
                     previous = gdi.SelectObject(dc, font)
                     gdi.SetTextColor(dc, color(shade))
                     rect = w.RECT(px(24), px(y), width - px(24), px(y + 38))
                     user.DrawTextW(dc, text, -1, c.byref(rect), 1 | 4 | 32)
                     gdi.SelectObject(dc, previous)
-                left, right, top = px(48), width - px(48), px(209)
+                left, right, top = px(64), width - px(64), px(248)
                 fill(dc, (left, top, right, top + px(3)), brushes[1])
                 segment = px(76)
                 phase = ((time.monotonic() - started) / 1.8) % 1
                 x = round(left - segment + phase * (right - left + segment)) if animation.value else left
                 fill(dc, (max(left, x), top, min(right, x + segment), top + px(3)), brushes[2])
+                gdi.BitBlt(screen_dc, 0, 0, width, height, dc, 0, 0, 0x00CC0020)
+                gdi.SelectObject(dc, previous_bitmap)
+                gdi.DeleteObject(bitmap)
+                gdi.DeleteDC(dc)
                 user.EndPaint(hwnd, c.byref(paint))
                 return 0
+            if message == 0x0014:
+                return 1  # the back buffer paints the complete surface
             if message == 0x0113:
                 if self._stop.is_set():
                     user.DestroyWindow(hwnd)

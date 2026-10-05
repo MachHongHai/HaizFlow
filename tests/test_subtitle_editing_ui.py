@@ -493,7 +493,7 @@ function readDraft() { return currentDraft(); }
         window.setProperty("draftSubtitleManual", True)
         draft = window.readDraft().toVariant()["subtitleStyle"]
         self.assertTrue(draft.pop("manual"))
-        self.assertEqual(SubtitleStyle.model_validate(draft).model_dump(), {**initial, **style})
+        self.assertEqual(SubtitleStyle.model_validate(draft).model_dump(), {**initial, **style, "font_family": "Bangers"})
         self.assertIn("appearance: Object.assign({}, root.draftSubtitleStyle", source)
         self.assertNotIn("AppController.applySubtitleAppearance", source)
         self.assertIn("editable: !AppController.isBatchRunning", source)

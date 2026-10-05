@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from haizflow.schemas.video import SUBTITLE_FONT_FAMILY
 
 
 EDITOR_DOCUMENT_SCHEMA_VERSION = 2
@@ -84,6 +86,13 @@ class EditorTextStyle(BaseModel):
     max_lines: int = Field(default=3, ge=1, le=20)
     safe_area_percent: float = Field(default=5.0, ge=0, le=40)
 
+    @model_validator(mode="after")
+    def bundled_subtitle_font(self):
+        if self.target_type == "subtitle" and self.font_family != SUBTITLE_FONT_FAMILY:
+            self.font_family = SUBTITLE_FONT_FAMILY
+            self.font_fingerprint = ""
+        return self
+
 
 class EditorAsset(BaseModel):
     asset_id: str
@@ -123,6 +132,14 @@ class EditorClip(BaseModel):
     corner_radius: float = Field(default=0.0, ge=0, le=100)
     shadow_strength: float = Field(default=0.0, ge=0, le=100)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def bundled_subtitle_font(self):
+        if self.kind == "subtitle" and "font_family" in self.style_override:
+            if self.style_override["font_family"] != SUBTITLE_FONT_FAMILY:
+                self.style_override = {**self.style_override, "font_family": SUBTITLE_FONT_FAMILY}
+                self.style_override.pop("font_fingerprint", None)
+        return self
 
 
 class EditorTrack(BaseModel):

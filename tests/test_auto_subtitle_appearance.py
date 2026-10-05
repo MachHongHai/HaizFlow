@@ -17,7 +17,8 @@ def test_auto_appearance_is_atomic_and_preserves_cover_alignment_and_geometry():
                                subtitleSettingsChanged=Mock())
         assert HaizFlowController.applySubtitleAppearance(host, patch)
         style = host._subtitle_style
-        assert all(getattr(style, key) == value for key, value in patch.items())
+        assert all(getattr(style, key) == ("Bangers" if key == "font_family" else value)
+                   for key, value in patch.items())
         assert (style.position_x_percent, style.position_y_percent,
                 style.box_width_percent, style.box_height_percent) == (45, 80, 64, 12)
         assert host._subtitle_layout_override is manual

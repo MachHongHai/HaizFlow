@@ -382,6 +382,18 @@
 <context>
     <name>AppUpdatePopup</name>
     <message>
+        <source>Thông tin chi tiết xem tại:</source>
+        <translation>More information:</translation>
+    </message>
+    <message>
+        <source>Có phiên bản mới.</source>
+        <translation>A new version is available.</translation>
+    </message>
+    <message>
+        <source>Bạn đang dùng phiên bản mới nhất.</source>
+        <translation>You are using the latest version.</translation>
+    </message>
+    <message>
         <source>Khởi động lại để cập nhật?</source>
         <translation>Restart to update?</translation>
     </message>
