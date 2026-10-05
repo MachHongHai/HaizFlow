@@ -58,9 +58,14 @@ class QmlMenuTests(unittest.TestCase):
             window.close()
             self.app.processEvents()
 
-    def test_status_strip_distinguishes_device_switch_from_another_video(self):
+    def test_status_strip_only_reports_video_work_not_downloads_or_device_switches(self):
         source = (QML_DIR / "Main.qml").read_text(encoding="utf-8")
-        expression = source.split('message: root.modelStatusFailed ?', 1)[1].split('            progress:', 1)[0]
+        expression = source.split('message: root.selectedTaskFailed ?', 1)[1].split('            progress:', 1)[0]
+        strip = source.split('        ActivityTray {', 1)[1].split('\n    Loader {', 1)[0]
+        self.assertNotIn('resourcePack', strip)
+        self.assertNotIn('runtimeState', strip)
+        self.assertNotIn('tiktokPublishBusy', strip)
+        self.assertNotIn('downloader', strip)
         engine = QQmlEngine()
         state = QQmlPropertyMap()
         for key, value in {
@@ -73,17 +78,20 @@ class QmlMenuTests(unittest.TestCase):
         engine.rootContext().setContextProperty("TestController", state)
         component = QQmlComponent(engine)
         component.setData(('import QtQuick\nimport "."\nItem { id: root\n'
-            'property bool modelStatusFailed: false; property bool selectedTaskFailed: false;'
+            'property bool selectedTaskFailed: false;'
+            'property bool videoProcessing: TestController.isProcessing && !TestController.isSwitchingProcessingDevice;'
             'property bool modelStatusBusy: false; property bool selectedTaskPaused: false;'
             'property bool selectedTaskQueued: false; property string currentRoute: "settings";'
             'property string routeDownloadWorkspace: "download"; property string routePublishWorkspace: "publish";'
             'property var downloader: ({currentProjectHasWork: false});'
-            'property string message: root.modelStatusFailed ?' + expression.replace("AppController", "TestController")
+            'property string message: root.selectedTaskFailed ?' + expression.replace("AppController", "TestController")
             + '}').encode(), QUrl.fromLocalFile(str(QML_DIR / "StatusStripTest.qml")))
         self.assertTrue(component.isReady(), "\n".join(error.toString() for error in component.errors()))
         item = component.create()
         try:
-            self.assertEqual(item.property("message"), "Đang chuyển CPU/GPU")
+            self.assertEqual(item.property("message"), "")
+            state.insert("resourcePackBusy", True)
+            self.assertEqual(item.property("message"), "")
             state.insert("isSwitchingProcessingDevice", False)
             self.assertEqual(item.property("message"), "Đang xử lý video khác")
             state.insert("isSelectedVideoProcessing", True)

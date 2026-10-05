@@ -1,13 +1,18 @@
 """Transport geometry and nondestructive source-clock GUI regressions."""
 
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 
-from PySide6.QtCore import QPointF, Qt, QUrl
+from PySide6.QtCore import QMetaObject, QPointF, Qt, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
+from PySide6.QtMultimedia import QMediaPlayer, QVideoFrame
+
+from haizflow.utils.ffmpeg import _binary
 
 
 QML_DIR = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
@@ -64,6 +69,9 @@ class PreviewTransportUiTests(unittest.TestCase):
         self.window.deleteLater()
         self.engine.deleteLater()
         self.app.processEvents()
+        # Native decoders can hold proxy files until QML deferred deletion.
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
     @staticmethod
     def child(item, name):
@@ -111,3 +119,64 @@ class PreviewTransportUiTests(unittest.TestCase):
         self.preview.setProperty("activeMonitor", "source")
         self.preview.setProperty("activeMonitor", "result")
         self.assertEqual(self.preview.property("positionSeconds"), 4)
+
+    def test_new_ocr_proxy_replaces_paused_frame_without_user_seek(self):
+        player = self.preview.findChild(QMediaPlayer, "manualResultPlayer")
+        output = self.preview.findChild(QQuickItem, "manualResultVideoOutput")
+        self.assertIsNotNone(player)
+        self.assertIsNotNone(output)
+        sink = output.property("videoSink")
+
+        def wait_for_color(channel):
+            for _ in range(100):
+                QTest.qWait(30)
+                frame = sink.videoFrame()
+                if not frame.isValid():
+                    continue
+                image = frame.toImage()
+                if image.isNull():
+                    continue
+                pixel = image.pixelColor(image.width() // 2, image.height() // 2)
+                matches = (pixel.red() > 200 and pixel.blue() < 40) if channel == "red" else (pixel.blue() > 200 and pixel.red() < 40)
+                if matches:
+                    if not self.preview.property("resultPriming"):
+                        return
+            self.fail(f"Paused preview did not paint the replacement {channel} frame: "
+                      f"state={player.playbackState()} status={player.mediaStatus()} position={player.position()} "
+                      f"priming={self.preview.property('resultPriming')} switching={self.preview.property('resultSourceSwitching')} "
+                      f"source={player.source()} frame={sink.videoFrame().isValid()}")
+
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        proxies = []
+        for color in ("red", "blue"):
+            path = Path(folder.name) / f"{color}.mp4"
+            subprocess.run([
+                _binary("ffmpeg"), "-y", "-v", "error", "-f", "lavfi", "-i",
+                f"color=c={color}:s=64x64:r=25:d=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(path),
+            ], check=True, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            proxies.append(QUrl.fromLocalFile(str(path)))
+        self.preview.setProperty("sequenceDurationSeconds", 3)
+        self.preview.setProperty("subtitleLivePreviewEnabled", True)
+        self.item.restore(1.2)
+        self.preview.setProperty("resultBaseSource", proxies[0])
+        wait_for_color("red")
+        self.assertEqual(player.playbackState(), QMediaPlayer.PausedState)
+        self.assertFalse(self.preview.property("resultPlaying"))
+        self.assertAlmostEqual(self.preview.property("positionSeconds"), 1.2, delta=.05)
+        for index in (1, 0, 1):
+            self.preview.setProperty("previewBusy", True)
+            self.preview.setProperty("resultSource", proxies[index])
+            self.preview.setProperty("resultBaseSource", proxies[index])
+            self.preview.setProperty("previewBusy", False)
+            wait_for_color("blue" if index else "red")
+            self.assertEqual(player.playbackState(), QMediaPlayer.PausedState)
+            self.assertFalse(self.preview.property("resultPlaying"))
+            self.assertAlmostEqual(self.preview.property("positionSeconds"), 1.2, delta=.05)
+            self.assertAlmostEqual(player.position(), 1200, delta=100)
+        self.preview.setProperty("resultBaseSource", QUrl())
+        player.stop()
+        player.setSource(QUrl())
+        QMetaObject.invokeMethod(output, "clearOutput")
+        sink.setVideoFrame(QVideoFrame())
+        QTest.qWait(300)

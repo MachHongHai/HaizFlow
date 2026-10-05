@@ -405,7 +405,7 @@ class CpuRuntimeTests(unittest.TestCase):
             mock.patch("haizflow.services.resource_packs.installed_engine_command", return_value=["cpu-engine"]) as engine,
         ):
             self.assertEqual(translation._worker_command(), ["cpu-engine"])
-        self.assertEqual(engine.call_args.args[2], {"device": "cpu"})
+        self.assertEqual(engine.call_args.args[2], {"device": "cpu", "translation_model": "q4"})
 
     def test_full_translation_uses_gpu_engine(self):
         with (
@@ -413,7 +413,7 @@ class CpuRuntimeTests(unittest.TestCase):
             mock.patch("haizflow.services.resource_packs.installed_engine_command", return_value=["gpu-engine"]) as engine,
         ):
             self.assertEqual(translation._worker_command(), ["gpu-engine"])
-        self.assertEqual(engine.call_args.args[2], {"device": "gpu"})
+        self.assertEqual(engine.call_args.args[2], {"device": "gpu", "translation_model": "full"})
 
     def test_low_memory_gpu_translates_one_prompt_at_a_time(self):
         profile = SimpleNamespace(key="cuda_low_memory", is_cpu_only=False)

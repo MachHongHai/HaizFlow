@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -203,12 +204,43 @@ def run_release_smoke(
     }
 
 
+def run_translation_smoke(model: str) -> dict:
+    """Exercise Core's actual parent dispatch, not just an engine's direct CLI."""
+    if os.getenv("HAIZFLOW_SMOKE_TEST") != "1":
+        raise RuntimeError("Translation acceptance checks require an isolated smoke-test runtime.")
+    from haizflow.core.hardware import configure_processing_device, configure_translation_model
+    from haizflow.services import translation
+    from haizflow.services.resource_packs import ResourcePackManager
+
+    device = "gpu" if model == "full" else "cpu"
+    configure_processing_device(device)
+    configure_translation_model(model)
+    manager = ResourcePackManager()
+    context = {"device": device, "translation_model": model}
+    missing = manager.missing_packs("translation", context)
+    if missing:
+        raise RuntimeError(f"Translation smoke fixture is incomplete: {missing}")
+    command = translation._worker_command()
+    if Path(command[0]).name != "HaizFlowEngine.exe":
+        raise RuntimeError("Translation must launch a resource engine, never Core.")
+    try:
+        result = translation._translate_with_hymt2_worker(
+            ["Hello, how are you?"], "translation-dispatch-smoke", ["English"], "Vietnamese",
+        )
+        if len(result) != 1 or not str(result[0]).strip():
+            raise RuntimeError("Translation worker returned no sentence.")
+        return {"ok": True, "model": model, "command": command, "translations": result}
+    finally:
+        translation.shutdown_hymt2_worker()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pre-finalize", action="store_true")
     parser.add_argument("--installed-layout", action="store_true")
+    parser.add_argument("--translation-model", choices=("q4", "full"))
     args = parser.parse_args(argv)
-    result = run_release_smoke(
+    result = run_translation_smoke(args.translation_model) if args.translation_model else run_release_smoke(
         pre_finalize=args.pre_finalize,
         installed_layout=args.installed_layout,
     )

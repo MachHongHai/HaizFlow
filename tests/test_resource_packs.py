@@ -379,6 +379,36 @@ class ResourcePackManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(ResourcePackError, "manifest"):
             manager.install("engine-test", lambda *_args: None)
 
+    def test_full_translation_parent_dispatch_keeps_gpu_selection_on_eight_gib_card(self):
+        from haizflow.services import translation
+
+        manager = ResourcePackManager()
+        profile = SimpleNamespace(key="cuda_low_memory", total_vram_gib=8)
+        with (
+            patch("haizflow.services.resource_packs.ResourcePackManager", return_value=manager),
+            patch("haizflow.core.hardware.runtime_profile", return_value=profile),
+            patch.object(manager, "_engine_is_valid", side_effect=lambda definition: definition.pack_id == "engine-cuda128-py313"),
+            patch.object(manager, "engine_command", return_value=["gpu-engine", "--hymt2-worker", "--server"]) as command,
+            patch.object(translation, "translation_model_preference", return_value="full"),
+            patch.object(translation, "is_frozen", return_value=True),
+        ):
+            self.assertEqual(translation._worker_command(), ["gpu-engine", "--hymt2-worker", "--server"])
+            command.assert_called_once_with("engine-cuda128-py313", "hymt2_server")
+
+    def test_frozen_translation_never_falls_back_to_core_without_matching_engine(self):
+        from haizflow.services import translation
+
+        for preference in ("q4", "full", "auto"):
+            with (
+                self.subTest(preference=preference),
+                patch.object(translation, "translation_model_preference", return_value=preference),
+                patch.object(translation, "runtime_profile", return_value=SimpleNamespace(key="cuda_low_memory")),
+                patch("haizflow.services.resource_packs.installed_engine_command", return_value=[]),
+                patch.object(translation, "is_frozen", return_value=True),
+            ):
+                with self.assertRaisesRegex(ResourcePackError, "HY-MT2"):
+                    translation._worker_command()
+
     def test_model_download_runtime_respects_project_cpu_override_and_gpu_voice(self):
         from haizflow.desktop.resource_pack_controller import ResourcePackController
 

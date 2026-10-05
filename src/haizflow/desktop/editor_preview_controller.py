@@ -271,8 +271,8 @@ class EditorPreviewController:
             "watermark_scale_percent": settings["watermark_scale_percent"],
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
             "preview_encoding": settings["preview_encoding"],
-            "source_treatment_revision": 2,
-            "image_generation": settings.get("image_generation", 0) if removes_source_text else 0,
+            "source_treatment_revision": 3,
+            "original_subtitle_intervals": settings.get("original_subtitle_intervals", []) if removes_source_text else [],
         }
 
     @staticmethod
@@ -295,8 +295,11 @@ class EditorPreviewController:
             "watermark_scale_percent": settings["watermark_scale_percent"] if live_watermark else 100,
             "ocr_region": settings["ocr_region"] if removes_source_text else {},
             "preview_encoding": settings["preview_encoding"],
-            "source_treatment_revision": 2,
-            "image_generation": settings.get("image_generation", 0) if removes_source_text else 0,
+            "source_treatment_revision": 3,
+            # A completed OCR retry with identical bounds does not change
+            # pixels. Reuse its proxy rather than encoding the timeline again.
+            # Caption visibility windows do affect pixels and must invalidate it.
+            "original_subtitle_intervals": settings.get("original_subtitle_intervals", []) if removes_source_text else [],
         }
 
     @staticmethod

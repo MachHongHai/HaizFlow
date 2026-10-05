@@ -42,12 +42,7 @@ ApplicationWindow {
     property var routeHistory: [routeHome]
     property int routeHistoryIndex: 0
     readonly property bool compactNavigation: width < 1280
-    readonly property bool modelStatusFailed: AppController.runtimeState === "failed"
-    readonly property bool modelStatusBusy: AppController.runtimeState === "warming"
-    readonly property string resourceActivityText: {
-        const language = I18n.language;
-        return AppController.resourcePackActivityText;
-    }
+    readonly property bool videoProcessing: AppController.isProcessing && !AppController.isSwitchingProcessingDevice
     // qmllint disable stale-property-read
     readonly property var downloader: AppController.mediaDownloader
     // qmllint enable stale-property-read
@@ -555,25 +550,14 @@ ApplicationWindow {
         ActivityTray {
             Layout.fillWidth: true
             showDetails: false
-            activityState: root.modelStatusFailed || root.selectedTaskFailed ? "failed"
-                : AppController.isProcessing || AppController.resourcePackBusy || root.modelStatusBusy
-                    || (root.currentRoute === root.routeDownloadWorkspace && root.downloader.currentProjectHasWork)
-                    || (root.currentRoute === root.routePublishWorkspace && AppController.tiktokPublishBusy)
-                    ? "processing"
+            activityState: root.selectedTaskFailed ? "failed"
+                : root.videoProcessing ? "processing"
                     : root.selectedTaskPaused ? "paused"
                     : root.selectedTaskQueued ? "queued" : "ready"
-            message: root.modelStatusFailed ? I18n.runtimeStatus(AppController.statusMessage)
-                : root.selectedTaskFailed ? AppController.selectedFailureMessage
-                : AppController.isSwitchingProcessingDevice ? qsTr("Đang chuyển CPU/GPU")
-                : AppController.isProcessing ? (AppController.isSelectedVideoProcessing
+            message: root.selectedTaskFailed ? AppController.selectedFailureMessage
+                : root.videoProcessing ? (AppController.isSelectedVideoProcessing
                     ? AppController.selectedStageLabel
                     : qsTr("Đang xử lý video khác"))
-                : AppController.resourcePackBusy ? root.resourceActivityText
-                : root.modelStatusBusy ? I18n.runtimeStatus(AppController.statusMessage)
-                : root.currentRoute === root.routeDownloadWorkspace && root.downloader.currentProjectHasWork
-                    ? qsTr("Đang tải nội dung")
-                : root.currentRoute === root.routePublishWorkspace && AppController.tiktokPublishBusy
-                    ? qsTr("Đang đăng bài")
                 : root.selectedTaskPaused || root.selectedTaskQueued
                     ? I18n.progressDetail(AppController.selectedProgressDetail) : ""
             progress: AppController.isSelectedVideoProcessing
@@ -581,10 +565,8 @@ ApplicationWindow {
                 && AppController.selectedStepId !== "waiting_for_models"
                 && AppController.selectedStepId !== "starting"
                 ? Math.max(0, Math.min(1, AppController.selectedProgress / 100))
-                : AppController.resourcePackBusy && AppController.resourcePackActivityProgress >= 0
-                    ? Math.max(0, Math.min(1, AppController.resourcePackActivityProgress / 100))
-                    : root.selectedTaskPaused
-                        ? Math.max(0, Math.min(1, AppController.selectedProgress / 100)) : -1
+                : root.selectedTaskPaused
+                    ? Math.max(0, Math.min(1, AppController.selectedProgress / 100)) : -1
         }
     }
 

@@ -117,7 +117,9 @@ class EditorPreviewControllerTests(unittest.TestCase):
             EditorPreviewController._write_completion_marker(base / "preview.complete.json", output, 10,
                 base_context={"effects": EditorPreviewController._source_effects_key(settings), "source_start": 0, "duration": 10})
             self.assertEqual(EditorPreviewController._reusable_treated_base(directory, settings, 2, 6), (output, 2))
-            self.assertIsNone(EditorPreviewController._reusable_treated_base(directory, {**settings, "image_generation": 2}, 2, 6))
+            self.assertEqual(EditorPreviewController._reusable_treated_base(directory, {**settings, "image_generation": 2}, 2, 6), (output, 2))
+            self.assertIsNone(EditorPreviewController._reusable_treated_base(directory, {**settings, "ocr_region": {"x": 10, "y": 60, "width": 60, "height": 10}}, 2, 6))
+            self.assertIsNone(EditorPreviewController._reusable_treated_base(directory, {**settings, "original_subtitle_intervals": [(2, 4)]}, 2, 6))
             self.assertIsNone(EditorPreviewController._reusable_treated_base(directory, settings, 2, 12))
 
     @staticmethod

@@ -410,8 +410,10 @@ Rectangle {
             return;
         if (inputFrame)
             inputPriming = true;
-        else
+        else {
+            pendingResultPositionMs = scrubController.desiredPositionMs;
             resultPriming = true;
+        }
         frameRefreshSafetyTimer.restart();
         player.play();
     }
@@ -426,6 +428,9 @@ Rectangle {
             if (!resultPriming)
                 return;
             resultPlayer.pause();
+            // Priming paints a frame, not a transport step. Preserve the
+            // exact stopped playhead even if decoding took several frames.
+            resultPlayer.position = resultMsForSequence(pendingResultPositionMs);
             resultPriming = false;
         }
         if (!inputPriming && !resultPriming)
@@ -445,11 +450,15 @@ Rectangle {
     }
 
     function primeResultFrame() {
-        if (resultPane.framePresented
-                || resultPlayer.playbackState !== MediaPlayer.StoppedState
+        if (resultPlayer.playbackState === MediaPlayer.PlayingState
+                || resultPlaybackRequested
                 || resultSourceSwitching
                 || String(attachedResultSource).length === 0)
             return;
+        // Loading/seeking can leave the new decoder paused with the previous
+        // sink frame retained. Prime the replacement even in PausedState.
+        resultPane.framePresented = false;
+        pendingResultPositionMs = scrubController.desiredPositionMs;
         resultPriming = true;
         frameRefreshSafetyTimer.restart();
         resultPlayer.play();
@@ -473,6 +482,7 @@ Rectangle {
             frameRefreshSafetyTimer.stop();
     }
     onEffectiveResultSourceChanged: {
+        resultFramePauseTimer.stop();
         pendingResultPositionMs = scrubController.desiredPositionMs;
         scrubController.wasPlaying = scrubController.wasPlaying || resultPlaybackRequested
             || (!resultPriming && resultPlayer.playbackState === MediaPlayer.PlayingState);
@@ -582,7 +592,9 @@ Rectangle {
                 busy: root.previewBusy
                 progress: root.previewProgress
                 onFirstFramePresented: {
-                    root.finishFrameRefresh(false);
+                    // Let VideoOutput consume/upload the replacement frame
+                    // before pausing the native decoder again.
+                    resultFramePauseTimer.restart();
                 }
                 onPlayRequested: root.playOnly(resultPlayer)
                 onStopRequested: root.stopOnly(resultPlayer)
@@ -949,8 +961,10 @@ Rectangle {
         interval: 40
         repeat: false
         onTriggered: {
+            root.resultSourceSwitching = String(root.effectiveResultSource).length > 0;
             root.attachedResultSource = root.effectiveResultSource;
-            if (String(root.attachedResultSource).length === 0)
+            if (String(root.attachedResultSource).length === 0
+                    || String(root.attachedResultSource) !== String(root.effectiveResultSource))
                 root.resultSourceSwitching = false;
         }
     }
@@ -967,6 +981,13 @@ Rectangle {
         interval: 0
         repeat: false
         onTriggered: root.primeResultFrame()
+    }
+
+    Timer {
+        id: resultFramePauseTimer
+        interval: 40
+        repeat: false
+        onTriggered: root.finishFrameRefresh(false)
     }
 
     Timer {
@@ -1092,12 +1113,16 @@ Rectangle {
 
     MediaPlayer {
         id: resultPlayer
+        objectName: "manualResultPlayer"
         source: root.attachedResultSource
         videoOutput: fullscreenLayer.visible && root.fullscreenResult
             ? fullscreenOutput : resultPane.videoOutputItem
         onPlaybackStateChanged: root.syncAudio()
 
         onMediaStatusChanged: function() {
+            if (String(root.attachedResultSource).length === 0
+                    || String(root.attachedResultSource) !== String(root.effectiveResultSource))
+                return;
             if (resultPlayer.mediaStatus === MediaPlayer.EndOfMedia) {
                 root.resultPlaybackRequested = false;
                 root.synchronizedPlayback = false;
@@ -1125,13 +1150,17 @@ Rectangle {
         }
 
         onErrorOccurred: function() {
+            if (String(root.attachedResultSource).length === 0)
+                return;
             root.resultPlaybackRequested = false;
             root.resultSourceSwitching = false;
             root.finishFrameRefresh(false);
         }
 
         onPositionChanged: function() {
-            if (!root.resultPriming && !root.resultSourceSwitching) {
+            if (!root.resultPriming && !root.resultSourceSwitching
+                    && String(root.attachedResultSource).length > 0
+                    && String(root.attachedResultSource) === String(root.effectiveResultSource)) {
                 const sequencePosition = root.sequenceMsForResult(resultPlayer.position);
                 if (root.comparing || root.activeMonitor === "result")
                     scrubController.observe(sequencePosition);
@@ -1168,6 +1197,7 @@ Rectangle {
 
         VideoOutput {
             id: paneVideoOutput
+            objectName: pane === resultPane ? "manualResultVideoOutput" : "manualInputVideoOutput"
             endOfStreamPolicy: VideoOutput.KeepLastFrame
             anchors.fill: parent
             fillMode: VideoOutput.PreserveAspectFit
@@ -1267,7 +1297,8 @@ Rectangle {
             target: paneVideoOutput.videoSink
 
             function onVideoFrameChanged() {
-                if (pane.framePresented
+                if ((pane === resultPane ? root.resultSourceSwitching : root.inputSourceSwitching)
+                        || pane.framePresented
                         || paneVideoOutput.videoSink.videoSize.width <= 0
                         || paneVideoOutput.videoSink.videoSize.height <= 0)
                     return;

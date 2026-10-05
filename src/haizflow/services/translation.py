@@ -223,7 +223,7 @@ def translate_segments(
 
 
 def _worker_command() -> list[str]:
-    from haizflow.services.resource_packs import installed_engine_command
+    from haizflow.services.resource_packs import ResourcePackError, installed_engine_command
 
     # On an 8 GB GPU, use the installed CPU speech pack's Q4 translator when
     # available. The CUDA engine pack does not include llama_cpp, and loading
@@ -231,19 +231,23 @@ def _worker_command() -> list[str]:
     preference = translation_model_preference()
     if preference == "q4" or (preference == "auto" and runtime_profile().key == "cuda_low_memory"):
         cpu_engine = installed_engine_command(
-            "translation", "hymt2_server", {"device": "cpu"}
+            "translation", "hymt2_server", {"device": "cpu", "translation_model": "q4"}
         )
         if cpu_engine:
             return cpu_engine
     external = installed_engine_command(
         "translation",
         "hymt2_server",
-        {"device": "gpu" if preference == "full" else "cpu" if preference == "q4" else processing_device_preference()},
+        {
+            "device": "gpu" if preference == "full" else "cpu" if preference == "q4" else processing_device_preference(),
+            "translation_model": preference,
+        },
     )
     if external:
         return external
     if is_frozen():
-        return [sys.executable, "--hymt2-worker", "--server"]
+        # Core excludes Torch/llama.cpp: installed builds require a validated engine.
+        raise ResourcePackError("Chưa có môi trường HY-MT2 tương ứng. Hãy cài hoặc kiểm tra và sửa gói trong Cài đặt > Gói tài nguyên.")
     return [sys.executable, "-m", "haizflow.services.hymt2_worker", "--server"]
 
 
