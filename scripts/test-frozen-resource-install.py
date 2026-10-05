@@ -66,7 +66,8 @@ def main():
             definition = ResourcePackDefinition(package_id, package_id, "processor", version, "engine",
                 engine_modules=("test_clean_core_no_ai_module",), download_size=archive.stat().st_size,
                 installed_size=installed_size, archive_url="" if parts or args.offline else "https://example.invalid/" + name,
-                archive_sha256=digest, archive_parts=parts, offline_archive=name if args.offline else "")
+                archive_sha256=digest, archive_parts=parts, offline_archive=name if args.offline else "",
+                runtime_contract=int(engine.get("runtime_contract", 0)))
             manager = ResourcePackManager((definition,))
             events = []
             with patch("urllib.request.urlopen", side_effect=AssertionError("Network is forbidden in this cached test")), \

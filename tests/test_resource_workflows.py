@@ -243,6 +243,93 @@ def test_manual_separation_missing_pack_stays_in_editor(device, missing_pack, mo
     host._enqueue_video.assert_not_called()
 
 
+@pytest.mark.parametrize("device,model,missing_pack", [
+    ("cpu", "small-cpu", "engine-cpu-py313"),
+    ("cpu", "small-cpu", "model-whisper-small"),
+    ("gpu", "small-gpu", "engine-cuda128-py313"),
+    ("gpu", "small-gpu", "model-whisper-small"),
+    ("gpu", "large-v3-turbo", "engine-cuda128-py313"),
+    ("gpu", "large-v3-turbo", "model-whisper-turbo"),
+])
+def test_manual_recognition_blocks_missing_runtime_or_model(device, model, missing_pack, monkeypatch):
+    from haizflow.desktop.qml_controller import HaizFlowController
+    from haizflow.schemas.video import VideoConfig
+
+    video = SimpleNamespace(**VideoConfig(project_type="manual", speech_recognition_model=model,
+                            translation_model="gemini-3.1-flash-lite").model_dump(), video_id="whisper-preflight")
+    manager = ResourcePackManager()
+    monkeypatch.setattr(manager, "status", lambda pack: "missing" if pack == missing_pack else "installed")
+    monkeypatch.setattr(manager, "requirement_summary", lambda _: {"downloadBytes": 0, "requiredBytes": 1024**3})
+    host = SimpleNamespace(_settings_processing_device=device, _settings_language="vi", _project_type="manual",
+        geminiKeyConfigured=True, _selected_video=lambda: video, _ensure_hardware_ready_for_action=lambda: True,
+        appAlertRequested=Mock(), resourcePacksRequested=Mock(), _enqueue_video=Mock(),
+        _resource_packs=SimpleNamespace(manager=manager, _hardware_compatibility=lambda _: (True, "")))
+    assert not HaizFlowController.runManualTool(host, "translation")
+    host.appAlertRequested.emit.assert_called_once()
+    host.resourcePacksRequested.emit.assert_not_called()
+    host._enqueue_video.assert_not_called()
+
+
+@pytest.mark.parametrize("device,model,missing_pack", [
+    ("cpu", "small-cpu", "engine-cpu-py313"),
+    ("cpu", "small-cpu", "model-whisper-small"),
+    ("gpu", "large-v3-turbo", "engine-cuda128-py313"),
+    ("gpu", "large-v3-turbo", "model-whisper-turbo"),
+])
+def test_auto_batch_recognition_blocks_missing_runtime_or_model(device, model, missing_pack, monkeypatch):
+    from haizflow.desktop.project_commands_controller import ProjectCommandsController
+    from haizflow.schemas.video import VideoConfig
+
+    video = SimpleNamespace(**VideoConfig(speech_recognition_model=model, translation_model="q4").model_dump(),
+                            video_id="auto-whisper-preflight", status="pending")
+    manager = ResourcePackManager()
+    monkeypatch.setattr(manager, "status", lambda pack: "missing" if pack == missing_pack else "installed")
+    monkeypatch.setattr(manager, "requirement_summary", lambda _: {"downloadBytes": 0, "requiredBytes": 1024**3})
+    host = SimpleNamespace(_settings_processing_device=device, _settings_language="vi",
+        _processing_queue=SimpleNamespace(contains=lambda _: False),
+        appAlertRequested=Mock(), resourcePacksRequested=Mock(),
+        _resource_packs=SimpleNamespace(manager=manager, _hardware_compatibility=lambda _: (True, "")))
+    assert not ProjectCommandsController._resources_ready_for_videos(host, [video])
+    host.appAlertRequested.emit.assert_called_once()
+    host.resourcePacksRequested.emit.assert_not_called()
+
+
+def test_downloaded_whisper_model_with_missing_runtime_is_not_shown_installed():
+    manager = ResourcePackManager()
+    manager.status = lambda pack: "missing" if pack.startswith("engine-") else "installed"
+    source = {"packId": "model-whisper-turbo", "status": "installed", "downloadSize": 0, "canRemove": True}
+    controller = SimpleNamespace(_host=SimpleNamespace(_settings_language="vi"), manager=manager,
+        model=SimpleNamespace(_rows=[source]), busy=False,
+        _hardware_compatibility=lambda _: (True, ""), _supporting_packs=lambda _: ["engine-cuda128-py313"])
+    manager.archive_available = lambda _: True
+    row = ResourcePackController.displayRows.fget(controller)[0]
+    assert row["status"] == "missing"
+    assert row["canInstall"]
+    assert "môi trường xử lý" in row["detail"]
+
+
+def test_old_whisper_runtime_contract_is_not_ready(tmp_path, monkeypatch):
+    import json
+    from dataclasses import replace
+    from haizflow.services.resource_packs import ENGINE_REQUIRED_COMMANDS
+
+    monkeypatch.setenv("HAIZFLOW_RESOURCE_ROOT", str(tmp_path))
+    definition = replace(ResourcePackManager().definitions["engine-cuda128-py313"], version="5", archive_sha256="")
+    manager = ResourcePackManager([definition])
+    monkeypatch.setattr(manager, "_bundled_engine_available", lambda _: False)
+    root = manager._engine_marker(definition).parent
+    root.mkdir(parents=True)
+    (root / "engine.exe").write_bytes(b"fixture")
+    payload = {"pack_id": definition.pack_id, "profile": "cuda128", "version": "5", "protocol_version": 1}
+    payload.update({name: ["engine.exe"] for name in ENGINE_REQUIRED_COMMANDS[definition.pack_id]})
+    (root / "engine.json").write_text(json.dumps(payload))
+    (root / "complete.json").write_text(json.dumps(payload))
+    assert manager.status(definition.pack_id) == "missing"
+    payload["runtime_contract"] = 2
+    (root / "engine.json").write_text(json.dumps(payload))
+    assert manager.status(definition.pack_id) == "installed"
+
+
 def test_demucs_profiles_share_model_but_install_and_remove_independently(tmp_path, monkeypatch):
     import hashlib
     import json

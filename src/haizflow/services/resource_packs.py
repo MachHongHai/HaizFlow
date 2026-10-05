@@ -113,6 +113,7 @@ class ResourcePackDefinition:
     archive_parts: tuple[ArchivePart, ...] = ()
     offline_archive: str = ""
     protocol_version: int = PACK_PROTOCOL_VERSION
+    runtime_contract: int = 0
 
 
 def _assets_by_component() -> dict[str, tuple[ModelAsset, ...]]:
@@ -191,7 +192,8 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             backend="cpu",
             download_size=1_300_000_000,
             installed_size=2_000_000_000,
-            engine_modules=("torch", "ctranslate2", "llama_cpp"),
+            engine_modules=("torch", "ctranslate2", "llama_cpp", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
+            runtime_contract=2,
         ),
         ResourcePackDefinition(
             pack_id="engine-cuda128-py313",
@@ -202,7 +204,8 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             backend="gpu",
             download_size=4_500_000_000,
             installed_size=5_500_000_000,
-            engine_modules=("torch", "torchaudio", "torchvision"),
+            engine_modules=("torch", "torchaudio", "torchvision", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
+            runtime_contract=2,
         ),
         ResourcePackDefinition(
             pack_id="engine-vision-onnx",
@@ -467,6 +470,7 @@ class ResourcePackManager:
             and engine.get("profile") == ENGINE_PROFILE_BY_PACK.get(definition.pack_id)
             and engine.get("version") == definition.version
             and engine.get("protocol_version") == definition.protocol_version
+            and (not definition.runtime_contract or engine.get("runtime_contract") == definition.runtime_contract)
         )
         if not marker_valid or not engine_valid:
             return False
@@ -939,6 +943,7 @@ class ResourcePackManager:
             or payload.get("profile") != ENGINE_PROFILE_BY_PACK.get(definition.pack_id)
             or payload.get("version") != definition.version
             or payload.get("protocol_version") != definition.protocol_version
+            or (definition.runtime_contract and payload.get("runtime_contract") != definition.runtime_contract)
         ):
             raise ResourcePackError("Phiên bản hoặc giao thức của gói bộ xử lý không tương thích.")
         for command_name in sorted(ENGINE_REQUIRED_COMMANDS.get(definition.pack_id, {"smoke_command", "rpc_command"})):

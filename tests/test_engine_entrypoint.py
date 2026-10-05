@@ -29,6 +29,23 @@ write_manifest = load_script("write-engine-manifest.py")
 
 
 class EngineEntrypointTests(unittest.TestCase):
+    def test_smoke_exercises_whisperx_lazy_inference_modules(self):
+        for profile in ("cpu", "cuda128"):
+            for module in ("whisperx.asr", "whisperx.alignment", "whisperx.vads"):
+                self.assertIn(module, engine_main.SMOKE_MODULES[profile])
+        hook = (ROOT / "scripts/hooks/hook-whisperx.py").read_text(encoding="utf-8")
+        for module in ("whisperx.asr", "whisperx.alignment", "whisperx.vads"):
+            self.assertIn(f'"{module}"', hook)
+
+    def test_smoke_rejects_missing_lazy_asr_module(self):
+        def imported(module):
+            if module == "whisperx.asr":
+                raise ModuleNotFoundError("No module named 'whisperx.asr'")
+            return SimpleNamespace()
+        with patch.object(engine_main.importlib, "import_module", side_effect=imported):
+            with self.assertRaisesRegex(ModuleNotFoundError, "whisperx.asr"):
+                engine_main.smoke_test("cpu")
+
     def test_atomic_response_retries_transient_windows_reader_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "response.json"

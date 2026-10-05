@@ -23,6 +23,10 @@ SMOKE_MODULES = {
         "faster_whisper",
         "transformers",
         "whisperx",
+        "whisperx.asr",
+        "whisperx.alignment",
+        "whisperx.vads",
+        "pyannote.audio.models.segmentation.PyanNet",
         "demucs",
         "llama_cpp",
     ),
@@ -34,6 +38,10 @@ SMOKE_MODULES = {
         "faster_whisper",
         "transformers",
         "whisperx",
+        "whisperx.asr",
+        "whisperx.alignment",
+        "whisperx.vads",
+        "pyannote.audio.models.segmentation.PyanNet",
         "demucs",
     ),
     "vision": ("onnxruntime", "rapidocr"),
@@ -160,6 +168,9 @@ def smoke_test(profile: str) -> dict:
         # Import the actual task entrypoints, not only top-level packages.
         _demucs_main()
         importlib.import_module("haizflow.pipeline.transcribe")
+        importlib.import_module("haizflow.pipeline.voice_reference")
+        importlib.import_module("haizflow.pipeline.omnivoice_tts")
+        importlib.import_module("haizflow.services.hymt2_worker")
     return {"profile": profile, "modules": versions}
 
 
