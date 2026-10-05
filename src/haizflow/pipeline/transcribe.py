@@ -9,6 +9,9 @@ from pathlib import Path
 
 from haizflow.config import HF_HOME, MODELS_DIR
 
+# Local VAD must not enable Pyannote's opt-out usage telemetry.
+os.environ["PYANNOTE_METRICS_ENABLED"] = "false"
+
 import numpy as np
 import torch
 import torchaudio

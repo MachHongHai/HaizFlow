@@ -34,7 +34,9 @@ class EngineEntrypointTests(unittest.TestCase):
             for module in ("whisperx.asr", "whisperx.alignment", "whisperx.vads"):
                 self.assertIn(module, engine_main.SMOKE_MODULES[profile])
         hook = (ROOT / "scripts/hooks/hook-whisperx.py").read_text(encoding="utf-8")
-        self.assertIn('copy_metadata("whisperx", recursive=True)', hook)
+        self.assertIn('copy_metadata(distribution.metadata["Name"])', hook)
+        self.assertIn('"pyannote/audio/telemetry"', hook)
+        self.assertIn("metrics_enabled: false", (ROOT / "scripts/hooks/pyannote-audio/config.yaml").read_text())
         for module in ("whisperx.asr", "whisperx.alignment", "whisperx.vads"):
             self.assertIn(f'"{module}"', hook)
 

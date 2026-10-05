@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from haizflow.services.resource_packs import _assets_by_component  # noqa: E402
-from haizflow.update.filesystem import atomic_json, no_links  # noqa: E402
+from haizflow.update.filesystem import atomic_json, no_links, remove_owned  # noqa: E402
 from haizflow.update.state import provision  # noqa: E402
 
 
@@ -23,9 +23,15 @@ def main():
     parser.add_argument("--cpu", type=Path, required=True)
     parser.add_argument("--gpu", type=Path, required=True)
     parser.add_argument("--models", type=Path, required=True, help="Read-only source for pinned model copies")
+    parser.add_argument("--fixture", type=Path, help="Reuse an owned fixture's model copies")
+    parser.add_argument("--cleanup-models", action="store_true")
     args = parser.parse_args()
-    fixture = ROOT / "build/frozen-recognition-smoke" / uuid.uuid4().hex
-    fixture.mkdir(parents=True)
+    parent = (ROOT / "build/frozen-recognition-smoke").resolve()
+    fixture = args.fixture.resolve() if args.fixture else parent / uuid.uuid4().hex
+    no_links(fixture)
+    if fixture.parent != parent or len(fixture.name) != 32 or any(ch not in "0123456789abcdef" for ch in fixture.name):
+        raise ValueError("Reuse only a GUID fixture directly below build/frozen-recognition-smoke")
+    fixture.mkdir(parents=True, exist_ok=True)
     app = fixture / "installation"
     provision(app)
     groups = _assets_by_component()
@@ -36,17 +42,19 @@ def main():
         no_links(source)
         target = app / "runtime/models" / asset.relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        if not target.exists():
+            shutil.copy2(source, target)
     sample = ROOT / "src/haizflow/desktop/assets/voice_samples/omnivoice/omnivoice_female/en.mp3"
     audio = fixture / "sample.wav"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    subprocess.run([str(ROOT / "runtime/bin/ffmpeg.exe"), "-hide_banner", "-loglevel", "error", "-i", str(sample),
+    subprocess.run([str(ROOT / "runtime/bin/ffmpeg.exe"), "-hide_banner", "-loglevel", "error", "-y", "-i", str(sample),
                     "-t", "8", "-ar", "16000", "-ac", "1", str(audio)], check=True, creationflags=flags)
     environment = os.environ.copy()
     for name in ("HAIZFLOW_HOME", "HAIZFLOW_INSTALL_ROOT", "HAIZFLOW_RESOURCE_ROOT", "MODELS_DIR",
                  "RUNTIME_DATA_DIR", "APP_DATA_DIR", "HAIZFLOW_SMOKE_TEST"):
         environment.pop(name, None)
-    environment.update(HAIZFLOW_ENGINE_APP_ROOT=str(app), HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
+    environment.update(HAIZFLOW_ENGINE_APP_ROOT=str(app), HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
+                       PYANNOTE_METRICS_ENABLED="false")
     environment["PATH"] = str(ROOT / "runtime/bin") + os.pathsep + environment.get("PATH", "")
     results = []
     for label, engine, device, model in (("cpu-small", args.cpu, "cpu", "small"),
@@ -85,6 +93,8 @@ def main():
         print(json.dumps(results[-1]), flush=True)
     atomic_json(fixture / "result.json", dict(passed=True, models_copied=True, user_data_modified=False,
                                                network_used=False, results=results))
+    if args.cleanup_models:
+        remove_owned(app / "runtime", app / "runtime/models")
     print(json.dumps(dict(passed=True, fixture=str(fixture))), flush=True)
 
 

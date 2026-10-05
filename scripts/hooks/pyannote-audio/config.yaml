@@ -1,0 +1,3 @@
+metrics_enabled: false
+otlp_endpoint: https://otel.pyannote.ai/v1/traces
+telemetry_log_level: CRITICAL
