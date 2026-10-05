@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import shutil
 import sys
 import zipfile
@@ -14,7 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from haizflow.update.filesystem import atomic_json, no_links, sha256  # noqa: E402
 
 
-def prepare(archives: list[Path], output: Path, manifest: Path) -> dict:
+def prepare(archives: list[Path], output: Path, manifest: Path, *, link_archives: bool = False) -> dict:
     spec = importlib.util.spec_from_file_location("pack_finalize", ROOT / "scripts/finalize-resource-pack.py")
     finalizer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(finalizer)
@@ -43,7 +44,12 @@ def prepare(archives: list[Path], output: Path, manifest: Path) -> dict:
     output.mkdir(parents=True)
     for path, record in records:
         target = output / record["offline_archive"]
-        shutil.copy2(path, target)
+        if link_archives:
+            # Immutable, checksum-pinned archives on the same volume can share
+            # storage without removing an older installer or its fallback data.
+            os.link(path, target)
+        else:
+            shutil.copy2(path, target)
         if target.stat().st_size != record["download_size"] or sha256(target) != record["sha256"]:
             raise ValueError("Companion archive copy failed verification.")
     atomic_json(manifest, payload)
@@ -58,5 +64,6 @@ if __name__ == "__main__":
     parser.add_argument("--archive", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--link-archives", action="store_true", help="Use same-volume hard links for immutable local archives")
     args = parser.parse_args()
-    prepare(args.archive, args.output, args.manifest)
+    prepare(args.archive, args.output, args.manifest, link_archives=args.link_archives)
