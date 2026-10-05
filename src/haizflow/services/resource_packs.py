@@ -192,8 +192,8 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             backend="cpu",
             download_size=1_300_000_000,
             installed_size=2_000_000_000,
-            engine_modules=("torch", "ctranslate2", "llama_cpp", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
-            runtime_contract=2,
+            engine_modules=("torch", "ctranslate2", "llama_cpp", "onnxruntime", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
+            runtime_contract=3,
         ),
         ResourcePackDefinition(
             pack_id="engine-cuda128-py313",
@@ -204,8 +204,8 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             backend="gpu",
             download_size=4_500_000_000,
             installed_size=5_500_000_000,
-            engine_modules=("torch", "torchaudio", "torchvision", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
-            runtime_contract=2,
+            engine_modules=("torch", "torchaudio", "torchvision", "onnxruntime", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
+            runtime_contract=3,
         ),
         ResourcePackDefinition(
             pack_id="engine-vision-onnx",
@@ -679,12 +679,18 @@ class ResourcePackManager:
         provider = str(context.get("provider") or "omnivoice")
         voice_device = "gpu" if provider.endswith("-gpu") else "cpu"
         voice_packs = [f"engine-{'cuda128-py313' if voice_device == 'gpu' else 'cpu-py313'}", "model-omnivoice"]
+        if context.get("voice_clone") and not any(
+            self.status(pack) in {"installed", "bundled"} for pack in ("model-whisper-small", "model-whisper-turbo")
+        ):
+            voice_packs.append("model-whisper-small")
         speaker_packs = ["engine-speaker-bundled", "model-speaker-identification"]
         if context.get("speaker_mode") == "multiple":
             voice_packs.extend(speaker_packs)
         recognition_model = str(context.get("model") or "small").lower()
         recognition_device = ("cpu" if recognition_model == "small-cpu" else
                               "gpu" if recognition_model in {"small-gpu", "turbo", "large-v3-turbo"} else device)
+        if context.get("reference_asr"):
+            recognition_device = device
         engine_pack = f"engine-{'cuda128-py313' if recognition_device == 'gpu' else 'cpu-py313'}"
         whisper_pack = (
             "model-whisper-turbo" if recognition_model in {"turbo", "large-v3-turbo"}

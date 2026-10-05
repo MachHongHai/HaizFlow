@@ -63,10 +63,8 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
             encoding="utf-8",
         )
         command = installed_engine_command(
-            "recognition", "transcribe", {"device": recognition_device, "model": model_name}
+            "recognition", "transcribe", {"device": recognition_device, "model": model_name, "reference_asr": True}
         )
-        if not command and recognition_device == "cpu":
-            command = installed_engine_command("recognition", "transcribe", {"device": "gpu", "model": model_name})
         if not command:
             if getattr(sys, "frozen", False):
                 raise RuntimeError("Cần cài môi trường Whisper trong Gói tài nguyên để nhận dạng mẫu giọng.")

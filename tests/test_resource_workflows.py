@@ -325,9 +325,19 @@ def test_old_whisper_runtime_contract_is_not_ready(tmp_path, monkeypatch):
     (root / "engine.json").write_text(json.dumps(payload))
     (root / "complete.json").write_text(json.dumps(payload))
     assert manager.status(definition.pack_id) == "missing"
-    payload["runtime_contract"] = 2
+    payload["runtime_contract"] = definition.runtime_contract
     (root / "engine.json").write_text(json.dumps(payload))
     assert manager.status(definition.pack_id) == "installed"
+
+
+def test_clone_requires_whisper_and_reference_cpu_does_not_select_gpu_engine(monkeypatch):
+    manager = ResourcePackManager()
+    monkeypatch.setattr(manager, "status", lambda _: "missing")
+    assert "model-whisper-small" in manager.required_packs("voice", {"voice_clone": True})
+    monkeypatch.setattr(manager, "status", lambda pack: "installed" if pack == "model-whisper-turbo" else "missing")
+    assert "model-whisper-small" not in manager.required_packs("voice", {"voice_clone": True})
+    assert manager.required_packs("recognition", {"model": "large-v3-turbo", "device": "cpu", "reference_asr": True})[0] == "engine-cpu-py313"
+    assert manager.required_packs("recognition", {"model": "large-v3-turbo", "device": "gpu", "reference_asr": True})[0] == "engine-cuda128-py313"
 
 
 def test_demucs_profiles_share_model_but_install_and_remove_independently(tmp_path, monkeypatch):

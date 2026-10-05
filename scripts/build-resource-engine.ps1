@@ -122,10 +122,10 @@ try {
     # PyInstaller's Torch hooks collect native libraries. Add only data that
     # these runtimes read dynamically; collect-all would pull tests, demos and
     # unrelated scientific packages back into every engine.
-    foreach ($Module in @("whisperx", "transformers", "demucs", "lightning", "lightning_fabric", "pytorch_lightning")) {
+    foreach ($Module in @("whisperx", "faster_whisper", "transformers", "demucs", "lightning", "lightning_fabric", "pytorch_lightning")) {
       $Arguments += @("--collect-data", $Module)
     }
-    foreach ($Module in @("torch", "torchaudio", "ctranslate2")) {
+    foreach ($Module in @("torch", "torchaudio", "ctranslate2", "onnxruntime")) {
       $Arguments += @("--collect-binaries", $Module)
     }
     foreach ($Module in @(
@@ -137,7 +137,7 @@ try {
     )) {
       $Arguments += @("--hidden-import", $Module)
     }
-    $Arguments += @("--exclude-module", "onnxruntime", "--exclude-module", "rapidocr")
+    $Arguments += @("--exclude-module", "rapidocr")
   }
   else {
     # Do not collect RapidOCR's mutable default model payload. HaizFlow loads

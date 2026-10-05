@@ -90,6 +90,20 @@ def main():
             raise RuntimeError("Inference wrote data beside the immutable engine")
         results.append(dict(profile=label, seconds=round(time.monotonic() - start, 2), segments=len(segments),
                             language=result["result"]["detected_language"]))
+        reference_request, reference_response = fixture / f"{label}-reference.json", fixture / f"{label}-reference-result.json"
+        atomic_json(reference_request, dict(protocol_version=1, operation="reference_transcribe",
+            payload=dict(audio_path=str(audio), model_root=str(app / "runtime/models/whisper" / model), device=device),
+            response_path=str(reference_response), status_path=str(fixture / f"{label}-reference-status.json")))
+        reference = subprocess.run([str(engine.resolve()), "--request", str(reference_request)], env=environment,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180, creationflags=flags)
+        (fixture / f"{label}-reference-stderr.log").write_text(reference.stderr, encoding="utf-8")
+        reference_result = json.loads(reference_response.read_text(encoding="utf-8")) if reference_response.exists() else {}
+        if reference.returncode or not reference_result.get("ok") or not str(reference_result.get("result", {}).get("text", "")).strip():
+            raise RuntimeError(f"{label} reference recognition failed: {reference_result}")
+        expected_device = "cuda" if device == "gpu" else "cpu"
+        if f"device={expected_device}" not in reference.stderr or "[CLONE-ASR][WARN]" in reference.stderr:
+            raise RuntimeError(f"{label} reference recognition did not use the selected device")
+        results[-1]["reference_recognition"] = True
         print(json.dumps(results[-1]), flush=True)
     atomic_json(fixture / "result.json", dict(passed=True, models_copied=True, user_data_modified=False,
                                                network_used=False, results=results))

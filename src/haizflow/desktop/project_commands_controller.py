@@ -130,6 +130,7 @@ class ProjectCommandsController:
         missing = []
         for video in videos:
             context = {
+                "voice_clone": str(getattr(video, "tts_voice", "")) == "omnivoice:clone",
                 "device": str(getattr(host, "_settings_processing_device", "cpu") or "cpu"),
                 "model": str(
                     getattr(video, "speech_recognition_model", None)

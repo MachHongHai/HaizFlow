@@ -21,6 +21,8 @@ SMOKE_MODULES = {
         "torchvision",
         "ctranslate2",
         "faster_whisper",
+        "faster_whisper.vad",
+        "onnxruntime",
         "transformers",
         "whisperx",
         "whisperx.asr",
@@ -36,6 +38,8 @@ SMOKE_MODULES = {
         "torchvision",
         "ctranslate2",
         "faster_whisper",
+        "faster_whisper.vad",
+        "onnxruntime",
         "transformers",
         "whisperx",
         "whisperx.asr",
@@ -171,6 +175,7 @@ def smoke_test(profile: str) -> dict:
         importlib.import_module("haizflow.pipeline.voice_reference")
         importlib.import_module("haizflow.pipeline.omnivoice_tts")
         importlib.import_module("haizflow.services.hymt2_worker")
+        importlib.import_module("faster_whisper.vad").get_vad_model()
     return {"profile": profile, "modules": versions}
 
 

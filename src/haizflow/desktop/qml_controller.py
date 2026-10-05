@@ -4189,6 +4189,7 @@ class HaizFlowController(QObject):
             "voice": ("voice",),
         }.get(tool_id, ())
         pack_context = {
+            "voice_clone": str(getattr(video, "tts_voice", "")) == "omnivoice:clone",
             "speaker_mode": str(getattr(video, "speaker_mode", "single") or "single"),
             "device": str(getattr(self, "_settings_processing_device", "cpu") or "cpu"),
             "model": str(getattr(video, "speech_recognition_model", "small") or "small"),
