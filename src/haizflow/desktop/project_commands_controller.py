@@ -204,6 +204,10 @@ class ProjectCommandsController:
             QMessageBox.information(None, "Batch queue", "There are no paused videos to resume.")
             return
         resumable_videos = [video_store.get_video(video_id) for video_id in resumable_ids]
+        from haizflow.services.processing_resume import can_resume
+
+        if any(not can_resume(host, video) for video in resumable_videos if video):
+            return
         if not self._resources_ready_for_videos(host, resumable_videos):
             return
         host._batch_running = True
@@ -1109,6 +1113,10 @@ class ProjectCommandsController:
         host = self._host
         video = video_store.get_video(host._selected_video_id) if host._selected_video_id else None
         if not video or video.status != "paused" or host._processing_queue.contains(video.video_id):
+            return
+        from haizflow.services.processing_resume import can_resume
+
+        if not can_resume(host, video):
             return
         if not self._resources_ready(host, video):
             return

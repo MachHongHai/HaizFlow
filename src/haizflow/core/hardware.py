@@ -149,7 +149,7 @@ def _total_memory_bytes() -> int:
         return 0
 
 
-def available_memory_bytes() -> int:
+def available_memory_bytes(*, commit: bool = False) -> int:
     """Return currently available physical memory without optional packages."""
 
     if os.name == "nt":
@@ -170,17 +170,24 @@ def available_memory_bytes() -> int:
         status.dwLength = ctypes.sizeof(MemoryStatusEx)
         try:
             if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-                return int(status.ullAvailPhys)
+                return int(status.ullAvailPageFile if commit else status.ullAvailPhys)
         except (AttributeError, OSError):
             return 0
         return 0
 
+    if commit:
+        return 0
     try:
         pages = os.sysconf("SC_AVPHYS_PAGES")
         page_size = os.sysconf("SC_PAGE_SIZE")
         return int(pages * page_size)
     except (AttributeError, OSError, ValueError):
         return 0
+
+
+def available_commit_bytes() -> int:
+    """Windows commit headroom, distinct from free RAM or free paging-file space."""
+    return available_memory_bytes(commit=True)
 
 
 def _nvidia_smi_path() -> str:

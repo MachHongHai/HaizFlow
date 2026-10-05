@@ -313,43 +313,62 @@ InspectorPanel {
             wrapMode: Text.WordWrap
         }
 
-        StudioButton {
+        RowLayout {
             Layout.fillWidth: true
-            visible: (root.taskBelongsToTool && (root.taskQueued || root.taskPaused))
-                || ["translation", "image", "export"].indexOf(root.toolId) >= 0
-            text: root.taskProcessing && root.taskBelongsToTool ? qsTr("Tạm dừng")
-                : root.taskQueued && root.taskBelongsToTool ? qsTr("Hủy tác vụ")
-                : root.taskPaused && root.taskBelongsToTool ? qsTr("Tiếp tục") : root.runLabel()
-            iconName: root.taskProcessing && root.taskBelongsToTool ? "pause"
-                : root.taskQueued && root.taskBelongsToTool ? "stop" : "play"
-            variant: (root.taskProcessing || root.taskQueued) && root.taskBelongsToTool
-                ? "danger" : "primary"
-            enabled: root.taskProcessing && root.taskBelongsToTool
-                || root.taskQueued && root.taskBelongsToTool
-                || root.taskPaused && root.taskBelongsToTool
-                || (root.editable && !root.taskQueued && (root.toolId === "image" || root.toolState.canRun)
-                    && (root.toolId !== "export" || Boolean(root.exportPreflight.canExport)))
-            onClicked: {
-                if ((root.taskProcessing || root.taskQueued) && root.taskBelongsToTool)
-                    AppController.cancelManualTool(AppController.manualTargetTool);
-                else if (root.taskPaused && root.taskBelongsToTool)
-                    AppController.resumeSelectedVideo();
-                else {
+            spacing: Theme.space8
+
+            StudioButton {
+                objectName: "manualRestartToolButton"
+                Layout.fillWidth: true
+                visible: root.taskPaused && root.taskBelongsToTool
+                text: qsTr("Chạy lại")
+                variant: "secondary"
+                enabled: !root.taskQueued && !AppController.isSwitchingProcessingDevice
+                onClicked: {
                     root.saveNow();
-                    if (root.toolId === "image") {
-                        const imagePane = stageLoader.item as ManualImageToolPanel;
-                        if (imagePane)
-                            imagePane.applyTreatment();
-                        return;
+                    AppController.restartManualTool(AppController.manualTargetTool);
+                }
+            }
+
+            StudioButton {
+                objectName: "manualResumeToolButton"
+                Layout.fillWidth: true
+                visible: (root.taskBelongsToTool && (root.taskQueued || root.taskPaused))
+                    || ["translation", "image", "export"].indexOf(root.toolId) >= 0
+                text: root.taskProcessing && root.taskBelongsToTool ? qsTr("Tạm dừng")
+                    : root.taskQueued && root.taskBelongsToTool ? qsTr("Hủy tác vụ")
+                    : root.taskPaused && root.taskBelongsToTool ? qsTr("Tiếp tục") : root.runLabel()
+                iconName: root.taskProcessing && root.taskBelongsToTool ? "pause"
+                    : root.taskQueued && root.taskBelongsToTool ? "stop" : "play"
+                variant: (root.taskProcessing || root.taskQueued) && root.taskBelongsToTool
+                    ? "danger" : "primary"
+                enabled: root.taskProcessing && root.taskBelongsToTool
+                    || root.taskQueued && root.taskBelongsToTool
+                    || root.taskPaused && root.taskBelongsToTool
+                    || (root.editable && !root.taskQueued && (root.toolId === "image" || root.toolState.canRun)
+                        && (root.toolId !== "export" || Boolean(root.exportPreflight.canExport)))
+                onClicked: {
+                    if ((root.taskProcessing || root.taskQueued) && root.taskBelongsToTool)
+                        AppController.cancelManualTool(AppController.manualTargetTool);
+                    else if (root.taskPaused && root.taskBelongsToTool)
+                        AppController.resumeSelectedVideo();
+                    else {
+                        root.saveNow();
+                        if (root.toolId === "image") {
+                            const imagePane = stageLoader.item as ManualImageToolPanel;
+                            if (imagePane)
+                                imagePane.applyTreatment();
+                            return;
+                        }
+                        if (root.toolId === "export") {
+                            root.refreshExportPreflight();
+                            AppController.requestVideoExport();
+                            return;
+                        }
+                        const started = AppController.runManualTool(root.toolId);
+                        if (root.toolId === "export" && started)
+                            root.exportRequested();
                     }
-                    if (root.toolId === "export") {
-                        root.refreshExportPreflight();
-                        AppController.requestVideoExport();
-                        return;
-                    }
-                    const started = AppController.runManualTool(root.toolId);
-                    if (root.toolId === "export" && started)
-                        root.exportRequested();
                 }
             }
         }

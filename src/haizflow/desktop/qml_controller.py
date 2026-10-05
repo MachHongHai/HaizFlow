@@ -4312,9 +4312,17 @@ class HaizFlowController(QObject):
         from haizflow.pipeline.process_registry import prepare_video_resume
 
         prepare_video_resume(video.video_id)
+        restarting_paused_tool = video.status == "paused" and str(getattr(video, "manual_target_tool", "") or "") == tool_id
         self._apply_setup_to_video(video, review_approved=True)
+        if tool_id == "translation":
+            from haizflow.services.translation_progress import clear_manual_progress
+
+            clear_manual_progress(video.video_id)
         if tool_id != "export":
-            prepare_manual_rerun(video.video_id, tool_id)
+            if restarting_paused_tool:
+                prepare_manual_rerun(video.video_id, tool_id, force=True)
+            else:
+                prepare_manual_rerun(video.video_id, tool_id)
         video_store.update_video(
             video.video_id,
             manual_target_tool=tool_id,
@@ -4352,6 +4360,22 @@ class HaizFlowController(QObject):
             "segmentOverride": bool(override),
             "hasPublishedVoice": bool(published_voice_record(video, validate=False)),
         }
+
+    @Slot(str, result=bool)
+    def restartManualTool(self, tool_id):
+        video = self._selected_video()
+        if (not video or video.project_type != "manual" or video.status != "paused"
+                or str(video.manual_target_tool or "") != str(tool_id or "")
+                or self._processing_queue.contains(video.video_id)):
+            return False
+        vi = self._settings_language == "vi"
+        if QMessageBox.question(
+            None, "Chạy lại tác vụ" if vi else "Run task again",
+            "Bỏ tiến độ đang tạm dừng và chạy lại công cụ với cài đặt hiện tại? Kết quả đã hoàn tất trước đó được giữ nguyên cho đến khi có kết quả mới." if vi else
+            "Discard the paused progress and run this tool again with the current settings? Previously completed results remain until the new result is ready.",
+        ) != QMessageBox.StandardButton.Yes:
+            return False
+        return self.runManualTool(tool_id)
 
     @Slot(str, str, str, str, str, result=bool)
     def configureAndRunManualVoice(

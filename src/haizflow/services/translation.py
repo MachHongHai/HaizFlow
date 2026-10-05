@@ -69,6 +69,7 @@ def translate_segments(
     provider: str = "hymt2",
     progress_callback=None,
     translation_model: str = "auto",
+    checkpoint_path: str | None = None,
 ):
     from haizflow.services.gemini_translation import MODELS as GEMINI_MODELS
     from haizflow.services.gemini_translation import translate_texts
@@ -109,12 +110,28 @@ def translate_segments(
 
     source_texts = [segment["text"] for segment in segments]
     source_codes = [str(segment.get("language") or source_language or "en").lower() for segment in segments]
-    if using_gemini:
+    from haizflow.services.translation_progress import TranslationProgress
+
+    checkpoint = TranslationProgress(checkpoint_path or output_json_path + ".progress.json", {
+        "segments": segments, "model": requested_model, "provider": provider,
+        "source_language": source_language, "target_language": target_language,
+        "format": "sentence-translation-v1",
+    }, len(segments))
+    missing = [index for index, value in enumerate(checkpoint.values) if value is None]
+    completed = len(segments) - len(missing)
+    if completed:
+        log_to_video(video_id, f"Resuming translation: keeping {completed} of {len(segments)} completed sentences.")
+        if progress_callback:
+            progress_callback(completed, len(segments), "Resuming saved translations")
+    if not missing:
+        translations = list(checkpoint.values)
+    elif using_gemini:
         translations = translate_texts(
             source_texts, model=requested_model,
             source_language=language_name(source_language) if source_language != "auto" else "auto",
             target_language=target_language_name,
             video_id=video_id, progress_callback=progress_callback,
+            initial_translations=checkpoint.values, result_callback=checkpoint.save_batch,
         )
     else:
         translations = _translate_with_hymt2_worker(
@@ -123,12 +140,15 @@ def translate_segments(
             source_languages=[language_name(code) for code in source_codes],
             target_language_name=target_language_name,
             progress_callback=progress_callback,
+            translate_indices=missing, initial_translations=checkpoint.values,
+            result_callback=checkpoint.save_batch,
         )
     if len(translations) != len(segments):
         raise RuntimeError(
             "HY-MT2 must return exactly one translation for each timestamped source sentence."
         )
     translations = [clean_translation(text) for text in translations]
+    checkpoint.save_batch(list(range(len(segments))), translations)
     suspect_indexes = _suspicious_translation_indexes(
         source_texts,
         translations,
@@ -170,6 +190,7 @@ def translate_segments(
             )
         for index in retry_indexes:
             translations[index] = clean_translation(retry_results[index])
+        checkpoint.save_batch(retry_indexes, [translations[index] for index in retry_indexes])
         suspect_indexes = _suspicious_translation_indexes(
             source_texts,
             translations,
@@ -199,6 +220,9 @@ def translate_segments(
             }
         )
 
+    from haizflow.pipeline.process_registry import check_cancellation
+
+    check_cancellation(video_id)
     output_directory = os.path.dirname(os.path.abspath(output_json_path))
     os.makedirs(output_directory, exist_ok=True)
     handle, temporary_path = tempfile.mkstemp(
@@ -219,6 +243,7 @@ def translate_segments(
             pass
         raise
     log_to_video(video_id, f"Saved translated segments to: {output_json_path}")
+    checkpoint.clear()
     return translated_segments
 
 
@@ -646,6 +671,8 @@ def _translate_with_hymt2_worker(
     include_context: bool = True,
     strict_source_only: bool = False,
     translate_indices: list[int] | None = None,
+    initial_translations: list[str | None] | None = None,
+    result_callback=None,
 ) -> list[str]:
     global _WORKER_WARM
     if not texts:
@@ -664,6 +691,7 @@ def _translate_with_hymt2_worker(
                 "include_context": bool(include_context),
                 "strict_source_only": bool(strict_source_only),
                 "translate_indices": translate_indices,
+                "initial_translations": initial_translations,
             },
         }
         worker_output = []
@@ -702,7 +730,10 @@ def _translate_with_hymt2_worker(
                     detail = str(event.get("detail", "Preparing HY-MT2 translation"))
                     log_to_video(video_id, detail)
                     if progress_callback:
-                        progress_callback(0, 0, detail)
+                        if initial_translations is not None:
+                            progress_callback(sum(value is not None for value in initial_translations), len(texts), detail)
+                        else:
+                            progress_callback(0, 0, detail)
                     continue
                 if event.get("event") == "batch_started":
                     total = int(event.get("total", len(texts)))
@@ -713,6 +744,8 @@ def _translate_with_hymt2_worker(
                         progress_callback(completed, total, detail)
                     continue
                 if event.get("event") == "progress":
+                    if result_callback and "translations" in event:
+                        result_callback(event.get("indices", []), event["translations"])
                     current = int(event.get("current", 0))
                     total = int(event.get("total", len(texts)))
                     detail = f"Translated {current} of {total} subtitles"

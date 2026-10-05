@@ -8,7 +8,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from haizflow.core.hardware import available_memory_bytes, runtime_profile
+from haizflow.core.hardware import available_commit_bytes, available_memory_bytes, runtime_profile
 from haizflow.core.model_choices import models_for_device, project_model_defaults, project_recognition_choice, recognition_context
 from haizflow.services.external_engine import close_shared_external_engine_pool, shared_external_engine_pool
 
@@ -257,6 +257,9 @@ class SmartWarmupController:
         available = available_memory_bytes()
         # Leave headroom for Qt, video decoding and the next foreground job.
         required_gib = 7 if capability in {"translation", "voice"} else 5
+        commit = available_commit_bytes()
+        if commit and commit < (required_gib + 2) * 1024**3:
+            return False
         if available and available < required_gib * 1024**3:
             return False
         if profile.total_ram_gib and profile.total_ram_gib < 14:
@@ -299,9 +302,11 @@ class SmartWarmupController:
             return
         profile = runtime_profile()
         available = available_memory_bytes()
+        commit = available_commit_bytes()
         total = int(profile.total_ram_bytes or 0)
-        if self._resident and available and (
-            available < 3 * 1024**3 or (total > 0 and available / total < 0.15)
+        if self._resident and (
+            (available and available < 3 * 1024**3) or (total > 0 and available and available / total < 0.15)
+            or (commit and commit < 4 * 1024**3)
         ):
             self._release_now("memory-pressure")
             return
@@ -376,12 +381,12 @@ class SmartWarmupController:
 
             release_warm_whisperx_model()
         if "voice" in bundled_residents:
-            from haizflow.pipeline.omnivoice_tts import clear_runtime, release_model_memory
+            from haizflow.pipeline.omnivoice_tts import clear_runtime
 
-            if reason == "foreground":
-                release_model_memory()
-            else:
-                clear_runtime()
+            # The requested foreground model is excluded before release.
+            # Retaining an unrelated imports-only CUDA process still consumes
+            # Windows commit, even after its weights have been discarded.
+            clear_runtime()
         self._events.put(
             {
                 "state": "released",

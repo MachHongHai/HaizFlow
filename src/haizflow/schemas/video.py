@@ -191,6 +191,7 @@ class VideoInfo(BaseModel):
     progress: int = 0
     step: str = "pending"
     resume_step: str = ""
+    processing_configuration: Dict[str, Any] = Field(default_factory=dict)
     # Separate from pause/resume checkpoints: this records a single automatic
     # GPU-to-CPU recovery during the current run.
     runtime_recovery_step: str = ""

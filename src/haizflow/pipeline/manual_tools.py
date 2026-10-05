@@ -138,7 +138,7 @@ def _release_recognition_runtime() -> None:
 
     from haizflow.services.external_engine import shared_external_engine_pool
 
-    if "recognition" in shared_external_engine_pool().release({"recognition"}):
+    if "recognition" in shared_external_engine_pool().release({"recognition", "separation", "ocr"}):
         return
     recognition = sys.modules.get("haizflow.pipeline.transcribe")
     if recognition is not None:
@@ -1416,6 +1416,9 @@ def _run_recognition(video, reporter) -> None:
             # Translation may have left HY-MT2 resident from an earlier run.
             # Whisper Turbo needs that VRAM/commit back before model loading.
             shutdown_hymt2_worker()
+            from haizflow.pipeline.omnivoice_tts import clear_runtime
+
+            clear_runtime()
             reporter.update(5, "manual_recognition", "Đang nhận dạng lời thoại")
             transcribe(
                 audio_path,
@@ -1455,11 +1458,16 @@ def _run_translation(video, reporter) -> None:
     if not cached:
         staging = manual_artifacts.create_staging_directory(video.video_id, "translation")
         try:
-            reporter.update(5, "manual_translation", "Đang dịch phụ đề")
+            reporter.update(max(5, getattr(video, "progress", 0)) if getattr(video, "resume_step", "") else 5,
+                            "manual_translation", "Đang dịch phụ đề")
             # Recognition has already published its immutable output. On 16 GB
             # systems retaining Whisper while HY-MT2 maps its weights can
             # exhaust Windows commit even though CUDA VRAM was released.
             _release_recognition_runtime()
+            from haizflow.pipeline.omnivoice_tts import clear_runtime
+            from haizflow.services.translation_progress import manual_progress_path
+
+            clear_runtime()
             translate_segments(
                 recognition["resolved_outputs"]["segments"],
                 str(staging / "translated-segments.json"),
@@ -1468,6 +1476,7 @@ def _run_translation(video, reporter) -> None:
                 source_language="auto",
                 provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
                 translation_model=getattr(video, "translation_model", "auto"),
+                checkpoint_path=str(manual_progress_path(video.video_id)),
                 progress_callback=lambda current, total, detail: reporter.update(
                     5 + round(90 * current / max(1, total)), "manual_translation", detail, current, total
                 ),
@@ -2147,7 +2156,7 @@ def _requested_artifact(video, tool_id: str, *, validate: bool = True) -> tuple[
     return kind, expected
 
 
-def prepare_manual_rerun(video_id: str, tool_id: str) -> bool:
+def prepare_manual_rerun(video_id: str, tool_id: str, *, force: bool = False) -> bool:
     """Make an explicit rerun miss its prior immutable artifact safely.
 
     The translation button owns both recognition and translation. Advancing
@@ -2171,8 +2180,10 @@ def prepare_manual_rerun(video_id: str, tool_id: str) -> bool:
     if not video or video.project_type != "manual":
         return False
     try:
-        kind, expected = _requested_artifact(video, tool_id, validate=False)
-        cached = bool(expected and manual_artifacts.peek(video_id, kind, expected))
+        cached = force
+        if not force:
+            kind, expected = _requested_artifact(video, tool_id, validate=False)
+            cached = bool(expected and manual_artifacts.peek(video_id, kind, expected))
         if tool_id == "translation" and not cached:
             # Translation is the visible action for both ASR and translation.
             # A missing translation must not silently reuse a cached ASR run.

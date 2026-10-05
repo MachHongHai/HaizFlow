@@ -59,6 +59,18 @@ class _Manager:
 
 
 class ExternalEngineTests(unittest.TestCase):
+    def test_translation_handoff_retires_shared_asr_and_separation_process(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pool = ExternalEnginePool(_Manager(Path(temp_dir)))
+            try:
+                pool.warm("recognition")
+                pool.warm("separation")
+                process = pool._client("engine-test")._process
+                self.assertEqual(pool.release({"recognition", "separation", "ocr"}), {"recognition", "separation"})
+                self.assertIsNotNone(process.poll())
+            finally:
+                pool.close()
+
     def test_releasing_last_capability_exits_the_engine_and_can_restart(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             pool = ExternalEnginePool(_Manager(Path(temp_dir)))

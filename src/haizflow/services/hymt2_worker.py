@@ -11,6 +11,7 @@ from pathlib import Path
 from contextlib import contextmanager
 
 from haizflow.core.hardware import (
+    available_commit_bytes,
     available_memory_bytes,
     processing_device_preference,
     runtime_profile,
@@ -117,6 +118,23 @@ def _require_staged_cuda_memory(model_source: str) -> None:
             f"cần khoảng {_gib(required_bytes):.1f} GiB, "
             f"hiện có {_gib(available_bytes):.1f} GiB. "
             "Hãy đóng bớt ứng dụng rồi chạy lại, hoặc chọn HY-MT2 CPU trong dự án."
+        )
+
+
+def _require_cuda_commit_memory(model_source: str) -> None:
+    """CUDA allocations on Windows also reserve system commit, not just VRAM."""
+    if os.name != "nt":
+        return
+    free = available_commit_bytes()
+    if not free:
+        return
+    weights = sum(path.stat().st_size for path in Path(model_source).glob("*.safetensors"))
+    required = weights + 2 * 1024**3
+    if weights and free < required:
+        raise RuntimeError(
+            f"Không đủ bộ nhớ hệ thống để nạp HY-MT2 GPU: còn {_gib(free):.1f} GiB, "
+            f"cần khoảng {_gib(required):.1f} GiB kể cả phần dự phòng cho dịch. "
+            "Đóng bớt ứng dụng rồi thử lại, hoặc dùng HY-MT2 CPU."
         )
 
 
@@ -594,6 +612,8 @@ def _load_model(model_name: str):
 
     install_transformers_generation_guard()
     validate_checkpoint_weight_maps(model_source)
+    if device == "cuda":
+        _require_cuda_commit_memory(model_source)
     _emit_diagnostic(
         "tokenizer_load_start",
         torch,
@@ -748,14 +768,21 @@ def translate(payload: dict) -> list[str]:
         return list(texts)
 
     model, tokenizer, torch, device = _model_runtime()
-    translations: list[str | None] = [None] * len(texts)
+    initial = payload.get("initial_translations")
+    translations: list[str | None] = list(initial) if isinstance(initial, list) and len(initial) == len(texts) else [None] * len(texts)
     for batch_start, batch_end in _inference_batches(texts):
+        batch_indices = [index for index in range(batch_start, batch_end) if index in requested]
+        if not batch_indices:
+            for index in range(batch_start, batch_end):
+                if translations[index] is None:
+                    translations[index] = texts[index]
+            continue
         _emit_event(
             {
                 "event": "batch_started",
-                "start": batch_start + 1,
-                "end": batch_end,
-                "completed": batch_start,
+                "start": batch_indices[0] + 1,
+                "end": batch_indices[-1] + 1,
+                "completed": sum(value is not None for value in translations),
                 "total": len(texts),
             }
         )
@@ -766,7 +793,8 @@ def translate(payload: dict) -> list[str]:
         ]
         for index in range(batch_start, batch_end):
             if not requires_translation[index]:
-                translations[index] = texts[index]
+                if translations[index] is None:
+                    translations[index] = texts[index]
 
         if translated_indices:
             prompts = [
@@ -791,7 +819,9 @@ def translate(payload: dict) -> list[str]:
             for index, translated_text in zip(translated_indices, batch_translations):
                 translations[index] = translated_text
 
-        _emit_event({"event": "progress", "current": batch_end, "total": len(texts)})
+        _emit_event({"event": "progress", "current": sum(value is not None for value in translations),
+                     "total": len(texts), "indices": batch_indices,
+                     "translations": [translations[index] for index in batch_indices]})
     if any(not isinstance(text, str) for text in translations):
         raise RuntimeError("HY-MT2 inference did not return one translation per subtitle prompt.")
     return [str(text) for text in translations]

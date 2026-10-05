@@ -180,6 +180,8 @@ QtObject {
     // Only backend-generated runtime messages remain here. Static UI copy is
     // translated through qsTr() and the compiled Qt catalog.
     readonly property var fixedVietnamese: ({
+        "Resuming saved translations": "Tiếp tục phần dịch đã lưu",
+        "Reusing completed speech recognition": "Dùng lại phần nhận dạng đã hoàn tất",
         "Social publishing": "Đăng mạng xã hội",
         "YouTube Shorts": "YouTube Shorts",
         "Facebook Reels": "Facebook Reels",

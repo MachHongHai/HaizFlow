@@ -32,7 +32,7 @@ def main() -> int:
         "rpc_command": [executable, "--rpc"],
     }
     if args.profile in {"cpu", "cuda128"}:
-        commands["runtime_contract"] = 4
+        commands["runtime_contract"] = 5
         commands.update(
             {
                 "hymt2_server": [executable, "--hymt2-worker", "--server"],

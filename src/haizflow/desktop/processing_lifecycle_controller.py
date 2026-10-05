@@ -25,6 +25,11 @@ class ProcessingLifecycleController:
         video = video_store.get_video(video_id)
         if not video or video.status == "processing" or host._processing_queue.contains(video_id):
             return False
+        from haizflow.services.processing_resume import can_resume, configuration_snapshot
+
+        resuming = video.status == "paused"
+        if not can_resume(host, video):
+            return False
         if str(getattr(video, "translation_model", "")).startswith("gemini-"):
             from haizflow.services.gemini_translation import key_configured
 
@@ -44,9 +49,11 @@ class ProcessingLifecycleController:
         video_store.update_video(
             video_id,
             status="pending",
-            progress=0 if manual_tool else getattr(video, "progress", 0),
-            current_item=0 if manual_tool else getattr(video, "current_item", 0),
-            total_items=0 if manual_tool else getattr(video, "total_items", 0),
+            processing_configuration=(getattr(video, "processing_configuration", {}) if resuming else configuration_snapshot(
+                video, getattr(host, "_settings_processing_device", "cpu"))),
+            progress=0 if manual_tool and not resuming else getattr(video, "progress", 0),
+            current_item=0 if manual_tool and not resuming else getattr(video, "current_item", 0),
+            total_items=0 if manual_tool and not resuming else getattr(video, "total_items", 0),
             estimated_remaining_seconds=(
                 None if manual_tool else getattr(video, "estimated_remaining_seconds", None)
             ),
@@ -89,9 +96,9 @@ class ProcessingLifecycleController:
         video_store.update_video(
             video_id,
             status="processing",
-            progress=0 if manual_tool else getattr(video, "progress", 0),
-            current_item=0 if manual_tool else getattr(video, "current_item", 0),
-            total_items=0 if manual_tool else getattr(video, "total_items", 0),
+            progress=0 if manual_tool and not video.resume_step else getattr(video, "progress", 0),
+            current_item=0 if manual_tool and not video.resume_step else getattr(video, "current_item", 0),
+            total_items=0 if manual_tool and not video.resume_step else getattr(video, "total_items", 0),
             step="starting",
             step_detail="Đang chuẩn bị công cụ" if manual_tool else "Processing started",
         )
@@ -192,9 +199,9 @@ class ProcessingLifecycleController:
             video_store.update_video(
                 video_id,
                 status="processing",
-                progress=0 if manual_tool else getattr(current_video, "progress", 0),
-                current_item=0 if manual_tool else getattr(current_video, "current_item", 0),
-                total_items=0 if manual_tool else getattr(current_video, "total_items", 0),
+                progress=0 if manual_tool and not current_video.resume_step else getattr(current_video, "progress", 0),
+                current_item=0 if manual_tool and not current_video.resume_step else getattr(current_video, "current_item", 0),
+                total_items=0 if manual_tool and not current_video.resume_step else getattr(current_video, "total_items", 0),
                 step="starting",
                 step_detail=(
                     "Đang khởi tạo công cụ"

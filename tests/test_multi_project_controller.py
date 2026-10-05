@@ -596,6 +596,9 @@ class MultiProjectControllerTests(unittest.TestCase):
 
     def test_resume_batch_requeues_paused_and_new_pending_videos(self):
         paused = SimpleNamespace(video_id="video-paused", status="paused")
+        from haizflow.services.processing_resume import configuration_snapshot
+
+        paused.processing_configuration = configuration_snapshot(paused, "cpu")
         pending = SimpleNamespace(video_id="video-pending", status="pending")
         done = SimpleNamespace(video_id="video-done", status="done")
         videos = {video.video_id: video for video in (paused, pending, done)}
@@ -623,6 +626,9 @@ class MultiProjectControllerTests(unittest.TestCase):
 
     def test_paused_video_clears_process_control_flags_only_when_requeued(self):
         video = SimpleNamespace(video_id="paused-video", status="paused")
+        from haizflow.services.processing_resume import configuration_snapshot
+
+        video.processing_configuration = configuration_snapshot(video, "cpu")
         host = SimpleNamespace(
             _model_setup_state="ready",
             _processing_queue=SimpleNamespace(

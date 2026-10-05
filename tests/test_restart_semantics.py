@@ -405,6 +405,9 @@ class RestartCheckpointTests(unittest.TestCase):
 class ProjectCommandStateTests(unittest.TestCase):
     def test_resume_keeps_paused_status_until_enqueue_clears_registry_flags(self):
         video = SimpleNamespace(video_id="video-paused", status="paused")
+        from haizflow.services.processing_resume import configuration_snapshot
+
+        video.processing_configuration = configuration_snapshot(video, "cpu")
         queue = SimpleNamespace(contains=mock.Mock(return_value=False))
         host = SimpleNamespace(
             _selected_video_id=video.video_id,

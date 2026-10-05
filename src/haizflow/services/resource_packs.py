@@ -193,7 +193,7 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             download_size=1_300_000_000,
             installed_size=2_000_000_000,
             engine_modules=("torch", "ctranslate2", "llama_cpp", "onnxruntime", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
-            runtime_contract=4,
+            runtime_contract=5,
         ),
         ResourcePackDefinition(
             pack_id="engine-cuda128-py313",
@@ -205,7 +205,7 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             download_size=4_500_000_000,
             installed_size=5_500_000_000,
             engine_modules=("torch", "torchaudio", "torchvision", "onnxruntime", "whisperx.asr", "whisperx.alignment", "demucs.separate"),
-            runtime_contract=4,
+            runtime_contract=5,
         ),
         ResourcePackDefinition(
             pack_id="engine-vision-onnx",

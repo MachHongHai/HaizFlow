@@ -15,6 +15,7 @@ def test_isolated_recognition_release_does_not_import_whisperx_in_core(owner):
     ):
         pool.return_value.release.return_value = set()
         owner._release_recognition_runtime()
+        pool.return_value.release.assert_called_once_with({"recognition", "separation", "ocr"})
         assert sys.modules["haizflow.pipeline.transcribe"] is None
 
 

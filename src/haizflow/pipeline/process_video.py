@@ -62,7 +62,7 @@ def _release_recognition_runtime() -> None:
 
     from haizflow.services.external_engine import shared_external_engine_pool
 
-    if "recognition" in shared_external_engine_pool().release({"recognition"}):
+    if "recognition" in shared_external_engine_pool().release({"recognition", "separation", "ocr"}):
         return
     # An isolated ASR process is already gone. Do not import WhisperX/Torch
     # into Core just to release a model that never lived in this process.
@@ -143,6 +143,37 @@ def _checkpoint_valid(video, name, signature, outputs):
         and video.checkpoints.get(name) == signature
         and all(os.path.exists(path) and os.path.getsize(path) > 0 for path in outputs)
     )
+
+
+def _recognize_for_translation(video, reporter, audio_path, output_path):
+    signature = _signature(
+        _file_state(video.files["video_input"]), video.source_language,
+        getattr(video, "speech_recognition_model", "small"), video.enable_audio_separation,
+        TIMING_SOURCE, "recognition-progress-v1",
+    )
+    if _checkpoint_valid(video, "recognition", signature, [output_path]):
+        try:
+            with open(output_path, encoding="utf-8") as source:
+                segments = json.load(source)
+        except (OSError, ValueError):
+            segments = []
+        if isinstance(segments, list) and segments and all(isinstance(row, dict) and row.get("text") for row in segments):
+            reporter.update(48, "transcribing", "Reusing completed speech recognition")
+            return segments, str(video.checkpoints.get("recognition_language") or segments[0].get("language") or "en")
+    reporter.update(24, "transcribing", "Preparing Whisper speech recognition")
+    result = transcribe(
+        audio_path, output_path, video.source_language, video.video_id,
+        progress_callback=lambda event, detail: reporter.update(
+            {"loading_model": 25, "transcribing": 29, "transcribed": 39,
+             "loading_alignment": 40, "aligning": 41, "segmenting": 42,
+             "detecting_languages": 46, "saved": 48}.get(event, 24), "transcribing", detail,
+        ),
+        model_name=("small" if getattr(video, "runtime_recovery_step", "") == "transcribing"
+                    else getattr(video, "speech_recognition_model", "small")),
+    )
+    video.checkpoints["recognition_language"] = str(result[1] or "en")
+    _mark_checkpoint(video, "recognition", signature)
+    return result
 
 
 def _recovery_checkpoint_valid(video, name, signature, outputs):
@@ -559,9 +590,9 @@ def process_video_sync(
         # A previous editor session may intentionally keep OmniVoice warm.
         # A fresh transcription needs that VRAM first; reviewed/checkpointed
         # downstream passes returned above and can still reuse the warm worker.
-        from haizflow.pipeline.omnivoice_tts import release_model_memory
+        from haizflow.pipeline.omnivoice_tts import clear_runtime
 
-        release_model_memory()
+        clear_runtime()
         profile = runtime_profile()
         if (
             using_gemini
@@ -610,28 +641,8 @@ def process_video_sync(
 
         check_cancellation(video_id)
         _ensure_gpu_available("speech recognition")
-        reporter.update(24, "transcribing", "Preparing Whisper speech recognition")
-        _segments, detected_language = transcribe(
-            transcribe_audio_target,
-            source_segments_json,
-            video.source_language,
-            video_id,
-            progress_callback=lambda event, detail: reporter.update(
-                {
-                    "loading_model": 25,
-                    "transcribing": 29,
-                    "transcribed": 39,
-                    "loading_alignment": 40,
-                    "aligning": 41,
-                    "segmenting": 42,
-                    "detecting_languages": 46,
-                    "saved": 48,
-                }.get(event, 24),
-                "transcribing",
-                detail,
-            ),
-            model_name=("small" if getattr(video, "runtime_recovery_step", "") == "transcribing"
-                        else getattr(video, "speech_recognition_model", "small")),
+        _segments, detected_language = _recognize_for_translation(
+            video, reporter, transcribe_audio_target, source_segments_json,
         )
 
         if profile.key in {"cpu_low_memory", "cpu_minimum", "cuda_low_memory"}:

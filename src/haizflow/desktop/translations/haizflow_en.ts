@@ -2,6 +2,13 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="vi_VN">
 <context>
+    <name>ManualStageInspector</name>
+    <message>
+        <source>Chạy lại</source>
+        <translation>Run again</translation>
+    </message>
+</context>
+<context>
     <name>AboutDialog</name>
     <message>
         <location filename="../qml/AboutDialog.qml" line="+15"/>

@@ -2003,6 +2003,11 @@ Module {
             Parameter { name: "tool_id"; type: "QString" }
         }
         Method {
+            name: "restartManualTool"
+            type: "bool"
+            Parameter { name: "tool_id"; type: "QString" }
+        }
+        Method {
             name: "manualExportPreflight"
             type: "QVariantMap"
         }

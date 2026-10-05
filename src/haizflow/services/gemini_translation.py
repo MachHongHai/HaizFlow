@@ -259,29 +259,37 @@ def _request_chunk(
 def translate_texts(
     texts: list[str], *, model: str, source_language: str,
     target_language: str, video_id: str, progress_callback=None,
+    initial_translations: list[str | None] | None = None, result_callback=None,
 ) -> list[str]:
     if model not in MODELS:
         raise ValueError("Model Gemini không được hỗ trợ.")
     key = active_key()
     if not key:
         raise RuntimeError("Chưa có Gemini API key. Vào Cài đặt → Quản lý API Key để thêm key.")
-    output = [""] * len(texts)
+    output = list(initial_translations) if initial_translations is not None else [None] * len(texts)
+    if len(output) != len(texts):
+        raise ValueError("Each source sentence must have a translation slot.")
     for chunk in _chunks(texts):
+        chunk = [(index, text) for index, text in chunk if output[index] is None]
+        if not chunk:
+            continue
         check_cancellation(video_id)
         detail = f"Sending Gemini translation batch: sentences {chunk[0][0] + 1}-{chunk[-1][0] + 1} of {len(texts)}."
         log_to_video(video_id, detail, component="TRANSLATE", level="INFO")
         if progress_callback:
-            progress_callback(chunk[0][0], len(texts), detail)
+            progress_callback(sum(value is not None for value in output), len(texts), detail)
         values = _request_chunk(
             chunk, key=key, model=model,
             source_language=source_language, target_language=target_language, video_id=video_id,
         )
         for (index, _), value in zip(chunk, values):
             output[index] = value
+        if result_callback:
+            result_callback([index for index, _ in chunk], values)
         log_to_video(
             video_id, f"Gemini translated {chunk[-1][0] + 1} of {len(texts)} sentences.",
             component="TRANSLATE", level="INFO",
         )
         if progress_callback:
-            progress_callback(chunk[-1][0] + 1, len(texts), "Đang dịch bằng Gemini")
+            progress_callback(sum(value is not None for value in output), len(texts), "Đang dịch bằng Gemini")
     return output

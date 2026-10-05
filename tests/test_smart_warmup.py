@@ -32,6 +32,16 @@ class _Resources:
 
 
 class SmartWarmupTests(unittest.TestCase):
+    def test_warmup_checks_windows_commit_in_addition_to_physical_ram(self):
+        controller = SmartWarmupController(_Host(), _Resources())
+        profile = SimpleNamespace(total_ram_gib=32, cuda_available=True, total_vram_gib=16)
+        with (
+            patch("haizflow.desktop.smart_warmup_controller.runtime_profile", return_value=profile),
+            patch("haizflow.desktop.smart_warmup_controller.available_memory_bytes", return_value=12 * 1024**3),
+            patch("haizflow.desktop.smart_warmup_controller.available_commit_bytes", return_value=3 * 1024**3),
+        ):
+            self.assertFalse(controller._has_warmup_budget("recognition", {"model": "small"}))
+
     def test_new_project_without_video_warms_its_draft_not_previous_project(self):
         host = _Host()
         host._speech_recognition_model = "large-v3-turbo"
@@ -142,6 +152,7 @@ class SmartWarmupTests(unittest.TestCase):
         with (
             patch("haizflow.desktop.smart_warmup_controller.runtime_profile", return_value=profile),
             patch("haizflow.desktop.smart_warmup_controller.available_memory_bytes", return_value=9 * 1024**3),
+            patch("haizflow.desktop.smart_warmup_controller.available_commit_bytes", return_value=20 * 1024**3),
         ):
             self.assertTrue(controller._has_warmup_budget("recognition", {"model": "small"}))
             self.assertFalse(controller._has_warmup_budget("translation", {"translation_model": "full"}))
