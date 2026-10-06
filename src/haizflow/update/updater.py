@@ -91,8 +91,19 @@ def run_request(root: Path, token: str, *, client=None, activation_timeout: floa
         raise UpdateError("Yêu cầu cập nhật không hợp lệ.")
     status_path = child(layout.ipc, token + ".status.json")
     permission_path = child(layout.ipc, token + ".activate.json")
+    last_status = None
+    last_reported = 0.0
     def report(state, progress, error=""):
-        atomic_json(status_path, {"state": state, "progress": progress, "error": error, "token": token})
+        nonlocal last_status, last_reported
+        status = (state, progress, error)
+        now = time.monotonic()
+        if status == last_status or (last_status and state == last_status[0]
+                and error == last_status[2] and now - last_reported < 0.1
+                and progress not in {50, 65, 89, 90, 95}):
+            return
+        atomic_json(status_path, {"state": state, "progress": progress, "error": error, "token": token,
+                                  "progress_schema": 2})
+        last_status, last_reported = status, now
     # Serialize DOWNLOADS too, not merely pointer swaps.
     with file_lock(child(layout.state, "updater.lock")):
         try:

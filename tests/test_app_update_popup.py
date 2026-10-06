@@ -35,6 +35,7 @@ ApplicationWindow {
         property string currentAppVersion: "0.1.1"
         property string appUpdateError: ""
         property int appUpdateDownloadProgress: 0
+        property bool appUpdateUsesDelta: true
         function checkAppUpdateIfNeeded() {}
     }
     AppMenuBar { width: parent.width; updateController: updates }
@@ -79,6 +80,7 @@ ApplicationWindow {
         property string currentAppVersion: "0.1.0"
         property string appUpdateError: ""
         property int appUpdateDownloadProgress: 0
+        property bool appUpdateUsesDelta: true
         property string confirmed: ""
         function confirmAppUpdate(version, state) { confirmed = version + ":" + state; return true; }
     }
@@ -117,6 +119,21 @@ ApplicationWindow {
         assert QMetaObject.invokeMethod(confirm, "clicked", Qt.DirectConnection)
         QTest.qWait(250)
         assert state.property("confirmed") == "99.0.0:available"
+
+        popup = window.findChild(QObject, "appUpdatePopup")
+        for phase, overall, expected in (("downloading", 25, 50), ("verifying", 59, 60),
+                                         ("preparing", 80, 60)):
+            state.setProperty("appUpdateState", phase)
+            state.setProperty("appUpdateDownloadProgress", overall)
+            app.processEvents()
+            assert popup.property("phaseProgress") == expected
+            assert not button.property("enabled")
+
+        state.setProperty("appUpdateUsesDelta", False)
+        state.setProperty("appUpdateState", "downloading")
+        state.setProperty("appUpdateDownloadProgress", 75)
+        app.processEvents()
+        assert popup.property("phaseProgress") == 75
 
         state.setProperty("appUpdateState", "ready")
         assert QMetaObject.invokeMethod(button, "clicked", Qt.DirectConnection)

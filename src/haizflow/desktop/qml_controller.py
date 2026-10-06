@@ -2833,6 +2833,14 @@ class HaizFlowController(QObject):
     def appUpdateDownloadProgress(self):
         return self._app_updates.download_progress
 
+    @Property(bool, notify=appUpdateChanged)
+    def appUpdateDetailedProgress(self):
+        return self._app_updates.detailed_progress
+
+    @Property(bool, notify=appUpdateChanged)
+    def appUpdateUsesDelta(self):
+        return self._app_updates.uses_delta
+
     @Property(str, notify=appUpdateChanged)
     def appUpdateError(self):
         return self._app_updates.error

@@ -11,6 +11,13 @@ Popup {
     property var controller: AppController
     readonly property string state: controller.appUpdateState
     readonly property bool updating: ["downloading", "verifying", "installing", "preparing", "restarting"].indexOf(state) >= 0
+    readonly property int phaseProgress: Math.max(0, Math.min(100, Math.round(
+        state === "downloading" ? controller.appUpdateDownloadProgress
+            * (controller.appUpdateUsesDelta === false ? 1 : 2)
+        : state === "verifying" ? (controller.appUpdateDownloadProgress - 50) * 100 / 15
+        : state === "preparing" ? (controller.appUpdateDownloadProgress - 65) * 4 : 0)))
+    readonly property bool unknownPhaseProgress: controller.appUpdateDetailedProgress === false
+        && (state === "verifying" || state === "preparing")
     parent: Overlay.overlay
     width: Math.min(380, parent ? parent.width - Theme.space16 : 380)
     padding: Theme.space16
@@ -127,9 +134,13 @@ Popup {
             Text {
                 Layout.fillWidth: true
                 text: root.state === "downloading"
-                    ? qsTr("Đang tải bản cập nhật · %1%").arg(root.controller.appUpdateDownloadProgress)
-                    : root.state === "verifying" ? qsTr("Đang kiểm tra bản cập nhật…")
-                    : root.state === "preparing" ? qsTr("Đang chuẩn bị phiên bản mới…")
+                    ? qsTr("Đang tải bản cập nhật · %1%").arg(root.phaseProgress)
+                    : root.state === "verifying" ? (root.unknownPhaseProgress
+                        ? qsTr("Đang kiểm tra bản cập nhật…")
+                        : qsTr("Đang kiểm tra bản cập nhật · %1%").arg(root.phaseProgress))
+                    : root.state === "preparing" ? (root.unknownPhaseProgress
+                        ? qsTr("Đang chuẩn bị phiên bản mới…")
+                        : qsTr("Đang chuẩn bị phiên bản mới · %1%").arg(root.phaseProgress))
                     : root.state === "restarting" ? qsTr("Đang khởi động lại HaizFlow…")
                     : qsTr("Bộ cài đã mở. Làm theo hướng dẫn để hoàn tất cập nhật.")
                 color: Theme.textMuted
@@ -141,8 +152,8 @@ Popup {
             AppProgressBar {
                 Layout.fillWidth: true
                 visible: root.state !== "installing"
-                value: root.controller.appUpdateDownloadProgress
-                indeterminate: root.state === "verifying" || root.state === "preparing"
+                value: root.phaseProgress
+                indeterminate: root.state === "restarting" || root.unknownPhaseProgress
                 active: root.visible && root.updating
             }
         }

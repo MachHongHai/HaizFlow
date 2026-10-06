@@ -381,6 +381,8 @@
 </context>
 <context>
     <name>AppUpdatePopup</name>
+    <message><source>Đang kiểm tra bản cập nhật…</source><translation>Verifying update…</translation></message>
+    <message><source>Đang chuẩn bị phiên bản mới…</source><translation>Preparing the new version…</translation></message>
     <message>
         <source>Thông tin chi tiết xem tại:</source>
         <translation>More information:</translation>
@@ -507,13 +509,13 @@
     </message>
     <message>
         <location line="+1"/>
-        <source>Đang kiểm tra bản cập nhật…</source>
-        <translation>Verifying update…</translation>
+        <source>Đang kiểm tra bản cập nhật · %1%</source>
+        <translation>Verifying update · %1%</translation>
     </message>
     <message>
         <location line="+1"/>
-        <source>Đang chuẩn bị phiên bản mới…</source>
-        <translation>Preparing the new version…</translation>
+        <source>Đang chuẩn bị phiên bản mới · %1%</source>
+        <translation>Preparing the new version · %1%</translation>
     </message>
     <message>
         <location line="+1"/>

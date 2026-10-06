@@ -160,14 +160,16 @@ class Layout:
             atomic_json(self.journal_path, journal)
             stage = child(self.staging, transaction_id)
             try:
-                progress("verifying", 55)
+                progress("verifying", 50)
                 from .packages import inspect_archive
-                inspect_archive(package, manifest)
+                inspect_archive(package, manifest, progress=progress)
                 journal = self.transition(journal, "verified")
                 progress("preparing", 65)
-                reconstruct(package, manifest, stage, self.core(active["active"]))
+                reconstruct(package, manifest, stage, self.core(active["active"]), progress=progress)
+                progress("preparing", 88)
                 journal = self.transition(journal, "staged", manifest_sha256=sha256(stage / "core-manifest.json"))
                 self._promote(journal)
+                progress("preparing", 89)
                 journal = self.transition(journal, "ready")
                 progress("ready", 90)
                 return journal

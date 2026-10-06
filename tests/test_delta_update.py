@@ -41,6 +41,16 @@ time.sleep(0.25)
 
 
 class DeltaUpdateTests(unittest.TestCase):
+    def test_preparation_reports_real_ordered_phase_progress(self):
+        events = []
+        self.layout.prepare(self.output / self.delta.data["package_name"], self.delta,
+                            progress=lambda state, value: events.append((state, value)))
+        self.assertEqual(events[0], ("verifying", 50))
+        self.assertEqual(events[-1], ("ready", 90))
+        self.assertEqual([value for _, value in events], sorted(value for _, value in events))
+        preparing = [value for state, value in events if state == "preparing"]
+        self.assertGreater(len(set(preparing)), 3)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="haizflow-delta-test-")
         self.addCleanup(self.temp.cleanup)

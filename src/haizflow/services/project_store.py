@@ -50,7 +50,7 @@ def _force_remove_readonly(func, path, _exc_info) -> None:
         os.chmod(path, stat.S_IWRITE)
         func(path)
     except OSError:
-        pass
+        raise
 
 
 def _remove_project_root(root: str, attempts: int = 8, delay_seconds: float = 0.35) -> None:
@@ -60,7 +60,9 @@ def _remove_project_root(root: str, attempts: int = 8, delay_seconds: float = 0.
     for attempt in range(attempts):
         try:
             shutil.rmtree(root, onerror=_force_remove_readonly)
-            return
+            if not os.path.lexists(root):
+                return
+            raise OSError("Project folder is still in use.")
         except OSError as exc:
             last_error = exc
             time.sleep(delay_seconds * (attempt + 1))

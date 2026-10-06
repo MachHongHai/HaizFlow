@@ -60,12 +60,15 @@ def child(root: Path, name: str) -> Path:
     return candidate
 
 
-def sha256(path: Path) -> str:
+def sha256(path: Path, *, progress=lambda *_: None) -> str:
     no_links(path)
     digest = hashlib.sha256()
+    count = 0
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
+            count += len(block)
+            progress(count)
     return digest.hexdigest()
 
 

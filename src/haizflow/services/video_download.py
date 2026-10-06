@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from haizflow.config import BIN_DIR
 from haizflow.utils.ffmpeg import get_media_stream_types
@@ -24,6 +24,7 @@ SUPPORTED_VIDEO_HOSTS = {
     "dai.ly": "Dailymotion",
     "dailymotion.com": "Dailymotion",
     "douyin.com": "Douyin",
+    "iesdouyin.com": "Douyin",
     "facebook.com": "Facebook",
     "fb.watch": "Facebook",
     "instagram.com": "Instagram",
@@ -190,12 +191,24 @@ def validate_video_url(value: str) -> tuple[str, str]:
     parsed = urlparse(url)
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Enter a valid HTTP or HTTPS video link.")
+    if parsed.username or parsed.password or parsed.port not in {None, 80, 443}:
+        raise ValueError("Enter a valid HTTP or HTTPS video link.")
     platform = _matching_platform(parsed.hostname)
     if not platform:
         raise ValueError(
             "This link is not from a supported source. Use YouTube, TikTok, Douyin, Bilibili, "
             "Instagram, Facebook, X, Vimeo, Dailymotion, Twitch, Reddit, Streamable, or VK."
         )
+    if platform == "Douyin":
+        modal_ids = parse_qs(parsed.query).get("modal_id", [])
+        if modal_ids:
+            if len(modal_ids) != 1 or not re.fullmatch(r"[0-9]{10,25}", modal_ids[0]):
+                raise ValueError("The Douyin link contains an invalid video ID.")
+            url = f"https://www.douyin.com/video/{modal_ids[0]}"
+        else:
+            video = re.fullmatch(r"/(?:share/)?video/([0-9]{10,25})/?", parsed.path)
+            if video:
+                url = f"https://www.douyin.com/video/{video[1]}"
     return url, platform
 
 
@@ -241,6 +254,14 @@ def _load_yt_dlp():
     except ImportError as exc:
         raise RuntimeError("The video downloader is not installed in this app environment.") from exc
     return yt_dlp
+
+
+def _extract_video_info(downloader, url: str, *, download: bool):
+    if _matching_platform(urlparse(url).hostname or "") == "Douyin":
+        from haizflow.services.douyin_video import HaizFlowDouyinIE
+        downloader.add_info_extractor(HaizFlowDouyinIE())
+        return downloader.extract_info(url, download=download, ie_key=HaizFlowDouyinIE.ie_key())
+    return downloader.extract_info(url, download=download)
 
 
 def _downloaded_audio_path(directory: Path, info: dict, downloader) -> Path:
@@ -348,6 +369,9 @@ def _normalize_downloaded_audio(
 
 def _friendly_error(exc: Exception) -> str:
     raw_message = _ANSI_ESCAPE.sub("", str(exc)).strip()
+    if "Douyin did not provide playable video data." in raw_message:
+        from haizflow.services.douyin_video import ACCESS_MESSAGE
+        return ACCESS_MESSAGE
     message = raw_message.splitlines()[-1] if raw_message else exc.__class__.__name__
     message = re.sub(r"^ERROR:\s*", "", message, flags=re.IGNORECASE)
     if len(message) > 320:
@@ -400,12 +424,12 @@ def _wait_for_retry(cancel_event: threading.Event | None, seconds: float) -> Non
     time.sleep(seconds)
 
 
-def _inspect_video_info(yt_dlp, url: str, *, impersonate: bool = False) -> dict:
-    with yt_dlp.YoutubeDL(_youtube_dl_options(impersonate=impersonate)) as downloader:
-        return downloader.extract_info(url, download=False)
+def _inspect_video_info(yt_dlp, url: str, *, impersonate: bool = False, auth=None) -> dict:
+    with yt_dlp.YoutubeDL(_youtube_dl_options(auth, impersonate=impersonate)) as downloader:
+        return _extract_video_info(downloader, url, download=False)
 
 
-def inspect_video_url(url: str, cancel_event: threading.Event | None = None) -> VideoMetadata:
+def inspect_video_url(url: str, cancel_event: threading.Event | None = None, auth=None) -> VideoMetadata:
     normalized_url, platform = validate_video_url(url)
     if cancel_event and cancel_event.is_set():
         raise DownloadCancelled("Link inspection cancelled.")
@@ -415,7 +439,7 @@ def inspect_video_url(url: str, cancel_event: threading.Event | None = None) -> 
     info = None
     for attempt in range(attempts):
         try:
-            info = _inspect_video_info(yt_dlp, normalized_url, impersonate=attempt > 0)
+            info = _inspect_video_info(yt_dlp, normalized_url, impersonate=attempt > 0, auth=auth)
             break
         except Exception as exc:
             if cancel_event and cancel_event.is_set():
@@ -493,7 +517,7 @@ def download_audio(
         )
         try:
             with yt_dlp.YoutubeDL(options) as downloader:
-                info = downloader.extract_info(normalized_url, download=True)
+                info = _extract_video_info(downloader, normalized_url, download=True)
                 source = _downloaded_audio_path(target.parent, info, downloader)
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Audio download cancelled.")
@@ -658,7 +682,7 @@ def download_video(
             # manifest.  TikTok's signed URLs can expire between inspection
             # and download, especially in a multi-video channel import.
             with yt_dlp.YoutubeDL(options) as downloader:
-                info = downloader.extract_info(metadata.url, download=True)
+                info = _extract_video_info(downloader, metadata.url, download=True)
                 if cancel_event and cancel_event.is_set():
                     raise DownloadCancelled("Video download cancelled.")
                 video_path = _downloaded_video_path(workspace, info, downloader)

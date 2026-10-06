@@ -23,6 +23,8 @@ AppDialog {
         : importer.state === "downloading" ? qsTr("Đang tải video…")
         : importer.state === "importing" ? qsTr("Đang nhập video…")
         : importer.state === "cancelling" ? qsTr("Đang dừng tải…")
+        : failed && importer.status.indexOf("Douyin did not provide playable video data.") >= 0
+            ? I18n.runtimeStatus(importer.status)
         : failed && importer.status.length > 160 ? qsTr("Không nhập được video. Xem chi tiết lỗi.")
         : I18n.runtimeStatus(importer.status)
 

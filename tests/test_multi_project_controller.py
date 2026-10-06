@@ -1622,6 +1622,19 @@ class MultiProjectControllerTests(unittest.TestCase):
         host.refreshVideos.assert_called_once()
         host.videoDeleted.emit.assert_not_called()
 
+    def test_deletion_releases_owned_preview_but_not_another_project(self):
+        host = SimpleNamespace(_selected_project_key="open-project",
+                               releaseEditorPreview=Mock(),
+                               _editor_preview=SimpleNamespace(_pinned_video_id="preview-video"))
+        commands = ProjectCommandsController(host)
+        commands._release_project_preview("another-project", [])
+        host.releaseEditorPreview.assert_not_called()
+        commands._release_project_preview("open-project", [])
+        host.releaseEditorPreview.assert_called_once()
+        host.releaseEditorPreview.reset_mock()
+        commands._release_project_preview("preview-project", [SimpleNamespace(video_id="preview-video")])
+        host.releaseEditorPreview.assert_called_once()
+
     def test_typed_grid_context_delete_resolves_row_without_opening_project(self):
         project = {
             "key": "download-project",

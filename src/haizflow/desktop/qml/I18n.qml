@@ -211,6 +211,8 @@ QtObject {
         "Adding video to project": "Đang thêm video vào dự án",
         "Video added to project": "Đã thêm video vào dự án",
         "Paste a video link first.": "Hãy dán liên kết video trước.",
+        "The Douyin link contains an invalid video ID.": "Mã video trong liên kết Douyin không hợp lệ.",
+        "Douyin did not provide playable video data. Open the link in Douyin to check access. If login or verification is required, complete it there and save the video using Douyin's download option, then import the file into HaizFlow.": "Douyin chưa cung cấp dữ liệu video để tải. Mở liên kết trong Douyin để kiểm tra. Nếu cần đăng nhập hoặc xác minh, hãy thực hiện tại đó, lưu video bằng chức năng tải của Douyin rồi nhập tệp vào HaizFlow.",
         "Enter a valid HTTP or HTTPS video link.": "Hãy nhập liên kết video HTTP hoặc HTTPS hợp lệ.",
         "Only public YouTube, TikTok, Douyin, Bilibili, Instagram, Facebook, X, Vimeo, Dailymotion, Twitch, Reddit, and VK profiles are supported.": "Chỉ hỗ trợ hồ sơ hoặc kênh công khai của YouTube, TikTok, Douyin, Bilibili, Instagram, Facebook, X, Vimeo, Dailymotion, Twitch, Reddit và VK.",
         "This link is not from a supported source. Use YouTube, TikTok, Douyin, Bilibili, Instagram, Facebook, X, Vimeo, Dailymotion, Twitch, Reddit, Streamable, or VK.": "Liên kết này không thuộc nguồn được hỗ trợ. Hãy dùng YouTube, TikTok, Douyin, Bilibili, Instagram, Facebook, X, Vimeo, Dailymotion, Twitch, Reddit, Streamable hoặc VK.",

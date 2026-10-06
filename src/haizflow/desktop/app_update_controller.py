@@ -91,6 +91,7 @@ class AppUpdateController(QObject):
         self._installer = {}
         self._download_thread: threading.Thread | None = None
         self._download_progress = 0
+        self._detailed_progress = False
         self._last_checked = 0.0
         self._stop = threading.Event()
         self._installer_process = None
@@ -143,6 +144,14 @@ class AppUpdateController(QObject):
     @property
     def download_progress(self) -> int:
         return self._download_progress
+
+    @property
+    def detailed_progress(self) -> bool:
+        return self._detailed_progress
+
+    @property
+    def uses_delta(self) -> bool:
+        return self._delta_layout is not None
 
     @property
     def blocked(self) -> bool:
@@ -266,9 +275,12 @@ class AppUpdateController(QObject):
                 if type(progress) is not int or not 0 <= progress <= 99:
                     raise ValueError("Tiến độ cập nhật không hợp lệ.")
                 values = (state, progress, str(data.get("error") or ""))
-                if values != (self._state, self._download_progress, self._error):
+                detailed = data.get("progress_schema") == 2
+                if (values != (self._state, self._download_progress, self._error)
+                        or detailed != self._detailed_progress):
                     previous_state = self._state
                     self._state, self._download_progress, self._error = values
+                    self._detailed_progress = detailed
                     self.changed.emit()
                     if state != previous_state and state in {"ready", "failed"}:
                         self._host.appUpdateAvailable.emit()

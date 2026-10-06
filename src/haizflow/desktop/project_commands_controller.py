@@ -68,6 +68,16 @@ def _write_json_atomic(path: str, payload) -> None:
 
 
 class ProjectCommandsController:
+    def _release_project_preview(self, project_key: str, videos: list) -> None:
+        host = self._host
+        preview = getattr(host, "_editor_preview", None)
+        owned_ids = {video.video_id for video in videos}
+        if (getattr(host, "_selected_project_key", "") == project_key
+                or getattr(preview, "_pinned_video_id", "") in owned_ids):
+            release = getattr(host, "releaseEditorPreview", None)
+            if callable(release):
+                release()
+
     def __init__(self, host, *, create_video=None):
         self._host = host
         self._create_video = create_video or create_desktop_video
@@ -905,6 +915,7 @@ class ProjectCommandsController:
             return
         current_key = host._selected_project_key
         try:
+            self._release_project_preview(current_key, [])
             project_store.validate_project_deletion_by_key(current_key)
         except Exception as exc:
             QMessageBox.warning(None, "Delete project", str(exc))
@@ -1405,6 +1416,7 @@ class ProjectCommandsController:
         ):
             return
         try:
+            self._release_project_preview(current_key, project_videos)
             project_store.validate_project_deletion_by_key(current_key)
         except Exception as exc:
             QMessageBox.critical(None, "Delete project", str(exc))
@@ -1528,6 +1540,7 @@ class ProjectCommandsController:
         ):
             return False
         try:
+            self._release_project_preview(project_key, project_videos)
             project_store.validate_project_deletion_by_key(project_key)
         except Exception as exc:
             host.appAlertRequested.emit("Không thể xóa dự án", str(exc), "error")

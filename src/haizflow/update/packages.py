@@ -59,9 +59,12 @@ def generate(base: Path | None, target: Path, output: Path, *, base_version: str
             temporary.unlink(missing_ok=True)
 
 
-def inspect_archive(package: Path, manifest: Manifest) -> None:
+def inspect_archive(package: Path, manifest: Manifest, *, progress=lambda *_: None) -> None:
     no_links(package)
-    if package.stat().st_size != manifest.data["package_size"] or sha256(package) != manifest.data["package_sha256"]:
+    size = manifest.data["package_size"]
+    if package.stat().st_size != size or sha256(
+            package, progress=lambda count: progress("verifying", 50 + min(14, count * 14 // size))
+    ) != manifest.data["package_sha256"]:
         raise UpdateError("Gói cập nhật chưa đầy đủ hoặc SHA-256 không khớp.")
     expected = set(manifest.data["added_files"] + manifest.data["changed_files"])
     entries = {entry["path"]: entry for entry in manifest.data["target_files"]}
@@ -75,9 +78,11 @@ def inspect_archive(package: Path, manifest: Manifest) -> None:
             actual.append(info.filename)
         if len(actual) != len(set(actual)) or set(actual) != expected:
             raise UpdateError("ZIP chứa tệp trùng, thiếu hoặc không được phép.")
+    progress("verifying", 65)
 
 
-def reconstruct(package: Path, manifest: Manifest, staging: Path, base: Path | None) -> None:
+def reconstruct(package: Path, manifest: Manifest, staging: Path, base: Path | None,
+                *, progress=lambda *_: None) -> None:
     inspect_archive(package, manifest)
     no_links(staging)
     if staging.exists():
@@ -92,6 +97,8 @@ def reconstruct(package: Path, manifest: Manifest, staging: Path, base: Path | N
         raise UpdateError("Không đủ dung lượng đĩa để chuẩn bị Core mới.")
     staging.mkdir()
     changed = set(manifest.data["added_files"] + manifest.data["changed_files"])
+    total = sum(e["size"] for e in manifest.data["target_files"])
+    count = 0
     with zipfile.ZipFile(package) as archive:
         for entry in manifest.data["target_files"]:
             name = entry["path"]
@@ -109,6 +116,8 @@ def reconstruct(package: Path, manifest: Manifest, staging: Path, base: Path | N
                     os.fsync(output.fileno())
             if destination.stat().st_size != entry["size"] or sha256(destination) != entry["sha256"]:
                 raise UpdateError("Tệp được dựng không khớp manifest.")
+            count += entry["size"]
+            progress("preparing", 65 + min(22, count * 22 // max(1, total)))
     manifest.verify_tree(staging)
     atomic_json(child(staging, "core-manifest.json"), manifest.data)
     atomic_json(child(staging, "core-complete.json"), {"product": "HaizFlow", "schema": 1,
