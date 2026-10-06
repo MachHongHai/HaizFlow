@@ -13,14 +13,13 @@ from yt_dlp.extractor.tiktok import DouyinIE
 from yt_dlp.utils import ExtractorError
 
 ACCESS_MESSAGE = (
-    "Douyin did not provide playable video data. Open the link in Douyin to check access. "
-    "If login or verification is required, complete it there and save the video using "
-    "Douyin's download option, then import the file into HaizFlow."
+    "Douyin did not provide playable video data. Check that the video is public and can be viewed on Douyin."
 )
 MOBILE_AGENT = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 )
+PUBLIC_METADATA_AGENT = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
 
 
 def video_id_from_url(url: str) -> str:
@@ -83,6 +82,15 @@ class HaizFlowDouyinIE(DouyinIE):
             "https://www.douyin.com/aweme/v1/web/aweme/detail/", video_id,
             note="Checking Douyin video", query={"aweme_id": video_id}, fatal=False)
         detail = result.get("aweme_detail") if isinstance(result, dict) else None
+        if not isinstance(detail, dict) or not detail:
+            # Douyin also serves public video metadata for indexing. Request
+            # that representation directly; no account cookies, verification
+            # tokens, script execution or external parsing service is needed.
+            public_result = self._download_json(
+                "https://www.douyin.com/aweme/v1/web/aweme/detail/", video_id,
+                note="Reading Douyin public video metadata", query={"aweme_id": video_id},
+                headers={"User-Agent": PUBLIC_METADATA_AGENT}, fatal=False)
+            detail = public_result.get("aweme_detail") if isinstance(public_result, dict) else None
         if not isinstance(detail, dict) or not detail:
             page = self._download_webpage(
                 f"https://www.iesdouyin.com/share/video/{video_id}/", video_id,

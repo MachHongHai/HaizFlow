@@ -117,12 +117,6 @@ Item {
                 title: qsTr("Chưa có dự án")
                 message: qsTr("Tạo dự án để bắt đầu.")
 
-                StudioButton {
-                    text: root.newProjectLabel()
-                    iconName: "add"
-                    variant: "primary"
-                    onClicked: root.requestNewProject()
-                }
             }
         }
     }

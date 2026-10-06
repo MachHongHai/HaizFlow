@@ -172,9 +172,9 @@ Item {
                     ? qsTr("Thử từ khóa hoặc bộ lọc khác.")
                     : qsTr("Tạo dự án để bắt đầu.")
                 StudioButton {
-                    variant: "primary"
-                    text: searchField.text.length > 0 ? qsTr("Xóa bộ lọc") : qsTr("Dự án mới")
-                    onClicked: searchField.text.length > 0 ? root.resetFilters() : root.requestNewProject("single")
+                    visible: searchField.text.length > 0
+                    text: qsTr("Xóa bộ lọc")
+                    onClicked: root.resetFilters()
                 }
             }
         }
