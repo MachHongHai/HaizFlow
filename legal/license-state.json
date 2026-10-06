@@ -10,12 +10,32 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "0.1.0 source working tree; not a published release",
-  "public_release_review": null,
-  "blockers": [
-    "owned-code-and-contributor-scope",
-    "omnivoice-noncommercial-checkpoint-and-preview-assets",
-    "ffmpeg-complete-corresponding-source",
-    "qt-lgpl-module-and-relinking-evidence"
-  ]
+  "effective_release": "0.1.0 reviewed release candidate; publication tracked by GitHub release state",
+  "public_release_review": {
+    "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
+    "approved_at": "2026-10-06",
+    "source_commit": "f5cffbf8eeca03ffa55753c6e3a1e8c1921696aa",
+    "release_version": "0.1.0",
+    "owner_release_authorization": "Direct owner request to publish on GitHub, commit and push; version 0.1.0, no paid Authenticode certificate",
+    "publication_condition": "Upload and verify corresponding sources alongside public binary assets before publication",
+    "clearances": {
+      "owned-code-and-contributor-scope": {
+        "path": "legal/reviews/application-scope-2026-10-06.md",
+        "sha256": "6b0fe2a12dcd98ff41452c492175eb45ea608aff2e5cc95ce00d5072a3443eba"
+      },
+      "omnivoice-noncommercial-checkpoint-and-preview-assets": {
+        "path": "legal/reviews/owner-assets-and-omnivoice-2026-10-04.md",
+        "sha256": "fd3764dcb816168e9ec62737823ecf9eca79655e39999b5073779ac927cd7702"
+      },
+      "ffmpeg-complete-corresponding-source": {
+        "path": "legal/reviews/media-source-2026-10-06.md",
+        "sha256": "04c2be2b0ebb1cd167e56b6ed9db33a1c60946cd1e533987df8da7669a27f6ef"
+      },
+      "qt-lgpl-module-and-relinking-evidence": {
+        "path": "legal/reviews/qt-replacement-2026-10-06.md",
+        "sha256": "e028472ab65db1b0bcf9c373c362f5e4f2f40a454a956a91f5a0225aa66aeefa"
+      }
+    }
+  },
+  "blockers": []
 }

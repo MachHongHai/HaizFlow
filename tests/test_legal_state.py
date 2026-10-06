@@ -23,6 +23,9 @@ class LegalStateTests(unittest.TestCase):
         for name in ("LICENSE", "NOTICE", "pyproject.toml", "README.md", "README.vi.md", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, self.root / name)
         shutil.copytree(ROOT / "legal", self.root / "legal")
+        # Failure cases use an explicitly unreviewed fixture, independent of
+        # whether the real release's scoped evidence has been completed.
+        self.update_state(public_release_review=None, blockers=sorted(legal.REQUIRED_CLEARANCES))
 
     def update_state(self, **values):
         path = self.root / "legal/license-state.json"
@@ -46,6 +49,16 @@ class LegalStateTests(unittest.TestCase):
 
     def test_public_release_is_blocked_until_review(self):
         self.assertTrue(any("LICENSE COMPLIANCE BLOCKER" in error for error in legal.verify(self.root, public_release=True)))
+
+    def test_current_scoped_review_has_exact_evidence(self):
+        self.assertEqual(legal.verify(ROOT, public_release=True), [])
+
+    def test_reviewed_evidence_tampering_fails_closed(self):
+        state = json.loads((ROOT / "legal/license-state.json").read_text(encoding="utf-8"))
+        self.update_state(public_release_review=state["public_release_review"], blockers=[])
+        path = self.root / state["public_release_review"]["clearances"]["qt-lgpl-module-and-relinking-evidence"]["path"]
+        path.write_text("not the reviewed evidence", encoding="utf-8")
+        self.assertTrue(any("Changed clearance evidence" in error for error in legal.verify(self.root, public_release=True)))
 
     def test_emptying_blockers_does_not_bypass_review(self):
         self.update_state(blockers=[])
