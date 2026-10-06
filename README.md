@@ -58,6 +58,8 @@ HaizFlow is free to use under [HaizFlow Source-Available 1.0](LICENSE). This is 
 
 You need permission to use imported video, music and voice samples. See [NOTICE](NOTICE) and [third-party notices](THIRD_PARTY_NOTICES.md). The [licensing review](docs/licensing-review.md) and [inactive draft terms](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) are retained separately.
 
+HaizFlow uses Qt/PySide under LGPL and FFmpeg under GPL/LGPL, depending on the component. [Bundled library sources](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.0/HaizFlow-0.1.0-ThirdPartySources.zip) and [library replacement instructions](docs/third-party-library-replacement.md) are provided separately. Independent library-license rights remain available.
+
 ## Support and contributions
 
 See [Help](docs/support.md) for resources, API keys and data management. You can also [send feedback or request support](https://github.com/MachHongHai/HaizFlow/issues). Never include keys or private data.

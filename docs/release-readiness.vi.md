@@ -2,7 +2,7 @@
 
 Giấy phép mã thuộc sở hữu hiện hành là HaizFlow Source-Available 1.0, được chủ
 sở hữu duyệt ngày 01/10/2026. Điều khoản ứng dụng/CLA/branding còn dự thảo. [Rà soát giấy phép](licensing-review.md)
-ghi các LICENSE COMPLIANCE BLOCKER: phạm vi quyền sở hữu, OmniVoice phi thương
+ghi hồ sơ kỹ thuật về phạm vi quyền sở hữu, OmniVoice phi thương
 mại và mẫu giọng, source tương ứng FFmpeg, nghĩa vụ LGPL của Qt. Chạy
 `scripts/verify-legal-state.py`; đóng gói công khai cần thêm `--public-release`
 cùng bằng chứng phê duyệt. Không kích hoạt dự thảo qua bộ cài hoặc hạn chế
@@ -10,7 +10,7 @@ quyền được cấp độc lập.
 
 [Tài liệu](README.vi.md) · [An toàn dependency](dependency-security.vi.md) · [English](release-readiness.md)
 
-Rà soát gần nhất: **2026-10-04**. Chủ dự án đã chọn hướng phát hành miễn phí, không ký Authenticode.
+Rà soát gần nhất: **2026-10-06**. Chủ dự án đã chọn hướng phát hành miễn phí, không ký Authenticode. Hồ sơ kỹ thuật không phải chứng nhận pháp lý độc lập.
 
 Đây là checklist có thẩm quyền cho bản Windows công khai. Source checkout đạt unit test chưa đồng nghĩa artifact được phép phát hành.
 
@@ -101,7 +101,7 @@ Installer phải tính disk từ artifact, cho chọn ổ local writable, chặn
 
 Các con số dung lượng có ý nghĩa khác nhau. Setup tính yêu cầu Core từ artifact hoàn tất, staging thực tế, bản sao tạm khi nâng cấp và 2 GiB dự phòng vận hành. Con số đó không gồm gói AI tùy chọn, media dự án, output hoặc cache. Gate từ chối Core lớn hơn 1,25 GiB, yêu cầu cài mới lớn hơn 4 GiB hoặc mức khuyến nghị lớn hơn 8 GiB. Trình quản lý gói chạy preflight riêng cho từng lượt cài đã xác nhận: byte còn phải tải, dung lượng cài, bản rollback và 2 GiB dự phòng. Export có ước tính riêng theo thời lượng, codec, bitrate và render tạm. Manifest sinh từ artifact cùng số Setup hiển thị là nguồn chính xác; tài liệu không được dùng lại số đo của một candidate cũ.
 
-Bản công khai có thể dùng `UnsignedRelease`, không cần certificate. Phải thông báo Unknown publisher, cảnh báo/chặn SmartScreen hoặc Smart App Control và chính sách doanh nghiệp; không tắt bảo vệ Windows. Installer public phải qua smoke riêng trên VM sạch với `AllowRegisteredInstall`: cài, mở app, repair, gỡ/cài lại, giữ dữ liệu và hash. Bỏ smoke ở máy build chỉ chấp nhận khi đúng installer đó được nghiệm thu riêng; bỏ toàn bộ nghiệm thu làm mất tư cách release candidate.
+Bản công khai có thể dùng `UnsignedRelease`, không cần certificate. Phải thông báo Unknown publisher, cảnh báo/chặn SmartScreen hoặc Smart App Control và chính sách doanh nghiệp; không tắt bảo vệ Windows. Builder kiểm cài, mở app, repair, gỡ/cài lại, giữ dữ liệu và hash bằng fixture có cùng payload và logic public nhưng AppId riêng, tránh đụng bản user đã cài. Đây không phải nghiệm thu trên mọi cấu hình Windows. Kiểm chính installer public trên VM sạch bằng `AllowRegisteredInstall` vẫn là kiểm bổ sung được khuyến nghị; phải ghi rõ máy và artifact đã kiểm, không suy ra Windows 10 từ Windows 11. Bỏ toàn bộ smoke làm mất tư cách release candidate.
 
 Chỉ để kiểm thử kỹ thuật cục bộ, có thể tạo installer chưa ký từ artifact đủ điều kiện:
 
@@ -109,10 +109,10 @@ Chỉ để kiểm thử kỹ thuật cục bộ, có thể tạo installer chư
 .\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-development -AllowUnsigned -EngineeringBuild
 ```
 
-Tên file nội bộ có `DEVELOPMENT`; public không ký có `UNSIGNED`. Với ứng viên public không ký, chỉ chạy lệnh sau trong VM sạch:
+Tên file nội bộ có `DEVELOPMENT`. Bộ cài công khai có tên `HaizFlow-<version>-Setup.exe`; trạng thái chữ ký được ghi riêng trong tài liệu. Với ứng viên public không ký, chỉ chạy lệnh sau trong VM sạch:
 
 ```powershell
-.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HaizFlow-<version>-UNSIGNED-Setup.exe -AllowRegisteredInstall
+.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HaizFlow-<version>-Setup.exe -AllowRegisteredInstall
 ```
 
 ## Ma trận Windows

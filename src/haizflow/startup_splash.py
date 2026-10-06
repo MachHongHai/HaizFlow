@@ -75,6 +75,13 @@ class StartupSplash:
             _fields_ = [("dc", w.HDC), ("erase", w.BOOL), ("rect", w.RECT),
                         ("restore", w.BOOL), ("update", w.BOOL), ("reserved", c.c_byte * 32)]
 
+        class Vertex(c.Structure):
+            _fields_ = [("x", w.LONG), ("y", w.LONG), ("red", w.USHORT),
+                        ("green", w.USHORT), ("blue", w.USHORT), ("alpha", w.USHORT)]
+
+        class GradientRectangle(c.Structure):
+            _fields_ = [("upper_left", w.ULONG), ("lower_right", w.ULONG)]
+
         # Explicit pointer-sized signatures are essential in frozen x64 Python.
         signatures = [
             (kernel.GetModuleHandleW, [w.LPCWSTR], w.HMODULE),
@@ -101,9 +108,18 @@ class StartupSplash:
             (gdi.DeleteDC, [w.HDC], w.BOOL),
             (gdi.BitBlt, [w.HDC, c.c_int, c.c_int, c.c_int, c.c_int,
                          w.HDC, c.c_int, c.c_int, w.DWORD], w.BOOL),
+            (gdi.StretchBlt, [w.HDC, c.c_int, c.c_int, c.c_int, c.c_int,
+                             w.HDC, c.c_int, c.c_int, c.c_int, c.c_int, w.DWORD], w.BOOL),
+            (gdi.SetStretchBltMode, [w.HDC, c.c_int], c.c_int),
+            (gdi.CreateRoundRectRgn, [c.c_int] * 6, w.HANDLE),
+            (gdi.SelectClipRgn, [w.HDC, w.HANDLE], c.c_int),
         ]
         for function, arguments, result in signatures:
             function.argtypes, function.restype = arguments, result
+        gradient_fill = c.windll.msimg32.GradientFill
+        gradient_fill.argtypes = [w.HDC, c.POINTER(Vertex), w.ULONG,
+                                  c.POINTER(GradientRectangle), w.ULONG, w.ULONG]
+        gradient_fill.restype = w.BOOL
         user.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
         user.SetWindowTextW.argtypes = [w.HWND, w.LPCWSTR]
         user.DestroyWindow.argtypes = [w.HWND]
@@ -121,12 +137,17 @@ class StartupSplash:
 
         scale = getattr(user, "GetDpiForSystem", lambda: 96)() / 96
         px = lambda value: round(value * scale)
-        width, height = px(500), px(280)
+        width, height = px(600), px(338)
         color = lambda rgb: int(rgb[1:3], 16) | int(rgb[3:5], 16) << 8 | int(rgb[5:7], 16) << 16
-        brushes = [gdi.CreateSolidBrush(color(value)) for value in ("#1B1A18", "#332F2A", "#C4915E", "#211F1C")]
+        brushes = [gdi.CreateSolidBrush(color(value)) for value in ("#100C09", "#37251B")]
+        font_family = "Segoe UI Variable" if (Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/SegUIVar.ttf").is_file() else "Segoe UI"
         fonts = [gdi.CreateFontW(-px(size), 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, 5, 0,
-                                "Segoe UI") for size, weight in ((32, 600), (16, 400))]
-        icon = user.LoadImageW(None, str(self.icon_path), 1, px(64), px(64), 0x10) if self.icon_path else None
+                                font_family) for size, weight in ((40, 600), (16, 400))]
+        artwork_path = self.icon_path.with_name("startup-splash.bmp") if self.icon_path else None
+        background_bitmap = user.LoadImageW(None, str(artwork_path), 0, 0, 0, 0x2010) if artwork_path and artwork_path.is_file() else None
+        background_dc = gdi.CreateCompatibleDC(None) if background_bitmap else None
+        previous_background = gdi.SelectObject(background_dc, background_bitmap) if background_dc else None
+        icon = user.LoadImageW(None, str(self.icon_path), 1, px(98), px(98), 0x10) if self.icon_path and not background_bitmap else None
         started = time.monotonic()
         animation = w.BOOL(True)
         user.SystemParametersInfoW(0x1042, 0, c.byref(animation), 0)
@@ -143,15 +164,17 @@ class StartupSplash:
                 bitmap = gdi.CreateCompatibleBitmap(screen_dc, width, height)
                 previous_bitmap = gdi.SelectObject(dc, bitmap)
                 fill(dc, (0, 0, width, height), brushes[0])
-                fill(dc, (0, 0, width, px(1)), brushes[1])
-                fill(dc, (0, height - px(1), width, height), brushes[1])
-                fill(dc, (0, 0, px(1), height), brushes[1])
-                fill(dc, (width - px(1), 0, width, height), brushes[1])
-                fill(dc, (px(1), px(1), width - px(1), px(4)), brushes[2])
-                fill(dc, (px(1), px(220), width - px(1), height - px(1)), brushes[3])
+                if background_dc:
+                    gdi.SetStretchBltMode(dc, 4)  # HALFTONE; the bitmap is prepared at 2x DPI
+                    gdi.StretchBlt(dc, 0, 0, width, height, background_dc, 0, 0, 1200, 676, 0x00CC0020)
                 gdi.SetBkMode(dc, 1)
                 if icon:
-                    user.DrawIconEx(dc, (width - px(64)) // 2, px(36), icon, px(64), px(64), 0, None, 3)
+                    left = (width - px(98)) // 2
+                    clip = gdi.CreateRoundRectRgn(left, px(71), left + px(98), px(169), px(38), px(38))
+                    gdi.SelectClipRgn(dc, clip)
+                    user.DrawIconEx(dc, left, px(71), icon, px(98), px(98), 0, None, 3)
+                    gdi.SelectClipRgn(dc, None)
+                    gdi.DeleteObject(clip)
                 previous_font = gdi.SelectObject(dc, fonts[0])
                 sizes = []
                 for part in ("Haiz", "Flow"):
@@ -159,24 +182,32 @@ class StartupSplash:
                     gdi.GetTextExtentPoint32W(dc, part, len(part), c.byref(size))
                     sizes.append(size.cx)
                 wordmark_x = (width - sum(sizes)) // 2
-                for part, part_width, shade in zip(("Haiz", "Flow"), sizes, ("#F2EFE9", "#C4915E")):
+                for part, part_width, shade in zip(("Haiz", "Flow"), sizes, ("#F6F4EF", "#FFB65D")):
                     gdi.SetTextColor(dc, color(shade))
-                    rect = w.RECT(wordmark_x, px(116), wordmark_x + part_width, px(158))
+                    rect = w.RECT(wordmark_x, px(174), wordmark_x + part_width, px(223))
                     user.DrawTextW(dc, part, -1, c.byref(rect), 4 | 32)
                     wordmark_x += part_width
                 gdi.SelectObject(dc, previous_font)
-                for text, y, font, shade in ((self.status, 172, fonts[1], "#B8B1A6"),):
+                for text, y, font, shade in ((self.status, 221, fonts[1], "#DED2C4"),):
                     previous = gdi.SelectObject(dc, font)
                     gdi.SetTextColor(dc, color(shade))
                     rect = w.RECT(px(24), px(y), width - px(24), px(y + 38))
                     user.DrawTextW(dc, text, -1, c.byref(rect), 1 | 4 | 32)
                     gdi.SelectObject(dc, previous)
-                left, right, top = px(64), width - px(64), px(248)
-                fill(dc, (left, top, right, top + px(3)), brushes[1])
-                segment = px(76)
-                phase = ((time.monotonic() - started) / 1.8) % 1
-                x = round(left - segment + phase * (right - left + segment)) if animation.value else left
-                fill(dc, (max(left, x), top, min(right, x + segment), top + px(3)), brushes[2])
+                left, right, top, bottom = px(168), px(432), px(260.5), px(265.5)
+                if not background_dc:
+                    fill(dc, (left, top, right, bottom), brushes[1])
+                segment = px(112)
+                phase = ((time.monotonic() - started) / 2.2) % 1
+                x = round(left - segment + phase * (right - left + segment)) if animation.value else (left + right - segment) // 2
+                clip = gdi.CreateRoundRectRgn(left, top, right + 1, bottom + 1, px(5), px(5))
+                gdi.SelectClipRgn(dc, clip)
+                vertices = (Vertex * 2)(Vertex(x, top, 0xFFFF, 0x6C6C, 0x2626, 0),
+                                        Vertex(x + segment, bottom, 0xFFFF, 0xE0E0, 0xA0A0, 0))
+                gradient = GradientRectangle(0, 1)
+                gradient_fill(dc, vertices, 2, c.byref(gradient), 1, 0)
+                gdi.SelectClipRgn(dc, None)
+                gdi.DeleteObject(clip)
                 gdi.BitBlt(screen_dc, 0, 0, width, height, dc, 0, 0, 0x00CC0020)
                 gdi.SelectObject(dc, previous_bitmap)
                 gdi.DeleteObject(bitmap)
@@ -224,6 +255,10 @@ class StartupSplash:
             user.UnregisterClassW(name, instance)
             if icon:
                 user.DestroyIcon(icon)
+            if background_dc:
+                gdi.SelectObject(background_dc, previous_background)
+                gdi.DeleteObject(background_bitmap)
+                gdi.DeleteDC(background_dc)
             for handle in fonts + brushes:
                 gdi.DeleteObject(handle)
 

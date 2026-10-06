@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import importlib.metadata
+import io
 import json
 import os
 import sys
@@ -145,6 +146,30 @@ def _release(capability: str) -> None:
         clear_runtime()
 
 
+def media_smoke_test() -> dict:
+    """Exercise the media ABI with a small in-memory audio round-trip."""
+    import av
+    import numpy as np
+
+    data = io.BytesIO()
+    with av.open(data, "w", format="wav") as container:
+        stream = container.add_stream("pcm_s16le", rate=16000)
+        stream.layout = "mono"
+        frame = av.AudioFrame.from_ndarray(np.zeros((1, 1600), dtype=np.int16), format="s16", layout="mono")
+        frame.sample_rate = 16000
+        for packet in stream.encode(frame):
+            container.mux(packet)
+        for packet in stream.encode(None):
+            container.mux(packet)
+    data.seek(0)
+    with av.open(data) as container:
+        resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
+        samples = sum(output.samples for frame in container.decode(audio=0) for output in resampler.resample(frame))
+    if samples != 1600:
+        raise RuntimeError(f"Native audio round-trip failed: {samples} samples.")
+    return dict(samples=samples, pyav_version=av.__version__, library_versions=av.library_versions)
+
+
 def smoke_test(profile: str) -> dict:
     """Import the runtime surface that a frozen profile promises to provide."""
 
@@ -167,6 +192,10 @@ def smoke_test(profile: str) -> dict:
 
     if profile in {"cpu", "cuda128"}:
         import torch
+
+        # Exercise decoding and resampling, not just the PyAV package import.
+        # Media input is in memory; smoke never touches the user's video files.
+        media_smoke_test()
 
         cuda_version = str(torch.version.cuda or "")
         if profile == "cpu" and cuda_version:

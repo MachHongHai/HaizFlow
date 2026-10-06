@@ -68,7 +68,7 @@ Các script có hai chế độ không ký khác nhau:
 - `-UnsignedRelease`: ứng viên công khai unsigned; vẫn bắt buộc source sạch, giấy phép được duyệt, catalog tài nguyên đầy đủ và các kiểm thử.
 - `-AllowUnsigned`: chỉ kiểm thử nội bộ. Installer phải dùng thêm `-EngineeringBuild`, AppId và tên DEVELOPMENT riêng. Không đổi tên file để giả thành release.
 
-`-UnsignedRelease` không được kết hợp với signing identity, `-AllowUnsigned`, `-AllowDirtyBuild` hay `-EngineeringBuild`. Tên installer công khai sẽ là `HaizFlow-0.1.0-UNSIGNED-Setup.exe`. Hỗ trợ ký trong source vẫn được giữ như một lựa chọn tương lai, không phải điều kiện của hướng miễn phí.
+`-UnsignedRelease` không được kết hợp với signing identity, `-AllowUnsigned`, `-AllowDirtyBuild` hay `-EngineeringBuild`. Tên bộ cài công khai là `HaizFlow-0.1.0-Setup.exe`, thống nhất cho cả bản có và chưa có chữ ký số. Trạng thái chữ ký được ghi trong release notes, hướng dẫn cài đặt và metadata. Hỗ trợ ký trong source vẫn được giữ như một lựa chọn tương lai, không phải điều kiện của hướng miễn phí.
 
 SHA-256 giúp kiểm toàn vẹn file, **không thay chữ ký danh tính**. Bảo vệ tài khoản GitHub bằng 2FA/passkey, review quyền write/release, bảo vệ tag, dùng draft để nghiệm thu đủ assets rồi mới publish. Nếu tài khoản phát hành bị chiếm, checksum đăng trên cùng tài khoản không đủ bảo vệ.
 
@@ -170,11 +170,11 @@ git status --short
   -UnsignedRelease -SkipInstallerSmokeTest
 ```
 
-Ở máy build dùng `SkipInstallerSmokeTest` để tránh đăng ký AppId public vào máy đang có app thật. **Chưa được nghiệm thu/publish chỉ vì compile đã xong**. Copy đúng installer và `.sha256` sang VM sạch, cùng repository/tooling cần cho smoke; chạy:
+Ở máy build, bỏ `SkipInstallerSmokeTest` để builder kiểm bằng fixture có AppId riêng, cùng payload và logic public, không thay đăng ký bản app đang dùng. **Chưa được nghiệm thu/publish chỉ vì compile đã xong**. Kiểm bổ sung chính installer public trên VM sạch được khuyến nghị: copy installer và `.sha256`, cùng repository/tooling cần cho smoke; chạy:
 
 ```powershell
 .\scripts\test-installer.ps1 `
-  -InstallerPath D:\Release\HaizFlow-0.1.0-UNSIGNED-Setup.exe `
+  -InstallerPath D:\Release\HaizFlow-0.1.0-Setup.exe `
   -AllowRegisteredInstall
 ```
 
@@ -237,11 +237,11 @@ Còn phải thử download qua GitHub release thật, gián đoạn/mạng yếu
 
 Repo updater cố định: `MachHongHai/HaizFlow`. Repo khác cần sửa source và rebuild; không chỉ upload sang repo mới.
 
-Chỉ sau khi tất cả gate và VM acceptance qua, bạn tự review/commit source, tag **đúng commit đã build**, push tag. Không dùng `git add .` nếu có tệp secret hoặc thay đổi không thuộc release. Không retag/thay bytes của phiên bản đã phát hành.
+Chỉ sau khi tất cả gate và installer acceptance qua, bạn review/commit source, tag **đúng commit đã build**, push tag. Ghi rõ acceptance dùng fixture AppId riêng hay chính installer public trên VM; không gọi kiểm cục bộ là ma trận Windows đầy đủ. Không dùng `git add .` nếu có tệp secret hoặc thay đổi không thuộc release. Không retag/thay bytes của phiên bản đã phát hành.
 
 Assets release v0.1.0 gồm:
 
-- `HaizFlow-0.1.0-UNSIGNED-Setup.exe` và `.exe.sha256`.
+- `HaizFlow-0.1.0-Setup.exe` và `.exe.sha256`.
 - Full Core ZIP và `.manifest.json` đúng tên.
 - Changelog/release notes: yêu cầu máy, resource downloads, vị trí dữ liệu, trạng thái unsigned/caveat SmartScreen và Smart App Control, giấy phép/limitations.
 - Có thể kèm checksum tổng, SBOM và evidence build; không kèm `.env`, API key, PFX, runtime, test fixtures hay installer DEVELOPMENT.
@@ -253,13 +253,13 @@ gh auth login
 gh auth status
 gh release create v0.1.0 --repo MachHongHai/HaizFlow --verify-tag --draft `
   --title 'HaizFlow 0.1.0' --notes-file docs\release-notes-0.1.0.md `
-  dist\installer\HaizFlow-0.1.0-UNSIGNED-Setup.exe `
-  dist\installer\HaizFlow-0.1.0-UNSIGNED-Setup.exe.sha256 `
+  dist\installer\HaizFlow-0.1.0-Setup.exe `
+  dist\installer\HaizFlow-0.1.0-Setup.exe.sha256 `
   dist\release-assets-0.1.0\HaizFlow-Core-0.1.0-windows-x64-full.zip `
   dist\release-assets-0.1.0\HaizFlow-Core-0.1.0-windows-x64-full.manifest.json
 ```
 
-`docs/release-notes-0.1.0.md` phải viết theo kết quả nghiệm thu thực, không có sẵn chứng nhận production. Kiểm tra draft có đủ asset, tải lại trên VM, verify hash và tên; trạng thái Authenticode của các executable HaizFlow sẽ là `NotSigned`. Nếu bật immutable releases, tải đủ assets **trước** publish; GitHub không cho thay assets/tag sau đó. Xem [quản lý release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) và [CLI create](https://cli.github.com/manual/gh_release_create).
+`docs/release-notes-0.1.0.md` phải viết theo kết quả nghiệm thu thực, không có sẵn chứng nhận production. Kiểm tra draft có đủ asset, verify digest phía GitHub, tên và nguồn thư viện đi kèm; trạng thái Authenticode của các executable HaizFlow sẽ là `NotSigned`. Kiểm tải/cài trên máy sạch là bước bổ sung cần ghi riêng, không được giả định đã qua. Nếu bật immutable releases, tải đủ assets **trước** publish; GitHub không cho thay assets/tag sau đó. Xem [quản lý release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) và [CLI create](https://cli.github.com/manual/gh_release_create).
 
 Khi đã chốt stable:
 

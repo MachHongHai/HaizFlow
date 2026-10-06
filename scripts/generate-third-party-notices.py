@@ -175,6 +175,9 @@ def generate(
         for source in sorted(curated_source.iterdir()):
             if source.is_file():
                 shutil.copy2(source, component_licenses / source.name)
+            elif source.is_dir() and ((profile == "core" and source.name in {"qt", "media-cli"})
+                                      or (profile in {"engine-cpu", "engine-cuda128"} and source.name == "media-engine")):
+                shutil.copytree(source, component_licenses / source.name)
 
     lines = [
         "# Third-Party Notices",
@@ -194,7 +197,7 @@ def generate(
     if profile == "core":
         lines.extend(
             [
-                "| FFmpeg 8.1.2 essentials build | Bundled | GPL-3.0-or-later configured build | https://ffmpeg.org/ |",
+                "| FFmpeg 8.1.2 HaizFlow CLI build | Bundled separate programs | GPL-3.0-or-later configured build | https://ffmpeg.org/ |",
                 "| Douyin X-Bogus compatibility helper | Bundled adapted source | Apache-2.0 | "
                 "https://github.com/jiji262/douyin-downloader |",
                 "| Microsoft Fluent System Icons (curated SVG subset) | Bundled | MIT | "
@@ -205,15 +208,15 @@ def generate(
                 "distributed resource pack carries its own inventory and applicable terms.",
                 "",
                 "The release bundles the signed upstream FFmpeg 8.1.2 source archive under "
-                "`sources/ffmpeg`. The publisher must also satisfy corresponding-source obligations "
-                "for covered statically linked libraries.",
+                "`sources/ffmpeg`. Exact linked-library sources, Qt/PySide sources and build material "
+                "are supplied in the release's `HaizFlow-0.1.0-ThirdPartySources.zip`.",
                 "",
             ]
         )
     else:
         lines.extend(
             [
-                "| HaizFlow inference engine launcher | Bundled | Apache-2.0 | "
+                "| HaizFlow inference engine launcher | Bundled | HaizFlow Source-Available 1.0 | "
                 "https://github.com/MachHongHai/HaizFlow |",
                 "",
                 "Model checkpoints are distributed as separate checksum-pinned packs and are not "

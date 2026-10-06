@@ -54,9 +54,7 @@
 
 [Setup]
 #ifdef SmokeAppId
-  #if EngineeringBuild != "1"
-    #error SmokeAppId is engineering-only.
-  #endif
+  ; Isolated QA identity; all payload and public setup behavior stay unchanged.
 AppId={#SmokeAppId}
 #elif EngineeringBuild == "1"
 AppId={{2E512B7B-B9A6-4FB9-A306-C836B1DA102A}

@@ -1,18 +1,16 @@
 {
   "version": "8.1.2",
-  "variant": "essentials_build",
+  "variant": "haizflow",
   "architecture": "windows-x64",
-  "license": "GPL-3.0-or-later configured build",
-  "binary_url": "https://github.com/GyanD/codexffmpeg/releases/download/8.1.2/ffmpeg-8.1.2-essentials_build.zip",
-  "binary_sha256": "db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec",
+  "license": "GPL-3.0-or-later configured CLI build",
+  "build_recipe": "scripts/ffmpeg/build-msys2.sh",
   "source_url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz",
   "source_sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c",
   "source_signature_url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz.asc",
   "source_signature_sha256": "0a0963fccd70597838073f3e31b20f4a4d8cc2b5e577472c9a5a1f22624246f8",
-  "source_commit": "38b88335f9",
-  "ffmpeg_sha256": "1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e",
-  "ffprobe_sha256": "b49ccc7c6547b141ad5a2f6ec69cc04323d7133d7704d70b331b904c63eecb07",
-  "version_line": "ffmpeg version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "ffmpeg_sha256": "c6a5af3f67827c5102adb219ab9766c7e306be0661712f508b6452c242f19ddf",
+  "ffprobe_sha256": "8a082ff701b695b033b7fd1b3fdeedb13de88dbbbb3be81827c2451c50cf5b37",
+  "version_line": "ffmpeg version 8.1.2-haizflow Copyright (c) 2000-2026 the FFmpeg developers",
   "required_configuration": [
     "--enable-gpl",
     "--enable-libass",
@@ -27,5 +25,148 @@
   ],
   "required_encoders": [
     "libx264"
-  ]
+  ],
+  "runtime_files": [
+    {
+      "file": "ffmpeg.exe",
+      "sha256": "c6a5af3f67827c5102adb219ab9766c7e306be0661712f508b6452c242f19ddf",
+      "size": 31265280
+    },
+    {
+      "file": "ffprobe.exe",
+      "sha256": "8a082ff701b695b033b7fd1b3fdeedb13de88dbbbb3be81827c2451c50cf5b37",
+      "size": 31062016
+    },
+    {
+      "file": "libass-9.dll",
+      "sha256": "d7e21a7fa952033ff5bbacd2564b343671bf0ad4ae9338613935f2709861b9d2",
+      "size": 351277
+    },
+    {
+      "file": "libbrotlicommon.dll",
+      "sha256": "ca7bc06ead80259971badf2cd0bfc688db9154dad65f139f49a38b4be9976f97",
+      "size": 143429
+    },
+    {
+      "file": "libbrotlidec.dll",
+      "sha256": "a142dc6cfa77cb907028aa9426f486f3d8de37855e8db2ae2894147908121881",
+      "size": 62461
+    },
+    {
+      "file": "libbz2-1.dll",
+      "sha256": "a4fbb97c26662d2b8a80bf4597ed3effb69b12048b0cb1eef2c3f211e2e66673",
+      "size": 108633
+    },
+    {
+      "file": "libdav1d-7.dll",
+      "sha256": "29385f5f9b9f8c945eac3366403f529b3bd4bd59aa6eb492e043ffd2d82268c0",
+      "size": 1931258
+    },
+    {
+      "file": "libexpat-1.dll",
+      "sha256": "a79b7025c3fdccb6fe38fb560f3b6cfa75c26750052cf6de307816fb7c22faa0",
+      "size": 238525
+    },
+    {
+      "file": "libfftw3-3.dll",
+      "sha256": "3cf91e10bd0c715e9e2a8a595d653dfa27252f587861ffbdc321806e1b259c89",
+      "size": 4291210
+    },
+    {
+      "file": "libfontconfig-1.dll",
+      "sha256": "bed1827dbb226483026b2b33127866ce173aa2423d89ae7da6f88d6328792ec9",
+      "size": 508462
+    },
+    {
+      "file": "libfreetype-6.dll",
+      "sha256": "bbb3e6390ee229c867ef31f10e42a49a61a92e434a11d40c6139a2608ebc6194",
+      "size": 790651
+    },
+    {
+      "file": "libfribidi-0.dll",
+      "sha256": "ae9e30c61e1c62886d36e23a91d2943970ae990f85155cbd222b9ba44de9c51b",
+      "size": 154276
+    },
+    {
+      "file": "libgcc_s_seh-1.dll",
+      "sha256": "d7e343dd266747177c3699bc3201ea36eceef158e98530e089263bc55bb2a6d7",
+      "size": 149364
+    },
+    {
+      "file": "libglib-2.0-0.dll",
+      "sha256": "9778ba7e7a3a3e92e7c1802a45cd9350a905ff3fbff193566630b6c47a3e7b9c",
+      "size": 1571222
+    },
+    {
+      "file": "libgraphite2.dll",
+      "sha256": "063a9ad34a5ec87d038b4646660957395224ecf2cf707917256b7d251a7c5f57",
+      "size": 167155
+    },
+    {
+      "file": "libharfbuzz-0.dll",
+      "sha256": "419bd6d37f05864aa0cb03f9925f4d7e9dd81c2f2a9cb3d9c0f7cef2f7eed397",
+      "size": 1597490
+    },
+    {
+      "file": "libiconv-2.dll",
+      "sha256": "7a282a854e01be726c6cccfe46f548c716aa45b3014818468253aaa4efbcd067",
+      "size": 1143148
+    },
+    {
+      "file": "libintl-8.dll",
+      "sha256": "0537c3dd2378218508ebe3cc416d72a99ee2d24ae1c5525e23458f32544ef861",
+      "size": 298731
+    },
+    {
+      "file": "liblzma-5.dll",
+      "sha256": "ccb6a179acf35e704b2ffd7f232677982c4856bd1dda1341713a27518cf97ce1",
+      "size": 190709
+    },
+    {
+      "file": "libpcre2-8-0.dll",
+      "sha256": "68a7cee2acc36d6a61d73f78825d17dfd32f8580f4bb1bc399134719518213d5",
+      "size": 706915
+    },
+    {
+      "file": "libpng16-16.dll",
+      "sha256": "fdac85bb70ec3af940810036eb9838765dceb61aaf81a60b244209f99c617f3d",
+      "size": 260070
+    },
+    {
+      "file": "librubberband-2.dll",
+      "sha256": "f15b59010dfbebadce5741932a39966ecdf87f9422d2082356c7ddc64928153e",
+      "size": 316780
+    },
+    {
+      "file": "libsamplerate-0.dll",
+      "sha256": "1e08aeb1fecade2cf2d7a83463a1b375e13d5f2f008cdeea7409a3eff7ed9a0e",
+      "size": 1502619
+    },
+    {
+      "file": "libstdc++-6.dll",
+      "sha256": "494bd9045948198ef4d3bc838c7362d4cfd49c890b439c096b1817aa7c7fa6ff",
+      "size": 2659216
+    },
+    {
+      "file": "libunibreak-7.dll",
+      "sha256": "e146c2f36b2e36f620238f2bf0820ef9e74f5b39fbfb9ffe99183bb4a21809f0",
+      "size": 140772
+    },
+    {
+      "file": "libwinpthread-1.dll",
+      "sha256": "72bf8802de3a99d28f0bc2db9a11f281a9f9f3fa83dab2bc67e69fac3bd3d9c0",
+      "size": 66333
+    },
+    {
+      "file": "libx264-165.dll",
+      "sha256": "0d814d13db7eeac0ff5264ed86d376f9260746323107cb07affb6c306b240329",
+      "size": 2024174
+    },
+    {
+      "file": "zlib1.dll",
+      "sha256": "93e9243a44c29200eeacaf9658efe2558581770e4b11ca4b500e18e424a6e3b5",
+      "size": 128488
+    }
+  ],
+  "corresponding_source_manifest_sha256": "1839f987c62501cf78d34849208d2d0387d318ea9a6c88fc2c1494c5354f5c33"
 }

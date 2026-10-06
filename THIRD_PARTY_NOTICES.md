@@ -8,7 +8,9 @@ HaizFlow's source license does not replace any component's independent terms.
 | Component | Delivery | Evidence and required review |
 | --- | --- | --- |
 | PySide6 6.11.1 / Qt / Shiboken | Core DLLs and Python bindings | Installed wheel metadata declares LGPL-3.0-only or GPL alternatives. Select a valid path, audit actual Qt modules, retain notices and corresponding source, prove replacement/relinking and required debugging rights. No Qt commercial license is evidenced. |
-| FFmpeg / FFprobe 8.1.2 Essentials | Core, separate executables | Actual `runtime/bin/ffmpeg.exe -buildconf` includes GPL/version3/static/x264/x265. [GPL build notice](licenses/FFmpeg-NOTICE.md); complete source/build closure for static libraries remains required, not just upstream FFmpeg tarball. |
+| FFmpeg / FFprobe 8.1.2 HaizFlow CLI build | Core, separate executables | GPL/version3 CLI with dynamically linked libass/x264/Rubber Band. Exact native DLL/source closure, PKGBUILDs and build evidence are collected separately. [GPL build notice](licenses/FFmpeg-NOTICE.md). |
+| FFmpeg 7.1.3 / zlib 1.3.1 | Qt Multimedia shared backend | LGPL backend from the Qt 6.11.1 wheel, without GPL encoders. Exact upstream source and reported MSVC configuration are retained separately from the GPL CLI. |
+| FFmpeg 8.1.2 / PyAV 18.1.0 | CPU/CUDA engine shared backend | LGPL-only FFmpeg built from unmodified source, with BSD PyAV bindings. Vendor GPL encoder libraries are replaced at packaging time; imported symbols and binding transformations are inventoried and tested. |
 | OmniVoice SDK 0.2.1 | Downloaded SDK / AI engine | Apache-2.0; [notice](licenses/OMNIVOICE-NOTICE.md). |
 | OmniVoice checkpoint | Separate pinned model pack | CC-BY-NC-4.0; commercial workflow and generated bundled preview/sample provenance need clearance. The SDK's Apache terms do not clear the checkpoint. |
 | HY-MT2 CPU/GPU | Separate pinned model packs | Apache-2.0 declared at pinned revisions; retain [notice](licenses/HY-MT2-NOTICE.md) and license text. |

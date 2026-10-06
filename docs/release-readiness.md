@@ -2,7 +2,7 @@
 
 Current owned-source license is HaizFlow Source-Available 1.0, approved by the
 owner on 2026-10-01; application/CLA/brand terms remain drafts. [Licensing review](licensing-review.md) records
-LICENSE COMPLIANCE BLOCKER gates for rights scope, OmniVoice NonCommercial
+scoped technical evidence for rights scope, OmniVoice NonCommercial
 models/samples, FFmpeg source closure and Qt LGPL obligations. Run
 `scripts/verify-legal-state.py`; public packaging also requires
 `--public-release` and reviewed clearance evidence. Do not activate draft terms
@@ -10,7 +10,7 @@ through installer metadata or restrict independently granted rights.
 
 [Documentation](README.md) · [Dependency security](dependency-security.md) · [Tiếng Việt](release-readiness.vi.md)
 
-Last reviewed: **2026-10-04**. The owner selected the no-certificate public unsigned path. See [the Windows release guide](windows-release-setup.vi.md) for the complete workflow.
+Last reviewed: **2026-10-06**. The owner selected the no-certificate public unsigned path. Technical review is not independent legal certification. See [the Windows release guide](windows-release-setup.vi.md) for the complete workflow.
 
 This is the authoritative checklist for a public Windows build. A source checkout passing unit tests is not, by itself, a releasable artifact.
 
@@ -123,7 +123,7 @@ The installer must use an artifact-derived disk estimate, permit a writable loca
 
 Disk figures have distinct meanings. Setup calculates the Core requirement from the finalized artifact, real staging space, the temporary second copy needed during an upgrade, and a 2 GiB operational reserve. It does not include optional AI packs, project media, exports, or cache. The Core release gate rejects an artifact above 1.25 GiB, a fresh-install requirement above 4 GiB, or a recommendation above 8 GiB. Resource Manager performs a separate preflight for every confirmed pack: remaining download bytes, installed bytes, rollback bytes, and the same 2 GiB reserve. Export performs its own estimate from duration, codec, bitrate, and temporary render needs. Generated manifests and the values displayed by Setup are authoritative; documentation must never substitute a stale candidate-build measurement.
 
-Public distribution may be unsigned through the explicit `-UnsignedRelease` path. Document Unknown publisher, SmartScreen/Smart App Control and enterprise-policy limitations; do not disable Windows protection. Signing remains optional. The public installer must be smoke-tested on a clean VM with `-AllowRegisteredInstall`; omitting the build-machine smoke is acceptable only when the exact resulting installer passes that separate acceptance test. Skipping acceptance invalidates a release candidate.
+Public distribution may be unsigned through the explicit `-UnsignedRelease` path. Document Unknown publisher, SmartScreen/Smart App Control and enterprise-policy limitations; do not disable Windows protection. Signing remains optional. The builder runs fresh/start/repair/uninstall/reinstall/data/hash acceptance using the same public payload and setup behavior with a private AppId. This protects existing installations and is not a full Windows machine matrix. An additional exact-public-installer test on a clean VM with `-AllowRegisteredInstall` is recommended; record the actual artifact and host tested. Never infer Windows 10 coverage from a Windows 11 test. Skipping all acceptance invalidates a release candidate.
 
 An internal installer may be produced from explicitly engineering-provenance artifacts:
 
@@ -131,10 +131,10 @@ An internal installer may be produced from explicitly engineering-provenance art
 .\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-development -AllowUnsigned -EngineeringBuild
 ```
 
-Its filename contains `DEVELOPMENT`. Public unsigned filenames contain `UNSIGNED`. For a public unsigned candidate, run this only on a clean VM:
+Internal filenames contain `DEVELOPMENT`. The public installer is named `HaizFlow-<version>-Setup.exe`; signing status is documented separately. For a public unsigned candidate, run this only on a clean VM:
 
 ```powershell
-.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HaizFlow-<version>-UNSIGNED-Setup.exe -AllowRegisteredInstall
+.\scripts\test-installer.ps1 -InstallerPath .\dist\installer\HaizFlow-<version>-Setup.exe -AllowRegisteredInstall
 ```
 
 ## Windows acceptance matrix

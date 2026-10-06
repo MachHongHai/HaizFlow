@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import tempfile
@@ -30,7 +31,13 @@ def _run(*arguments: str) -> str:
     return completed.stdout
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    global FFMPEG, FFPROBE
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bin-directory", type=Path, default=ROOT / "runtime/bin")
+    args = parser.parse_args(argv)
+    FFMPEG = args.bin_directory.resolve() / "ffmpeg.exe"
+    FFPROBE = args.bin_directory.resolve() / "ffprobe.exe"
     if not FFMPEG.is_file() or not FFPROBE.is_file():
         raise RuntimeError("Bundled FFmpeg runtime is missing")
 
@@ -47,7 +54,7 @@ def main() -> int:
             "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
             "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, "
             "Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-            "Style: Default,Arial,28,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,20,1\n"
+            "Style: Default,Bangers,28,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,20,1\n"
             "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
             "Dialogue: 0,0:00:00.20,0:00:01.50,Default,,0,0,0,,HaizFlow FFmpeg test\n",
             encoding="utf-8",
@@ -64,9 +71,10 @@ def main() -> int:
             "-vn", "-af", "atempo=1.25", "-c:a", "pcm_s16le", str(voice),
         )
         ass_path = subtitle.as_posix().replace(":", r"\:").replace("'", r"\'")
+        fonts_path = (ROOT / "src/haizflow/assets/fonts").as_posix().replace(":", r"\:")
         _run(
             str(FFMPEG), "-y", "-v", "error", "-i", str(source), "-i", str(voice),
-            "-filter_complex", f"[0:a][1:a]amix=inputs=2:duration=first[a];[0:v]ass='{ass_path}'[v]",
+            "-filter_complex", f"[0:a][1:a]amix=inputs=2:duration=first[a];[0:v]ass='{ass_path}':fontsdir='{fonts_path}'[v]",
             "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-shortest", str(rendered),
         )
@@ -84,6 +92,17 @@ def main() -> int:
             raise RuntimeError(f"Unexpected rendered video stream: {video}")
         if not audio or not 1.0 <= duration <= 2.1:
             raise RuntimeError(f"Unexpected rendered audio/duration: audio={audio}, duration={duration}")
+        # Exercise production features that a minimal replacement can omit.
+        _run(str(FFMPEG), "-v", "error", "-i", str(source), "-vn",
+             "-af", "rubberband=tempo=1.1", "-f", "null", "-")
+        font_file = (ROOT / "src/haizflow/assets/fonts/Bangers-Regular.ttf").as_posix().replace(":", r"\:")
+        _run(str(FFMPEG), "-v", "error", "-i", str(source), "-an",
+             "-vf", f"gblur=sigma=2,drawtext=fontfile='{font_file}':text='HaizFlow':fontsize=24",
+             "-f", "null", "-")
+        # Modern downloaded video can be AV1 even on CPU-only computers.
+        # This tiny synthetic fixture requires no network or user media.
+        _run(str(FFMPEG), "-v", "error", "-c:v", "libdav1d",
+             "-i", str(ROOT / "tests/fixtures/media/av1-small.ivf"), "-f", "null", "-")
 
     print("FFmpeg production codec regression passed.")
     return 0

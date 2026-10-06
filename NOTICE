@@ -22,3 +22,11 @@ Contact: machhonghaipr@gmail.com
 
 Bundled font: Bangers, Copyright 2010 The Bangers Project Authors,
 licensed under SIL Open Font License 1.1; see licenses/Bangers-OFL.txt.
+
+Qt, PySide and Shiboken are used as dynamically linked components under LGPLv3.
+Their independent modification, replacement and required debugging rights are
+preserved. See licenses/, the release's ThirdPartySources archive and
+docs/third-party-library-replacement.md in the source repository.
+The separately executed FFmpeg CLI is GPLv3; its independent terms and sources
+are described in licenses/FFmpeg-NOTICE.md. Media backends linked into Qt and
+the Python engines are separately inventoried LGPL builds.

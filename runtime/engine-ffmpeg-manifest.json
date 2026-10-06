@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "version": "8.1.2",
+  "variant": "haizflow-engine",
+  "license": "LGPL-2.1-or-later",
+  "architecture": "windows-x64",
+  "closure_sha256": "2ff381b5d271fbc2f21c9c0d9fa4b1572cf888fc27e26743854397e2d3596d19",
+  "build_recipe": "scripts/ffmpeg/build-engine-msys2.sh",
+  "pyav_binding_version": "18.1.0",
+  "packaging_transform": "scripts/package-engine-media.py",
+  "gpl_encoder_libraries_bundled": false
+}

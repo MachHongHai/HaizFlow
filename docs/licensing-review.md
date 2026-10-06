@@ -30,14 +30,19 @@ hiện hành. Các bản Application Terms, Contributor Permission và Brand Pol
 còn DRAFT — NOT IN FORCE; không coi duyệt source license là chấp thuận CLA
 hoặc chuyển nhượng quyền tự động.
 
-## Cổng tuân thủ chưa giải quyết
+## Hồ sơ rà soát đóng gói 06/10/2026
 
-| Phạm vi | Trước phát hành công khai |
+| Phạm vi | Bằng chứng và giới hạn |
 | --- | --- |
-| Mã/tài sản thuộc quyền sở hữu | Review phạm vi cụ thể và provenance tài sản; không thu hồi quyền đã cấp. |
-| OmniVoice model và preview | Checkpoint pinned c5fdb5ccb189668d56333f77ba2629f4cd7535f4 là NonCommercial; SDK Apache không thay điều kiện model. Cần quyền thương mại/phân phối mẫu. |
-| FFmpeg và thư viện static | Buildconf GPL/version3/static với x264/x265; source FFmpeg riêng không đủ chứng minh closure corresponding-source mọi lib. |
-| Qt/PySide LGPL | Audit actual modules, notices, required source, replacement/relinking/debugging freedoms; chưa có commercial Qt evidence. |
+| Mã ứng dụng | [Phạm vi chủ dự án xác nhận](../legal/reviews/application-scope-2026-10-06.md); giữ quyền đã cấp và thông báo độc lập. Không xác minh độc lập mọi quyền sở hữu. |
+| OmniVoice và preview | [Xác nhận trực tiếp của chủ dự án](../legal/reviews/owner-assets-and-omnivoice-2026-10-04.md); giữ checkpoint phi thương mại, công khai giới hạn. Không cấp thêm quyền thương mại. |
+| FFmpeg | [Hồ sơ nguồn và cấu hình](../legal/reviews/media-source-2026-10-06.md): CLI GPL riêng; backend PyAV được thay bằng bản shared LGPL, không x264/x265; nguồn đầy đủ cùng recipe và inventory. |
+| Qt/PySide | [Hồ sơ module và thay thư viện](../legal/reviews/qt-replacement-2026-10-06.md): dynamic LGPL, nguồn/thông báo đi kèm và đường chạy Core không cần khóa nhà phát hành. Không khẳng định mọi DLL tự biên dịch đều tương thích ABI. |
+
+Đây là rà soát kỹ thuật của Codex dựa trên tài liệu gốc, dữ liệu đóng gói và
+quyền phát hành chủ dự án đã yêu cầu; không phải tư vấn hay chứng nhận của luật
+sư. Nguồn thư viện phải được tải lên cùng kênh tải binary trước khi phát hành
+công khai. Kiểm checksum ZIP cục bộ không chứng minh URL đã công khai.
 
 [Third-party inventory](../THIRD_PARTY_NOTICES.md) phân biệt Core, engines,
 models và assets. Notice generator chứng minh có văn bản, không chứng minh
@@ -74,8 +79,11 @@ cho checkpoint. Hướng dẫn người dùng đã công khai giới hạn này.
 The owner approved Source-Available 1.0 for owned application work on
 2026-10-01. Vietnamese precedes English and prevails on translation differences.
 Independent third-party rights and mandatory exceptions remain applicable. Application
-terms/CLA/brand drafts remain inactive. Release clearances are still unresolved;
-source consistency is not legal advice or binary-release approval.
+terms/CLA/brand drafts remain inactive. Scoped technical review records now
+cover the owned application scope, owner-attested assets/NonCommercial choice,
+native media source closure and Qt replacement mechanism. These records are
+not independent legal certification. Source assets must be available alongside
+the released binaries; a locally valid ZIP is not a published release.
 
 - [GitHub Terms of Service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service): public viewing/fork rights.
 - [OSI definition](https://opensource.org/osd): public source is not sufficient for open source.

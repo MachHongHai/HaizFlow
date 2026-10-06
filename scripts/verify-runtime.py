@@ -219,8 +219,15 @@ def main() -> int:
                 timeout=15,
                 check=False,
             )
-            version_matches = "8.1.2-essentials_build-www.gyan.dev" in media_probe.stdout
+            expected_line = ffmpeg_manifest.get("version_line", "")
+            version_prefix = expected_line.split(" Copyright", 1)[0]
+            version_matches = bool(version_prefix) and media_probe.stdout.startswith(version_prefix.replace("ffmpeg version", executable.removesuffix(".exe") + " version"))
             check(media_probe.returncode == 0 and version_matches, f"Native media tool starts: {path.name}", failures)
+
+    for entry in ffmpeg_manifest.get("runtime_files", []):
+        file = ROOT / "runtime/bin" / entry["file"]
+        check(Path(entry["file"]).name == entry["file"] and file.is_file() and sha256(file) == entry["sha256"],
+              f"Media runtime dependency: {entry['file']}", failures)
 
     compliance_directory = ROOT / "runtime" / "compliance" / "ffmpeg"
     for filename, hash_key in (

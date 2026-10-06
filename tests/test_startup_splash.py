@@ -39,3 +39,17 @@ def test_workers_never_show_startup_ui():
     assert entry.index('if "--release-smoke"') < entry.index("from haizflow.startup_splash")
     assert entry.index('if "--omnivoice-server"') < entry.index("from haizflow.startup_splash")
     assert 'os.getenv("HAIZFLOW_STARTUP_SPLASH") != "1"' in entry
+
+
+def test_startup_artwork_is_localized_without_baked_text_and_packaged_by_launcher():
+    root = Path(__file__).parents[1]
+    svg = (root / "src/haizflow/desktop/assets/branding/startup-background.svg").read_text(encoding="utf-8")
+    assert "<text" not in svg
+    assert "1.0.0" not in svg
+    bitmap = root / "src/haizflow/desktop/assets/branding/startup-splash.bmp"
+    assert bitmap.read_bytes()[:2] == b"BM"
+    bootstrap = (root / "scripts/build-bootstrap.ps1").read_text(encoding="utf-8")
+    assert "startup-splash.bmp" in bootstrap
+    source = (root / "src/haizflow/startup_splash.py").read_text(encoding="utf-8")
+    assert "Segoe UI Variable" in source
+    assert "import PySide6" not in source and "import PIL" not in source

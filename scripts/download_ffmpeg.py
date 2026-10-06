@@ -237,6 +237,8 @@ def main(argv=None) -> int:
     parser.add_argument("--source-archive", type=Path)
     parser.add_argument("--source-signature", type=Path)
     args = parser.parse_args(argv)
+    if MANIFEST_PATH.is_file() and json.loads(MANIFEST_PATH.read_text(encoding="utf-8")).get("variant") == "haizflow":
+        raise RuntimeError("This checkout uses the source-built media runtime. Use scripts/ffmpeg/build-msys2.sh, collect-built-ffmpeg.py and install-built-ffmpeg.py; do not overwrite it with a vendor archive.")
     install(
         archive=args.archive,
         source_archive=args.source_archive,

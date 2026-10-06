@@ -67,6 +67,10 @@ def run_release_smoke(
         ffmpeg_manifest = {}
         failures.append(f"FFmpeg manifest failed: {type(exc).__name__}: {exc}")
     _check(ffmpeg_manifest.get("version") == "8.1.2", "Pinned FFmpeg 8.1.2", failures, details)
+    for row in ffmpeg_manifest.get("runtime_files", []):
+        path = bundle / "bin" / row["file"]
+        _check(Path(row["file"]).name == row["file"] and path.is_file() and _sha256(path) == row["sha256"],
+               f"Media dependency checksum: {row['file']}", failures, details)
     for executable in ("ffmpeg.exe", "ffprobe.exe"):
         path = bundle / "bin" / executable
         expected = ffmpeg_manifest.get(executable.removesuffix(".exe") + "_sha256")

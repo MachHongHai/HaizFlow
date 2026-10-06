@@ -60,6 +60,10 @@ $LegalArguments = @((Join-Path $PSScriptRoot "verify-legal-state.py"))
 if (!$AllowUnsigned) { $LegalArguments += "--public-release" }
 & $VerifierPython @LegalArguments
 if ($LASTEXITCODE -ne 0) { throw "Engine licensing review failed." }
+if (!$AllowUnsigned) {
+  & $VerifierPython (Join-Path $PSScriptRoot "verify-third-party-sources.py")
+  if ($LASTEXITCODE -ne 0) { throw "Corresponding-source release asset verification failed." }
+}
 
 function Sign-EngineExecutable {
   param([string]$Executable)
@@ -154,6 +158,11 @@ try {
   & $Python @Arguments
   if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed for $PackId." }
 
+  if ($Profile -in @("cpu", "cuda128")) {
+    & $VerifierPython (Join-Path $PSScriptRoot "package-engine-media.py") --artifact $Artifact
+    if ($LASTEXITCODE -ne 0) { throw "Pinned LGPL-only media backend packaging failed." }
+  }
+
   & $Python (Join-Path $PSScriptRoot "write-engine-manifest.py") --profile $Profile --version $Version --output (Join-Path $Artifact "engine.json")
   if ($LASTEXITCODE -ne 0) { throw "Could not write engine.json." }
   & $Python (Join-Path $PSScriptRoot "generate-third-party-notices.py") `
@@ -166,6 +175,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Could not generate engine compliance notices." }
   Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination $Artifact -Force
   Copy-Item -LiteralPath (Join-Path $Root "NOTICE") -Destination $Artifact -Force
+  Copy-Item -LiteralPath (Join-Path $Root "runtime\third-party-sources-manifest.json") -Destination (Join-Path $Artifact "THIRD-PARTY-SOURCES.json") -Force
   Copy-Item -LiteralPath (Join-Path $Root "legal") -Destination $Artifact -Recurse -Force
   Copy-Item -LiteralPath (Join-Path $Compliance "THIRD_PARTY_NOTICES.md") -Destination $Artifact -Force
   Copy-Item -LiteralPath (Join-Path $Compliance "licenses") -Destination $Artifact -Recurse -Force

@@ -20,7 +20,7 @@ Máy không có GPU NVIDIA vẫn dùng được các công cụ CPU. Whisper và
 
 ## Cài đặt
 
-1. Trong **Assets**, tải bộ cài Windows `HaizFlow-0.1.0-UNSIGNED-Setup.exe` và tệp SHA-256 đi kèm.
+1. Trong **Assets**, tải bộ cài Windows `HaizFlow-0.1.0-Setup.exe` và tệp SHA-256 đi kèm.
 2. Mở bộ cài, chọn ngôn ngữ và thư mục cài trên ổ còn đủ dung lượng.
 3. Mở HaizFlow; giao diện mặc định là tiếng Việt. Chọn CPU/GPU trong **Cài đặt → Chung**.
 4. Cài các gói cần dùng trong **Gói tài nguyên**. Thêm Gemini/Zernio key khi dùng các dịch vụ này.
@@ -36,6 +36,8 @@ Bộ cài không ký số. Windows có thể hiện nhà phát hành không xác
 
 HaizFlow miễn phí sử dụng theo HaizFlow Source-Available 1.0. **Model OmniVoice hiện tại chỉ được cấp phép cho mục đích phi thương mại.** Giấy phép ứng dụng không thay thế điều kiện của model, video hoặc mẫu giọng.
 
+Qt/PySide dùng LGPL; FFmpeg dùng GPL/LGPL tùy thành phần. Nguồn thư viện đi kèm nằm trong `HaizFlow-0.1.0-ThirdPartySources.zip` ở **Assets**. [Thông báo và giấy phép thư viện](https://github.com/MachHongHai/HaizFlow/blob/test/THIRD_PARTY_NOTICES.md).
+
 ---
 
 ## English
@@ -46,7 +48,7 @@ Whisper and HY-MT2 run locally without API keys or per-call translation charges.
 
 ### Installation
 
-1. Download `HaizFlow-0.1.0-UNSIGNED-Setup.exe` and its SHA-256 file from **Assets**.
+1. Download `HaizFlow-0.1.0-Setup.exe` and its SHA-256 file from **Assets**.
 2. Run Setup and choose a language and installation folder with sufficient free space.
 3. Open HaizFlow and select CPU/GPU in **Settings → General**. Vietnamese is the default; English is available in Settings.
 4. Install the resources you need and add Gemini/Zernio keys when using those services.

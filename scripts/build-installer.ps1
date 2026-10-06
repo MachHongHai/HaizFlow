@@ -111,7 +111,8 @@ if (!$IsccExecutable) {
 $InstallerScript = Join-Path $Root "installer\HaizFlow.iss"
 $InstallerOutputDirectory = if ($OutputDirectory) { [System.IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $Root "dist\installer" }
 $SignedBuild = [bool]($SignCertificatePath -or $SignCertificateThumbprint)
-$OutputBaseFilename = if ($EngineeringBuild) { "HaizFlow-$Version-DEVELOPMENT-Setup" } elseif ($SignedBuild) { "HaizFlow-$Version-Setup" } else { "HaizFlow-$Version-UNSIGNED-Setup" }
+# Signing status belongs in release metadata and documentation, not the public filename.
+$OutputBaseFilename = if ($EngineeringBuild) { "HaizFlow-$Version-DEVELOPMENT-Setup" } else { "HaizFlow-$Version-Setup" }
 $InstallerPath = Join-Path $InstallerOutputDirectory "$OutputBaseFilename.exe"
 $SigningEnvironment = @{}
 foreach ($Name in @("HAIZFLOW_SIGN_CERT_PATH", "HAIZFLOW_SIGN_THUMBPRINT", "HAIZFLOW_SIGN_TIMESTAMP")) {
@@ -159,16 +160,19 @@ try {
   & $IsccExecutable @CompilerArguments $InstallerScript
   if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed with exit code $LASTEXITCODE." }
   $SmokeInstallerPath = $InstallerPath
-  if ($EngineeringBuild -and !$SkipInstallerSmokeTest) {
+  if (!$SkipInstallerSmokeTest) {
     # Compile a private AppId so repair/uninstall tests cannot replace the
-    # user's real test installation registration or uninstaller.
+    # user's real test installation registration or uninstaller. Keep the
+    # public/engineering flag unchanged: only AppId and output name differ.
     $SmokeId = [guid]::NewGuid().ToString()
     $SmokeDirectory = Join-Path $Root "build\installer-fixtures\$SmokeId"
     New-Item -ItemType Directory -Path $SmokeDirectory -Force | Out-Null
     $SmokeName = "HaizFlow-$Version-SMOKE-$SmokeId-DEVELOPMENT-Setup"
     $SmokeCompilerArguments = @($CompilerArguments | Where-Object { $_ -notlike '/DOutputBaseFilename=*' -and $_ -notlike '/O*' }) + @(
-      "/DOutputBaseFilename=$SmokeName", "/O$SmokeDirectory", "/DSmokeAppId={{$SmokeId}",
-      "/DSmokeResourceDirectory=$(Join-Path $InstallerOutputDirectory 'offline-resources')")
+      "/DOutputBaseFilename=$SmokeName", "/O$SmokeDirectory", "/DSmokeAppId={{$SmokeId}")
+    if ($EngineeringBuild) {
+      $SmokeCompilerArguments += "/DSmokeResourceDirectory=$(Join-Path $InstallerOutputDirectory 'offline-resources')"
+    }
     & $IsccExecutable @SmokeCompilerArguments $InstallerScript
     if ($LASTEXITCODE -ne 0) { throw "Private installer smoke fixture compilation failed." }
     $SmokeInstallerPath = Join-Path $SmokeDirectory "$SmokeName.exe"

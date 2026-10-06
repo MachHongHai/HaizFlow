@@ -58,6 +58,8 @@ HaizFlow miễn phí sử dụng theo [HaizFlow Source-Available 1.0](LICENSE). 
 
 Bạn cần có quyền sử dụng video, nhạc và mẫu giọng được đưa vào ứng dụng. Xem [NOTICE](NOTICE) và [thông báo thành phần bên thứ ba](THIRD_PARTY_NOTICES.md). [Hồ sơ giấy phép](docs/licensing-review.md) và [dự thảo không có hiệu lực](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) được lưu riêng.
 
+Ứng dụng dùng Qt/PySide theo LGPL và FFmpeg theo GPL/LGPL, tùy thành phần. [Nguồn thư viện đi kèm](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.0/HaizFlow-0.1.0-ThirdPartySources.zip) và [hướng dẫn thay thư viện](docs/third-party-library-replacement.md) được cung cấp riêng; quyền theo giấy phép của các thư viện vẫn được giữ nguyên.
+
 ## Hỗ trợ và đóng góp
 
 Xem [Trợ giúp](docs/support.vi.md) để quản lý tài nguyên, API key và dữ liệu. Bạn cũng có thể [gửi góp ý hoặc yêu cầu hỗ trợ](https://github.com/MachHongHai/HaizFlow/issues). Không gửi API key hoặc dữ liệu riêng tư.

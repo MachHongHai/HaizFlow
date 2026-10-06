@@ -76,6 +76,9 @@ try {
 $LegalArguments = @((Join-Path $PSScriptRoot "verify-legal-state.py"))
 if ($UnsignedRelease -or (($SignCertificatePath -or $SignCertificateThumbprint) -and !$AllowDirtyBuild)) { $LegalArguments += "--public-release" }
 Invoke-PythonChecked -Arguments $LegalArguments -Label "Legal document and licensing review"
+if ($UnsignedRelease -or (($SignCertificatePath -or $SignCertificateThumbprint) -and !$AllowDirtyBuild)) {
+  Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-third-party-sources.py")) -Label "Corresponding-source release asset"
+}
 
 if (![System.IO.Path]::GetDirectoryName($ReleaseTemp).Equals($ReleaseTempParent, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Refusing to use an unsafe release temporary directory: $ReleaseTemp"
@@ -434,6 +437,7 @@ Copy-Item -LiteralPath (Join-Path $CompliancePath "THIRD_PARTY_NOTICES.md") -Des
 Copy-Item -LiteralPath (Join-Path $CompliancePath "licenses") -Destination (Join-Path $ArtifactPath "licenses") -Recurse -Force
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "verify-legal-state.py"), "--artifact", $ArtifactPath) -Label "Packaged legal documents"
 Copy-Item -LiteralPath $FfmpegManifestPath -Destination (Join-Path $ArtifactPath "FFMPEG-MANIFEST.json") -Force
+Copy-Item -LiteralPath (Join-Path $Root "runtime\third-party-sources-manifest.json") -Destination (Join-Path $ArtifactPath "THIRD-PARTY-SOURCES.json") -Force
 Copy-Item -LiteralPath $ResourcePackManifestPath -Destination (Join-Path $ArtifactPath "RESOURCE-PACKS.json") -Force
 $ArtifactSources = Join-Path $ArtifactPath "sources"
 New-Item -ItemType Directory -Path $ArtifactSources -Force | Out-Null
