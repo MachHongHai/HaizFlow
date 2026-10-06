@@ -36,12 +36,23 @@ finalize_pack = load_script("finalize-resource-pack.py")
 
 
 class ResourcePackManifestTests(unittest.TestCase):
-    def test_source_manifest_is_valid_but_not_public_release_ready(self):
+    def test_source_manifest_pins_all_public_engines(self):
         manifest = ROOT / "runtime" / "resource-pack-manifest.json"
-        result = verify_manifest.validate_manifest(manifest, strict=False)
+        result = verify_manifest.validate_manifest(manifest, strict=True)
         self.assertEqual(result["engine_packs"], 3)
-        with self.assertRaisesRegex(RuntimeError, "immutable release URL"):
-            verify_manifest.validate_manifest(manifest, strict=True)
+        self.assertEqual(result["release_ready"], 3)
+
+    def test_unpublished_fixture_is_not_public_release_ready(self):
+        payload = json.loads((ROOT / "runtime/resource-pack-manifest.json").read_text(encoding="utf-8"))
+        for record in payload["packs"].values():
+            record.update(url="", sha256="")
+            record.pop("parts", None)
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "unpublished.json"
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(verify_manifest.validate_manifest(manifest, strict=False)["release_ready"], 0)
+            with self.assertRaisesRegex(RuntimeError, "immutable release URL"):
+                verify_manifest.validate_manifest(manifest, strict=True)
 
     def test_finalize_engine_archive_pins_exact_sizes_and_digest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
