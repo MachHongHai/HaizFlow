@@ -39,7 +39,7 @@ Gemini, Zernio và các dịch vụ bên ngoài có điều khoản, hạn mức
 
 ## Cài đặt và bắt đầu
 
-**[Tải bộ cài Windows](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.2/HaizFlow-0.1.2-Setup.exe).** Chỉ mở file EXE này; không cần tải hoặc giải nén các tệp Core. Gói tài nguyên được cài trong HaizFlow. [Thông tin phiên bản và cài đặt](https://github.com/MachHongHai/HaizFlow/releases/latest).
+**[Tải bộ cài Windows](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.3/HaizFlow-0.1.3-Setup.exe).** Chỉ mở file EXE này; không cần tải hoặc giải nén các tệp Core. Gói tài nguyên được cài trong HaizFlow. [Thông tin phiên bản và cài đặt](https://github.com/MachHongHai/HaizFlow/releases/latest).
 
 1. Cài và mở HaizFlow. Giao diện mặc định là tiếng Việt.
 2. Chọn CPU hoặc GPU NVIDIA trong **Cài đặt → Chung** và cài các gói cần dùng trong **Gói tài nguyên**.
@@ -47,6 +47,8 @@ Gemini, Zernio và các dịch vụ bên ngoài có điều khoản, hạn mức
 4. Chọn ngôn ngữ, model và giọng đọc nếu cần. Chạy xử lý, kiểm tra kết quả rồi **Xuất** video.
 
 Ứng dụng hỗ trợ Windows 10 phiên bản 1809 trở lên và Windows 11 x64, RAM từ 16 GiB. Không cần cài Python khi dùng bộ cài. Cần thêm dung lượng cho gói tài nguyên, video và tệp xuất; bộ cài và trang Gói tài nguyên hiển thị yêu cầu tương ứng.
+
+Chế độ GPU hỗ trợ card NVIDIA 6 GB trở lên. Với card 6 GB, ưu tiên Demucs, Whisper Small và dịch bằng Gemini hoặc HY-MT2 CPU Q4. Bản chưa ký số có thể bị Windows Smart App Control hoặc chính sách Application Control chặn; xem [hướng dẫn cài đặt](docs/install.vi.md).
 
 Xem [hướng dẫn cài đặt](docs/install.vi.md) để chọn gói CPU/GPU, thêm API key và chọn vị trí lưu dữ liệu. Xem [hướng dẫn sử dụng](docs/user-guide.vi.md) để tạo dự án, chỉnh phụ đề, lồng tiếng và đăng bài.
 

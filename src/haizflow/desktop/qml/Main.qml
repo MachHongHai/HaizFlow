@@ -403,7 +403,6 @@ ApplicationWindow {
             appConfirmationDialog.open();
         }
 
-        function onAppUpdateAvailable() { appMenuBar.showUpdates(); }
 
         function onVideoExportCompleted(videoId, path) {
             toastStack.show(qsTr("Xuất video thành công"), path, "success", 6500);

@@ -10,14 +10,14 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "0.1.2 reviewed patch candidate; publication tracked by GitHub release state",
+  "effective_release": "0.1.3 reviewed patch candidate; publication tracked by GitHub release state",
   "public_release_review": {
     "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
     "approved_at": "2026-10-06",
-    "source_commit": "e9fe36031f839e5f202d4de76bab206316283ce9",
-    "release_version": "0.1.2",
-    "owner_release_authorization": "Direct owner request to fix work8 voice generation/cloning and update popup, rebuild and make the update available; existing authorization to publish unsigned GitHub releases",
-    "publication_condition": "Publish the exact updated 0.1.2 corresponding-source asset with the binaries; retain immutable 0.1.0 resource/source assets and verify installer plus frozen 0.1.1 delta update",
+    "source_commit": "d9329839452c2933f75981e5ae3328beb5a6f3ec",
+    "release_version": "0.1.3",
+    "owner_release_authorization": "Direct owner request to improve 6 GB GPU support, diagnose Windows Application Control, fix unsolicited update popup, rebuild and publish an in-app update; existing authorization to publish unsigned GitHub releases",
+    "publication_condition": "Publish the exact corresponding-source asset with the binaries; preserve immutable previous resource/source assets and verify installer plus frozen 0.1.2 delta update. Do not claim unsigned Application Control compatibility.",
     "clearances": {
       "owned-code-and-contributor-scope": {
         "path": "legal/reviews/application-scope-2026-10-06.md",

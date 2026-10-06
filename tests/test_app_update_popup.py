@@ -12,6 +12,11 @@ from PySide6.QtTest import QTest
 QML = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
 
 
+def test_background_update_notification_never_opens_popup():
+    source = (QML / "Main.qml").read_text(encoding="utf-8")
+    assert "function onAppUpdateAvailable()" not in source
+
+
 def test_update_button_toggles_popup_with_real_mouse_clicks():
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()

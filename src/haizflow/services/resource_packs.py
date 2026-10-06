@@ -1033,6 +1033,13 @@ class ResourcePackManager:
             raise ResourcePackError("Bộ xử lý ghi dữ liệu vào thư mục cài đặt bất biến.")
         if process.returncode != 0:
             detail = (stderr or stdout or "smoke test failed").strip()
+            if "application control policy" in detail.lower() or "0x11c7" in detail.lower():
+                raise ResourcePackError(
+                    "Windows Application Control đã chặn một tệp của bộ xử lý. "
+                    "Gói không được xác nhận là đã cài. Tải lại không khắc phục được chính sách chặn này. "
+                    "Xem Windows Security và nhật ký CodeIntegrity để xác định tệp bị chặn; "
+                    "máy do tổ chức quản lý cần quản trị viên cho phép ứng dụng."
+                )
             raise ResourcePackError(f"Bộ xử lý không vượt qua kiểm tra: {detail}")
         return payload
 

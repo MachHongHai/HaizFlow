@@ -10,7 +10,7 @@ Chọn ổ còn đủ chỗ cho ứng dụng, tài nguyên, video nguồn và vi
 
 ## 2. Cài ứng dụng
 
-**[Tải HaizFlow-0.1.2-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.2/HaizFlow-0.1.2-Setup.exe).** Đây là file duy nhất bạn cần để cài ứng dụng. Các tệp Core ở [trang phiên bản](https://github.com/MachHongHai/HaizFlow/releases/latest) dành cho cập nhật tự động; không tải hoặc giải nén chúng để cài.
+**[Tải HaizFlow-0.1.3-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.3/HaizFlow-0.1.3-Setup.exe).** Đây là file duy nhất bạn cần để cài ứng dụng. Các tệp Core ở [trang phiên bản](https://github.com/MachHongHai/HaizFlow/releases/latest) dành cho cập nhật tự động; không tải hoặc giải nén chúng để cài.
 
 1. Mở tệp **Setup.exe**, chọn ngôn ngữ và đọc điều kiện sử dụng.
 2. Chọn thư mục cài. Có thể dùng ổ D hoặc ổ khác còn đủ chỗ.

@@ -36,6 +36,21 @@ finalize_pack = load_script("finalize-resource-pack.py")
 
 
 class ResourcePackManifestTests(unittest.TestCase):
+    def test_six_gib_demucs_gpu_keeps_cpu_ram_requirement(self):
+        from haizflow.core.hardware import HardwareCapabilities
+        from haizflow.desktop.resource_pack_controller import ResourcePackController
+
+        for ram, allowed in ((16, True), (8, False)):
+            capabilities = HardwareCapabilities(
+                cuda_available=True, cuda_name="NVIDIA 6 GB", total_vram_bytes=6 * 1024**3,
+                free_vram_bytes=4 * 1024**3, total_ram_bytes=ram * 1024**3,
+                logical_cpu_count=8, ac_powered=True, battery_percent=100,
+            )
+            host = SimpleNamespace(_hardware_capabilities=capabilities, _settings_language="vi")
+            controller = SimpleNamespace(_host=host)
+            for pack in ("engine-cuda128-py313", "model-demucs-gpu"):
+                self.assertEqual(ResourcePackController._hardware_compatibility(controller, pack)[0], allowed)
+
     def test_source_manifest_pins_all_public_engines(self):
         manifest = ROOT / "runtime" / "resource-pack-manifest.json"
         result = verify_manifest.validate_manifest(manifest, strict=True)

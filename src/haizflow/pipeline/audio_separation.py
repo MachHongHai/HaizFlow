@@ -101,6 +101,11 @@ def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str
             video_id,
             f"CPU Demucs profile enabled with {videos} worker(s). Source separation will be slower without CUDA.",
         )
+    elif getattr(profile, "total_vram_bytes", 0) < 7 * 1024**3:
+        # Keep one four-second segment on a 6 GB card, rather than the default
+        # 7.8-second transformer segment. Overlap retains continuous output.
+        cmd[-1:-1] = ["--segment", "4", "--shifts", "1", "--overlap", "0.25", "-j", "1"]
+        log_to_video(video_id, "GPU Demucs low-memory profile: 4-second segments, one worker.")
     
     log_to_video(video_id, f"Running Demucs command: {' '.join(cmd)}")
     

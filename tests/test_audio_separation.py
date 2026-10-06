@@ -140,6 +140,7 @@ class AudioSeparationTests(unittest.TestCase):
             )
             self.assertTrue(Path(vocals).is_file())
             self.assertTrue(Path(background).is_file())
+            self.assertEqual(captured_command[captured_command.index("--segment") + 1], "4")
 
 
 if __name__ == "__main__":

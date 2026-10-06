@@ -3143,8 +3143,8 @@ class HaizFlowController(QObject):
         if preference == "gpu":
             if not capabilities.cuda_available:
                 return "Không phát hiện GPU NVIDIA tương thích CUDA."
-            if capabilities.total_vram_bytes < 7 * 1024**3:
-                return f"GPU cần ít nhất 7 GB VRAM; hiện có {capabilities.total_vram_bytes / (1024**3):.1f} GB."
+            if capabilities.total_vram_bytes < 5 * 1024**3:
+                return f"Cần GPU NVIDIA 6 GB (ít nhất 5 GiB VRAM khả dụng); hiện có {capabilities.total_vram_bytes / (1024**3):.1f} GiB."
             if capabilities.total_ram_bytes and capabilities.total_ram_bytes < 14 * 1024**3:
                 memory_gib = capabilities.total_ram_bytes / (1024**3)
                 return f"HaizFlow cần ít nhất 16 GiB RAM; máy hiện có {memory_gib:.1f} GiB."

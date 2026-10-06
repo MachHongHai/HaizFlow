@@ -19,7 +19,8 @@ _GIB = 1024 ** 3
 # without rejecting that normal hardware reservation.
 _MIN_CPU_RAM_BYTES = 14 * _GIB
 _MIN_GPU_SYSTEM_RAM_BYTES = 14 * _GIB
-_MIN_GPU_VRAM_BYTES = 7 * _GIB
+MIN_GPU_VRAM_GIB = 5
+_MIN_GPU_VRAM_BYTES = MIN_GPU_VRAM_GIB * _GIB
 _FULL_GPU_VRAM_BYTES = 12 * _GIB
 _DEVICE_PREFERENCES = {"cpu", "gpu"}
 _TRANSLATION_MODELS = {"auto", "q4", "full"}
@@ -508,7 +509,9 @@ def validate_processing_device(
             return False, "CUDA-compatible NVIDIA GPU was not detected."
         if capabilities.total_vram_bytes < _MIN_GPU_VRAM_BYTES:
             available = capabilities.total_vram_bytes / _GIB
-            return False, f"GPU mode requires at least 7 GB VRAM; detected {available:.1f} GB."
+            return False, (
+                f"GPU mode requires a 6 GB NVIDIA GPU (at least 5 GiB usable VRAM); detected {available:.1f} GiB."
+            )
         if capabilities.total_ram_bytes and capabilities.total_ram_bytes < _MIN_GPU_SYSTEM_RAM_BYTES:
             available = capabilities.total_ram_bytes / _GIB
             return False, f"HaizFlow requires a 16 GB system; detected {available:.1f} GiB usable RAM."
@@ -566,7 +569,7 @@ def runtime_profile_for(
             total_ram_bytes=total_ram,
             logical_cpu_count=logical_cpus,
             cpu_threads=max(1, min(8, logical_cpus - 1 if logical_cpus > 2 else logical_cpus)),
-            whisper_batch_size=8 if low_vram else 16,
+            whisper_batch_size=2 if capabilities.total_vram_bytes < 7 * _GIB else 8 if low_vram else 16,
             # CUDA keeps the official checkpoint. Precision is selected from
             # the active GPU architecture without changing model quality.
             hymt2_backend="transformers",

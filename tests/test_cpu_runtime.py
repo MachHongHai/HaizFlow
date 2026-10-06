@@ -279,8 +279,11 @@ class CpuRuntimeTests(unittest.TestCase):
         self.assertEqual(forced_cpu.hymt2_backend, "llama_cpp")
 
         low_vram_gpu = self._profile(cuda=True, vram_gib=6, preference="gpu")
-        self.assertFalse(low_vram_gpu.cuda_available)
-        self.assertEqual(low_vram_gpu.key, "cpu_balanced")
+        self.assertTrue(low_vram_gpu.cuda_available)
+        self.assertEqual(low_vram_gpu.key, "cuda_low_memory")
+        self.assertEqual(low_vram_gpu.whisper_batch_size, 2)
+        self.assertFalse(low_vram_gpu.warm_whisper_on_startup)
+        self.assertFalse(low_vram_gpu.warm_hymt2_on_startup)
 
         unsupported_gpu = self._profile(cuda=True, vram_gib=4, preference="gpu")
         self.assertFalse(unsupported_gpu.cuda_available)
