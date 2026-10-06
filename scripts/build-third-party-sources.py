@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -19,6 +20,7 @@ def build(output: Path) -> dict:
     output = output.resolve()
     if not output.is_relative_to(ROOT / "dist"):
         raise ValueError("Source release output must remain below dist/.")
+    release_version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     groups = {
         "ffmpeg-cli": ROOT / "build/ffmpeg-release-inputs/sources",
         "ffmpeg-engine": ROOT / "build/engine-ffmpeg-release-inputs/sources",
@@ -63,14 +65,14 @@ def build(output: Path) -> dict:
             relative = name + "/closure.json"
             bundle.write(file, relative)
             rows.append(dict(file=relative, size=file.stat().st_size, sha256=digest(file)))
-        inventory = dict(schema=1, release_version="0.1.0", files=rows)
+        inventory = dict(schema=1, release_version=release_version, files=rows)
         bundle.writestr("SOURCE-INVENTORY.json", json.dumps(inventory, indent=2) + "\n")
     with zipfile.ZipFile(output) as bundle:
         if bundle.testzip():
             raise ValueError("Source asset ZIP verification failed.")
-    result = dict(schema=1, release_version="0.1.0", file=output.name,
+    result = dict(schema=1, release_version=release_version, file=output.name,
                   sha256=digest(output), size=output.stat().st_size,
-                  url="https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.0/" + output.name,
+                  url=f"https://github.com/MachHongHai/HaizFlow/releases/download/v{release_version}/" + output.name,
                   files=rows)
     manifest = output.with_suffix(".json")
     manifest.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -80,5 +82,6 @@ def build(output: Path) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "dist/release-sources/HaizFlow-0.1.0-ThirdPartySources.zip")
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    parser.add_argument("--output", type=Path, default=ROOT / f"dist/release-sources/HaizFlow-{version}-ThirdPartySources.zip")
     build(parser.parse_args().output)

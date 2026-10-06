@@ -30,7 +30,7 @@ gcc --version > "$work/compiler-version.txt"
   --disable-debug --disable-doc --disable-ffplay \
   --disable-shared --enable-static \
   --enable-gpl --enable-version3 \
-  --enable-libass --enable-libx264 --enable-librubberband --enable-libdav1d \
+  --enable-libass --enable-libx264 --enable-librubberband --enable-libdav1d --enable-libmp3lame \
   --enable-libfreetype --enable-libfontconfig --enable-libharfbuzz --enable-libfribidi \
   --enable-zlib --enable-bzlib --enable-lzma \
   --enable-schannel --enable-d3d11va --enable-dxva2 --enable-nvenc --enable-ffnvcodec

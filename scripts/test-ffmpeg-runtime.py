@@ -70,6 +70,13 @@ def main(argv=None) -> int:
             str(FFMPEG), "-y", "-v", "error", "-i", str(source),
             "-vn", "-af", "atempo=1.25", "-c:a", "pcm_s16le", str(voice),
         )
+        narration = work / "voice.mp3"
+        _run(str(FFMPEG), "-y", "-v", "error", "-i", str(voice),
+             "-vn", "-codec:a", "libmp3lame", "-q:a", "3", "-f", "mp3", str(narration))
+        mp3 = json.loads(_run(str(FFPROBE), "-v", "error", "-show_entries",
+                             "stream=codec_name", "-of", "json", str(narration)))
+        if not any(stream.get("codec_name") == "mp3" for stream in mp3.get("streams", [])):
+            raise RuntimeError("Narration MP3 encoding failed.")
         ass_path = subtitle.as_posix().replace(":", r"\:").replace("'", r"\'")
         fonts_path = (ROOT / "src/haizflow/assets/fonts").as_posix().replace(":", r"\:")
         _run(

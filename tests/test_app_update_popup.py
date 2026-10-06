@@ -3,12 +3,57 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, QMetaObject, Qt, QUrl
+from PySide6.QtCore import QObject, QMetaObject, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
+from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
 QML = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
+
+
+def test_update_button_toggles_popup_with_real_mouse_clicks():
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlEngine()
+    component = QQmlComponent(engine)
+    component.setData(b'''import QtQuick
+import QtQuick.Controls.Basic
+import "."
+ApplicationWindow {
+    width: 800; height: 600; visible: true
+    QtObject {
+        id: updates
+        property string appUpdateState: "available"
+        property bool appUpdateBlocked: false
+        property bool hasAppUpdate: true
+        property string latestAppVersion: "99.0.0"
+        property string currentAppVersion: "0.1.1"
+        property string appUpdateError: ""
+        property int appUpdateDownloadProgress: 0
+        function checkAppUpdateIfNeeded() {}
+    }
+    AppMenuBar { width: parent.width; updateController: updates }
+}''', QUrl.fromLocalFile(str(QML / "UpdateToggleTest.qml")))
+    assert component.isReady(), [error.toString() for error in component.errors()]
+    window = component.create()
+    try:
+        QTest.qWait(100)
+        button = window.findChild(QQuickItem, "appUpdatesButton")
+        popup = window.findChild(QObject, "appUpdatePopup")
+        center = button.mapToScene(QPointF(button.width() / 2, button.height() / 2))
+        for visible in (True, False, True, False):
+            QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(round(center.x()), round(center.y())))
+            QTest.qWait(180)
+            assert popup.property("visible") is visible
+        QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(round(center.x()), round(center.y())))
+        QTest.qWait(180)
+        QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, QPoint(20, 550))
+        QTest.qWait(180)
+        assert not popup.property("visible")
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
 
 
 def test_native_update_popup_requires_confirmation_and_supports_cancel():

@@ -75,8 +75,11 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
                 "-m",
                 "haizflow.engine.main",
             ]
-        environment = os.environ.copy()
-        environment.update(PYTHONUTF8="1", HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
+        from haizflow.core.paths import engine_environment
+
+        environment = engine_environment()
+        environment.update(PYTHONUTF8="1", PYTHONFAULTHANDLER="1",
+                           HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
         if not getattr(sys, "frozen", False):
             environment["PYTHONPATH"] = (
                 str(Path(__file__).resolve().parents[2]) + os.pathsep + environment.get("PYTHONPATH", "")
@@ -95,10 +98,12 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
         _stdout, stderr = communicate_process(
             cancellation_id, process, label="Clone sample recognition", timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS
         )
-        if process.returncode or not response.is_file():
-            raise RuntimeError(f"Không nhận dạng được mẫu giọng: {stderr[-500:]}")
+        if not response.is_file():
+            detail = stderr.strip()[-500:] or f"Bộ xử lý đã đóng (mã {process.returncode})."
+            log_to_video(video_id, f"[CLONE-ASR][ERROR] {detail}")
+            raise RuntimeError(f"Không nhận dạng được mẫu giọng: {detail}")
         result = json.loads(response.read_text(encoding="utf-8"))
-        if not result.get("ok"):
+        if process.returncode or not result.get("ok"):
             raise RuntimeError(str(result.get("error") or "Không nhận dạng được mẫu giọng."))
         text = str(result.get("result", {}).get("text") or "").strip()
         if not text:

@@ -209,7 +209,7 @@ def generate(
                 "",
                 "The release bundles the signed upstream FFmpeg 8.1.2 source archive under "
                 "`sources/ffmpeg`. Exact linked-library sources, Qt/PySide sources and build material "
-                "are supplied in the release's `HaizFlow-0.1.0-ThirdPartySources.zip`.",
+                "are supplied in the source asset pinned by `THIRD-PARTY-SOURCES.json`.",
                 "",
             ]
         )

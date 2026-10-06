@@ -15,7 +15,7 @@ Popup {
     width: Math.min(380, parent ? parent.width - Theme.space16 : 380)
     padding: Theme.space16
     focus: true
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnReleaseOutside
 
     function confirmUpdate() {
         confirmationLoader.requestedVersion = root.controller.latestAppVersion;

@@ -10,6 +10,7 @@ import uuid
 import wave
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -24,6 +25,7 @@ def main():
     parser.add_argument("--cpu", type=Path, required=True)
     parser.add_argument("--gpu", type=Path, required=True)
     parser.add_argument("--models", type=Path, required=True)
+    parser.add_argument("--ffmpeg-bin", type=Path, default=ROOT / "runtime/bin")
     args = parser.parse_args()
     parent = ROOT / "build/frozen-voice-modes"
     root = parent / uuid.uuid4().hex
@@ -110,6 +112,19 @@ def main():
                 for item in items:
                     with wave.open(item["wav_path"]) as audio:
                         assert audio.getnframes() > 240 and audio.getframerate() >= 16000
+                    from haizflow.pipeline.omnivoice_tts import _encode_mp3
+                    wav = Path(item["wav_path"])
+                    mp3 = wav.with_suffix(".mp3")
+                    with patch("haizflow.pipeline.omnivoice_tts._binary",
+                               return_value=str(args.ffmpeg_bin.resolve() / "ffmpeg.exe")):
+                        _encode_mp3(wav, mp3, "frozen-voice-output-check")
+                    probe = subprocess.run([str(args.ffmpeg_bin.resolve() / "ffprobe.exe"),
+                        "-v", "error", "-show_entries", "stream=codec_name:format=duration",
+                        "-of", "json", str(mp3)], capture_output=True, text=True,
+                        encoding="utf-8", check=True, creationflags=flags, timeout=30)
+                    decoded = json.loads(probe.stdout)
+                    assert any(stream.get("codec_name") == "mp3" for stream in decoded.get("streams", []))
+                    assert float(decoded["format"]["duration"]) > 0.01
                 results.append(dict(task=name + "-" + mode, generated=len(items), passed=True))
             print(json.dumps({"profile": name, "passed": True}), flush=True)
         atomic_json(ROOT / "build/frozen-voice-modes-report.json", dict(passed=True, frozen=True,

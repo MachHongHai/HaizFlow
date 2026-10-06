@@ -102,7 +102,7 @@ def collect(msys: Path, build: Path, output: Path, *, engine: bool = False) -> d
         destination = sources / filename
         url = f"https://repo.msys2.org/mingw/sources/{filename}"
         cached = ROOT / "build/ffmpeg-release-inputs/sources" / filename
-        if engine and not destination.exists() and cached.is_file():
+        if not destination.exists() and cached.is_file():
             shutil.copy2(cached, destination)
         if not destination.is_file():
             print(f"Collecting {filename}", flush=True)

@@ -71,8 +71,8 @@ def install(inputs: Path) -> None:
                     ffmpeg_sha256=binaries["ffmpeg.exe"]["sha256"],
                     ffprobe_sha256=binaries["ffprobe.exe"]["sha256"],
                     version_line=result.stdout.splitlines()[0],
-                    required_configuration=["--enable-gpl", "--enable-libass", "--enable-librubberband", "--enable-libx264"],
-                    required_filters=["adelay", "amix", "ass", "atempo"], required_encoders=["libx264"],
+                    required_configuration=["--enable-gpl", "--enable-libass", "--enable-librubberband", "--enable-libx264", "--enable-libmp3lame"],
+                    required_filters=["adelay", "amix", "ass", "atempo"], required_encoders=["libx264", "libmp3lame"],
                     runtime_files=report["binaries"], corresponding_source_manifest_sha256=digest(inputs / "closure.json"))
     (ROOT / "runtime/ffmpeg-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Installed verified media runtime. Previous files preserved at {backup}")

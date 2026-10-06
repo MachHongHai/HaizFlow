@@ -69,12 +69,15 @@ def test_parent_request_and_resource_pack_are_device_consistent(tmp_path, device
          patch.object(voice_reference, "log_to_video"), \
          patch.object(voice_reference.subprocess, "Popen", return_value=process), \
          patch.object(voice_reference, "communicate_process", side_effect=communicate), \
-         patch("haizflow.services.resource_packs.installed_engine_command", return_value=["engine"]) as command:
+         patch("haizflow.services.resource_packs.installed_engine_command", return_value=["engine"]) as command, \
+         patch("haizflow.core.paths.engine_environment", return_value={"HAIZFLOW_ENGINE_APP_ROOT": "D:/Installed"}) as env:
         assert voice_reference.transcribe_reference(str(sample), "video", device=device) == "sample text"
         assert voice_reference.transcribe_reference(str(sample), "video", device=device) == "sample text"
+        assert voice_reference.subprocess.Popen.call_args.kwargs["env"]["HAIZFLOW_ENGINE_APP_ROOT"] == "D:/Installed"
     assert len(requests) == 1
     assert requests[0]["payload"]["device"] == device
     assert command.call_args.args[2]["device"] == device
+    env.assert_called_once()
 
 
 def test_shared_clone_sample_is_prepared_once_before_tts_load():
@@ -85,3 +88,25 @@ def test_shared_clone_sample_is_prepared_once_before_tts_load():
         with pytest.raises(RuntimeError, match="after-asr"):
             omnivoice_tts.synthesize_batch_to_mp3(items, "video", language_id="vi", device="gpu")
     asr.assert_called_once_with("same.wav", "video", process_registry_id="video", device="gpu")
+
+
+@pytest.mark.parametrize("response, expected", [(None, "mã 1"),
+    ({"ok": False, "error": "engine root missing"}, "engine root missing")])
+def test_reference_failure_preserves_engine_error_even_with_empty_stderr(tmp_path, response, expected):
+    sample = tmp_path / "sample.wav"
+    sample.write_bytes(b"sample")
+    def communicate(*_args, **_kwargs):
+        if response is not None:
+            request = json.loads(next(tmp_path.glob("clone-asr-*/request.json")).read_text())
+            from pathlib import Path
+            Path(request["response_path"]).write_text(json.dumps(response))
+        return "", ""
+    with patch.object(voice_reference, "TMP_DIR", str(tmp_path)), \
+         patch.object(voice_reference, "verify_whisper_model", return_value=tmp_path), \
+         patch.object(voice_reference, "check_cancellation"), \
+         patch.object(voice_reference, "log_to_video"), \
+         patch.object(voice_reference.subprocess, "Popen", return_value=Mock(returncode=1)), \
+         patch.object(voice_reference, "communicate_process", side_effect=communicate), \
+         patch("haizflow.services.resource_packs.installed_engine_command", return_value=["engine"]):
+        with pytest.raises(RuntimeError, match=expected):
+            voice_reference.transcribe_reference(str(sample), "video", device="gpu")

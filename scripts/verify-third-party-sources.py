@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -12,9 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 def verify(root: Path = ROOT) -> None:
     manifest = json.loads((root / "runtime/third-party-sources-manifest.json").read_text(encoding="utf-8"))
     filename = manifest["file"]
-    if manifest.get("release_version") != "0.1.0" or filename != "HaizFlow-0.1.0-ThirdPartySources.zip":
+    release = str(manifest.get("release_version") or "")
+    if not re.fullmatch(r"\d+\.\d+\.\d+", release) or filename != f"HaizFlow-{release}-ThirdPartySources.zip":
         raise ValueError("Unexpected source release identity.")
-    if manifest["url"] != "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.0/" + filename:
+    if manifest["url"] != f"https://github.com/MachHongHai/HaizFlow/releases/download/v{release}/" + filename:
         raise ValueError("Corresponding sources must use the binary release channel.")
     archive = root / "dist/release-sources" / filename
     with archive.open("rb") as stream:
@@ -23,6 +25,8 @@ def verify(root: Path = ROOT) -> None:
         raise ValueError("Corresponding-source release asset differs from its pin.")
     with zipfile.ZipFile(archive) as bundle:
         inventory = json.loads(bundle.read("SOURCE-INVENTORY.json"))
+        if inventory.get("release_version") != release:
+            raise ValueError("Source inventory release differs from its manifest.")
         names = set(bundle.namelist())
         rows = inventory["files"]
         if len(rows) != len({row["file"] for row in rows}) or names != {row["file"] for row in rows} | {"SOURCE-INVENTORY.json"}:

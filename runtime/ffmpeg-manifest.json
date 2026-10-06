@@ -8,14 +8,15 @@
   "source_sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c",
   "source_signature_url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz.asc",
   "source_signature_sha256": "0a0963fccd70597838073f3e31b20f4a4d8cc2b5e577472c9a5a1f22624246f8",
-  "ffmpeg_sha256": "c6a5af3f67827c5102adb219ab9766c7e306be0661712f508b6452c242f19ddf",
-  "ffprobe_sha256": "8a082ff701b695b033b7fd1b3fdeedb13de88dbbbb3be81827c2451c50cf5b37",
+  "ffmpeg_sha256": "4e5244d41e98a3d85667c21ddfd8428574b740f45ec0a07b38ce0b35e77fc270",
+  "ffprobe_sha256": "a57f27ed3574ee23d08a89946f32e1aa87fd072b3665607d36af44cfcbad04b6",
   "version_line": "ffmpeg version 8.1.2-haizflow Copyright (c) 2000-2026 the FFmpeg developers",
   "required_configuration": [
     "--enable-gpl",
     "--enable-libass",
     "--enable-librubberband",
-    "--enable-libx264"
+    "--enable-libx264",
+    "--enable-libmp3lame"
   ],
   "required_filters": [
     "adelay",
@@ -24,18 +25,19 @@
     "atempo"
   ],
   "required_encoders": [
-    "libx264"
+    "libx264",
+    "libmp3lame"
   ],
   "runtime_files": [
     {
       "file": "ffmpeg.exe",
-      "sha256": "c6a5af3f67827c5102adb219ab9766c7e306be0661712f508b6452c242f19ddf",
-      "size": 31265280
+      "sha256": "4e5244d41e98a3d85667c21ddfd8428574b740f45ec0a07b38ce0b35e77fc270",
+      "size": 31269888
     },
     {
       "file": "ffprobe.exe",
-      "sha256": "8a082ff701b695b033b7fd1b3fdeedb13de88dbbbb3be81827c2451c50cf5b37",
-      "size": 31062016
+      "sha256": "a57f27ed3574ee23d08a89946f32e1aa87fd072b3665607d36af44cfcbad04b6",
+      "size": 31066624
     },
     {
       "file": "libass-9.dll",
@@ -123,6 +125,11 @@
       "size": 190709
     },
     {
+      "file": "libmp3lame-0.dll",
+      "sha256": "f40c566b56a97e32036f3d5263fd7dc2dafa6fc7ded326045dd637dd55d68c24",
+      "size": 329506
+    },
+    {
       "file": "libpcre2-8-0.dll",
       "sha256": "68a7cee2acc36d6a61d73f78825d17dfd32f8580f4bb1bc399134719518213d5",
       "size": 706915
@@ -168,5 +175,5 @@
       "size": 128488
     }
   ],
-  "corresponding_source_manifest_sha256": "1839f987c62501cf78d34849208d2d0387d318ea9a6c88fc2c1494c5354f5c33"
+  "corresponding_source_manifest_sha256": "d19ead63bccbc38a8003251ac55f5e0ce27743a18bcbea2152de299df4b2e8cb"
 }

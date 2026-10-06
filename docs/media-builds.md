@@ -6,7 +6,7 @@ be treated as interchangeable binaries.
 
 | Backend | Version | Delivery | Configuration |
 | --- | --- | --- | --- |
-| HaizFlow CLI | FFmpeg 8.1.2 | Core `bin/ffmpeg.exe`, `ffprobe.exe` and dependency DLLs | GPLv3, libass, x264, Rubber Band, FreeType, Fontconfig, HarfBuzz, FriBidi; native audio/video filters; optional NVENC |
+| HaizFlow CLI | FFmpeg 8.1.2 | Core `bin/ffmpeg.exe`, `ffprobe.exe` and dependency DLLs | GPLv3, libass, x264, Rubber Band, libmp3lame, FreeType, Fontconfig, HarfBuzz, FriBidi; native audio/video filters; optional NVENC |
 | Qt Multimedia | FFmpeg 7.1.3, zlib 1.3.1 | PySide6 DLL directory | Shared MSVC build, no GPL encoder library |
 | PyAV engines | FFmpeg 8.1.2, PyAV 18.1.0 | CPU/CUDA `_internal/av.libs` | Shared LGPL-only build, native codecs, zlib and Schannel; no GPL/nonfree/version3 components |
 
