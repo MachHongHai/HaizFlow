@@ -1958,6 +1958,10 @@ Author and owner of HaizFlow.</translation>
         <translation>Preparing preview…</translation>
     </message>
     <message>
+        <source>Đang chuẩn bị âm thanh · %1%</source>
+        <translation>Preparing audio · %1%</translation>
+    </message>
+    <message>
         <location line="-614"/>
         <location line="+1"/>
         <location line="+660"/>

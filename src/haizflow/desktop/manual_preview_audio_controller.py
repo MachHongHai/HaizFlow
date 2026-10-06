@@ -79,6 +79,8 @@ def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
             release = max(1, int(track.get("duck_release_frames") or 1))
             duck_envelope = np.ones((end - begin,), dtype=np.float32)
             for voice_start, voice_end in track["duck_ranges"]:
+                if cursor + end <= voice_start - attack or cursor + begin >= voice_end + release:
+                    continue
                 attack_gain = 1.0 - (1.0 - reduction) * np.clip(
                     (timeline - (voice_start - attack)) / attack, 0.0, 1.0
                 )
@@ -199,7 +201,10 @@ class ManualPreviewAudioController(QObject):
         with self._decode_lock:
             process = self._decode_process
             if process is not None and process.poll() is None:
-                process.kill()
+                try:
+                    process.kill()
+                except OSError:
+                    pass  # Windows can finish the process between poll and kill.
 
     def _pcm_path(self):
         descriptor, path = tempfile.mkstemp(suffix=".pcm", dir=self._pcm_directory.name)
@@ -225,13 +230,16 @@ class ManualPreviewAudioController(QObject):
         process = None
         try:
             with path.open("wb") as output:
+                if self._closed or generation != self._generation:
+                    raise CancelledError()
+                process = subprocess.Popen(
+                    command, stdout=output, stderr=subprocess.PIPE,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
                 with self._decode_lock:
                     if self._closed or generation != self._generation:
+                        process.kill()
                         raise CancelledError()
-                    process = subprocess.Popen(
-                        command, stdout=output, stderr=subprocess.PIPE,
-                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                    )
                     self._decode_process = process
                 elapsed = 0
                 while True:

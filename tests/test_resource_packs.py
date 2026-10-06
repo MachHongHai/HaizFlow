@@ -36,6 +36,33 @@ finalize_pack = load_script("finalize-resource-pack.py")
 
 
 class ResourcePackManifestTests(unittest.TestCase):
+    def test_windows_policy_block_is_reported_without_an_install_success_or_traceback(self):
+        from haizflow.services.resource_packs import ENGINE_REQUIRED_COMMANDS
+
+        manager = ResourcePackManager()
+        definition = manager.definitions["engine-cpu-py313"]
+        with tempfile.TemporaryDirectory() as directory:
+            staging = Path(directory)
+            (staging / "engine.exe").write_bytes(b"fixture")
+            payload = {
+                "pack_id": definition.pack_id, "version": definition.version,
+                "profile": "cpu",
+                "protocol_version": definition.protocol_version,
+                "runtime_contract": definition.runtime_contract,
+            }
+            payload.update({name: ["engine.exe"] for name in ENGINE_REQUIRED_COMMANDS[definition.pack_id]})
+            (staging / "engine.json").write_text(json.dumps(payload), encoding="utf-8")
+            process = Mock()
+            process.returncode = 1
+            process.communicate.return_value = ("", "Traceback: DLL load failed: An Application Control policy has blocked this file.")
+            process.poll.return_value = 1
+            with patch("haizflow.services.resource_packs.subprocess.Popen", return_value=process):
+                with self.assertRaises(ResourcePackError) as caught:
+                    manager._verify_engine_staging(definition, staging)
+            self.assertIn("Windows Application Control", str(caught.exception))
+            self.assertNotIn("Traceback", str(caught.exception))
+            self.assertFalse((staging / "installed.json").exists())
+
     def test_six_gib_demucs_gpu_keeps_cpu_ram_requirement(self):
         from haizflow.core.hardware import HardwareCapabilities
         from haizflow.desktop.resource_pack_controller import ResourcePackController

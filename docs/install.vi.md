@@ -4,7 +4,7 @@
 
 ## 1. Chuẩn bị
 
-HaizFlow dùng trên Windows 10 phiên bản 1809 trở lên hoặc Windows 11 x64. GPU NVIDIA không bắt buộc. Cần Internet để tải ứng dụng và những gói bạn chọn.
+HaizFlow dùng trên Windows 10 phiên bản 1809 trở lên hoặc Windows 11 x64, RAM hệ thống từ 16 GB. GPU NVIDIA không bắt buộc. Chế độ GPU hỗ trợ card NVIDIA tương thích có VRAM riêng từ 6 GB; bộ nhớ đồ họa chia sẻ không tính vào mức này. Cần Internet để tải ứng dụng và những gói bạn chọn.
 
 Chọn ổ còn đủ chỗ cho ứng dụng, tài nguyên, video nguồn và video xuất. Setup hiển thị yêu cầu của bản đang cài; mỗi gói có yêu cầu riêng và có thể cần thêm chỗ tạm khi tải, giải nén hoặc sửa.
 

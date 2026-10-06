@@ -320,7 +320,12 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
 
 
 class ResourcePackError(RuntimeError):
-    pass
+    def __init__(self, message, *, english=""):
+        super().__init__(message)
+        self.english = english
+
+    def ui_message(self, language):
+        return self.english if language == "en" and self.english else str(self)
 
 
 class ResourcePackManager:
@@ -1038,7 +1043,12 @@ class ResourcePackManager:
                     "Windows Application Control đã chặn một tệp của bộ xử lý. "
                     "Gói không được xác nhận là đã cài. Tải lại không khắc phục được chính sách chặn này. "
                     "Xem Windows Security và nhật ký CodeIntegrity để xác định tệp bị chặn; "
-                    "máy do tổ chức quản lý cần quản trị viên cho phép ứng dụng."
+                    "máy do tổ chức quản lý cần quản trị viên cho phép ứng dụng.",
+                    english=(
+                        "Windows Application Control blocked an engine file. The pack has not been marked installed. "
+                        "Downloading it again will not change this policy. Check Windows Security and the CodeIntegrity "
+                        "event log to identify the blocked file. Organization-managed PCs need administrator approval."
+                    )
                 )
             raise ResourcePackError(f"Bộ xử lý không vượt qua kiểm tra: {detail}")
         return payload

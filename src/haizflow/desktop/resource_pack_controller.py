@@ -565,7 +565,8 @@ class ResourcePackController(QObject):
             self._events.put({
                 "kind": "error",
                 "pack_id": pack_id,
-                "message": str(exc),
+                "message": exc.ui_message(getattr(self._host, "_settings_language", "vi"))
+                    if isinstance(exc, ResourcePackError) else str(exc),
                 "snapshot": snapshot,
             })
         finally:

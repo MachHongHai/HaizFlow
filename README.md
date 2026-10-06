@@ -46,7 +46,9 @@ Gemini, Zernio and other external services have their own terms, limits and char
 3. Create an **Automatic**, **Manual** or **Batch** project and add videos.
 4. Select language, models and voice if needed. Process, review and **Export** the video.
 
-Supported systems are Windows 10 version 1809 or later and Windows 11 x64, with at least 16 GiB RAM. Installer users do not need Python. Resource packs, projects and exports need additional storage; Setup and the Resource packs page show their corresponding requirements.
+Supported systems are Windows 10 version 1809 or later and Windows 11 x64, with at least 16 GB system RAM. Installer users do not need Python. Resource packs, projects and exports need additional storage; Setup and the Resource packs page show their corresponding requirements.
+
+GPU mode supports compatible NVIDIA cards with 6 GB dedicated VRAM or more. On a 6 GB card, start with Demucs, Whisper Small and Gemini or HY-MT2 CPU Q4 translation. Windows Smart App Control or an Application Control policy may block this unsigned build; see the [installation guide](docs/install.md).
 
 See [Installation](docs/install.md) for CPU/GPU packs, API keys and storage. See the [User guide](docs/user-guide.md) for projects, captions, dubbing and publishing.
 
@@ -58,7 +60,7 @@ HaizFlow is free to use under [HaizFlow Source-Available 1.0](LICENSE). This is 
 
 You need permission to use imported video, music and voice samples. See [NOTICE](NOTICE) and [third-party notices](THIRD_PARTY_NOTICES.md). The [licensing review](docs/licensing-review.md) and [inactive draft terms](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) are retained separately.
 
-HaizFlow uses Qt/PySide under LGPL and FFmpeg under GPL/LGPL, depending on the component. [Bundled library sources](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.2/HaizFlow-0.1.2-ThirdPartySources.zip) and [library replacement instructions](docs/third-party-library-replacement.md) are provided separately. Independent library-license rights remain available.
+HaizFlow uses Qt/PySide under LGPL and FFmpeg under GPL/LGPL, depending on the component. [Bundled library sources](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.3/HaizFlow-0.1.3-ThirdPartySources.zip) and [library replacement instructions](docs/third-party-library-replacement.md) are provided separately. Independent library-license rights remain available.
 
 ## Support and contributions
 

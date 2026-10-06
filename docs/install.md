@@ -4,13 +4,13 @@
 
 ## 1. Before you install
 
-Use Windows 10 version 1809 or later, or Windows 11 x64. An NVIDIA GPU is optional. Internet access is needed to download the app and selected resource packs.
+Use Windows 10 version 1809 or later, or Windows 11 x64, with at least 16 GB system RAM. An NVIDIA GPU is optional. GPU mode supports compatible NVIDIA cards with 6 GB dedicated VRAM or more. Shared graphics memory does not count toward this requirement. Internet access is needed to download the app and selected resource packs.
 
 Allow space for the app, packs, source videos and exports. Setup shows the requirement for its application build. Packs have separate requirements and may need temporary space for downloads, extraction or repair.
 
 ## 2. Install the app
 
-**[Download HaizFlow-0.1.1-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.1/HaizFlow-0.1.1-Setup.exe).** This is the only file you need to install the app. Core files on the [release page](https://github.com/MachHongHai/HaizFlow/releases/latest) are for automatic updates; do not download or extract them for installation.
+**[Download HaizFlow-0.1.3-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.3/HaizFlow-0.1.3-Setup.exe).** This is the only file you need to install the app. Core files on the [release page](https://github.com/MachHongHai/HaizFlow/releases/latest) are for automatic updates; do not download or extract them for installation.
 
 1. Open **Setup.exe**, select the language and read the terms.
 2. Choose an installation folder on a drive with enough free space.
@@ -28,6 +28,8 @@ Open **Settings → General**:
 - **NVIDIA GPU:** for compatible hardware; GPU features also need their matching engine and model packs.
 
 Choose **Apply** and review the project's models before processing. CPU users do not need a CUDA pack. Installing CUDA Toolkit manually is not necessary for the app's packaged engines.
+
+On a 6 GB GPU, start with Demucs, Whisper Small and Gemini translation. HY-MT2 CPU Q4 is an alternative for local translation; the full GPU model requires more memory. Keep other memory-intensive applications closed while processing.
 
 ## 4. Install the tools you need
 
