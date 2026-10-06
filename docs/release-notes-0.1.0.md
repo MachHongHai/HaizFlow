@@ -26,11 +26,15 @@ Máy không có GPU NVIDIA vẫn dùng được các công cụ CPU. Whisper và
 4. Cài các gói cần dùng trong **Gói tài nguyên**. Thêm Gemini/Zernio key khi dùng các dịch vụ này.
 5. Tạo dự án, thêm video, chọn công cụ và xem trước kết quả trước khi xuất.
 
+Để cài ứng dụng, bạn chỉ cần bộ cài `Setup.exe`. Các tệp Core và engine trong
+Assets dành cho cơ chế cập nhật/tải gói của ứng dụng; không cần tải hoặc mở
+chúng riêng. Gói tài nguyên được cài từ trang **Gói tài nguyên** trong HaizFlow.
+
 Windows 10 phiên bản 1809 trở lên hoặc Windows 11 x64; RAM từ 16 GiB. Không cần cài Python hoặc CUDA Toolkit riêng. Dung lượng của gói tài nguyên, video và tệp xuất được tính riêng với ứng dụng.
 
 Bộ cài không ký số. Windows có thể hiện nhà phát hành không xác định hoặc chặn ứng dụng chưa ký theo chính sách máy. Kiểm tra nguồn tải và SHA-256; không tắt bảo vệ Windows.
 
-[Cài đặt chi tiết](https://github.com/MachHongHai/HaizFlow/blob/test/docs/install.vi.md) · [Hướng dẫn sử dụng](https://github.com/MachHongHai/HaizFlow/blob/test/docs/user-guide.vi.md) · [Trợ giúp](https://github.com/MachHongHai/HaizFlow/blob/test/docs/support.vi.md)
+[Cài đặt chi tiết](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/install.vi.md) · [Hướng dẫn sử dụng](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/user-guide.vi.md) · [Trợ giúp](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/support.vi.md)
 
 ## Giấy phép
 
@@ -54,10 +58,14 @@ Whisper and HY-MT2 run locally without API keys or per-call translation charges.
 4. Install the resources you need and add Gemini/Zernio keys when using those services.
 5. Create a project, add videos, process and preview before export.
 
+Only `Setup.exe` is needed to install HaizFlow. Core and engine assets are used
+by the application's update/resource manager; do not open them separately.
+Install optional resources from **Resource packs** in HaizFlow.
+
 Requires Windows 10 version 1809 or later, or Windows 11 x64, and at least 16 GiB RAM. No separate Python or CUDA Toolkit installation is needed. Resource packs and media require additional storage.
 
 The installer is unsigned. Windows may show an unknown publisher or block execution under device policy. Verify the download source and SHA-256; do not disable Windows protection.
 
-[Installation](https://github.com/MachHongHai/HaizFlow/blob/test/docs/install.md) · [User guide](https://github.com/MachHongHai/HaizFlow/blob/test/docs/user-guide.md) · [Help](https://github.com/MachHongHai/HaizFlow/blob/test/docs/support.md)
+[Installation](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/install.md) · [User guide](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/user-guide.md) · [Help](https://github.com/MachHongHai/HaizFlow/blob/v0.1.0/docs/support.md)
 
 HaizFlow is free to use under HaizFlow Source-Available 1.0. **The current OmniVoice model is for noncommercial use only.** Application terms do not replace model or imported-content licenses.
