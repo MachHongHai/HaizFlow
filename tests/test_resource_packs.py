@@ -187,7 +187,8 @@ class ResourcePackManagerTests(unittest.TestCase):
                 manager.install("model-test", lambda _pack, event: events.append(event))
             install.assert_not_called()
             summary.assert_not_called()
-            self.assertEqual([event.state for event in events], ["ready", "ready"])
+            self.assertEqual([event.state for event in events if event.state == "ready"], ["ready", "ready"])
+            self.assertEqual(events[-1].state, "ready")
             self.assertEqual((root / "model.bin").read_bytes(), b"data")
 
     def test_model_dedup_allows_healthy_repair_corrupt_repair_and_remove_reinstall(self):

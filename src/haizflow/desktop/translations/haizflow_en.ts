@@ -3420,6 +3420,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ResourcePackRow</name>
+    <message><source>Đang tạm dừng…</source><translation>Pausing…</translation></message>
+    <message><source>Đang dừng…</source><translation>Pausing…</translation></message>
     <message><source>Cài từ gói có sẵn</source><translation>Install from the local archive</translation></message>
     <message>
         <source>Đang cài đặt</source>

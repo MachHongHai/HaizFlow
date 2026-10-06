@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 HYMT2_GPU_REPO = "tencent/Hy-MT2-1.8B"
@@ -210,11 +212,33 @@ class ModelIntegrityError(RuntimeError):
     pass
 
 
+_verification_observer = ContextVar("model_verification_observer", default=None)
+
+
+@contextmanager
+def observe_verification(observer):
+    """Report checks on this worker only; the observer may request cancellation."""
+    token = _verification_observer.set(observer)
+    try:
+        yield
+    finally:
+        _verification_observer.reset(token)
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
+    observer = _verification_observer.get()
+    completed = 0
+    total = path.stat().st_size
     with path.open("rb") as file:
-        while chunk := file.read(16 * 1024 * 1024):
+        while True:
+            if observer is not None:
+                observer(path, completed, total)
+            chunk = file.read(4 * 1024 * 1024)
+            if not chunk:
+                break
             digest.update(chunk)
+            completed += len(chunk)
     return digest.hexdigest()
 
 

@@ -147,7 +147,7 @@ def test_repair_checks_the_installed_runtime_and_reinstalls_if_broken(packs):
     manager.install = Mock()
     controller.repairResourcePack("model-demucs")
     finish(controller, "model-demucs")
-    manager.verify_installed.assert_called_once_with("engine-test")
+    manager.verify_installed.assert_called_once_with("engine-test", cancel_event=controller._install_cancellations["model-demucs"])
     assert [call.args[0] for call in manager.install.call_args_list] == ["engine-test", "model-demucs"]
 
 

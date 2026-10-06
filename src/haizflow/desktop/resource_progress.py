@@ -18,10 +18,12 @@ class InstallProgress:
         engine = unit.startswith("engine-")
         if event.state == "ready" and event.phase != "transfer":
             fraction = 1.0
+        elif event.phase == "assembly":
+            fraction = 0.70 + ratio * 0.05
         elif event.phase == "installing":
-            fraction = 0.70 + ratio * 0.20
+            fraction = 0.75 + ratio * 0.20
         elif event.phase == "finalizing":
-            fraction = 0.90 if engine else 0.97
+            fraction = 0.95 if engine else 0.97
         elif event.phase == "transfer" or event.state in {"downloading", "verifying"}:
             fraction = (0.02 + ratio * (0.68 if engine else 0.93))
         else:
@@ -36,7 +38,11 @@ class InstallProgress:
 def progress_copy(unit: str, event: ModelProgress) -> dict:
     match = re.search(r"(?:Tệp|Kiểm tra) (\d+)/(\d+)", event.detail)
     return {"unit": unit, "state": "verifying" if event.state == "ready" else event.state,
-            "file": int(match[1]) if match else 0, "count": int(match[2]) if match else 0}
+            "file": int(match[1]) if match else 0, "count": int(match[2]) if match else 0,
+            "phase": event.phase, "completed": event.completed_bytes, "total": event.total_bytes,
+            "indeterminate": event.state == "checking" or event.phase == "finalizing"
+                or (event.state == "verifying" and event.phase == "transfer")
+                or event.total_bytes <= 0}
 
 
 def pack_label(unit: str, language: str) -> str:
@@ -90,11 +96,18 @@ def localized_progress(copy: dict, language: str) -> str:
     vi = language == "vi"
     states = {"checking": ("Đang kiểm tra", "Checking"), "downloading": ("Đang tải", "Downloading"),
               "verifying": ("Đang xác minh", "Verifying"), "installing": ("Đang cài đặt", "Installing"),
-              "paused": ("Đã tạm dừng", "Paused"), "removing": ("Đang gỡ", "Removing")}
+              "paused": ("Đã tạm dừng", "Paused"), "pausing": ("Đang tạm dừng…", "Pausing…"),
+              "removing": ("Đang gỡ", "Removing")}
     parts = [states.get(copy.get("state"), states["checking"])[0 if vi else 1]]
     unit = copy.get("unit", "")
     label = pack_label(unit, language)
     if copy.get("count"):
         parts.append(("Tệp" if vi else "File") + f" {copy['file']}/{copy['count']}")
     parts.append(label)
+    if copy.get("state") in {"checking", "downloading", "installing"} and copy.get("total", 0) >= 1024:
+        def size(value):
+            scale, unit = (10**9, "GB") if value >= 10**9 else (10**6, "MB")
+            return f"{value / scale:.1f} {unit}"
+
+        parts.append(f"{size(copy['completed'])} / {size(copy['total'])}")
     return " · ".join(parts)

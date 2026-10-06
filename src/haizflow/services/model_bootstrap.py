@@ -73,9 +73,9 @@ from haizflow.core.model_integrity import (
 )
 
 DOWNLOAD_HEADROOM_BYTES = 1024**3
-DOWNLOAD_CHUNK_BYTES = 4 * 1024 * 1024
+DOWNLOAD_CHUNK_BYTES = 256 * 1024
 DOWNLOAD_RETRIES = 3
-DOWNLOAD_TIMEOUT_SECONDS = 60
+DOWNLOAD_TIMEOUT_SECONDS = 10
 USER_AGENT = "HaizFlow resource manager/1"
 
 
@@ -274,22 +274,31 @@ def required_download_bytes(device: str) -> int:
     return sum(asset.size for asset in required_assets(device))
 
 
-def _sha256(path: Path) -> str:
+def _sha256(path: Path, *, cancel_event=None, progress=lambda _done, _total: None) -> str:
     digest = hashlib.sha256()
+    completed = 0
+    total = path.stat().st_size
     with path.open("rb") as stream:
-        while chunk := stream.read(16 * 1024 * 1024):
+        while True:
+            _check_cancelled(cancel_event)
+            chunk = stream.read(4 * 1024 * 1024)
+            if not chunk:
+                break
             digest.update(chunk)
+            completed += len(chunk)
+            progress(completed, total)
     return digest.hexdigest()
 
 
-def _asset_is_valid(path: Path, asset: ModelAsset) -> bool:
+def _asset_is_valid(path: Path, asset: ModelAsset, *, cancel_event=None, progress=lambda _done, _total: None) -> bool:
     try:
-        return path.is_file() and path.stat().st_size == asset.size and _sha256(path) == asset.sha256
+        return path.is_file() and path.stat().st_size == asset.size and _sha256(
+            path, cancel_event=cancel_event, progress=progress) == asset.sha256
     except OSError:
         return False
 
 
-def _prepare_partial(destination: Path, asset: ModelAsset) -> int:
+def _prepare_partial(destination: Path, asset: ModelAsset, *, cancel_event=None) -> int:
     """Return a safe resumable offset, promoting a complete verified part."""
     partial = destination.with_name(destination.name + ".part")
     try:
@@ -304,7 +313,7 @@ def _prepare_partial(destination: Path, asset: ModelAsset) -> int:
         partial.unlink(missing_ok=True)
         return 0
     if partial_size == asset.size:
-        if _sha256(partial) == asset.sha256:
+        if _sha256(partial, cancel_event=cancel_event) == asset.sha256:
             os.replace(partial, destination)
             return asset.size
         partial.unlink(missing_ok=True)
@@ -359,10 +368,11 @@ def _download_asset(
     total_bytes: int,
     progress: ProgressCallback,
     cancel_event,
+    checked_missing: bool = False,
 ) -> None:
     destination = root / Path(asset.relative_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if _asset_is_valid(destination, asset):
+    if not checked_missing and _asset_is_valid(destination, asset, cancel_event=cancel_event):
         progress(
             ModelProgress(
                 "downloading",
@@ -377,7 +387,7 @@ def _download_asset(
         destination.unlink(missing_ok=True)
 
     partial = destination.with_name(destination.name + ".part")
-    if _prepare_partial(destination, asset) == asset.size:
+    if _prepare_partial(destination, asset, cancel_event=cancel_event) == asset.size:
         progress(
             ModelProgress(
                 "downloading",
@@ -405,16 +415,28 @@ def _download_asset(
                 if advertised is not None and int(advertised) != expected_response_size:
                     raise ModelBootstrapError(f"{asset.label} returned an unexpected download size.")
                 written = offset
+                digest = hashlib.sha256()
+                if offset:
+                    # Hash the preserved prefix once, then hash incoming bytes
+                    # while writing. A fresh download never needs a second
+                    # multi-gigabyte disk read just to verify its checksum.
+                    with partial.open("rb") as prefix:
+                        while block := prefix.read(4 * 1024 * 1024):
+                            _check_cancelled(cancel_event)
+                            digest.update(block)
+                            progress(ModelProgress("verifying", asset.label, "", base_completed + offset, total_bytes))
+                read_chunk = getattr(response, "read1", response.read)
                 with partial.open(mode) as output:
                     while True:
                         _check_cancelled(cancel_event)
-                        chunk = response.read(DOWNLOAD_CHUNK_BYTES)
+                        chunk = read_chunk(DOWNLOAD_CHUNK_BYTES)
                         if not chunk:
                             break
                         written += len(chunk)
                         if written > asset.size:
                             raise ModelBootstrapError(f"{asset.label} exceeded its pinned size.")
                         output.write(chunk)
+                        digest.update(chunk)
                         progress(
                             ModelProgress(
                                 "downloading",
@@ -437,7 +459,8 @@ def _download_asset(
                     total_bytes,
                 )
             )
-            if _sha256(partial) != asset.sha256:
+            _check_cancelled(cancel_event)
+            if digest.hexdigest() != asset.sha256:
                 partial.unlink(missing_ok=True)
                 raise ModelBootstrapError(f"{asset.label} failed SHA-256 verification.")
             os.replace(partial, destination)
@@ -451,7 +474,12 @@ def _download_asset(
             if attempt == DOWNLOAD_RETRIES:
                 break
             _check_cancelled(cancel_event)
-            time.sleep(min(2**attempt, 5))
+            delay = min(2**attempt, 5)
+            if cancel_event is None:
+                time.sleep(delay)
+            else:
+                cancel_event.wait(delay)
+                _check_cancelled(cancel_event)
     raise ModelBootstrapError(
         f"Could not download {asset.label} after {DOWNLOAD_RETRIES} attempts: {last_error}"
     ) from last_error
@@ -511,7 +539,9 @@ def install_model_assets(
     completed = 0
     for position, asset in enumerate(assets, 1):
         _check_cancelled(cancel_event)
-        if _asset_is_valid(root / Path(asset.relative_path), asset):
+        if _asset_is_valid(root / Path(asset.relative_path), asset, cancel_event=cancel_event,
+                progress=lambda done, total, position=position: progress(ModelProgress(
+                    "checking", asset.label, f"Kiểm tra {position}/{len(assets)}", done, total))):
             valid.add(asset.relative_path)
             completed += asset.size
         progress(
@@ -529,8 +559,8 @@ def install_model_assets(
         if asset.relative_path in valid:
             continue
         destination = root / Path(asset.relative_path)
-        resumable_bytes = _prepare_partial(destination, asset)
-        if resumable_bytes == asset.size and _asset_is_valid(destination, asset):
+        resumable_bytes = _prepare_partial(destination, asset, cancel_event=cancel_event)
+        if resumable_bytes == asset.size:
             valid.add(asset.relative_path)
             completed += asset.size
             continue
@@ -559,6 +589,7 @@ def install_model_assets(
                 "transfer",
             )),
             cancel_event=cancel_event,
+            checked_missing=True,
         )
         completed += asset.size
 

@@ -38,6 +38,7 @@ ColumnLayout {
         case "installing": return qsTr("Đang cài đặt");
         case "removing": return qsTr("Đang gỡ");
         case "paused": return qsTr("Đã tạm dừng");
+        case "pausing": return qsTr("Đang tạm dừng…");
         case "failed": return qsTr("Lỗi");
         default: return qsTr("Chưa cài");
         }
@@ -113,7 +114,7 @@ ColumnLayout {
             }
 
             AppProgressBar {
-                visible: ["checking", "downloading", "verifying", "installing"].indexOf(root.status) >= 0
+                visible: ["checking", "downloading", "verifying", "installing", "pausing"].indexOf(root.status) >= 0
                 Layout.fillWidth: true
                 Layout.topMargin: 2
                 value: Math.max(0, root.progress)
@@ -136,7 +137,7 @@ ColumnLayout {
                     anchors.verticalCenter: parent.verticalCenter
                     status: root.status === "installed" ? "success"
                         : root.status === "failed" ? "error"
-                        : ["checking", "downloading", "verifying", "installing", "paused", "removing"].indexOf(root.status) >= 0
+                        : ["checking", "downloading", "verifying", "installing", "paused", "pausing", "removing"].indexOf(root.status) >= 0
                             ? "processing" : "ready"
                     label: root.statusLabel(root.status)
                     iconName: root.status === "installed" ? "success" : ""
@@ -149,8 +150,9 @@ ColumnLayout {
 
                 StudioButton {
                     anchors.fill: parent
-                    visible: ["checking", "downloading", "verifying", "installing"].indexOf(root.status) >= 0
-                    text: qsTr("Tạm dừng")
+                    visible: ["checking", "downloading", "verifying", "installing", "pausing"].indexOf(root.status) >= 0
+                    text: root.status === "pausing" ? qsTr("Đang dừng…") : qsTr("Tạm dừng")
+                    enabled: root.status !== "pausing"
                     iconName: "pause"
                     variant: "secondary"
                     onClicked: AppController.cancelResourcePackOperation(root.packId)

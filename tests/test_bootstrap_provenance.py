@@ -1,11 +1,13 @@
 import importlib.util
 import json
+import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+CURRENT_VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 SPEC = importlib.util.spec_from_file_location("finalize_bootstrap", ROOT / "scripts/finalize-bootstrap.py")
 bootstrap = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bootstrap)
@@ -23,7 +25,7 @@ def payload(tmp_path):
 
 
 def verify(artifact, **changes):
-    args = dict(source_commit="test-commit", version="0.1.0", engineering=False)
+    args = dict(source_commit="test-commit", version=CURRENT_VERSION, engineering=False)
     bootstrap.verify(artifact, "HaizFlow.exe", **dict(args, **changes))
 
 
@@ -31,7 +33,7 @@ def test_finalized_bootstrap_matches_core(payload):
     verify(payload)
 
 
-@pytest.mark.parametrize("changes", [{"source_commit": "other"}, {"version": "0.1.1"}, {"engineering": True}])
+@pytest.mark.parametrize("changes", [{"source_commit": "other"}, {"version": "99.0.0"}, {"engineering": True}])
 def test_other_source_version_or_mode_rejected(payload, changes):
     with pytest.raises(ValueError, match="provenance"):
         verify(payload, **changes)

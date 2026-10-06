@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from haizflow.update.filesystem import atomic_json, no_links, remove_owned, sha256
 from haizflow.update.manifest import inventory
+from haizflow.update.manifest import Manifest
 from haizflow.update.packages import generate
 from haizflow.update.state import Layout
 
@@ -21,15 +22,31 @@ from haizflow.update.state import Layout
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact", type=Path, required=True)
+    parser.add_argument("--base-artifact", type=Path)
+    parser.add_argument("--update-package", type=Path)
+    parser.add_argument("--update-manifest", type=Path)
     parser.add_argument("--require-unsigned", action="store_true",
                         help="Require NotSigned for Core, launcher and updater before testing")
     parser.add_argument("--process-timeout", type=float, default=300,
                         help="Outer launch bound, including pre-start inventory hashing; health remains 30 seconds")
     args = parser.parse_args()
+    real_release_delta = args.base_artifact is not None
+    if any((args.base_artifact, args.update_package, args.update_manifest)) and not all(
+            (args.base_artifact, args.update_package, args.update_manifest)):
+        parser.error("Provide base artifact, update package and update manifest together.")
     if not 30 <= args.process_timeout <= 900:
         parser.error("--process-timeout must be between 30 and 900 seconds")
     artifact = args.artifact.absolute()
     no_links(artifact)
+    current_version = json.loads((artifact / "BUILD-INFO.json").read_text("utf-8"))["version"]
+    base_artifact = args.base_artifact.absolute() if real_release_delta else artifact
+    no_links(base_artifact)
+    base_version = json.loads((base_artifact / "BUILD-INFO.json").read_text("utf-8"))["version"]
+    def next_patch(value):
+        major, minor, patch = map(int, value.split("."))
+        return f"{major}.{minor}.{patch + 1}"
+    target_version = current_version if real_release_delta else next_patch(base_version)
+    broken_version = next_patch(target_version)
     if not (artifact / "update-layout.json").is_file():
         raise ValueError("A versioned frozen artifact is required.")
     unsigned_verified = False
@@ -37,7 +54,7 @@ def main():
         if sys.platform != "win32":
             raise RuntimeError("Authenticode status inspection requires Windows.")
         executables = (artifact / "HaizFlow.exe", artifact / "updater/HaizFlowUpdater.exe",
-                       artifact / "versions/0.1.0/HaizFlowCore.exe")
+                       artifact / "versions" / current_version / "HaizFlowCore.exe")
         for executable in executables:
             environment = os.environ.copy()
             # pwsh 7's inherited module path can make Windows PowerShell 5 try
@@ -64,9 +81,9 @@ def main():
     assets = root / "packages"
     passed = False
     try:
-        shutil.copytree(artifact, install)
+        shutil.copytree(base_artifact, install)
         layout = Layout(install)
-        layout.seed("0.1.0")
+        layout.seed(base_version)
         fixture = layout.runtime / "data/user-fixture.json"
         fixture.parent.mkdir(parents=True)
         fixture.write_bytes(b"USER DATA MUST SURVIVE DELTA AND ROLLBACK")
@@ -75,14 +92,20 @@ def main():
         external.write_bytes(b"EXTERNAL PROJECT")
         before = {str(path): sha256(path) for path in (fixture, external)}
         # Installed metadata files are never input files of another manifest.
-        shutil.copytree(layout.core("0.1.0"), source,
+        shutil.copytree(artifact / "versions" / current_version, source,
                         ignore=shutil.ignore_patterns("core-manifest.json", "core-complete.json"))
-        (source / "delta-fixture.txt").write_bytes(b"NEW CORE FIXTURE DATA")
-        manifest = generate(layout.core("0.1.0"), source, assets,
-                            base_version="0.1.0", target_version="0.1.1")
-        layout.prepare(assets / manifest.data["package_name"], manifest)
+        if real_release_delta:
+            manifest = Manifest.parse(json.loads(args.update_manifest.read_text("utf-8")))
+            assert manifest.data["base_version"] == base_version
+            assert manifest.data["target_version"] == target_version
+            layout.prepare(args.update_package, manifest)
+        else:
+            (source / "delta-fixture.txt").write_bytes(b"NEW CORE FIXTURE DATA")
+            manifest = generate(layout.core(base_version), source, assets,
+                                base_version=base_version, target_version=target_version)
+            layout.prepare(assets / manifest.data["package_name"], manifest)
         print("Delta reconstructed with exact inventory; activating real Core fixture.", flush=True)
-        assert inventory(layout.core("0.1.1")) == inventory(source)
+        assert inventory(layout.core(target_version)) == inventory(source)
         with layout.lock():
             layout.activate(core_exited=True)
 
@@ -99,22 +122,24 @@ def main():
                 raise RuntimeError(f"Frozen launcher failed: {label}, exit={result.returncode}")
 
         launch("delta-success")
-        assert layout.active()["active"] == "0.1.1" and layout.journal()["state"] == "confirmed"
-        assert inventory(layout.core("0.1.1")) == inventory(source), "Startup changed immutable Core files"
+        assert layout.active()["active"] == target_version and layout.journal()["state"] == "confirmed"
+        assert inventory(layout.core(target_version)) == inventory(source), "Startup changed immutable Core files"
         print("Real Core health confirmed; testing failed-start rollback.", flush=True)
 
         # A checksum-valid but unlaunchable future Core must roll back once.
         (source / "HaizFlowCore.exe").write_bytes(b"INTENTIONALLY NOT A WINDOWS EXECUTABLE")
-        broken = generate(layout.core("0.1.1"), source, assets,
-                          base_version="0.1.1", target_version="0.1.2")
+        broken = generate(layout.core(target_version), source, assets,
+                          base_version=target_version, target_version=broken_version)
         layout.prepare(assets / broken.data["package_name"], broken)
         with layout.lock():
             layout.activate(core_exited=True)
         launch("rollback-success")
-        assert layout.active()["active"] == "0.1.1" and layout.journal()["state"] == "rolled_back"
+        assert layout.active()["active"] == target_version and layout.journal()["state"] == "rolled_back"
         assert before == {str(path): sha256(path) for path in (fixture, external)}
         atomic_json(report / "result.json", dict(passed=True, actual_frozen_binaries=True,
-            synthetic_versions=True, network_tested=False, delta_size=manifest.data["package_size"],
+            synthetic_versions=not real_release_delta, real_release_delta=real_release_delta,
+            synthetic_rollback=True, base_version=base_version, target_version=target_version,
+            network_tested=False, delta_size=manifest.data["package_size"],
             target_inventory_exact=True, startup_core_immutable=True, rollback=True, user_data_preserved=True,
             unsigned_binaries_verified=unsigned_verified))
         passed = True

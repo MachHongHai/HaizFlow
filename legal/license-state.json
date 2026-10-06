@@ -10,14 +10,14 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "0.1.0 reviewed release candidate; publication tracked by GitHub release state",
+  "effective_release": "0.1.1 reviewed patch candidate; publication tracked by GitHub release state",
   "public_release_review": {
     "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
     "approved_at": "2026-10-06",
-    "source_commit": "f5cffbf8eeca03ffa55753c6e3a1e8c1921696aa",
-    "release_version": "0.1.0",
-    "owner_release_authorization": "Direct owner request to publish on GitHub, commit and push; version 0.1.0, no paid Authenticode certificate",
-    "publication_condition": "Upload and verify corresponding sources alongside public binary assets before publication",
+    "source_commit": "f01e047e01cdbbb459bf4a230ce7ceca6a9271c7",
+    "release_version": "0.1.1",
+    "owner_release_authorization": "Direct owner request to fix resource installation, rebuild and publish; preserve direct updates from 0.1.0; no paid Authenticode certificate",
+    "publication_condition": "Verify unchanged library sources remain publicly downloadable at their immutable v0.1.0 URL; preserve existing resource URLs and include direct source links in patch release notes",
     "clearances": {
       "owned-code-and-contributor-scope": {
         "path": "legal/reviews/application-scope-2026-10-06.md",

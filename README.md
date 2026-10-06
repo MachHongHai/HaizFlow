@@ -39,7 +39,7 @@ Gemini, Zernio and other external services have their own terms, limits and char
 
 ## Install and get started
 
-Official downloads: [HaizFlow GitHub Releases](https://github.com/MachHongHai/HaizFlow/releases). Each release includes the Windows installer and installation instructions.
+**[Download the Windows installer](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.1/HaizFlow-0.1.1-Setup.exe).** Run this EXE only; do not download or extract Core files. Resource packs are installed inside HaizFlow. [Release and installation details](https://github.com/MachHongHai/HaizFlow/releases/latest).
 
 1. Install and open HaizFlow. Vietnamese is the default; English is available in Settings.
 2. Choose CPU or NVIDIA GPU in **Settings → General**, then install the resource packs you need.

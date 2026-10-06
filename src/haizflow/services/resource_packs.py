@@ -632,7 +632,7 @@ class ResourcePackManager:
                     continue
         return total
 
-    def snapshot(self) -> list[dict]:
+    def snapshot(self, pack_ids: Iterable[str] | None = None) -> list[dict]:
         storage_root = self.storage_root
         usage_path = storage_root
         while not usage_path.exists() and usage_path.parent != usage_path:
@@ -640,7 +640,9 @@ class ResourcePackManager:
         usage = shutil.disk_usage(usage_path)
         result = []
         total_installed_bytes = self._resource_storage_bytes()
-        for definition in self.definitions.values():
+        definitions = self.definitions.values() if pack_ids is None else (
+            self.definitions[pack_id] for pack_id in dict.fromkeys(pack_ids))
+        for definition in definitions:
             status = self.status(definition.pack_id)
             missing_dependencies = [
                 dependency
@@ -885,6 +887,15 @@ class ResourcePackManager:
             verify_model(root / "speaker-identification")
 
     def install(self, pack_id: str, progress: Callable[[str, ModelProgress], None], *, repair: bool = False) -> None:
+        from haizflow.core.model_integrity import observe_verification
+
+        def observe(_path, done, total):
+            progress(pack_id, ModelProgress("checking", "", "", done, total, "checking"))
+
+        with observe_verification(observe):
+            self._install_checked(pack_id, progress, repair=repair)
+
+    def _install_checked(self, pack_id: str, progress: Callable[[str, ModelProgress], None], *, repair: bool = False) -> None:
         definition = self.definitions[pack_id]
         # A repeated click/queued dependency must not unpack another copy of a
         # healthy engine. Explicit repair can still replace a failed native
@@ -951,7 +962,7 @@ class ResourcePackManager:
                         if progress is not None:
                             progress(completed, total)
 
-    def _verify_engine_staging(self, definition: ResourcePackDefinition, staging: Path) -> dict:
+    def _verify_engine_staging(self, definition: ResourcePackDefinition, staging: Path, *, cancel_event=None) -> dict:
         manifest_path = staging / "engine.json"
         try:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -986,21 +997,42 @@ class ResourcePackManager:
                 "HAIZFLOW_TMP_DIR": str(smoke_root / "tmp"),
                 "HAIZFLOW_SMOKE_TEST": "1",
             })
-            result = subprocess.run(
+            process = subprocess.Popen(
                 [str(executable), *command[1:]],
                 cwd=staging, env=environment,
-                capture_output=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=120,
-                check=False,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
+            deadline = time.monotonic() + 120
+            try:
+                while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise ModelBootstrapCancelled("Engine verification paused.")
+                    if time.monotonic() >= deadline:
+                        raise ResourcePackError("Bộ xử lý không phản hồi trong lúc kiểm tra.")
+                    try:
+                        stdout, stderr = process.communicate(timeout=0.1)
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+            finally:
+                if process.poll() is None:
+                    from haizflow.pipeline.process_registry import _kill_process_tree
+
+                    _kill_process_tree(process)
+                    try:
+                        process.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        for pipe in (process.stdout, process.stderr):
+                            if pipe is not None:
+                                pipe.close()
         if (staging / "runtime").exists():
             raise ResourcePackError("Bộ xử lý ghi dữ liệu vào thư mục cài đặt bất biến.")
-        if result.returncode != 0:
-            detail = (result.stderr or result.stdout or "smoke test failed").strip()
+        if process.returncode != 0:
+            detail = (stderr or stdout or "smoke test failed").strip()
             raise ResourcePackError(f"Bộ xử lý không vượt qua kiểm tra: {detail}")
         return payload
 
@@ -1060,7 +1092,10 @@ class ResourcePackManager:
                             "verifying", definition.label, "Đang kiểm tra gói cài đặt", completed, asset.size, "transfer"))
                 if completed != asset.size or digest.hexdigest() != asset.sha256:
                     raise ResourcePackError("Gói cài đặt bị hỏng hoặc không đúng phiên bản. Hãy tải lại bộ cài.")
-            cached_multipart = bool(part_assets) and archive_matches(archive, size=asset.size, sha256=asset.sha256)
+            cached_multipart = offline is None and bool(part_assets) and archive_matches(
+                archive, size=asset.size, sha256=asset.sha256, cancelled=cancel.is_set,
+                progress=lambda done: progress(definition.pack_id, ModelProgress(
+                    "checking", definition.label, "", done, asset.size)))
             if offline is None and not cached_multipart:
                 install_model_assets(
                     packages,
@@ -1074,7 +1109,7 @@ class ResourcePackManager:
                         tuple((packages / part_asset.relative_path, part) for part_asset, part in zip(part_assets, definition.archive_parts)),
                         archive, size=asset.size, sha256=asset.sha256, cancelled=cancel.is_set,
                         progress=lambda done: progress(definition.pack_id, ModelProgress(
-                            "verifying", definition.label, "Đang kiểm tra gói bộ xử lý", done, asset.size)),
+                            "verifying", definition.label, "Đang kiểm tra gói bộ xử lý", done, asset.size, "assembly")),
                     )
                 except InterruptedError as error:
                     raise ModelBootstrapCancelled(str(error)) from error
@@ -1090,7 +1125,7 @@ class ResourcePackManager:
                     "installing", definition.label, "Đang giải nén bộ xử lý", done, total, "installing")))
             progress(definition.pack_id, ModelProgress(
                 "verifying", definition.label, "Đang kiểm tra bộ xử lý", 0, 0, "finalizing"))
-            self._verify_engine_staging(definition, staging)
+            self._verify_engine_staging(definition, staging, cancel_event=cancel)
             if cancel.is_set():
                 raise ModelBootstrapCancelled("Engine installation cancelled.")
             marker_payload = {
@@ -1121,12 +1156,14 @@ class ResourcePackManager:
                 definition.pack_id,
                 ModelProgress("ready", definition.label, "Bộ xử lý đã sẵn sàng", asset.size, asset.size),
             )
-        except Exception:
+        except Exception as error:
             # If promotion failed after moving the existing engine aside,
             # restore it before propagating the error. Never replace a target
             # that already exists (another writer may have created it).
             if backup is not None and backup.exists() and not target.exists():
                 os.replace(backup, target)
+            if isinstance(error, InterruptedError):
+                raise ModelBootstrapCancelled("Engine installation paused.") from error
             raise
         finally:
             if staging.exists():
@@ -1218,11 +1255,11 @@ class ResourcePackManager:
                     pass
         return removed
 
-    def verify_installed(self, pack_id: str) -> None:
+    def verify_installed(self, pack_id: str, *, cancel_event=None) -> None:
         """Run a native runtime smoke test or verify the model's pinned files."""
         definition = self.definitions[pack_id]
         if definition.engine_modules:
-            self._verify_engine_staging(definition, self._engine_marker(definition).parent)
+            self._verify_engine_staging(definition, self._engine_marker(definition).parent, cancel_event=cancel_event)
         else:
             self._verify_model_pack(definition)
 

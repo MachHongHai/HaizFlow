@@ -193,9 +193,9 @@ def test_engine_install_smoke_uses_isolated_writable_paths(tmp_path):
         assert environment["HAIZFLOW_SMOKE_TEST"] == "1"
         (path / "temporary-cache").write_bytes(b"isolated")
         smoke_paths.append(path)
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=0, communicate=lambda **_kwargs: ("", ""), poll=lambda: 0)
 
-    with patch("haizflow.services.resource_packs.subprocess.run", side_effect=fake_run):
+    with patch("haizflow.services.resource_packs.subprocess.Popen", side_effect=fake_run):
         manager._verify_engine_staging(definition, staging)
     assert not (staging / "runtime").exists()
     assert all(not path.exists() for path in smoke_paths)
@@ -223,7 +223,7 @@ def test_engine_install_failure_preserves_previous_engine(tmp_path, failure):
     (target / "engine.exe").write_bytes(b"PREVIOUS ENGINE")
     replace = os.replace
 
-    def verify(*_args):
+    def verify(*_args, **_kwargs):
         if failure == "cancel":
             manager.cancel("engine-test")
         elif failure == "smoke":

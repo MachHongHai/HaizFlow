@@ -39,7 +39,7 @@ Gemini, Zernio và các dịch vụ bên ngoài có điều khoản, hạn mức
 
 ## Cài đặt và bắt đầu
 
-Trang tải chính thức: [GitHub Releases của HaizFlow](https://github.com/MachHongHai/HaizFlow/releases). Mỗi phiên bản có bộ cài Windows và hướng dẫn đi kèm.
+**[Tải bộ cài Windows](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.1/HaizFlow-0.1.1-Setup.exe).** Chỉ mở file EXE này; không cần tải hoặc giải nén các tệp Core. Gói tài nguyên được cài trong HaizFlow. [Thông tin phiên bản và cài đặt](https://github.com/MachHongHai/HaizFlow/releases/latest).
 
 1. Cài và mở HaizFlow. Giao diện mặc định là tiếng Việt.
 2. Chọn CPU hoặc GPU NVIDIA trong **Cài đặt → Chung** và cài các gói cần dùng trong **Gói tài nguyên**.

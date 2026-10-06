@@ -22,14 +22,20 @@ class ArchivePart:
     sha256: str
 
 
-def archive_matches(path: Path, *, size: int, sha256: str) -> bool:
+def archive_matches(path: Path, *, size: int, sha256: str,
+                    cancelled=lambda: False, progress=lambda _done: None) -> bool:
     try:
         if path.stat().st_size != size:
             return False
         digest = hashlib.sha256()
+        completed = 0
         with path.open("rb") as stream:
             while chunk := stream.read(4 * 1024 * 1024):
+                if cancelled():
+                    raise InterruptedError("Archive verification cancelled.")
                 digest.update(chunk)
+                completed += len(chunk)
+                progress(completed)
         return digest.hexdigest() == sha256
     except FileNotFoundError:
         return False

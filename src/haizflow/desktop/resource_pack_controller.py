@@ -511,7 +511,8 @@ class ResourcePackController(QObject):
                     return
                 last_report[:] = [now, unit, copy["state"]]
                 self._events.put({"kind": "progress", "pack_id": pack_id, "status": copy["state"],
-                                  "progress": percentage, "detail": "", "progressCopy": copy})
+                                  "progress": -1 if copy["indeterminate"] else percentage,
+                                  "detail": "", "progressCopy": copy})
 
             for supporting_id in units[:-1]:
                 if cancellation.is_set():
@@ -521,7 +522,7 @@ class ResourcePackController(QObject):
                 if repair and self.manager.status(supporting_id) == "installed":
                     report(supporting_id, ModelProgress("verifying", definition.label, "", 0, 0, "finalizing"))
                     try:
-                        self.manager.verify_installed(supporting_id)
+                        self.manager.verify_installed(supporting_id, cancel_event=cancellation)
                     except ResourcePackError:
                         pass  # Repair the runtime from its pinned archive below.
                     else:
@@ -546,13 +547,15 @@ class ResourcePackController(QObject):
             self._events.put({
                 "kind": "done",
                 "pack_id": pack_id,
-                "snapshot": self.manager.snapshot(),
+                "snapshot": self.manager.snapshot(units),
             })
         except ModelBootstrapCancelled:
             self._events.put({
                 "kind": "paused",
                 "pack_id": pack_id,
-                "snapshot": self.manager.snapshot(),
+                # Pause acknowledgment must not wait for a full disk inventory.
+                # Resume rechecks dependencies against the actual markers.
+                "snapshot": [],
             })
         except Exception as exc:
             try:
@@ -617,6 +620,10 @@ class ResourcePackController(QObject):
         cancellation = self._install_cancellations.get(str(pack_id))
         if cancellation is not None:
             cancellation.set()
+            previous = self.model._operation_state.get(str(pack_id), {}).get("progress", -1)
+            self.model.set_operation(str(pack_id), status="pausing", progress=previous,
+                progress_copy={"unit": str(pack_id), "state": "pausing"})
+            self.changed.emit()
         self.manager.cancel(str(pack_id))
         unit = self._install_units.get(str(pack_id))
         if unit is not None:
@@ -804,6 +811,9 @@ class ResourcePackController(QObject):
             elif kind == "inventory_error":
                 self._host.appAlertRequested.emit("Không thể đọc gói cài đặt", event.get("message", ""), "error")
             elif kind == "progress":
+                cancellation = self._install_cancellations.get(pack_id)
+                if cancellation is not None and cancellation.is_set():
+                    continue
                 self.model.set_operation(
                     pack_id,
                     status=event["status"],
