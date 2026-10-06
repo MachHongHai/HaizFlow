@@ -167,7 +167,7 @@ git status --short
   --output dist\HaizFlow-public --assets dist\release-assets-0.1.0
 
 .\scripts\build-installer.ps1 -ArtifactPath D:\Du-an\HaizFlow\dist\HaizFlow-public `
-  -UnsignedRelease -SkipInstallerSmokeTest
+  -UnsignedRelease
 ```
 
 Ở máy build, bỏ `SkipInstallerSmokeTest` để builder kiểm bằng fixture có AppId riêng, cùng payload và logic public, không thay đăng ký bản app đang dùng. **Chưa được nghiệm thu/publish chỉ vì compile đã xong**. Kiểm bổ sung chính installer public trên VM sạch được khuyến nghị: copy installer và `.sha256`, cùng repository/tooling cần cho smoke; chạy:

@@ -4,19 +4,19 @@
   "inputs": {
     "requirements-build.in": "8b8985be9f6c46e539f5686a2f2a11136447e70c8c34db65dc590cd35f7e36fb",
     "requirements-engine-common.in": "8c860aae0f3ac78a83f7bef9445964981638a55882a49987deedae6936459a9e",
-    "requirements-engine-cpu.in": "55180bb6398a85042702cfd5acaeaa21ca4265b25c34a0a210a898c28842bba5",
-    "requirements-engine-cuda128.in": "b06b0d73a5b519f146a9ebde5c969a8ac4ca075876110aab9864237e2e5d9162",
+    "requirements-engine-cpu.in": "9343a5bc6d65bce1bab6c8c47b6d7deb9c5ec16b64cfc683299ecc03d7bf11fb",
+    "requirements-engine-cuda128.in": "ab52630c4ee0987e9fd7c93737e507b6f585924f23d66b17d384facd90a7eb0e",
     "requirements-engine-vision.in": "56c17311cc4059130743760eb3d064a221ade1af018d966b2487b73d60b81a7c"
   },
   "locks": {
     "cpu": {
       "file": "requirements-lock-engine-cpu-py313-win64.txt",
-      "sha256": "f2229bca7ec6731c1a77c15d3814b49680134309511dd897f2dcde91ee26ea37",
+      "sha256": "16d0b56213bcdeef4eda5ff808bc722e76e76ef3ac9dd280fd825d572876b00e",
       "packages": 135
     },
     "cuda128": {
       "file": "requirements-lock-engine-cuda128-py313-win64.txt",
-      "sha256": "521849f050b1d5212e7dc35ae44d98f3564fbe017f4b8e02bac9844654595158",
+      "sha256": "d93327d1959c01d26f4e6c2ae980ed9ed7a69938833ac2768e490edc7bc2d0d5",
       "packages": 133
     },
     "vision": {

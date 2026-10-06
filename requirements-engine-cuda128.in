@@ -16,3 +16,5 @@ nltk==3.10.3
 # Imported by the external OmniVoice SDK, invisible to PyInstaller's graph.
 pydub==0.25.1
 audioop-lts==0.2.2
+# aiohttp transitive dependency: GHSA-54p9-h82j-f925 fixed in 6.9.1.
+multidict==6.9.1

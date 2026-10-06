@@ -77,6 +77,11 @@ HaizFlow khóa host/URL/size/full SHA-256 của `htdemucs` và không cho resolv
 
 ## Mạng và dữ liệu
 
+CPU/CUDA khóa `multidict==6.9.1` để nhận bản sửa rò rỉ tham chiếu
+[GHSA-54p9-h82j-f925](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925).
+Đây là nâng cấp bản vá, không thêm ngoại lệ vào vulnerability gate. Hai môi
+trường engine phải qua kiểm phiên bản, phép toán items-view và frozen smoke.
+
 | Tính năng | Dữ liệu ra khỏi máy |
 | --- | --- |
 | Tải model | Request file cố định và transport metadata |

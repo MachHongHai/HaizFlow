@@ -84,6 +84,11 @@ Demucs 4.0.1 loads an upstream model class through `torch.load`. HaizFlow fixes 
 
 ## Network and data exposure
 
+CPU/CUDA pin `multidict==6.9.1`, containing the reference-leak fix for
+[GHSA-54p9-h82j-f925](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925).
+This is a patch upgrade, not a new audit exception. Both engine environments
+must pass version/items-view checks and frozen smoke.
+
 | Feature | Data crossing the local boundary |
 | --- | --- |
 | Model bootstrap | Requests for fixed model files and transport metadata |

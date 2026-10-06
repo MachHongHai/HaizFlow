@@ -116,7 +116,7 @@ Large AI engines/models are optional resource packs and must not be folded into 
 Build an installer only from a verified frozen artifact:
 
 ```powershell
-.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-public -UnsignedRelease -SkipInstallerSmokeTest
+.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-public -UnsignedRelease
 ```
 
 The installer must use an artifact-derived disk estimate, permit a writable local drive, reject network destinations, preserve mutable runtime data during ordinary upgrades, and delete runtime data only after a separate explicit uninstall choice. Silent uninstall retains runtime data.

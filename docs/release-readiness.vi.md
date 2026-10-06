@@ -94,7 +94,7 @@ Engine AI và model lớn là các gói tài nguyên tùy chọn, không thuộc
 ## Gate installer
 
 ```powershell
-.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-public -UnsignedRelease -SkipInstallerSmokeTest
+.\scripts\build-installer.ps1 -ArtifactPath .\dist\HaizFlow-public -UnsignedRelease
 ```
 
 Installer phải tính disk từ artifact, cho chọn ổ local writable, chặn network path, giữ runtime data khi upgrade và chỉ xóa data sau lựa chọn uninstall riêng. Silent uninstall luôn giữ data.
