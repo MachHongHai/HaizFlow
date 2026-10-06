@@ -73,6 +73,21 @@ class PreviewTransportUiTests(unittest.TestCase):
         from PySide6.QtCore import QCoreApplication, QEvent
         QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
+    def test_audio_preparing_notice_blocks_result_and_compare_playback(self):
+        self.preview.setProperty("audioPreparationBusy", True)
+        self.preview.setProperty("previewBusy", True)
+        self.preview.setProperty("previewProgress", .45)
+        self.app.processEvents()
+        notice = self.preview.findChild(QQuickItem, "audioPreparationNotice")
+        self.assertTrue(notice.isVisible())
+        for comparing in (False, True):
+            self.preview.setProperty("comparing", comparing)
+            QMetaObject.invokeMethod(self.preview, "togglePlayback", Qt.DirectConnection)
+            self.assertFalse(self.preview.property("resultPlaybackRequested"))
+        self.preview.setProperty("audioPreparationBusy", False)
+        self.app.processEvents()
+        self.assertFalse(notice.isVisible())
+
     @staticmethod
     def child(item, name):
         if item.objectName() == name:

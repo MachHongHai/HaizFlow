@@ -608,8 +608,10 @@ Item {
                     resultSource: root.currentResultSource
                     resultBaseSource: AppController.editorPreviewBaseSource
                     thumbnailSource: AppController.videoThumbnailSource
-                    previewBusy: AppController.editorPreviewBusy
-                    previewProgress: AppController.editorPreviewProgress
+                    audioPreparationBusy: AppController.manualPreviewAudio.busy
+                    previewBusy: AppController.editorPreviewBusy || audioPreparationBusy
+                    previewProgress: audioPreparationBusy
+                        ? AppController.manualPreviewAudio.progress : AppController.editorPreviewProgress
                     subtitleInteractive: root.previewSubtitleIndex >= 0
                     subtitleEditEnabled: root.subtitleTransformActive
                         && root.selectedSubtitleIndex === root.previewSubtitleIndex

@@ -16,6 +16,11 @@ Rectangle {
     property url thumbnailSource: ""
     property bool emptySource: false
     property bool previewBusy: false
+    property bool audioPreparationBusy: false
+    onAudioPreparationBusyChanged: {
+        if (audioPreparationBusy)
+            pausePlayback();
+    }
     property real previewProgress: 0
     property bool inputMuted: true
     property bool resultMuted: false
@@ -205,6 +210,8 @@ Rectangle {
     }
 
     function shuttleForward() {
+        if (audioPreparationBusy)
+            return;
         finishFrameRefresh(false);
         resultPlayer.playbackRate = 1.0;
         resultPlaybackRequested = true;
@@ -263,6 +270,8 @@ Rectangle {
             }
         }
         onResumeRequested: {
+            if (root.audioPreparationBusy)
+                return;
             if (!root.comparing && root.activeMonitor === "source") {
                 if (!root.inputSourceSwitching)
                     root.startInputPlayback();
@@ -282,6 +291,8 @@ Rectangle {
     }
 
     function playOnly(player) {
+        if (player === resultPlayer && audioPreparationBusy)
+            return;
         // Ignore transport input while the old native decoder is being
         // detached.  Queuing play() in this short window can resurrect the
         // previous Media Foundation audio buffer after the new source loads.
@@ -346,7 +357,7 @@ Rectangle {
     }
 
     function toggleSynchronizedPlayback() {
-        if (inputSourceSwitching || resultSourceSwitching)
+        if (audioPreparationBusy || inputSourceSwitching || resultSourceSwitching)
             return;
         if (bothPlaying) {
             inputPlayer.pause();
@@ -1406,6 +1417,29 @@ Rectangle {
                 width: parent.width * Math.max(0.02, Math.min(1, pane.progress))
                 height: parent.height
                 color: Theme.focus
+            }
+        }
+
+        Rectangle {
+            objectName: pane === resultPane ? "audioPreparationNotice" : "sourceAudioPreparationNotice"
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: Theme.space12
+            width: Math.min(parent.width - Theme.space16, audioPreparationText.implicitWidth + Theme.space24)
+            height: 36
+            radius: Theme.radiusSmall
+            color: Theme.scrim
+            visible: pane === resultPane && root.audioPreparationBusy
+            z: 9
+
+            Text {
+                id: audioPreparationText
+                anchors.centerIn: parent
+                text: qsTr("Đang chuẩn bị âm thanh · %1%").arg(Math.round(root.previewProgress * 100))
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.caption
+                textFormat: Text.PlainText
             }
         }
     }

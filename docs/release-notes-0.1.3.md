@@ -6,6 +6,7 @@ Tải **HaizFlow-0.1.3-Setup.exe** để cài ứng dụng. Các tệp Core và 
 - Demucs trên GPU 6 GB xử lý theo đoạn ngắn để giảm bộ nhớ sử dụng. Whisper dùng batch nhỏ và không nạp model trước khi bắt đầu tác vụ.
 - Thông báo cập nhật không tự mở cửa sổ. Bấm **Phiên bản mới** để xem và xác nhận cập nhật.
 - Trang Gói tài nguyên phân biệt Windows chặn tệp với gói thiếu hoặc hỏng. Gói chưa xác minh thành công không được đánh dấu là đã cài.
+- Preview hiển thị tiến trình chuẩn bị âm thanh sau khi tạo giọng và tạm dừng phát kết quả đến khi âm thanh sẵn sàng. Âm thanh video dài dùng cache trên đĩa thay vì giữ toàn bộ dữ liệu giải mã trong RAM.
 
 ## Cập nhật
 

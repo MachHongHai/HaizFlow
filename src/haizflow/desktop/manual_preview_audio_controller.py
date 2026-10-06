@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
+import threading
+import weakref
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -91,7 +94,7 @@ def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
     return np.clip(result, -32768, 32767).astype("<i2").tobytes()
 
 
-def apply_source_decisions(samples, decisions):
+def apply_source_decisions(samples, decisions, allocate=None):
     """Map source PCM to sequence time, including silent gaps between clips."""
     if not decisions:
         return samples
@@ -104,18 +107,36 @@ def apply_source_decisions(samples, decisions):
             target = max(0, int(int(decision.get("sequence_start_ms", 0)) * RATE / 1000))
             if target < cursor:
                 raise ValueError("Overlapping source ranges in editor sequence")
-            if target > cursor:
-                ranges.append(np.zeros((target - cursor, *samples.shape[1:]), dtype=samples.dtype))
-            ranges.append(samples[start:end])
+            ranges.append((target, start, end))
             cursor = target + end - start
-    return np.concatenate(ranges) if ranges else np.empty((0, 2), dtype="<i2")
+    if not ranges:
+        return np.empty((0, 2), dtype="<i2")
+    if len(ranges) == 1 and ranges[0][0] == 0:
+        return samples[ranges[0][1]:ranges[0][2]]
+    result = allocate(cursor) if allocate else np.zeros((cursor, 2), dtype=samples.dtype)
+    for target, start, end in ranges:
+        for offset in range(0, end - start, RATE):
+            count = min(RATE, end - start - offset)
+            result[target + offset:target + offset + count] = samples[start + offset:start + offset + count]
+    return result
+
+
+def _dispose_pcm(mapping, path):
+    mapping.close()
+    try:
+        Path(path).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 class ManualPreviewAudioController(QObject):
     errorChanged = Signal(str)
     positionChanged = Signal()
     voiceTimingsChanged = Signal()
+    busyChanged = Signal()
+    progressChanged = Signal()
     _ready = Signal(object)
+    _progress_ready = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -135,12 +156,113 @@ class ManualPreviewAudioController(QObject):
         self._volumes = {"source": .6, "voice": 1.0, "music": .3, "overlay": 1.0}
         self._cache = OrderedDict()
         self._closed = False
+        self._busy = False
+        self._progress = 0.0
+        self._decode_lock = threading.Lock()
+        self._decode_process = None
+        self._pcm_directory = tempfile.TemporaryDirectory(
+            prefix="manual-preview-pcm-", dir=TMP_DIR, ignore_cleanup_errors=True,
+        )
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="manual-audio")
         self._future = None
         self._ready.connect(self._accept)
+        self._progress_ready.connect(self._accept_progress)
         self._timer = QTimer(self)
         self._timer.setInterval(10)
         self._timer.timeout.connect(self._pump)
+
+    @Property(bool, notify=busyChanged)
+    def busy(self):
+        return self._busy
+
+    @Property(float, notify=progressChanged)
+    def progress(self):
+        return self._progress
+
+    @Slot(object)
+    def _accept_progress(self, result):
+        generation, value = result
+        if generation != self._generation or not self._busy:
+            return
+        value = max(self._progress, min(.99, float(value)))
+        if value - self._progress >= .01:
+            self._progress = value
+            self.progressChanged.emit()
+
+    def _finish_preparing(self):
+        self._busy = False
+        self._progress = 1.0
+        self.progressChanged.emit()
+        self.busyChanged.emit()
+
+    def _cancel_decode(self):
+        with self._decode_lock:
+            process = self._decode_process
+            if process is not None and process.poll() is None:
+                process.kill()
+
+    def _pcm_path(self):
+        descriptor, path = tempfile.mkstemp(suffix=".pcm", dir=self._pcm_directory.name)
+        os.close(descriptor)
+        return Path(path)
+
+    @staticmethod
+    def _map_pcm(path):
+        samples = np.memmap(path, dtype="<i2", mode="r", shape=(path.stat().st_size // 4, 2))
+        weakref.finalize(samples, _dispose_pcm, samples._mmap, path)
+        return samples
+
+    def _allocate_pcm(self, frames):
+        path = self._pcm_path()
+        with path.open("wb") as stream:
+            stream.truncate(frames * 4)
+        samples = np.memmap(path, dtype="<i2", mode="r+", shape=(frames, 2))
+        weakref.finalize(samples, _dispose_pcm, samples._mmap, path)
+        return samples
+
+    def _decode_to_pcm(self, command, generation):
+        path = self._pcm_path()
+        process = None
+        try:
+            with path.open("wb") as output:
+                with self._decode_lock:
+                    if self._closed or generation != self._generation:
+                        raise CancelledError()
+                    process = subprocess.Popen(
+                        command, stdout=output, stderr=subprocess.PIPE,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    self._decode_process = process
+                elapsed = 0
+                while True:
+                    if self._closed or generation != self._generation:
+                        process.kill()
+                        raise CancelledError()
+                    try:
+                        _, error = process.communicate(timeout=.2)
+                        break
+                    except subprocess.TimeoutExpired:
+                        elapsed += .2
+                        if elapsed >= 300:
+                            process.kill()
+                            raise subprocess.TimeoutExpired(command, 300)
+                if process.returncode:
+                    raise subprocess.CalledProcessError(process.returncode, command, stderr=error)
+            if path.stat().st_size == 0:
+                path.unlink()
+                return np.empty((0, 2), dtype="<i2")
+            return self._map_pcm(path)
+        except BaseException:
+            if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+            path.unlink(missing_ok=True)
+            raise
+        finally:
+            with self._decode_lock:
+                if self._decode_process is process:
+                    self._decode_process = None
 
     @Property(float, notify=positionChanged)
     def positionSeconds(self):
@@ -171,18 +293,20 @@ class ManualPreviewAudioController(QObject):
         self._position_seconds = value
         self.positionChanged.emit()
 
-    def _decode(self, path, duration=None, fit=False):
+    def _decode(self, path, duration=None, fit=False, generation=None):
+        generation = self._generation if generation is None else generation
+        if self._closed or generation != self._generation:
+            raise CancelledError()
         path = Path(path)
         stat = path.stat()
         key = (str(path), stat.st_size, stat.st_mtime_ns, duration, fit)
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
-        command = [_binary("ffmpeg"), "-v", "error", "-i", str(path), "-vn"]
+        command = [_binary("ffmpeg"), "-v", "error", "-threads", "2", "-i", str(path), "-vn"]
         if duration is not None:
-            from haizflow.utils.audio import AudioSegment
-
             from haizflow.pipeline.audio_timeline import _atempo_filters, trim_silence
+            from haizflow.utils.audio import AudioSegment
             audio = trim_silence(AudioSegment.from_file(path))
             # Match export: compress only an overrun. A shorter narration must
             # end naturally and leave the remainder of its slot silent.
@@ -193,24 +317,21 @@ class ManualPreviewAudioController(QObject):
             with tempfile.TemporaryDirectory(prefix="haizflow-preview-voice-", dir=TMP_DIR) as work:
                 source = Path(work) / "voice.wav"
                 audio.export(source, format="wav").close()
-                command = [_binary("ffmpeg"), "-v", "error", "-i", str(source)]
+                command = [_binary("ffmpeg"), "-v", "error", "-threads", "2", "-i", str(source)]
                 if len(audio) > duration:
                     command += ["-af", _atempo_filters(speed)]
                 command += ["-t", str(target / 1000), "-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
-                output = subprocess.run(command, capture_output=True, check=True, timeout=90,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+                samples = self._decode_to_pcm(command, generation)
         else:
             command += ["-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
-            output = subprocess.run(command, capture_output=True, check=True, timeout=90,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
-        samples = np.frombuffer(output, dtype="<i2").reshape((-1, 2))
+            samples = self._decode_to_pcm(command, generation)
         self._cache[key] = samples
         while sum(v.nbytes for v in self._cache.values()) > 128 * 1024 * 1024 and len(self._cache) > 1:
             self._cache.popitem(last=False)
         return samples
 
     def request(self, video, segments, voice_enabled=True):
-        if not video or video.project_type != "manual":
+        if self._closed or not video or video.project_type != "manual":
             return
         if self._video_id != video.video_id:
             self.release()
@@ -315,13 +436,19 @@ class ManualPreviewAudioController(QObject):
         self._key = key
         self._generation += 1
         generation = self._generation
+        self._cancel_decode()
+        self.synchronize(self._position_seconds, False, self._muted)
+        self._busy = True
+        self._progress = 0.0
+        self.progressChanged.emit()
+        self.busyChanged.emit()
         if self._future is not None:
             self._future.cancel()
         def prepare():
             try:
                 if generation != self._generation:
                     return generation, [], ""
-                background, _, _ = manual_tools._audio_background(video)
+                background, _, _ = manual_tools._audio_background(video, validate=False)
                 if generation != self._generation:
                     return generation, [], ""
                 tracks = []
@@ -338,11 +465,12 @@ class ManualPreviewAudioController(QObject):
                 ) if document else None
                 if background and audible("source-audio") and not (source_clip and source_clip.muted):
                     try:
-                        source_samples = self._decode(background)
+                        source_samples = self._decode(background, generation=generation)
                         if document:
                             source_samples = apply_source_decisions(
                                 source_samples,
                                 [item.model_dump() for item in document.sequence.edit_decisions],
+                                allocate=self._allocate_pcm,
                             )
                         baseline = max(1, int(video.original_video_volume or 100))
                         tracks.append({
@@ -372,7 +500,7 @@ class ManualPreviewAudioController(QObject):
                     if document and music_clip else None
                 music = str(music_asset.path) if music_asset else str((video.files or {}).get("background_music") or "")
                 if music and audible("music") and not (music_clip and music_clip.muted):
-                    music_samples = self._decode(music)
+                    music_samples = self._decode(music, generation=generation)
                     source_in = int((music_clip.source_in_ms if music_clip else 0) * RATE / 1000)
                     music_samples = music_samples[source_in:]
                     baseline = max(1, int(video.background_music_volume or 100))
@@ -407,7 +535,7 @@ class ManualPreviewAudioController(QObject):
                         if overlay_asset is None or not overlay_asset.path:
                             continue
                         try:
-                            overlay_samples = self._decode(overlay_asset.path)
+                            overlay_samples = self._decode(overlay_asset.path, generation=generation)
                         except subprocess.CalledProcessError:
                             continue
                         source_in = int(overlay_clip.source_in_ms * RATE / 1000)
@@ -425,6 +553,7 @@ class ManualPreviewAudioController(QObject):
                         })
                 if generation != self._generation:
                     return generation, [], ""
+                self._progress_ready.emit((generation, .15))
                 clip_outputs = dict((active_voice or {}).get("resolved_outputs") or {})
                 manifest_payload = manual_tools._voice_manifest_payload(active_voice)
                 signatures = manifest_payload.get("clips") if isinstance(manifest_payload, dict) else []
@@ -484,7 +613,8 @@ class ManualPreviewAudioController(QObject):
                         "fade_in_frames": int((voice_clip.fade_in_ms if voice_clip else 0) * RATE / 1000),
                         "fade_out_frames": int((voice_clip.fade_out_ms if voice_clip else 0) * RATE / 1000),
                         "samples": self._decode(clip_path, duration,
-                                                bool(segment.get("fit_voice_to_timing")))})
+                                                bool(segment.get("fit_voice_to_timing")), generation=generation)})
+                    self._progress_ready.emit((generation, .15 + .8 * (index + 1) / max(1, len(segments))))
                 if document and document.audio_ducking_enabled:
                     voice_ranges = [
                         (track["start"], track["start"] + int(track.get("duration_frames") or len(track["samples"])))
@@ -508,6 +638,9 @@ class ManualPreviewAudioController(QObject):
             self._future = None
         if not self._closed and not future.cancelled():
             self._ready.emit(future.result())
+        elif self._closed:
+            self._cache.clear()
+            self._pcm_directory.cleanup()
 
     @Slot(object)
     def _accept(self, result):
@@ -519,6 +652,7 @@ class ManualPreviewAudioController(QObject):
             # The next refresh should retry rather than returning the stale
             # (possibly silent) track list.
             self._key = ""
+            self._finish_preparing()
             self.errorChanged.emit(error)
             return
         previous = {t["id"]: t.get("signature") for t in self._tracks}
@@ -529,6 +663,7 @@ class ManualPreviewAudioController(QObject):
         self._tracks = tracks
         self._muted_ids.clear()
         self.voiceTimingsChanged.emit()
+        self._finish_preparing()
 
     @Slot(int, int, int)
     def setVolumes(self, original, voice, music):
@@ -544,6 +679,7 @@ class ManualPreviewAudioController(QObject):
 
     @Slot(float, bool, bool)
     def synchronize(self, seconds, playing, muted):
+        playing = bool(playing) and not self._busy
         self._muted = muted
         if not playing:
             self._playing = False
@@ -608,6 +744,7 @@ class ManualPreviewAudioController(QObject):
     @Slot()
     def release(self):
         self._generation += 1
+        self._cancel_decode()
         if self._future is not None:
             self._future.cancel()
             self._future = None
@@ -625,8 +762,15 @@ class ManualPreviewAudioController(QObject):
         self._muted_ids.clear()
         self._deferred_ids.clear()
         self.voiceTimingsChanged.emit()
+        self._busy = False
+        self._progress = 0.0
+        self.progressChanged.emit()
+        self.busyChanged.emit()
 
     def close(self):
         self._closed = True
         self.release()
         self._executor.shutdown(wait=False, cancel_futures=True)
+        if self._future is None:
+            self._cache.clear()
+        self._pcm_directory.cleanup()
