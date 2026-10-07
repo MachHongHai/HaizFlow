@@ -2,6 +2,17 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="vi_VN">
 <context>
+    <name>ManualImageToolPanel</name>
+    <message><source>Bấm vào vùng che trên preview để chỉnh. Chọn Áp dụng để lưu thay đổi.</source><translation>Click the coverage area on the preview to edit it. Select Apply to save your changes.</translation></message>
+    <message><source>Bỏ thay đổi</source><translation>Discard changes</translation></message>
+    <message><source>Khôi phục vùng nhận diện</source><translation>Reset to detected region</translation></message>
+</context>
+<context>
+    <name>OcrRegionOverlay</name>
+    <message><source>Vùng che phụ đề gốc</source><translation>Original subtitle coverage</translation></message>
+    <message><source>Đổi kích thước vùng che phụ đề gốc</source><translation>Resize original subtitle coverage</translation></message>
+</context>
+<context>
     <name>ManualStageInspector</name>
     <message>
         <source>Chạy lại</source>
@@ -1906,6 +1917,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualComparePreview</name>
+    <message><source>Áp dụng</source><translation>Apply</translation></message>
+    <message><source>Bỏ thay đổi</source><translation>Discard changes</translation></message>
     <message>
         <location filename="../qml/ManualComparePreview.qml" line="+625"/>
         <source>Chưa có video nguồn</source>
@@ -2001,6 +2014,8 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualEditorToolbar</name>
+    <message><source>Thu nhỏ preview</source><translation>Zoom out preview</translation></message>
+    <message><source>Phóng to preview</source><translation>Zoom in preview</translation></message>
     <message>
         <location filename="../qml/ManualEditorToolbar.qml" line="+66"/>
         <source>Hoàn tác</source>
@@ -3426,6 +3441,11 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ResourcePackRow</name>
+    <message><source>Chờ tải</source><translation>Queued for download</translation></message>
+    <message><source>Chờ gỡ</source><translation>Queued for removal</translation></message>
+    <message><source>Chờ hủy</source><translation>Queued for cancellation</translation></message>
+    <message><source>Đang hủy…</source><translation>Cancelling…</translation></message>
+    <message><source>Hủy lượt tải</source><translation>Cancel download</translation></message>
     <message><source>Đang tạm dừng…</source><translation>Pausing…</translation></message>
     <message><source>Đang dừng…</source><translation>Pausing…</translation></message>
     <message><source>Cài từ gói có sẵn</source><translation>Install from the local archive</translation></message>

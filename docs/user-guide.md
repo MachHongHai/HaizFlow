@@ -46,6 +46,8 @@ In the picture tool, choose whether to preserve the original video or cover its 
 
 OCR detects text regions for original-caption coverage. Preview several points and adjust the coverage area to suit the video. The preview updates after processing for review before export.
 
+Click the original-caption region in the preview to reveal its editing box. Drag the box to move it or drag an edge/corner to resize it, then choose **Apply**. Dragging alone does not change the saved result. **Restore detected region** restores and immediately applies the original OCR result.
+
 Watermarks may be text, images or video. Only use assets you have permission to use; preview their position, size and opacity.
 
 ## Voice

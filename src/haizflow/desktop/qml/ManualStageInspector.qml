@@ -15,6 +15,7 @@ InspectorPanel {
     property int selectedSubtitleIndex: -1
     property var selectedEditorClip: ({})
     property var subtitleDrafts: ({})
+    property var ocrRegionDraft: null
     property var exportPreflight: ({ "canExport": false, "issues": [],
         "requiredBytes": 0, "availableBytes": 0 })
     readonly property var toolIds: [
@@ -50,6 +51,28 @@ InspectorPanel {
     signal exportRequested()
     signal editorSeekRequested(real seconds)
     signal toolSelected(int index)
+    signal ocrRegionApplied()
+    signal ocrRegionDraftRequested(var region)
+    signal ocrRegionDiscardRequested()
+
+    function applyImageTreatment() {
+        if (stageLoader.status !== Loader.Ready || !root.editable || root.taskQueued)
+            return false;
+        const imagePane = stageLoader.item as ManualImageToolPanel;
+        if (!imagePane || !imagePane.applyTreatment())
+            return false;
+        root.ocrRegionApplied();
+        root.settingsCommitted();
+        return true;
+    }
+
+    function restoreDetectedOcrRegion() {
+        if (!root.editable || root.taskQueued || !AppController.setOriginalSubtitleRegion({}))
+            return false;
+        root.ocrRegionApplied();
+        root.settingsCommitted();
+        return true;
+    }
 
     function dismissTextEditor() {
         if (subtitleEditorDialogLoader.status === Loader.Ready
@@ -353,13 +376,11 @@ InspectorPanel {
                     else if (root.taskPaused && root.taskBelongsToTool)
                         AppController.resumeSelectedVideo();
                     else {
-                        root.saveNow();
                         if (root.toolId === "image") {
-                            const imagePane = stageLoader.item as ManualImageToolPanel;
-                            if (imagePane)
-                                imagePane.applyTreatment();
+                            root.applyImageTreatment();
                             return;
                         }
+                        root.saveNow();
                         if (root.toolId === "export") {
                             root.refreshExportPreflight();
                             AppController.requestVideoExport();

@@ -2,6 +2,7 @@
 
 import json
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -125,3 +126,59 @@ def test_missing_manual_base_is_not_reported_as_ready(preview_session):
     assert not controller.request("[]", 0, cache_only=True)
     assert renderer.call_count == 1
     assert controller.stage != "ready"
+
+
+def test_processed_project_restores_disk_cache_while_another_project_runs(preview_session, monkeypatch):
+    host, controller, renderer, videos, prime, root = preview_session
+    prime("b")
+    fingerprint = controller._request_fingerprint
+    directory = root / "b/temp/editor-preview" / f"base-{fingerprint[:20]}"
+    directory.mkdir(parents=True)
+    output = directory / "preview.mp4"
+    output.write_bytes(b"complete-treated-base")
+    controller._write_completion_marker(directory / "preview.complete.json", output, 120)
+    controller.release()
+    controller._completed_requests.clear()
+    controller._completed_base_sources.clear()
+    videos["a"].status = "processing"
+    host.isProcessing = True
+    host.selected = videos["b"]
+    # The facade must use the selected video, never global processing state.
+    from haizflow.desktop.qml_controller import HaizFlowController
+    host._editor_preview = controller
+    host.isSelectedVideoQueued = False
+    probe = Mock(side_effect=AssertionError("Completed caches must not invoke FFprobe"))
+    monkeypatch.setattr("haizflow.desktop.editor_preview_controller.get_video_duration", probe)
+    assert HaizFlowController.requestEditorPreview(host, "[]", 30)
+    assert Path(QUrl(controller.base_source).toLocalFile()) == output.resolve()
+    assert controller.stage == "ready" and not controller.busy
+    assert renderer.call_count == 1
+    assert videos["a"].status == "processing"
+    probe.assert_not_called()
+
+
+@pytest.mark.parametrize("invalid", ["size", "duration", "json", "effects"])
+def test_disk_cache_recovery_never_opens_incomplete_or_stale_files(preview_session, invalid):
+    _, controller, renderer, videos, prime, root = preview_session
+    prime("a")
+    fingerprint = controller._request_fingerprint
+    directory = root / "a/temp/editor-preview" / f"base-{fingerprint[:20]}"
+    directory.mkdir(parents=True)
+    output = directory / "preview.mp4"
+    output.write_bytes(b"complete-treated-base")
+    marker = directory / "preview.complete.json"
+    controller._write_completion_marker(marker, output, 120)
+    if invalid == "size":
+        output.write_bytes(b"truncated")
+    elif invalid == "duration":
+        marker.write_text(json.dumps({"version": 1, "size": output.stat().st_size, "duration": 0}))
+    elif invalid == "json":
+        marker.write_text("{invalid")
+    else:
+        videos["a"].original_subtitle_removal_mode = "blur"
+    controller.release()
+    controller._completed_requests.clear()
+    controller._completed_base_sources.clear()
+    assert not controller.request("[]", 0, cache_only=True)
+    assert controller.base_source == ""
+    assert renderer.call_count == 1

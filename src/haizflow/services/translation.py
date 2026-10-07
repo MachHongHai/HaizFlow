@@ -196,11 +196,23 @@ def translate_segments(
             translations,
             target_language_name,
         )
+    invalid_indexes = {
+        index for index in suspect_indexes
+        if is_suspicious_translation(source_texts[index], translations[index], target_language_name)
+    }
+    if invalid_indexes:
+        labels = ", ".join(str(index + 1) for index in sorted(invalid_indexes))
+        raise RuntimeError(
+            "The translator returned invalid translations after two bounded recovery attempts "
+            f"(segments: {labels}). The export was stopped to protect subtitle quality."
+        )
     if suspect_indexes:
         labels = ", ".join(str(index + 1) for index in sorted(suspect_indexes))
-        raise RuntimeError(
-            "The translator returned invalid or duplicated translations after two bounded recovery attempts "
-            f"(segments: {labels}). The export was stopped to protect subtitle quality."
+        log_to_video(
+            video_id,
+            f"Similar translations remain in segment(s) {labels} after two retries. "
+            "Keeping the valid translations; similarity alone does not establish a translation error.",
+            level="WARNING", component="TRANSLATE",
         )
 
     translated_segments = []

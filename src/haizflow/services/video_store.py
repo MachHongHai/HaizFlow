@@ -828,6 +828,10 @@ def replace_video_input(
         os.makedirs(staged_input_directory, exist_ok=True)
         input_backed_up = False
         new_input_published = False
+        editor_document_path = os.path.join(video_dir, "editor", "document.json")
+        editor_backup_path = os.path.join(video_dir, "editor", "source-replacements",
+                                         os.path.basename(transaction_directory) + ".json")
+        editor_backed_up = False
         try:
             shutil.copy2(get_video_json_path(video_id), metadata_snapshot_path)
             shutil.copy2(source_path, staged_input_path)
@@ -839,6 +843,10 @@ def replace_video_input(
                 input_backed_up = True
             os.replace(staged_input_directory, input_directory)
             new_input_published = True
+            if os.path.isfile(editor_document_path):
+                os.makedirs(os.path.dirname(editor_backup_path), exist_ok=True)
+                os.replace(editor_document_path, editor_backup_path)
+                editor_backed_up = True
 
             now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             for generated_key in (
@@ -860,6 +868,7 @@ def replace_video_input(
             video.media_source = MediaSource.model_validate(media_source or {"type": "local_file"})
             video.video_width = 0
             video.video_height = 0
+            video.original_subtitle_region_override = {}
             video.review_approved = False
             video.status = "pending"
             video.progress = 0
@@ -869,6 +878,9 @@ def replace_video_input(
             video.gpu_recovery_attempted = False
             video.checkpoints = {}
             video.active_artifacts = {}
+            video.editor_document_schema_version = 0
+            video.editor_document_revision = 0
+            video.editor_document_path = ""
             video.manual_target_tool = ""
             video.manual_target_stage = ""
             video.manual_completed_stage = ""
@@ -884,6 +896,8 @@ def replace_video_input(
             video.updated_at = now
             _save_video_unlocked(video)
         except Exception:
+            if editor_backed_up:
+                os.replace(editor_backup_path, editor_document_path)
             if new_input_published and os.path.isdir(input_directory):
                 shutil.rmtree(input_directory, onerror=_force_remove_readonly)
             if input_backed_up and os.path.isdir(backup_input_directory):

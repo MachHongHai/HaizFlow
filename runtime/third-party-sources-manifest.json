@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "release_version": "0.1.4",
-  "file": "HaizFlow-0.1.4-ThirdPartySources.zip",
-  "sha256": "c7fdaa2bbf5d73a8debdf19f5a472fee14dcab5ca5f02511323d24c730db5595",
+  "release_version": "0.1.5",
+  "file": "HaizFlow-0.1.5-ThirdPartySources.zip",
+  "sha256": "86f6ca0b03d9242f0d5e6c1fa47c79a89030586b9a2beb8ac706a93540e0e0ff",
   "size": 831702613,
-  "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.4/HaizFlow-0.1.4-ThirdPartySources.zip"
+  "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.5/HaizFlow-0.1.5-ThirdPartySources.zip"
 }

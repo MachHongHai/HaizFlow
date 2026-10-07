@@ -40,6 +40,21 @@ Rectangle {
     property bool inputPlaybackRequested: false
     property real inputClockTickMs: 0
     property bool subtitleInteractive: false
+    property var ocrRegion: ({})
+    property var ocrSourceFrameInOutput: ({})
+    property bool ocrInteractive: false
+    property bool ocrEditing: false
+    property real previewZoomPercent: 100
+    signal previewZoomRequested(real percent)
+    signal ocrEditingRequested()
+    signal ocrRegionEdited(var region)
+    signal ocrApplyRequested()
+    signal ocrDiscardRequested()
+    function ocrFramePercent(forResult) {
+        const frame = forResult ? ocrSourceFrameInOutput : ({});
+        return Qt.rect(Number(frame.x_percent || 0), Number(frame.y_percent || 0),
+            Number(frame.width_percent || 100), Number(frame.height_percent || 100));
+    }
     property bool subtitleEditEnabled: false
     property bool subtitleLivePreviewEnabled: false
     property bool suppressResultAudio: false
@@ -344,6 +359,21 @@ Rectangle {
         player.stop();
         if (player === inputPlayer && editedSourceTimeline && activeMonitor === "source")
             seekTo(0);
+    }
+
+    function releaseMedia() {
+        pausePlayback();
+        inputSourceSwapTimer.stop();
+        resultSourceSwapTimer.stop();
+        inputPrimeTimer.stop();
+        resultPrimeTimer.stop();
+        attachedInputSource = "";
+        attachedResultSource = "";
+    }
+
+    function reloadInputMedia() {
+        inputSourceSwitching = true;
+        inputSourceSwapTimer.restart();
     }
 
     function startInputPlayback() {
@@ -761,14 +791,24 @@ Rectangle {
         background: Rectangle { color: Theme.video }
 
         contentItem: Item {
-            VideoOutput {
-                id: fullscreenOutput
-                endOfStreamPolicy: VideoOutput.KeepLastFrame
+            PreviewViewport {
+                id: fullscreenViewport
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.bottom: fullscreenTransport.top
                 anchors.margins: Theme.space12
+                zoomPercent: root.previewZoomPercent
+                onZoomRequested: function(percent) { root.previewZoomRequested(percent); }
+                onBackgroundTapped: {
+                    if (root.subtitleEditEnabled) root.subtitleEditingDismissed();
+                    if (root.watermarkEditEnabled) root.watermarkEditingDismissed();
+                }
+
+            VideoOutput {
+                id: fullscreenOutput
+                endOfStreamPolicy: VideoOutput.KeepLastFrame
+                anchors.fill: parent
                 fillMode: VideoOutput.PreserveAspectFit
             }
 
@@ -781,6 +821,7 @@ Rectangle {
 
             SubtitleTransformOverlay {
                 objectName: "fullscreenSubtitleTransformOverlay"
+                backgroundDismissEnabled: false
                 anchors.fill: fullscreenOutput
                 z: 4
                 videoRect: fullscreenOutput.contentRect
@@ -813,8 +854,22 @@ Rectangle {
                 }
             }
 
+            OcrRegionOverlay {
+                objectName: "fullscreenOcrRegionOverlay"
+                anchors.fill: fullscreenOutput
+                z: root.ocrEditing ? 8 : 3
+                videoRect: fullscreenOutput.contentRect
+                region: root.ocrRegion
+                sourceFramePercent: root.ocrFramePercent(root.fullscreenResult)
+                interactive: fullscreenLayer.visible && root.ocrInteractive
+                editing: root.ocrEditing
+                onEditingStarted: { root.pausePlayback(); root.ocrEditingRequested(); }
+                onRegionEdited: function(region) { root.ocrRegionEdited(region); }
+            }
+
             WatermarkTransformOverlay {
                 objectName: "fullscreenWatermarkTransformOverlay"
+                backgroundDismissEnabled: false
                 anchors.fill: fullscreenOutput
                 z: 5
                 videoRect: fullscreenOutput.contentRect
@@ -862,6 +917,7 @@ Rectangle {
                 mediaActive: fullscreenLayer.visible && root.fullscreenResult
                 onClipSelected: function(clipId) { root.editorClipSelected(clipId); }
             }
+            }
 
             Connections {
                 target: fullscreenOutput.videoSink
@@ -888,6 +944,18 @@ Rectangle {
                     anchors.leftMargin: Theme.space12
                     anchors.rightMargin: Theme.space12
                     spacing: Theme.space8
+
+                    StudioButton {
+                        visible: root.ocrEditing
+                        text: qsTr("Bỏ thay đổi")
+                        variant: "secondary"
+                        onClicked: root.ocrDiscardRequested()
+                    }
+                    StudioButton {
+                        visible: root.ocrEditing
+                        text: qsTr("Áp dụng")
+                        onClicked: root.ocrApplyRequested()
+                    }
 
                     StudioIconButton {
                         iconName: (root.fullscreenResult ? root.resultPlaying : root.inputPlaying)
@@ -1206,6 +1274,18 @@ Rectangle {
 
         onMediaKeyChanged: framePresented = false
 
+        PreviewViewport {
+            id: paneViewport
+            objectName: pane === resultPane ? "manualResultViewport" : "manualSourceViewport"
+            anchors.fill: parent
+            zoomPercent: root.previewZoomPercent
+            onZoomRequested: function(percent) { root.previewZoomRequested(percent); }
+            onBackgroundTapped: {
+                if (pane !== resultPane) return;
+                if (root.subtitleEditEnabled) root.subtitleEditingDismissed();
+                if (root.watermarkEditEnabled) root.watermarkEditingDismissed();
+            }
+
         VideoOutput {
             id: paneVideoOutput
             objectName: pane === resultPane ? "manualResultVideoOutput" : "manualInputVideoOutput"
@@ -1222,6 +1302,7 @@ Rectangle {
 
         SubtitleTransformOverlay {
             objectName: "inlineSubtitleTransformOverlay"
+            backgroundDismissEnabled: false
             anchors.fill: parent
             z: 4
             videoRect: paneVideoOutput.contentRect
@@ -1254,8 +1335,22 @@ Rectangle {
             }
         }
 
+        OcrRegionOverlay {
+            objectName: pane === resultPane ? "manualResultOcrRegionOverlay" : "manualSourceOcrRegionOverlay"
+            anchors.fill: parent
+            z: root.ocrEditing ? 8 : 3
+            videoRect: paneVideoOutput.contentRect
+            region: root.ocrRegion
+            sourceFramePercent: root.ocrFramePercent(pane === resultPane)
+            interactive: !fullscreenLayer.visible && root.ocrInteractive
+            editing: root.ocrEditing
+            onEditingStarted: { root.pausePlayback(); root.ocrEditingRequested(); }
+            onRegionEdited: function(region) { root.ocrRegionEdited(region); }
+        }
+
         WatermarkTransformOverlay {
             objectName: "inlineWatermarkTransformOverlay"
+            backgroundDismissEnabled: false
             anchors.fill: parent
             z: 5
             videoRect: paneVideoOutput.contentRect
@@ -1302,6 +1397,7 @@ Rectangle {
             interactive: pane === resultPane && !fullscreenLayer.visible
             mediaActive: pane === resultPane && !fullscreenLayer.visible
             onClipSelected: function(clipId) { root.editorClipSelected(clipId); }
+        }
         }
 
         Connections {

@@ -152,6 +152,7 @@ class HaizFlowController(QObject):
     )
 
     videoPathChanged = Signal()
+    sourceReplacementRequested = Signal(str)
     videoThumbnailChanged = Signal()
     targetLanguageChanged = Signal()
     speechRecognitionModelChanged = Signal()
@@ -217,6 +218,7 @@ class HaizFlowController(QObject):
     geminiKeyChanged = Signal()
     appConfirmationRequested = Signal(str, str)
     editorPreviewChanged = Signal()
+    previewMediaChanged = Signal()
     manualToolStateChanged = Signal(str)
     manualExportCompleted = Signal(str, str)
     videoExportCompleted = Signal(str, str)
@@ -302,6 +304,7 @@ class HaizFlowController(QObject):
         self._manual_settings_drafts = {}
         self._selected_video_snapshot = None
         self.selectedVideoChanged.connect(self._refresh_selected_video_snapshot)
+        self.selectedVideoChanged.connect(self.previewMediaChanged.emit)
         self.selectedVideoChanged.connect(self.selectedElapsedChanged.emit)
         self._selected_project_key = ""
         self._device_switching = False
@@ -797,6 +800,7 @@ class HaizFlowController(QObject):
                     pass
             self.manualSubtitleDocumentChanged.emit()
             self.refreshManualPreviewAudio()
+            self.previewMediaChanged.emit()
 
     def _drain_model_setup_events(self) -> None:
         changed = False
@@ -2278,7 +2282,7 @@ class HaizFlowController(QObject):
         except (OSError, json.JSONDecodeError):
             return []
 
-    @Property("QVariantMap", notify=selectedVideoChanged)
+    @Property("QVariantMap", notify=previewMediaChanged)
     def reviewPreviewMedia(self):
         """Describe the real media layers used by the subtitle editor preview.
 
@@ -2325,6 +2329,10 @@ class HaizFlowController(QObject):
             pass
 
         separation_enabled = bool(getattr(video, "enable_audio_separation", False))
+        from haizflow.services.ocr_regions import effective_region, source_frame_in_output
+
+        detected_ocr_region = ocr_region
+        ocr_region = effective_region(video, ocr_region) or {}
         subtitle_style = getattr(video, "subtitle_style", None)
         crop = getattr(video, "crop", None)
 
@@ -2395,6 +2403,13 @@ class HaizFlowController(QObject):
             "removalMode": str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
             "watermarkText": str(getattr(video, "watermark_text", "") or ""),
             "ocrRegion": ocr_region,
+            "detectedOcrRegion": detected_ocr_region,
+            "ocrSourceFrameInOutput": source_frame_in_output(
+                max(1, int(getattr(video, "video_width", 0) or 1920)),
+                max(1, int(getattr(video, "video_height", 0) or 1080)),
+                str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
+                crop or CropSettings(),
+            ),
             "videoWidth": max(0, int(getattr(video, "video_width", 0) or 0)),
             "videoHeight": max(0, int(getattr(video, "video_height", 0) or 0)),
         }
@@ -3038,6 +3053,18 @@ class HaizFlowController(QObject):
     def manualEditorWorkspace(self):
         return dict(self._manual_editor_workspace)
 
+    @Slot(str, result="QVariantMap")
+    def editorViewState(self, video_id):
+        from haizflow.services import editor_view_state
+
+        return editor_view_state.load(str(video_id or ""))
+
+    @Slot(str, "QVariantMap", result=bool)
+    def saveEditorViewState(self, video_id, state):
+        from haizflow.services import editor_view_state
+
+        return editor_view_state.save(str(video_id or ""), dict(state or {}))
+
     @Slot("QVariantMap")
     def saveManualEditorWorkspace(self, workspace):
         saved = desktop_settings.save_settings({"manual_editor_workspace": dict(workspace or {})})
@@ -3495,6 +3522,10 @@ class HaizFlowController(QObject):
     @Slot(str)
     def cancelResourcePackOperation(self, pack_id):
         self._resource_packs.cancelResourcePackOperation(str(pack_id))
+
+    @Slot(str)
+    def discardResourcePackDownload(self, pack_id):
+        self._resource_packs.discardResourcePackDownload(str(pack_id))
 
     @Slot(str)
     def repairResourcePack(self, pack_id):
@@ -4633,6 +4664,24 @@ class HaizFlowController(QObject):
         self._manual_voice_refresh_timer.stop()
         self._editor_transform_drafts.clear()
         self._manual_editor_document.clear()
+
+    @Slot("QVariantMap", result=bool)
+    def setOriginalSubtitleRegion(self, region):
+        video = self._selected_video()
+        if not video or self._processing_queue.contains(video.video_id):
+            return False
+        from haizflow.services.ocr_regions import normalize_region
+
+        try:
+            normalized = normalize_region(dict(region)) if region else {}
+            updated = video_store.update_video(video.video_id, original_subtitle_region_override=normalized)
+            if not updated:
+                return False
+            self._selected_video_snapshot = updated
+        except (OSError, TypeError, ValueError):
+            return False
+        self.selectedVideoChanged.emit()
+        return True
 
     @Property(QObject, constant=True)
     def manualSubtitleModel(self):

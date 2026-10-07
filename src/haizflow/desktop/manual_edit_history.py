@@ -129,6 +129,11 @@ class AppEditHistory(QObject):
         self._redo.clear()
         self.changed.emit()
 
+    def forget_context(self, context_id: str) -> None:
+        self._contexts.pop(str(context_id), None)
+        if str(context_id) == self._context_id:
+            self.clear()
+
 
 # Compatibility for code and third-party integrations that imported the
 # Manual-only name during the schema-v17 transition.

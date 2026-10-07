@@ -1195,6 +1195,39 @@ class ResourcePackManager:
         if event is not None:
             event.set()
 
+    def discard_download(self, pack_id: str) -> int:
+        """Discard only this unit's download files, never a shared installed engine."""
+        from haizflow.update.filesystem import no_links, UpdateError
+
+        if self._active:
+            raise ResourcePackError("Hãy chờ thao tác gói hiện tại dừng trước khi hủy lượt tải.")
+        definition = self.definitions[pack_id]
+        installed = self.status(pack_id) in {"installed", "bundled"}
+        if not definition.engine_modules and not installed:
+            return self.remove(pack_id)
+        if definition.engine_modules:
+            package = resource_packages_dir() / f"{pack_id}-{definition.version}.zip"
+            downloads = [package, *(package.with_name(package.name + f".{index:03d}")
+                                     for index in range(1, len(definition.archive_parts) + 1))]
+        else:
+            downloads = [models_dir() / asset.relative_path for asset in definition.assets]
+        candidates = [path.with_name(path.name + ".part") for path in downloads]
+        if not installed:
+            candidates.extend(downloads)
+        try:
+            for path in candidates:
+                no_links(path)
+        except UpdateError as error:
+            raise ResourcePackError("Vị trí tải chứa liên kết hoặc junction; không thể xóa.") from error
+        removed = 0
+        for path in candidates:
+            try:
+                removed += path.stat().st_size
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        return removed
+
     def remove(self, pack_id: str, *, in_use: bool = False) -> int:
         from haizflow.update.filesystem import no_links, UpdateError
 

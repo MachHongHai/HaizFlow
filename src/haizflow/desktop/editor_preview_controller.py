@@ -378,6 +378,29 @@ class EditorPreviewController:
             start += cls._VISUAL_CHUNK_SECONDS
         return windows
 
+    def _restore_manual_disk_cache(self, preview_dir: Path, fingerprint: str) -> None:
+        """Hydrate an exact completed base without FFprobe, encoding or AI work."""
+        if fingerprint in self._completed_requests:
+            return
+        output = preview_dir / f"base-{fingerprint[:20]}" / "preview.mp4"
+        try:
+            marker = json.loads(output.with_name("preview.complete.json").read_text(encoding="utf-8"))
+            duration = float(marker.get("duration", 0))
+            identity = self._file_identity(str(output))
+            if (int(marker.get("version", 0)) != 1 or not 0 < duration < float("inf")
+                    or int(marker.get("size", -1)) != identity.get("size")
+                    or not output.is_file() or int(identity.get("size", 0)) <= 0):
+                return
+        except (OSError, TypeError, ValueError, AttributeError):
+            return
+        path = str(output.resolve())
+        self._completed_requests[fingerprint] = (path, "", 0, duration, identity, fingerprint[:20])
+        self._completed_base_sources[fingerprint] = (path, identity)
+        while len(self._completed_requests) > 12:
+            evicted = next(iter(self._completed_requests))
+            self._completed_requests.pop(evicted)
+            self._completed_base_sources.pop(evicted, None)
+
     def request(self, payload: str, playhead_seconds: float, *, cache_only: bool = False) -> bool:
         # Kept in the public slot for QML/API compatibility. A full-timeline
         # proxy is independent of the current playhead and can be reused for
@@ -404,6 +427,9 @@ class EditorPreviewController:
         video_dir = Path(video_store.get_video_dir(video.video_id))
         files = dict(getattr(video, "files", {}) or {})
         ocr_region = self._ocr_region(video_dir, str(files.get("ocr_region") or ""))
+        from haizflow.services.ocr_regions import effective_region
+
+        ocr_region = effective_region(video, ocr_region) or {}
         original_subtitle_intervals = self._source_subtitle_intervals(
             video_dir,
             str(files.get("source_segments") or ""),
@@ -508,6 +534,8 @@ class EditorPreviewController:
                     return True
                 if self._stage == "ready" and self._source and self._published_source_is_intact():
                     return True
+            if settings.get("independent_manual_preview"):
+                self._restore_manual_disk_cache(preview_dir, request_fingerprint)
             completed = self._completed_requests.get(request_fingerprint)
             if completed:
                 (

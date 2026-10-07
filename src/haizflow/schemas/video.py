@@ -124,6 +124,7 @@ class VideoConfig(BaseModel):
 
 
 class VideoInfo(BaseModel):
+    original_subtitle_region_override: Dict[str, float] = Field(default_factory=dict)
     schema_version: int = VIDEO_METADATA_SCHEMA_VERSION
     metadata_type: str = VIDEO_METADATA_TYPE
     video_id: str

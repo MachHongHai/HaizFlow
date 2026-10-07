@@ -150,7 +150,7 @@ class OmniVoiceBatchTests(unittest.TestCase):
                      patch.object(voice, "_cancel_idle_shutdown"), \
                      patch.object(voice, "_schedule_idle_shutdown") as idle, \
                      patch.object(voice, "_stop_persistent_worker_unlocked") as stop, \
-                     patch("psutil.virtual_memory", return_value=SimpleNamespace(available=ram)):
+                     patch("haizflow.core.hardware.available_memory_bytes", return_value=ram):
                     self.assertEqual(voice.release_model_memory(), expected)
                 self.assertEqual(idle.call_count, int(expected))
                 self.assertEqual(stop.call_count, int(not expected))

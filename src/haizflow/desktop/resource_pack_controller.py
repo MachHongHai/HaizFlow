@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+from collections import deque
 import threading
 import time
 from pathlib import Path
@@ -122,7 +123,7 @@ class ResourcePackListModel(QAbstractListModel):
             "voice": "Giọng đọc",
             "image": "Hình ảnh",
         }
-        busy_states = {"checking", "downloading", "verifying", "installing", "removing"}
+        busy_states = {"checking", "downloading", "verifying", "installing", "removing", "queued", "queued_remove", "queued_discard", "cancelling", "pausing"}
         return {
             **snapshot,
             "status": status,
@@ -204,6 +205,11 @@ class ResourcePackController(QObject):
         self._install_cancellations: dict[str, threading.Event] = {}
         self._install_units: dict[str, str] = {}
         self._repair_requests: set[str] = set()
+        self._pending_operations: deque[tuple[str, str]] = deque()
+        self._active_operation: tuple[str, str] | None = None
+        self._operation_terminal_seen = False
+        self._paused_units: dict[str, str] = {}
+        self._closing = False
         self._move_thread: threading.Thread | None = None
         self._inventory_thread: threading.Thread | None = None
         self._clean_thread: threading.Thread | None = None
@@ -385,8 +391,8 @@ class ResourcePackController(QObject):
                     "hardwareWarning": warning,
                     "canInstall": bool(compatible and needs_download and runtime_available
                                        and source.get("status") in {"missing", "paused", "failed"}
-                                       and not self.busy),
-                    "canRemove": bool(source.get("canRemove") and not self.busy),
+                                       and not self._storage_mutating()),
+                    "canRemove": bool(source.get("canRemove") and not self._storage_mutating()),
                 }
             )
             result.append(source)
@@ -407,10 +413,10 @@ class ResourcePackController(QObject):
 
     @Property(bool, notify=changed)
     def busy(self):
-        return any(thread.is_alive() for thread in self._threads.values()) or bool(
-            self._move_thread and self._move_thread.is_alive()
-        ) or bool(self._inventory_thread and self._inventory_thread.is_alive()) or bool(
-            self._clean_thread and self._clean_thread.is_alive()
+        return (
+            bool(self._pending_operations or self._active_operation)
+            or any(thread.is_alive() for thread in self._threads.values())
+            or self._storage_mutating()
         )
 
     @Property(str, notify=changed)
@@ -485,7 +491,57 @@ class ResourcePackController(QObject):
             try:
                 self._run_install_transaction(pack_id, cancellation)
             finally:
+                if cancellation.is_set() and pack_id in self._install_units:
+                    self._paused_units[pack_id] = self._install_units[pack_id]
                 self._install_units.pop(pack_id, None)
+
+    def _storage_mutating(self) -> bool:
+        return any(thread is not None and thread.is_alive()
+                   for thread in (self._move_thread, self._clean_thread, self._inventory_thread, self._maintenance_thread))
+
+    def _queue_operation(self, action: str, pack_id: str) -> bool:
+        if self._closing or self._active_operation and self._active_operation[1] == pack_id:
+            return False
+        if any(item[1] == pack_id for item in self._pending_operations):
+            return False
+        self._pending_operations.append((action, pack_id))
+        status = {"remove": "queued_remove", "discard": "queued_discard"}.get(action, "queued")
+        self.model.set_operation(pack_id, status=status,
+                                 progress_copy={"unit": pack_id, "state": "queued"})
+        self._start_next_operation()
+        return True
+
+    def _start_next_operation(self) -> None:
+        if self._closing or self._storage_mutating():
+            return
+        if self._active_operation:
+            thread = self._threads.get(self._active_operation[1])
+            if not self._operation_terminal_seen or thread and thread.is_alive():
+                return
+            self._active_operation = None
+            self.changed.emit()
+        if not self._pending_operations:
+            return
+        if self._host._processing_queue.has_work or getattr(self._host, "_device_switching", False):
+            return
+        action, pack_id = self._pending_operations.popleft()
+        self._active_operation = (action, pack_id)
+        self._operation_terminal_seen = False
+        self._install_cancellations[pack_id] = threading.Event()
+        if action == "install":
+            self.model.set_operation(pack_id, status="checking", progress=0,
+                                     progress_copy={"unit": pack_id, "state": "checking"})
+            target = self._run_install
+        elif action == "remove":
+            target = self._run_remove
+            self.model.set_operation(pack_id, status="removing", progress_copy={"unit": pack_id, "state": "removing"})
+        else:
+            target = self._run_discard
+            self.model.set_operation(pack_id, status="cancelling")
+        thread = threading.Thread(target=target, args=(pack_id,), name=f"resource-{action}-{pack_id}", daemon=True)
+        self._threads[pack_id] = thread
+        thread.start()
+        self.changed.emit()
 
     def _run_install_transaction(self, pack_id: str, cancellation: threading.Event) -> None:
         try:
@@ -600,20 +656,7 @@ class ResourcePackController(QObject):
                     "warning",
                 )
                 continue
-            current = self._threads.get(pack_id)
-            if current is not None and current.is_alive():
-                continue
-            self._install_cancellations[pack_id] = threading.Event()
-            self.model.set_operation(pack_id, status="checking", progress=0,
-                progress_copy={"unit": pack_id, "state": "checking"})
-            thread = threading.Thread(
-                target=self._run_install,
-                args=(pack_id,),
-                name=f"resource-pack-{pack_id}",
-                daemon=True,
-            )
-            self._threads[pack_id] = thread
-            thread.start()
+            self._queue_operation("install", pack_id)
         self.changed.emit()
 
     @Slot(str)
@@ -632,11 +675,12 @@ class ResourcePackController(QObject):
 
     @Slot(str)
     def repairResourcePack(self, pack_id: str) -> None:
-        if self.busy:
+        if self._storage_mutating() or self._active_operation and self._active_operation[1] == str(pack_id):
             return
         self._repair_requests.add(str(pack_id))
         self.installResourcePacks([pack_id])
-        if str(pack_id) not in self._threads or not self._threads[str(pack_id)].is_alive():
+        if not (self._active_operation and self._active_operation[1] == str(pack_id)) and not any(
+                item[1] == str(pack_id) for item in self._pending_operations):
             self._repair_requests.discard(str(pack_id))
 
     @Slot(str, result=bool)
@@ -651,7 +695,7 @@ class ResourcePackController(QObject):
         if pack_id not in self.manager.definitions:
             return False
         current = self._threads.get(pack_id)
-        if self.busy or (current is not None and current.is_alive()):
+        if self._storage_mutating() or (current is not None and current.is_alive()):
             return False
         if in_use:
             self._host.appAlertRequested.emit(
@@ -660,13 +704,20 @@ class ResourcePackController(QObject):
                 "error",
             )
             return False
-        self.model.set_operation(pack_id, status="removing", progress_copy={"unit": pack_id, "state": "removing"})
+        result = self._queue_operation("remove", pack_id)
+        self.changed.emit()
+        return result
 
-        def remove() -> None:
+    def _run_remove(self, pack_id: str) -> None:
+        warmup = getattr(self._host, "_smart_warmup", None)
+        with self._install_lock:
             try:
                 # Stop persistent orchestration processes on this worker so a
                 # slow Windows process shutdown or multi-gigabyte deletion can
                 # never block QML input/rendering.
+                if (self._host._processing_queue.has_work or getattr(self._host, "_device_switching", False)
+                        or warmup is not None and warmup.pack_in_use(pack_id)):
+                    raise ResourcePackError("Gói đang được model hoặc tác vụ hiện tại sử dụng.")
                 definition = self.manager.definitions[pack_id]
                 if definition.engine_modules or definition.capability == "translation":
                     from haizflow.services.translation import shutdown_hymt2_worker
@@ -697,11 +748,32 @@ class ResourcePackController(QObject):
                     "snapshot": snapshot,
                 })
 
-        thread = threading.Thread(target=remove, name=f"resource-remove-{pack_id}", daemon=True)
-        self._threads[pack_id] = thread
-        thread.start()
+    @Slot(str)
+    def discardResourcePackDownload(self, pack_id: str) -> None:
+        pack_id = str(pack_id)
+        pending = next((item for item in self._pending_operations if item[1] == pack_id), None)
+        if pending:
+            self._pending_operations.remove(pending)
+            self._repair_requests.discard(pack_id)
+            self.model.clear_operation(pack_id)
+            self.changed.emit()
+            return
+        if self.model._operation_state.get(pack_id, {}).get("status") not in {"paused", "failed"}:
+            return
+        self._queue_operation("discard", pack_id)
         self.changed.emit()
-        return True
+
+    def _run_discard(self, pack_id: str) -> None:
+        try:
+            with self._install_lock:
+                self.manager.discard_download(pack_id)
+                unit = self._paused_units.pop(pack_id, None)
+                if unit and unit != pack_id:
+                    self.manager.discard_download(unit)
+                self._repair_requests.discard(pack_id)
+                self._events.put({"kind": "discarded", "pack_id": pack_id, "snapshot": self.manager.snapshot()})
+        except (KeyError, OSError, ResourcePackError) as error:
+            self._events.put({"kind": "remove_error", "pack_id": pack_id, "message": str(error)})
 
     @Slot(result=str)
     def cleanUnusedResourcePacks(self) -> str:
@@ -798,6 +870,9 @@ class ResourcePackController(QObject):
             changed = True
             pack_id = event["pack_id"]
             kind = event["kind"]
+            if kind in {"done", "removed", "discarded", "remove_error", "paused", "error"}:
+                if self._active_operation and self._active_operation[1] == pack_id:
+                    self._operation_terminal_seen = True
             if kind == "moved":
                 self._host.appAlertRequested.emit(
                     "Đã chuyển gói cài đặt",
@@ -829,6 +904,9 @@ class ResourcePackController(QObject):
                 warmup = getattr(self._host, "_smart_warmup", None)
                 if warmup is not None:
                     warmup.request_project_prediction()
+            elif kind == "discarded":
+                self.model.apply_snapshot(event["snapshot"])
+                self.model.clear_operation(pack_id)
             elif kind == "removed":
                 self.model.apply_snapshot(event["snapshot"])
                 self.model.clear_operation(pack_id)
@@ -863,10 +941,13 @@ class ResourcePackController(QObject):
                 else:
                     self.model.set_operation(pack_id, status="failed", detail=event.get("message", ""))
                 self._host.appAlertRequested.emit("Không cài được gói", event.get("message", ""), "error")
+        self._start_next_operation()
         if changed:
             self.changed.emit()
 
     def shutdown(self) -> None:
+        self._closing = True
+        self._pending_operations.clear()
         for pack_id in tuple(self._threads):
             self.cancelResourcePackOperation(pack_id)
         for thread in tuple(self._threads.values()):

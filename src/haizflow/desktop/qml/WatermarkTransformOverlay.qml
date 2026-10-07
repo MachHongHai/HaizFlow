@@ -24,6 +24,7 @@ Item {
     property int referenceHeightPixels: 0
     property bool interactive: false
     property bool editing: false
+    property bool backgroundDismissEnabled: true
     property bool livePreviewVisible: true
     property bool playing: false
     property int draftScalePercent: scalePercent
@@ -106,10 +107,14 @@ Item {
     function outlineX(index) { return [-1, 0, 1, -1, 1, -1, 0, 1][index] * previewOutline; }
     function outlineY(index) { return [-1, -1, -1, 0, 0, 1, 1, 1][index] * previewOutline; }
 
-    MouseArea {
-        anchors.fill: parent
-        enabled: root.editing
-        onClicked: root.editingDismissed()
+    TapHandler {
+        enabled: root.editing && root.backgroundDismissEnabled
+        gesturePolicy: TapHandler.DragThreshold
+        onTapped: function(eventPoint) {
+            const point = selection.mapFromItem(root, eventPoint.position.x, eventPoint.position.y);
+            if (point.x < -18 || point.y < -18 || point.x > selection.width + 18 || point.y > selection.height + 18)
+                root.editingDismissed();
+        }
     }
 
     Item {

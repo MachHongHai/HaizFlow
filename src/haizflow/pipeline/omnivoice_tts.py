@@ -1095,7 +1095,7 @@ def release_model_memory() -> bool:
     Never start a process for this operation. Cancellation/shutdown still use
     clear_runtime(), which terminates the process completely.
     """
-    import psutil
+    from haizflow.core.hardware import available_memory_bytes
 
     with _PERSISTENT_OPERATION_LOCK:
         with _PERSISTENT_WORKER_LOCK:
@@ -1126,7 +1126,7 @@ def release_model_memory() -> bool:
                             break
                         # Imports alone consume RAM. Retain them only with a
                         # substantial remaining budget for the next model.
-                        if psutil.virtual_memory().available < 3 * 1024**3:
+                        if available_memory_bytes() < 3 * 1024**3:
                             break
                         with _PERSISTENT_WORKER_LOCK:
                             if _PERSISTENT_WORKER_PROCESS is process:

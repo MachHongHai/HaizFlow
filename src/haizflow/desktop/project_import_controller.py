@@ -181,6 +181,8 @@ class ProjectImportController:
                     if video is None:
                         raise RuntimeError("The imported video could not be loaded from storage.")
                     self._assign_thumbnail_in_worker(video)
+                    if job["operation"] == "replace" and video.project_type == "manual":
+                        editor_documents.ensure(video)
                 created_ids.append(video.video_id)
             except Exception as exc:  # The GUI reports the individual file after the batch finishes.
                 errors.append(f"{os.path.basename(job['path'])}: {exc}")
@@ -486,6 +488,9 @@ class ProjectImportController:
                 update_open_view = host._selected_video_id == video.video_id
                 if update_open_view and destination:
                     host._set_video_path(destination, refresh_thumbnail=True)
+                    history = getattr(host, "_manual_edit_history", None)
+                    if history is not None:
+                        history.forget_context(f"video:{video.video_id}")
                 video_store.log_to_video(video.video_id, f"Input video replaced with: {video.original_filename}")
                 if update_open_view:
                     host._replace_logs(host._read_video_logs(video.video_id))
@@ -496,7 +501,7 @@ class ProjectImportController:
         if created_ids:
             host.refreshVideos()
         if context.get("url_import"):
-            message = "" if created_ids else "The video was downloaded but could not be added to the project."
+            message = "" if created_ids else (errors[0] if errors else "The video was downloaded but could not be added to the project.")
             host._url_importer.complete_import(bool(created_ids), message)
         if context.get("channel_import"):
             host._channel_importer.complete_video(
@@ -1375,6 +1380,7 @@ class ProjectImportController:
             host._update_queue_positions()
         if self._can_import_in_background():
             return self._queue_replace(video.video_id, normalized, media_source)
+        self._release_replacement_preview(video.video_id)
         try:
             video = video_store.replace_video_input(video.video_id, normalized, media_source=media_source)
         except (OSError, RuntimeError) as exc:
@@ -1596,6 +1602,11 @@ class ProjectImportController:
         video = video_store.get_video(video_id)
         if not video:
             return False
+        if video.status == "processing" or host._processing_queue.active_video_id == video_id:
+            return False
+        if host._processing_queue.discard(video_id):
+            host._update_queue_positions()
+        self._release_replacement_preview(video_id)
         return self._queue_import(
             [
                 {
@@ -1607,6 +1618,23 @@ class ProjectImportController:
             ],
             {"operation": "replace", "project_key": host._selected_project_key, "url_import": url_import},
         )
+
+    def _release_replacement_preview(self, video_id: str) -> None:
+        """Release only our own readers; export/publication pins remain protected."""
+        host = self._host
+        preview = getattr(host, "_editor_preview", None)
+        if (getattr(host, "_selected_video_id", "") == video_id
+                or getattr(preview, "_pinned_video_id", "") == video_id):
+            signal = getattr(host, "sourceReplacementRequested", None)
+            if signal is not None:
+                signal.emit(video_id)
+            release = getattr(host, "releaseEditorPreview", None)
+            if callable(release):
+                release()
+            if getattr(host, "_selected_video_id", "") == video_id:
+                audio_preview = getattr(host, "_audio_preview", None)
+                if audio_preview is not None:
+                    audio_preview.invalidate()
 
     def batch_rejection_message(self, rejected) -> str:
         host = self._host

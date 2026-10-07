@@ -46,6 +46,8 @@ Trong **Hình ảnh**, chọn giữ video gốc hoặc che phụ đề gốc. N�
 
 OCR tìm vùng chữ để che phụ đề gốc. Xem trước ở vài thời điểm và điều chỉnh vùng che theo video. Preview cập nhật sau khi xử lý để bạn xem kết quả trước khi xuất.
 
+Bấm trực tiếp vào vùng phụ đề gốc trên preview để hiện khung chỉnh. Kéo khung để đổi vị trí, kéo cạnh/góc để đổi kích thước, rồi bấm **Áp dụng**. Việc kéo chưa thay đổi kết quả đã lưu. **Khôi phục vùng nhận diện** trả về vùng OCR đã quét và áp dụng ngay.
+
 Watermark có thể là chữ, ảnh hoặc video. Chỉ thêm tài sản bạn có quyền sử dụng và xem trước vị trí, kích thước, độ trong suốt.
 
 ## Giọng đọc
@@ -79,6 +81,8 @@ Tiến trình video hiển thị trên thanh trạng thái của ứng dụng. T
 ## Xem trước và xuất
 
 Dùng timeline hoặc thanh dưới preview để tua. Chọn **So sánh** để đối chiếu video gốc và kết quả chỉnh sửa. **Hoàn tác/Làm lại** giúp xem lại các thay đổi trong trình sửa.
+
+Dùng nút kính lúp hoặc con lăn chuột để phóng to/thu nhỏ. Khi phóng to, kéo chuột trái trên nền để dịch chuyển hình; kéo trên khung OCR, phụ đề hoặc watermark để chỉnh đối tượng. Mỗi dự án nhớ bước chỉnh gần nhất khi mở lại.
 
 Nghe và xem ít nhất vài đoạn: câu đầu, lúc chuyển người nói, chỗ có nhạc và cuối video. Kiểm tra font, vùng phụ đề, watermark và âm lượng.
 

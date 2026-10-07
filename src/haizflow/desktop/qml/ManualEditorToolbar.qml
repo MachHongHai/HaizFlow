@@ -16,10 +16,13 @@ Rectangle {
     property bool hasSelection: false
     property bool sourceSelected: false
     property bool comparing: false
+    property real previewZoomPercent: 100
 
     signal undoRequested()
     signal redoRequested()
     signal compareToggled()
+    signal previewZoomInRequested()
+    signal previewZoomOutRequested()
     signal exportRequested()
     signal projectFolderRequested()
     signal inputVideoRequested()
@@ -88,6 +91,24 @@ Rectangle {
             checkable: true
             toolTipText: qsTr("Hiện hoặc ẩn video nguồn")
             onClicked: root.compareToggled()
+        }
+        StudioIconButton {
+            objectName: "manualPreviewZoomOutButton"
+            visible: root.hasVideo
+            controlSize: 40
+            iconName: "zoomOut"
+            enabled: root.previewZoomPercent > 50
+            toolTipText: qsTr("Thu nhỏ preview")
+            onClicked: root.previewZoomOutRequested()
+        }
+        StudioIconButton {
+            objectName: "manualPreviewZoomInButton"
+            visible: root.hasVideo
+            controlSize: 40
+            iconName: "zoomIn"
+            enabled: root.previewZoomPercent < 400
+            toolTipText: qsTr("Phóng to preview")
+            onClicked: root.previewZoomInRequested()
         }
     }
 

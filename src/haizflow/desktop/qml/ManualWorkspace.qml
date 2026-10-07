@@ -17,6 +17,7 @@ Item {
     property int selectedStageIndex: 0
     property int selectedSubtitleIndex: -1
     property bool comparing: Boolean(AppController.manualEditorLayout.compare)
+    property real previewZoomPercent: 100
     readonly property var dockPlacements: ({ "tools": "left", "properties": "right", "tasks": "right" })
     property string rightActivePanel: String(AppController.manualEditorWorkspace.rightActive || "tasks")
     property int leftDockWidth: Number(AppController.manualEditorWorkspace.leftWidth || 240)
@@ -24,6 +25,23 @@ Item {
     property string activeMonitor: String(AppController.manualEditorWorkspace.monitor || "result")
     readonly property var dockOrder: ["tools", "properties", "tasks"]
     property bool layoutReady: false
+    property bool restoringView: false
+    function saveEditorView() {
+        if (!restoringView && previewVideoId.length > 0)
+            AppController.saveEditorViewState(previewVideoId, {
+                stage: selectedStageIndex, rightActive: rightActivePanel, monitor: activeMonitor
+            });
+    }
+    function restoreEditorView() {
+        restoringView = true;
+        const view = AppController.editorViewState(previewVideoId);
+        selectedStageIndex = Number(view.stage || 0);
+        rightActivePanel = String(view.rightActive || "tasks");
+        activeMonitor = String(view.monitor || "result");
+        restoringView = false;
+    }
+    onRightActivePanelChanged: if (layoutReady) saveEditorView()
+    onActiveMonitorChanged: if (layoutReady) saveEditorView()
     onComparingChanged: {
         if (layoutReady)
             layoutSaveTimer.restart();
@@ -105,6 +123,8 @@ Item {
     property bool subtitleTransformActive: false
     property var subtitleTransformDraft: null
     property bool watermarkTransformActive: false
+    property bool ocrTransformActive: false
+    property var ocrRegionDraft: null
     property bool subtitleAudioRefreshPending: false
     property bool subtitleVisualRefreshPending: false
     property bool initialMediaLoad: true
@@ -186,14 +206,16 @@ Item {
     // qmllint enable missing-property
 
     onSelectedStageIndexChanged: {
+        if (layoutReady)
+            saveEditorView();
         if (selectedStageIndex !== subtitleToolIndex)
             subtitleTransformActive = false;
         if (selectedStageIndex !== watermarkToolIndex)
             watermarkTransformActive = false;
-    }
-
-    function nextStageIndex() {
-        return selectedStageIndex;
+        if (selectedStageIndex !== imageToolIndex)
+            ocrTransformActive = false;
+        else
+            ocrTransformActive = true;
     }
 
     function warmTool(index) {
@@ -272,6 +294,19 @@ Item {
         watermarkTransformActive = true;
         AppController.manualEditorDocumentModel.selectClip("watermark-1", false);
         activatePanel("tasks", "right");
+    }
+
+    function selectOcrRegion() {
+        dismissSubtitleEditor();
+        dismissWatermarkEditor();
+        selectedStageIndex = imageToolIndex;
+        ocrTransformActive = true;
+        activatePanel("tasks", "right");
+    }
+
+    function discardOcrRegionDraft() {
+        ocrRegionDraft = null;
+        ocrTransformActive = false;
     }
 
     function selectEditorClip(clipId) {
@@ -379,7 +414,7 @@ Item {
 
     Component.onCompleted: {
         previewVideoId = AppController.selectedVideoId;
-        selectedStageIndex = nextStageIndex();
+        restoreEditorView();
         reloadSegments();
         syncVolumes();
         schedulePreview();
@@ -387,6 +422,7 @@ Item {
         root.forceActiveFocus();
     }
     Component.onDestruction: {
+        saveEditorView();
         layoutSaveTimer.stop();
         if (layoutReady)
             AppController.saveManualEditorLayout(
@@ -434,25 +470,45 @@ Item {
     Connections {
         target: AppController
 
+        function onSourceReplacementRequested(videoId) {
+            if (videoId === root.previewVideoId) {
+                root.discardOcrRegionDraft();
+                comparePreview.releaseMedia();
+            }
+        }
+
+        function onMediaImportChanged() {
+            if (!AppController.mediaImportBusy && String(comparePreview.attachedInputSource).length === 0) {
+                root.reloadSegments();
+                comparePreview.reloadInputMedia();
+                root.schedulePreview();
+            }
+        }
+
         function onSelectedVideoChanged() {
             // qmllint disable missing-property
             if (root.previewVideoId !== AppController.selectedVideoId) {
+                root.saveEditorView();
                 AppController.releaseEditorPreview();
                 root.previewVideoId = AppController.selectedVideoId;
-                root.selectedStageIndex = 0;
+                root.restoreEditorView();
                 root.selectedSubtitleIndex = -1;
                 root.subtitleTransformActive = false;
                 root.subtitleTransformDraft = null;
                 root.watermarkTransformActive = false;
+                root.discardOcrRegionDraft();
                 root.subtitleAudioRefreshPending = false;
                 root.subtitleVisualRefreshPending = false;
                 root.reloadSegments();
             }
             // qmllint enable missing-property
+            if (!AppController.mediaImportBusy && String(comparePreview.attachedInputSource).length === 0)
+                comparePreview.reloadInputMedia();
             root.schedulePreview();
         }
 
         function onManualSubtitleSaved() { root.schedulePreview(); }
+        function onPreviewMediaChanged() { root.schedulePreview(); }
         function onOriginalVolumeChanged() { root.syncVolumes(); }
         function onTtsVolumeChanged() { root.syncVolumes(); }
         function onBackgroundMusicVolumeChanged() { root.syncVolumes(); }
@@ -526,9 +582,12 @@ Item {
             hasSelection: root.editorHasSelection
             sourceSelected: root.editorSourceSelected
             comparing: root.comparing
+            previewZoomPercent: root.previewZoomPercent
             onUndoRequested: AppController.undoEdit()
             onRedoRequested: AppController.redoEdit()
             onCompareToggled: root.comparing = !root.comparing
+            onPreviewZoomInRequested: root.previewZoomPercent = Math.min(400, root.previewZoomPercent + 25)
+            onPreviewZoomOutRequested: root.previewZoomPercent = Math.max(50, root.previewZoomPercent - 25)
             onExportRequested: {
                 root.selectedStageIndex = 6;
                 root.activatePanel("tasks", "right");
@@ -596,6 +655,20 @@ Item {
                     SplitView.fillHeight: true
                     SplitView.minimumWidth: 400
                     emptySource: !AppController.hasSelectedVideo
+                    ocrRegion: root.ocrRegionDraft === null
+                        ? root.previewMedia.ocrRegion || ({})
+                        : Number(root.ocrRegionDraft.width_percent || 0) > 0
+                            ? root.ocrRegionDraft : root.previewMedia.detectedOcrRegion || ({})
+                    ocrSourceFrameInOutput: AppController.reviewPreviewMedia.ocrSourceFrameInOutput || ({})
+                    ocrInteractive: AppController.canEditSelectedVideo && !AppController.isSelectedVideoQueued
+                        && !AppController.mediaImportBusy
+                    ocrEditing: root.ocrTransformActive
+                    previewZoomPercent: root.previewZoomPercent
+                    onPreviewZoomRequested: function(percent) { root.previewZoomPercent = percent; }
+                    onOcrEditingRequested: root.selectOcrRegion()
+                    onOcrRegionEdited: function(region) { root.ocrRegionDraft = region; }
+                    onOcrApplyRequested: stageInspector.applyImageTreatment()
+                    onOcrDiscardRequested: root.discardOcrRegionDraft()
                     onRequestUrlImport: root.requestUrlImport()
                     onRequestDownloadProjectImport: root.requestDownloadProjectImport()
                     comparing: root.comparing
@@ -850,6 +923,10 @@ Item {
         anchors.fill: parent
         visible: root.isPanelActive("tasks")
         currentStage: root.selectedStageIndex
+        ocrRegionDraft: root.ocrRegionDraft
+        onOcrRegionApplied: root.discardOcrRegionDraft()
+        onOcrRegionDraftRequested: function(region) { root.ocrRegionDraft = region; root.ocrTransformActive = true; }
+        onOcrRegionDiscardRequested: root.discardOcrRegionDraft()
         toolModel: root.toolModel
         subtitleSegments: root.segments
         selectedSubtitleIndex: root.selectedSubtitleIndex

@@ -745,6 +745,12 @@ def _original_subtitle_region_for_render(video, reporter, video_dir, *, pipeline
         log_to_video(video_id, "Original subtitle detection and removal disabled; preserving the source picture.")
         return None
 
+    from haizflow.services.ocr_regions import effective_region
+
+    override = effective_region(video)
+    if override:
+        return override
+
     reporter.update(pipeline_progress, "detecting_original_subtitles", "Preparing original subtitle scan")
 
     def report_ocr_progress(current: int, total: int) -> None:

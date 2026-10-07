@@ -705,6 +705,7 @@ def export_signature(video, *, validate: bool = True) -> str:
         audio_signature(video, validate=validate),
         (subtitle or {}).get("signature", ""),
         ocr,
+        getattr(video, "original_subtitle_region_override", {}),
         getattr(video, "output_format", "keep_ratio"),
         _style_dict(video),
         _crop_dict(video),
@@ -1964,6 +1965,11 @@ def _run_audio(video, reporter) -> None:
 def _ocr_region(video) -> dict[str, Any] | None:
     if not video.remove_original_subtitles:
         return None
+    from haizflow.services.ocr_regions import effective_region
+
+    override = effective_region(video)
+    if override:
+        return override
     record = manual_artifacts.resolve(video.video_id, "ocr_region", ocr_signature(video))
     if not record:
         # Cleanup is an optional layer. Until OCR is explicitly run, the

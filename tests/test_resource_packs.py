@@ -646,6 +646,9 @@ class ResourcePackManagerTests(unittest.TestCase):
         host = Host()
         controller = ResourcePackController(host, manager)
         try:
+            controller._inventory_thread.join(2)
+            controller._maintenance_thread.join(2)
+            controller.drain_events()
             started_at = time.perf_counter()
             controller.installResourcePacks(["model-test"])
             elapsed = time.perf_counter() - started_at
@@ -654,6 +657,7 @@ class ResourcePackManagerTests(unittest.TestCase):
             self.assertTrue(controller.busy)
             release_install.set()
             controller._threads["model-test"].join(2)
+            controller.drain_events()
 
             def remove(_pack_id, *, in_use=False):
                 self.assertFalse(in_use)

@@ -65,7 +65,8 @@ def render_revision(video) -> str:
     media = {key: manual_artifacts.file_state((video.files or {}).get(key)) for key in (
         "video_input", "srt_output", "voice_output", "background_music", "watermark_image", "watermark_video",
     )}
-    return manual_artifacts.signature("managed-render-v2-absolute-libass-font-directory", config, media, getattr(video, "export_preset", "source"), video.checkpoints.get("render"))
+    return manual_artifacts.signature("managed-render-v2-absolute-libass-font-directory", config, media,
+        getattr(video, "original_subtitle_region_override", {}), getattr(video, "export_preset", "source"), video.checkpoints.get("render"))
 
 
 def completed_render(video, *, verify: bool = True) -> dict | None:

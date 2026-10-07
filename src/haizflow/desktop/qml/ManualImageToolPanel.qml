@@ -18,6 +18,9 @@ ColumnLayout {
     }
 
     function applyTreatment() {
+        if (imagePane.inspector.ocrRegionDraft !== null
+                && !AppController.setOriginalSubtitleRegion(imagePane.inspector.ocrRegionDraft))
+            return false;
         return AppController.setManualSubtitleTreatment(draftTreatment);
     }
 
@@ -41,6 +44,33 @@ ColumnLayout {
             const selected = model[index]
             if (selected)
                 imagePane.draftTreatment = String(selected.value || "keep");
+        }
+    }
+    Text {
+        Layout.fillWidth: true
+        visible: Number((AppController.reviewPreviewMedia.ocrRegion || {}).width_percent || 0) > 0
+        text: qsTr("Bấm vào vùng che trên preview để chỉnh. Chọn Áp dụng để lưu thay đổi.")
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        color: Theme.textMuted
+        font.family: Theme.fontFamily
+        font.pixelSize: TypeScale.metadata
+    }
+    StudioButton {
+        visible: Number((AppController.reviewPreviewMedia.detectedOcrRegion || {}).width_percent || 0) > 0
+        text: qsTr("Khôi phục vùng nhận diện")
+        variant: "secondary"
+        enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
+        onClicked: imagePane.inspector.restoreDetectedOcrRegion()
+    }
+    StudioButton {
+        visible: imagePane.inspector.ocrRegionDraft !== null || imagePane.draftTreatment !== imagePane.appliedTreatment
+        text: qsTr("Bỏ thay đổi")
+        variant: "secondary"
+        enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
+        onClicked: {
+            imagePane.draftTreatment = imagePane.appliedTreatment;
+            imagePane.inspector.ocrRegionDiscardRequested();
         }
     }
 }

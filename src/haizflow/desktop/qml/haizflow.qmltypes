@@ -124,6 +124,9 @@ Module {
         Method { name: "warmCapabilities"; Parameter { name: "capability"; type: "string" } Parameter { name: "context"; type: "QVariantMap" } }
         Method { name: "installResourcePacks"; Parameter { name: "packIds"; type: "QVariantList" } }
         Method { name: "cancelResourcePackOperation"; Parameter { name: "packId"; type: "string" } }
+        Method { name: "discardResourcePackDownload"; Parameter { name: "packId"; type: "string" } }
+        Method { name: "setOriginalSubtitleRegion"; type: "bool"; Parameter { name: "region"; type: "QVariantMap" } }
+        Signal { name: "sourceReplacementRequested"; Parameter { name: "videoId"; type: "string" } }
         Method { name: "repairResourcePack"; Parameter { name: "packId"; type: "string" } }
         Method { name: "removeResourcePack"; type: "bool"; Parameter { name: "packId"; type: "string" } }
         Method { name: "cleanUnusedResourcePacks"; type: "string" }
@@ -171,6 +174,9 @@ Module {
         accessSemantics: "reference"
         prototype: "QObject"
         exports: ["HaizFlow/AppController 1.0"]
+        Signal { name: "previewMediaChanged" }
+        Method { name: "editorViewState"; type: "QVariantMap"; Parameter { name: "videoId"; type: "string" } }
+        Method { name: "saveEditorViewState"; type: "bool"; Parameter { name: "videoId"; type: "string" } Parameter { name: "state"; type: "QVariantMap" } }
         isCreatable: false
         isSingleton: true
         exportMetaObjectRevisions: [256]

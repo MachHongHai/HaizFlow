@@ -39,6 +39,10 @@ ColumnLayout {
         case "removing": return qsTr("Đang gỡ");
         case "paused": return qsTr("Đã tạm dừng");
         case "pausing": return qsTr("Đang tạm dừng…");
+        case "queued": return qsTr("Chờ tải");
+        case "queued_remove": return qsTr("Chờ gỡ");
+        case "queued_discard": return qsTr("Chờ hủy");
+        case "cancelling": return qsTr("Đang hủy…");
         case "failed": return qsTr("Lỗi");
         default: return qsTr("Chưa cài");
         }
@@ -125,7 +129,7 @@ ColumnLayout {
 
         RowLayout {
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-            Layout.preferredWidth: 220
+            Layout.preferredWidth: root.status === "paused" ? 292 : 220
             spacing: Theme.space8
 
             Item {
@@ -144,9 +148,27 @@ ColumnLayout {
                 }
             }
 
+            StudioButton {
+                visible: root.status === "paused"
+                Layout.preferredWidth: 64
+                text: qsTr("Hủy")
+                variant: "secondary"
+                iconName: "delete"
+                Accessible.name: qsTr("Hủy lượt tải")
+                onClicked: AppController.discardResourcePackDownload(root.packId)
+            }
+
             Item {
                 Layout.preferredWidth: 96
                 Layout.preferredHeight: 36
+
+                StudioButton {
+                    anchors.fill: parent
+                    visible: ["queued", "queued_remove", "queued_discard"].indexOf(root.status) >= 0
+                    text: qsTr("Hủy")
+                    variant: "secondary"
+                    onClicked: AppController.discardResourcePackDownload(root.packId)
+                }
 
                 StudioButton {
                     anchors.fill: parent
@@ -202,7 +224,7 @@ ColumnLayout {
 
         AppMenuItem {
             id: repairItem
-            enabled: !AppController.resourcePackBusy
+            enabled: root.canRemove
             text: qsTr("Kiểm tra và sửa")
             iconGlyph: IconCatalog.glyph("refresh")
             onTriggered: AppController.repairResourcePack(root.packId)

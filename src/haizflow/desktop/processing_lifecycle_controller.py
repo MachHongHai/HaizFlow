@@ -30,7 +30,13 @@ class ProcessingLifecycleController:
         resuming = video.status == "paused"
         if not can_resume(host, video):
             return False
-        if str(getattr(video, "translation_model", "")).startswith("gemini-"):
+        manual_tool = (
+            str(getattr(video, "manual_target_tool", "") or "")
+            if getattr(video, "project_type", "single") == "manual"
+            else ""
+        )
+        needs_translation = not manual_tool or manual_tool == "translation"
+        if needs_translation and str(getattr(video, "translation_model", "")).startswith("gemini-"):
             from haizflow.services.gemini_translation import key_configured
 
             if not key_configured():
@@ -41,11 +47,6 @@ class ProcessingLifecycleController:
                 return False
         if video.status == "paused":
             prepare_video_resume(video_id)
-        manual_tool = (
-            str(getattr(video, "manual_target_tool", "") or "")
-            if getattr(video, "project_type", "single") == "manual"
-            else ""
-        )
         video_store.update_video(
             video_id,
             status="pending",

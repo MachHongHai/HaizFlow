@@ -16,6 +16,7 @@ Item {
     property bool scrubbing: false
     property bool resumeAfterScrub: false
     property bool priming: false
+    property bool sourceDetached: false
     property real primePosition: 0
     readonly property bool hasSource: String(source || "").length > 0
     readonly property bool playing: player.playbackState === MediaPlayer.PlayingState && !priming
@@ -83,10 +84,32 @@ Item {
     }
 
     onSourceChanged: {
+        sourceDetached = false;
         inlineFrameReady = false;
         fullscreenFrameReady = false;
         priming = false;
     }
+
+    Connections {
+        target: AppController
+        function onSourceReplacementRequested(videoId) {
+            if (videoId !== AppController.selectedVideoId)
+                return;
+            primeSafetyTimer.stop();
+            root.priming = false;
+            player.stop();
+            root.sourceDetached = true;
+        }
+        function onMediaImportChanged() {
+            if (!AppController.mediaImportBusy)
+                root.sourceDetached = false;
+        }
+        function onSelectedVideoChanged() {
+            if (!AppController.mediaImportBusy)
+                root.sourceDetached = false;
+        }
+    }
+
 
     Component.onDestruction: {
         primeSafetyTimer.stop();
@@ -222,7 +245,7 @@ Item {
 
     MediaPlayer {
         id: player
-        source: root.source
+        source: root.sourceDetached ? "" : root.source
         videoOutput: root.fullscreen ? fullscreenOutput : inlineOutput
         audioOutput: previewAudio
 

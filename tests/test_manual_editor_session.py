@@ -633,6 +633,7 @@ class ManualEditorSessionTests(unittest.TestCase):
             _manual_editor_document=SimpleNamespace(set_document=Mock()),
             _manual_preview_composition=SimpleNamespace(refresh=Mock()),
             manualSubtitleDocumentChanged=SimpleNamespace(emit=Mock()),
+            previewMediaChanged=SimpleNamespace(emit=Mock()),
             refreshManualPreviewAudio=Mock(),
         )
         host._manual_cache_events.put(
@@ -656,6 +657,7 @@ class ManualEditorSessionTests(unittest.TestCase):
         host._manual_editor_document.set_document.assert_called_once_with(synced_document)
         host._manual_preview_composition.refresh.assert_called_once_with()
         host.refreshManualPreviewAudio.assert_called_once_with()
+        host.previewMediaChanged.emit.assert_called_once_with()
 
     def test_scrub_keeps_latest_target_across_source_swap(self):
         engine = QQmlEngine()

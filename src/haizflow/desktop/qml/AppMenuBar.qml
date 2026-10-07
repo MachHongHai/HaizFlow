@@ -336,14 +336,14 @@ Rectangle {
             id: guideItem
 
             text: qsTr("Hướng dẫn sử dụng")
-            onTriggered: Qt.openUrlExternally("https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.vi.md")
+            onTriggered: AppController.openExternalUrl("https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.vi.md")
         }
 
         AppMenuItem {
             id: reportIssueItem
 
             text: qsTr("Báo lỗi")
-            onTriggered: Qt.openUrlExternally("https://github.com/MachHongHai/HaizFlow/issues/new")
+            onTriggered: AppController.openExternalUrl("https://github.com/MachHongHai/HaizFlow/issues/new")
         }
 
         MenuSeparator {}

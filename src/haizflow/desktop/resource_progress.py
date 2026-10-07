@@ -97,6 +97,7 @@ def localized_progress(copy: dict, language: str) -> str:
     states = {"checking": ("Đang kiểm tra", "Checking"), "downloading": ("Đang tải", "Downloading"),
               "verifying": ("Đang xác minh", "Verifying"), "installing": ("Đang cài đặt", "Installing"),
               "paused": ("Đã tạm dừng", "Paused"), "pausing": ("Đang tạm dừng…", "Pausing…"),
+              "queued": ("Đang chờ", "Queued"),
               "removing": ("Đang gỡ", "Removing")}
     parts = [states.get(copy.get("state"), states["checking"])[0 if vi else 1]]
     unit = copy.get("unit", "")

@@ -1,5 +1,6 @@
 """User-visible pack operations and missing-setup notices stay transactional."""
 import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -48,8 +49,13 @@ def packs(tmp_path, monkeypatch):
 
 
 def finish(controller, pack):
+    deadline = time.monotonic() + 5
+    while pack not in controller._threads and time.monotonic() < deadline:
+        controller.drain_events()
+        time.sleep(0.01)
     controller._threads[pack].join(3)
     assert not controller._threads[pack].is_alive()
+    controller.drain_events()
     controller.drain_events()
 
 
@@ -99,16 +105,16 @@ def test_cancel_waiting_model_does_not_cancel_another_models_runtime(packs):
     manager.cancel = Mock()
     controller.installResourcePacks(["model-demucs", "model-subtitle-ocr"])
     assert started.wait(1)
-    controller.cancelResourcePackOperation("model-subtitle-ocr")
+    controller.discardResourcePackDownload("model-subtitle-ocr")
     assert ("engine-test",) not in [call.args for call in manager.cancel.call_args_list]
     release.set()
     finish(controller, "model-demucs")
-    finish(controller, "model-subtitle-ocr")
+    assert "model-subtitle-ocr" not in controller._threads
     assert states["model-demucs"] == "installed"
     assert states["model-subtitle-ocr"] == "missing"
 
 
-def test_shared_runtime_is_installed_once_and_mutations_are_blocked_while_downloading(packs, tmp_path):
+def test_shared_runtime_is_installed_once_and_storage_move_stays_blocked(packs, tmp_path):
     controller, manager, states = packs
     started, release = threading.Event(), threading.Event()
     calls = []
@@ -131,11 +137,94 @@ def test_shared_runtime_is_installed_once_and_mutations_are_blocked_while_downlo
     controller.cleanUnusedResourcePacks()
     manager.remove.assert_not_called()
     manager.clean_unused.assert_not_called()
-    assert not any(row["canInstall"] for row in controller.displayRows)
+    assert controller.model._operation_state["model-subtitle-ocr"]["status"] == "queued"
     release.set()
     finish(controller, "model-demucs")
     finish(controller, "model-subtitle-ocr")
     assert calls == ["engine-test", "model-demucs", "model-subtitle-ocr"]
+
+
+def test_mixed_install_remove_queue_and_later_reinstall(packs):
+    controller, manager, states = packs
+    states.update({"engine-test": "installed", "model-subtitle-ocr": "installed"})
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def install(unit, report):
+        calls.append(("install", unit))
+        if unit == "model-demucs":
+            started.set()
+            release.wait(2)
+        states[unit] = "installed"
+        report(unit, ModelProgress("ready", unit, "", 1, 1))
+
+    def remove(unit, **kwargs):
+        calls.append(("remove", unit))
+        states[unit] = "missing"
+        return 1
+
+    manager.install, manager.remove = install, remove
+    controller.installResourcePacks(["model-demucs"])
+    assert started.wait(1)
+    controller.installResourcePacks(["model-demucs"])
+    assert controller.removeResourcePack("model-subtitle-ocr")
+    assert controller.model._operation_state["model-subtitle-ocr"]["status"] == "queued_remove"
+    release.set()
+    finish(controller, "model-demucs")
+    finish(controller, "model-subtitle-ocr")
+    assert calls == [("install", "model-demucs"), ("remove", "model-subtitle-ocr")]
+    controller.installResourcePacks(["model-subtitle-ocr"])
+    finish(controller, "model-subtitle-ocr")
+    assert calls[-1] == ("install", "model-subtitle-ocr")
+    assert states["engine-test"] == "installed"
+
+
+def test_paused_download_can_be_discarded_then_installed_again(packs):
+    controller, manager, states = packs
+    states["engine-test"] = "installed"
+    started, release = threading.Event(), threading.Event()
+
+    def install(unit, report):
+        started.set()
+        release.wait(2)
+        report(unit, ModelProgress("downloading", unit, "", 1, 2))
+        states[unit] = "installed"
+        report(unit, ModelProgress("ready", unit, "", 2, 2))
+
+    manager.install, manager.cancel = install, Mock()
+    manager.discard_download = Mock()
+    controller.installResourcePacks(["model-demucs"])
+    assert started.wait(1)
+    controller.cancelResourcePackOperation("model-demucs")
+    release.set()
+    finish(controller, "model-demucs")
+    assert controller.model._operation_state["model-demucs"]["status"] == "paused"
+    controller.discardResourcePackDownload("model-demucs")
+    finish(controller, "model-demucs")
+    manager.discard_download.assert_called_once_with("model-demucs")
+    assert "model-demucs" not in controller.model._operation_state
+    assert states["engine-test"] == "installed" and states["model-demucs"] == "missing"
+    controller.installResourcePacks(["model-demucs"])
+    finish(controller, "model-demucs")
+    assert states["model-demucs"] == "installed"
+
+
+def test_discard_download_preserves_an_installed_shared_processor(packs):
+    from haizflow.core.paths import resource_packages_dir
+    _, manager, states = packs
+    states["engine-test"] = "installed"
+    marker = manager._engine_marker(manager.definitions["engine-test"])
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_bytes(b"installed processor")
+    archive = resource_packages_dir() / "engine-test-1.zip"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    archive.write_bytes(b"cached archive")
+    partial = archive.with_name(archive.name + ".part")
+    partial.write_bytes(b"partial")
+    assert manager.discard_download("engine-test") == len(b"partial")
+    assert not partial.exists()
+    assert marker.read_bytes() == b"installed processor"
+    assert archive.read_bytes() == b"cached archive"
 
 
 def test_repair_checks_the_installed_runtime_and_reinstalls_if_broken(packs):
@@ -299,7 +388,7 @@ def test_downloaded_whisper_model_with_missing_runtime_is_not_shown_installed():
     manager.status = lambda pack: "missing" if pack.startswith("engine-") else "installed"
     source = {"packId": "model-whisper-turbo", "status": "installed", "downloadSize": 0, "canRemove": True}
     controller = SimpleNamespace(_host=SimpleNamespace(_settings_language="vi"), manager=manager,
-        model=SimpleNamespace(_rows=[source]), busy=False,
+        model=SimpleNamespace(_rows=[source]), busy=False, _storage_mutating=lambda: False,
         _hardware_compatibility=lambda _: (True, ""), _supporting_packs=lambda _: ["engine-cuda128-py313"])
     manager.archive_available = lambda _: True
     row = ResourcePackController.displayRows.fget(controller)[0]

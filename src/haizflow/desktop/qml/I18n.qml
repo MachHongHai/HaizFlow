@@ -10,6 +10,8 @@ QtObject {
             "starting": "Preparing project",
             "loading_models": "Preparing translation model",
             "loading_alignment": "Preparing subtitle alignment",
+            "validating_source": "Checking source video integrity",
+            "detecting_original_subtitles": "Scanning original subtitles",
             "extracting_audio": "Extracting audio",
             "separating_audio": "Separating vocals",
             "transcribing": "Transcribing speech",
@@ -22,6 +24,12 @@ QtObject {
             "paused": "Paused",
             "done": "Export complete",
             "manual_translation": "Translation ready",
+            "manual_source": "Extracting audio",
+            "manual_separation": "Separating vocals",
+            "manual_recognition": "Transcribing speech",
+            "manual_image": "Scanning original subtitles",
+            "manual_audio": "Mixing audio",
+            "manual_export": "Rendering video",
             "manual_subtitles": "Subtitles ready",
             "manual_voice": "Voice ready",
             "manual_timeline": "Audio mix ready",
@@ -88,14 +96,66 @@ QtObject {
     }
 
     function progressDetail(source) {
-        if (language !== "vi" || !source)
+        if (!source)
             return source
+
+        // The controller can append a separate item counter to a status.
+        const parts = source.split(" | ")
+        if (parts.length > 1)
+            return parts.map(part => progressDetail(part)).join(" | ")
 
         const direct = fixedText(source)
         if (direct !== source)
             return direct
 
-        let match = source.match(/^Translating subtitles (\d+)-(\d+) of (\d+)$/)
+        let match
+        match = source.match(/^Preparing voice: (.+)$/)
+        if (match)
+            return voiceStageLabel(match[1])
+        if (language !== "vi") {
+            match = source.match(/^Đang xuất video (\d+)%$/)
+            if (match)
+                return "Exporting video " + match[1] + "%"
+            match = source.match(/^Đang phân tích khung hình (\d+)\/(\d+)$/)
+            if (match)
+                return "Scanning original subtitles (" + match[1] + "/" + match[2] + ")"
+            match = source.match(/^Đang tạo (\d+) câu đã thay đổi$/)
+            if (match)
+                return "Generating " + match[1] + " changed voice segments"
+            match = source.match(/^Đã tạo (\d+)\/(\d+) câu$/)
+            if (match)
+                return "Generated " + match[1] + " of " + match[2] + " voice segments"
+            match = source.match(/^Đã tạm dừng (.+)$/)
+            if (match)
+                return "Paused during " + manualToolLabel(match[1])
+            return source
+        }
+
+        match = source.match(/^Scanning original subtitles \((\d+)\/(\d+)\)$/)
+        if (match)
+            return "Đang quét phụ đề gốc (" + match[1] + "/" + match[2] + ")"
+
+        match = source.match(/^Verified voice audio (\d+) of (\d+)$/)
+        if (match)
+            return "Đã kiểm tra " + match[1] + " / " + match[2] + " đoạn giọng đọc"
+
+        match = source.match(/^Identifying speakers (\d+) of (\d+)$/)
+        if (match)
+            return "Đang nhận diện người nói (" + match[1] + "/" + match[2] + ")"
+
+        match = source.match(/^Manual stage ready: (.+)$/)
+        if (match)
+            return "Đã hoàn tất bước: " + manualToolLabel(match[1])
+
+        match = source.match(/^Starting (.+) translation$/)
+        if (match)
+            return "Đang bắt đầu dịch bằng " + match[1]
+
+        match = source.match(/^GPU unavailable during (.+)\. Switching this project to CPU and retrying that stage\.$/)
+        if (match)
+            return "GPU không khả dụng tại bước " + stageLabel(match[1]) + ". Đang chuyển sang CPU để thử lại."
+
+        match = source.match(/^Translating subtitles (\d+)-(\d+) of (\d+)$/)
         if (match)
             return "Đang dịch phụ đề " + match[1] + "-" + match[2] + " / " + match[3]
 
@@ -106,6 +166,10 @@ QtObject {
         match = source.match(/^Paused during (.+)$/)
         if (match)
             return "Đã tạm dừng tại bước: " + stageLabel(match[1])
+
+        match = source.match(/^Đã tạm dừng (.+)$/)
+        if (match)
+            return "Đã tạm dừng tại bước: " + manualToolLabel(match[1])
 
         match = source.match(/^Queued: position (\d+)$/)
         if (match)
@@ -120,6 +184,39 @@ QtObject {
             return "Đã tải trọng số HY-MT2; đang chuyển model sang " + match[1]
 
         return source
+    }
+
+    function manualToolLabel(tool) {
+        const labels = {
+            "source": "Extracting audio",
+            "separation": "Separating vocals",
+            "transcription": "Transcribing speech",
+            "translation": "Translating",
+            "subtitles": "Creating subtitles",
+            "subtitle": "Creating subtitles",
+            "image": "Scanning original subtitles",
+            "audio": "Mixing audio",
+            "ocr": "Scanning original subtitles",
+            "voice": "Generating voice",
+            "timeline": "Mixing audio",
+            "export": "Rendering video"
+        }
+        return fixedText(labels[tool] || tool)
+    }
+
+    function voiceStageLabel(stage) {
+        const labels = {
+            "importing_runtime": "Initializing voice libraries",
+            "reusing_runtime": "Reusing the initialized voice runtime",
+            "loading_model": "Loading the voice model",
+            "reusing_model": "Reusing the loaded voice model",
+            "creating_voice_anchor": "Stabilizing the voice",
+            "loading_voice_reference": "Preparing the voice reference",
+            "reusing_voice_anchor": "Reusing the prepared voice reference",
+            "identifying_speakers": "Identifying speakers",
+            "launching_worker": "Starting the voice runtime"
+        }
+        return fixedText(labels[stage] || "Starting voice synthesis")
     }
 
     function channelImportStatus(source) {
@@ -180,6 +277,36 @@ QtObject {
     // Only backend-generated runtime messages remain here. Static UI copy is
     // translated through qsTr() and the compiled Qt catalog.
     readonly property var fixedVietnamese: ({
+        "Keeping original video subtitles unchanged": "Giữ nguyên phụ đề gốc",
+        "Preparing original subtitle scan": "Đang chuẩn bị quét phụ đề gốc",
+        "Scanning original subtitles": "Đang quét phụ đề gốc",
+        "Restoring source audio": "Đang khôi phục âm thanh nguồn",
+        "Restoring separated background audio": "Đang khôi phục nhạc nền đã tách",
+        "Retrying translation on CPU": "Đang thử dịch lại bằng CPU",
+        "Checking source video integrity": "Đang kiểm tra video nguồn",
+        "Extracting the source audio": "Đang trích âm thanh nguồn",
+        "Separating vocals and background music": "Đang tách giọng và nhạc nền",
+        "Recognizing dialogue": "Đang nhận dạng lời thoại",
+        "Translating subtitles": "Đang dịch phụ đề",
+        "Analyzing original subtitle regions": "Đang phân tích vùng phụ đề gốc",
+        "Regenerating the edited voice segment": "Đang tạo lại câu đã chỉnh",
+        "Initializing voice libraries": "Đang khởi tạo thư viện giọng đọc",
+        "Reusing the initialized voice runtime": "Đang dùng bộ tạo giọng đã khởi tạo",
+        "Loading the voice model": "Đang nạp model giọng đọc",
+        "Reusing the loaded voice model": "Đang dùng model giọng đọc đã nạp",
+        "Stabilizing the voice": "Đang ổn định chất giọng",
+        "Preparing the voice reference": "Đang chuẩn bị mẫu giọng",
+        "Reusing the prepared voice reference": "Đang dùng mẫu giọng đã chuẩn bị",
+        "Identifying speakers": "Đang nhận diện người nói",
+        "Starting the voice runtime": "Đang khởi tạo bộ tạo giọng",
+        "Restoring cached voice audio": "Đang khôi phục giọng đọc từ cache",
+        "Updating audio layers": "Đang cập nhật các lớp âm thanh",
+        "Subtitles updated": "Phụ đề đã cập nhật",
+        "Video exported": "Video đã xuất",
+        "Tool complete": "Đã hoàn tất công cụ",
+        "Exporting video": "Đang xuất video",
+        "Compositing visual layers": "Đang ghép các lớp hình ảnh",
+        "Finishing video at the selected quality": "Đang hoàn thiện video theo chất lượng đã chọn",
         "Resuming saved translations": "Tiếp tục phần dịch đã lưu",
         "Reusing completed speech recognition": "Dùng lại phần nhận dạng đã hoàn tất",
         "Social publishing": "Đăng mạng xã hội",
@@ -346,9 +473,19 @@ QtObject {
         "Export diagnostics": "Xuất dữ liệu chẩn đoán"
     })
 
+    readonly property var fixedEnglish: {
+        const result = {}
+        // Keep the first human-readable label where several states share text.
+        Object.keys(fixedVietnamese).forEach(key => {
+            if (!result[fixedVietnamese[key]])
+                result[fixedVietnamese[key]] = key
+        })
+        return result
+    }
+
     function fixedText(source) {
-        if (language !== "vi" || !source)
+        if (!source)
             return source
-        return fixedVietnamese[source] || source
+        return (language === "vi" ? fixedVietnamese[source] : fixedEnglish[source]) || source
     }
 }

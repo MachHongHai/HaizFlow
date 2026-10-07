@@ -133,7 +133,11 @@ def test_manual_layout_has_one_toolbar_and_on_demand_comparison():
     assert "timelineDuration" in timeline
     assert "id: timelineResizeGrip" in workspace
     assert "projectTitle: AppController.projectName" in workspace
-    assert 'iconName: "zoomOut"' not in (QML_DIR / "ManualEditorToolbar.qml").read_text(encoding="utf-8")
+    toolbar = (QML_DIR / "ManualEditorToolbar.qml").read_text(encoding="utf-8")
+    assert 'iconName: "zoomOut"' in toolbar
+    assert 'iconName: "zoomIn"' in toolbar
+    assert "onPreviewZoomInRequested:" in workspace
+    assert "onPreviewZoomOutRequested:" in workspace
     assert "root.zoomAt(event.x" in timeline
 
 

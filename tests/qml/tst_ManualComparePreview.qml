@@ -26,11 +26,52 @@ Item {
             controller: mockController
             sequenceDurationSeconds: 100
             resultUsesSequenceTimeline: true
+            ocrInteractive: true
+            ocrRegion: ({x_percent: 20, y_percent: 50, width_percent: 60, height_percent: 20})
+            property var testRegionDraft: null
+            onOcrEditingRequested: ocrEditing = true
+            onOcrRegionEdited: function(region) { testRegionDraft = region; }
         }
     }
+    SignalSpy { id: regionActivationSpy; signalName: "ocrEditingRequested" }
+    SignalSpy { id: regionDraftSpy; signalName: "ocrRegionEdited" }
     TestCase {
         name: "ManualPreviewClockTests"
         when: windowShown
+
+        function test_clickCoverageActivatesWithoutOpeningImageToolFirst() {
+            const preview = createTemporaryObject(previewComponent, root);
+            verify(!!preview, "Component exists");
+            const overlay = findChild(preview, "manualResultOcrRegionOverlay");
+            verify(!!overlay, "Object exists");
+            overlay.videoRect = Qt.rect(0, 0, 500, 300);
+            regionActivationSpy.target = preview;
+            regionActivationSpy.clear();
+            mouseClick(overlay, 250, 180);
+            tryCompare(regionActivationSpy, "count", 1);
+            tryCompare(preview, "ocrEditing", true);
+            tryCompare(preview, "testRegionDraft", null);
+        }
+
+        function test_dragCoverageStagesDraftWithoutChangingAppliedRegion() {
+            const preview = createTemporaryObject(previewComponent, root);
+            verify(!!preview, "Component exists");
+            const overlay = findChild(preview, "manualResultOcrRegionOverlay");
+            verify(!!overlay, "Object exists");
+            overlay.videoRect = Qt.rect(0, 0, 500, 300);
+            regionDraftSpy.target = preview;
+            regionDraftSpy.clear();
+            mousePress(overlay, 250, 180);
+            tryCompare(preview, "ocrEditing", true);
+            mouseMove(overlay, 300, 210);
+            tryCompare(regionDraftSpy, "count", 0);
+            mouseRelease(overlay, 300, 210);
+            tryCompare(regionDraftSpy, "count", 1);
+            tryCompare(preview.testRegionDraft, "x_percent", 30);
+            tryCompare(preview.testRegionDraft, "y_percent", 60);
+            tryCompare(preview.ocrRegion, "x_percent", 20);
+            tryCompare(preview.ocrRegion, "y_percent", 50);
+        }
         function test_trimKeepsSourceAndSequenceClocksSeparate() {
             const preview = createTemporaryObject(previewComponent, root);
             verify(!!preview);
