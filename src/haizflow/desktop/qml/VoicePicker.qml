@@ -215,7 +215,7 @@ Control {
         onTriggered: root.playPreparedPreview()
     }
 
-    AudioOutput {
+    DefaultAudioOutput {
         id: voicePreviewOutput
         volume: 1.0
     }

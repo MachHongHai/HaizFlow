@@ -6,31 +6,26 @@ import "."
 
 ColumnLayout {
     property var inspector
+    property var controller: AppController
     id: imagePane
     spacing: Theme.space8
-    readonly property string appliedTreatment: !AppController.removeOriginalSubtitles
-        ? "keep" : AppController.originalSubtitleRemovalMode
-    readonly property string displayedVideoId: AppController.selectedVideoId
-    property string draftTreatment: appliedTreatment
-    onAppliedTreatmentChanged: draftTreatment = appliedTreatment
-    onDisplayedVideoIdChanged: {
-        draftTreatment = appliedTreatment;
-    }
+    readonly property var selectedLayer: inspector.selectedOcrLayer || ({})
+    readonly property string clipId: "ocr-source-region"
+    readonly property string appliedTreatment: !controller.removeOriginalSubtitles
+        ? "keep" : controller.originalSubtitleRemovalMode
+    readonly property string draftTreatment: String(inspector.ocrModeDrafts[clipId] || appliedTreatment)
 
     function applyTreatment() {
-        if (imagePane.inspector.ocrRegionDraft !== null
-                && !AppController.setOriginalSubtitleRegion(imagePane.inspector.ocrRegionDraft))
-            return false;
-        return AppController.setManualSubtitleTreatment(draftTreatment);
-    }
-
-    SettingLabel {
-        Layout.fillWidth: true
-        text: qsTr("Phụ đề gốc")
+        // Committing a region emits model notifications synchronously. Capture
+        // the complete draft before those bindings can refresh.
+        const region = inspector.ocrRegionDraft || selectedLayer.region;
+        const treatment = draftTreatment;
+        return imagePane.controller.setManualSubtitleTreatment(treatment, region || ({}));
     }
     AppComboBox {
+        objectName: "ocrTreatmentSelector"
         Layout.fillWidth: true
-        enabled: imagePane.inspector.editable
+        enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
         textRole: "label"
         valueRole: "value"
         model: [
@@ -43,12 +38,12 @@ ColumnLayout {
         onActivated: function(index) {
             const selected = model[index]
             if (selected)
-                imagePane.draftTreatment = String(selected.value || "keep");
+                imagePane.inspector.ocrModeDraftRequested(imagePane.clipId, String(selected.value || "blur"));
         }
     }
     Text {
         Layout.fillWidth: true
-        visible: Number((AppController.reviewPreviewMedia.ocrRegion || {}).width_percent || 0) > 0
+        visible: Number((imagePane.selectedLayer.region || {}).width_percent || 0) > 0
         text: qsTr("Bấm vào vùng che trên preview để chỉnh. Chọn Áp dụng để lưu thay đổi.")
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
@@ -56,21 +51,22 @@ ColumnLayout {
         font.family: Theme.fontFamily
         font.pixelSize: TypeScale.metadata
     }
-    StudioButton {
-        visible: Number((AppController.reviewPreviewMedia.detectedOcrRegion || {}).width_percent || 0) > 0
-        text: qsTr("Khôi phục vùng nhận diện")
-        variant: "secondary"
-        enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
-        onClicked: imagePane.inspector.restoreDetectedOcrRegion()
-    }
-    StudioButton {
-        visible: imagePane.inspector.ocrRegionDraft !== null || imagePane.draftTreatment !== imagePane.appliedTreatment
-        text: qsTr("Bỏ thay đổi")
-        variant: "secondary"
-        enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
-        onClicked: {
-            imagePane.draftTreatment = imagePane.appliedTreatment;
-            imagePane.inspector.ocrRegionDiscardRequested();
+    Flow {
+        Layout.fillWidth: true
+        spacing: Theme.space8
+        StudioButton {
+            visible: Number((imagePane.controller.reviewPreviewMedia.detectedOcrRegion || {}).width_percent || 0) > 0
+            text: qsTr("Khôi phục vùng nhận diện")
+            variant: "secondary"
+            enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
+            onClicked: imagePane.inspector.restoreDetectedOcrRegion()
+        }
+        StudioButton {
+            visible: imagePane.inspector.ocrRegionDraft !== null || imagePane.draftTreatment !== imagePane.appliedTreatment
+            text: qsTr("Bỏ thay đổi")
+            variant: "secondary"
+            enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
+            onClicked: imagePane.inspector.ocrRegionDiscardRequested()
         }
     }
 }

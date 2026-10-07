@@ -2206,6 +2206,9 @@ class HaizFlowController(QObject):
         self._selected_video_snapshot = (
             video_store.get_video(self._selected_video_id) if self._selected_video_id else None
         )
+        editor = getattr(self, "_manual_editor_document", None)
+        if editor is not None and editor.video_id == self._selected_video_id:
+            editor.changed.emit()
 
     def _selected_video(self):
         if not self._selected_video_id:
@@ -4357,7 +4360,8 @@ class HaizFlowController(QObject):
 
         prepare_video_resume(video.video_id)
         restarting_paused_tool = video.status == "paused" and str(getattr(video, "manual_target_tool", "") or "") == tool_id
-        self._apply_setup_to_video(video, review_approved=True)
+        if tool_id != "image":
+            self._apply_setup_to_video(video, review_approved=True)
         if tool_id == "translation":
             from haizflow.services.translation_progress import clear_manual_progress
 
@@ -4556,7 +4560,8 @@ class HaizFlowController(QObject):
         return True
 
     @Slot(str, result=bool)
-    def setManualSubtitleTreatment(self, treatment):
+    @Slot(str, "QVariantMap", result=bool)
+    def setManualSubtitleTreatment(self, treatment, region=None):
         """Commit source-subtitle cleanup atomically, then run OCR if needed.
 
         ``removeOriginalSubtitles`` and its method used to be two independent
@@ -4580,17 +4585,37 @@ class HaizFlowController(QObject):
             )
             return False
 
-        before = self._video_settings_snapshot(video)
+        from haizflow.services.ocr_regions import normalize_region
+
+        changes = {"remove_original_subtitles": normalized != "keep"}
+        if normalized != "keep":
+            changes["original_subtitle_removal_mode"] = normalized
+        if region:
+            try:
+                changes["original_subtitle_region_override"] = normalize_region(dict(region))
+            except (TypeError, ValueError):
+                return False
+        before = {name: getattr(video, name) for name in changes}
+        updates = {name: value for name, value in changes.items() if before[name] != value}
+        if updates:
+            try:
+                refreshed = video_store.update_video(video.video_id, **updates)
+            except (OSError, ValueError):
+                return False
+            if not refreshed:
+                return False
+            manual_artifacts.deactivate(video.video_id, {"visual_proxy", "export"})
+        else:
+            refreshed = video
         self._remove_original_subtitles = normalized != "keep"
         if normalized != "keep":
             self._original_subtitle_removal_mode = normalized
         self.subtitleSettingsChanged.emit()
-        self._apply_setup_to_video(video, review_approved=True)
-        refreshed = video_store.get_video(video.video_id) or video
+        self._selected_video_snapshot = refreshed
         self._record_video_settings_change(
             video.video_id,
             before,
-            self._video_settings_snapshot(refreshed),
+            {name: getattr(refreshed, name) for name in changes},
             "Cách che phụ đề gốc",
         )
 
@@ -4682,6 +4707,82 @@ class HaizFlowController(QObject):
             return False
         self.selectedVideoChanged.emit()
         return True
+
+    @Slot(result=str)
+    def addOcrLayer(self):
+        from haizflow.services.ocr_layers import EXTRA_LAYERS_ENABLED, ensure_primary
+        from haizflow.schemas.editor import EditorClip, EditorTrack
+
+        if not EXTRA_LAYERS_ENABLED:
+            return ""
+        video = self._editor_video()
+        if not video or self._processing_queue.contains(video.video_id):
+            return ""
+        clip_id = editor_documents.new_id("ocr")
+
+        def add(document):
+            ensure_primary(document)
+            tracks = [track for track in document.tracks if track.kind == "ocr"]
+            number = 1
+            names = {track.name for track in tracks}
+            while f"Lớp che {number}" in names:
+                number += 1
+            name = f"Lớp che {number}"
+            document.tracks.append(EditorTrack(
+                track_id=clip_id, kind="ocr", name=name,
+                order=min(track.order for track in tracks) - 1,
+            ))
+            document.clips.append(EditorClip(
+                clip_id=clip_id, track_id=clip_id, kind="ocr", name=name,
+                duration_ms=max(80, document.sequence.duration_ms),
+                enabled=False,
+                metadata={"region": {"x_percent": 20, "y_percent": 40,
+                    "width_percent": 60, "height_percent": 15}, "removal_mode": "blur", "pending": True},
+            ))
+
+        if not self._apply_editor_mutation("add_ocr_layer", add):
+            return ""
+        self._manual_editor_document.selectClip(clip_id)
+        self.selectedVideoChanged.emit()
+        return clip_id
+
+    @Slot(str, "QVariantMap", str, result=bool)
+    def updateOcrLayer(self, clip_id, region, mode):
+        from haizflow.services.ocr_regions import normalize_region
+
+        video = self._editor_video()
+        if not video or self._processing_queue.contains(video.video_id) or mode not in {"blur", "patch"}:
+            return False
+        try:
+            normalized = normalize_region(dict(region))
+        except (TypeError, ValueError):
+            return False
+
+        def update(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip and clip.kind == "ocr" and not clip.metadata.get("primary_ocr"):
+                clip.metadata = {**clip.metadata, "region": normalized, "removal_mode": mode, "pending": False}
+                clip.enabled = True
+
+        changed = self._apply_editor_mutation("update_ocr_layer", update, merge_key=f"ocr:{clip_id}")
+        if changed:
+            self.selectedVideoChanged.emit()
+        return changed
+
+    @Slot(str, int, int, result=bool)
+    def setOcrLayerRange(self, clip_id, start_ms, end_ms):
+        video = self._editor_video()
+        if not video or self._processing_queue.contains(video.video_id) or start_ms < 0 or end_ms - start_ms < 80:
+            return False
+
+        def update(document):
+            clip = editor_documents.clip_by_id(document, clip_id)
+            if clip and clip.kind == "ocr":
+                clip.start_ms = start_ms
+                clip.duration_ms = end_ms - start_ms
+                editor_documents.refresh_sequence_duration(document)
+
+        return self._apply_editor_mutation("time_ocr_layer", update, merge_key=f"ocr-time:{clip_id}")
 
     @Property(QObject, constant=True)
     def manualSubtitleModel(self):
@@ -5110,6 +5211,10 @@ class HaizFlowController(QObject):
         # remains independent and saved source decisions stay renderable.
         if current_clip is None or current_clip.track_id in {"source-video", "overlays"}:
             return False
+        if current_clip.kind == "ocr":
+            video = self._editor_video()
+            if not video or self._processing_queue.contains(video.video_id):
+                return False
 
         def trim(document):
             clip = editor_documents.clip_by_id(document, clip_id)
@@ -5152,6 +5257,11 @@ class HaizFlowController(QObject):
         current_clip = editor_documents.clip_by_id(current, clip_id) if current else None
         if current_clip is None or current_clip.track_id in {"source-video", "overlays"}:
             return False
+        if current_clip.kind == "ocr":
+            video = self._editor_video()
+            if not video or self._processing_queue.contains(video.video_id):
+                return False
+            target_track = current_clip.track_id
 
         def move(document):
             clip = editor_documents.clip_by_id(document, clip_id)
@@ -5199,6 +5309,12 @@ class HaizFlowController(QObject):
         selected_clips = [clip for clip in current.clips if clip.clip_id in selected]
         if any(clip.track_id in {"source-video", "overlays"} for clip in selected_clips):
             return False
+        if any(clip.metadata.get("primary_ocr") for clip in selected_clips):
+            return False
+        if any(clip.kind == "ocr" for clip in selected_clips):
+            video = self._editor_video()
+            if not video or self._processing_queue.contains(video.video_id):
+                return False
 
         def remove(document):
             targets = [clip for clip in document.clips if clip.clip_id in selected]
@@ -5214,6 +5330,10 @@ class HaizFlowController(QObject):
             if source_targets and not ripple:
                 return
             document.clips = [clip for clip in document.clips if clip.clip_id not in selected]
+            empty_ocr_tracks = {clip.track_id for clip in targets if clip.kind == "ocr"}
+            occupied = {clip.track_id for clip in document.clips}
+            document.tracks = [track for track in document.tracks
+                               if track.track_id not in empty_ocr_tracks or track.track_id in occupied]
             if ripple:
                 for removed in source_targets:
                     cut_start = removed.start_ms
@@ -5732,6 +5852,13 @@ class HaizFlowController(QObject):
         property_name = str(property_name or "")
         if track_id == "overlays" or property_name not in {"visible", "muted"}:
             return False
+        model = getattr(self, "_manual_editor_document", None)
+        document = model.document_object if model else None
+        track = next((item for item in document.tracks if item.track_id == track_id), None) if document else None
+        if track and track.kind == "ocr":
+            video = self._editor_video()
+            if not video or self._processing_queue.contains(video.video_id):
+                return False
 
         def update(document):
             track = next((item for item in document.tracks if item.track_id == track_id), None)
@@ -5974,7 +6101,6 @@ class HaizFlowController(QObject):
         selected = selected_video() if callable(selected_video) else None
         if selected and selected.project_type == "manual":
             try:
-                document = editor_documents.ensure(selected)
                 document = editor_documents.sync_subtitle_clips(
                     selected,
                     self._manual_subtitles.segments,
@@ -6540,8 +6666,14 @@ class HaizFlowController(QObject):
         video = video_store.get_video(video_id)
         if not video or self._processing_queue.contains(video_id):
             return False
-        config = self._video_config_from_snapshot(video, snapshot)
-        self._apply_config_to_video(video, config)
+        ocr_fields = {"remove_original_subtitles", "original_subtitle_removal_mode",
+                      "original_subtitle_region_override"}
+        if snapshot and set(snapshot) <= ocr_fields:
+            video_store.update_video(video_id, **snapshot)
+            manual_artifacts.deactivate(video_id, {"visual_proxy", "export"})
+        else:
+            config = self._video_config_from_snapshot(video, snapshot)
+            self._apply_config_to_video(video, config)
         refreshed = video_store.get_video(video_id)
         if not refreshed:
             return False

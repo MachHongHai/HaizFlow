@@ -41,6 +41,7 @@ Rectangle {
     signal trackStateRequested(string trackId, string propertyName, bool value)
     signal clipMoveCommitted(string clipId, int startMs, string trackId)
     signal clipTrimCommitted(string clipId, string edge, int timeMs)
+    signal layerDeleteRequested(string trackId)
 
     readonly property real trackLeft: 140
     readonly property real usableWidth: Math.max(1, timelineFlick.width - trackLeft - 8)
@@ -413,9 +414,11 @@ Rectangle {
                             z: 8
                             title: layerTrack.trackId === "overlays"
                                 ? qsTr("Watermark")
-                                : String(layerTrack.modelData.name || "")
+                                : I18n.progressDetail(String(layerTrack.modelData.name || ""))
                             legacyReadOnly: layerTrack.trackId === "overlays"
                             kind: String(layerTrack.modelData.kind || "")
+                            removableLayer: kind === "ocr" && layerTrack.trackId !== "ocr-source"
+                            onLayerDeleteRequested: root.layerDeleteRequested(layerTrack.trackId)
                             trackVisible: Boolean(layerTrack.modelData.visible)
                             muted: Boolean(layerTrack.modelData.muted)
                             selected: String(AppController.manualEditorDocumentModel.selectedTrackId || "")
@@ -479,7 +482,7 @@ Rectangle {
                                     anchors.fill: parent
                                     anchors.leftMargin: Theme.space8
                                     anchors.rightMargin: Theme.space8
-                                    text: String(editorClip.modelData.name || "")
+                                    text: I18n.progressDetail(String(editorClip.modelData.name || ""))
                                     color: Theme.text
                                     font.family: Theme.fontFamily
                                     font.pixelSize: TypeScale.metadata
@@ -526,13 +529,19 @@ Rectangle {
                                     anchors.fill: parent
                                     anchors.leftMargin: 8
                                     anchors.rightMargin: 8
-                                    acceptedButtons: Qt.LeftButton
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     cursorShape: !layerTrack.canEditClips
                                         ? Qt.ForbiddenCursor : Qt.SizeAllCursor
                                     preventStealing: true
                                     onPressed: function(mouse) {
                                         root.clipSelected(editorClip.clipId,
                                             (mouse.modifiers & Qt.ControlModifier) !== 0);
+                                        if (mouse.button === Qt.RightButton) {
+                                            if (String(layerTrack.modelData.kind || "") === "ocr")
+                                                if (layerTrack.trackId !== "ocr-source")
+                                                    ocrClipMenu.popup();
+                                            return;
+                                        }
                                         if (!layerTrack.canEditClips)
                                             return;
                                         editorClip.gestureStartMs = Number(editorClip.modelData.start_ms || 0);
@@ -542,7 +551,7 @@ Rectangle {
                                         root.editingClip = true;
                                     }
                                     onPositionChanged: function(mouse) {
-                                        if (!pressed || !layerTrack.canEditClips)
+                                        if (!pressed || !editorClip.manipulating || !layerTrack.canEditClips)
                                             return;
                                         const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
                                         const deltaMs = Math.round((point.x - editorClip.gesturePointerX)
@@ -552,7 +561,7 @@ Rectangle {
                                             editorClip.gestureStartMs + deltaMs));
                                     }
                                     onReleased: {
-                                        if (layerTrack.canEditClips) {
+                                        if (layerTrack.canEditClips && editorClip.manipulating) {
                                             root.clipMoveCommitted(editorClip.clipId,
                                                 editorClip.previewStartMs,
                                                 layerTrack.trackId);
@@ -565,6 +574,17 @@ Rectangle {
                                         editorClip.previewDurationMs = Number(editorClip.modelData.duration_ms || 0);
                                         editorClip.manipulating = false;
                                         root.editingClip = false;
+                                    }
+                                }
+
+                                TopBarPopupMenu {
+                                    id: ocrClipMenu
+                                    menuContentWidth: 188
+                                    AppMenuItem {
+                                        text: qsTr("Xóa lớp")
+                                        collapsed: layerTrack.trackId === "ocr-source"
+                                        iconGlyph: IconCatalog.glyph("delete")
+                                        onTriggered: root.layerDeleteRequested(layerTrack.trackId)
                                     }
                                 }
 

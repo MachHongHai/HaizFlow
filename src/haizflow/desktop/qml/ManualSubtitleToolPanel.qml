@@ -63,7 +63,7 @@ ColumnLayout {
             required property var modelData
             Layout.fillWidth: true
             tone: "warning"
-            message: String(modelData.message || "")
+            message: I18n.progressDetail(String(modelData.message || ""))
         }
     }
     RowLayout {

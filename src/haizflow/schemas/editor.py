@@ -7,9 +7,10 @@ from pydantic import BaseModel, Field, model_validator
 from haizflow.schemas.video import SUBTITLE_FONT_FAMILY
 
 
-EDITOR_DOCUMENT_SCHEMA_VERSION = 2
+EDITOR_DOCUMENT_SCHEMA_VERSION = 3
 
 TrackKind = Literal[
+    "ocr",
     "source_video",
     "subtitle",
     "overlay",
@@ -18,6 +19,7 @@ TrackKind = Literal[
     "music",
 ]
 ClipKind = Literal[
+    "ocr",
     "source_video",
     "subtitle",
     "text",

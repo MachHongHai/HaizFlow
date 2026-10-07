@@ -602,7 +602,7 @@ FloatingToolDialog {
     MediaPlayer {
         id: videoPlayer
         videoOutput: root.videoFullscreen ? fullscreenPreview.videoOutput : editorWorkspace.videoOutput
-        audioOutput: AudioOutput {
+        audioOutput: DefaultAudioOutput {
             volume: root.previewFramePriming || root.usesExternalAudio
                 ? 0 : (root.usingPublishedOutput ? 1 : Number(root.previewMedia.videoVolume || 0.6))
         }
@@ -660,7 +660,7 @@ FloatingToolDialog {
     MediaPlayer {
         id: finalMixPlayer
         source: root.previewMixSource
-        audioOutput: AudioOutput {
+        audioOutput: DefaultAudioOutput {
             volume: 1
         }
         onMediaStatusChanged: {
@@ -674,7 +674,7 @@ FloatingToolDialog {
     MediaPlayer {
         id: voicePlayer
         source: String(root.previewMedia.voiceSource || "")
-        audioOutput: AudioOutput {
+        audioOutput: DefaultAudioOutput {
             volume: Number(root.previewMedia.ttsVolume || 1)
         }
     }
@@ -682,7 +682,7 @@ FloatingToolDialog {
     MediaPlayer {
         id: backgroundPlayer
         source: String(root.previewMedia.backgroundSource || "")
-        audioOutput: AudioOutput {
+        audioOutput: DefaultAudioOutput {
             volume: Number(root.previewMedia.backgroundVolume || 0.6)
         }
     }
@@ -691,7 +691,7 @@ FloatingToolDialog {
         id: musicPlayer
         source: String(root.previewMedia.musicSource || "")
         loops: MediaPlayer.Infinite
-        audioOutput: AudioOutput {
+        audioOutput: DefaultAudioOutput {
             volume: Number(root.previewMedia.musicVolume || 0.3)
         }
     }

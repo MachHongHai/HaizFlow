@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import uuid
+import unicodedata
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -15,7 +16,7 @@ from pathlib import Path
 from haizflow.config import HYMT2_REQUEST_TIMEOUT_SECONDS, HYMT2_WARM_TIMEOUT_SECONDS
 from haizflow.core.hardware import processing_device_preference, runtime_profile, translation_model_preference
 from haizflow.core.paths import is_frozen, project_root
-from haizflow.pipeline.process_registry import register_process, release_process_job, unregister_process
+from haizflow.pipeline.process_registry import check_cancellation, register_process, release_process_job, unregister_process
 from haizflow.services.video_store import log_to_video
 
 WHISPER_LANGUAGE_NAMES = {}
@@ -70,9 +71,13 @@ def translate_segments(
     progress_callback=None,
     translation_model: str = "auto",
     checkpoint_path: str | None = None,
+    validation_mode: str = "auto",
 ):
     from haizflow.services.gemini_translation import MODELS as GEMINI_MODELS
     from haizflow.services.gemini_translation import translate_texts
+
+    if validation_mode not in {"auto", "manual"}:
+        raise ValueError("Unsupported translation validation mode.")
 
     requested_model = str(translation_model or "auto").lower()
     using_gemini = requested_model in GEMINI_MODELS
@@ -117,6 +122,12 @@ def translate_segments(
         "source_language": source_language, "target_language": target_language,
         "format": "sentence-translation-v1",
     }, len(segments))
+    def save_valid_batch(indices, values):
+        valid = [(index, value) for index, value in zip(indices, values)
+                 if isinstance(value, str) and value.strip()]
+        if valid:
+            checkpoint.save_batch([item[0] for item in valid], [item[1] for item in valid])
+
     missing = [index for index, value in enumerate(checkpoint.values) if value is None]
     completed = len(segments) - len(missing)
     if completed:
@@ -131,7 +142,7 @@ def translate_segments(
             source_language=language_name(source_language) if source_language != "auto" else "auto",
             target_language=target_language_name,
             video_id=video_id, progress_callback=progress_callback,
-            initial_translations=checkpoint.values, result_callback=checkpoint.save_batch,
+            initial_translations=checkpoint.values, result_callback=save_valid_batch,
         )
     else:
         translations = _translate_with_hymt2_worker(
@@ -141,14 +152,14 @@ def translate_segments(
             target_language_name=target_language_name,
             progress_callback=progress_callback,
             translate_indices=missing, initial_translations=checkpoint.values,
-            result_callback=checkpoint.save_batch,
+            result_callback=save_valid_batch,
         )
     if len(translations) != len(segments):
         raise RuntimeError(
             "HY-MT2 must return exactly one translation for each timestamped source sentence."
         )
     translations = [clean_translation(text) for text in translations]
-    checkpoint.save_batch(list(range(len(segments))), translations)
+    save_valid_batch(list(range(len(segments))), translations)
     suspect_indexes = _suspicious_translation_indexes(
         source_texts,
         translations,
@@ -170,27 +181,41 @@ def translate_segments(
             level="WARNING",
             component="TRANSLATE",
         )
-        if using_gemini:
-            retry_values = translate_texts(
-                [source_texts[index] for index in retry_indexes],
-                model=requested_model, source_language="auto",
-                target_language=target_language_name, video_id=video_id,
-            )
-            retry_results = dict(zip(retry_indexes, retry_values))
-        else:
-            retry_results = _translate_with_hymt2_worker(
-                source_texts,
-                video_id=video_id,
-                source_languages=[language_name(code) for code in source_codes],
-                target_language_name=target_language_name,
-                progress_callback=None,
-                include_context=include_context,
-                strict_source_only=True,
-                translate_indices=retry_indexes,
-            )
-        for index in retry_indexes:
-            translations[index] = clean_translation(retry_results[index])
-        checkpoint.save_batch(retry_indexes, [translations[index] for index in retry_indexes])
+        check_cancellation(video_id)
+        try:
+            if using_gemini:
+                retry_values = translate_texts(
+                    [source_texts[index] for index in retry_indexes],
+                    model=requested_model, source_language="auto",
+                    target_language=target_language_name, video_id=video_id,
+                )
+                if len(retry_values) != len(retry_indexes):
+                    raise ValueError("Recovery returned an incomplete translation batch.")
+                retry_results = dict(zip(retry_indexes, retry_values))
+            else:
+                retry_results = _translate_with_hymt2_worker(
+                    source_texts,
+                    video_id=video_id,
+                    source_languages=[language_name(code) for code in source_codes],
+                    target_language_name=target_language_name,
+                    progress_callback=None,
+                    include_context=include_context,
+                    strict_source_only=True,
+                    translate_indices=retry_indexes,
+                )
+            # Validate the whole retry before replacing any durable result.
+            candidates = {index: clean_translation(retry_results[index]) for index in retry_indexes}
+            check_cancellation(video_id)
+            for index, candidate in candidates.items():
+                if not _invalid_translation(candidate) or _invalid_translation(translations[index]):
+                    translations[index] = candidate
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
+            check_cancellation(video_id)
+            if "cancelled by user" in str(exc).lower():
+                raise
+            log_to_video(video_id, f"Translation recovery {retry_number}/2 failed; retaining received results: {exc}",
+                         level="WARNING", component="TRANSLATE")
+        save_valid_batch(retry_indexes, [translations[index] for index in retry_indexes])
         suspect_indexes = _suspicious_translation_indexes(
             source_texts,
             translations,
@@ -198,20 +223,19 @@ def translate_segments(
         )
     invalid_indexes = {
         index for index in suspect_indexes
-        if is_suspicious_translation(source_texts[index], translations[index], target_language_name)
+        if _invalid_translation(translations[index])
     }
-    if invalid_indexes:
+    if invalid_indexes and validation_mode == "auto":
         labels = ", ".join(str(index + 1) for index in sorted(invalid_indexes))
         raise RuntimeError(
-            "The translator returned invalid translations after two bounded recovery attempts "
-            f"(segments: {labels}). The export was stopped to protect subtitle quality."
+            f"Bản dịch còn ký tự lỗi hoặc nội dung không hợp lệ ở câu {labels} sau khi thử lại. "
+            "Hãy kiểm tra bản dịch trước khi tạo giọng và xuất video."
         )
     if suspect_indexes:
         labels = ", ".join(str(index + 1) for index in sorted(suspect_indexes))
         log_to_video(
             video_id,
-            f"Similar translations remain in segment(s) {labels} after two retries. "
-            "Keeping the valid translations; similarity alone does not establish a translation error.",
+            f"Translation review recommended for segment(s) {labels}; similarity alone does not block processing.",
             level="WARNING", component="TRANSLATE",
         )
 
@@ -221,18 +245,26 @@ def translate_segments(
         zip(segments, source_texts, translations),
         start=1,
     ):
+        warnings = []
+        if index - 1 in suspect_indexes:
+            warnings.append("invalid_text" if index - 1 in invalid_indexes else "review_translation")
+        if validation_mode == "manual" and index - 1 in invalid_indexes:
+            translated_text = "".join(character for character in translated_text
+                if character != "\ufffd" and unicodedata.category(character) not in {"Cs", "Cc"})
+            translated_text = translated_text.strip() or source_text
         log_to_video(video_id, f"[{index}/{total}] Segment translation: '{source_text}' -> '{translated_text}'", level="INFO")
-        translated_segments.append(
-            {
+        translated_segment = {
                 "start": segment["start"],
                 "end": segment["end"],
                 "text": translated_text or source_text,
+                "source_text": source_text,
                 "source_language": source_codes[index - 1],
                 "timing_source": segment.get("timing_source", "unknown"),
             }
-        )
-
-    from haizflow.pipeline.process_registry import check_cancellation
+        if warnings:
+            translated_segment["translation_warnings"] = warnings
+            translated_segment["translation_warning_text"] = translated_segment["text"]
+        translated_segments.append(translated_segment)
 
     check_cancellation(video_id)
     output_directory = os.path.dirname(os.path.abspath(output_json_path))
@@ -820,6 +852,8 @@ def clean_translation(text: str) -> str:
 
 
 def is_suspicious_translation(source_text: str, translated_text: str, target_language_name: str) -> bool:
+    if _invalid_translation(translated_text):
+        return True
     # Older prompts labelled neighbouring subtitles P1/N1. A rare model
     # failure can copy that scaffolding into the answer (as happened in
     # work4). Continue rejecting both historical and current prompt markers.
@@ -845,6 +879,19 @@ def is_suspicious_translation(source_text: str, translated_text: str, target_lan
     if required_script and len(source_content) >= 12:
         return re.search(required_script, translated_text) is None
     return False
+
+
+def _invalid_translation(text: str) -> bool:
+    """Only objective corruption blocks Auto; linguistic heuristics need review."""
+    if not str(text or "").strip():
+        return True
+    if any(character == "\ufffd" or unicodedata.category(character) in {"Cs", "Cc"}
+           for character in text):
+        return True
+    return bool(re.search(
+        r"(?:^|\s)[PN]\d+\s*\[[^\]]+\]\s*:|\[(?:source text|background context|translation|previous subtitles?|following subtitles?)\]",
+        text, re.IGNORECASE,
+    ))
 
 
 def _comparison_text(value: str) -> str:

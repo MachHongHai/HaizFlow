@@ -1335,6 +1335,40 @@ def _original_subtitle_removal_prefix(
     return _subtitle_blur_prefix(region, source_width, source_height, enable_expression)
 
 
+def _ordered_subtitle_removal_prefix(payload, source_width, source_height, mode,
+                                     source_start_seconds=0.0):
+    """Compose each timed mask onto the result of the layer below it."""
+    if not payload or "treatment_layers" not in payload:
+        region = _source_subtitle_removal_region(payload, source_width, source_height)
+        return (_original_subtitle_removal_prefix(region, source_width, source_height, mode)
+                if region else "")
+    offset = float(payload.get("timeline_offset_seconds", source_start_seconds))
+    prefixes = []
+    input_label = "[0:v]"
+    for index, layer in enumerate(payload["treatment_layers"]):
+        region = _source_subtitle_removal_region(layer.get("region"), source_width, source_height)
+        if not region:
+            continue
+        start = float(layer["start_ms"]) / 1000 - offset
+        end = start + float(layer["duration_ms"]) / 1000
+        if end <= 0:
+            continue
+        enable = f"gte(t,{max(0.0, start):.6f})*lt(t,{end:.6f})"
+        prefix = _original_subtitle_removal_prefix(
+            region, source_width, source_height, layer.get("mode", mode), enable,
+        )
+        # Namespace all temporary labels because FFmpeg forbids consuming
+        # one source pad twice or defining an output label more than once.
+        prefix = re.sub(r"\[([A-Za-z_][A-Za-z_0-9]*)\]",
+                        lambda match: f"[ocr_{index}_{match[1]}]", prefix)
+        prefix = prefix.replace("[0:v]", input_label)
+        input_label = f"[ocr_{index}_source_without_original]"
+        prefixes.append(prefix)
+    if not prefixes:
+        return ""
+    return "".join(prefixes) + f"{input_label}null[source_without_original];"
+
+
 def _watermark_filter(
     text: str,
     output_width: int,
@@ -1479,6 +1513,7 @@ def render_video(
     watermark_italic: bool = True,
     subtitle_style_overrides: dict[int, dict] | None = None,
     encoding_quality: int | None = None,
+    preview_source_scale: bool = False,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
@@ -1495,6 +1530,17 @@ def render_video(
         raise RuntimeError("Final render requires a non-empty subtitle file.")
     video_temp_dir = os.path.dirname(os.path.abspath(srt_path))
     source_width, source_height = get_video_dimensions(video_path)
+    working_scale = ""
+    if (compatibility_preview and preview_source_scale and output_format == "keep_ratio"
+            and not watermark_text and not watermark_image_path and not watermark_video_path
+            and max(source_width, source_height) > 864):
+        # Only the editor's subtitle-free base proxy uses this path. Filter
+        # source captions at proxy resolution, rather than blurring millions
+        # of source pixels and shrinking them afterwards. Export stays full-size.
+        ratio = 864 / max(source_width, source_height)
+        source_width = max(2, int(source_width * ratio) // 2 * 2)
+        source_height = max(2, int(source_height * ratio) // 2 * 2)
+        working_scale = f"scale={source_width}:{source_height}"
     _crop_x, _crop_y, cropped_width, cropped_height = _crop_geometry(source_width, source_height, crop)
     if output_format in {"tiktok_9_16_crop", "blur_background_9_16"}:
         subtitle_width, subtitle_height = 1080, 1920
@@ -1643,7 +1689,9 @@ def render_video(
     # The detected rectangle is a source-video treatment, not a subtitle cue.
     # ASR gaps do not imply the burnt-in source caption has disappeared.
     # Keep blur/patch active for the entire clip, including its first/last frames.
-    removal_enable = ""
+    removal_prefix = _ordered_subtitle_removal_prefix(
+        original_subtitle_region, source_width, source_height, removal_mode, source_start_seconds,
+    )
     if removal_region:
         x, y, width, height = removal_region
         log_to_video(
@@ -1652,7 +1700,7 @@ def render_video(
             f"({x},{y}) {width}x{height}; replacement-subtitle layout is independent.",
             component="RENDER",
         )
-    elif original_subtitle_region:
+    elif original_subtitle_region and not removal_prefix:
         log_to_video(
             video_id,
             "Original subtitle removal was skipped because the detected region was outside the source frame.",
@@ -1662,15 +1710,7 @@ def render_video(
     if output_format == "blur_background_9_16":
         prefix = ",".join(filters)
         input_label = "[0:v]"
-        removal_prefix = ""
-        if removal_region:
-            removal_prefix = _original_subtitle_removal_prefix(
-                removal_region,
-                source_width,
-                source_height,
-                removal_mode,
-                removal_enable,
-            )
+        if removal_prefix:
             input_label = "[source_without_original]"
         source = f"{input_label}{prefix + ',' if prefix else ''}split[base][fg]"
         vf_filter = (
@@ -1684,14 +1724,7 @@ def render_video(
         filters.append(ass_filter)
         if watermark_filter:
             filters.append(watermark_filter)
-        if removal_region:
-            removal_prefix = _original_subtitle_removal_prefix(
-                removal_region,
-                source_width,
-                source_height,
-                removal_mode,
-                removal_enable,
-            )
+        if removal_prefix:
             vf_filter = f"{removal_prefix}[source_without_original]{','.join(filters)}[outv]"
         else:
             vf_filter = ",".join(filters)
@@ -1710,6 +1743,13 @@ def render_video(
             opacity_percent=watermark_opacity_percent,
         )
         vf_filter = f"{vf_filter};{image_filter}"
+
+    if working_scale:
+        if vf_filter.endswith("[outv]"):
+            vf_filter = (f"[0:v]{working_scale}[preview_source];"
+                         + vf_filter.replace("[0:v]", "[preview_source]"))
+        else:
+            vf_filter = f"{working_scale},{vf_filter}"
 
     if compatibility_preview:
         # Qt Multimedia on Windows can decode some AMF preview outputs with an
@@ -1765,7 +1805,7 @@ def render_video(
             cmd_prefix.extend(["-loop", "1", "-i", rel_watermark_media])
         else:
             cmd_prefix.extend(["-stream_loop", "-1", "-i", rel_watermark_media])
-    if use_media_watermark or removal_region or output_format == "blur_background_9_16":
+    if use_media_watermark or removal_prefix or output_format == "blur_background_9_16":
         cmd_prefix.extend(["-filter_complex", vf_filter, "-map", "[outv]"])
     else:
         cmd_prefix.extend(["-map", "0:v:0", "-vf", vf_filter])

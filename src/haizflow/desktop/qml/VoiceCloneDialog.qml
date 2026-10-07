@@ -170,7 +170,7 @@ FloatingToolDialog {
 
     MediaPlayer {
         id: samplePlayer
-        audioOutput: AudioOutput { volume: 1.0 }
+        audioOutput: DefaultAudioOutput { volume: 1.0 }
         onDurationChanged: {
             if (samplePlayer.duration > 0)
                 root.sampleDurationMs = samplePlayer.duration;

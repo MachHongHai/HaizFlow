@@ -9,6 +9,8 @@ Item {
     property var region: ({})
     property bool interactive: false
     property bool editing: false
+    property bool showOutline: false
+    property string regionLabel: ""
     property var draft: null
     property rect startRect
     property point startPointer
@@ -51,11 +53,11 @@ Item {
             width: Number(root.currentRegion.width_percent || 0) * canvas.width / 100
             height: Number(root.currentRegion.height_percent || 0) * canvas.height / 100
             color: "transparent"
-            border.width: root.editing ? 2 : 0
-            border.color: Theme.focus
+            border.width: root.editing ? 2 : root.showOutline ? 1 : 0
+            border.color: root.editing ? Theme.focus : Theme.outlineStrong
             activeFocusOnTab: true
             Accessible.role: Accessible.Slider
-            Accessible.name: qsTr("Vùng che phụ đề gốc")
+            Accessible.name: root.regionLabel || qsTr("Vùng che phụ đề gốc")
             Keys.onPressed: function(event) {
                 const step = event.modifiers & Qt.ShiftModifier ? 10 : 2;
                 let dx = 0;

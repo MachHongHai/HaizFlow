@@ -239,7 +239,7 @@ Item {
         }
     }
 
-    AudioOutput {
+    DefaultAudioOutput {
         id: previewAudio
     }
 

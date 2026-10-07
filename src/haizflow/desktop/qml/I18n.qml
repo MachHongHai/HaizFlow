@@ -110,6 +110,9 @@ QtObject {
             return direct
 
         let match
+        match = source.match(/^Lớp che (\d+)$/)
+        if (match)
+            return language === "vi" ? source : "Cover layer " + match[1]
         match = source.match(/^Preparing voice: (.+)$/)
         if (match)
             return voiceStageLabel(match[1])

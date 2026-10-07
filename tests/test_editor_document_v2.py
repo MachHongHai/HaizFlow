@@ -774,7 +774,7 @@ def test_first_editor_document_creates_metadata_backup_and_stable_tracks(tmp_pat
     with (
         patch.object(editor_documents, "document_path", return_value=destination),
         patch.object(editor_documents.video_store, "get_video_json_path", return_value=str(metadata)),
-        patch.object(editor_documents.video_store, "save_video"),
+        patch.object(editor_documents.video_store, "update_video"),
         patch.object(editor_documents, "_legacy_segments", return_value=segments),
     ):
         document = editor_documents.ensure(video)
@@ -782,7 +782,7 @@ def test_first_editor_document_creates_metadata_backup_and_stable_tracks(tmp_pat
     assert (tmp_path / "video.pre-editor-v2.json").is_file()
     assert destination.is_file()
     assert [track.track_id for track in document.tracks] == [
-        "source-video", "subtitles", "overlays", "voice", "source-audio", "music"
+        "source-video", "subtitles", "overlays", "voice", "source-audio", "music", "ocr-source"
     ]
     assert next(clip for clip in document.clips if clip.track_id == "subtitles").segment_id == "s1"
 

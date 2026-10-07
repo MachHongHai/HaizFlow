@@ -174,20 +174,20 @@ AppDialog {
     MediaPlayer {
         id: sourcePreviewPlayer
         source: AppController.audioPreviewOriginalSource
-        audioOutput: AudioOutput { volume: AppController.originalVolume / 100.0 }
+        audioOutput: DefaultAudioOutput { volume: AppController.originalVolume / 100.0 }
     }
 
     MediaPlayer {
         id: musicPreviewPlayer
         source: AppController.audioPreviewBackgroundMusicSource
         loops: AppController.backgroundMusicLoop ? MediaPlayer.Infinite : 1
-        audioOutput: AudioOutput { volume: AppController.backgroundMusicVolume / 100.0 }
+        audioOutput: DefaultAudioOutput { volume: AppController.backgroundMusicVolume / 100.0 }
     }
 
     MediaPlayer {
         id: voicePreviewPlayer
         source: AppController.audioPreviewSource
-        audioOutput: AudioOutput { volume: AppController.ttsVolume / 100.0 }
+        audioOutput: DefaultAudioOutput { volume: AppController.ttsVolume / 100.0 }
     }
 
     Connections {

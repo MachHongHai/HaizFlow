@@ -13,6 +13,7 @@ Rectangle {
     property bool legacyReadOnly: false
     property bool secondaryAudioTrack: false
     property bool secondaryMuted: false
+    property bool removableLayer: false
     readonly property bool audioTrack: ["voice", "source_audio", "music"].indexOf(kind) >= 0
     readonly property bool menuAvailable: !legacyReadOnly || audioTrack || secondaryAudioTrack
 
@@ -20,6 +21,7 @@ Rectangle {
     signal muteToggled()
     signal selectedRequested()
     signal secondaryMuteToggled()
+    signal layerDeleteRequested()
 
     implicitWidth: 152
     implicitHeight: 40
@@ -49,7 +51,6 @@ Rectangle {
             controlSize: 28
             iconName: !root.trackVisible ? "hide"
                 : root.muted || root.secondaryMuted ? "muted" : "more"
-            toolTipText: qsTr("Tùy chọn track")
             onClicked: trackMenu.popup()
         }
     }
@@ -59,10 +60,16 @@ Rectangle {
         menuContentWidth: 188
 
         AppMenuItem {
-            text: root.trackVisible ? qsTr("Ẩn layer") : qsTr("Hiện layer")
+            text: root.trackVisible ? qsTr("Ẩn lớp") : qsTr("Hiện lớp")
             collapsed: root.legacyReadOnly
             iconGlyph: root.trackVisible ? "\uED1A" : "\uE890"
             onTriggered: root.visibilityToggled()
+        }
+        AppMenuItem {
+            collapsed: !root.removableLayer
+            text: qsTr("Xóa lớp")
+            iconGlyph: IconCatalog.glyph("delete")
+            onTriggered: root.layerDeleteRequested()
         }
         AppMenuItem {
             collapsed: !root.audioTrack

@@ -215,6 +215,7 @@ def build_legacy_document(video) -> EditorDocument:
                 start_ms=start_ms,
                 duration_ms=end_ms - start_ms,
                 style_id="subtitle-default",
+                metadata={"segment_payload": deepcopy(segment)},
             )
         )
         clips.append(
@@ -546,14 +547,27 @@ def save(video, document: EditorDocument, *, bump_revision: bool = True) -> Edit
     video.editor_document_schema_version = EDITOR_DOCUMENT_SCHEMA_VERSION
     video.editor_document_revision = stored.revision
     video.editor_document_path = str(path)
-    video_store.save_video(video)
+    # The editor may hold a snapshot from before a worker published subtitles
+    # or speech. Update only editor metadata against the current video record,
+    # never write that snapshot's files/active_artifacts over newer results.
+    video_store.update_video(
+        video.video_id,
+        editor_document_schema_version=EDITOR_DOCUMENT_SCHEMA_VERSION,
+        editor_document_revision=stored.revision,
+        editor_document_path=str(path),
+    )
     return stored
 
 
 def ensure(video) -> EditorDocument:
+    from haizflow.services.ocr_layers import ensure_primary
+
     existing = load(video.video_id)
     if existing is not None:
-        reconciled = _reconcile_media_assets(video, existing)
+        current_video = video_store.get_video(video.video_id) or video
+        reconciled = _reconcile_media_assets(current_video, existing)
+        if ensure_primary(reconciled):
+            return save(video, reconciled)
         if reconciled is not existing:
             return save(video, reconciled)
         metadata_changed = (
@@ -565,7 +579,12 @@ def ensure(video) -> EditorDocument:
             video.editor_document_schema_version = existing.schema_version
             video.editor_document_revision = existing.revision
             video.editor_document_path = str(document_path(video.video_id))
-            video_store.save_video(video)
+            video_store.update_video(
+                video.video_id,
+                editor_document_schema_version=existing.schema_version,
+                editor_document_revision=existing.revision,
+                editor_document_path=str(document_path(video.video_id)),
+            )
         return existing
 
     metadata_path = Path(video_store.get_video_json_path(video.video_id))
@@ -573,6 +592,7 @@ def ensure(video) -> EditorDocument:
     if metadata_path.is_file() and not backup_path.exists():
         shutil.copy2(metadata_path, backup_path)
     document = build_legacy_document(video)
+    ensure_primary(document)
     return save(video, document, bump_revision=False)
 
 

@@ -16,6 +16,11 @@ InspectorPanel {
     property var selectedEditorClip: ({})
     property var subtitleDrafts: ({})
     property var ocrRegionDraft: null
+    property var ocrLayers: []
+    property var selectedOcrLayer: ({})
+    property var ocrModeDrafts: ({})
+    signal ocrLayerSelected(string clipId)
+    signal ocrModeDraftRequested(string clipId, string mode)
     property var exportPreflight: ({ "canExport": false, "issues": [],
         "requiredBytes": 0, "availableBytes": 0 })
     readonly property var toolIds: [
@@ -51,7 +56,7 @@ InspectorPanel {
     signal exportRequested()
     signal editorSeekRequested(real seconds)
     signal toolSelected(int index)
-    signal ocrRegionApplied()
+    signal ocrRegionApplied(string clipId)
     signal ocrRegionDraftRequested(var region)
     signal ocrRegionDiscardRequested()
 
@@ -59,9 +64,10 @@ InspectorPanel {
         if (stageLoader.status !== Loader.Ready || !root.editable || root.taskQueued)
             return false;
         const imagePane = stageLoader.item as ManualImageToolPanel;
+        const clipId = String(root.selectedOcrLayer.clip_id || "ocr-source-region");
         if (!imagePane || !imagePane.applyTreatment())
             return false;
-        root.ocrRegionApplied();
+        root.ocrRegionApplied(clipId);
         root.settingsCommitted();
         return true;
     }
@@ -69,7 +75,7 @@ InspectorPanel {
     function restoreDetectedOcrRegion() {
         if (!root.editable || root.taskQueued || !AppController.setOriginalSubtitleRegion({}))
             return false;
-        root.ocrRegionApplied();
+        root.ocrRegionApplied("ocr-source-region");
         root.settingsCommitted();
         return true;
     }

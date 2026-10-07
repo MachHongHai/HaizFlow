@@ -8,6 +8,16 @@ ColumnLayout {
     id: root
     property var inspector
     spacing: Theme.space8
+    readonly property int warningCount: root.inspector.subtitleSegments.filter(function(segment) {
+        return (segment.translation_warnings || []).length > 0
+            && String(segment.translation_warning_text || "") === String(segment.text || "");
+    }).length
+    InlineBanner {
+        Layout.fillWidth: true
+        visible: root.warningCount > 0
+        tone: "warning"
+        message: qsTr("Đã áp dụng bản dịch. Có %1 câu cần kiểm tra trong Phụ đề.").arg(root.warningCount)
+    }
     Text {
         Layout.fillWidth: true
         text: AppController.processingDevice === "gpu"

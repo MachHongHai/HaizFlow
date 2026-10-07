@@ -166,19 +166,19 @@ AppDialog {
     MediaPlayer {
         id: sourcePreviewPlayer
         source: AppController.audioPreviewOriginalSource
-        audioOutput: AudioOutput { volume: root.originalVolume / 100.0 }
+        audioOutput: DefaultAudioOutput { volume: root.originalVolume / 100.0 }
     }
 
     MediaPlayer {
         id: musicPreviewPlayer
         source: AppController.audioPreviewBackgroundMusicSource
-        audioOutput: AudioOutput { volume: root.backgroundMusicVolume / 100.0 }
+        audioOutput: DefaultAudioOutput { volume: root.backgroundMusicVolume / 100.0 }
     }
 
     MediaPlayer {
         id: voicePreviewPlayer
         source: AppController.audioPreviewSource
-        audioOutput: AudioOutput { volume: root.ttsVolume / 100.0 }
+        audioOutput: DefaultAudioOutput { volume: root.ttsVolume / 100.0 }
     }
 
     Connections {

@@ -1478,6 +1478,7 @@ def _run_translation(video, reporter) -> None:
                 provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
                 translation_model=getattr(video, "translation_model", "auto"),
                 checkpoint_path=str(manual_progress_path(video.video_id)),
+                validation_mode="manual",
                 progress_callback=lambda current, total, detail: reporter.update(
                     5 + round(90 * current / max(1, total)), "manual_translation", detail, current, total
                 ),
@@ -1963,22 +1964,20 @@ def _run_audio(video, reporter) -> None:
 
 
 def _ocr_region(video) -> dict[str, Any] | None:
-    if not video.remove_original_subtitles:
-        return None
-    from haizflow.services.ocr_regions import effective_region
+    from haizflow.services.ocr_layers import render_region
 
-    override = effective_region(video)
-    if override:
-        return override
+    if not getattr(video, "video_id", ""):
+        return render_region(video)
     record = manual_artifacts.resolve(video.video_id, "ocr_region", ocr_signature(video))
     if not record:
         # Cleanup is an optional layer. Until OCR is explicitly run, the
         # current visual state is simply the unmodified source underneath any
         # translated subtitle layer.
-        return None
+        return render_region(video)
     try:
         payload = json.loads(Path(record["resolved_outputs"]["region"]).read_text(encoding="utf-8"))
-        return payload.get("region", payload) if isinstance(payload, dict) else None
+        detected = payload.get("region", payload) if isinstance(payload, dict) else None
+        return render_region(video, detected)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("Cache vùng phụ đề gốc không hợp lệ.") from exc
 

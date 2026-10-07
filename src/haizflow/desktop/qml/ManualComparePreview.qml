@@ -41,6 +41,9 @@ Rectangle {
     property real inputClockTickMs: 0
     property bool subtitleInteractive: false
     property var ocrRegion: ({})
+    property var ocrLayers: []
+    property var ocrRegionDrafts: ({})
+    property string selectedOcrLayerId: "ocr-source-region"
     property var ocrSourceFrameInOutput: ({})
     property bool ocrInteractive: false
     property bool ocrEditing: false
@@ -48,6 +51,8 @@ Rectangle {
     signal previewZoomRequested(real percent)
     signal ocrEditingRequested()
     signal ocrRegionEdited(var region)
+    signal ocrLayerSelected(string clipId)
+    signal ocrLayerRegionEdited(string clipId, var region)
     signal ocrApplyRequested()
     signal ocrDiscardRequested()
     function ocrFramePercent(forResult) {
@@ -839,11 +844,13 @@ Rectangle {
                 referenceWidthPixels: root.subtitleReferenceWidth
                 referenceHeightPixels: root.subtitleReferenceHeight
                 interactive: fullscreenLayer.visible
+                    && !root.previewBusy && !root.resultPriming && !root.resultSourceSwitching
                     && root.fullscreenResult
                     && root.subtitleInteractive
                     && String(root.resultBaseSource).length > 0
-                editing: root.subtitleEditEnabled
-                livePreviewVisible: root.fullscreenResult && root.subtitleLivePreviewEnabled && !root.resultSourceSwitching
+                editing: interactive && root.subtitleEditEnabled
+                livePreviewVisible: root.fullscreenResult && root.subtitleLivePreviewEnabled
+                    && !root.previewBusy && !root.resultPriming && !root.resultSourceSwitching
                 onActivated: root.activateSubtitleEditor()
                 onEditingDismissed: root.subtitleEditingDismissed()
                 onLayoutPreviewChanged: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
@@ -854,17 +861,22 @@ Rectangle {
                 }
             }
 
-            OcrRegionOverlay {
+            OcrLayersOverlay {
                 objectName: "fullscreenOcrRegionOverlay"
                 anchors.fill: fullscreenOutput
                 z: root.ocrEditing ? 8 : 3
                 videoRect: fullscreenOutput.contentRect
-                region: root.ocrRegion
+                layers: root.ocrLayers
+                regionDrafts: root.ocrRegionDrafts
+                selectedLayerId: root.selectedOcrLayerId
+                positionSeconds: root.positionSeconds
                 sourceFramePercent: root.ocrFramePercent(root.fullscreenResult)
-                interactive: fullscreenLayer.visible && root.ocrInteractive
-                editing: root.ocrEditing
-                onEditingStarted: { root.pausePlayback(); root.ocrEditingRequested(); }
-                onRegionEdited: function(region) { root.ocrRegionEdited(region); }
+                interactive: fullscreenLayer.visible && root.ocrInteractive && !root.previewBusy
+                    && !(root.fullscreenResult ? root.resultPriming || root.resultSourceSwitching
+                        : root.inputPriming || root.inputSourceSwitching)
+                editing: interactive && root.ocrEditing
+                onLayerSelected: function(clipId) { root.pausePlayback(); root.ocrLayerSelected(clipId); }
+                onRegionEdited: function(clipId, region) { root.ocrLayerRegionEdited(clipId, region); }
             }
 
             WatermarkTransformOverlay {
@@ -889,11 +901,12 @@ Rectangle {
                 referenceWidthPixels: root.subtitleReferenceWidth
                 referenceHeightPixels: root.subtitleReferenceHeight
                 interactive: fullscreenLayer.visible
+                    && !root.previewBusy && !root.resultPriming && !root.resultSourceSwitching
                     && root.fullscreenResult
                     && root.watermarkInteractive
                     && String(root.resultBaseSource).length > 0
-                editing: root.watermarkEditEnabled
-                livePreviewVisible: root.fullscreenResult && !root.resultSourceSwitching
+                editing: interactive && root.watermarkEditEnabled
+                livePreviewVisible: root.fullscreenResult && !root.previewBusy && !root.resultPriming && !root.resultSourceSwitching
                 onActivated: root.activateWatermarkEditor()
                 onEditingDismissed: root.watermarkEditingDismissed()
                 onScalePreviewChanged: function(value) {
@@ -914,6 +927,7 @@ Rectangle {
                 timeSeconds: root.positionSeconds
                 playing: resultPlayer.playbackState === MediaPlayer.PlayingState
                 interactive: fullscreenLayer.visible && root.fullscreenResult
+                    && !root.previewBusy && !root.resultPriming && !root.resultSourceSwitching
                 mediaActive: fullscreenLayer.visible && root.fullscreenResult
                 onClipSelected: function(clipId) { root.editorClipSelected(clipId); }
             }
@@ -1157,7 +1171,7 @@ Rectangle {
         source: root.attachedInputSource
         videoOutput: fullscreenLayer.visible && !root.fullscreenResult
             ? fullscreenOutput : inputPane.videoOutputItem
-        audioOutput: AudioOutput {
+        audioOutput: DefaultAudioOutput {
             muted: root.inputMuted || root.inputPriming || root.inputSourceSwitching || root.sourceGap
         }
 
@@ -1259,6 +1273,9 @@ Rectangle {
         property bool framePresented: false
         property bool busy: false
         property bool awaitingMedia: false
+        readonly property bool overlaysReady: framePresented && !root.previewBusy && !awaitingMedia
+            && !(pane === resultPane ? root.resultPriming || root.resultSourceSwitching
+                : root.inputPriming || root.inputSourceSwitching)
         property real progress: 0
         signal firstFramePresented()
         signal playRequested()
@@ -1320,11 +1337,12 @@ Rectangle {
             referenceWidthPixels: root.subtitleReferenceWidth
             referenceHeightPixels: root.subtitleReferenceHeight
             interactive: pane === resultPane
+                && pane.overlaysReady
                 && !fullscreenLayer.visible
                 && root.subtitleInteractive
                 && String(root.resultBaseSource).length > 0
-            editing: pane === resultPane && root.subtitleEditEnabled
-            livePreviewVisible: pane === resultPane && root.subtitleLivePreviewEnabled && !root.resultSourceSwitching
+            editing: interactive && root.subtitleEditEnabled
+            livePreviewVisible: pane === resultPane && pane.overlaysReady && root.subtitleLivePreviewEnabled
             onActivated: root.activateSubtitleEditor()
             onEditingDismissed: root.subtitleEditingDismissed()
             onLayoutPreviewChanged: function(fontSize, positionX, positionY, boxWidth, boxHeight) {
@@ -1335,17 +1353,20 @@ Rectangle {
             }
         }
 
-        OcrRegionOverlay {
+        OcrLayersOverlay {
             objectName: pane === resultPane ? "manualResultOcrRegionOverlay" : "manualSourceOcrRegionOverlay"
             anchors.fill: parent
             z: root.ocrEditing ? 8 : 3
             videoRect: paneVideoOutput.contentRect
-            region: root.ocrRegion
+            layers: root.ocrLayers
+            regionDrafts: root.ocrRegionDrafts
+            selectedLayerId: root.selectedOcrLayerId
+            positionSeconds: root.positionSeconds
             sourceFramePercent: root.ocrFramePercent(pane === resultPane)
-            interactive: !fullscreenLayer.visible && root.ocrInteractive
-            editing: root.ocrEditing
-            onEditingStarted: { root.pausePlayback(); root.ocrEditingRequested(); }
-            onRegionEdited: function(region) { root.ocrRegionEdited(region); }
+            interactive: !fullscreenLayer.visible && root.ocrInteractive && pane.overlaysReady
+            editing: interactive && root.ocrEditing
+            onLayerSelected: function(clipId) { root.pausePlayback(); root.ocrLayerSelected(clipId); }
+            onRegionEdited: function(clipId, region) { root.ocrLayerRegionEdited(clipId, region); }
         }
 
         WatermarkTransformOverlay {
@@ -1370,11 +1391,12 @@ Rectangle {
             referenceWidthPixels: root.subtitleReferenceWidth
             referenceHeightPixels: root.subtitleReferenceHeight
             interactive: pane === resultPane
+                && pane.overlaysReady
                 && !fullscreenLayer.visible
                 && root.watermarkInteractive
                 && String(root.resultBaseSource).length > 0
-            editing: pane === resultPane && root.watermarkEditEnabled
-            livePreviewVisible: pane === resultPane && !root.resultSourceSwitching
+            editing: interactive && root.watermarkEditEnabled
+            livePreviewVisible: pane === resultPane && pane.overlaysReady
             onActivated: root.activateWatermarkEditor()
             onEditingDismissed: root.watermarkEditingDismissed()
             onScalePreviewChanged: function(value) {
@@ -1394,7 +1416,7 @@ Rectangle {
             selectedClipIds: root.selectedEditorClipIds
             timeSeconds: root.positionSeconds
             playing: resultPlayer.playbackState === MediaPlayer.PlayingState
-            interactive: pane === resultPane && !fullscreenLayer.visible
+            interactive: pane === resultPane && !fullscreenLayer.visible && pane.overlaysReady
             mediaActive: pane === resultPane && !fullscreenLayer.visible
             onClipSelected: function(clipId) { root.editorClipSelected(clipId); }
         }

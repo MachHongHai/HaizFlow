@@ -14,6 +14,7 @@ Module {
         Property { name: "videoId"; type: "string"; isReadonly: true }
         Property { name: "document"; type: "QVariantMap"; isReadonly: true }
         Property { name: "tracks"; type: "QVariantList"; isReadonly: true }
+        Property { name: "ocrLayers"; type: "QVariantList"; isReadonly: true }
         Property { name: "clips"; type: "QVariantList"; isReadonly: true }
         Property { name: "assets"; type: "QVariantList"; isReadonly: true }
         Property { name: "styles"; type: "QVariantList"; isReadonly: true }
@@ -126,6 +127,9 @@ Module {
         Method { name: "cancelResourcePackOperation"; Parameter { name: "packId"; type: "string" } }
         Method { name: "discardResourcePackDownload"; Parameter { name: "packId"; type: "string" } }
         Method { name: "setOriginalSubtitleRegion"; type: "bool"; Parameter { name: "region"; type: "QVariantMap" } }
+        Method { name: "addOcrLayer"; type: "string" }
+        Method { name: "updateOcrLayer"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "region"; type: "QVariantMap" } Parameter { name: "mode"; type: "string" } }
+        Method { name: "setOcrLayerRange"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "startMs"; type: "int" } Parameter { name: "endMs"; type: "int" } }
         Signal { name: "sourceReplacementRequested"; Parameter { name: "videoId"; type: "string" } }
         Method { name: "repairResourcePack"; Parameter { name: "packId"; type: "string" } }
         Method { name: "removeResourcePack"; type: "bool"; Parameter { name: "packId"; type: "string" } }
@@ -2040,6 +2044,12 @@ Module {
             name: "setManualSubtitleTreatment"
             type: "bool"
             Parameter { name: "treatment"; type: "QString" }
+        }
+        Method {
+            name: "setManualSubtitleTreatment"
+            type: "bool"
+            Parameter { name: "treatment"; type: "QString" }
+            Parameter { name: "region"; type: "QVariantMap" }
         }
         Method {
             name: "clearManualCache"

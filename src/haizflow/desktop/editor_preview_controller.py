@@ -427,9 +427,9 @@ class EditorPreviewController:
         video_dir = Path(video_store.get_video_dir(video.video_id))
         files = dict(getattr(video, "files", {}) or {})
         ocr_region = self._ocr_region(video_dir, str(files.get("ocr_region") or ""))
-        from haizflow.services.ocr_regions import effective_region
+        from haizflow.services.ocr_layers import render_region
 
-        ocr_region = effective_region(video, ocr_region) or {}
+        ocr_region = render_region(video, ocr_region) or {}
         original_subtitle_intervals = self._source_subtitle_intervals(
             video_dir,
             str(files.get("source_segments") or ""),
@@ -443,7 +443,8 @@ class EditorPreviewController:
             "crop": self._model_dict(getattr(video, "crop", None)),
             "output_format": str(getattr(video, "output_format", "keep_ratio") or "keep_ratio"),
             "subtitle_layout_override": bool(getattr(video, "subtitle_layout_override", False)),
-            "remove_original_subtitles": bool(getattr(video, "remove_original_subtitles", True)),
+            "remove_original_subtitles": bool(getattr(video, "remove_original_subtitles", True)
+                                              or ocr_region.get("treatment_layers")),
             "removal_mode": str(getattr(video, "original_subtitle_removal_mode", "patch") or "patch"),
             "watermark_text": str(getattr(video, "watermark_text", "") or ""),
             "watermark_scale_percent": max(
@@ -506,7 +507,7 @@ class EditorPreviewController:
         fingerprint_settings = dict(settings)
         if getattr(video, "project_type", "single") == "manual" and hasattr(self._host, "manualPreviewAudio"):
             settings["independent_manual_preview"] = True
-            settings["preview_encoding"] = "manual-base-pcm-libass-watermark-overlay-v2"
+            settings["preview_encoding"] = "manual-base-pcm-libass-watermark-overlay-v3"
             fingerprint_settings = self._base_visual_cache_payload(settings)
         if not settings["remove_original_subtitles"]:
             fingerprint_settings.update(
@@ -1009,6 +1010,16 @@ class EditorPreviewController:
         staged_output = render_dir / f"preview-{generation}.rendering.mp4"
         self._write_window_srt(subtitle_path, segments, source_start_seconds, duration)
         self._write_silent_wav(silent_path, duration)
+        if ocr_region and "treatment_layers" in ocr_region:
+            from haizflow.services import editor_documents
+            from haizflow.services.ocr_layers import render_time_offset
+
+            original_source = str((getattr(video, "files", {}) or {}).get("video_input") or "")
+            document = editor_documents.load(video.video_id)
+            offset = source_start_seconds
+            if document and os.path.normcase(os.path.abspath(source_path)) == os.path.normcase(os.path.abspath(original_source)):
+                offset = render_time_offset(document.sequence.model_dump(), source_start_seconds)
+            ocr_region = {**ocr_region, "timeline_offset_seconds": offset}
         try:
             self._set_progress(generation, progress_start, "rendering")
             render_video(
@@ -1028,6 +1039,7 @@ class EditorPreviewController:
                 source_duration_seconds=duration,
                 process_registry_id=process_id,
                 compatibility_preview=True,
+                preview_source_scale=not segments and not watermark_text,
                 subtitle_region_override=subtitle_region_override,
                 original_subtitle_intervals=original_subtitle_intervals,
                 watermark_scale_percent=getattr(video, "watermark_scale_percent", 100),

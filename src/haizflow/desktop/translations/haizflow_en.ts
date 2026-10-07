@@ -3,6 +3,12 @@
 <TS version="2.1" language="en_US" sourcelanguage="vi_VN">
 <context>
     <name>ManualImageToolPanel</name>
+    <message><source>Lớp che phụ đề</source><translation>Subtitle coverage</translation></message>
+    <message><source>Thêm lớp</source><translation>Add layer</translation></message>
+    <message><source>Làm mờ</source><translation>Blur</translation></message>
+    <message><source>Vá nền</source><translation>Patch</translation></message>
+    <message><source>Bắt đầu</source><translation>Start</translation></message>
+    <message><source>Kết thúc</source><translation>End</translation></message>
     <message><source>Bấm vào vùng che trên preview để chỉnh. Chọn Áp dụng để lưu thay đổi.</source><translation>Click the coverage area on the preview to edit it. Select Apply to save your changes.</translation></message>
     <message><source>Bỏ thay đổi</source><translation>Discard changes</translation></message>
     <message><source>Khôi phục vùng nhận diện</source><translation>Reset to detected region</translation></message>
@@ -2438,6 +2444,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualTranslationToolPanel</name>
+    <message><source>Đã áp dụng bản dịch. Có %1 câu cần kiểm tra trong Phụ đề.</source><translation>Translation applied. Review %1 sentences in Subtitles.</translation></message>
     <message><source>Máy đang dùng GPU. Model GPU thường xử lý nhanh hơn; bạn vẫn có thể chọn CPU.</source><translation>GPU mode is enabled. GPU models are usually faster; you can still choose CPU.</translation></message>
     <message><source>Chế độ CPU: model GPU chưa khả dụng. Đổi bộ xử lý trong Cài đặt → Chung để sử dụng GPU.</source><translation>CPU mode: GPU models are unavailable. Change the processing device in Settings → General to use GPU.</translation></message>
     <message>
@@ -4383,6 +4390,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SubtitleTimeline</name>
+    <message><source>Xóa lớp</source><translation>Delete layer</translation></message>
     <message>
         <location filename="../qml/SubtitleTimeline.qml" line="+374"/>
         <source>Video nguồn</source>
@@ -4448,6 +4456,9 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>TrackHeader</name>
+    <message><source>Xóa lớp</source><translation>Delete layer</translation></message>
+    <message><source>Ẩn lớp</source><translation>Hide layer</translation></message>
+    <message><source>Hiện lớp</source><translation>Show layer</translation></message>
     <message>
         <location filename="../qml/TrackHeader.qml" line="+52"/>
         <source>Tùy chọn track</source>
@@ -5321,5 +5332,12 @@ Author and owner of HaizFlow.</translation>
 <context>
     <name>NavigationTabs</name>
     <message><source>Mục đang mở</source><translation>Current section</translation></message>
+</context>
+<context>
+    <name>OcrLayerList</name>
+    <message><source>Vùng nhận diện</source><translation>Detected region</translation></message>
+    <message><source>Ẩn lớp</source><translation>Hide layer</translation></message>
+    <message><source>Hiện lớp</source><translation>Show layer</translation></message>
+    <message><source>Xóa lớp</source><translation>Delete layer</translation></message>
 </context>
 </TS>

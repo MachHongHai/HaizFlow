@@ -93,7 +93,20 @@ class ManualEditorDocumentModel(QObject):
     def tracks(self) -> list[dict]:
         if not self._document:
             return []
-        return [item.model_dump() for item in sorted(self._document.tracks, key=lambda value: value.order)]
+        from haizflow.services.ocr_layers import EXTRA_LAYERS_ENABLED
+
+        return [item.model_dump() for item in sorted(self._document.tracks, key=lambda value: value.order)
+                if item.kind != "ocr" or EXTRA_LAYERS_ENABLED]
+
+    @Property("QVariantList", notify=changed)
+    def ocrLayers(self) -> list[dict]:
+        if not self._document:
+            return []
+        from haizflow.services import video_store
+        from haizflow.services.ocr_layers import detected_region, layers
+
+        video = video_store.get_video(self._video_id)
+        return layers(video, self._document, detected_region(video)) if video else []
 
     @Property("QVariantList", notify=clipsChanged)
     def clips(self) -> list[dict]:
@@ -105,7 +118,11 @@ class ManualEditorDocumentModel(QObject):
             key=lambda item: (order.get(item.track_id, 999), item.start_ms, item.clip_id),
         )
         result: list[dict] = []
+        from haizflow.services.ocr_layers import EXTRA_LAYERS_ENABLED
+
         for item in values:
+            if item.kind == "ocr" and not EXTRA_LAYERS_ENABLED:
+                continue
             payload = item.model_dump()
             asset = editor_documents.asset_by_id(self._document, item.asset_id)
             if asset is not None:
@@ -244,6 +261,14 @@ class ManualEditorDocumentModel(QObject):
         if self._document is None:
             return []
         warnings: list[dict[str, str]] = []
+        segment = clip.metadata.get("segment_payload") or {}
+        if segment.get("translation_warning_text") == clip.name:
+            for code in segment.get("translation_warnings", []):
+                warnings.append({"code": str(code), "message": (
+                    "Bản dịch có ký tự hoặc nội dung bất thường. Hãy kiểm tra câu này."
+                    if code == "invalid_text" else
+                    "Câu dịch có thể cần chỉnh sửa. Hãy đối chiếu với lời thoại gốc."
+                )})
         duration_seconds = max(0.001, clip.duration_ms / 1000)
         characters = len("".join(str(clip.name or "").split()))
         cps = characters / duration_seconds

@@ -172,6 +172,8 @@ class ManualPreviewAudioController(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(10)
         self._timer.timeout.connect(self._pump)
+        self._media_devices = QMediaDevices(self)
+        self._media_devices.audioOutputsChanged.connect(self._sync_output_device)
 
     @Property(bool, notify=busyChanged)
     def busy(self):
@@ -420,7 +422,8 @@ class ManualPreviewAudioController(QObject):
             segments,
             {
                 "sequence": document.sequence.model_dump() if document else {},
-                "tracks": [track.model_dump() for track in document.tracks]
+                "tracks": [track.model_dump() for track in document.tracks
+                           if track.kind in {"source_audio", "voice", "music", "overlay"}]
                     if document else [],
                 "clips": [
                     clip.model_dump()
@@ -688,6 +691,8 @@ class ManualPreviewAudioController(QObject):
     @Slot(float, bool, bool)
     def synchronize(self, seconds, playing, muted):
         playing = bool(playing) and not self._busy
+        if playing and not self._playing:
+            self._sync_output_device()
         self._muted = muted
         if not playing:
             self._playing = False
@@ -717,6 +722,20 @@ class ManualPreviewAudioController(QObject):
         if self._sink:
             self._sink.reset()
             self._device = None
+
+    @Slot()
+    def _sync_output_device(self):
+        if self._closed:
+            return
+        default = QMediaDevices.defaultAudioOutput()
+        if self._sink and self._sink.device().id() != default.id():
+            self._cursor = max(0, round(self._position_seconds * RATE))
+            self._sink.stop()
+            self._sink.deleteLater()
+            self._sink = None
+            self._device = None
+        if self._playing and not default.isNull():
+            self._timer.start()
 
     def _pump(self):
         if not self._playing:

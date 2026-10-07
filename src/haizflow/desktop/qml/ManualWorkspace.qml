@@ -124,7 +124,14 @@ Item {
     property var subtitleTransformDraft: null
     property bool watermarkTransformActive: false
     property bool ocrTransformActive: false
-    property var ocrRegionDraft: null
+    property var ocrRegionDrafts: ({})
+    property var ocrModeDrafts: ({})
+    readonly property var ocrLayers: editorModel.ocrLayers || []
+    readonly property string selectedOcrLayerId: "ocr-source-region"
+    readonly property var selectedOcrLayer: ocrLayers.find(function(layer) {
+        return String(layer.clip_id) === root.selectedOcrLayerId;
+    }) || ({})
+    readonly property var ocrRegionDraft: ocrRegionDrafts[selectedOcrLayerId] || null
     property bool subtitleAudioRefreshPending: false
     property bool subtitleVisualRefreshPending: false
     property bool initialMediaLoad: true
@@ -296,16 +303,28 @@ Item {
         activatePanel("tasks", "right");
     }
 
-    function selectOcrRegion() {
+    function selectOcrRegion(clipId) {
         dismissSubtitleEditor();
         dismissWatermarkEditor();
+        if (clipId && editorModel.selectedClipIds.indexOf(clipId) < 0)
+            AppController.manualEditorDocumentModel.selectClip(clipId, false);
         selectedStageIndex = imageToolIndex;
         ocrTransformActive = true;
         activatePanel("tasks", "right");
     }
 
-    function discardOcrRegionDraft() {
-        ocrRegionDraft = null;
+    function setOcrRegionDraft(clipId, region) {
+        ocrRegionDrafts = Object.assign({}, ocrRegionDrafts, {[clipId]: region});
+    }
+
+    function discardOcrRegionDraft(clipId) {
+        const key = clipId || selectedOcrLayerId;
+        const regions = Object.assign({}, ocrRegionDrafts);
+        const modes = Object.assign({}, ocrModeDrafts);
+        delete regions[key];
+        delete modes[key];
+        ocrRegionDrafts = regions;
+        ocrModeDrafts = modes;
         ocrTransformActive = false;
     }
 
@@ -313,6 +332,10 @@ Item {
         if (AppController.manualEditorDocumentModel.selectedClipIds.indexOf(clipId) < 0)
             AppController.manualEditorDocumentModel.selectClip(clipId, false);
         const selected = AppController.manualEditorDocumentModel.selectedClip;
+        if (String(selected.kind || "") === "ocr") {
+            root.selectOcrRegion(clipId);
+            return;
+        }
         const trackId = String(selected.track_id || "");
         if (trackId === "subtitles") {
             const segmentId = String(selected.segment_id || "");
@@ -452,7 +475,7 @@ Item {
 
     Timer {
         id: previewTimer
-        interval: root.initialMediaLoad ? 680 : 180
+        interval: root.initialMediaLoad ? 200 : 100
         repeat: false
         onTriggered: AppController.requestEditorPreview(JSON.stringify(root.segments), comparePreview.positionSeconds)
     }
@@ -472,7 +495,9 @@ Item {
 
         function onSourceReplacementRequested(videoId) {
             if (videoId === root.previewVideoId) {
-                root.discardOcrRegionDraft();
+                root.ocrRegionDrafts = ({});
+                root.ocrModeDrafts = ({});
+                root.ocrTransformActive = false;
                 comparePreview.releaseMedia();
             }
         }
@@ -496,7 +521,9 @@ Item {
                 root.subtitleTransformActive = false;
                 root.subtitleTransformDraft = null;
                 root.watermarkTransformActive = false;
-                root.discardOcrRegionDraft();
+                root.ocrRegionDrafts = ({});
+                root.ocrModeDrafts = ({});
+                root.ocrTransformActive = false;
                 root.subtitleAudioRefreshPending = false;
                 root.subtitleVisualRefreshPending = false;
                 root.reloadSegments();
@@ -513,6 +540,11 @@ Item {
         function onTtsVolumeChanged() { root.syncVolumes(); }
         function onBackgroundMusicVolumeChanged() { root.syncVolumes(); }
 
+    }
+
+    Connections {
+        target: root.editorModel
+        function onChanged() { root.schedulePreview(); }
     }
 
     Connections {
@@ -659,6 +691,9 @@ Item {
                         ? root.previewMedia.ocrRegion || ({})
                         : Number(root.ocrRegionDraft.width_percent || 0) > 0
                             ? root.ocrRegionDraft : root.previewMedia.detectedOcrRegion || ({})
+                    ocrLayers: root.ocrLayers
+                    ocrRegionDrafts: root.ocrRegionDrafts
+                    selectedOcrLayerId: root.selectedOcrLayerId
                     ocrSourceFrameInOutput: AppController.reviewPreviewMedia.ocrSourceFrameInOutput || ({})
                     ocrInteractive: AppController.canEditSelectedVideo && !AppController.isSelectedVideoQueued
                         && !AppController.mediaImportBusy
@@ -666,7 +701,9 @@ Item {
                     previewZoomPercent: root.previewZoomPercent
                     onPreviewZoomRequested: function(percent) { root.previewZoomPercent = percent; }
                     onOcrEditingRequested: root.selectOcrRegion()
-                    onOcrRegionEdited: function(region) { root.ocrRegionDraft = region; }
+                    onOcrRegionEdited: function(region) { root.setOcrRegionDraft(root.selectedOcrLayerId, region); }
+                    onOcrLayerSelected: function(clipId) { root.selectOcrRegion(clipId); }
+                    onOcrLayerRegionEdited: function(clipId, region) { root.setOcrRegionDraft(clipId, region); }
                     onOcrApplyRequested: stageInspector.applyImageTreatment()
                     onOcrDiscardRequested: root.discardOcrRegionDraft()
                     onRequestUrlImport: root.requestUrlImport()
@@ -818,6 +855,11 @@ Item {
                     root.forceActiveFocus();
                 }
                 onTrackSelected: function(trackId) {
+                    const ocr = root.ocrLayers.find(function(layer) { return String(layer.track_id) === trackId; });
+                    if (ocr) {
+                        root.selectOcrRegion(String(ocr.clip_id));
+                        return;
+                    }
                     AppController.manualEditorDocumentModel.selectTrack(trackId);
                     const stageByTrack = {
                         "source-video": 0, "subtitles": 2, "overlays": 7,
@@ -831,6 +873,13 @@ Item {
                 }
                 onTrackStateRequested: function(trackId, propertyName, value) {
                     AppController.setTrackState(trackId, propertyName, value);
+                }
+                onLayerDeleteRequested: function(trackId) {
+                    const ids = root.editorModel.clips.filter(function(clip) {
+                        return String(clip.track_id) === trackId && String(clip.kind) === "ocr";
+                    }).map(function(clip) { return String(clip.clip_id); });
+                    AppController.removeClips(ids, false);
+                    root.forceActiveFocus();
                 }
                 onClipMoveCommitted: function(clipId, startMs, trackId) {
                     AppController.moveClip(clipId, startMs, trackId);
@@ -924,8 +973,13 @@ Item {
         visible: root.isPanelActive("tasks")
         currentStage: root.selectedStageIndex
         ocrRegionDraft: root.ocrRegionDraft
-        onOcrRegionApplied: root.discardOcrRegionDraft()
-        onOcrRegionDraftRequested: function(region) { root.ocrRegionDraft = region; root.ocrTransformActive = true; }
+        ocrLayers: root.ocrLayers
+        selectedOcrLayer: root.selectedOcrLayer
+        ocrModeDrafts: root.ocrModeDrafts
+        onOcrModeDraftRequested: function(clipId, mode) { root.ocrModeDrafts = Object.assign({}, root.ocrModeDrafts, {[clipId]: mode}); }
+        onOcrLayerSelected: function(clipId) { root.selectOcrRegion(clipId); }
+        onOcrRegionApplied: function(clipId) { root.discardOcrRegionDraft(clipId); }
+        onOcrRegionDraftRequested: function(region) { root.setOcrRegionDraft(root.selectedOcrLayerId, region); root.ocrTransformActive = true; }
         onOcrRegionDiscardRequested: root.discardOcrRegionDraft()
         toolModel: root.toolModel
         subtitleSegments: root.segments

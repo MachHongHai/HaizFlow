@@ -33,6 +33,9 @@ HaizFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch v
 - **Hàng đợi gói tài nguyên:** có thể chọn cài hoặc gỡ nhiều gói liên tiếp. Gói đang tạm dừng có thể tiếp tục hoặc hủy để về trạng thái ban đầu.
 - **Thông báo tiến trình đúng ngôn ngữ:** sửa các câu còn lẫn Anh/Việt ở OCR, dịch, tạo giọng và tạm dừng, kể cả khi kèm số đếm.
 - **Sửa bước dịch dừng vì nghi ngờ câu trùng:** vẫn thử dịch lại những câu cần kiểm tra; một bản dịch hợp lệ không còn bị chặn chỉ vì giống câu khác. Bản dịch rỗng hoặc sai định dạng vẫn được kiểm tra.
+- **Cảnh báo bản dịch trong chế độ Thủ công:** kết quả vẫn được áp dụng; câu cần kiểm tra có box cảnh báo vàng trong phần Phụ đề. Chế độ Tự động chỉ dừng khi bản dịch còn ký tự lỗi hoặc nội dung không hợp lệ sau khi thử lại.
+- **Giữ phụ đề và giọng đọc khi chỉnh vùng OCR:** các bản xem trước không còn ghi đè dữ liệu của bước khác. Tối ưu việc mở dự án và chuẩn bị preview sau khi áp dụng vùng che.
+- **Âm thanh preview theo thiết bị mặc định:** đồng bộ đầu ra khi chuyển giữa Nguồn và Kết quả hoặc thay tai nghe.
 - **Sửa thiếu thư viện khi hoàn tất tạo giọng trong chế độ Tự động.**
 - **Các bước Thủ công chạy độc lập:** che phụ đề, tách giọng và các bước không dùng Gemini không yêu cầu Gemini key.
 - **Sửa thay nguồn video sau khi xử lý**, và khôi phục preview đã lưu của dự án khác trong lúc một video đang chạy.

@@ -2,6 +2,9 @@
 
 // Backend status messages; static UI text uses the Qt translation catalog.
 var vietnamese = {
+        "Detected region": "Vùng nhận diện",
+        "The translation contains unusual characters or content. Please review this sentence.": "Bản dịch có ký tự hoặc nội dung bất thường. Hãy kiểm tra câu này.",
+        "This translation may need editing. Compare it with the original dialogue.": "Câu dịch có thể cần chỉnh sửa. Hãy đối chiếu với lời thoại gốc.",
         "Keeping original video subtitles unchanged": "Giữ nguyên phụ đề gốc",
         "Preparing original subtitle scan": "Đang chuẩn bị quét phụ đề gốc",
         "Scanning original subtitles": "Đang quét phụ đề gốc",

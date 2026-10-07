@@ -27,14 +27,16 @@ Item {
             sequenceDurationSeconds: 100
             resultUsesSequenceTimeline: true
             ocrInteractive: true
-            ocrRegion: ({x_percent: 20, y_percent: 50, width_percent: 60, height_percent: 20})
+            ocrLayers: [{clip_id: "ocr-source-region", enabled: true,
+                start_ms: 0, duration_ms: 100000,
+                region: {x_percent: 20, y_percent: 50, width_percent: 60, height_percent: 20}}]
             property var testRegionDraft: null
-            onOcrEditingRequested: ocrEditing = true
-            onOcrRegionEdited: function(region) { testRegionDraft = region; }
+            onOcrLayerSelected: function(clipId) { selectedOcrLayerId = clipId; ocrEditing = true; }
+            onOcrLayerRegionEdited: function(clipId, region) { testRegionDraft = region; }
         }
     }
-    SignalSpy { id: regionActivationSpy; signalName: "ocrEditingRequested" }
-    SignalSpy { id: regionDraftSpy; signalName: "ocrRegionEdited" }
+    SignalSpy { id: regionActivationSpy; signalName: "ocrLayerSelected" }
+    SignalSpy { id: regionDraftSpy; signalName: "ocrLayerRegionEdited" }
     TestCase {
         name: "ManualPreviewClockTests"
         when: windowShown
@@ -45,6 +47,8 @@ Item {
             const overlay = findChild(preview, "manualResultOcrRegionOverlay");
             verify(!!overlay, "Object exists");
             overlay.videoRect = Qt.rect(0, 0, 500, 300);
+            // Exercise pointer routing separately from decoder readiness.
+            overlay.interactive = true;
             regionActivationSpy.target = preview;
             regionActivationSpy.clear();
             mouseClick(overlay, 250, 180);
@@ -59,6 +63,7 @@ Item {
             const overlay = findChild(preview, "manualResultOcrRegionOverlay");
             verify(!!overlay, "Object exists");
             overlay.videoRect = Qt.rect(0, 0, 500, 300);
+            overlay.interactive = true;
             regionDraftSpy.target = preview;
             regionDraftSpy.clear();
             mousePress(overlay, 250, 180);
@@ -69,8 +74,8 @@ Item {
             tryCompare(regionDraftSpy, "count", 1);
             tryCompare(preview.testRegionDraft, "x_percent", 30);
             tryCompare(preview.testRegionDraft, "y_percent", 60);
-            tryCompare(preview.ocrRegion, "x_percent", 20);
-            tryCompare(preview.ocrRegion, "y_percent", 50);
+            tryCompare(preview.ocrLayers[0].region, "x_percent", 20);
+            tryCompare(preview.ocrLayers[0].region, "y_percent", 50);
         }
         function test_trimKeepsSourceAndSequenceClocksSeparate() {
             const preview = createTemporaryObject(previewComponent, root);

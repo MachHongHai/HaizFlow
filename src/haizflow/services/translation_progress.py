@@ -50,7 +50,7 @@ class TranslationProgress:
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as stream:
                 json.dump({"schema": 1, "signature": self.signature, "translations": self.values},
-                          stream, ensure_ascii=False)
+                          stream, ensure_ascii=True)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, self.path)

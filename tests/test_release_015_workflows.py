@@ -107,11 +107,12 @@ def test_ocr_preview_edits_only_stage_changes_and_apply_is_explicit():
     directory = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml"
     workspace = (directory / "ManualWorkspace.qml").read_text(encoding="utf-8")
     panel = (directory / "ManualImageToolPanel.qml").read_text(encoding="utf-8")
-    assert "onOcrRegionEdited: function(region) { root.ocrRegionDraft = region; }" in workspace
-    assert "onOcrEditingRequested: root.selectOcrRegion()" in workspace
+    assert "root.setOcrRegionDraft(root.selectedOcrLayerId, region)" in workspace
+    assert "root.selectOcrRegion()" in workspace
     assert "AppController.setOriginalSubtitleRegion" not in workspace
     assert "function applyTreatment()" in panel
-    assert "AppController.setOriginalSubtitleRegion(imagePane.inspector.ocrRegionDraft)" in panel
+    assert "controller.setManualSubtitleTreatment(treatment, region" in panel
+    assert "AppController.setOriginalSubtitleRegion" not in panel
     assert "onClicked: imagePane.inspector.restoreDetectedOcrRegion()" in panel
 
 
