@@ -17,6 +17,14 @@ Item {
                 {tag: "ocrWithCounter", source: "Scanning original subtitles (21/36) | 21/36", expected: "Đang quét phụ đề gốc (21/36) | 21/36"},
                 {tag: "translation", source: "Translated 48 of 307 subtitles | 48/307", expected: "Đã dịch 48 / 307 phụ đề | 48/307"},
                 {tag: "gemini", source: "Starting Gemini translation", expected: "Đang bắt đầu dịch bằng Gemini"},
+                {tag: "geminiBatch", source: "Sending Gemini translation batch: sentences 1-24 of 307. | 0/307", expected: "Đang dịch bằng Gemini: câu 1-24 / 307 | 0/307"},
+                {tag: "render", source: "Rendering final video (73%) | 73/100", expected: "Đang xuất video (73%) | 73/100"},
+                {tag: "alignment", source: "Loading subtitle alignment for zh", expected: "Đang nạp model căn thời gian phụ đề (zh)"},
+                {tag: "aligning", source: "Aligning en subtitles", expected: "Đang căn thời gian phụ đề (en)"},
+                {tag: "detected", source: "Detected unknown speech", expected: "Đã nhận dạng ngôn ngữ lời nói: chưa xác định"},
+                {tag: "sentences", source: "Prepared 10 complete sentences", expected: "Đã chia 10 câu hoàn chỉnh"},
+                {tag: "validated", source: "Validated 10 timed sentences", expected: "Đã kiểm tra thời gian của 10 câu"},
+                {tag: "timestamps", source: "Prepared 10 timestamp-locked sentences", expected: "Đã chuẩn bị 10 câu theo mốc thời gian"},
                 {tag: "voice", source: "Verified voice audio 3 of 20", expected: "Đã kiểm tra 3 / 20 đoạn giọng đọc"},
                 {tag: "speakers", source: "Identifying speakers 1 of 3", expected: "Đang nhận diện người nói (1/3)"},
                 {tag: "voicePreparation", source: "Preparing voice: loading_voice_reference", expected: "Đang chuẩn bị mẫu giọng"},
@@ -44,7 +52,9 @@ Item {
                 {tag: "manualLibrary", source: "Đang khởi tạo thư viện giọng đọc", expected: "Initializing voice libraries"},
                 {tag: "manualTranslation", source: "Đang dịch phụ đề", expected: "Translating subtitles"},
                 {tag: "pausedManual", source: "Đã tạm dừng translation", expected: "Paused during Translating"},
-                {tag: "englishUnchanged", source: "Translated 48 of 307 subtitles", expected: "Translated 48 of 307 subtitles"}
+                {tag: "englishUnchanged", source: "Translated 48 of 307 subtitles", expected: "Translated 48 of 307 subtitles"},
+                {tag: "voiceRuntime", source: "Preparing voice: importing_runtime", expected: "Initializing voice libraries"},
+                {tag: "manualRender", source: "Đang xuất video 73%", expected: "Exporting video 73%"}
             ]
         }
 
