@@ -34,7 +34,6 @@ from haizflow.services.channel_import import (
 )
 from haizflow.services.douyin_channel_worker import (
     _candidate as douyin_candidate,
-    _request as douyin_request,
     _validated_douyin_url,
     inspect_profile as inspect_douyin_profile,
 )
@@ -43,27 +42,6 @@ from haizflow.services.video_download import DownloadCancelled
 
 
 class ChannelUrlTests(unittest.TestCase):
-    def test_douyin_request_retries_a_temporary_network_failure(self):
-        response = Mock()
-        response.__enter__ = Mock(return_value=response)
-        response.__exit__ = Mock(return_value=False)
-        response.geturl.return_value = "https://www.douyin.com/user/creator"
-        response.read.return_value = b"{}"
-
-        with (
-            patch(
-                "haizflow.services.douyin_channel_worker.urllib.request.urlopen",
-                side_effect=[TimeoutError("timed out"), response],
-            ) as urlopen,
-            patch("haizflow.services.douyin_channel_worker.time.sleep") as retry_sleep,
-        ):
-            body, resolved = douyin_request("https://www.douyin.com/user/creator", "")
-
-        self.assertEqual(body, b"{}")
-        self.assertEqual(resolved, "https://www.douyin.com/user/creator")
-        self.assertEqual(urlopen.call_count, 2)
-        retry_sleep.assert_called_once_with(0.5)
-
     def test_douyin_worker_rejects_non_http_and_lookalike_hosts(self):
         for url in (
             "file:///C:/secret.txt",
@@ -91,57 +69,27 @@ class ChannelUrlTests(unittest.TestCase):
 
         bilibili, bilibili_platform = validate_channel_url("https://space.bilibili.com/12345")
         instagram, instagram_platform = validate_channel_url("instagram.com/creator")
-        twitch, twitch_platform = validate_channel_url("https://www.twitch.tv/creator")
+        facebook, facebook_platform = validate_channel_url("https://www.facebook.com/creator/videos")
 
         self.assertEqual(bilibili, "https://space.bilibili.com/12345")
         self.assertEqual(bilibili_platform, "Bilibili")
         self.assertEqual(instagram, "https://instagram.com/creator")
         self.assertEqual(instagram_platform, "Instagram")
-        self.assertEqual(twitch, "https://www.twitch.tv/creator")
-        self.assertEqual(twitch_platform, "Twitch")
+        self.assertEqual(facebook, "https://www.facebook.com/creator/videos")
+        self.assertEqual(facebook_platform, "Facebook")
 
-    def test_douyin_worker_drains_large_output_without_poll_deadlock(self):
-        response = json.dumps(
-            {
-                "channel_name": "Creator",
-                "candidates": [
-                    {
-                        "remote_video_id": "123",
-                        "source_url": "https://www.douyin.com/video/123",
-                        "title": "Video",
-                        "platform": "Douyin",
-                    }
-                ],
-            }
-        )
-
-        class FakeProcess:
-            def __init__(self):
-                self.calls = []
-                self.returncode = 0
-
-            def communicate(self, *, input=None, timeout=None):
-                self.calls.append((input, timeout))
-                if len(self.calls) == 1:
-                    raise subprocess.TimeoutExpired(["worker"], timeout)
-                return response, ""
-
-            def kill(self):
-                self.returncode = -9
-
-        process = FakeProcess()
-        request = ChannelImportRequest(
-            url="https://www.douyin.com/user/creator",
-            platform="douyin",
-            limit=1,
-        )
-        with patch("haizflow.services.channel_import.subprocess.Popen", return_value=process):
-            channel_name, candidates = _scan_douyin(request, None, threading.Event())
-
-        self.assertEqual(channel_name, "Creator")
-        self.assertEqual([candidate.remote_video_id for candidate in candidates], ["123"])
-        self.assertIsNotNone(process.calls[0][0])
-        self.assertIsNone(process.calls[1][0])
+    def test_douyin_scan_uses_the_shared_adapter(self):
+        request = ChannelImportRequest(url="https://www.douyin.com/user/creator", platform="douyin", limit=1)
+        adapter = Mock()
+        adapter.profile_posts.return_value = ("Creator", [{"remote_video_id": "123",
+            "source_url": "https://www.douyin.com/video/123", "title": "Video", "platform": "Douyin"}])
+        cancel = threading.Event()
+        with patch("haizflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter):
+            name, candidates = _scan_douyin(request, None, cancel)
+        self.assertEqual(name, "Creator")
+        self.assertEqual([v.remote_video_id for v in candidates], ["123"])
+        adapter.profile_posts.assert_called_once_with(request.url, limit=1, cancel_event=cancel,
+                                                      progress_callback=None)
 
     def test_video_urls_and_unknown_hosts_are_rejected(self):
         invalid = (
@@ -260,6 +208,47 @@ class ChannelUrlTests(unittest.TestCase):
         self.assertEqual(fake_ytdlp.YoutubeDL.call_count, 2)
         wait_for_retry.assert_called_once()
 
+    def test_tiktok_null_playlist_entries_trigger_bounded_retry(self):
+        first = Mock()
+        first.__enter__ = Mock(return_value=first)
+        first.__exit__ = Mock(return_value=False)
+        first.extract_info.return_value = {"entries": [None, None]}
+        second = Mock()
+        second.__enter__ = Mock(return_value=second)
+        second.__exit__ = Mock(return_value=False)
+        second.extract_info.return_value = {"entries": [{"id": "123"}]}
+        fake = SimpleNamespace(YoutubeDL=Mock(side_effect=[first, second]))
+        with patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake), \
+             patch("haizflow.services.channel_import._wait_for_retry"):
+            info = _extract_info_with_platform_retry("TikTok", {}, "https://www.tiktok.com/@creator")
+        self.assertEqual(info["entries"], [{"id": "123"}])
+        self.assertEqual(fake.YoutubeDL.call_count, 2)
+
+    def test_tiktok_empty_json_is_retried_with_browser_transport(self):
+        downloader = Mock()
+        downloader.__enter__ = Mock(return_value=downloader)
+        downloader.__exit__ = Mock(return_value=False)
+        downloader.extract_info.side_effect = [RuntimeError("Failed to parse JSON: Expecting value"),
+                                               {"entries": [{"id": "123"}]}]
+        fake = SimpleNamespace(YoutubeDL=Mock(return_value=downloader))
+        with patch("haizflow.services.channel_import._load_yt_dlp", return_value=fake), \
+             patch("haizflow.services.channel_import._wait_for_retry") as wait:
+            info = _extract_info_with_platform_retry("TikTok", {}, "https://www.tiktok.com/@creator")
+        self.assertEqual(info["entries"], [{"id": "123"}])
+        self.assertEqual(fake.YoutubeDL.call_count, 2)
+        self.assertTrue(all(str(call.args[0]["impersonate"]) == "chrome"
+                            for call in fake.YoutubeDL.call_args_list))
+        wait.assert_called_once()
+
+    def test_tiktok_total_hydration_failure_is_not_reported_as_zero_videos(self):
+        request = ChannelImportRequest(url="https://www.tiktok.com/@creator", platform="tiktok", limit=2)
+        payload = {"uploader": "Creator", "entries": [{"id": "123", "url":
+            "https://www.tiktok.com/@creator/video/123", "title": "Video"}]}
+        with patch("haizflow.services.channel_import._extract_info_with_platform_retry", return_value=payload), \
+             patch("haizflow.services.channel_import._hydrate_candidate", side_effect=RuntimeError("HTTP Error 403")):
+            with self.assertRaisesRegex(RuntimeError, "403"):
+                _scan_with_ytdlp(request, "TikTok", None, threading.Event())
+
     def test_youtube_channel_scan_retries_temporary_webpage_failure(self):
         first = Mock()
         first.__enter__ = Mock(return_value=first)
@@ -288,7 +277,7 @@ class ChannelUrlTests(unittest.TestCase):
         self.assertEqual(info["id"], "channel")
         self.assertEqual(fake_ytdlp.YoutubeDL.call_count, 2)
         self.assertNotIn("impersonate", fake_ytdlp.YoutubeDL.call_args_list[0].args[0])
-        self.assertEqual(fake_ytdlp.YoutubeDL.call_args_list[1].args[0]["impersonate"], "chrome")
+        self.assertEqual(str(fake_ytdlp.YoutubeDL.call_args_list[1].args[0]["impersonate"]), "chrome")
         wait_for_retry.assert_called_once()
 
     def test_channel_access_error_is_not_retried(self):
@@ -350,25 +339,11 @@ class ChannelUrlTests(unittest.TestCase):
         )
 
     def test_douyin_newest_scan_uses_the_requested_count(self):
-        with (
-            patch("haizflow.services.douyin_channel_worker._cookie_header", return_value=""),
-            patch(
-                "haizflow.services.douyin_channel_worker._resolve_profile_url",
-                return_value="https://www.douyin.com/user/creator-id",
-            ),
-            patch("haizflow.services.douyin_channel_worker._extract_sec_uid", return_value="creator-id"),
-            patch(
-                "haizflow.services.douyin_channel_worker._api_page",
-                return_value={
-                    "aweme_list": [],
-                    "has_more": False,
-                },
-            ) as api_page,
-        ):
-            with self.assertRaisesRegex(RuntimeError, "no public videos"):
-                inspect_douyin_profile({"url": "https://www.douyin.com/user/creator-id", "limit": 20})
-
-        self.assertEqual(api_page.call_args.args[2], 20)
+        adapter = Mock()
+        adapter.profile_posts.return_value = ("Creator", [])
+        with patch("haizflow.services.douyin_adapter.get_douyin_adapter", return_value=adapter):
+            inspect_douyin_profile({"url": "https://www.douyin.com/user/creator-id", "limit": 20})
+        adapter.profile_posts.assert_called_once_with("https://www.douyin.com/user/creator-id", limit=20)
 
 
 class ChannelScanTests(unittest.TestCase):

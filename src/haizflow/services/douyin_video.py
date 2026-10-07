@@ -15,11 +15,6 @@ from yt_dlp.utils import ExtractorError
 ACCESS_MESSAGE = (
     "Douyin did not provide playable video data. Check that the video is public and can be viewed on Douyin."
 )
-MOBILE_AGENT = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-)
-PUBLIC_METADATA_AGENT = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
 
 
 def video_id_from_url(url: str) -> str:
@@ -71,35 +66,44 @@ def share_page_detail(webpage: str, video_id: str) -> dict | None:
 class HaizFlowDouyinIE(DouyinIE):
     _VALID_URL = r"https?://(?:(?:www\.)?(?:ies)?douyin\.com/(?:share/)?video/(?P<id>[0-9]+)|v\.douyin\.com/(?P<short>[\w-]+))"
 
+    def __init__(self, downloader=None, *, adapter=None, cancel_event=None):
+        super().__init__(downloader)
+        self.adapter = adapter
+        self.cancel_event = cancel_event
+
     def _real_extract(self, url):
-        if (urlparse(url).hostname or "").lower() == "v.douyin.com":
-            _page, response = self._download_webpage_handle(url, "share", note="Resolving Douyin share link")
-            video_id = video_id_from_url(response.url)
-        else:
-            video_id = video_id_from_url(url)
-        canonical = f"https://www.douyin.com/video/{video_id}"
-        result = self._download_json(
-            "https://www.douyin.com/aweme/v1/web/aweme/detail/", video_id,
-            note="Checking Douyin video", query={"aweme_id": video_id}, fatal=False)
-        detail = result.get("aweme_detail") if isinstance(result, dict) else None
-        if not isinstance(detail, dict) or not detail:
-            # Douyin also serves public video metadata for indexing. Request
-            # that representation directly; no account cookies, verification
-            # tokens, script execution or external parsing service is needed.
-            public_result = self._download_json(
-                "https://www.douyin.com/aweme/v1/web/aweme/detail/", video_id,
-                note="Reading Douyin public video metadata", query={"aweme_id": video_id},
-                headers={"User-Agent": PUBLIC_METADATA_AGENT}, fatal=False)
-            detail = public_result.get("aweme_detail") if isinstance(public_result, dict) else None
-        if not isinstance(detail, dict) or not detail:
-            page = self._download_webpage(
-                f"https://www.iesdouyin.com/share/video/{video_id}/", video_id,
-                note="Checking Douyin share page", headers={"User-Agent": MOBILE_AGENT}, fatal=False)
-            detail = share_page_detail(page or "", video_id)
-        if not detail or str(detail.get("aweme_id")) != video_id:
-            raise ExtractorError(ACCESS_MESSAGE, expected=True)
+        from haizflow.services.douyin_adapter import get_douyin_adapter, _session_guard
+
+        adapter = self.adapter or get_douyin_adapter()
+        # Freeze the metadata/profile/jar snapshot together. A concurrent explicit
+        # session refresh must not pair old media with a new browser identity.
+        with _session_guard(adapter.session.lock, self.cancel_event):
+            return self._extract_with_session(adapter, url)
+
+    def _extract_with_session(self, adapter, url):
+        from copy import copy
+        from haizflow.services.douyin_classification import DouyinError, Outcome
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+
+        try:
+            detail = adapter.inspect(url, self.cancel_event)
+        except DouyinError as exc:
+            raise ExtractorError(str(exc), expected=True, cause=exc) from exc
+        video_id = str(detail["aweme_id"])
         info = self._parse_aweme_video_app(detail)
         if not info.get("formats"):
-            raise ExtractorError(ACCESS_MESSAGE, expected=True)
-        info.update(webpage_url=canonical, extractor="Douyin", extractor_key="Douyin")
+            raise ExtractorError(str(DouyinError(Outcome.METADATA)), expected=True)
+        profile = adapter.session.profile
+        headers = {"User-Agent": profile.ua, "Referer": "https://www.douyin.com/"}
+        if self._downloader is not None:
+            self._downloader.params["impersonate"] = ImpersonateTarget.from_str(f"chrome-{profile.major}")
+            # Domain-scoped cookies only; no raw Cookie header on CDN URLs.
+            for cookie in adapter.session.transport.cookie_jar:
+                domain = cookie.domain.lstrip(".").lower()
+                if any(domain == name or domain.endswith("." + name) for name in ("douyin.com", "iesdouyin.com")):
+                    self._downloader.cookiejar.set_cookie(copy(cookie))
+        for item in info["formats"]:
+            item["http_headers"] = headers
+        info.update(webpage_url=f"https://www.douyin.com/video/{video_id}", extractor="Douyin",
+                    extractor_key="Douyin", http_headers=headers)
         return info

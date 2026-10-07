@@ -3,9 +3,9 @@ from unittest.mock import Mock
 import pytest
 
 from haizflow.services.douyin_video import (
-    ACCESS_MESSAGE, PUBLIC_METADATA_AGENT, HaizFlowDouyinIE, share_page_detail, video_id_from_url,
+    HaizFlowDouyinIE, share_page_detail, video_id_from_url,
 )
-from haizflow.services.video_download import _extract_video_info, _friendly_error, validate_video_url
+from haizflow.services.video_download import _extract_video_info, validate_video_url
 
 
 @pytest.mark.parametrize("url", [
@@ -33,16 +33,17 @@ def test_invalid_or_ambiguous_douyin_ids_are_rejected(url):
         validate_video_url(url)
 
 
-def test_short_share_url_resolves_modal_id_before_extraction():
-    ie = HaizFlowDouyinIE()
-    ie._download_webpage_handle = Mock(return_value=("", Mock(url=(
-        "https://www.douyin.com/jingxuan?modal_id=768495470663049704"))))
-    detail = {"aweme_id": "768495470663049704", "video": {}}
-    ie._download_json = Mock(return_value={"aweme_detail": detail})
+def test_extractor_delegates_to_one_adapter():
+    import threading
+    adapter = Mock()
+    adapter.session.lock = threading.RLock()
+    adapter.inspect.return_value = {"aweme_id": "768495470663049704", "video": {}}
+    adapter.session.profile.ua = "stable UA"
+    ie = HaizFlowDouyinIE(adapter=adapter)
     ie._parse_aweme_video_app = Mock(return_value={"formats": [{"url": "https://example.com/public.mp4"}]})
     result = ie._real_extract("https://v.douyin.com/demo/")
     assert result["webpage_url"] == "https://www.douyin.com/video/768495470663049704"
-    assert ie._download_json.call_args.kwargs["query"]["aweme_id"] == detail["aweme_id"]
+    adapter.inspect.assert_called_once_with("https://v.douyin.com/demo/", None)
 
 
 def test_public_hydration_only_accepts_matching_video_and_never_executes_js():
@@ -51,39 +52,6 @@ def test_public_hydration_only_accepts_matching_video_and_never_executes_js():
     assert share_page_detail(page, "123456789012")["aweme_id"] == "123456789012"
     assert share_page_detail(page, "999999999999") is None
     assert share_page_detail('window._ROUTER_DATA = dangerous()', "123456789012") is None
-
-
-def test_browser_link_uses_public_metadata_when_normal_api_is_empty():
-    ie = HaizFlowDouyinIE()
-    video = "7692729822069443859"
-    detail = {"aweme_id": video, "video": {}}
-    ie._download_json = Mock(side_effect=[None, {"aweme_detail": detail}])
-    ie._download_webpage = Mock()
-    ie._parse_aweme_video_app = Mock(return_value={"formats": [{"url": "https://example.com/public.mp4"}]})
-    result = ie._real_extract(f"https://www.douyin.com/video/{video}")
-    assert result["formats"]
-    assert result["webpage_url"] == f"https://www.douyin.com/video/{video}"
-    assert ie._download_json.call_args.kwargs["headers"] == {"User-Agent": PUBLIC_METADATA_AGENT}
-    ie._download_webpage.assert_not_called()
-
-
-def test_public_metadata_for_another_video_is_not_downloaded():
-    ie = HaizFlowDouyinIE()
-    ie._download_json = Mock(side_effect=[None, {"aweme_detail": {
-        "aweme_id": "123456789013", "video": {}}}])
-    ie._parse_aweme_video_app = Mock()
-    with pytest.raises(Exception, match="Douyin did not provide"):
-        ie._real_extract("https://www.douyin.com/video/123456789012")
-    ie._parse_aweme_video_app.assert_not_called()
-
-
-def test_verification_pages_produce_actionable_error_without_retries():
-    ie = HaizFlowDouyinIE()
-    ie._download_json = Mock(return_value=None)
-    ie._download_webpage = Mock(return_value="<html>verification required</html>")
-    with pytest.raises(Exception, match="Douyin did not provide") as error:
-        ie._real_extract("https://www.douyin.com/video/123456789012")
-    assert _friendly_error(error.value) == ACCESS_MESSAGE
 
 
 @pytest.mark.parametrize("url", [

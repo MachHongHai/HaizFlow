@@ -30,3 +30,13 @@ docs/third-party-library-replacement.md in the source repository.
 The separately executed FFmpeg CLI is GPLv3; its independent terms and sources
 are described in licenses/FFmpeg-NOTICE.md. Media backends linked into Qt and
 the Python engines are separately inventoried LGPL builds.
+
+Douyin native signing contains adapted Apache-2.0 source from:
+Douyin_TikTok_Download_API
+Copyright 2021-2026 Evil0ctal and contributors
+https://github.com/Evil0ctal/Douyin_TikTok_Download_API
+The owned-browser SDK capture also adapts that project's Cloak backend at the
+same pinned revision. Changes and optional CloakBrowser licensing restrictions
+are documented in licenses/DOUYIN-CHANNEL-IMPORT-NOTICE.md.
+See licenses/DOUYIN-CHANNEL-IMPORT-NOTICE.md for the pinned revision,
+HaizFlow modifications, retained upstream notice and license text.

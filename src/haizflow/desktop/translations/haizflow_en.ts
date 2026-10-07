@@ -5340,4 +5340,12 @@ Author and owner of HaizFlow.</translation>
     <message><source>Hiện lớp</source><translation>Show layer</translation></message>
     <message><source>Xóa lớp</source><translation>Delete layer</translation></message>
 </context>
+<context>
+    <name>DouyinSessionAction</name>
+    <message><source>Làm mới phiên</source><translation>Refresh session</translation></message>
+    <message><source>Đang tạo phiên…</source><translation>Creating session…</translation></message>
+    <message><source>Tạo phiên Douyin</source><translation>Create Douyin session</translation></message>
+    <message><source>Hủy</source><translation>Cancel</translation></message>
+    <message><source>Mở phiên trình duyệt riêng cho Douyin. Không dùng tài khoản hoặc dữ liệu trình duyệt cá nhân.</source><translation>Open a separate Douyin browser session. Your account and personal browser data are not used.</translation></message>
+</context>
 </TS>

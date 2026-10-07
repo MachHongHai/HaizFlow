@@ -483,6 +483,8 @@ class HaizFlowController(QObject):
         self._thumbnail_retry_lock = threading.Lock()
         self._dimension_probe = VideoDimensionProbe(self._on_video_dimensions_ready)
         self._url_importer = VideoUrlImportCoordinator(self)
+        from haizflow.desktop.douyin_session_controller import DouyinSessionController
+        self._douyin_session = DouyinSessionController(self)
         self._url_import_target = None
         self._url_importer.downloadReady.connect(self._handle_url_download_ready)
         self._url_importer.importFinished.connect(self.urlImportFinished.emit)
@@ -856,6 +858,9 @@ class HaizFlowController(QObject):
         return HaizFlowController._runtime_device_for(self)._confirm_application_close()
 
     def shutdown(self):
+        douyin_session = getattr(self, "_douyin_session", None)
+        if douyin_session is not None:
+            douyin_session.shutdown()
         HaizFlowController.cancelBatchVoiceRecording(self)
         exporter = getattr(self, "_video_exports", None)
         if exporter is not None:
@@ -2790,6 +2795,10 @@ class HaizFlowController(QObject):
     @Property(QObject, constant=True)
     def urlImporter(self):
         return self._url_importer
+
+    @Property(QObject, constant=True)
+    def douyinSession(self):
+        return self._douyin_session
 
     @Property(QObject, constant=True)
     def resourcePackModel(self):

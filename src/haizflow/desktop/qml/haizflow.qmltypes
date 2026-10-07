@@ -1527,6 +1527,7 @@ Module {
             isReadonly: true
         }
         Property { name: "urlImporter"; type: "QObject"; read: "urlImporter"; index: 120; isReadonly: true }
+        Property { name: "douyinSession"; type: "QObject"; read: "douyinSession"; isReadonly: true }
         Property {
             name: "settingsTheme"
             type: "QString"

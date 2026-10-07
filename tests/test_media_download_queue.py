@@ -19,6 +19,88 @@ from haizflow.services.video_download import DownloadCancelled
 
 
 class MediaDownloadQueueTests(unittest.TestCase):
+    def test_new_link_check_clears_old_error_without_hiding_active_work(self):
+        controller = MediaDownloadController()
+        try:
+            controller._reject("Old download failure")
+            with mock.patch.object(controller._video_preview, "inspect"):
+                controller.inspectVideo("https://youtu.be/new")
+            self.assertEqual(controller.state, "idle")
+            self.assertEqual(controller.status, "")
+            controller._active_task = {"kind": "audio", "label": "audio download"}
+            controller._state, controller._status = "running", "Downloading audio"
+            controller.clearDownloadFeedback()
+            self.assertEqual(controller.status, "Downloading audio")
+            self.assertEqual(controller.state, "running")
+        finally:
+            controller.shutdown()
+
+    def test_successful_channel_scan_and_download_are_not_errors(self):
+        controller = MediaDownloadController()
+        try:
+            for state in ("ready", "success"):
+                controller._active_task = {"kind": "channel_scan", "label": "channel preview"}
+                with mock.patch.object(type(controller._channel_importer), "state", new_callable=mock.PropertyMock,
+                                       return_value=state), \
+                     mock.patch.object(type(controller._channel_importer), "status", new_callable=mock.PropertyMock,
+                                       return_value="2 videos ready to review"):
+                    controller._on_channel_changed()
+                self.assertEqual(controller.state, "done")
+                self.assertFalse(controller.busy)
+        finally:
+            controller.shutdown()
+
+    def test_queued_channel_scan_does_not_expose_old_ready_results_or_errors(self):
+        controller = MediaDownloadController()
+        try:
+            with mock.patch.object(type(controller._channel_importer), "state", new_callable=mock.PropertyMock,
+                                   return_value="ready"):
+                self.assertTrue(controller.channelPreviewReady)
+                controller._pending_tasks.append({"kind": "channel_scan"})
+                self.assertFalse(controller.channelPreviewReady)
+                self.assertEqual(controller.channelStatus, "Queued channel preview")
+        finally:
+            controller.shutdown()
+
+    def test_audio_uses_private_staging_and_never_overwrites_existing_file(self):
+        from haizflow.services.video_download import VideoMetadata
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            original = output / "Title.m4a"
+            original.write_bytes(b"existing")
+            controller = MediaDownloadController()
+            metadata = VideoMetadata("https://youtu.be/new", "Title", "YouTube", 10, "", "")
+
+            def download(_url, destination, *_args):
+                self.assertIn(".haizflow-downloads", destination.parts)
+                destination.write_bytes(b"new audio")
+
+            try:
+                with mock.patch("haizflow.desktop.media_download_controller.inspect_video_url", return_value=metadata), \
+                     mock.patch("haizflow.desktop.media_download_controller.download_audio", side_effect=download):
+                    controller._run(metadata.url, "audio", directory)
+                self.assertEqual(original.read_bytes(), b"existing")
+                self.assertEqual((output / "Title (2).m4a").read_bytes(), b"new audio")
+                self.assertEqual(list((output / ".haizflow-downloads").iterdir()), [])
+            finally:
+                controller.shutdown()
+
+    def test_cancelled_local_audio_never_publishes_partial_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            controller = MediaDownloadController()
+
+            def extract(_source, target):
+                target.write_bytes(b"partial audio")
+                controller._cancel.set()
+
+            try:
+                with mock.patch.object(controller, "_extract", side_effect=extract):
+                    controller._run("source.mp4", "extract", directory)
+                self.assertEqual(list(output.glob("*.m4a")), [])
+                self.assertEqual(list((output / ".haizflow-downloads").iterdir()), [])
+            finally:
+                controller.shutdown()
     def test_download_state_distinguishes_idle_and_validation_error(self):
         controller = MediaDownloadController()
         try:

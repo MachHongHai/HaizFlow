@@ -13,11 +13,7 @@ Item {
         "instagram": { "glyph": "◎", "color": "#C94B83" },
         "facebook": { "glyph": "f", "color": "#4D8DFF" },
         "x": { "glyph": "X", "color": "#A5B4C8" },
-        "vimeo": { "glyph": "v", "color": "#32A9DD" },
-        "dailymotion": { "glyph": "d", "color": "#6F93FF" },
-        "twitch": { "glyph": "T", "color": "#9B7BFF" },
-        "reddit": { "glyph": "r", "color": "#F36D45" },
-        "vk": { "glyph": "vk", "color": "#5D8CC8" }
+        "reddit": { "glyph": "r", "color": "#F36D45" }
     })[key] || { "glyph": "•", "color": "#64748B" }
 
     implicitWidth: 22

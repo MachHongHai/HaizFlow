@@ -23,7 +23,7 @@ class VideoDownloadTests(unittest.TestCase):
             "https://v.douyin.com/example": "Douyin",
             "https://www.bilibili.com/video/BV1xx411c7mD": "Bilibili",
             "https://www.instagram.com/reel/example": "Instagram",
-            "https://vimeo.com/123": "Vimeo",
+            "https://twitter.com/creator/status/123": "X",
         }
         for value, expected_platform in cases.items():
             with self.subTest(value=value):
@@ -117,7 +117,7 @@ class VideoDownloadTests(unittest.TestCase):
 
         self.assertEqual(metadata.title, "Recovered TikTok clip")
         self.assertEqual(youtube_dl.call_count, 2)
-        self.assertEqual(youtube_dl.call_args_list[1].args[0]["impersonate"], "chrome")
+        self.assertEqual(str(youtube_dl.call_args_list[1].args[0]["impersonate"]), "chrome")
 
     def test_non_transient_tiktok_metadata_errors_are_not_retried(self):
         downloader = mock.MagicMock()
@@ -157,7 +157,7 @@ class VideoDownloadTests(unittest.TestCase):
         self.assertEqual(metadata.title, "Recovered clip")
         self.assertEqual(youtube_dl.call_count, 2)
         self.assertNotIn("impersonate", youtube_dl.call_args_list[0].args[0])
-        self.assertEqual(youtube_dl.call_args_list[1].args[0]["impersonate"], "chrome")
+        self.assertEqual(str(youtube_dl.call_args_list[1].args[0]["impersonate"]), "chrome")
         wait_for_retry.assert_called_once()
 
     def test_access_errors_are_not_hidden_by_network_words_in_message(self):
@@ -171,7 +171,7 @@ class VideoDownloadTests(unittest.TestCase):
         self.assertTrue(
             video_download._is_retryable_download_error(
                 ConnectionResetError("socket closed"),
-                "Vimeo",
+                "Facebook",
             )
         )
 
@@ -359,9 +359,51 @@ class VideoDownloadTests(unittest.TestCase):
         self.assertEqual(result, str(destination))
         self.assertEqual(yt_dlp.YoutubeDL.call_count, 2)
         self.assertNotIn("impersonate", yt_dlp.YoutubeDL.call_args_list[0].args[0])
-        self.assertEqual(yt_dlp.YoutubeDL.call_args_list[1].args[0]["impersonate"], "chrome")
+        self.assertEqual(str(yt_dlp.YoutubeDL.call_args_list[1].args[0]["impersonate"]), "chrome")
         self.assertNotIn("postprocessors", yt_dlp.YoutubeDL.call_args_list[1].args[0])
         wait_for_retry.assert_called_once()
+
+    def test_browser_transport_options_are_accepted_by_real_ytdlp_without_network(self):
+        import yt_dlp
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+
+        options = video_download._youtube_dl_options(impersonate=True)
+        self.assertIsInstance(options["impersonate"], ImpersonateTarget)
+        with yt_dlp.YoutubeDL(options) as downloader:
+            self.assertTrue(downloader._impersonate_target_available(options["impersonate"]))
+
+    def test_cancelled_audio_does_not_start_metadata_or_ffmpeg(self):
+        cancel = threading.Event()
+        cancel.set()
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            video_download, "_extract_video_info"
+        ) as extract:
+            with self.assertRaises(video_download.DownloadCancelled):
+                video_download.download_audio("https://youtu.be/demo", Path(directory) / "audio.m4a",
+                                              cancel_event=cancel)
+            extract.assert_not_called()
+
+    def test_cancelled_conversion_cannot_replace_existing_audio(self):
+        cancel = threading.Event()
+        process = mock.Mock(returncode=0)
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "audio.m4a"
+            target.write_bytes(b"existing")
+            temporary = Path(directory) / "audio.converting.m4a"
+
+            def complete(timeout=None):
+                temporary.write_bytes(b"converted")
+                cancel.set()
+                return "", ""
+
+            process.communicate.side_effect = complete
+            with mock.patch.object(video_download, "get_media_stream_types", return_value={"audio"}), \
+                 mock.patch.object(video_download, "_ffmpeg_binary", return_value="ffmpeg"), \
+                 mock.patch.object(video_download.subprocess, "Popen", return_value=process), \
+                 self.assertRaises(video_download.DownloadCancelled):
+                video_download._normalize_downloaded_audio(Path(directory) / "source.mp4", target, cancel)
+            self.assertEqual(target.read_bytes(), b"existing")
+            self.assertFalse(temporary.exists())
 
     def test_failed_audio_download_removes_temporary_source_file(self):
         downloader = mock.MagicMock()

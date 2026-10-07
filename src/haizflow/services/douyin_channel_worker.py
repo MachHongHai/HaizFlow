@@ -1,161 +1,17 @@
-"""Isolated Douyin profile inspector used by the desktop channel importer."""
+"""Legacy CLI entry point and Douyin channel metadata normalization.
 
+Desktop scans now share DouyinAdapter directly. No fabricated token, browser
+profile extraction, urllib transport or second signing strategy lives here.
+"""
 from __future__ import annotations
 
 import json
-import random
-import re
-import string
 import sys
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 
-from haizflow.services.video_download import _load_yt_dlp, _youtube_dl_options
-from haizflow.vendor.douyin_xbogus import XBogus
+from haizflow.services.douyin_transport import validate_douyin_address as _validated_douyin_url
 
-
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-)
-
-
-def _validated_douyin_url(url: str) -> str:
-    parsed = urllib.parse.urlparse(str(url or ""))
-    hostname = str(parsed.hostname or "").lower().rstrip(".")
-    if (
-        parsed.scheme.lower() not in {"http", "https"}
-        or not hostname
-        or not (hostname == "douyin.com" or hostname.endswith(".douyin.com"))
-    ):
-        raise ValueError("Douyin channel requests must use an HTTP(S) douyin.com URL.")
-    return url
-
-
-def _cookie_header(auth: dict) -> str:
-    yt_dlp = _load_yt_dlp()
-    options = _youtube_dl_options(auth)
-    with yt_dlp.YoutubeDL(options) as downloader:
-        cookies = [
-            f"{cookie.name}={cookie.value}"
-            for cookie in downloader.cookiejar
-            if "douyin.com" in str(cookie.domain or "")
-        ]
-    return "; ".join(cookies)
-
-
-def _request(url: str, cookie_header: str, *, timeout: int = 25) -> tuple[bytes, str]:
-    url = _validated_douyin_url(url)
-    headers = {
-        "User-Agent": USER_AGENT,
-        "Accept": "application/json,text/plain,*/*",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Referer": "https://www.douyin.com/",
-    }
-    if cookie_header:
-        headers["Cookie"] = cookie_header
-    request = urllib.request.Request(url, headers=headers)
-    retry_statuses = {408, 425, 429, 500, 502, 503, 504}
-    for attempt in range(3):
-        try:
-            # Both the requested URL and the final redirect are restricted to
-            # HTTP(S) subdomains of douyin.com by _validated_douyin_url.
-            with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
-                resolved_url = _validated_douyin_url(response.geturl())
-                return response.read(), resolved_url
-        except urllib.error.HTTPError as exc:
-            if attempt >= 2 or exc.code not in retry_statuses:
-                raise
-        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
-            if attempt >= 2:
-                raise
-        time.sleep(0.5 * (attempt + 1))
-    raise RuntimeError("Douyin request did not produce a response.")  # pragma: no cover
-
-
-def _resolve_profile_url(url: str, cookie_header: str) -> str:
-    if "/user/" in urllib.parse.urlparse(url).path:
-        return url
-    _body, resolved = _request(url, cookie_header)
-    return resolved
-
-
-def _extract_sec_uid(url: str) -> str:
-    match = re.search(r"/user/([A-Za-z0-9_-]+)", urllib.parse.urlparse(url).path)
-    if not match:
-        raise ValueError("The Douyin link did not resolve to a public profile.")
-    return match.group(1)
-
-
-def _random_ms_token() -> str:
-    alphabet = string.ascii_letters + string.digits
-    return "".join(random.choice(alphabet) for _ in range(182)) + "=="
-
-
-def _query(sec_uid: str, cursor: int, count: int, ms_token: str) -> dict:
-    return {
-        "device_platform": "webapp",
-        "aid": "6383",
-        "channel": "channel_pc_web",
-        "sec_user_id": sec_uid,
-        "max_cursor": str(cursor),
-        "count": str(count),
-        "locate_query": "false",
-        "show_live_replay_strategy": "1",
-        "need_time_list": "1",
-        "time_list_query": "0",
-        "whale_cut_token": "",
-        "cut_version": "1",
-        "publish_video_strategy_type": "2",
-        "from_user_page": "1",
-        "update_version_code": "170400",
-        "pc_client_type": "1",
-        "pc_libra_divert": "Windows",
-        "support_h265": "1",
-        "support_dash": "0",
-        "version_code": "290100",
-        "version_name": "29.1.0",
-        "cookie_enabled": "true",
-        "screen_width": "1536",
-        "screen_height": "864",
-        "browser_language": "zh-CN",
-        "browser_platform": "Win32",
-        "browser_name": "Chrome",
-        "browser_version": "139.0.0.0",
-        "browser_online": "true",
-        "engine_name": "Blink",
-        "engine_version": "139.0.0.0",
-        "os_name": "Windows",
-        "os_version": "10",
-        "cpu_core_num": "16",
-        "device_memory": "8",
-        "platform": "PC",
-        "downlink": "10",
-        "effective_type": "4g",
-        "round_trip_time": "200",
-        "msToken": ms_token,
-    }
-
-
-def _api_page(sec_uid: str, cursor: int, count: int, cookie_header: str, ms_token: str) -> dict:
-    query = urllib.parse.urlencode(_query(sec_uid, cursor, count, ms_token))
-    base = f"https://www.douyin.com/aweme/v1/web/aweme/post/?{query}"
-    signed_url, _signature, _ua = XBogus(USER_AGENT).build(base)
-    body, _resolved = _request(signed_url, cookie_header)
-    payload = json.loads(body.decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError("Douyin returned an invalid profile response.")
-    status_code = int(payload.get("status_code") or 0)
-    if status_code == 2483:
-        raise PermissionError("Douyin requires a fresh Edge/Chrome session or cookies.txt.")
-    if status_code:
-        message = str(payload.get("status_msg") or payload.get("message") or "unknown error")
-        raise RuntimeError(f"Douyin profile request failed ({status_code}): {message}")
-    return payload
-
+__all__ = ["_validated_douyin_url", "_candidate", "inspect_profile"]
 
 def _cover_url(video: dict) -> str:
     for key in ("cover", "origin_cover", "dynamic_cover"):
@@ -207,8 +63,7 @@ def _candidate(aweme: dict) -> dict | None:
         duration = int(video.get("duration") or aweme.get("duration") or 0)
     except (TypeError, ValueError):
         duration = 0
-    if duration > 10_000:
-        duration //= 1000
+    duration //= 1000
     raw_view_count = statistics.get("play_count")
     try:
         view_count = int(raw_view_count) if raw_view_count is not None else None
@@ -227,58 +82,19 @@ def _candidate(aweme: dict) -> dict | None:
     }
 
 
+
 def inspect_profile(payload: dict) -> dict:
-    auth = {
-        "cookie_browser": str(payload.get("cookie_browser") or ""),
-        "cookie_file": str(payload.get("cookie_file") or ""),
-    }
-    cookie_header = _cookie_header(auth)
-    profile_url = _resolve_profile_url(str(payload.get("url") or ""), cookie_header)
-    sec_uid = _extract_sec_uid(profile_url)
-    scan_scope = int(payload.get("scan_scope") or 0)
-    limit = max(1, min(100, int(payload.get("limit") or 20)))
-    ranking = str(payload.get("ranking") or "newest")
-    target = (
-        scan_scope
-        if ranking == "popular" and scan_scope
-        else None
-        if ranking == "popular"
-        else limit
-    )
-    cursor = 0
-    candidates = []
-    seen = set()
-    channel_name = ""
-    ms_token = _random_ms_token()
-    while target is None or len(candidates) < target:
-        page_size = 20 if target is None else min(20, target - len(candidates))
-        page = _api_page(sec_uid, cursor, page_size, cookie_header, ms_token)
-        items = page.get("aweme_list") or []
-        if not items:
-            break
-        for aweme in items:
-            item = _candidate(aweme) if isinstance(aweme, dict) else None
-            if not item or item["remote_video_id"] in seen:
-                continue
-            seen.add(item["remote_video_id"])
-            candidates.append(item)
-            channel_name = channel_name or item["uploader"]
-        if not page.get("has_more"):
-            break
-        next_cursor = int(page.get("max_cursor") or 0)
-        if next_cursor == cursor:
-            break
-        cursor = next_cursor
-    if not candidates:
-        raise RuntimeError("Douyin returned no public videos. Try a fresh browser session.")
-    return {"channel_name": channel_name, "candidates": candidates}
+    from haizflow.services.douyin_adapter import get_douyin_adapter
+    adapter = get_douyin_adapter(payload)
+    budget = payload.get("scan_scope") if payload.get("ranking") == "popular" else payload.get("limit", 20)
+    name, candidates = adapter.profile_posts(str(payload.get("url") or ""), limit=int(budget or 1000))
+    return {"channel_name": name, "candidates": candidates}
 
 
 def main() -> int:
     try:
-        payload = json.loads(sys.stdin.read())
-        response = inspect_profile(payload)
-    except (OSError, ValueError, RuntimeError, PermissionError, urllib.error.URLError) as exc:
+        response = inspect_profile(json.loads(sys.stdin.read()))
+    except (OSError, ValueError, RuntimeError) as exc:
         response = {"error": str(exc)}
     sys.stdout.write(json.dumps(response, ensure_ascii=False))
     sys.stdout.flush()

@@ -5,11 +5,8 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import threading
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,16 +40,11 @@ SUPPORTED_CHANNEL_HOSTS = {
     "facebook.com": "Facebook",
     "x.com": "X",
     "twitter.com": "X",
-    "vimeo.com": "Vimeo",
-    "dailymotion.com": "Dailymotion",
-    "twitch.tv": "Twitch",
     "reddit.com": "Reddit",
-    "vk.com": "VK",
 }
 SHORT_VIDEO_SECONDS = 180
 SESSION_SCHEMA_VERSION = 1
 VIDEO_EXTENSIONS = {"mkv", "mov", "mp4", "webm"}
-DOUYIN_WORKER_TIMEOUT_SECONDS = 30 * 60
 
 
 def _now() -> str:
@@ -76,11 +68,13 @@ def validate_channel_url(value: str, expected_platform: str = "") -> tuple[str, 
     parsed = urlparse(url)
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Enter a valid HTTP or HTTPS channel link.")
+    if parsed.username or parsed.password or parsed.port not in {None, 80, 443}:
+        raise ValueError("Enter a valid HTTP or HTTPS channel link.")
     platform = _platform_for_host(parsed.hostname)
     if not platform:
         raise ValueError(
-            "Only public YouTube, TikTok, Douyin, Bilibili, Instagram, Facebook, X, Vimeo, "
-            "Dailymotion, Twitch, Reddit, and VK profiles are supported."
+            "Only public YouTube, TikTok, Douyin, Bilibili, Instagram, Facebook, X, "
+            "and Reddit profiles are supported."
         )
     expected = str(expected_platform or "").strip().lower()
     platform_key = platform.lower()
@@ -106,18 +100,24 @@ def validate_channel_url(value: str, expected_platform: str = "") -> tuple[str, 
         individual_video_markers = {
             "Bilibili": ("/video/",),
             "Instagram": ("/p/", "/reel/", "/tv/", "/stories/"),
-            "Facebook": ("/watch", "/reel/", "/share/"),
+            "Facebook": ("/watch", "/reel/", "/share/", "/posts/", "/video.php"),
             "X": ("/status/",),
-            "Vimeo": ("/video/",),
-            "Dailymotion": ("/video/",),
-            "Twitch": ("/videos/", "/clip/", "/clips/"),
             "Reddit": ("/comments/",),
-            "VK": ("video",),
         }
         if any(marker in lowered_path for marker in individual_video_markers.get(platform, ())):
             raise ValueError("Paste a public profile or channel link, not an individual video link.")
+        if platform == "Facebook" and "/videos/" in lowered_path:
+            raise ValueError("Paste a public profile or channel link, not an individual video link.")
 
-    normalized = urlunparse(("https", parsed.netloc.lower(), path or "/", "", "", ""))
+    query = ""
+    if platform == "Facebook" and lowered_path == "/profile.php":
+        profile_id = (parse_qs(parsed.query).get("id") or [""])[0]
+        if not profile_id.isdigit():
+            raise ValueError("Paste a public Facebook page or profile link.")
+        query = urlencode({"id": profile_id})
+    if not path:
+        raise ValueError("Paste a public profile or channel link, not the platform home page.")
+    normalized = urlunparse(("https", parsed.hostname.lower(), path, "", query, ""))
     return normalized, platform
 
 
@@ -138,6 +138,9 @@ def normalize_remote_url(value: str) -> str:
         video_id = (parse_qs(parsed.query).get("v") or [""])[0]
         if video_id:
             query = urlencode({"v": video_id})
+    elif host == "facebook.com" or host.endswith(".facebook.com"):
+        params = parse_qs(parsed.query)
+        query = urlencode({key: params[key][0] for key in ("v", "video_id", "story_fbid", "id") if params.get(key)})
     return urlunparse(("https", host, path, "", query, ""))
 
 
@@ -222,7 +225,7 @@ def _entry_candidate(
 
 
 def _merge_candidate(candidate: ChannelVideoCandidate, info: dict) -> ChannelVideoCandidate:
-    refreshed = _entry_candidate(candidate.platform, {**info, "id": candidate.remote_video_id})
+    refreshed = _entry_candidate(candidate.platform, {"webpage_url": candidate.source_url, **info, "id": candidate.remote_video_id})
     if not refreshed:
         return candidate
     refreshed.source_url = candidate.source_url or refreshed.source_url
@@ -277,16 +280,26 @@ def _extract_info_with_platform_retry(
             raise DownloadCancelled("Channel inspection cancelled.")
         try:
             attempt_options = dict(options)
-            if attempt:
+            # Keep profile/API requests on browser transport. Bilibili's
+            # public space API also rejects the generic HTTP profile (412).
+            if attempt or platform in {"TikTok", "Bilibili"}:
                 retry_options = _youtube_dl_options(impersonate=True)
                 if "impersonate" in retry_options:
                     attempt_options["impersonate"] = retry_options["impersonate"]
             with yt_dlp.YoutubeDL(attempt_options) as downloader:
                 info = downloader.extract_info(url, download=False)
+            if platform == "TikTok" and isinstance(info, dict):
+                entries = info.get("entries")
+                if isinstance(entries, list) and entries and not any(isinstance(row, dict) for row in entries):
+                    # ignoreerrors used to turn temporary API failures into a
+                    # successful-looking playlist containing only None values.
+                    raise RuntimeError("TikTok video data is empty while reading the channel.")
             return info if isinstance(info, dict) else {}
         except Exception as exc:
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Channel inspection cancelled.") from exc
+            if platform == "Instagram" and "unable to extract data" in str(exc).lower():
+                raise RuntimeError("Instagram profile downloads are currently unavailable. Use individual video links.") from exc
             if attempt + 1 < attempts and _is_retryable_download_error(exc, platform):
                 _wait_for_retry(cancel_event, 0.6 * (attempt + 1))
                 continue
@@ -366,6 +379,10 @@ def _scan_with_ytdlp(
         if platform == "YouTube"
         else [(request.url, "")]
     )
+    if platform == "Bilibili":
+        parsed = urlparse(request.url)
+        if parsed.hostname == "space.bilibili.com" and parsed.path.strip("/").isdigit():
+            collection_sources = [(urlunparse(parsed._replace(path=parsed.path.rstrip("/") + "/video")), "")]
     per_collection_limit = scan_limit
     if scan_limit and len(collection_sources) > 1:
         per_collection_limit = max(1, (scan_limit + len(collection_sources) - 1) // len(collection_sources))
@@ -379,12 +396,18 @@ def _scan_with_ytdlp(
             {
                 "noplaylist": False,
                 "extract_flat": "in_playlist",
-                "ignoreerrors": True,
+                "ignoreerrors": False,
                 "lazy_playlist": False,
                 "playlistend": per_collection_limit or None,
             }
         )
-        info = _extract_info_with_platform_retry(platform, options, collection_url, cancel_event)
+        if platform == "Facebook":
+            from haizflow.services.facebook_channel import inspect_page
+            info = inspect_page(collection_url, _auth_options(request), per_collection_limit or 1000, cancel_event)
+        elif platform in {"X", "Reddit"}:
+            raise RuntimeError(f"{platform} channel downloads are not supported by this downloader. Use individual video links.")
+        else:
+            info = _extract_info_with_platform_retry(platform, options, collection_url, cancel_event)
         if cancel_event.is_set():
             raise DownloadCancelled("Channel inspection cancelled.")
         if not isinstance(info, dict):
@@ -449,6 +472,7 @@ def _scan_with_ytdlp(
             thread.start()
 
         completed = 0
+        first_hydration_error = None
         while completed < len(to_hydrate):
             if cancel_event.is_set():
                 raise DownloadCancelled("Channel inspection cancelled.")
@@ -461,10 +485,10 @@ def _scan_with_ytdlp(
             if isinstance(error, DownloadCancelled):
                 raise error
             if error is not None:
-                # TikTok photo posts and slideshows can look like ordinary
-                # flat-playlist entries. If details cannot prove that the
-                # entry has a video stream, exclude it from a video batch.
-                resolved = None if platform == "TikTok" else candidate
+                # Real photo metadata is excluded by _hydrate_candidate. A
+                # network/signature failure is not proof that a post is a photo.
+                first_hydration_error = first_hydration_error or error
+                resolved = None if platform in {"TikTok", "Facebook"} else candidate
             hydrated_by_id[candidate.remote_video_id] = resolved
             completed += 1
             if progress_callback:
@@ -478,13 +502,9 @@ def _scan_with_ytdlp(
             if resolved is not None:
                 hydrated_candidates.append(resolved)
         candidates = hydrated_candidates
+        if platform in {"TikTok", "Facebook"} and not candidates and first_hydration_error is not None:
+            raise first_hydration_error
     return channel_name, candidates
-
-
-def _douyin_worker_command() -> list[str]:
-    if getattr(sys, "frozen", False):
-        return [sys.executable, "--douyin-channel-worker"]
-    return [sys.executable, "-m", "haizflow.services.douyin_channel_worker"]
 
 
 def _scan_douyin(
@@ -492,63 +512,14 @@ def _scan_douyin(
     progress_callback: ProgressCallback | None,
     cancel_event: threading.Event,
 ) -> tuple[str, list[ChannelVideoCandidate]]:
+    from haizflow.services.douyin_adapter import get_douyin_adapter
+
     if progress_callback:
-        progress_callback(5, "Starting isolated Douyin Beta inspector")
-    payload = request.model_dump()
-    payload.update(_auth_options(request))
-    process = subprocess.Popen(
-        _douyin_worker_command(),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    input_text = json.dumps(payload, ensure_ascii=False)
-    deadline = time.monotonic() + DOUYIN_WORKER_TIMEOUT_SECONDS
-    stdout = ""
-    stderr = ""
-    while True:
-        if cancel_event.is_set():
-            process.kill()
-            try:
-                process.communicate(timeout=3)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            raise DownloadCancelled("Channel inspection cancelled.")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            process.kill()
-            try:
-                process.communicate(timeout=3)
-            except subprocess.TimeoutExpired:
-                pass
-            raise RuntimeError(
-                f"Douyin Beta inspector timed out after {DOUYIN_WORKER_TIMEOUT_SECONDS} seconds."
-            )
-        try:
-            # communicate() drains stdout/stderr while the worker is running.
-            # Waiting on poll() first can deadlock once a large JSON response
-            # fills either OS pipe before the child is able to exit.
-            stdout, stderr = process.communicate(
-                input=input_text,
-                timeout=min(0.2, remaining),
-            )
-            break
-        except subprocess.TimeoutExpired:
-            input_text = None
-    if process.returncode != 0:
-        raise RuntimeError((stderr or stdout or "Douyin Beta inspector stopped unexpectedly.").strip())
-    try:
-        response = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("Douyin Beta inspector returned invalid data.") from exc
-    if response.get("error"):
-        raise RuntimeError(str(response["error"]))
-    candidates = [ChannelVideoCandidate.model_validate(item) for item in response.get("candidates") or []]
-    return str(response.get("channel_name") or ""), candidates
+        progress_callback(5, "Reading channel videos")
+    budget = request.scan_scope if request.ranking == "popular" else request.limit
+    name, rows = get_douyin_adapter(_auth_options(request)).profile_posts(
+        request.url, limit=budget or 1000, cancel_event=cancel_event, progress_callback=progress_callback)
+    return name, [ChannelVideoCandidate.model_validate(row) for row in rows]
 
 
 def scan_channel(

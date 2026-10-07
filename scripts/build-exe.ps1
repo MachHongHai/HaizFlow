@@ -283,7 +283,7 @@ $ArgsList += @("--hidden-import", "onnxruntime", "--hidden-import", "haizflow.en
 $ArgsList += @("--hidden-import", "haizflow.pipeline.speaker_identity", "--hidden-import", "haizflow.pipeline.speaker_runtime")
 $ArgsList += @("--hidden-import", "haizflow.pipeline.omnivoice_tts")
 $ArgsList += @("--hidden-import", "haizflow.services.douyin_channel_worker")
-$ArgsList += @("--hidden-import", "haizflow.vendor.douyin_xbogus")
+$ArgsList += @("--hidden-import", "haizflow.vendor.douyin_abogus", "--hidden-import", "haizflow.vendor.douyin_sm3")
 $ArgsList += @("--add-data", "$ResourcePackManifestPath;.")
 
 $PythonBase = (& $Python -c "import sys; print(sys.base_prefix)").Trim()

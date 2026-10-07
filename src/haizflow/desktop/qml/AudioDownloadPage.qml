@@ -51,6 +51,7 @@ Item {
                         placeholderText: qsTr("Dán liên kết video")
                         selectByMouse: true
                         accessibleName: qsTr("Liên kết video")
+                        onTextEdited: root.downloader.clearDownloadFeedback()
                     }
 
                     RowLayout {
@@ -71,6 +72,12 @@ Item {
                         directory: root.downloader.audioOutputDirectory
                         managed: root.downloader.outputManaged
                         onChooseRequested: root.downloader.chooseAudioOutputDirectory()
+                    }
+
+                    DouyinSessionAction {
+                        Layout.fillWidth: true
+                        visible: root.fromLink && /(?:^|\/\/)(?:[\w-]+\.)*(?:ies)?douyin\.com(?:\/|$)/i.test(audioLink.text)
+                        operationBusy: root.downloader.hasWork || root.downloader.videoPreviewBusy
                     }
 
                     RowLayout {

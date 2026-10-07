@@ -38,6 +38,8 @@ Item {
                         placeholderText: qsTr("Dán liên kết video")
                         selectByMouse: true
                         accessibleName: qsTr("Liên kết video")
+                        enabled: !root.downloader.videoPreviewBusy
+                        onTextEdited: root.downloader.clearVideoPreview()
                     }
 
                     RowLayout {
@@ -57,9 +59,9 @@ Item {
                         Text {
                             Layout.fillWidth: true
                             visible: root.downloader.videoPreviewStatus.length > 0
-                            text: root.downloader.videoPreviewStatus
+                            text: I18n.runtimeStatus(root.downloader.videoPreviewStatus)
                             color: root.downloader.videoPreviewReady ? Theme.success : Theme.textMuted
-                            elide: Text.ElideRight
+                            wrapMode: Text.WordWrap
                             textFormat: Text.PlainText
                         }
                     }
@@ -126,10 +128,17 @@ Item {
                     }
 
                     DownloadDestinationRow {
+
                         Layout.fillWidth: true
                         directory: root.downloader.videoOutputDirectory
                         managed: root.downloader.outputManaged
                         onChooseRequested: root.downloader.chooseVideoOutputDirectory()
+                    }
+
+                    DouyinSessionAction {
+                        Layout.fillWidth: true
+                        visible: /(?:^|\/\/)(?:[\w-]+\.)*(?:ies)?douyin\.com(?:\/|$)/i.test(videoLink.text)
+                        operationBusy: root.downloader.videoPreviewBusy || root.downloader.hasWork
                     }
 
                     RowLayout {

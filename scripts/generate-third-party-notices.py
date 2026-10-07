@@ -198,8 +198,10 @@ def generate(
         lines.extend(
             [
                 "| FFmpeg 8.1.2 HaizFlow CLI build | Bundled separate programs | GPL-3.0-or-later configured build | https://ffmpeg.org/ |",
-                "| Douyin X-Bogus compatibility helper | Bundled adapted source | Apache-2.0 | "
-                "https://github.com/jiji262/douyin-downloader |",
+                "| Douyin native a_bogus / SM3 / web signing and owned-browser SDK capture | Bundled adapted source; "
+                "see DOUYIN-CHANNEL-IMPORT-NOTICE.md | Apache-2.0 | "
+                "https://github.com/Evil0ctal/Douyin_TikTok_Download_API/tree/"
+                "4f0bed8483c35a980315d9c7b3a1d4a1119ad2b2 |",
                 "| Microsoft Fluent System Icons (curated SVG subset) | Bundled | MIT | "
                 "https://github.com/microsoft/fluentui-system-icons |",
                 "| Bangers typeface | Bundled | SIL Open Font License 1.1 | https://github.com/google/fonts |",

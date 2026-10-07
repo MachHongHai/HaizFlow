@@ -31,6 +31,7 @@ Repository = "https://github.com/MachHongHai/HaizFlow"
 Issues = "https://github.com/MachHongHai/HaizFlow/issues"
 
 [project.optional-dependencies]
+douyin-browser = ["playwright==1.58.0", "cloakbrowser==0.5.10", "httpx==0.28.1", "cryptography>=41"]
 # Development compatibility set. Public releases install these dependencies
 # into versioned engine packs, never into the Core interpreter.
 ai-runtime = [

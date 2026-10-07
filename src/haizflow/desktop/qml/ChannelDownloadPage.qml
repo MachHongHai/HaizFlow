@@ -10,7 +10,12 @@ Item {
 
     required property var downloader
     readonly property bool channelActive: downloader.channelBusy
-    readonly property bool hasResults: downloader.channelCandidateCount > 0
+    property string inspectedSource: ""
+    readonly property string currentSource: root.selectedPlatform + "|" + channelUrl.text.trim()
+    readonly property bool matchesSource: root.inspectedSource === root.currentSource
+        && root.downloader.channelPreviewSource === root.currentSource
+    readonly property bool hasResults: downloader.channelCandidateCount > 0 && root.matchesSource
+        && root.downloader.channelPreviewReady
     property string selectedPlatform: "youtube"
     readonly property var platformOptions: [
         { "label": "YouTube", "value": "youtube", "platform": "youtube" },
@@ -20,11 +25,7 @@ Item {
         { "label": "Instagram", "value": "instagram", "platform": "instagram" },
         { "label": "Facebook", "value": "facebook", "platform": "facebook" },
         { "label": "X", "value": "x", "platform": "x" },
-        { "label": "Vimeo", "value": "vimeo", "platform": "vimeo" },
-        { "label": "Dailymotion", "value": "dailymotion", "platform": "dailymotion" },
-        { "label": "Twitch", "value": "twitch", "platform": "twitch" },
-        { "label": "Reddit", "value": "reddit", "platform": "reddit" },
-        { "label": "VK", "value": "vk", "platform": "vk" }
+        { "label": "Reddit", "value": "reddit", "platform": "reddit" }
     ]
 
     function placeholder() {
@@ -173,6 +174,12 @@ Item {
                         }
                     }
 
+                    DouyinSessionAction {
+                        Layout.fillWidth: true
+                        visible: root.selectedPlatform === "douyin"
+                        operationBusy: root.downloader.hasWork || root.downloader.videoPreviewBusy
+                    }
+
                     DownloadDestinationRow {
                         Layout.fillWidth: true
                         directory: root.downloader.channelOutputDirectory
@@ -189,13 +196,16 @@ Item {
                             text: root.hasResults ? qsTr("Quét lại") : qsTr("Xem trước")
                             variant: "primary"
                             enabled: channelUrl.text.trim().length > 0 && !root.channelActive
-                            onClicked: root.downloader.inspectChannel(channelUrl.text.trim(), root.selectedPlatform, ranking.currentValue, channelLimit.value, contentFilter.currentValue, ranking.currentValue === "popular" ? scanScope.currentValue : 0)
+                            onClicked: {
+                                root.inspectedSource = root.currentSource
+                                root.downloader.inspectChannel(channelUrl.text.trim(), root.selectedPlatform, ranking.currentValue, channelLimit.value, contentFilter.currentValue, ranking.currentValue === "popular" ? scanScope.currentValue : 0)
+                            }
                         }
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: root.downloader.channelStatus.length > 0
+                        visible: root.matchesSource && root.downloader.channelStatus.length > 0
                         Text {
                             Layout.fillWidth: true
                             text: I18n.channelImportStatus(root.downloader.channelStatus)

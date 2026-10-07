@@ -185,6 +185,12 @@ AppDialog {
         }
     }
 
+    DouyinSessionAction {
+        Layout.fillWidth: true
+        visible: /https?:\/\/(?:[\w-]+\.)*(?:ies)?douyin\.com(?:\/|$)/i.test(videoUrl.text)
+        operationBusy: root.importer.busy
+    }
+
     AppProgressBar {
         Layout.fillWidth: true
         visible: root.importer.state === "downloading" || root.importer.state === "importing"

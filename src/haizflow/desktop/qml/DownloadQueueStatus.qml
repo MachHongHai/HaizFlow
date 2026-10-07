@@ -6,11 +6,17 @@ AppSurface {
     id: root
 
     required property var downloader
+    property bool channelPageVisible: false
+    readonly property bool channelProgressShownInPage: root.channelPageVisible && root.downloader.channelBusy
+    readonly property bool channelFeedbackShownInPage: root.channelPageVisible && !root.downloader.busy
+        && root.downloader.status === root.downloader.channelStatus
     readonly property bool waitingForBytes: downloader.busy && downloader.progress <= 0
     readonly property bool finalizing: downloader.busy && downloader.progress >= 99
     readonly property bool cancelled: /cancelled|canceled|đã hủy/i.test(downloader.status)
     readonly property bool failed: !downloader.busy && downloader.state === "error" && !root.cancelled
-    visible: downloader.queueStatus.length > 0 || downloader.status.length > 0
+    visible: (downloader.queueStatus.length > 0 || downloader.status.length > 0)
+        && (!root.channelProgressShownInPage || downloader.queueCount > 0)
+        && (!root.channelFeedbackShownInPage || downloader.queueCount > 0)
     padding: Theme.space12
     spacing: Theme.space8
 
@@ -42,17 +48,19 @@ AppSurface {
 
     RowLayout {
         Layout.fillWidth: true
-        visible: root.downloader.status.length > 0
+        visible: root.downloader.status.length > 0 && !root.channelProgressShownInPage
 
         Text {
             Layout.fillWidth: true
             text: root.downloader.busy
-                ? root.finalizing ? qsTr("Đang hoàn thiện tệp")
+                ? root.downloader.channelBusy ? I18n.channelImportStatus(root.downloader.channelStatus)
+                    : root.downloader.status === "Preparing downloaded audio" ? I18n.runtimeStatus(root.downloader.status)
+                    : root.finalizing ? qsTr("Đang hoàn thiện tệp")
                     : root.waitingForBytes ? qsTr("Đang chuẩn bị tải")
                     : qsTr("Đang tải · %1%").arg(root.downloader.progress)
                 : root.failed ? qsTr("Không tải được · Xem chi tiết lỗi")
                 : root.cancelled ? qsTr("Đã hủy tải xuống")
-                : I18n.downloadStatus(root.downloader.status)
+                : I18n.downloadStatus(I18n.channelImportStatus(root.downloader.status))
             color: root.failed ? Theme.danger
                 : root.downloader.busy ? Theme.textMuted : Theme.text
             wrapMode: Text.WordWrap
@@ -74,7 +82,7 @@ AppSurface {
 
     AppProgressBar {
         Layout.fillWidth: true
-        visible: root.downloader.busy && !root.downloader.channelBusy
+        visible: root.downloader.busy && !root.channelProgressShownInPage
         value: root.downloader.progress
         indeterminate: root.waitingForBytes || root.finalizing
         active: root.downloader.busy

@@ -75,6 +75,7 @@ Item {
             Layout.maximumWidth: 1120
             Layout.alignment: Qt.AlignHCenter
             downloader: root.downloader
+            channelPageVisible: root.currentPage === 1
         }
     }
 }

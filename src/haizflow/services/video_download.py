@@ -15,14 +15,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from haizflow.config import BIN_DIR
+from haizflow.config import BIN_DIR, MEDIA_PROCESS_TIMEOUT_SECONDS
 from haizflow.utils.ffmpeg import get_media_stream_types
 
 SUPPORTED_VIDEO_HOSTS = {
     "b23.tv": "Bilibili",
     "bilibili.com": "Bilibili",
-    "dai.ly": "Dailymotion",
-    "dailymotion.com": "Dailymotion",
     "douyin.com": "Douyin",
     "iesdouyin.com": "Douyin",
     "facebook.com": "Facebook",
@@ -32,17 +30,15 @@ SUPPORTED_VIDEO_HOSTS = {
     "reddit.com": "Reddit",
     "streamable.com": "Streamable",
     "tiktok.com": "TikTok",
-    "twitch.tv": "Twitch",
-    "clips.twitch.tv": "Twitch",
-    "vimeo.com": "Vimeo",
-    "vk.com": "VK",
     "x.com": "X",
+    "twitter.com": "X",
     "youtu.be": "YouTube",
     "youtube.com": "YouTube",
 }
 SUPPORTED_DOWNLOAD_EXTENSIONS = {".mp4", ".mov", ".mkv"}
 SUPPORTED_AUDIO_EXTENSIONS = {".aac", ".flac", ".m4a", ".mp3", ".mp4", ".ogg", ".opus", ".wav", ".webm"}
 _TIKTOK_TRANSIENT_ERROR_MARKERS = (
+    "failed to parse json",
     "unexpected response from webpage request",
     "unable to extract universal data for rehydration",
     "unable to extract webpage video data",
@@ -106,6 +102,8 @@ _NETWORK_RETRY_ERROR_MARKERS = (
 _NON_RETRYABLE_ERROR_MARKERS = (
     "video is private",
     "private video",
+    "channel is private",
+    "account is private",
     "login required",
     "sign in to confirm",
     "members-only",
@@ -197,7 +195,7 @@ def validate_video_url(value: str) -> tuple[str, str]:
     if not platform:
         raise ValueError(
             "This link is not from a supported source. Use YouTube, TikTok, Douyin, Bilibili, "
-            "Instagram, Facebook, X, Vimeo, Dailymotion, Twitch, Reddit, Streamable, or VK."
+            "Instagram, Facebook, X, Reddit, or Streamable."
         )
     if platform == "Douyin":
         modal_ids = parse_qs(parsed.query).get("modal_id", [])
@@ -237,7 +235,9 @@ def _youtube_dl_options(auth: dict | None = None, *, impersonate: bool = False) 
     # because forcing impersonation can make otherwise healthy extractors less
     # reliable.
     if impersonate and importlib.util.find_spec("curl_cffi") is not None:
-        options["impersonate"] = "chrome"
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        # The Python API expects a target object, unlike yt-dlp's CLI string.
+        options["impersonate"] = ImpersonateTarget.from_str("chrome")
     auth = auth or {}
     cookie_file = str(auth.get("cookie_file") or "").strip()
     cookie_browser = str(auth.get("cookie_browser") or "").strip().lower()
@@ -256,12 +256,20 @@ def _load_yt_dlp():
     return yt_dlp
 
 
-def _extract_video_info(downloader, url: str, *, download: bool):
+def _extract_video_info(downloader, url: str, *, download: bool, cancel_event=None, auth=None):
     if _matching_platform(urlparse(url).hostname or "") == "Douyin":
+        from haizflow.services.douyin_adapter import get_douyin_adapter
         from haizflow.services.douyin_video import HaizFlowDouyinIE
-        downloader.add_info_extractor(HaizFlowDouyinIE())
+        adapter = get_douyin_adapter(auth)
+        downloader.add_info_extractor(HaizFlowDouyinIE(adapter=adapter, cancel_event=cancel_event))
         return downloader.extract_info(url, download=download, ie_key=HaizFlowDouyinIE.ie_key())
     return downloader.extract_info(url, download=download)
+
+
+def _ytdlp_auth_for_url(auth, url):
+    # YoutubeDL may read cookies while constructing its request handlers, before
+    # our extractor runs. Douyin alone owns its explicitly-scoped cookie jar.
+    return None if _matching_platform(urlparse(url).hostname or "") == "Douyin" else auth
 
 
 def _downloaded_audio_path(directory: Path, info: dict, downloader) -> Path:
@@ -312,6 +320,8 @@ def _normalize_downloaded_audio(
     cancel_event: threading.Event | None,
 ) -> None:
     """Create a predictable M4A independently of yt-dlp's FFprobe postprocessor."""
+    if cancel_event and cancel_event.is_set():
+        raise DownloadCancelled("Audio download cancelled.")
     if "audio" not in get_media_stream_types(str(source)):
         raise RuntimeError("The downloaded media does not contain an audio track.")
     temporary = target.with_name(f"{target.stem}.converting.m4a")
@@ -346,6 +356,7 @@ def _normalize_downloaded_audio(
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     stderr = ""
+    deadline = time.monotonic() + MEDIA_PROCESS_TIMEOUT_SECONDS
     try:
         while True:
             try:
@@ -356,6 +367,12 @@ def _normalize_downloaded_audio(
                     process.kill()
                     process.communicate()
                     raise DownloadCancelled("Audio download cancelled.")
+                if time.monotonic() >= deadline:
+                    process.kill()
+                    process.communicate()
+                    raise RuntimeError("Audio extraction took too long and was stopped.")
+        if cancel_event and cancel_event.is_set():
+            raise DownloadCancelled("Audio download cancelled.")
         if process.returncode != 0 or not temporary.is_file() or temporary.stat().st_size <= 0:
             detail = " ".join((stderr or "").split())[-500:]
             raise RuntimeError(
@@ -398,22 +415,40 @@ def _is_retryable_download_error(exc: Exception, platform: str) -> bool:
     )
 
 
-def _download_format_selector(platform: str) -> str:
+def _log_media_retry(platform: str, exc: Exception, attempt: int, auth=None) -> None:
+    if platform != "Douyin":
+        return
+    from haizflow.services.douyin_adapter import get_douyin_adapter
+    from haizflow.services.douyin_classification import Outcome
+    message = str(exc).lower()
+    classification = (Outcome.MEDIA_EXPIRED if "403" in message or
+                      any(marker in message for marker in _FORMAT_REFRESH_ERROR_MARKERS) else
+                      Outcome.RATE_LIMIT if "429" in message else Outcome.NETWORK)
+    get_douyin_adapter(auth).log_media_refresh(attempt,
+        http_status=403 if "403" in message else 429 if "429" in message else 0,
+        outcome=classification)
+
+
+def _download_format_selector(platform: str, *, require_audio: bool = True) -> str:
     """Select a processable video: both picture and audio are mandatory."""
     # `best` does not guarantee a progressive stream. TikTok/Douyin sometimes
     # rank a high-quality video-only HEVC format above the playable stream,
     # which used to import successfully and then fail during audio extraction.
     if platform in {"TikTok", "Douyin"}:
-        return (
+        selector = (
             "best[vcodec!=none][acodec!=none]/"
             "bestvideo[vcodec!=none]+bestaudio[acodec!=none]"
         )
-    return (
-        "bestvideo[height<=1080][vcodec!=none]+bestaudio[acodec!=none]/"
-        "best[height<=1080][vcodec!=none][acodec!=none]/"
-        "best[vcodec!=none][acodec!=none]/"
-        "bestvideo[vcodec!=none]+bestaudio[acodec!=none]"
-    )
+    else:
+        selector = (
+            "bestvideo[height<=1080][vcodec!=none]+bestaudio[acodec!=none]/"
+            "best[height<=1080][vcodec!=none][acodec!=none]/"
+            "best[vcodec!=none][acodec!=none]/"
+            "bestvideo[vcodec!=none]+bestaudio[acodec!=none]"
+        )
+    if not require_audio:
+        selector += "/bestvideo[height<=1080][vcodec!=none]/best[vcodec!=none]/bestvideo[vcodec!=none]"
+    return selector
 
 
 def _wait_for_retry(cancel_event: threading.Event | None, seconds: float) -> None:
@@ -424,9 +459,9 @@ def _wait_for_retry(cancel_event: threading.Event | None, seconds: float) -> Non
     time.sleep(seconds)
 
 
-def _inspect_video_info(yt_dlp, url: str, *, impersonate: bool = False, auth=None) -> dict:
-    with yt_dlp.YoutubeDL(_youtube_dl_options(auth, impersonate=impersonate)) as downloader:
-        return _extract_video_info(downloader, url, download=False)
+def _inspect_video_info(yt_dlp, url: str, *, impersonate: bool = False, auth=None, cancel_event=None) -> dict:
+    with yt_dlp.YoutubeDL(_youtube_dl_options(_ytdlp_auth_for_url(auth, url), impersonate=impersonate)) as downloader:
+        return _extract_video_info(downloader, url, download=False, auth=auth, cancel_event=cancel_event)
 
 
 def inspect_video_url(url: str, cancel_event: threading.Event | None = None, auth=None) -> VideoMetadata:
@@ -439,7 +474,8 @@ def inspect_video_url(url: str, cancel_event: threading.Event | None = None, aut
     info = None
     for attempt in range(attempts):
         try:
-            info = _inspect_video_info(yt_dlp, normalized_url, impersonate=attempt > 0, auth=auth)
+            info = _inspect_video_info(yt_dlp, normalized_url, impersonate=attempt > 0, auth=auth,
+                                       cancel_event=cancel_event)
             break
         except Exception as exc:
             if cancel_event and cancel_event.is_set():
@@ -467,6 +503,8 @@ def inspect_video_url(url: str, cancel_event: threading.Event | None = None, aut
         resolved_platform = "Douyin"
     elif "bilibili" in resolved_platform.lower():
         resolved_platform = "Bilibili"
+    elif "twitter" in resolved_platform.lower():
+        resolved_platform = "X"
 
     title = str(info.get("title") or "Untitled video").strip()
     return VideoMetadata(
@@ -499,13 +537,15 @@ def download_audio(
             return
         downloaded = int(event.get("downloaded_bytes") or 0)
         total = int(event.get("total_bytes") or event.get("total_bytes_estimate") or 0)
-        progress_callback(round(downloaded * 100 / total) if total else 0, "Downloading audio")
+        progress_callback(min(95, round(downloaded * 95 / total)) if total else 0, "Downloading audio")
 
     attempts = 3
     for attempt in range(attempts):
+        if cancel_event and cancel_event.is_set():
+            raise DownloadCancelled("Audio download cancelled.")
         for stale in target.parent.glob(f"{target.stem}.source.*"):
             stale.unlink(missing_ok=True)
-        options = _youtube_dl_options(auth, impersonate=attempt > 0)
+        options = _youtube_dl_options(_ytdlp_auth_for_url(auth, normalized_url), impersonate=attempt > 0)
         options.update(
             {
                 "outtmpl": str(target.with_name(f"{target.stem}.source.%(ext)s")),
@@ -517,10 +557,13 @@ def download_audio(
         )
         try:
             with yt_dlp.YoutubeDL(options) as downloader:
-                info = _extract_video_info(downloader, normalized_url, download=True)
+                info = _extract_video_info(downloader, normalized_url, download=True, auth=auth,
+                                           cancel_event=cancel_event)
                 source = _downloaded_audio_path(target.parent, info, downloader)
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Audio download cancelled.")
+            if progress_callback:
+                progress_callback(96, "Preparing downloaded audio")
             _normalize_downloaded_audio(source, target, cancel_event)
             if source != target:
                 source.unlink(missing_ok=True)
@@ -533,6 +576,7 @@ def download_audio(
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Audio download cancelled.") from exc
             if attempt + 1 < attempts and _is_retryable_download_error(exc, platform):
+                _log_media_retry(platform, exc, attempt + 1, auth)
                 _wait_for_retry(cancel_event, 0.8 * (attempt + 1))
                 continue
             raise RuntimeError(_friendly_error(exc)) from exc
@@ -606,12 +650,12 @@ def _downloaded_video_path(workspace: str, info: dict, downloader) -> str:
     return str(max(discovered, key=lambda path: path.stat().st_mtime))
 
 
-def _validate_processable_video(video_path: str) -> None:
+def _validate_processable_video(video_path: str, *, require_audio: bool = True) -> None:
     """Reject downloads that cannot enter the dubbing pipeline."""
     stream_types = get_media_stream_types(video_path)
     if "video" not in stream_types:
         raise RuntimeError("The downloaded media does not contain a video track.")
-    if "audio" not in stream_types:
+    if require_audio and "audio" not in stream_types:
         raise RuntimeError(
             "The downloaded video does not contain an audio track. "
             "Try the link again or choose another source video."
@@ -624,6 +668,8 @@ def download_video(
     progress_callback: Callable[[int, str], None] | None = None,
     cancel_event: threading.Event | None = None,
     auth: dict | None = None,
+    *,
+    require_audio: bool = True,
 ) -> str:
     """Download one video and return its final MP4/MOV/MKV path."""
     os.makedirs(workspace, exist_ok=True)
@@ -664,11 +710,11 @@ def download_video(
     report(0, "Starting download")
     attempts = 3
     for attempt in range(attempts):
-        options = _youtube_dl_options(auth, impersonate=attempt > 0)
+        options = _youtube_dl_options(_ytdlp_auth_for_url(auth, metadata.url), impersonate=attempt > 0)
         options.update(
             {
                 "outtmpl": os.path.join(workspace, "%(title).120B [%(id)s].%(ext)s"),
-                "format": _download_format_selector(metadata.platform),
+                "format": _download_format_selector(metadata.platform, require_audio=require_audio),
                 "merge_output_format": "mp4",
                 "postprocessors": [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}],
                 "progress_hooks": [progress_hook],
@@ -682,11 +728,12 @@ def download_video(
             # manifest.  TikTok's signed URLs can expire between inspection
             # and download, especially in a multi-video channel import.
             with yt_dlp.YoutubeDL(options) as downloader:
-                info = _extract_video_info(downloader, metadata.url, download=True)
+                info = _extract_video_info(downloader, metadata.url, download=True, auth=auth,
+                                           cancel_event=cancel_event)
                 if cancel_event and cancel_event.is_set():
                     raise DownloadCancelled("Video download cancelled.")
                 video_path = _downloaded_video_path(workspace, info, downloader)
-                _validate_processable_video(video_path)
+                _validate_processable_video(video_path, require_audio=require_audio)
             break
         except DownloadCancelled:
             raise
@@ -694,6 +741,7 @@ def download_video(
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Video download cancelled.") from exc
             if attempt + 1 < attempts and _is_retryable_download_error(exc, metadata.platform):
+                _log_media_retry(metadata.platform, exc, attempt + 1, auth)
                 report(0, "Refreshing video stream and retrying")
                 _wait_for_retry(cancel_event, 0.8 * (attempt + 1))
                 continue

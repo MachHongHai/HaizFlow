@@ -190,7 +190,19 @@ class MediaDownloadController(QObject):
 
     @Property(str, notify=changed)
     def channelStatus(self):
+        if not self._channel_importer.busy and any(task["kind"] == "channel_scan" for task in self._pending_tasks):
+            return "Queued channel preview"
         return self._channel_importer.status
+
+    @Property(str, notify=changed)
+    def channelPreviewSource(self):
+        request = self._channel_importer.requestData
+        return f"{request.get('platform', '')}|{str(request.get('url', '')).strip()}"
+
+    @Property(bool, notify=changed)
+    def channelPreviewReady(self):
+        return (self.channelState in {"ready", "success", "partial"}
+                and not any(task["kind"] == "channel_scan" for task in self._pending_tasks))
 
     @Property(str, notify=changed)
     def channelState(self):
@@ -340,8 +352,22 @@ class MediaDownloadController(QObject):
 
     @Slot(str)
     def inspectVideo(self, url):
+        self.clearDownloadFeedback()
         self._video_preview.begin("single")
         self._video_preview.inspect(str(url or ""))
+
+    @Slot()
+    def clearDownloadFeedback(self):
+        # Never hide a running download just because another tab checks a URL.
+        if not self.hasWork:
+            self._state, self._status, self._progress_value = "idle", "", 0
+            self.changed.emit()
+
+    @Slot()
+    def clearVideoPreview(self):
+        if not self.videoPreviewBusy:
+            self._video_preview.begin("single")
+        self.clearDownloadFeedback()
 
     @Slot()
     def cancelVideoPreview(self):
@@ -370,6 +396,7 @@ class MediaDownloadController(QObject):
 
     @Slot(str, str, str, int, str, int)
     def inspectChannel(self, url, platform, ranking, limit, duration_filter, scan_scope):
+        self.clearDownloadFeedback()
         if not str(url or "").strip():
             self._reject("Paste a channel or profile link first.")
             return
@@ -487,6 +514,7 @@ class MediaDownloadController(QObject):
         self._active_task = self._pending_tasks.popleft()
         task = self._active_task
         self._progress_value = 0
+        self._state = "running"
         self._cancel = threading.Event()
         self.changed.emit()
         if task["kind"] == "channel_scan":
@@ -531,6 +559,8 @@ class MediaDownloadController(QObject):
             self._channel_starting = False
         self._status = "Preparing channel preview"
         self.changed.emit()
+        if not self._channel_importer.busy:
+            self._on_channel_changed()
 
     def _start_channel_download(self, task: dict) -> None:
         if task["session_id"] != self._channel_importer.sessionId:
@@ -548,27 +578,41 @@ class MediaDownloadController(QObject):
         try:
             output = Path(output_directory)
             if mode == "extract":
-                destination = self._unique_path(output / f"{Path(value).stem}.m4a")
-                self._extract(value, destination)
+                workspace = output / ".haizflow-downloads" / uuid.uuid4().hex
+                workspace.mkdir(parents=True, exist_ok=True)
+                try:
+                    downloaded = workspace / "audio.m4a"
+                    self._extract(value, downloaded)
+                    if self._cancel.is_set():
+                        raise DownloadCancelled("Audio extraction cancelled.")
+                    destination = self._move_to_unique_path(downloaded, output / f"{Path(value).stem}.m4a")
+                finally:
+                    shutil.rmtree(workspace, ignore_errors=True)
             else:
                 metadata = inspect_video_url(value, self._cancel)
                 workspace = output / ".haizflow-downloads" / uuid.uuid4().hex
                 workspace.mkdir(parents=True, exist_ok=True)
                 try:
                     if mode == "video":
-                        downloaded = download_video(metadata, str(workspace), self._report, self._cancel)
+                        downloaded = download_video(metadata, str(workspace), self._report, self._cancel,
+                                                    require_audio=False)
+                        if self._cancel.is_set():
+                            raise DownloadCancelled("Download cancelled.")
                         destination = self._move_to_unique_path(
                             Path(downloaded), output / Path(downloaded).name,
                         )
                     else:
-                        destination = self._unique_path(
-                            output / f"{_safe_output_stem(metadata.title, 'audio')}.m4a"
+                        downloaded = workspace / "audio.m4a"
+                        download_audio(metadata.url, downloaded, self._report, self._cancel)
+                        if self._cancel.is_set():
+                            raise DownloadCancelled("Audio download cancelled.")
+                        destination = self._move_to_unique_path(
+                            downloaded, output / f"{_safe_output_stem(metadata.title, 'audio')}.m4a"
                         )
-                        download_audio(metadata.url, destination, self._report, self._cancel)
                 finally:
                     shutil.rmtree(workspace, ignore_errors=True)
-            if self._cancel.is_set():
-                raise DownloadCancelled("Download cancelled.")
+            # Moving the validated file commits the operation. A late cancel
+            # must not report failure after the completed file was saved.
             self._finished.emit(str(destination))
         except Exception as exc:
             self._failed.emit(str(exc))
@@ -655,21 +699,25 @@ class MediaDownloadController(QObject):
     def _set_failed(self, message):
         self._finish_active(message)
 
-    def _finish_active(self, status: str) -> None:
+    def _finish_active(self, status: str, state: str | None = None) -> None:
         self._active_task = None
-        self._state = "done" if status.startswith("Saved to ") else "error"
+        self._state = state or ("done" if status.startswith("Saved to ") else "error")
         self._status = str(status)
         self.changed.emit()
         self._start_next()
 
     def _on_channel_changed(self) -> None:
+        if self._active_task and self._active_task["kind"].startswith("channel_"):
+            self._progress_value = self._channel_importer.progress
         self.changed.emit()
         task = self._active_task
         if not task or self._channel_starting or not task["kind"].startswith("channel_"):
             return
         if self._channel_importer.busy:
             return
-        self._finish_active(self._channel_importer.status or "Channel task finished.")
+        state = "done" if self.channelState in {"ready", "success"} else (
+            "idle" if self.channelState == "idle" else "error")
+        self._finish_active(self._channel_importer.status or "Channel task finished.", state)
 
     def _save_channel_video(self, path, _workspace, candidate_payload, _project_key, session_id):
         candidate = dict(candidate_payload or {})
