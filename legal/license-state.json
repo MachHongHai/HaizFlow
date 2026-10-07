@@ -10,14 +10,14 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "0.1.4 reviewed patch candidate; publication tracked by GitHub release state",
+  "effective_release": "0.1.5 reviewed patch candidate; publication tracked by GitHub release state",
   "public_release_review": {
     "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
-    "approved_at": "2026-10-06",
-    "source_commit": "11df17c4895d8b6fd7a16119d62357dab3d571fb",
-    "release_version": "0.1.4",
-    "owner_release_authorization": "Direct owner request to fix updater progress, actual Douyin browser-link downloading and project deletion, remove duplicate empty-page project buttons, retain the previous update UI, build and publish a new unsigned GitHub release.",
-    "publication_condition": "Publish exact corresponding-source asset with binaries; preserve historical resource/source assets and verify installer plus frozen 0.1.3 delta update. Do not claim universal Douyin download access or unsigned Application Control compatibility.",
+    "approved_at": "2026-10-07",
+    "source_commit": "b31950f",
+    "release_version": "0.1.5",
+    "owner_release_authorization": "Direct owner request to finish the processing, OCR editor and resource-queue fixes, correct mixed-language progress, build and publish a new release with feature introduction, user instructions and direct installer download links.",
+    "publication_condition": "Publish exact corresponding-source asset with binaries; preserve historical resource/source assets and verify installer plus frozen 0.1.4 delta update. Dependencies, media recipes, vendor assets and license terms are unchanged from the reviewed 0.1.4 inputs. Existing scoped clearance evidence remains applicable; this is not independent legal certification. Do not claim universal Douyin download access or unsigned Application Control compatibility.",
     "clearances": {
       "owned-code-and-contributor-scope": {
         "path": "legal/reviews/application-scope-2026-10-06.md",
