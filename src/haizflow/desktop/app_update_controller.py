@@ -242,7 +242,13 @@ class AppUpdateController(QObject):
             else:
                 try:
                     self._delta_token = create_request(layout, self._latest_version)
-                    self._delta_process = subprocess.Popen([str(executable), "--install-root", str(layout.root),
+                    # Run patched updater code from the running version, not
+                    # the immutable bootstrap installed by an older EXE.
+                    core = child(layout.core(self.current_version), "HaizFlowCore.exe")
+                    command = ([str(core), "--app-update-worker"]
+                               if Path(sys.executable).absolute() == core and core.is_file()
+                               else [str(executable)])
+                    self._delta_process = subprocess.Popen(command + ["--install-root", str(layout.root),
                         "--request-token", self._delta_token], cwd=layout.root, shell=False,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                     self._state = "downloading"
@@ -468,7 +474,9 @@ class AppUpdateController(QObject):
             self._release_notes = event["notes"]
             self._release_url = event["url"]
             self._installer = event.get("installer", {})
-            self._state = "available" if event["available"] else "current"
+            # Recheck on the UI thread instead of trusting a worker's stale
+            # availability flag, particularly after update recovery.
+            self._state = "available" if self.available else "current"
             self._error = ""
             self.changed.emit()
         elif event["kind"] == "no_release":

@@ -100,6 +100,15 @@ def run_release_smoke(
         )
     for path, label in release_files:
         _check(path.exists(), label, failures, details)
+    if not pre_finalize:
+        from haizflow import __version__
+
+        try:
+            build_info = json.loads((artifact / "BUILD-INFO.json").read_text(encoding="utf-8"))
+            _check(__version__ == build_info["version"], "Running application version matches build metadata",
+                   failures, details)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            failures.append(f"Application version verification failed: {type(exc).__name__}: {exc}")
     if installed_layout:
         _check(
             (install_root() / "runtime").is_dir(),

@@ -96,7 +96,7 @@ def main():
                         ignore=shutil.ignore_patterns("core-manifest.json", "core-complete.json"))
         if real_release_delta:
             manifest = Manifest.parse(json.loads(args.update_manifest.read_text("utf-8")))
-            assert manifest.data["base_version"] == base_version
+            assert manifest.data["base_version"] == (base_version if manifest.data["package_type"] == "delta" else None)
             assert manifest.data["target_version"] == target_version
             layout.prepare(args.update_package, manifest)
         else:
@@ -137,7 +137,9 @@ def main():
         assert layout.active()["active"] == target_version and layout.journal()["state"] == "rolled_back"
         assert before == {str(path): sha256(path) for path in (fixture, external)}
         atomic_json(report / "result.json", dict(passed=True, actual_frozen_binaries=True,
-            synthetic_versions=not real_release_delta, real_release_delta=real_release_delta,
+            synthetic_versions=not real_release_delta,
+            real_release_delta=real_release_delta and manifest.data["package_type"] == "delta",
+            real_release_full=real_release_delta and manifest.data["package_type"] == "full",
             synthetic_rollback=True, base_version=base_version, target_version=target_version,
             network_tested=False, delta_size=manifest.data["package_size"],
             target_inventory_exact=True, startup_core_immutable=True, rollback=True, user_data_preserved=True,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "haizflow"
-version = "0.1.5"
+version = "0.1.6"
 description = "Free desktop video translation, dubbing and automation for Windows"
 authors = [{name = "Mach Hong Hai", email = "machhonghaipr@gmail.com"}]
 license = "LicenseRef-HaizFlow-Source-Available-1.0"

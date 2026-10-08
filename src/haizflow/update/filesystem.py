@@ -8,6 +8,7 @@ import re
 import shutil
 import stat
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -103,7 +104,23 @@ def atomic_json(path: Path, value: dict) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        # A concurrent IPC reader or antivirus scanner can briefly deny a
+        # same-volume replacement on Windows. Retry only those OS errors;
+        # never delete the destination or relax its permissions.
+        for attempt in range(7):
+            no_links(path)
+            try:
+                os.replace(temporary, path)
+                break
+            except OSError as exc:
+                if getattr(exc, "winerror", None) not in {5, 32, 33}:
+                    raise
+                if attempt == 6:
+                    raise UpdateError(
+                        "Không thể ghi trạng thái cập nhật vì Windows đang khóa tệp. "
+                        "Hãy chờ một lát rồi thử lại."
+                    ) from exc
+                time.sleep(min(0.025 * 2**attempt, 0.4))
         # POSIX directory durability; Windows uses flushed files + atomic
         # same-volume replacement. No claim of power-loss atomicity on all FS.
         if os.name != "nt":
@@ -113,7 +130,12 @@ def atomic_json(path: Path, value: dict) -> None:
             finally:
                 os.close(directory)
     finally:
-        temporary.unlink(missing_ok=True)
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            # Cleanup must not obscure the original write error. This is an
+            # updater-owned temp file, never an active pointer or user data.
+            pass
 
 
 @contextmanager

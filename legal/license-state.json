@@ -10,14 +10,14 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "0.1.5 reviewed patch candidate; publication tracked by GitHub release state",
+  "effective_release": "0.1.6 reviewed update patch; publication tracked by GitHub release state",
   "public_release_review": {
     "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
-    "approved_at": "2026-10-07",
-    "source_commit": "b31950f",
-    "release_version": "0.1.5",
-    "owner_release_authorization": "Direct owner request to finish the processing, OCR editor and resource-queue fixes, correct mixed-language progress, build and publish a new release with feature introduction, user instructions and direct installer download links.",
-    "publication_condition": "Publish exact corresponding-source asset with binaries; preserve historical resource/source assets and verify installer plus frozen 0.1.4 delta update. Dependencies, media recipes, vendor assets and license terms are unchanged from the reviewed 0.1.4 inputs. Existing scoped clearance evidence remains applicable; this is not independent legal certification. Do not claim universal Douyin download access or unsigned Application Control compatibility.",
+    "approved_at": "2026-10-08",
+    "source_commit": "47b2b96",
+    "release_version": "0.1.6",
+    "owner_release_authorization": "Direct owner request to build and publish the update patch and support direct upgrades from every previously released HaizFlow version.",
+    "publication_condition": "Publish exact corresponding-source asset with binaries; preserve historical resource/source assets and verify installer plus frozen full/delta upgrades from 0.1.0 through 0.1.5. Changes are scoped to version identity, update IPC and the Core-delivered independent updater. Dependencies, media recipes, vendor assets and license terms are unchanged from reviewed 0.1.5. Existing scoped clearance evidence remains applicable; this is not independent legal certification. Do not claim universal download access or unsigned Application Control compatibility.",
     "clearances": {
       "owned-code-and-contributor-scope": {
         "path": "legal/reviews/application-scope-2026-10-06.md",

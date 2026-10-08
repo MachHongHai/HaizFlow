@@ -41,6 +41,16 @@ time.sleep(0.25)
 
 
 class DeltaUpdateTests(unittest.TestCase):
+    def test_same_or_older_update_is_rejected_before_network_or_download(self):
+        from unittest.mock import Mock
+        client = Mock()
+        for target in ("0.1.0", "0.0.9"):
+            with self.assertRaisesRegex(UpdateError, "Không cần cập nhật lại"):
+                prepare_latest(self.layout, target, client=client)
+        client.latest.assert_not_called()
+        self.assertIsNone(self.layout.journal())
+        self.assertEqual(self.before, self.user_data())
+
     def test_preparation_reports_real_ordered_phase_progress(self):
         events = []
         self.layout.prepare(self.output / self.delta.data["package_name"], self.delta,

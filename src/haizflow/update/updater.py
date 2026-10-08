@@ -4,10 +4,11 @@ from __future__ import annotations
 import os
 import secrets
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-from .filesystem import UpdateError, atomic_json, child, file_lock, read_json, version
+from .filesystem import UpdateError, atomic_json, child, file_lock, read_json, version, version_tuple
 from .network import GitHubClient
 from .state import Layout
 
@@ -15,11 +16,13 @@ from .state import Layout
 def prepare_latest(layout: Layout, target: str, *, client=None, progress=lambda *_: None):
     """Missing/inefficient/invalid-base delta falls back only to verified full."""
     version(target)
+    active = layout.active()["active"]
+    if version_tuple(target) <= version_tuple(active):
+        raise UpdateError("Bạn đang dùng phiên bản này hoặc phiên bản mới hơn. Không cần cập nhật lại.")
     client = client or GitHubClient()
     release = client.latest()
     if release["tag_name"] != "v" + target:
         raise UpdateError("Bản phát hành đã thay đổi; kiểm tra cập nhật lại.")
-    active = layout.active()["active"]
     prefix = f"HaizFlow-Core-{target}-windows-x64-"
     names = {a.get("name") for a in release["assets"] if isinstance(a, dict)}
     full_name = prefix + "full.manifest.json"
@@ -76,6 +79,28 @@ def create_request(layout: Layout, target: str) -> str:
     atomic_json(child(layout.ipc, token + ".update.json"), {"product": "HaizFlow", "schema": 1,
                 "target": version(target), "pid": os.getpid(), "token": token})
     return token
+
+
+def worker_main(argv=None) -> int:
+    """Run the current Core's stdlib updater in an independent process.
+
+    Core updates do not replace the original bootstrap, so this keeps fixes
+    to update IPC available after an in-app update as well as an EXE install.
+    No Qt/UI or model imports; activation still requires the UI Core to exit.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="HaizFlow update worker")
+    parser.add_argument("--install-root", type=Path, required=True)
+    parser.add_argument("--request-token", required=True)
+    args = parser.parse_args(argv)
+    try:
+        run_request(args.install_root, args.request_token)
+    except (OSError, ValueError) as exc:
+        if sys.stderr is not None:
+            print(str(exc), file=sys.stderr)
+        return 1
+    return 0
 
 
 def run_request(root: Path, token: str, *, client=None, activation_timeout: float = 3600,

@@ -10,7 +10,7 @@ Allow space for the app, packs, source videos and exports. Setup shows the requi
 
 ## 2. Install the app
 
-**[Download HaizFlow-0.1.5-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.5/HaizFlow-0.1.5-Setup.exe).** This is the only file you need to install the app. Core files on the [release page](https://github.com/MachHongHai/HaizFlow/releases/latest) are for automatic updates; do not download or extract them for installation.
+**[Download HaizFlow-0.1.6-Setup.exe](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.6/HaizFlow-0.1.6-Setup.exe).** This is the only file you need to install the app. Core files on the [release page](https://github.com/MachHongHai/HaizFlow/releases/latest) are for automatic updates; do not download or extract them for installation.
 
 1. Open **Setup.exe**, select the language and read the terms.
 2. Choose an installation folder on a drive with enough free space.

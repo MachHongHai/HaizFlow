@@ -35,6 +35,19 @@ class Response(BytesIO):
 
 
 class AppUpdateControllerTests(unittest.TestCase):
+    def test_current_release_clears_badge_and_cannot_launch_repeat_update(self):
+        controller = AppUpdateController(Host())
+        controller._latest_version = "0.1.5"
+        controller._state = "available"
+        with patch("haizflow.desktop.app_update_controller.__version__", "0.1.5"):
+            controller._apply_event({"kind": "result", "available": True, "version": "0.1.5",
+                                     "notes": "", "url": ""})
+            self.assertEqual(controller.state, "current")
+            self.assertFalse(controller.available)
+            with patch("haizflow.desktop.app_update_controller.subprocess.Popen") as launch:
+                self.assertFalse(controller.install())
+                launch.assert_not_called()
+
     def test_task_changes_refresh_update_blocked_binding_without_update_events(self):
         host = Host()
         controller = AppUpdateController(host)
