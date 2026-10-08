@@ -7,6 +7,8 @@
 *.json text eol=lf
 *.ps1 text eol=lf
 requirements-lock*.txt text eol=lf
+licenses/Chromium-BSD-3-Clause.txt text eol=lf
+licenses/Playwright-NOTICE.txt text eol=lf
 
 *.jpg binary
 *.jpeg binary
