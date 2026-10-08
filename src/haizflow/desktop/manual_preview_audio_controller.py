@@ -143,6 +143,7 @@ class ManualPreviewAudioController(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._sink = None
+        self._sink_device_id = None
         self._device = None
         self._tracks = []
         self._muted_ids = set()
@@ -412,24 +413,58 @@ class ManualPreviewAudioController(QObject):
             for name in ("source_audio", "separation")
             if active_artifacts.get(name)
         }
+        # Caption style, OCR geometry and document revisions cannot change PCM.
+        # Fingerprint only inputs consumed by prepare(), otherwise every visual
+        # step cancels the active mix and reopens all voice decoders.
+        audio_segments = [
+            {name: segment.get(name) for name in (
+                "segment_id", "text", "start", "end", "fit_voice_to_timing",
+            )}
+            for segment in segments
+        ]
+        audio_clips = [
+            clip for clip in document.clips
+            if clip.track_id in {"source-audio", "voice", "music"}
+            or (clip.track_id == "overlays" and clip.kind == "video")
+        ] if document else []
+        asset_inputs = {}
+        if document:
+            for clip in audio_clips:
+                if clip.track_id not in {"music", "overlays"}:
+                    continue
+                asset = editor_documents.asset_by_id(document, clip.asset_id)
+                if asset:
+                    asset_inputs[clip.asset_id] = asset.path
+
+        def file_identity(path):
+            try:
+                stat = Path(path).stat()
+                return str(path), stat.st_size, stat.st_mtime_ns
+            except OSError:
+                return str(path), None, None
+
         config = (
             video.video_id,
             bool(active_voice),
             active_voice_signature,
             video.enable_audio_separation,
-            audio_inputs,
+            {name: file_identity(path) for name, path in audio_inputs.items()},
             active_audio_artifacts,
-            segments,
+            audio_segments,
             {
                 "sequence": document.sequence.model_dump() if document else {},
-                "tracks": [track.model_dump() for track in document.tracks
+                "tracks": [track.model_dump(include={"track_id", "visible", "muted"}) for track in document.tracks
                            if track.kind in {"source_audio", "voice", "music", "overlay"}]
                     if document else [],
                 "clips": [
-                    clip.model_dump()
-                    for clip in document.clips
-                    if clip.track_id in {"source-audio", "voice", "music"}
-                ] if document else [],
+                    clip.model_dump(include={
+                        "clip_id", "track_id", "kind", "asset_id", "segment_id",
+                        "start_ms", "duration_ms", "source_in_ms", "enabled",
+                        "volume_percent", "fade_in_ms", "fade_out_ms", "loop", "muted",
+                    })
+                    for clip in audio_clips
+                ],
+                "assets": {name: file_identity(path) for name, path in asset_inputs.items()},
                 "ducking": (
                     document.audio_ducking_enabled,
                     document.audio_ducking_reduction_db,
@@ -728,11 +763,15 @@ class ManualPreviewAudioController(QObject):
         if self._closed:
             return
         default = QMediaDevices.defaultAudioOutput()
-        if self._sink and self._sink.device().id() != default.id():
+        # QAudioSink has no device() accessor. Keep the identity supplied to
+        # its constructor so resuming an existing sink does not raise and
+        # stop both narration and the caption clock.
+        if self._sink and self._sink_device_id != default.id():
             self._cursor = max(0, round(self._position_seconds * RATE))
             self._sink.stop()
             self._sink.deleteLater()
             self._sink = None
+            self._sink_device_id = None
             self._device = None
         if self._playing and not default.isNull():
             self._timer.start()
@@ -751,6 +790,7 @@ class ManualPreviewAudioController(QObject):
             format.setChannelCount(2)
             format.setSampleFormat(QAudioFormat.Int16)
             self._sink = QAudioSink(device, format, self)
+            self._sink_device_id = device.id()
             self._sink.setBufferSize(RATE * 4 // 20)
         if self._device is None:
             self._device = self._sink.start()
@@ -783,6 +823,7 @@ class ManualPreviewAudioController(QObject):
             self._sink.stop()
             self._sink.deleteLater()
             self._sink = None
+        self._sink_device_id = None
         self._device = None
         self._publish_position(0.0)
         self._tracks = []

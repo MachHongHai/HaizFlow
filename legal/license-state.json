@@ -10,14 +10,14 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "0.1.6 reviewed update patch; publication tracked by GitHub release state",
+  "effective_release": "0.1.7 reviewed preview patch; publication tracked by GitHub release state",
   "public_release_review": {
     "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
     "approved_at": "2026-10-08",
-    "source_commit": "47b2b96",
-    "release_version": "0.1.6",
-    "owner_release_authorization": "Direct owner request to build and publish the update patch and support direct upgrades from every previously released HaizFlow version.",
-    "publication_condition": "Publish exact corresponding-source asset with binaries; preserve historical resource/source assets and verify installer plus frozen full/delta upgrades from 0.1.0 through 0.1.5. Changes are scoped to version identity, update IPC and the Core-delivered independent updater. Dependencies, media recipes, vendor assets and license terms are unchanged from reviewed 0.1.5. Existing scoped clearance evidence remains applicable; this is not independent legal certification. Do not claim universal download access or unsigned Application Control compatibility.",
+    "source_commit": "6480846",
+    "release_version": "0.1.7",
+    "owner_release_authorization": "Direct owner request to build and publish the preview playback patch; supported upgrade testing is scoped to 0.1.4 and later.",
+    "publication_condition": "Publish exact corresponding-source asset with binaries; preserve historical resource/source assets and verify installer plus frozen full/delta upgrades from 0.1.4 through 0.1.6. Changes are scoped to preview audio device identity, caption clocks and raster/PCM cache reuse. Dependencies, media recipes, vendor assets, browser delivery and license terms are unchanged from reviewed 0.1.6. Existing scoped clearance evidence remains applicable; this is a technical packaging review, not independent legal certification. Do not claim universal download access or unsigned Application Control compatibility.",
     "clearances": {
       "owned-code-and-contributor-scope": {
         "path": "legal/reviews/application-scope-2026-10-06.md",

@@ -88,7 +88,6 @@ Item {
     readonly property var editorModel: AppController.manualEditorDocumentModel
     readonly property var captionSegments: editorModel.subtitleSegments.length > 0
         ? editorModel.subtitleSegments : segments
-    readonly property var voiceTimings: AppController.manualPreviewAudio.voiceTimings
     readonly property var rendererSegments: captionSegments.filter(function(segment) {
         return !root.subtitleTransformDraft || (Number(segment.start || 0) <= comparePreview.positionSeconds
             && Number(segment.end || 0) > comparePreview.positionSeconds);
@@ -97,10 +96,7 @@ Item {
             segment = Object.assign({}, segment, {
                 _style: Object.assign({}, segment._style || root.editorSubtitleStyle, root.subtitleTransformDraft)
             });
-        const timing = root.voiceTimings[String(segment.segment_id || segment.id || "")];
-        if (!timing || timing.text !== segment.text || Math.abs(timing.start - segment.start) > 0.02)
-            return segment;
-        return Object.assign({}, segment, { end: Math.min(segment.end, timing.end) });
+        return segment;
     })
     readonly property var editorSubtitleStyle: editorModel.defaultSubtitleStyle || ({})
     readonly property var selectedEditorClip: editorModel.selectedClip || ({})
@@ -553,10 +549,7 @@ Item {
         function onPositionChanged() {
             // Karaoke follows samples actually presented by QAudioSink, not
             // the decoder clock that may lead it by one Windows audio buffer.
-            AppController.subtitleOverlayRenderer.seek(
-                comparePreview.sequenceMsForSource(
-                    AppController.manualPreviewAudio.positionSeconds * 1000) / 1000
-            );
+            AppController.subtitleOverlayRenderer.seek(AppController.manualPreviewAudio.positionSeconds);
         }
     }
 

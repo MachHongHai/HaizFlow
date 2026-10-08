@@ -1273,7 +1273,7 @@ Rectangle {
         property bool framePresented: false
         property bool busy: false
         property bool awaitingMedia: false
-        readonly property bool overlaysReady: framePresented && !root.previewBusy && !awaitingMedia
+        readonly property bool overlaysReady: framePresented && !awaitingMedia
             && !(pane === resultPane ? root.resultPriming || root.resultSourceSwitching
                 : root.inputPriming || root.inputSourceSwitching)
         property real progress: 0

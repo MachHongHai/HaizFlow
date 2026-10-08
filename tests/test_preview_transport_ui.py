@@ -88,6 +88,24 @@ class PreviewTransportUiTests(unittest.TestCase):
         self.app.processEvents()
         self.assertFalse(notice.isVisible())
 
+    def test_caption_overlay_stays_visible_during_independent_cache_refresh(self):
+        viewport = self.child(self.preview, "manualResultViewport")
+        overlay = self.child(viewport, "inlineSubtitleTransformOverlay")
+        pane = viewport.parentItem()
+        pane.setProperty("framePresented", True)
+        pane.setProperty("awaitingMedia", False)
+        self.preview.setProperty("resultSourceSwitching", False)
+        self.preview.setProperty("resultPriming", False)
+        self.preview.setProperty("subtitleLivePreviewEnabled", True)
+        for busy in (False, True, False, True):
+            self.preview.setProperty("previewBusy", busy)
+            self.app.processEvents()
+            self.assertTrue(pane.property("overlaysReady"))
+            self.assertTrue(overlay.property("livePreviewVisible"))
+        self.preview.setProperty("resultSourceSwitching", True)
+        self.app.processEvents()
+        self.assertFalse(pane.property("overlaysReady"))
+
     @staticmethod
     def child(item, name):
         if item.objectName() == name:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import subprocess
 import tempfile
@@ -19,10 +20,19 @@ from haizflow.pipeline.render import SubtitleRegionLayout, _karaoke_font_directo
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.utils.ffmpeg import _binary
 
+logger = logging.getLogger(__name__)
+
 
 def timestamp(value):
     hours, minutes, seconds = value.split(":")
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def sprite_key(header, body, layout):
+    return hashlib.sha256((
+        "subtitle-sprite-v4\n" + header + body
+        + json.dumps(layout, sort_keys=True, ensure_ascii=False)
+    ).encode()).hexdigest()
 
 
 def export_events(segments, layout, fixed, directory):
@@ -164,14 +174,24 @@ def _karaoke_line_regions(body, alpha):
 def rasterize(header, body, layout, directory):
     # Bump this prefix whenever sprite composition changes. Otherwise a frame
     # produced by an older renderer can silently survive an application update.
-    key = hashlib.sha256(("subtitle-sprite-v3\n" + header + body).encode()).hexdigest()[:24]
+    key = sprite_key(header, body, layout)[:24]
     directory = directory / key
     directory.mkdir(parents=True, exist_ok=True)
     marker = directory / "complete.json"
     if marker.exists():
-        value = json.loads(marker.read_text(encoding="utf-8"))
-        if all((directory / name).is_file() for name in ("normal.png", "karaoke.png")):
-            return value
+        try:
+            value = json.loads(marker.read_text(encoding="utf-8"))
+            if (isinstance(value, dict) and "normal" in value and "karaoke" in value
+                    and all((directory / name).is_file()
+                            and (directory / name).stat().st_size > 0
+                            for name in ("normal.png", "karaoke.png"))):
+                for name in ("normal.png", "karaoke.png"):
+                    with Image.open(directory / name) as image:
+                        if image.size != (int(layout["outputWidth"]), int(layout["outputHeight"])):
+                            raise ValueError("Unexpected caption raster dimensions")
+                return value
+        except (OSError, ValueError):
+            pass  # Interrupted cache publication is rebuilt, not a lost cue.
     # Both images retain libass's spacing, shadow, outline and alpha coverage.
     clean = re.sub(r"\\k[fFoO]?\d+", "", body)
     # Per-cue style overrides may already set primary/secondary colours. Remove
@@ -189,8 +209,9 @@ def rasterize(header, body, layout, directory):
         ("karaoke", ass_bgr(layout.get("karaokeColor"), "#FFEF00")),
     ):
         ass = directory / f"{name}.ass"
-        ass.write_text(header + f"Dialogue: 0,0:00:00.00,0:00:10.00,Default,,0,0,0,,{{\\1c&H{color}&\\2c&H{color}&}}{clean}\n",
-                       encoding="utf-8")
+        ass.write_text(
+            header + f"Dialogue: 0,0:00:00.00,0:00:10.00,Default,,0,0,0,,"
+            f"{{\\1c&H{color}&\\2c&H{color}&}}{clean}\n", encoding="utf-8")
     fonts = str(_karaoke_font_directory()).replace("\\", "/").replace(":", "\\:")
     width, height = int(layout["outputWidth"]), int(layout["outputHeight"])
     command = [_binary("ffmpeg"), "-v", "error", "-y", "-f", "lavfi", "-i",
@@ -232,6 +253,7 @@ class SubtitleOverlayRenderer(QObject):
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="subtitle-libass")
         self._cache = {}
         self._pending = set()
+        self._frame_futures = {}
         self._futures = set()
         self._closed = False
         self._reconfiguring = False
@@ -247,7 +269,14 @@ class SubtitleOverlayRenderer(QObject):
     @Slot(str, str, bool)
     @Slot(str, str, bool, bool)
     def configure(self, payload, layout_json, fixed, preserve_frame=False):
-        key = hashlib.sha256((payload + layout_json + str(fixed)).encode()).hexdigest()
+        segments, layout = json.loads(payload), json.loads(layout_json)
+        caption_inputs = [{name: segment.get(name) for name in ("start", "end", "text", "_style")}
+                          for segment in segments]
+        # Publication revisions, speaker metadata and OCR state do not change
+        # the ASS output. Keep the visible cue attached on those refreshes.
+        key = hashlib.sha256(json.dumps(
+            [caption_inputs, layout, fixed], sort_keys=True, ensure_ascii=False,
+        ).encode()).hexdigest()
         if key == self._key:
             self._retain_frame = preserve_frame
             return
@@ -258,12 +287,12 @@ class SubtitleOverlayRenderer(QObject):
         self._retain_frame = preserve_frame
         self._events = []
         self._pending.clear()
+        self._frame_futures.clear()
         for future in tuple(self._futures):
             future.cancel()
         if self._frame and not preserve_frame:
             self._frame = {}
             self.changed.emit()
-        segments, layout = json.loads(payload), json.loads(layout_json)
         self._layout = layout
         def build():
             try:
@@ -314,9 +343,7 @@ class SubtitleOverlayRenderer(QObject):
                 self._frame = {}
                 self.changed.emit()
             return
-        key = (self._generation, hashlib.sha256(
-            (event.get("header", "") + event["body"]).encode()
-        ).hexdigest())
+        key = self._event_key(event)
         legacy_key = (self._generation, event["body"])
         if key not in self._cache and legacy_key in self._cache:
             key = legacy_key
@@ -339,16 +366,30 @@ class SubtitleOverlayRenderer(QObject):
             if self._frame and not can_retain:
                 self._frame = {}
                 self.changed.emit()
+            pending_key = (self._generation, key)
+            if pending_key not in self._pending:
+                # A seek must not wait behind a queue of obsolete lookahead
+                # frames. Running FFmpeg is bounded to one job; queued jobs can
+                # be cancelled before the requested cue is submitted first.
+                for queued_key, future in tuple(self._frame_futures.items()):
+                    if future.cancel():
+                        self._frame_futures.pop(queued_key, None)
+                        self._pending.discard(queued_key)
             self._request_frame(event)
         index = self._events.index(event)
-        for upcoming in self._events[index + 1:index + 3]:
+        for upcoming in self._events[index + 1:index + 13]:
+            if upcoming["start"] > seconds + 8:
+                break
             self._request_frame(upcoming)
 
+    def _event_key(self, event):
+        return sprite_key(str(event.get("header") or self._header), event["body"],
+                          event.get("layout") or self._layout)
+
     def _request_frame(self, event):
-        key = (self._generation, hashlib.sha256(
-            (event.get("header", "") + event["body"]).encode()
-        ).hexdigest())
-        if key in self._cache or key in self._pending or self._closed:
+        cache_key = self._event_key(event)
+        key = (self._generation, cache_key)
+        if cache_key in self._cache or key in self._pending or self._closed:
             return
         self._pending.add(key)
         header = str(event.get("header") or self._header)
@@ -361,7 +402,7 @@ class SubtitleOverlayRenderer(QObject):
                 return ("frame", key, rasterize(header, body, layout, self._root))
             except Exception as exc:
                 return ("failed_frame", key, str(exc))
-        self._submit(render)
+        self._frame_futures[key] = self._submit(render)
 
     @Slot(object)
     def _accept(self, result):
@@ -371,16 +412,25 @@ class SubtitleOverlayRenderer(QObject):
             self.seek(self._time)
         elif result[0] == "error" and result[1] == self._generation:
             self._reconfiguring = False
+            self._key = ""
+            logger.warning("Caption preview configuration failed: %s", result[2])
             self.seek(self._time)
         elif result[0] == "frame":
             self._pending.discard(result[1])
-            self._cache[result[1]] = result[2]
+            self._frame_futures.pop(result[1], None)
+            # Revisions are delivery guards, not raster identities. OCR/audio
+            # refreshes must reuse unchanged captions without another FFmpeg
+            # job or a blank frame at each subtitle boundary.
+            self._cache[result[1][1]] = result[2]
             if len(self._cache) > 128:
                 self._cache.pop(next(iter(self._cache)))
             if result[1][0] == self._generation:
                 self.seek(self._time)
         elif result[0] == "failed_frame":
             self._pending.discard(result[1])
+            self._frame_futures.pop(result[1], None)
+            if result[1][0] == self._generation:
+                logger.warning("Caption preview raster failed: %s", result[2])
 
     @Slot()
     def release(self):
@@ -394,6 +444,7 @@ class SubtitleOverlayRenderer(QObject):
         self._header = ""
         self._layout = {}
         self._pending.clear()
+        self._frame_futures.clear()
         for future in tuple(self._futures):
             future.cancel()
         if self._frame:
