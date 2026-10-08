@@ -34,9 +34,45 @@ class DouyinSessionController(QObject):
     def ready(self):
         return self._ready
 
+    @Slot(str, result=bool)
+    def requiresSession(self, url):
+        from haizflow.services.video_download import validate_video_url
+        try:
+            return validate_video_url(url)[1] == "Douyin"
+        except ValueError:
+            return False
+
+    def request_error(self, url):
+        if not self.requiresSession(url):
+            return ""
+        if self._busy:
+            return "Wait for the Douyin session to finish."
+        from haizflow.services.douyin_component import MISSING_MESSAGE, installed
+        if not installed():
+            return MISSING_MESSAGE
+        if not self._ready:
+            return "Create a Douyin session before checking this link."
+        return ""
+
     @Slot()
     def create(self):
         if self._busy:
+            return
+        from haizflow.services.douyin_component import MISSING_MESSAGE, installed
+        host = self.parent()
+        packs = getattr(host, "_resource_packs", None)
+        if packs is not None and (packs._storage_mutating() or packs.browser_operation_pending()):
+            self._set_status("Wait for the Douyin browser resource operation to finish.")
+            return
+        if not installed():
+            self._ready = False
+            self._set_status(MISSING_MESSAGE)
+            if host is not None and hasattr(host, "appAlertRequested"):
+                vi = getattr(host, "_settings_language", "vi") == "vi"
+                host.appAlertRequested.emit(
+                    "Chưa cài trình duyệt Douyin" if vi else "Douyin browser is not installed",
+                    "Mở Cài đặt → Gói tài nguyên và cài Trình duyệt Douyin (Chromium), rồi tạo phiên." if vi else
+                    "Install Douyin browser (Chromium) in Settings → Resource Packs, then create a session.", "warning")
             return
         self._busy = True
         self._verified_during_refresh = False
@@ -73,7 +109,10 @@ class DouyinSessionController(QObject):
         self._set_status(status)
 
     def _set_status(self, status):
-        if status == "Douyin request succeeded":
+        from haizflow.services.douyin_component import MISSING_MESSAGE
+        if status in {"Douyin session needs refresh", MISSING_MESSAGE}:
+            self._ready = False
+        elif status == "Douyin request succeeded":
             self._verified_during_refresh = self._busy
             status = "Douyin session ready"
             self._ready = True

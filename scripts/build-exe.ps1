@@ -182,6 +182,7 @@ $ArgsList = @(
 
 $ExcludedModules = @(
   "bokeh",
+  "cloakbrowser",
   "cupy",
   "dash",
   "dask",
@@ -274,6 +275,7 @@ if (!(Test-Path -LiteralPath $SubtitleFontPath -PathType Leaf)) {
 $ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
 
 $ArgsList += @("--collect-all", "yt_dlp")
+$ArgsList += @("--collect-all", "playwright")
 $BundledModelsPath = Join-Path $Root "build\bundled-models\speaker-identification"
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "prepare-bundled-speaker-model.py"), "--download") -Label "Bundled speaker model"
   $BundledSpeakerFile = Join-Path $BundledModelsPath "wespeaker_en_voxceleb_resnet34.onnx"
@@ -383,7 +385,10 @@ if (Test-Path -LiteralPath $UnusedInputPlugin -PathType Leaf) {
 $ForbiddenReleasePatterns = @(
   "runtime\data",
   "runtime\cache",
-  "runtime\models"
+  "runtime\models",
+  "runtime\douyin-cloak",
+  "runtime\douyin-browser",
+  "runtime\douyin-chromium"
 )
 foreach ($RelativePath in $ForbiddenReleasePatterns) {
   if (Test-Path -LiteralPath (Join-Path $ArtifactPath $RelativePath)) {
@@ -402,7 +407,7 @@ if ($MutableFiles) {
 $ForbiddenCoreNames = @(
   "torch", "torchaudio", "torchvision", "whisperx", "pyannote", "transformers",
   "accelerate", "llama_cpp", "ctranslate2", "demucs", "rapidocr",
-  "psutil", "soundfile", "rich", "pygments"
+  "psutil", "soundfile", "rich", "pygments", "cloakbrowser"
 )
 foreach ($Name in $ForbiddenCoreNames) {
   $Found = Get-ChildItem -LiteralPath (Join-Path $ArtifactPath "_internal") -Recurse -Force -ErrorAction SilentlyContinue |

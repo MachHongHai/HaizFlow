@@ -65,7 +65,7 @@ and posts endpoints use the session UIFID and web signature when available.
 Only real session msToken is included; no visitor token is fabricated. Signing
 has a GET-only endpoint allowlist, separate from UI and HTTP transport.
 
-After the explicit **Tạo phiên Douyin** action, an owned CloakBrowser window
+After the explicit **Tạo phiên Douyin** action, an owned standard Chromium window
 creates an anonymous identity. SDK request capture is installed before page
 scripts, only in that owned context. A probe traverses the site's SDK wrappers
 but is aborted below them before the matching request reaches the network.
@@ -73,17 +73,33 @@ The exact signed URL is returned; HaizFlow does not re-encode, reorder or append
 msToken after signing. Native transport sends it with the required signing
 headers and the same scoped cookies.
 
-CloakBrowser wrapper 0.5.10 and Windows binary 146.0.7680.177.5 are pinned for
-local testing. Native curl_cffi impersonates Chrome 146 after adopting the
-actual browser fingerprint; unsupported versions fail clearly. TLS validation
+Current normal download requests use native signing after browser-assisted
+creation verifies the native transport. The visible browser and driver close
+immediately after successful verification. SDK capture is used by explicit
+creation/refresh, not by every inspection or media refresh. Normal requests
+never reopen the browser automatically; rejected/expired guest state requires
+the explicit session action. See the latest follow-up in
+[Chromium test notes](douyin-chromium-test.md).
+
+Playwright 1.63.0 controls unmodified Chromium snapshot 1714059 (157.0.8092.0),
+installed separately in Resource Packs by direct official upstream download.
+Create Session is blocked with a notification when the pack is missing; no
+implicit install takes place. Video, channel and audio share the same pack.
+CloakBrowser and its unused license documents have been removed. Native
+curl_cffi 0.16.3 uses its newest Chrome-family TLS/H2 template, Chrome 150,
+for the reviewed Chromium 157 profile. This is an explicitly tested family
+compatibility mapping, not a claim of an exact Chrome 157 TLS fingerprint.
+Actual browser UA, cookies and fingerprint values stay coherent and are not
+rotated between requests. Other unsupported versions fail clearly. TLS validation
 and Chromium sandbox remain enabled. No Googlebot/Mobile Safari/random-UA
 retry ladder remains. No broad personal profile or unrelated cookie read.
 
 ## Browser lifecycle and human verification
 
 The browser is lazy: nothing opens at application startup. One temporary
-HaizFlow-owned profile and one seed are reused for that browser identity.
-Cookies are installed before navigation when reopening an idle context.
+HaizFlow-owned profile is reused for that browser identity; no fingerprint seed
+or spoofing flag is configured. The latest browser snapshot is restored before
+navigation when reopening an idle context, not a stale native export.
 Visitor changes trigger a page reload so SDK cached identity is not stale.
 
 A visible CAPTCHA leaves the window open for the user to complete manually,
@@ -93,12 +109,23 @@ are not mistaken for a visible CAPTCHA. No challenge solving, security patching,
 credential collection or personal-browser injection is implemented.
 
 Readiness probes back off from 0.25 s to at most 2.5 s, with a 25 s SDK budget.
-Repeated target errors abort. Chromium closes after 90 s idle; a later request
-can reopen the same owned profile/seed, not a new identity on every request.
+Initial creation retries a transient startup failure once in the same context,
+instead of requiring a second click. Verified native sessions close the window
+and driver before creation returns; normal requests do not use the idle-reopen
+path. The 90 s idle bound below remains for unfinished/legacy SDK operations.
+Repeated transient SDK errors are classified for bounded same-profile retry,
+not immediately presented as a terminal "create session" failure. Chromium
+closes after 90 s idle; a later request can reopen the same owned profile,
+not a new identity on every request.
 Refresh reuses that owned identity instead of discarding it before success.
 A failed/cancelled refresh preserves the previous native jar/backend; an actual
 successful metadata request clears stale UI refresh errors. Initial signing
-probe readiness alone cannot mark a failed first creation as ready. New failed
+probe readiness alone cannot mark creation as ready. A candidate native
+transport must receive a structured response from the protected detail endpoint
+before its identity is committed. The probe uses ID 0 and accepts only a
+validated successful response or the observed structured unknown-ID response
+(HTTP 200, integer status_code 5, aweme_detail null, no challenge). This special
+business response is never accepted as a normal video inspection. New failed
 contexts and app shutdown clean up owned resources. Browser tasks run on a
 dedicated event loop, outside the Qt UI thread.
 
@@ -233,17 +260,13 @@ installed releases. Windows x64 is the verified development target.
 
 Apache attribution/modified-file headers and retained upstream notice are in
 `licenses/DOUYIN-CHANNEL-IMPORT-NOTICE.md`, `NOTICE` and third-party inventories.
-Cloak's wrapper MIT license does not license its patched browser binary.
-[Binary terms](https://github.com/CloakHQ/cloakbrowser/blob/v0.5.10/BINARY-LICENSE.md)
-require separate review before public delivery/embedding; do not bundle
-`runtime/douyin-cloak`. Local test installation used the official downloader
-with upstream manifest/signature verification. No binary is committed or
-published. Public component delivery remains a licensing/integration decision,
-not completed by this source change.
-
-The detailed wrapper/binary distribution decision and retained MIT text are
-in [Douyin distribution decision](douyin-distribution.md). A source-only push
-is not approval for a customer-facing browser binary/integration release.
+No CloakBrowser package or browser patches are used. Its unused license files
+have been removed; artifact guards still reject legacy development caches.
+Chromium is downloaded directly from Google's official upstream when the user
+installs the optional Resource Pack. No browser binary is committed, mirrored
+or included in the installer/Core update. Playwright and its original driver
+license/notice files are included. The Chromium BSD reference is not the full
+third-party binary closure. See [Douyin distribution decision](douyin-distribution.md).
 
 The final combined download/source follow-up passed 1,704 tests, 243 subtests,
 Python correctness lint and all QML lint. The same four pre-existing warnings

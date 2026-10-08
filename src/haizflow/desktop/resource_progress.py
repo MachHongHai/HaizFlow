@@ -15,7 +15,7 @@ class InstallProgress:
 
     def update(self, unit: str, event: ModelProgress) -> float:
         ratio = max(0.0, min(1.0, event.completed_bytes / event.total_bytes)) if event.total_bytes > 0 else 0.0
-        engine = unit.startswith("engine-")
+        engine = unit.startswith("engine-") or unit == "browser-douyin-chromium"
         if event.state == "ready" and event.phase != "transfer":
             fraction = 1.0
         elif event.phase == "assembly":
@@ -48,6 +48,7 @@ def progress_copy(unit: str, event: ModelProgress) -> dict:
 def pack_label(unit: str, language: str) -> str:
     vi = language == "vi"
     labels = {
+        "browser-douyin-chromium": ("Trình duyệt Douyin (Chromium)", "Douyin browser (Chromium)"),
         "engine-cpu-py313": ("Bộ xử lý CPU", "CPU runtime"),
         "engine-cuda128-py313": ("Bộ xử lý NVIDIA CUDA 12.8", "NVIDIA CUDA 12.8 runtime"),
         "engine-vision-onnx": ("Bộ xử lý hình ảnh", "Image runtime"),

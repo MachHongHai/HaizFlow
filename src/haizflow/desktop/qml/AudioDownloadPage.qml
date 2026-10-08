@@ -75,8 +75,10 @@ Item {
                     }
 
                     DouyinSessionAction {
+                        id: douyinAction
                         Layout.fillWidth: true
-                        visible: root.fromLink && /(?:^|\/\/)(?:[\w-]+\.)*(?:ies)?douyin\.com(?:\/|$)/i.test(audioLink.text)
+                        url: root.fromLink ? audioLink.text : ""
+                        visible: root.fromLink && requiresSession
                         operationBusy: root.downloader.hasWork || root.downloader.videoPreviewBusy
                     }
 
@@ -88,6 +90,7 @@ Item {
                             variant: "primary"
                             enabled: root.downloader.audioOutputDirectory.length > 0
                                 && (root.fromLink ? audioLink.text.trim().length > 0 : root.downloader.audioSource.length > 0)
+                                && douyinAction.permitsRequest
                             onClicked: root.fromLink ? root.downloader.downloadAudio(audioLink.text.trim()) : root.downloader.extractAudio()
                         }
                     }

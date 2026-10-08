@@ -19,7 +19,6 @@ VIDEO_LINKS = {
     "Instagram": "https://www.instagram.com/reel/example/",
     "Facebook": "https://www.facebook.com/watch/?v=123",
     "X": "https://twitter.com/creator/status/123",
-    "Reddit": "https://www.reddit.com/r/demo/comments/abc/title/",
     "Streamable": "https://streamable.com/demo",
 }
 
@@ -177,8 +176,9 @@ def test_instagram_upstream_failure_is_explicit_and_does_not_retry():
     downloader.__exit__ = Mock(return_value=False)
     downloader.extract_info.side_effect = RuntimeError("[instagram:user] creator: Unable to extract data")
     module = SimpleNamespace(YoutubeDL=Mock(return_value=downloader))
-    with patch("haizflow.services.channel_import._load_yt_dlp", return_value=module), pytest.raises(RuntimeError, match="Instagram profile downloads are currently unavailable"):
-        scan_channel(ChannelImportRequest(url="https://instagram.com/creator", platform="instagram"))
+    with patch("haizflow.services.channel_import._load_yt_dlp", return_value=module), pytest.raises(RuntimeError, match="Unable to extract data"):
+        from haizflow.services.channel_import import _extract_info_with_platform_retry
+        _extract_info_with_platform_retry("Instagram", {}, "https://instagram.com/p/demo/")
     assert downloader.extract_info.call_count == 1
 
 
@@ -205,9 +205,68 @@ def test_facebook_channel_uses_page_reader_and_hydrates_before_reporting_ready()
     hydrate.assert_called_once()
 
 
-@pytest.mark.parametrize("platform,url", [("x", "https://x.com/creator"), ("reddit", "https://www.reddit.com/r/demo")])
-def test_unsupported_collections_are_explained_not_sent_to_generic_extractor(platform, url):
-    with patch("haizflow.services.channel_import._load_yt_dlp") as loader:
-        with pytest.raises(RuntimeError, match="channel downloads are not supported"):
+@pytest.mark.parametrize("platform,url", [("x", "https://x.com/creator")])
+def test_collections_use_scoped_reader_not_generic_playlist_extractor(platform, url):
+    with patch("haizflow.services.social_channel.inspect_profile", side_effect=RuntimeError("requests limited")) as reader, patch(
+        "haizflow.services.channel_import._extract_info_with_platform_retry"
+    ) as generic:
+        with pytest.raises(RuntimeError, match="requests limited"):
             scan_channel(ChannelImportRequest(platform=platform, url=url))
-    loader.assert_not_called()
+    reader.assert_called_once()
+    generic.assert_not_called()
+
+
+@pytest.mark.parametrize("url", ["https://reddit.com/r/demo/comments/abc/title/", "https://www.reddit.com/r/demo", "https://redd.it/abc"])
+def test_reddit_is_temporarily_blocked_in_new_app_requests(url):
+    with pytest.raises(ValueError, match="temporarily unavailable"):
+        video_download.validate_video_url(url)
+    if "reddit.com" in url:
+        with pytest.raises(ValueError, match="temporarily unavailable"):
+            validate_channel_url(url)
+
+
+@pytest.mark.parametrize("url", ["instagram.com/creator", "https://www.instagram.com/zendadbreezy/reels/", "https://instagram.com/creator/"])
+def test_instagram_channel_is_disabled_before_network_but_individual_video_is_allowed(url):
+    with patch("haizflow.services.social_channel.inspect_profile") as reader, patch(
+        "haizflow.services.channel_import._extract_info_with_platform_retry"
+    ) as generic:
+        with pytest.raises(ValueError, match="Instagram channel downloads are temporarily unavailable"):
+            scan_channel(ChannelImportRequest(platform="instagram", url=url))
+    reader.assert_not_called()
+    generic.assert_not_called()
+    assert video_download.validate_video_url("https://www.instagram.com/reel/example/")[1] == "Instagram"
+
+
+def test_saved_instagram_channel_cannot_download_after_source_is_disabled():
+    from haizflow.schemas.channel_import import ChannelVideoCandidate
+    from haizflow.services.channel_import import download_candidate, new_session
+    request = ChannelImportRequest(url="https://instagram.com/creator", platform="instagram")
+    session = new_session("project", "workspace", request)
+    assert session.request["platform"] == "instagram"  # History remains readable.
+    candidate = ChannelVideoCandidate(remote_video_id="123", source_url="https://instagram.com/reel/123", title="Clip", platform="Instagram")
+    with patch("haizflow.services.channel_import.download_video") as download:
+        with pytest.raises(ValueError, match="Instagram channel downloads are temporarily unavailable"):
+            download_candidate(candidate, request, "workspace", None, threading.Event())
+    download.assert_not_called()
+
+
+def test_channel_save_only_can_keep_silent_posts_while_import_default_requires_audio():
+    from haizflow.schemas.channel_import import ChannelVideoCandidate
+    from haizflow.services.channel_import import download_candidate
+    from haizflow.desktop.channel_import import ChannelImportCoordinator
+    from haizflow.desktop.media_download_controller import MediaDownloadController
+    candidate = ChannelVideoCandidate(remote_video_id="123", source_url="https://x.com/creator/status/123", title="Clip", platform="X")
+    request = ChannelImportRequest(url="https://x.com/creator", platform="x")
+    with patch("haizflow.services.channel_import.download_video", return_value="clip.mp4") as download:
+        download_candidate(candidate, request, "workspace", None, threading.Event())
+        assert download.call_args.kwargs["require_audio"] is True
+        download_candidate(candidate, request, "workspace", None, threading.Event(), require_audio=False)
+        assert download.call_args.kwargs["require_audio"] is False
+    importer = ChannelImportCoordinator()
+    saver = MediaDownloadController()
+    try:
+        assert importer._download_options == {}
+        assert saver._channel_importer._download_options == {"require_audio": False}
+    finally:
+        importer.shutdown()
+        saver.shutdown()

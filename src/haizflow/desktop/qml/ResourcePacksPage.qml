@@ -17,6 +17,7 @@ Item {
         case "model-demucs-cpu": return qsTr("Demucs CPU");
         case "model-demucs-gpu": return qsTr("Demucs GPU NVIDIA");
         case "model-subtitle-ocr": return qsTr("Nhận diện phụ đề gốc");
+        case "browser-douyin-chromium": return qsTr("Trình duyệt Douyin (Chromium)");
         default: return fallback;
         }
     }
@@ -25,6 +26,7 @@ Item {
         if (group === "translation") return qsTr("Dịch");
         if (group === "separation") return qsTr("Tách giọng");
         if (group === "image") return qsTr("Hình ảnh");
+        if (group === "downloads") return qsTr("Tải xuống");
         return qsTr("Giọng đọc");
     }
     function packageSummary(packId, fallback) {
@@ -37,6 +39,7 @@ Item {
         case "model-demucs-cpu": return qsTr("Tách giọng nói khỏi nhạc trên CPU");
         case "model-demucs-gpu": return qsTr("Tách giọng nói khỏi nhạc trên GPU NVIDIA");
         case "model-subtitle-ocr": return qsTr("Nhận diện vị trí phụ đề gốc trong video");
+        case "browser-douyin-chromium": return qsTr("Tạo phiên Douyin riêng. Tải từ nguồn Chromium chính thức, không dùng trình duyệt cá nhân.");
         default: return fallback;
         }
     }

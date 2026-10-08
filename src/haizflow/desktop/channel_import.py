@@ -47,8 +47,9 @@ class ChannelImportCoordinator(QObject):
     _downloadRejected = Signal(str, str, str, bool)
     _batchResolved = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, require_audio=True):
         super().__init__(parent)
+        self._download_options = {} if require_audio else {"require_audio": False}
         self.candidates = ChannelCandidateListModel()
         self._active_session_id = ""
         self._active_project_key = ""
@@ -468,6 +469,7 @@ class ChannelImportCoordinator(QObject):
                     detail,
                 ),
                 cancel_event,
+                **self._download_options,
             )
             return candidate, path, workspace
 

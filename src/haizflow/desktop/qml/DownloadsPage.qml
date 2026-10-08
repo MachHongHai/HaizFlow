@@ -51,11 +51,6 @@ Item {
                 }
             }
             Item { Layout.fillWidth: true }
-            StatusBadge {
-                visible: root.downloader.currentProjectHasWork
-                status: "processing"
-                label: qsTr("Tác vụ nền đang chạy")
-            }
         }
 
         StackLayout {

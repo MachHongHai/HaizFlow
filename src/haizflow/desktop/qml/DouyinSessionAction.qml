@@ -5,10 +5,13 @@ import "."
 ColumnLayout {
     id: root
     property bool operationBusy: false
+    property string url: ""
     // qmllint disable stale-property-read
     property var session: AppController.douyinSession
     // qmllint enable stale-property-read
     spacing: Theme.space8
+    readonly property bool requiresSession: root.session.requiresSession(root.url)
+    readonly property bool permitsRequest: !root.requiresSession || (root.session.ready && !root.session.busy)
 
     RowLayout {
         Layout.fillWidth: true

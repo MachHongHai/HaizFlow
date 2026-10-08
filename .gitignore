@@ -81,3 +81,4 @@ desktop.ini
 # Optional isolated Douyin browser binaries; never release or commit this cache.
 runtime/douyin-browser/
 runtime/douyin-cloak/
+runtime/douyin-chromium/

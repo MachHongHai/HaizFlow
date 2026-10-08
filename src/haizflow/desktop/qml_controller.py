@@ -485,6 +485,8 @@ class HaizFlowController(QObject):
         self._url_importer = VideoUrlImportCoordinator(self)
         from haizflow.desktop.douyin_session_controller import DouyinSessionController
         self._douyin_session = DouyinSessionController(self)
+        self._url_importer.set_request_guard(self._douyin_session.request_error)
+        self._media_downloader.set_request_guard(self._douyin_session.request_error)
         self._url_import_target = None
         self._url_importer.downloadReady.connect(self._handle_url_download_ready)
         self._url_importer.importFinished.connect(self.urlImportFinished.emit)

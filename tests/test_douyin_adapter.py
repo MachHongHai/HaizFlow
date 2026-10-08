@@ -46,7 +46,9 @@ class FakeTransport:
             raise reply
         return reply
 
-    def import_cookies(self, cookies):
+    def import_cookies(self, cookies, *, replace=False):
+        if replace:
+            self.cookies.clear()
         self.cookies.update({c["name"]: c["value"] for c in cookies})
 
     def close(self):
@@ -337,10 +339,13 @@ def test_rate_limit_respects_bounded_retry_after_without_changing_identity():
 def test_browser_refresh_is_explicit_and_replaces_the_session_atomically():
     adapter, transport = adapter_with(response(detail()))
     adapter.inspect(f"https://www.douyin.com/video/{ID}")
-    replacement = FakeTransport()
+    replacement = FakeTransport(replies=[response({"status_code": 5, "aweme_detail": None})])
     adapter.session.transport_factory = lambda p: replacement
     state = {"fingerprint": {"userAgent": BrowserProfile().ua, "platform": "Win32", "width": 1920,
              "height": 1080, "language": "zh-CN"}, "cookies": [{"name": "UIFID_TEMP", "value": "new", "domain": ".douyin.com"}]}
+    backend = Mock()
+    backend.sign.return_value = SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state
+    state["backend"] = backend
     with patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state) as browser:
         browser.assert_not_called()
         adapter.create_browser_session()
@@ -380,7 +385,7 @@ def test_successful_refresh_reuses_backend_and_commits_transport_after_validatio
              "cookies": [{"name": "UIFID_TEMP", "value": "refreshed", "domain": ".douyin.com"}]}
     backend.sign.return_value = SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state
     adapter.session.browser = backend
-    replacement = FakeTransport()
+    replacement = FakeTransport(replies=[response({"status_code": 5, "aweme_detail": None})])
     adapter.session.transport_factory = Mock(return_value=replacement)
     with patch("haizflow.services.douyin_browser.create_anonymous_state") as create:
         adapter.create_browser_session()
@@ -525,11 +530,14 @@ def test_same_cookie_file_cannot_overwrite_a_new_explicit_browser_session(tmp_pa
     file.write_text("# Netscape HTTP Cookie File\n.douyin.com\tTRUE\t/\tTRUE\t0\tUIFID_TEMP\tfrom-file\n",
                     encoding="utf-8")
     adapter, _ = adapter_with()
-    replacements = [FakeTransport(), FakeTransport()]
+    replacements = [FakeTransport(), FakeTransport(replies=[response({"status_code": 5, "aweme_detail": None})])]
     adapter.session.transport_factory = Mock(side_effect=replacements)
     state = {"fingerprint": {"userAgent": BrowserProfile().ua, "platform": "Win32", "width": 1920,
              "height": 1080, "language": "zh-CN"},
              "cookies": [{"name": "UIFID_TEMP", "value": "new-guest", "domain": ".douyin.com"}]}
+    backend = Mock()
+    backend.sign.return_value = SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state
+    state["backend"] = backend
     from haizflow.services.douyin_adapter import get_douyin_adapter
     with patch("haizflow.services.douyin_adapter._adapter", adapter), \
          patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state):
@@ -538,3 +546,132 @@ def test_same_cookie_file_cannot_overwrite_a_new_explicit_browser_session(tmp_pa
         get_douyin_adapter({"cookie_file": str(file)})
     assert adapter.session.transport_factory.call_count == 2
     assert adapter.session.transport.cookies["UIFID_TEMP"] == "new-guest"
+
+
+def test_first_channel_signing_failure_recovers_within_one_preview_call():
+    posts = {"aweme_list": [detail()["aweme_detail"]], "has_more": 0, "max_cursor": 0}
+    adapter, transport = adapter_with(response(posts))
+    state = {"fingerprint": {"userAgent": BrowserProfile().ua, "platform": "Win32", "width": 1920,
+                             "height": 1080, "language": "zh-CN", "cores": 8, "memory": 8},
+             "cookies": []}
+    adapter.session.profile = BrowserProfile.from_browser(state["fingerprint"])
+    backend = Mock()
+    backend.sign.side_effect = [DouyinError(Outcome.NETWORK),
+                               (SignedRequest("https://www.douyin.com/posts", {}, "browser-sdk"), state)]
+    adapter.session.browser = backend
+    status = Mock()
+    adapter._status_callback = status
+    _, videos = adapter.profile_posts("https://www.douyin.com/user/demo", limit=1)
+    assert len(videos) == 1 and len(transport.calls) == 1
+    assert [c.kwargs["refresh"] for c in backend.sign.call_args_list] == [False, True]
+    backend.close.assert_not_called()
+    status.assert_called_once_with("Douyin request succeeded")
+
+
+@pytest.mark.parametrize("reply", [response(body=b""), response(status=403, body=b"sign invalid"),
+                                 response({"status_code": 5, "aweme_detail": None, "captcha": "verify_page"})])
+def test_browser_creation_requires_endpoint_verification_and_preserves_old_jar(reply):
+    adapter, old = adapter_with()
+    new = FakeTransport(replies=[reply, reply, reply, reply])
+    adapter.session.transport_factory = Mock(return_value=new)
+    state = {"fingerprint": {"userAgent": BrowserProfile().ua, "platform": "Win32", "width": 1920,
+                             "height": 1080, "language": "zh-CN", "cores": 8, "memory": 8},
+             "cookies": [{"name": "UIFID_TEMP", "value": "candidate", "domain": ".douyin.com"}]}
+    backend = Mock()
+    backend.sign.return_value = SignedRequest("https://www.douyin.com/detail", {}, "browser-sdk"), state
+    state["backend"] = backend
+    status = Mock()
+    with patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state), pytest.raises(DouyinError):
+        adapter.create_browser_session(status_callback=status)
+    assert adapter.session.transport is old and not old.closed
+    assert new.closed and adapter.session.browser is None
+    backend.close.assert_called_once()
+    assert "Douyin session ready" not in [c.args[0] for c in status.call_args_list]
+
+
+def test_probe_unknown_video_is_not_accepted_as_a_successful_normal_inspection():
+    adapter, _ = adapter_with(response({"status_code": 5, "aweme_detail": None}))
+    with pytest.raises(DouyinError) as failure:
+        adapter.inspect(f"https://www.douyin.com/video/{ID}")
+    assert failure.value.outcome == Outcome.METADATA
+
+
+def test_browser_snapshot_replaces_removed_native_cookies_within_domain_only():
+    transport = DouyinTransport(BrowserProfile())
+    try:
+        transport.import_cookies([
+            {"name": "stale", "value": "old", "domain": ".douyin.com"},
+            {"name": "other", "value": "preserved", "domain": ".iesdouyin.com"}])
+        transport.import_cookies([{"name": "UIFID_TEMP", "value": "current", "domain": ".douyin.com"}], replace=True)
+        assert transport.cookies == {"other": "preserved", "UIFID_TEMP": "current"}
+    finally:
+        transport.close()
+
+
+def test_exhausted_session_rejection_clears_false_ready_status():
+    adapter, _ = adapter_with(*[response(status=403, body=b"sign invalid")] * 3)
+    state = {"fingerprint": {"userAgent": BrowserProfile().ua, "platform": "Win32", "width": 1920,
+                             "height": 1080, "language": "zh-CN", "cores": 8, "memory": 8}, "cookies": []}
+    adapter.session.profile = BrowserProfile.from_browser(state["fingerprint"])
+    backend = Mock()
+    backend.sign.return_value = SignedRequest("https://www.douyin.com/posts", {}, "browser-sdk"), state
+    adapter.session.browser = backend
+    status = Mock()
+    adapter._status_callback = status
+    with pytest.raises(DouyinError):
+        adapter.profile_posts("https://www.douyin.com/user/demo", limit=1)
+    assert not adapter.session.ready
+    status.assert_called_once_with("Douyin session needs refresh")
+    backend.close.assert_not_called()
+
+
+def test_verified_creation_parks_browser_and_preview_uses_native_signing_only():
+    posts = {"aweme_list": [detail()["aweme_detail"]], "has_more": 0, "max_cursor": 0}
+    adapter, old = adapter_with()
+    new = FakeTransport(replies=[response({"status_code": 5, "aweme_detail": None}),
+                                 response(posts), response(detail())])
+    adapter.session.transport_factory = Mock(return_value=new)
+    backend = Mock()
+    state = {"fingerprint": {"userAgent": BrowserProfile().ua, "platform": "Win32", "width": 1920,
+                             "height": 1080, "language": "zh-CN", "cores": 8, "memory": 8},
+             "cookies": [{"name": "UIFID_TEMP", "value": "created-guest", "domain": ".douyin.com"}],
+             "backend": backend}
+    with patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state) as create:
+        adapter.create_browser_session()
+        backend.park.assert_called_once_with()
+        assert adapter.session.native_verified and old.closed
+        _, candidates = adapter.profile_posts("https://www.douyin.com/user/demo", limit=1)
+        assert len(candidates) == 1
+        adapter.inspect(f"https://www.douyin.com/video/{ID}")
+        create.assert_called_once()
+    backend.sign.assert_not_called()
+    backend.open.assert_not_called()
+    assert all("a_bogus=" in c[0] for c in new.calls)
+
+
+def test_native_session_failure_never_automatically_opens_chromium():
+    adapter, transport = adapter_with(response(status=403, body=b"sign invalid"), response(body=b"shell"),
+                                      response(status=403, body=b"sign invalid"), response(status=403, body=b"sign invalid"))
+    adapter.session.browser = Mock()
+    adapter.session.native_verified = True
+    with pytest.raises(DouyinError):
+        adapter.profile_posts("https://www.douyin.com/user/demo", limit=1)
+    adapter.session.browser.sign.assert_not_called()
+    adapter.session.browser.open.assert_not_called()
+    assert not adapter.session.ready
+    assert len(transport.calls) == 4
+
+
+def test_failed_native_probe_never_parks_browser_or_commits_candidate():
+    adapter, old = adapter_with()
+    new = FakeTransport(replies=[response({"status_code": 5, "aweme_detail": None, "captcha": "verify_page"})])
+    adapter.session.transport_factory = Mock(return_value=new)
+    backend = Mock()
+    state = {"fingerprint": {"userAgent": BrowserProfile().ua, "platform": "Win32", "width": 1920,
+                             "height": 1080, "language": "zh-CN"},
+             "cookies": [{"name": "UIFID_TEMP", "value": "guest", "domain": ".douyin.com"}], "backend": backend}
+    with patch("haizflow.services.douyin_browser.create_anonymous_state", return_value=state), pytest.raises(DouyinError):
+        adapter.create_browser_session()
+    backend.park.assert_not_called()
+    backend.close.assert_called_once()
+    assert adapter.session.transport is old and not adapter.session.native_verified

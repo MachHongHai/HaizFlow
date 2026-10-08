@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from unittest.mock import Mock, patch
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -9,6 +10,23 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlPropertyMap
 
 from haizflow.desktop.douyin_session_controller import DouyinSessionController
+
+
+@pytest.fixture(autouse=True)
+def installed_browser_fixture():
+    with patch("haizflow.services.douyin_component.installed", return_value=True):
+        yield
+
+
+def test_missing_browser_notifies_without_starting_worker_or_downloading():
+    from haizflow.services.douyin_component import MISSING_MESSAGE
+    session = DouyinSessionController()
+    with patch("haizflow.services.douyin_component.installed", return_value=False), \
+         patch("haizflow.desktop.douyin_session_controller.threading.Thread") as thread:
+        session.create()
+        assert not session.busy and not session.ready
+        assert session.status == MISSING_MESSAGE
+        thread.assert_not_called()
 
 
 def test_session_action_loads_without_launching_browser_and_shows_cancel_only_when_busy():
@@ -98,6 +116,17 @@ def test_initial_failure_is_not_presented_as_a_ready_session():
     assert session.status == "The Douyin browser session could not complete the request."
 
 
+def test_rejected_session_is_not_labelled_ready_or_allowed_to_preview():
+    session = DouyinSessionController()
+    session._complete("Douyin session ready")
+    session._set_status("Douyin session needs refresh")
+    assert not session.ready
+    assert session.request_error("https://www.douyin.com/user/demo")
+    # A successful validated response, not an SDK probe, restores the status.
+    session._set_status("Douyin request succeeded")
+    assert session.ready and session.status == "Douyin session ready"
+
+
 def test_successful_request_is_not_overwritten_by_late_refresh_failure():
     QGuiApplication.instance() or QGuiApplication([])
     session = DouyinSessionController()
@@ -121,3 +150,73 @@ def test_cancelled_refresh_retains_previous_session_but_initial_cancel_does_not(
         assert session.ready == was_ready
         assert session.status == ("Douyin refresh cancelled; previous session retained" if was_ready
                                   else "Douyin session cancelled")
+
+
+def test_request_gate_handles_share_text_and_does_not_block_other_sources():
+    session = DouyinSessionController()
+    for url in ("https://v.douyin.com/demo", "douyin.com/video/7683481325270177898",
+                "分享这个视频 https://www.douyin.com/jingxuan?modal_id=7683481325270177898"):
+        assert session.requiresSession(url)
+        assert session.request_error(url) == "Create a Douyin session before checking this link."
+    assert not session.requiresSession("https://douyin.com.evil.example/video/123")
+    assert not session.request_error("https://youtu.be/demo")
+    session._ready = True
+    assert not session.request_error("https://v.douyin.com/demo")
+    session._busy = True
+    assert session.request_error("https://v.douyin.com/demo") == "Wait for the Douyin session to finish."
+    assert not session.request_error("https://www.instagram.com/reel/demo")
+
+
+def test_qml_gate_tracks_creation_refresh_cancel_and_url_changes():
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlEngine()
+    session = DouyinSessionController()
+    file = Path(__file__).resolve().parents[1] / "src/haizflow/desktop/qml/DouyinSessionAction.qml"
+    component = QQmlComponent(engine, QUrl.fromLocalFile(str(file)))
+    assert component.isReady(), "\n".join(e.toString() for e in component.errors())
+    root = component.createWithInitialProperties({"session": session, "url": "https://v.douyin.com/demo"})
+    try:
+        assert not root.property("permitsRequest")
+        session._complete("Douyin session ready")
+        app.processEvents()
+        assert root.property("permitsRequest")
+        session._busy = True
+        session.changed.emit()
+        app.processEvents()
+        assert not root.property("permitsRequest")
+        session._complete("Douyin session cancelled")
+        app.processEvents()
+        assert root.property("permitsRequest")  # retained ready session
+        root.setProperty("url", "https://youtu.be/demo")
+        app.processEvents()
+        assert root.property("permitsRequest") and not root.property("requiresSession")
+    finally:
+        root.deleteLater()
+        app.processEvents()
+
+
+def test_backend_guard_blocks_inspection_and_download_without_starting_worker(tmp_path):
+    from haizflow.desktop.url_import import VideoUrlImportCoordinator
+    from haizflow.desktop.media_download_controller import MediaDownloadController
+    session = DouyinSessionController()
+    importer = VideoUrlImportCoordinator()
+    importer.set_request_guard(session.request_error)
+    with patch.object(importer, "_start_worker") as worker:
+        importer.inspect("https://v.douyin.com/demo")
+        assert importer.state == "error"
+        worker.assert_not_called()
+        importer._url = "https://v.douyin.com/demo"
+        importer._state = "ready"
+        importer._metadata = {"title": "Previous metadata"}
+        assert not importer.start_download(str(tmp_path))
+        assert not (tmp_path / ".downloads").exists()
+    downloader = MediaDownloadController()
+    downloader.set_request_guard(session.request_error)
+    try:
+        with patch.object(downloader, "_enqueue") as enqueue:
+            downloader.inspectChannel("https://www.douyin.com/user/demo", "douyin", "newest", 1, "all", 0)
+            downloader._queue_download("https://v.douyin.com/demo", "audio", str(tmp_path), "audio download")
+            assert downloader.state == "error"
+            enqueue.assert_not_called()
+    finally:
+        downloader.shutdown()

@@ -75,8 +75,11 @@ class MediaDownloadController(QObject):
         self._active_task: dict | None = None
         self._channel_starting = False
         self._active_channel_output_directory = ""
-        self._channel_importer = ChannelImportCoordinator(self)
+        # Downloads save valid picture-only posts too. Project imports use the
+        # coordinator's default picture-and-audio requirement for dubbing.
+        self._channel_importer = ChannelImportCoordinator(self, require_audio=False)
         self._video_preview = VideoUrlImportCoordinator(self)
+        self._request_guard = None
         self._channel_workspace = ""
         self._channel_project_key = ""
         self._progress.connect(self._set_progress)
@@ -86,6 +89,10 @@ class MediaDownloadController(QObject):
         self._channel_importer.changed.connect(self._on_channel_changed)
         self._channel_importer.videoReady.connect(self._save_channel_video)
         self._video_preview.changed.connect(self.changed.emit)
+
+    def set_request_guard(self, guard):
+        self._request_guard = guard
+        self._video_preview.set_request_guard(guard)
 
     @Property(str, notify=changed)
     def videoOutputDirectory(self):
@@ -396,6 +403,10 @@ class MediaDownloadController(QObject):
 
     @Slot(str, str, str, int, str, int)
     def inspectChannel(self, url, platform, ranking, limit, duration_filter, scan_scope):
+        error = self._request_guard(url) if self._request_guard else ""
+        if error:
+            self._reject(error)
+            return
         self.clearDownloadFeedback()
         if not str(url or "").strip():
             self._reject("Paste a channel or profile link first.")
@@ -424,6 +435,10 @@ class MediaDownloadController(QObject):
 
     @Slot()
     def downloadSelectedChannel(self):
+        error = self._request_guard(self._channel_importer.channelUrl) if self._request_guard else ""
+        if error:
+            self._reject(error)
+            return
         if self._channel_importer.selectedCount <= 0:
             return
         if not self._channel_output_directory or not os.path.isdir(self._channel_output_directory):
@@ -442,6 +457,10 @@ class MediaDownloadController(QObject):
     def retryChannelVideo(self, row):
         candidate = self._channel_importer.candidates.candidate_at(int(row))
         if not candidate or candidate.duplicate or candidate.status != "failed":
+            return False
+        error = self._request_guard(candidate.source_url) if self._request_guard else ""
+        if error:
+            self._reject(error)
             return False
         if not self._channel_output_directory or not os.path.isdir(self._channel_output_directory):
             self._reject("Choose a channel download folder before retrying this video.")
@@ -478,6 +497,10 @@ class MediaDownloadController(QObject):
         return self._channel_importer.cookieFile
 
     def _queue_download(self, value: str, mode: str, output_directory: str, label: str):
+        error = self._request_guard(value) if self._request_guard and mode != "extract" else ""
+        if error:
+            self._reject(error)
+            return
         if not output_directory or not os.path.isdir(output_directory):
             self._reject("Choose an output folder before downloading.")
             return

@@ -43,6 +43,13 @@ class ChannelImportQmlTests(unittest.TestCase):
         self.assertIn('"Bilibili", "value": "bilibili"', channel_download_qml)
         self.assertNotIn("SegmentedControl", channel_download_qml)
 
+    def test_downloads_has_queue_feedback_without_redundant_background_badge(self):
+        downloads_qml = (QML_DIR / "DownloadsPage.qml").read_text(encoding="utf-8")
+        self.assertNotIn("Tác vụ nền đang chạy", downloads_qml)
+        self.assertNotIn("StatusBadge", downloads_qml)
+        self.assertIn("DownloadQueueStatus", downloads_qml)
+        self.assertIn("currentProjectHasWork", downloads_qml)  # deletion remains guarded
+
     def test_progress_does_not_invalidate_session_authentication_or_counts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             coordinator = ChannelImportCoordinator()

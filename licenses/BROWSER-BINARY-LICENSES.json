@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-10-08",
+  "browser_delivery": "optional resource pack; direct official upstream download; not redistributed by HaizFlow",
+  "components": [
+    {
+      "name": "Chromium upstream base",
+      "version": "157.0.8092.0",
+      "revision": "1714059",
+      "license": "BSD-3-Clause",
+      "text": "Chromium-BSD-3-Clause.txt",
+      "sha256": "368cca1106be99d39ecd32a38d8305585d802a475effb66380b91ffc9bcf709b",
+      "source": "https://raw.githubusercontent.com/chromium/chromium/86d7d234e3e67c9888a06fa2e2957d3c7604e839/LICENSE",
+      "delivery": "Direct official user download; base license reference, not complete third-party closure",
+      "archive_url": "https://storage.googleapis.com/chromium-browser-snapshots/Win_x64/1714059/chrome-win.zip",
+      "archive_sha256": "bcd33aa9cd52ae75da0f84cbc5915c7583f0f791e5abe711ab1ca2ef37b00b19"
+    },
+    {
+      "name": "Playwright notice",
+      "version": "1.63.0",
+      "license": "Apache-2.0",
+      "text": "Playwright-NOTICE.txt",
+      "sha256": "6d602191187b35b9b01d2cffa01c8469c2c8d9de8a96f1bf868e0f264f51c81d",
+      "source": "https://raw.githubusercontent.com/microsoft/playwright/v1.63.0/NOTICE",
+      "license_text": "Apache-2.0.txt",
+      "delivery": "Bundled driver; retain original driver licenses and component notices"
+    }
+  ]
+}

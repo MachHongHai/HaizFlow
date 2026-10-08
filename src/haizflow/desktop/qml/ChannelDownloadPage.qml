@@ -22,10 +22,8 @@ Item {
         { "label": "TikTok", "value": "tiktok", "platform": "tiktok" },
         { "label": "Douyin", "value": "douyin", "platform": "douyin" },
         { "label": "Bilibili", "value": "bilibili", "platform": "bilibili" },
-        { "label": "Instagram", "value": "instagram", "platform": "instagram" },
         { "label": "Facebook", "value": "facebook", "platform": "facebook" },
-        { "label": "X", "value": "x", "platform": "x" },
-        { "label": "Reddit", "value": "reddit", "platform": "reddit" }
+        { "label": "X", "value": "x", "platform": "x" }
     ]
 
     function placeholder() {
@@ -175,8 +173,10 @@ Item {
                     }
 
                     DouyinSessionAction {
+                        id: douyinAction
                         Layout.fillWidth: true
-                        visible: root.selectedPlatform === "douyin"
+                        url: channelUrl.text
+                        visible: root.selectedPlatform === "douyin" || requiresSession
                         operationBusy: root.downloader.hasWork || root.downloader.videoPreviewBusy
                     }
 
@@ -196,6 +196,7 @@ Item {
                             text: root.hasResults ? qsTr("Quét lại") : qsTr("Xem trước")
                             variant: "primary"
                             enabled: channelUrl.text.trim().length > 0 && !root.channelActive
+                                && douyinAction.permitsRequest
                             onClicked: {
                                 root.inspectedSource = root.currentSource
                                 root.downloader.inspectChannel(channelUrl.text.trim(), root.selectedPlatform, ranking.currentValue, channelLimit.value, contentFilter.currentValue, ranking.currentValue === "popular" ? scanScope.currentValue : 0)
@@ -248,6 +249,7 @@ Item {
                             variant: "primary"
                             enabled: root.downloader.channelSelectedCount > 0
                                 && root.downloader.channelOutputDirectory.length > 0 && !root.channelActive
+                                && douyinAction.permitsRequest
                             onClicked: root.downloader.downloadSelectedChannel()
                         }
                     }
@@ -262,7 +264,7 @@ Item {
                         delegate: ChannelVideoRow {
                             width: candidateList.width
                             downloadedMode: true
-                            downloadsEnabled: root.downloader.channelOutputDirectory.length > 0
+                            downloadsEnabled: root.downloader.channelOutputDirectory.length > 0 && douyinAction.permitsRequest
                             onSelectionChanged: function(selected) { root.downloader.setChannelSelected(index, selected) }
                             onRetryRequested: root.downloader.retryChannelVideo(index)
                         }

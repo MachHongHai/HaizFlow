@@ -32,32 +32,20 @@ Files changed by HaizFlow on 2026-10-08:
 The small local adapter/session/transport/classifier is HaizFlow code inspired
 by the reference architecture. No upstream server, database, scheduler, proxy
 pool or public API client is used. Optional browser-assisted signing uses an
-isolated CloakBrowser context with its own temporary profile, only after the
+isolated browser context with its own temporary profile, only after the
 user explicitly creates a Douyin session. It does not solve CAPTCHA, read
 personal browser profiles, disable TLS checks or disable Chromium's sandbox.
+
+The active browser uses Playwright 1.63.0 with unmodified Chromium snapshot
+1714059 (157.0.8092.0), installed separately through Resource Packs by direct
+download from Google's official upstream bucket. The app installer and Core
+update do not contain Chromium. Browser creation is explicit and does not
+automatically download a missing resource pack. The Chromium base BSD text and
+Playwright NOTICE are retained separately, with versions and hashes in
+`licenses/BROWSER-BINARY-LICENSES.json`. See `docs/douyin-distribution.md`
+for the delivery boundary and exact-binary notice limitations.
 
 The legacy, unused `douyin_xbogus.py` remains separately attributed to
 `jiji262/douyin-downloader` / Evil0ctal under Apache-2.0. The current Douyin
 adapter does not import it. The historical requested revision `8384ade7` could
 not be verified in that repository; HaizFlow makes no provenance claim for it.
-
-Optional development guest-browser support uses Playwright 1.58.0 (Apache-2.0)
-and the CloakBrowser 0.5.10 wrapper (MIT, Copyright 2026 CloakHQ), pinned to the
-Windows Chromium binary 146.0.7680.177.5. The wrapper source is referenced at
-`CloakHQ/cloakbrowser` commit `f04c23da285b3b3d3cf10c8f9d282e7adc1d52ce`.
-The binary has a separate proprietary license; wrapper MIT and Chromium's
-BSD-style terms do NOT grant permission to redistribute the patched binary.
-
-Upstream wrapper license: https://github.com/CloakHQ/cloakbrowser/blob/v0.5.10/LICENSE
-
-The unmodified wrapper MIT text is retained as `licenses/CloakBrowser-MIT.txt`.
-
-Binary terms: https://github.com/CloakHQ/cloakbrowser/blob/v0.5.10/BINARY-LICENSE.md
-
-No Cloak binary is bundled or published by this change. Internal development
-testing uses the official download with upstream manifest/signature verification.
-Public HaizFlow browser-component delivery requires a separate licensing review
-and any necessary OEM/SaaS agreement. Do not package `runtime/douyin-cloak`.
-Dependency listing does not by itself resolve customer-facing browser-control
-rights. The source-only distribution decision and next steps are documented in
-`docs/douyin-distribution.md`.

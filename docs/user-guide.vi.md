@@ -22,6 +22,12 @@ Bạn không phải chạy đủ các công cụ. Chỉ chỉnh phụ đề ho�
 
 Dùng Quay lại/Tiến tới để chuyển trang. Hoàn tác/Làm lại trong trình sửa dành cho các thay đổi chỉnh sửa, không phải lịch sử trang.
 
+## Tải từ Douyin
+
+Cài **Trình duyệt Douyin (Chromium)** tại **Cài đặt → Gói tài nguyên**, rồi bấm **Tạo phiên Douyin** trong trang Tải xuống. Nếu Douyin yêu cầu xác minh, hãy thao tác trong cửa sổ vừa mở. Trình duyệt tự đóng khi phiên đã sẵn sàng; phiên dùng chung cho Video, Kênh và Âm thanh.
+
+Bạn không cần đăng nhập hoặc dùng dữ liệu trình duyệt cá nhân. Khi chưa cài gói, app thông báo và không tự tải. Chỉ bấm **Làm mới phiên** khi cần tạo lại phiên.
+
 ## Nhận dạng và dịch
 
 Chọn model nhận dạng, model dịch và ngôn ngữ đích trong **Nhận dạng & dịch**.

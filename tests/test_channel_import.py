@@ -68,13 +68,10 @@ class ChannelUrlTests(unittest.TestCase):
         self.assertEqual(douyin_platform, "Douyin")
 
         bilibili, bilibili_platform = validate_channel_url("https://space.bilibili.com/12345")
-        instagram, instagram_platform = validate_channel_url("instagram.com/creator")
         facebook, facebook_platform = validate_channel_url("https://www.facebook.com/creator/videos")
 
         self.assertEqual(bilibili, "https://space.bilibili.com/12345")
         self.assertEqual(bilibili_platform, "Bilibili")
-        self.assertEqual(instagram, "https://instagram.com/creator")
-        self.assertEqual(instagram_platform, "Instagram")
         self.assertEqual(facebook, "https://www.facebook.com/creator/videos")
         self.assertEqual(facebook_platform, "Facebook")
 

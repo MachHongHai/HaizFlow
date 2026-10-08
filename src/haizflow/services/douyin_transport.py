@@ -42,6 +42,12 @@ class BrowserProfile:
 
     @property
     def transport_mode(self) -> str:
+        # Explicit, tested Chrome-family mapping for the shipped Chromium 157.
+        # curl_cffi 0.16.3's newest TLS/H2 template is Chrome 150. Keep the
+        # actual browser UA/cookies/fingerprint unchanged; do not rotate UAs
+        # or silently select arbitrary profiles for unknown browser versions.
+        if self.major == 157:
+            return "chrome150"
         return f"chrome{self.major}"
 
     @classmethod
@@ -84,7 +90,14 @@ class DouyinTransport:
                 if any(c.domain.lstrip(".") == d or c.domain.endswith("." + d)
                        for d in ("douyin.com", "iesdouyin.com")) and not c.is_expired()}
 
-    def import_cookies(self, cookies) -> None:
+    def import_cookies(self, cookies, *, replace=False) -> None:
+        if replace:
+            # A browser snapshot is authoritative, including cookie deletions.
+            # Do not retain old visitors/tokens that are absent from that jar.
+            for cookie in list(self.cookie_jar):
+                domain = cookie.domain.lstrip(".").lower()
+                if domain == "douyin.com" or domain.endswith(".douyin.com"):
+                    self.cookie_jar.clear(cookie.domain, cookie.path, cookie.name)
         for cookie in cookies:
             domain = str(cookie.get("domain") or "").lstrip(".").lower()
             if not any(domain == d or domain.endswith("." + d) for d in ("douyin.com", "iesdouyin.com")):

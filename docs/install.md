@@ -35,6 +35,8 @@ On a 6 GB GPU, start with Demucs, Whisper Small and Gemini translation. HY-MT2 C
 
 Open **Settings → Resource packs** and choose **Install**:
 
+For Douyin downloads, also install **Douyin browser (Chromium)** in the **Downloads** group. HaizFlow downloads it from the official Chromium source when you choose to install it; video, channel and audio use the same pack.
+
 | Task | Resource |
 | --- | --- |
 | Speech recognition | Whisper Small or Whisper Turbo, in a supported processing mode |

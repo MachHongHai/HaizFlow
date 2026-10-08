@@ -41,10 +41,14 @@ class VideoUrlImportCoordinator(QObject):
         self._cancel_event = threading.Event()
         self._threads: set[threading.Thread] = set()
         self._threads_lock = threading.Lock()
+        self._request_guard = None
         self._metadataResolved.connect(self._handle_metadata)
         self._progressResolved.connect(self._handle_progress)
         self._downloadResolved.connect(self._handle_download)
         self._operationRejected.connect(self._handle_rejection)
+
+    def set_request_guard(self, guard):
+        self._request_guard = guard
 
     @Property(str, notify=changed)
     def state(self):
@@ -111,6 +115,9 @@ class VideoUrlImportCoordinator(QObject):
         if self.busy:
             return
         try:
+            error = self._request_guard(value) if self._request_guard else ""
+            if error:
+                raise ValueError(error)
             normalized_url, _platform = validate_video_url(value)
         except ValueError as exc:
             self._generation += 1
@@ -146,6 +153,11 @@ class VideoUrlImportCoordinator(QObject):
 
     def start_download(self, project_root: str) -> bool:
         if self._state not in {"ready", "retry"} or not self._metadata:
+            return False
+        error = self._request_guard(self._url) if self._request_guard else ""
+        if error:
+            self._status = error
+            self.changed.emit()
             return False
         try:
             workspace = create_download_workspace(project_root)

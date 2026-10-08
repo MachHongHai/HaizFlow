@@ -48,6 +48,7 @@ Item {
                             text: qsTr("Kiểm tra")
                             variant: "secondary"
                             enabled: videoLink.text.trim().length > 0 && !root.downloader.videoPreviewBusy
+                                && douyinAction.permitsRequest
                             onClicked: root.downloader.inspectVideo(videoLink.text.trim())
                         }
                         StudioButton {
@@ -136,8 +137,10 @@ Item {
                     }
 
                     DouyinSessionAction {
+                        id: douyinAction
                         Layout.fillWidth: true
-                        visible: /(?:^|\/\/)(?:[\w-]+\.)*(?:ies)?douyin\.com(?:\/|$)/i.test(videoLink.text)
+                        url: videoLink.text
+                        visible: requiresSession
                         operationBusy: root.downloader.videoPreviewBusy || root.downloader.hasWork
                     }
 
@@ -148,6 +151,7 @@ Item {
                             text: qsTr("Tải video")
                             variant: "primary"
                             enabled: root.downloader.videoPreviewReady && root.downloader.videoOutputDirectory.length > 0
+                                && douyinAction.permitsRequest
                             onClicked: root.downloader.downloadVideo(root.downloader.videoPreviewUrl)
                         }
                     }

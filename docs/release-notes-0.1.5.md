@@ -27,6 +27,8 @@ HaizFlow là ứng dụng miễn phí để **tải video hàng loạt, dịch v
 
 ## Có gì mới trong 0.1.5?
 
+- **Tải Douyin bằng phiên riêng:** cài **Trình duyệt Douyin (Chromium)** trong Gói tài nguyên, rồi bấm **Tạo phiên Douyin**. Phiên dùng chung cho Video, Kênh và Âm thanh; trình duyệt tự đóng sau khi xác minh thành công. Chưa cài gói thì app thông báo, không tự tải.
+- **Sửa trạng thái tải xuống:** xóa thông báo lỗi cũ khi kiểm tra liên kết mới thành công; cải thiện tải kênh TikTok, Facebook và X. Tải kênh Instagram và Reddit tạm chưa mở; video Instagram lẻ vẫn được hỗ trợ.
 - **Chỉnh vùng OCR trực tiếp trên preview:** bấm vào vùng chữ, kéo hoặc đổi kích thước, rồi bấm **Áp dụng**. **Khôi phục vùng nhận diện** áp dụng ngay vùng OCR đã quét ban đầu.
 - **Phóng to/thu nhỏ preview:** dùng hai nút kính lúp hoặc con lăn chuột. Kéo chuột trái trên nền để dịch chuyển hình; kéo trên vùng OCR, phụ đề hoặc watermark để chỉnh đối tượng.
 - **Nhớ bước đang chỉnh của từng dự án** khi thoát ra và mở lại.

@@ -20,13 +20,18 @@ HaizFlow's source license does not replace any component's independent terms.
 | Bangers font | Bundled font | [SIL OFL text](licenses/Bangers-OFL.txt), [copyright notice](licenses/Bangers-NOTICE.md); no HaizFlow ownership claim. |
 | Fluent System Icons | Curated bundled SVGs | [Microsoft MIT notice](licenses/FLUENT-SYSTEM-ICONS-NOTICE.md). |
 | Douyin native signing | Adapted a_bogus / SM3 / web-signature source; local adapter | [Pinned source, changes and Apache-2.0 notice](licenses/DOUYIN-CHANNEL-IMPORT-NOTICE.md); retain independently. |
-| Optional Douyin guest browser | Playwright 1.58.0 / CloakBrowser wrapper 0.5.10 / pinned patched Chromium 146.0.7680.177.5; local development-only component, not bundled or published | Playwright Apache-2.0, wrapper MIT, browser binary separately licensed. Redistribution/embedding is not cleared by the wrapper's MIT license; review OEM/SaaS terms before public delivery. [Details](licenses/DOUYIN-CHANNEL-IMPORT-NOTICE.md). |
+| Douyin guest browser | Playwright 1.63.0 driver bundled; unmodified Chromium snapshot 1714059 installed as an optional Resource Pack directly from Google's official upstream, not redistributed by HaizFlow | Playwright Apache-2.0 and original driver notices; Chromium base BSD reference is not complete third-party closure. [Delivery scope](docs/douyin-distribution.md). |
 | PyInstaller bootloader | Build tool and frozen distribution | GPL with bundling exception; inspect installed-version COPYING text and preserve required notices. The exception is not a license for other bundled dependencies. |
 | Python / other locked wheels | Core and respective engine packs | Generated inventory with license texts; missing direct-dependency evidence fails the strict generator. Transitive evidence still needs review; metadata is not inferred permission. |
 | HaizFlow logo and voice samples | Bundled branding and preview audio | Ownership/provenance of artwork, reference voices and generated outputs must be confirmed separately. Creator attribution alone is not proof. |
 
 See the [Douyin distribution decision](docs/douyin-distribution.md) for the
-wrapper/binary distinction and unresolved customer-facing browser rights.
+separation between the bundled driver and direct upstream browser download.
+The Chromium base license and Playwright notice are
+retained with pinned-source/hash evidence in
+[BROWSER-BINARY-LICENSES.json](licenses/BROWSER-BINARY-LICENSES.json).
+These documents do not grant redistribution rights or replace the supplier's
+complete, exact-binary third-party notice set.
 See [licensing review](docs/licensing-review.md) for evidence, blockers and
 activation decisions. No runtime component has been removed to bypass these
 obligations. Users' video rights and component terms remain independent.

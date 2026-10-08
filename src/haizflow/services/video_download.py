@@ -192,10 +192,12 @@ def validate_video_url(value: str) -> tuple[str, str]:
     if parsed.username or parsed.password or parsed.port not in {None, 80, 443}:
         raise ValueError("Enter a valid HTTP or HTTPS video link.")
     platform = _matching_platform(parsed.hostname)
+    if platform == "Reddit":
+        raise ValueError("Reddit downloads are temporarily unavailable.")
     if not platform:
         raise ValueError(
             "This link is not from a supported source. Use YouTube, TikTok, Douyin, Bilibili, "
-            "Instagram, Facebook, X, Reddit, or Streamable."
+            "Instagram, Facebook, X, or Streamable."
         )
     if platform == "Douyin":
         modal_ids = parse_qs(parsed.query).get("modal_id", [])

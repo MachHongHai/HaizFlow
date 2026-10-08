@@ -59,6 +59,13 @@ def _platform_for_host(hostname: str) -> str:
     return ""
 
 
+def _check_channel_available(platform: str) -> None:
+    if str(platform or "").lower() == "instagram":
+        raise ValueError("Instagram channel downloads are temporarily unavailable. Use individual video links.")
+    if str(platform or "").lower() == "reddit":
+        raise ValueError("Reddit downloads are temporarily unavailable.")
+
+
 def validate_channel_url(value: str, expected_platform: str = "") -> tuple[str, str]:
     url = str(value or "").strip()
     if not url:
@@ -71,10 +78,10 @@ def validate_channel_url(value: str, expected_platform: str = "") -> tuple[str, 
     if parsed.username or parsed.password or parsed.port not in {None, 80, 443}:
         raise ValueError("Enter a valid HTTP or HTTPS channel link.")
     platform = _platform_for_host(parsed.hostname)
+    _check_channel_available(platform)
     if not platform:
         raise ValueError(
-            "Only public YouTube, TikTok, Douyin, Bilibili, Instagram, Facebook, X, "
-            "and Reddit profiles are supported."
+            "Only public YouTube, TikTok, Douyin, Bilibili, Facebook, and X profiles are supported."
         )
     expected = str(expected_platform or "").strip().lower()
     platform_key = platform.lower()
@@ -298,8 +305,6 @@ def _extract_info_with_platform_retry(
         except Exception as exc:
             if cancel_event and cancel_event.is_set():
                 raise DownloadCancelled("Channel inspection cancelled.") from exc
-            if platform == "Instagram" and "unable to extract data" in str(exc).lower():
-                raise RuntimeError("Instagram profile downloads are currently unavailable. Use individual video links.") from exc
             if attempt + 1 < attempts and _is_retryable_download_error(exc, platform):
                 _wait_for_retry(cancel_event, 0.6 * (attempt + 1))
                 continue
@@ -404,8 +409,9 @@ def _scan_with_ytdlp(
         if platform == "Facebook":
             from haizflow.services.facebook_channel import inspect_page
             info = inspect_page(collection_url, _auth_options(request), per_collection_limit or 1000, cancel_event)
-        elif platform in {"X", "Reddit"}:
-            raise RuntimeError(f"{platform} channel downloads are not supported by this downloader. Use individual video links.")
+        elif platform in {"Instagram", "X", "Reddit"}:
+            from haizflow.services.social_channel import inspect_profile
+            info = inspect_profile(collection_url, platform, _auth_options(request), per_collection_limit or 1000, cancel_event)
         else:
             info = _extract_info_with_platform_retry(platform, options, collection_url, cancel_event)
         if cancel_event.is_set():
@@ -437,7 +443,7 @@ def _scan_with_ytdlp(
 
     to_hydrate = [candidate for candidate in candidates if _needs_hydration(candidate, request)]
     if to_hydrate:
-        workers = 1 if platform == "TikTok" else min(4, len(to_hydrate))
+        workers = 1 if platform in {"TikTok", "Instagram", "X", "Reddit"} else min(4, len(to_hydrate))
         hydrated_by_id = {}
         task_queue: Queue = Queue()
         result_queue: Queue = Queue()
@@ -488,7 +494,7 @@ def _scan_with_ytdlp(
                 # Real photo metadata is excluded by _hydrate_candidate. A
                 # network/signature failure is not proof that a post is a photo.
                 first_hydration_error = first_hydration_error or error
-                resolved = None if platform in {"TikTok", "Facebook"} else candidate
+                resolved = None if platform in {"TikTok", "Facebook", "Instagram", "X", "Reddit"} else candidate
             hydrated_by_id[candidate.remote_video_id] = resolved
             completed += 1
             if progress_callback:
@@ -502,7 +508,7 @@ def _scan_with_ytdlp(
             if resolved is not None:
                 hydrated_candidates.append(resolved)
         candidates = hydrated_candidates
-        if platform in {"TikTok", "Facebook"} and not candidates and first_hydration_error is not None:
+        if platform in {"TikTok", "Facebook", "Instagram", "X", "Reddit"} and not candidates and first_hydration_error is not None:
             raise first_hydration_error
     return channel_name, candidates
 
@@ -659,7 +665,13 @@ def download_candidate(
     workspace: str,
     progress_callback: ProgressCallback | None,
     cancel_event: threading.Event,
+    *,
+    require_audio: bool = True,
 ) -> str:
+    # Persisted sessions remain readable, but must not bypass a disabled source.
+    _check_channel_available(request.platform)
+    _check_channel_available(candidate.platform)
+    _check_channel_available(_platform_for_host(urlparse(candidate.source_url).hostname))
     metadata = VideoMetadata(
         url=candidate.source_url,
         title=candidate.title,
@@ -668,4 +680,5 @@ def download_candidate(
         thumbnail_url=candidate.thumbnail_url,
         uploader=candidate.uploader,
     )
-    return download_video(metadata, workspace, progress_callback, cancel_event, _auth_options(request))
+    return download_video(metadata, workspace, progress_callback, cancel_event, _auth_options(request),
+                          require_audio=require_audio)

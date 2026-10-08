@@ -22,6 +22,12 @@ You do not need to run every tool. Caption-only or audio-only edits can also be 
 
 Back/Forward navigate pages. Undo/Redo in the editor apply to supported edits, not page history.
 
+## Download from Douyin
+
+Install **Douyin browser (Chromium)** in **Settings → Resource Packs**, then choose **Create Douyin session** on the Downloads page. Complete any verification yourself in the window that opens. The browser closes when the session is ready; Video, Channel and Audio share that session.
+
+No login or personal browser profile is required. If the pack is missing, HaizFlow shows a notification and does not download it automatically. Use **Refresh session** when a new session is needed.
+
 ## Recognition and translation
 
 Choose recognition and translation models and the target language in the recognition tool.

@@ -33,6 +33,8 @@ Chọn **Áp dụng**. Khi đổi chế độ, kiểm tra lại model trong dự
 
 Mở **Cài đặt → Gói tài nguyên**, chọn **Cài đặt** cạnh công cụ:
 
+Để tải từ Douyin, cài thêm **Trình duyệt Douyin (Chromium)** trong nhóm **Tải xuống**. Gói được tải từ nguồn Chromium chính thức khi bạn chọn cài; dùng chung cho video, kênh và âm thanh.
+
 | Công việc | Gói cần xem |
 | --- | --- |
 | Nhận dạng lời nói | Whisper Small hoặc Whisper Turbo; chọn theo chế độ được hỗ trợ |

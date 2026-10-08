@@ -122,6 +122,7 @@ class ResourcePackListModel(QAbstractListModel):
             "translation": "Dịch",
             "voice": "Giọng đọc",
             "image": "Hình ảnh",
+            "downloads": "Tải xuống",
         }
         busy_states = {"checking", "downloading", "verifying", "installing", "removing", "queued", "queued_remove", "queued_discard", "cancelling", "pausing"}
         return {
@@ -326,6 +327,7 @@ class ResourcePackController(QObject):
             "model-whisper-small", "model-whisper-turbo",
             "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
             "model-demucs-cpu", "model-demucs-gpu", "model-subtitle-ocr",
+            "browser-douyin-chromium",
         ]
         source_rows = {str(row.get("packId")): row for row in self.model._rows}
         descriptions = {
@@ -337,6 +339,7 @@ class ResourcePackController(QObject):
             "model-demucs-cpu": "Tách giọng nói khỏi nhạc trên CPU.",
             "model-demucs-gpu": "Tách giọng nói khỏi nhạc trên GPU NVIDIA.",
             "model-subtitle-ocr": "Nhận diện vị trí phụ đề gốc trong video.",
+            "browser-douyin-chromium": "Tạo phiên Douyin riêng. Tải Chromium từ nguồn chính thức, không dùng trình duyệt cá nhân.",
         }
         result: list[dict] = []
         previous_group = ""
@@ -354,6 +357,8 @@ class ResourcePackController(QObject):
                 group, title = "separation", "Tách giọng"
             elif pack_id == "model-subtitle-ocr":
                 group, title = "image", "Hình ảnh"
+            elif pack_id == "browser-douyin-chromium":
+                group, title = "downloads", "Tải xuống"
             else:
                 group, title = "voice", "Giọng đọc"
             compatible, warning = self._hardware_compatibility(pack_id)
@@ -499,6 +504,11 @@ class ResourcePackController(QObject):
         return any(thread is not None and thread.is_alive()
                    for thread in (self._move_thread, self._clean_thread, self._inventory_thread, self._maintenance_thread))
 
+    def browser_operation_pending(self) -> bool:
+        pack_id = "browser-douyin-chromium"
+        return bool(self._active_operation and self._active_operation[1] == pack_id
+                    or any(item[1] == pack_id for item in self._pending_operations))
+
     def _queue_operation(self, action: str, pack_id: str) -> bool:
         if self._closing or self._active_operation and self._active_operation[1] == pack_id:
             return False
@@ -523,6 +533,9 @@ class ResourcePackController(QObject):
         if not self._pending_operations:
             return
         if self._host._processing_queue.has_work or getattr(self._host, "_device_switching", False):
+            return
+        if (self._pending_operations[0][1] == "browser-douyin-chromium"
+                and getattr(getattr(self._host, "_douyin_session", None), "busy", False)):
             return
         action, pack_id = self._pending_operations.popleft()
         self._active_operation = (action, pack_id)
@@ -691,6 +704,7 @@ class ResourcePackController(QObject):
             self._host._processing_queue.has_work
             or getattr(self._host, "_device_switching", False)
             or (warmup is not None and warmup.pack_in_use(pack_id))
+            or (pack_id == "browser-douyin-chromium" and getattr(getattr(self._host, "_douyin_session", None), "busy", False))
         )
         if pack_id not in self.manager.definitions:
             return False
@@ -716,14 +730,18 @@ class ResourcePackController(QObject):
                 # slow Windows process shutdown or multi-gigabyte deletion can
                 # never block QML input/rendering.
                 if (self._host._processing_queue.has_work or getattr(self._host, "_device_switching", False)
+                        or pack_id == "browser-douyin-chromium" and getattr(getattr(self._host, "_douyin_session", None), "busy", False)
                         or warmup is not None and warmup.pack_in_use(pack_id)):
                     raise ResourcePackError("Gói đang được model hoặc tác vụ hiện tại sử dụng.")
                 definition = self.manager.definitions[pack_id]
-                if definition.engine_modules or definition.capability == "translation":
+                if definition.capability == "browser":
+                    from haizflow.services.douyin_adapter import close_douyin_browser
+                    close_douyin_browser()
+                if definition.capability != "browser" and (definition.engine_modules or definition.capability == "translation"):
                     from haizflow.services.translation import shutdown_hymt2_worker
 
                     shutdown_hymt2_worker()
-                if definition.engine_modules or definition.capability == "voice":
+                if definition.capability != "browser" and (definition.engine_modules or definition.capability == "voice"):
                     from haizflow.pipeline.omnivoice_tts import clear_runtime
 
                     clear_runtime()
@@ -807,7 +825,8 @@ class ResourcePackController(QObject):
 
     @Slot(str, result=bool)
     def moveResourceStorage(self, destination: str) -> bool:
-        if self.busy or self._host._processing_queue.has_work:
+        if (self.busy or self._host._processing_queue.has_work
+                or getattr(getattr(self._host, "_douyin_session", None), "busy", False)):
             self._host.appAlertRequested.emit("Không thể chuyển", "Hãy chờ tác vụ hiện tại hoàn tất.", "info")
             return False
         if not str(destination).strip():
@@ -910,6 +929,11 @@ class ResourcePackController(QObject):
             elif kind == "removed":
                 self.model.apply_snapshot(event["snapshot"])
                 self.model.clear_operation(pack_id)
+                if pack_id == "browser-douyin-chromium":
+                    session = getattr(self._host, "_douyin_session", None)
+                    if session is not None:
+                        from haizflow.services.douyin_component import MISSING_MESSAGE
+                        session._set_status(MISSING_MESSAGE)
                 self._host.appAlertRequested.emit(
                     "Đã gỡ gói",
                     f"Đã giải phóng {format_memory_size(event.get('removed', 0))}.",

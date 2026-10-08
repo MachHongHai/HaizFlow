@@ -48,6 +48,8 @@ AppDialog {
     }
 
     function inspectLink() {
+        if (!douyinAction.permitsRequest)
+            return
         inspectedText = videoUrl.text.trim()
         importer.inspect(inspectedText)
     }
@@ -81,7 +83,7 @@ AppDialog {
         }
 
         Keys.onReturnPressed: {
-            if (!root.importer.busy && text.trim().length > 0) {
+            if (!root.importer.busy && text.trim().length > 0 && douyinAction.permitsRequest) {
                 root.inspectLink()
             }
         }
@@ -186,8 +188,10 @@ AppDialog {
     }
 
     DouyinSessionAction {
+        id: douyinAction
         Layout.fillWidth: true
-        visible: /https?:\/\/(?:[\w-]+\.)*(?:ies)?douyin\.com(?:\/|$)/i.test(videoUrl.text)
+        url: videoUrl.text
+        visible: requiresSession
         operationBusy: root.importer.busy
     }
 
@@ -216,7 +220,7 @@ AppDialog {
                 : qsTr("Kiểm tra")
             iconName: root.canDownload && root.inspectedLinkMatches ? "download" : "search"
             variant: "primary"
-            enabled: !root.importer.busy && videoUrl.text.trim().length > 0
+            enabled: !root.importer.busy && videoUrl.text.trim().length > 0 && douyinAction.permitsRequest
             onClicked: {
                 if (root.canDownload && root.inspectedLinkMatches)
                     AppController.downloadInspectedVideo()

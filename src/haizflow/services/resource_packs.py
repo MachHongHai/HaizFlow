@@ -182,7 +182,16 @@ def built_in_pack_definitions() -> tuple[ResourcePackDefinition, ...]:
             sum(asset.size for asset in assets),
         )
 
+    from haizflow.services import douyin_component as browser
     definitions: list[ResourcePackDefinition] = [
+        ResourcePackDefinition(
+            pack_id=browser.PACK_ID, label="Trình duyệt Douyin (Chromium)",
+            group="downloads", version=browser.REVISION, capability="browser",
+            download_size=browser.ARCHIVE_BYTES, installed_size=browser.INSTALLED_BYTES,
+            engine_modules=("playwright",),
+            archive_url=browser.URL,
+            archive_sha256=browser.SHA256,
+        ),
         ResourcePackDefinition(
             pack_id="engine-cpu-py313",
             label="Bộ xử lý CPU",
@@ -459,6 +468,9 @@ class ResourcePackManager:
 
     def _engine_is_valid(self, definition: ResourcePackDefinition) -> bool:
         marker = self._engine_marker(definition)
+        if definition.capability == "browser":
+            from haizflow.services.douyin_component import installed
+            return installed(marker.parent)
         try:
             payload = json.loads(marker.read_text(encoding="utf-8"))
             engine = json.loads((marker.parent / "engine.json").read_text(encoding="utf-8"))
@@ -497,6 +509,8 @@ class ResourcePackManager:
             return False
 
     def _bundled_engine_available(self, definition: ResourcePackDefinition) -> bool:
+        if definition.capability == "browser":
+            return False  # A Playwright import alone is not a usable browser.
         if not definition.engine_modules or not all(self._module_available(name) for name in definition.engine_modules):
             return False
         if definition.backend != "gpu":
@@ -527,6 +541,8 @@ class ResourcePackManager:
         if definition.engine_modules:
             if self._engine_is_valid(definition):
                 return "installed"
+            if definition.capability == "browser" and (resource_packages_dir() / f"{pack_id}-{definition.version}.zip.part").is_file():
+                return "paused"
             return "bundled" if self._bundled_engine_available(definition) else "missing"
         if pack_id == "model-speaker-identification":
             from haizflow.pipeline.speaker_identity import bundled_model_root, MODEL_FILE, MODEL_SIZE
@@ -943,7 +959,7 @@ class ResourcePackManager:
                 self._cancel_events.pop(pack_id, None)
 
     @staticmethod
-    def _safe_extract_zip(archive: Path, destination: Path, *, progress=None, cancelled=None) -> None:
+    def _safe_extract_zip(archive: Path, destination: Path, *, progress=None, cancelled=None, excluded=()) -> None:
         destination = destination.resolve()
         with zipfile.ZipFile(archive) as bundle:
             total = sum(member.file_size for member in bundle.infolist())
@@ -951,6 +967,12 @@ class ResourcePackManager:
             for member in bundle.infolist():
                 if cancelled is not None and cancelled():
                     raise ModelBootstrapCancelled("Engine installation cancelled.")
+                if Path(member.filename).name in excluded:
+                    completed += member.file_size
+                    continue
+                if ("\\" in member.filename or any(":" in part for part in Path(member.filename).parts)
+                        or (member.external_attr >> 16) & 0o170000 == 0o120000):
+                    raise ResourcePackError("Gói tài nguyên chứa đường dẫn không an toàn.")
                 target = (destination / member.filename).resolve()
                 if not target.is_relative_to(destination):
                     raise ResourcePackError("Gói tài nguyên chứa đường dẫn không an toàn.")
@@ -968,6 +990,10 @@ class ResourcePackManager:
                             progress(completed, total)
 
     def _verify_engine_staging(self, definition: ResourcePackDefinition, staging: Path, *, cancel_event=None) -> dict:
+        if definition.capability == "browser":
+            from haizflow.services.douyin_component import smoke
+            smoke(staging, cancel_event)
+            return {}
         manifest_path = staging / "engine.json"
         try:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1137,11 +1163,15 @@ class ResourcePackManager:
             if staging.exists():
                 shutil.rmtree(staging)
             staging.mkdir(parents=True)
+            from haizflow.services.douyin_component import EXCLUDED, write_inventory
             self._safe_extract_zip(archive, staging, cancelled=cancel.is_set,
+                excluded=EXCLUDED if definition.capability == "browser" else (),
                 progress=lambda done, total: progress(definition.pack_id, ModelProgress(
                     "installing", definition.label, "Đang giải nén bộ xử lý", done, total, "installing")))
             progress(definition.pack_id, ModelProgress(
                 "verifying", definition.label, "Đang kiểm tra bộ xử lý", 0, 0, "finalizing"))
+            if definition.capability == "browser":
+                write_inventory(staging, cancel_event=cancel)
             self._verify_engine_staging(definition, staging, cancel_event=cancel)
             if cancel.is_set():
                 raise ModelBootstrapCancelled("Engine installation cancelled.")
@@ -1152,6 +1182,9 @@ class ResourcePackManager:
                 "protocol_version": definition.protocol_version,
                 "archive_sha256": definition.archive_sha256,
             }
+            if definition.capability == "browser":
+                from haizflow.services.douyin_component import file_digest
+                marker_payload["browser_inventory_sha256"] = file_digest(staging / "browser-files.json")
             marker = staging / "complete.json"
             marker.write_text(json.dumps(marker_payload, indent=2) + "\n", encoding="utf-8")
             if target.exists():

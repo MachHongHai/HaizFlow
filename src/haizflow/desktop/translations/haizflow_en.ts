@@ -1641,11 +1641,6 @@ Author and owner of HaizFlow.</translation>
         <source>Video</source>
         <translation>Video</translation>
     </message>
-    <message>
-        <location line="+9"/>
-        <source>Tác vụ nền đang chạy</source>
-        <translation>Background task active</translation>
-    </message>
 </context>
 <context>
     <name>DubbingSetupPanel</name>
@@ -3559,6 +3554,9 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ResourcePacksPage</name>
+    <message><source>Trình duyệt Douyin (Chromium)</source><translation>Douyin browser (Chromium)</translation></message>
+    <message><source>Tải xuống</source><translation>Downloads</translation></message>
+    <message><source>Tạo phiên Douyin riêng. Tải từ nguồn Chromium chính thức, không dùng trình duyệt cá nhân.</source><translation>Create a separate Douyin session. Downloaded from the official Chromium source; your personal browser is not used.</translation></message>
     <message><source>Demucs CPU</source><translation>Demucs CPU</translation></message>
     <message><source>Demucs GPU NVIDIA</source><translation>Demucs NVIDIA GPU</translation></message>
     <message><source>Tách giọng nói khỏi nhạc trên CPU</source><translation>Separate vocals from music on CPU</translation></message>

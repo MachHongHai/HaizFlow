@@ -202,6 +202,12 @@ def generate(
                 "see DOUYIN-CHANNEL-IMPORT-NOTICE.md | Apache-2.0 | "
                 "https://github.com/Evil0ctal/Douyin_TikTok_Download_API/tree/"
                 "4f0bed8483c35a980315d9c7b3a1d4a1119ad2b2 |",
+                "| Chromium 157.0.8092.0 / snapshot 1714059 | Optional Resource Pack downloaded directly "
+                "from Google's official upstream; not bundled or mirrored by HaizFlow | "
+                "Base BSD-3-Clause reference, not complete third-party closure; see Chromium-BSD-3-Clause.txt and BROWSER-BINARY-LICENSES.json | "
+                "https://chromium.googlesource.com/chromium/src/ |",
+                "| Playwright 1.63.0 | Bundled driver, including original driver component notices; no browser binary | "
+                "Apache-2.0; see Apache-2.0.txt and Playwright-NOTICE.txt | https://github.com/microsoft/playwright |",
                 "| Microsoft Fluent System Icons (curated SVG subset) | Bundled | MIT | "
                 "https://github.com/microsoft/fluentui-system-icons |",
                 "| Bangers typeface | Bundled | SIL Open Font License 1.1 | https://github.com/google/fonts |",

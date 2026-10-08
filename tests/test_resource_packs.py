@@ -345,6 +345,7 @@ class ResourcePackManagerTests(unittest.TestCase):
                 "model-whisper-small", "model-whisper-turbo",
                 "model-hymt2-cpu", "model-hymt2-gpu", "model-omnivoice",
                 "model-demucs-cpu", "model-demucs-gpu", "model-subtitle-ocr",
+                "browser-douyin-chromium",
             ])
             self.assertTrue(all("packIds" not in row for row in rows))
         finally:

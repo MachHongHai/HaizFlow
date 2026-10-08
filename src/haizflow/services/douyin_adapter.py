@@ -6,6 +6,7 @@ Architecture inspired by Evil0ctal/Douyin_TikTok_Download_API at
 from __future__ import annotations
 
 import http.cookiejar
+import json
 import logging
 import re
 import threading
@@ -38,8 +39,8 @@ def _session_guard(lock, cancel_event):
 
 
 class DouyinSession:
-    def __init__(self, transport_factory=DouyinTransport, profile=None):
-        self.profile = profile or BrowserProfile()
+    def __init__(self, transport_factory=DouyinTransport, profile=None, *, browser_state=None):
+        self.profile = BrowserProfile.from_browser(browser_state["fingerprint"]) if browser_state else profile or BrowserProfile()
         self.transport_factory = transport_factory
         self.transport = transport_factory(self.profile)
         self.generation = 1
@@ -47,6 +48,15 @@ class DouyinSession:
         self.lock = threading.RLock()
         self.cookie_file_identity = None
         self.browser = None
+        self.native_verified = False
+        if browser_state:
+            try:
+                self.transport.import_cookies(browser_state["cookies"])
+                if not any(self.transport.cookies.get(n) for n in ("UIFID_TEMP", "UIFID", "uifid")):
+                    raise DouyinError(Outcome.SIGNATURE)
+            except BaseException:
+                self.transport.close()
+                raise
 
     def warmup(self, cancel_event=None, *, refresh=False):
         if self.ready and not refresh:
@@ -112,6 +122,7 @@ class DouyinAdapter:
         self._status_callback = None
 
     def _request_succeeded(self):
+        self.session.ready = True
         if self._status_callback:
             try:
                 self._status_callback("Douyin request succeeded")
@@ -128,15 +139,17 @@ class DouyinAdapter:
             raise DouyinError(Outcome.UNAVAILABLE if response.status in {404, 410} else Outcome.RISK)
         return validate_douyin_address(response.url)
 
-    def _api(self, path, params, cancel_event=None):
+    def _api(self, path, params, cancel_event=None, *, session_probe=False):
         last = Verdict(Outcome.NETWORK, True)
+        signing_failed = False
         for attempt in range(1, 4):
             _check_cancel(cancel_event)
             response = None
             mode = "not_signed"
             try:
-                if self.session.browser:
-                    refresh = attempt == 2 and last.outcome in {Outcome.RISK, Outcome.SIGNATURE}
+                if self.session.browser and not self.session.native_verified:
+                    refresh = attempt == 2 and (last.outcome in {Outcome.RISK, Outcome.SIGNATURE}
+                                               or (last.outcome == Outcome.NETWORK and signing_failed))
                     signed, state = self.session.browser.sign(
                         path, params, self.session.browser_cookies(), cancel_event, refresh=refresh)
                     if refresh:
@@ -144,7 +157,7 @@ class DouyinAdapter:
                     if BrowserProfile.from_browser(state["fingerprint"]) != self.session.profile:
                         self.session.use_browser_state(state)
                     else:
-                        self.session.transport.import_cookies(state["cookies"])
+                        self.session.transport.import_cookies(state["cookies"], replace=True)
                 else:
                     self.session.warmup(cancel_event, refresh=(attempt == 2 and last.outcome in {
                         Outcome.RISK, Outcome.SIGNATURE}))
@@ -153,6 +166,19 @@ class DouyinAdapter:
                 mode = signed.mode
                 response = self.session.transport.get(signed.url, signed.headers, cancel_event)
                 last = classify(response, list_endpoint=path == POSTS_PATH)
+                # Probe only: Douyin's structured "unknown aweme" response to
+                # ID 0 verifies endpoint/identity handling without reading a
+                # random user's video. HTTP 200/empty HTML is NOT enough.
+                if session_probe and path == DETAIL_PATH and params == {"aweme_id": "0"} and response.status == 200:
+                    try:
+                        payload = json.loads(response.body)
+                    except (ValueError, RecursionError):
+                        payload = None
+                    if (last.outcome == Outcome.METADATA and isinstance(payload, dict)
+                            and type(payload.get("status_code")) is int
+                            and payload["status_code"] == 5 and "aweme_detail" in payload
+                            and payload["aweme_detail"] is None):
+                        last = Verdict(Outcome.SUCCESS, payload=payload)
             except DouyinError as exc:
                 last = Verdict(exc.outcome, exc.outcome in {Outcome.NETWORK, Outcome.RISK, Outcome.RATE_LIMIT,
                                                            Outcome.SIGNATURE})
@@ -166,13 +192,14 @@ class DouyinAdapter:
                     raise
                 last = Verdict(Outcome.NETWORK, True)
             retry = last.retryable and attempt < 3
+            signing_failed = mode == "not_signed"
             logger.info("douyin attempt=%d endpoint=%s generation=%d transport=%s signer=%s "
                         "classification=%s http=%d bytes=%d retry=%s", attempt, path,
                         self.session.generation, self.session.profile.transport_mode, mode,
                         last.outcome.value, response.status if response else 0,
                         len(response.body) if response else 0, retry)
             if last.outcome == Outcome.SUCCESS:
-                if path == POSTS_PATH:
+                if path == POSTS_PATH and not session_probe:
                     self._request_succeeded()
                 return last.payload
             if not retry:
@@ -183,6 +210,13 @@ class DouyinAdapter:
                 value = str(response.headers.get("retry-after", "")) if response else ""
                 delay = min(8.0, max(1.0, float(value))) if value.isdigit() else 2.0
             _wait_for_retry(cancel_event, delay)
+        if self.session.browser and last.outcome in {Outcome.SIGNATURE, Outcome.RISK, Outcome.CHALLENGE}:
+            self.session.ready = False
+            if self._status_callback:
+                try:
+                    self._status_callback("Douyin session needs refresh")
+                except RuntimeError:
+                    pass
         raise DouyinError(last.outcome)
 
     def inspect(self, url, cancel_event=None):
@@ -279,8 +313,34 @@ class DouyinAdapter:
                 state = create_anonymous_state(cancel_event, status_callback=status_callback)
             try:
                 _check_cancel(cancel_event)
-                self.session.use_browser_state(state)
-                self.session.browser = browser or state.get("backend")
+                # Verify on a candidate transport. A failed/cancelled refresh
+                # must not overwrite the last usable native session.
+                candidate = DouyinSession(self.session.transport_factory, browser_state=state)
+                candidate.browser = browser or state.get("backend")
+                candidate.ready = True
+                # A created guest jar must work with native signing before we
+                # close the visible browser. Normal requests never reopen it.
+                candidate.native_verified = True
+                candidate.generation = self.session.generation + 1
+                try:
+                    if status_callback:
+                        status_callback("Checking the Douyin session")
+                    DouyinAdapter(candidate)._api(DETAIL_PATH, {"aweme_id": "0"}, cancel_event, session_probe=True)
+                    _check_cancel(cancel_event)
+                    if candidate.browser:
+                        candidate.browser.park()
+                    _check_cancel(cancel_event)
+                except BaseException:
+                    candidate.transport.close()
+                    raise
+                old = self.session.transport
+                self.session.transport = candidate.transport
+                self.session.profile = candidate.profile
+                self.session.browser = candidate.browser
+                self.session.ready = True
+                self.session.native_verified = True
+                self.session.generation = candidate.generation
+                old.close()
             except BaseException:
                 if not browser and state.get("backend"):
                     state["backend"].close()
@@ -334,6 +394,7 @@ def get_douyin_adapter(auth=None):
             adapter.session.transport = replacement
             adapter.session.profile = profile
             adapter.session.ready = False
+            adapter.session.native_verified = False
             adapter.session.generation += 1
             adapter.session.cookie_file_identity = identity
             adapter.session.close_browser()
