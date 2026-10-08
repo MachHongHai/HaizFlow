@@ -60,6 +60,8 @@ Module {
         name: "ManualPreviewAudioController"
         prototype: "QObject"
         accessSemantics: "reference"
+        Property { name: "busy"; type: "bool"; isReadonly: true }
+        Property { name: "progress"; type: "double"; isReadonly: true }
         Property { name: "positionSeconds"; type: "double"; isReadonly: true }
         Property { name: "voiceTimings"; type: "QVariantMap"; isReadonly: true }
         Method { name: "setVolumes"; Parameter { name: "original"; type: "int" } Parameter { name: "voice"; type: "int" } Parameter { name: "music"; type: "int" } }
@@ -75,6 +77,8 @@ Module {
         Property { name: "manualPreviewAudio"; type: "ManualPreviewAudioController"; isPointer: true; isReadonly: true }
         Property { name: "manualEditorDocumentModel"; type: "ManualEditorDocumentModel"; isPointer: true; isReadonly: true }
         Property { name: "manualPreviewComposition"; type: "ManualPreviewCompositionController"; isPointer: true; isReadonly: true }
+        Property { name: "manualEditorLayout"; type: "QVariantMap"; isReadonly: true }
+        Property { name: "manualEditorWorkspace"; type: "QVariantMap"; isReadonly: true }
         Property { name: "manualCanUndo"; type: "bool"; isReadonly: true }
         Property { name: "manualCanRedo"; type: "bool"; isReadonly: true }
         Property { name: "manualUndoLabel"; type: "string"; isReadonly: true }
@@ -136,6 +140,8 @@ Module {
         Method { name: "cleanUnusedResourcePacks"; type: "string" }
         Method { name: "browseAndMoveResourceStorage" }
         Method { name: "loadManualSubtitles" }
+        Method { name: "saveManualEditorWorkspace"; Parameter { name: "workspace"; type: "QVariantMap" } }
+        Method { name: "saveManualEditorLayout"; Parameter { name: "inspectorWidth"; type: "int" } Parameter { name: "timelineHeight"; type: "int" } Parameter { name: "compare"; type: "bool" } }
         Method { name: "beginManualSubtitleEdit"; Parameter { name: "segmentId"; type: "string" } }
         Method { name: "endManualSubtitleEdit" }
         Method { name: "saveManualSubtitleText"; type: "bool"; Parameter { name: "segmentId"; type: "string" } Parameter { name: "text"; type: "string" } Parameter { name: "expectedRevision"; type: "int" } Parameter { name: "requestId"; type: "string" } }
