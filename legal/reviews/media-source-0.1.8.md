@@ -22,13 +22,13 @@ CLI/engine source closures, compiler/CRT inputs, linked-library sources,
 Qt/PySide sources, recipes and notices. It must be published alongside the
 binaries and verified against runtime/third-party-sources-manifest.json.
 
-CPU 10 and CUDA 12 engines are rebuilt from the current owned application
+CPU 10, CUDA 12 and vision 5 engines are rebuilt from the current owned application
 code, using the exact unchanged reviewed dependency locks and media recipes.
 This is necessary because the old frozen engines retain older hardware and
 inference-worker code even when Core is updated. Runtime contract 6 and the
 JSON protocol remain compatible; no checkpoint or third-party binary is
-deliberately changed. Vision 4 remains byte-identical and is rehosted with
-unchanged SHA-256/size pins. Removing v0.1.0 through v0.1.4 is authorized only
+deliberately changed. Vision is rebuilt as well so the shared hardware and
+engine entrypoint code does not remain stale. Removing v0.1.0 through v0.1.4 is authorized only
 after those replacement public URLs and all
 new-release assets are verified. Keep v0.1.5 through v0.1.7 and their sources.
 Old installed applications referencing deleted resource URLs must upgrade

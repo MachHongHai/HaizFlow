@@ -38,7 +38,7 @@ HaizFlow là ứng dụng miễn phí để tải video, dịch video, tạo ph�
 - Sửa dừng tải trong ô nhập liên kết, thay nguồn và xóa dự án khi tác vụ đang dừng; tránh giữ tệp video gây lỗi khóa tệp trên Windows.
 - Cải thiện xác minh chứng chỉ khi tải gói tài nguyên, giữ kiểm tra TLS; không tắt xác minh chứng chỉ.
 - Tạm ẩn Gemini 3.8 khỏi danh sách chọn model. Tính năng thêm lớp OCR vẫn chưa ra mắt.
-- Phát hành bộ xử lý CPU 10/CUDA 12 với mã xử lý mới; chuyển OCR 4 về release này và giữ nguyên checksum. Các gói trong bản mới không phụ thuộc release dưới 0.1.5 đã được dọn; model và thư viện được khóa phiên bản không thay đổi.
+- Phát hành bộ xử lý CPU 10/CUDA 12/OCR 5 với mã xử lý mới. Các gói trong bản mới không phụ thuộc release dưới 0.1.5 đã được dọn; model và thư viện được khóa phiên bản không thay đổi.
 
 ## Cấu hình và điều kiện sử dụng
 
