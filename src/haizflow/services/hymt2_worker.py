@@ -520,8 +520,9 @@ def _local_transformers_model_source(model_name: str) -> tuple[str, bool]:
 
 def _load_model(model_name: str):
     from haizflow.config import HYMT2_MODEL_REVISION
+    from haizflow.core.hardware import cpu_runtime_profile
 
-    profile = runtime_profile()
+    profile = cpu_runtime_profile(runtime_profile())
     backend = profile.hymt2_backend
     preference = translation_model_preference()
     if preference == "full":
@@ -560,6 +561,7 @@ def _load_model(model_name: str):
     if backend == "llama_cpp":
         from llama_cpp import Llama
 
+        profile = cpu_runtime_profile(profile, force_cpu=True)
         model_path = cpu_model_path or _cpu_model_path()
         _emit_event(
             {

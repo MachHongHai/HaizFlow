@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import heapq
+import os
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
 
 from haizflow.core.hardware import available_commit_bytes, available_memory_bytes, runtime_profile
+from haizflow.core.memory import cpu_memory_constrained
 from haizflow.core.model_choices import models_for_device, project_model_defaults, project_recognition_choice, recognition_context
 from haizflow.services.external_engine import close_shared_external_engine_pool, shared_external_engine_pool
 
@@ -177,7 +179,7 @@ class SmartWarmupController:
                 )
                 continue
             self._enforce_resident_budget(request.capability)
-            if existing != request.context and not self._has_warmup_budget(request.capability, request.context):
+            if (existing != request.context or needs_validation) and not self._has_warmup_budget(request.capability, request.context):
                 self._events.put({
                     "state": "skipped",
                     "capability": request.capability,
@@ -245,9 +247,11 @@ class SmartWarmupController:
 
     def _enforce_resident_budget(self, next_capability: str) -> None:
         profile = runtime_profile()
-        total_ram_gib = profile.total_ram_gib or 16
+        total_ram_gib = profile.total_ram_gib
         total_vram_gib = profile.total_vram_gib
-        constrained = total_ram_gib < 24 or (profile.cuda_available and total_vram_gib < 12)
+        constrained = total_ram_gib < 24 or (profile.cuda_available and total_vram_gib < 12) or (
+            not profile.cuda_available and cpu_memory_constrained()
+        )
         if not constrained:
             return
         self._release_now("memory-pressure", set(self._resident) - {next_capability})
@@ -258,11 +262,13 @@ class SmartWarmupController:
         # Leave headroom for Qt, video decoding and the next foreground job.
         required_gib = 7 if capability in {"translation", "voice"} else 5
         commit = available_commit_bytes()
-        if commit and commit < (required_gib + 2) * 1024**3:
+        if (os.name == "nt" or commit) and commit < (required_gib + 2) * 1024**3:
             return False
-        if available and available < required_gib * 1024**3:
+        if available < required_gib * 1024**3:
             return False
-        if profile.total_ram_gib and profile.total_ram_gib < 14:
+        if profile.total_ram_gib < 8:
+            return False
+        if not profile.cuda_available and profile.total_ram_gib < 24 and capability in {"translation", "voice", "separation"}:
             return False
         if capability == "recognition" and str(context.get("model")) in {"turbo", "large-v3-turbo"}:
             if not profile.cuda_available or profile.total_vram_gib < 7:
@@ -305,8 +311,8 @@ class SmartWarmupController:
         commit = available_commit_bytes()
         total = int(profile.total_ram_bytes or 0)
         if self._resident and (
-            (available and available < 3 * 1024**3) or (total > 0 and available and available / total < 0.15)
-            or (commit and commit < 4 * 1024**3)
+            available < 3 * 1024**3 or (total > 0 and available / total < 0.15)
+            or ((os.name == "nt" or commit) and commit < 4 * 1024**3)
         ):
             self._release_now("memory-pressure")
             return

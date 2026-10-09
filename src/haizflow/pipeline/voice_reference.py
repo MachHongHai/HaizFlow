@@ -85,6 +85,10 @@ def transcribe_reference(path: str, video_id: str, *, process_registry_id: str |
                 str(Path(__file__).resolve().parents[2]) + os.pathsep + environment.get("PYTHONPATH", "")
             )
         check_cancellation(cancellation_id)
+        if recognition_device == "cpu":
+            from haizflow.core.memory import require_cpu_memory
+
+            require_cpu_memory("recognition")
         process = subprocess.Popen(
             [*command, "--request", str(request)],
             env=environment,

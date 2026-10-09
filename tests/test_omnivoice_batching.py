@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from haizflow.pipeline import omnivoice_tts as voice
+from haizflow.core.memory import MemorySnapshot
 
 
 class FakeCudaOom(RuntimeError):
@@ -130,11 +131,14 @@ class OmniVoiceBatchTests(unittest.TestCase):
         torch.cuda.empty_cache.assert_called_once()
 
     def test_parent_reuses_imports_only_after_verified_release_with_ram_headroom(self):
-        cases = [(True, 8 * 1024**2, 5 * 1024**3, True),
-                 (True, 128 * 1024**2, 5 * 1024**3, False),
-                 (True, 8 * 1024**2, 2 * 1024**3, False),
-                 (False, 0, 5 * 1024**3, False)]
-        for released, resident, ram, expected in cases:
+        cases = [(True, 8 * 1024**2, 5 * 1024**3, 32, 12, True),
+                 (True, 128 * 1024**2, 5 * 1024**3, 32, 12, False),
+                 (True, 8 * 1024**2, 2 * 1024**3, 32, 12, False),
+                 (True, 8 * 1024**2, 5 * 1024**3, 16, 12, False),
+                 (True, 8 * 1024**2, 5 * 1024**3, 32, 2, False),
+                 (True, 8 * 1024**2, 5 * 1024**3, 32, None, False),
+                 (False, 0, 5 * 1024**3, 32, 12, False)]
+        for released, resident, ram, total, commit, expected in cases:
             with self.subTest(released=released, resident=resident, ram=ram), tempfile.TemporaryDirectory() as directory:
                 process = SimpleNamespace(poll=lambda: None, stdin=SimpleNamespace(write=Mock(), flush=Mock()))
 
@@ -150,7 +154,10 @@ class OmniVoiceBatchTests(unittest.TestCase):
                      patch.object(voice, "_cancel_idle_shutdown"), \
                      patch.object(voice, "_schedule_idle_shutdown") as idle, \
                      patch.object(voice, "_stop_persistent_worker_unlocked") as stop, \
-                     patch("haizflow.core.hardware.available_memory_bytes", return_value=ram):
+                     patch("haizflow.core.memory.memory_snapshot", return_value=MemorySnapshot(
+                         usable_bytes=total * 1024**3, available_bytes=ram,
+                         process_commit_available_bytes=None if commit is None else commit * 1024**3,
+                     )):
                     self.assertEqual(voice.release_model_memory(), expected)
                 self.assertEqual(idle.call_count, int(expected))
                 self.assertEqual(stop.call_count, int(not expected))

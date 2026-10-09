@@ -66,6 +66,24 @@ def preview_session(tmp_path, monkeypatch):
     controller.release()
 
 
+def test_replacement_cannot_reopen_and_repin_a_released_preview(preview_session):
+    from haizflow.desktop.project_import_controller import ProjectImportController
+    host, controller, renderer, videos, prime, _ = preview_session
+    host._project_import = ProjectImportController(host)
+    prime("a")
+    controller.release()
+    before = renderer.call_count
+    host._project_import._tasks[1] = {"operation": "replace", "video_id": "a"}
+    assert not controller.request("[]", 0)
+    assert controller.source == "" and controller._pinned_video_id == ""
+    assert renderer.call_count == before
+    # A replacement in another project must not prevent opening this cache.
+    host._project_import._tasks[1]["video_id"] = "b"
+    assert controller.request("[]", 0)
+    assert controller.source and controller._pinned_video_id == "a"
+    assert renderer.call_count == before
+
+
 def test_return_to_running_voice_restores_processed_cache_without_render(preview_session):
     host, controller, renderer, videos, prime, _ = preview_session
     prime("a")

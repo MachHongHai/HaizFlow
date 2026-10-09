@@ -3135,7 +3135,7 @@ class HaizFlowController(QObject):
         if self._settings_language == "vi":
             if profile.cuda_available:
                 return f"Tăng tốc GPU - {profile.cuda_name or 'CUDA'}"
-            ram = f"{profile.total_ram_gib:.0f} GB RAM" if profile.total_ram_bytes else "không rõ RAM"
+            ram = f"{profile.total_ram_gib:.1f} GiB RAM sử dụng được" if profile.total_ram_bytes else "không rõ RAM"
             return f"Chế độ CPU - {ram}, {profile.cpu_threads} luồng"
         return profile.summary
 
@@ -3162,7 +3162,11 @@ class HaizFlowController(QObject):
                 if capabilities.cuda_available
                 else "--"
             ),
-            "systemRam": self._format_memory_size(capabilities.total_ram_bytes),
+            "systemRam": (
+                f"{capabilities.installed_ram_bytes / (1024**3):.1f} GiB / Windows: {capabilities.total_ram_bytes / (1024**3):.1f} GiB"
+                if capabilities.installed_ram_bytes is not None and capabilities.total_ram_bytes
+                else f"Windows: {capabilities.total_ram_bytes / (1024**3):.1f} GiB" if capabilities.total_ram_bytes else "--"
+            ),
             "logicalCpuCount": capabilities.logical_cpu_count,
             "cpuName": capabilities.cpu_name or "",
             "cpuPhysicalCores": capabilities.cpu_physical_cores or 0,
@@ -3186,29 +3190,20 @@ class HaizFlowController(QObject):
         if not self._startup_hardware_resolved:
             return "Đang kiểm tra cấu hình máy…" if self._settings_language == "vi" else "Checking hardware…"
         capabilities = self._hardware_capabilities
-        compatible, message = validate_processing_device(preference, capabilities)
+        compatible, message = validate_processing_device(preference, capabilities, language=self._settings_language)
         if self._settings_language != "vi":
             return message
         if preference == "gpu":
-            if not capabilities.cuda_available:
-                return "Không phát hiện GPU NVIDIA tương thích CUDA."
-            if capabilities.total_vram_bytes < 5 * 1024**3:
-                return f"Cần GPU NVIDIA 6 GB (ít nhất 5 GiB VRAM khả dụng); hiện có {capabilities.total_vram_bytes / (1024**3):.1f} GiB."
-            if capabilities.total_ram_bytes and capabilities.total_ram_bytes < 14 * 1024**3:
-                memory_gib = capabilities.total_ram_bytes / (1024**3)
-                return f"HaizFlow cần ít nhất 16 GiB RAM; máy hiện có {memory_gib:.1f} GiB."
-            status = f"GPU sẵn sàng: {capabilities.cuda_name}, {capabilities.total_vram_bytes / (1024**3):.0f} GB VRAM."
+            if not compatible:
+                return message
+            status = message
             if capabilities.free_vram_bytes and capabilities.free_vram_bytes < 5 * 1024**3:
                 status += " VRAM trống đang thấp; tác vụ lớn có thể cần đóng bớt ứng dụng."
             if capabilities.ac_powered is False:
                 status += " Nên cắm sạc để xử lý ổn định."
             return status
         if preference == "cpu":
-            if not compatible:
-                memory_gib = capabilities.total_ram_bytes / (1024**3)
-                return f"HaizFlow cần máy có 16 GB RAM; hiện có {memory_gib:.1f} GiB khả dụng."
-            memory_gib = capabilities.total_ram_bytes / (1024**3)
-            return f"CPU sẵn sàng: {memory_gib:.0f} GB RAM, {capabilities.logical_cpu_count} luồng logic."
+            return message
         if capabilities.gpu_supported:
             return f"Chế độ tự động sẽ dùng {capabilities.cuda_name}."
         if capabilities.cpu_supported:
@@ -6093,6 +6088,9 @@ class HaizFlowController(QObject):
     def refreshManualPreviewAudio(self):
         if not self._manual_editor_active:
             return
+        importer = getattr(self, "_project_import", None)
+        if importer is not None and importer.is_replacing_video(str(self._selected_video_id or "")):
+            return
         video = self._selected_video()
         if video and video.project_type == "manual" and self._manual_subtitles.video_id == video.video_id:
             from haizflow.pipeline.manual_tools import published_voice_record
@@ -6102,6 +6100,9 @@ class HaizFlowController(QObject):
 
     @Slot()
     def loadManualSubtitles(self):
+        importer = getattr(self, "_project_import", None)
+        if importer is not None and importer.is_replacing_video(str(self._selected_video_id or "")):
+            return
         self._manual_editor_active = True
         if self._manual_voice_video_id != str(self._selected_video_id or ""):
             self._manual_voice_video_id = str(self._selected_video_id or "")

@@ -78,6 +78,17 @@ def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str
     # Auto-detect device
     profile = runtime_profile()
     device = "cuda" if profile.cuda_available else "cpu"
+    if device == "cpu":
+        from haizflow.core.memory import require_cpu_memory
+        from haizflow.services.external_engine import shared_external_engine_pool
+        from haizflow.services.translation import shutdown_hymt2_worker
+        from haizflow.pipeline.omnivoice_tts import clear_runtime
+
+        check_cancellation(video_id)
+        shutdown_hymt2_worker()
+        clear_runtime()
+        shared_external_engine_pool().release({"recognition", "ocr"})
+        require_cpu_memory("separation")
     log_to_video(video_id, f"Demucs device selected: {device}")
     model_directory = _demucs_model_directory(video_id)
     
@@ -95,7 +106,7 @@ def separate_audio(audio_path: str, output_dir: str, video_id: str) -> tuple[str
         audio_path
     ]
     if device == "cpu":
-        videos = 1 if profile.key in {"cpu_low_memory", "cpu_minimum"} else max(1, min(4, profile.cpu_threads // 2))
+        videos = 1  # No multiprocessing copies of the CPU model/audio buffers.
         cmd[-1:-1] = ["--shifts", "0", "--overlap", "0.1", "--segment", "7", "-j", str(videos)]
         log_to_video(
             video_id,

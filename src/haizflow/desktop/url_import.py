@@ -50,6 +50,33 @@ class VideoUrlImportCoordinator(QObject):
     def set_request_guard(self, guard):
         self._request_guard = guard
 
+    def preview_checkpoint(self) -> dict:
+        if self._state not in {"ready", "retry"}:
+            return {}
+        # Metadata only: never persist CDN candidates, cookies or signed queries.
+        return {key: self._metadata.get(key) for key in (
+            "url", "title", "platform", "duration_seconds", "thumbnail_url", "uploader",
+        )}
+
+    def restore_preview(self, metadata: dict | None) -> None:
+        # Invalidate any in-flight inspection belonging to the previous project.
+        self._cancel_event.set()
+        self._generation += 1
+        self._state, self._url, self._metadata = "idle", "", {}
+        self._progress, self._status = 0, ""
+        self._cancel_event = threading.Event()
+        try:
+            if metadata:
+                restored = VideoMetadata(**metadata)
+                url, _ = validate_video_url(restored.url)
+                if restored.title:
+                    self._metadata = restored.to_dict()
+                    self._url, self._state = url, "ready"
+                    self._status = "Video ready to download"
+        except (TypeError, ValueError):
+            pass
+        self.changed.emit()
+
     @Property(str, notify=changed)
     def state(self):
         return self._state
@@ -143,6 +170,8 @@ class VideoUrlImportCoordinator(QObject):
         def inspect_link():
             try:
                 metadata = inspect_video_url(normalized_url, cancel_event)
+                if cancel_event.is_set():
+                    raise DownloadCancelled("Import cancelled")
                 self._metadataResolved.emit(generation, metadata.to_dict())
             except DownloadCancelled as exc:
                 self._operationRejected.emit(generation, str(exc), True)
@@ -167,6 +196,7 @@ class VideoUrlImportCoordinator(QObject):
             self.changed.emit()
             return False
 
+        self._generation += 1
         generation = self._generation
         cancel_event = threading.Event()
         self._cancel_event = cancel_event
@@ -185,6 +215,8 @@ class VideoUrlImportCoordinator(QObject):
                     lambda progress, detail: self._progressResolved.emit(generation, progress, detail),
                     cancel_event,
                 )
+                if cancel_event.is_set():
+                    raise DownloadCancelled("Import cancelled")
                 self._downloadResolved.emit(generation, path, workspace)
             except DownloadCancelled as exc:
                 cleanup_download_workspace(workspace)
@@ -229,6 +261,10 @@ class VideoUrlImportCoordinator(QObject):
         if stopped:
             cleanup_download_workspace(self._workspace)
             self._workspace = ""
+            self._generation += 1
+            self._state = "idle"
+            self._status = "Import cancelled"
+            self.changed.emit()
         return stopped
 
     def _start_worker(self, target, name: str) -> None:
@@ -247,6 +283,9 @@ class VideoUrlImportCoordinator(QObject):
     def _handle_metadata(self, generation, metadata):
         if generation != self._generation:
             return
+        if self._cancel_event.is_set():
+            self._handle_rejection(generation, "", True)
+            return
         self._metadata = dict(metadata)
         self._url = str(metadata.get("url") or self._url)
         self._state = "ready"
@@ -263,6 +302,10 @@ class VideoUrlImportCoordinator(QObject):
     def _handle_download(self, generation, path, workspace):
         if generation != self._generation:
             cleanup_download_workspace(workspace)
+            return
+        if self._cancel_event.is_set():
+            cleanup_download_workspace(workspace)
+            self._handle_rejection(generation, "", True)
             return
         self._state = "importing"
         self._progress = 100

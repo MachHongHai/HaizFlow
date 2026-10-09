@@ -10,15 +10,15 @@ import shutil
 import subprocess
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
+from haizflow.core.memory import MemorySnapshot, memory_snapshot
 
 _GIB = 1024 ** 3
-# Windows commonly reports a marketed 16 GB machine as roughly 14.8 GiB of
-# usable physical memory. These thresholds enforce the public 16 GB minimum
-# without rejecting that normal hardware reservation.
-_MIN_CPU_RAM_BYTES = 14 * _GIB
-_MIN_GPU_SYSTEM_RAM_BYTES = 14 * _GIB
+# Installed DIMM capacity establishes the public minimum. Usable RAM drives
+# inference policy, not an approximation of how much RAM was installed.
+_MIN_INSTALLED_RAM_BYTES = 16 * _GIB
+_MIN_USABLE_RAM_BYTES = 8 * _GIB
 MIN_GPU_VRAM_GIB = 5
 _MIN_GPU_VRAM_BYTES = MIN_GPU_VRAM_GIB * _GIB
 _FULL_GPU_VRAM_BYTES = 12 * _GIB
@@ -45,6 +45,14 @@ class _NvidiaSnapshot:
         return bool(self.name and self.total_vram_bytes)
 
 
+def _ram_capacity_supported(capabilities) -> bool:
+    usable = capabilities.total_ram_bytes or 0
+    installed = getattr(capabilities, "installed_ram_bytes", None)
+    # Known usable capacity proves a lower bound if SMBIOS is unavailable.
+    capacity = installed if installed is not None else usable
+    return capacity >= _MIN_INSTALLED_RAM_BYTES and usable >= _MIN_USABLE_RAM_BYTES
+
+
 @dataclass(frozen=True)
 class HardwareCapabilities:
     cuda_available: bool
@@ -65,6 +73,7 @@ class HardwareCapabilities:
     cpu_max_mhz: int = 0
     cuda_compute_capability: tuple[int, int] = (0, 0)
     cuda_bf16_supported: bool = False
+    installed_ram_bytes: int | None = None
 
     @property
     def gpu_supported(self) -> bool:
@@ -72,11 +81,11 @@ class HardwareCapabilities:
             return False
         # Free VRAM and AC state change during a session. They affect speed or
         # whether a particular load succeeds, not whether the GPU is capable.
-        return not self.total_ram_bytes or self.total_ram_bytes >= _MIN_GPU_SYSTEM_RAM_BYTES
+        return self.cpu_supported
 
     @property
     def cpu_supported(self) -> bool:
-        return self.total_ram_bytes == 0 or self.total_ram_bytes >= _MIN_CPU_RAM_BYTES
+        return _ram_capacity_supported(self)
 
 
 @dataclass(frozen=True)
@@ -112,78 +121,20 @@ class RuntimeProfile:
     @property
     def summary(self) -> str:
         if self.cuda_available:
-            vram = f", {self.total_vram_gib:.0f} GB VRAM" if self.total_vram_bytes else ""
+            vram = f", {self.total_vram_gib:.0f} GiB VRAM" if self.total_vram_bytes else ""
             return f"GPU acceleration - {self.cuda_name or 'CUDA'}{vram}"
-        ram = f"{self.total_ram_gib:.0f} GB RAM" if self.total_ram_bytes else "RAM unknown"
+        ram = f"{self.total_ram_gib:.0f} GiB usable RAM" if self.total_ram_bytes else "RAM unknown"
         return f"CPU mode - {ram}, {self.cpu_threads} threads"
 
 
 def _total_memory_bytes() -> int:
-    if os.name == "nt":
-        class MemoryStatusEx(ctypes.Structure):
-            _fields_ = [
-                ("dwLength", ctypes.c_ulong),
-                ("dwMemoryLoad", ctypes.c_ulong),
-                ("ullTotalPhys", ctypes.c_ulonglong),
-                ("ullAvailPhys", ctypes.c_ulonglong),
-                ("ullTotalPageFile", ctypes.c_ulonglong),
-                ("ullAvailPageFile", ctypes.c_ulonglong),
-                ("ullTotalVirtual", ctypes.c_ulonglong),
-                ("ullAvailVirtual", ctypes.c_ulonglong),
-                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-            ]
-
-        status = MemoryStatusEx()
-        status.dwLength = ctypes.sizeof(MemoryStatusEx)
-        try:
-            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-                return int(status.ullTotalPhys)
-        except (AttributeError, OSError):
-            return 0
-        return 0
-
-    try:
-        pages = os.sysconf("SC_PHYS_PAGES")
-        page_size = os.sysconf("SC_PAGE_SIZE")
-        return int(pages * page_size)
-    except (AttributeError, OSError, ValueError):
-        return 0
+    return memory_snapshot().usable_bytes or 0
 
 
 def available_memory_bytes(*, commit: bool = False) -> int:
-    """Return currently available physical memory without optional packages."""
-
-    if os.name == "nt":
-        class MemoryStatusEx(ctypes.Structure):
-            _fields_ = [
-                ("dwLength", ctypes.c_ulong),
-                ("dwMemoryLoad", ctypes.c_ulong),
-                ("ullTotalPhys", ctypes.c_ulonglong),
-                ("ullAvailPhys", ctypes.c_ulonglong),
-                ("ullTotalPageFile", ctypes.c_ulonglong),
-                ("ullAvailPageFile", ctypes.c_ulonglong),
-                ("ullTotalVirtual", ctypes.c_ulonglong),
-                ("ullAvailVirtual", ctypes.c_ulonglong),
-                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-            ]
-
-        status = MemoryStatusEx()
-        status.dwLength = ctypes.sizeof(MemoryStatusEx)
-        try:
-            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-                return int(status.ullAvailPageFile if commit else status.ullAvailPhys)
-        except (AttributeError, OSError):
-            return 0
-        return 0
-
-    if commit:
-        return 0
-    try:
-        pages = os.sysconf("SC_AVPHYS_PAGES")
-        page_size = os.sysconf("SC_PAGE_SIZE")
-        return int(pages * page_size)
-    except (AttributeError, OSError, ValueError):
-        return 0
+    """Legacy integer API. New admission checks use MemorySnapshot for unknowns."""
+    snapshot = memory_snapshot()
+    return (snapshot.commit_available_bytes if commit else snapshot.available_bytes) or 0
 
 
 def available_commit_bytes() -> int:
@@ -412,12 +363,14 @@ def detect_hardware_capabilities() -> HardwareCapabilities:
     )
     ac_powered, battery_percent = _power_status()
     system_info = _windows_system_info()
+    memory = memory_snapshot()
     return HardwareCapabilities(
         cuda_available=cuda_available,
         cuda_name=cuda_name,
         total_vram_bytes=_cuda_memory_bytes() if cuda_available else 0,
         free_vram_bytes=_cuda_free_memory_bytes() if cuda_available else 0,
-        total_ram_bytes=_total_memory_bytes(),
+        total_ram_bytes=memory.usable_bytes or 0,
+        installed_ram_bytes=memory.installed_bytes,
         logical_cpu_count=max(1, os.cpu_count() or 1),
         ac_powered=ac_powered,
         battery_percent=battery_percent,
@@ -443,12 +396,14 @@ def basic_hardware_capabilities() -> HardwareCapabilities:
     """
     ac_powered, battery_percent = _power_status()
     system_info = _windows_system_info()
+    memory = memory_snapshot()
     return HardwareCapabilities(
         cuda_available=False,
         cuda_name="",
         total_vram_bytes=0,
         free_vram_bytes=0,
-        total_ram_bytes=_total_memory_bytes(),
+        total_ram_bytes=memory.usable_bytes or 0,
+        installed_ram_bytes=memory.installed_bytes,
         logical_cpu_count=max(1, os.cpu_count() or 1),
         ac_powered=ac_powered,
         battery_percent=battery_percent,
@@ -501,34 +456,40 @@ def recommended_processing_device(capabilities: HardwareCapabilities | None = No
 def validate_processing_device(
     preference: str,
     capabilities: HardwareCapabilities | None = None,
+    *, language: str = "en",
 ) -> tuple[bool, str]:
     preference = preference if preference in _DEVICE_PREFERENCES else "cpu"
     capabilities = capabilities or detect_hardware_capabilities()
     if preference == "gpu":
         if not capabilities.cuda_available:
-            return False, "CUDA-compatible NVIDIA GPU was not detected."
+            return False, "Không phát hiện GPU NVIDIA tương thích CUDA." if language == "vi" else "CUDA-compatible NVIDIA GPU was not detected."
         if capabilities.total_vram_bytes < _MIN_GPU_VRAM_BYTES:
             available = capabilities.total_vram_bytes / _GIB
-            return False, (
+            return False, (f"Cần GPU NVIDIA 6 GB (ít nhất 5 GiB VRAM khả dụng); hiện có {available:.1f} GiB." if language == "vi" else
                 f"GPU mode requires a 6 GB NVIDIA GPU (at least 5 GiB usable VRAM); detected {available:.1f} GiB."
             )
-        if capabilities.total_ram_bytes and capabilities.total_ram_bytes < _MIN_GPU_SYSTEM_RAM_BYTES:
-            available = capabilities.total_ram_bytes / _GIB
-            return False, f"HaizFlow requires a 16 GB system; detected {available:.1f} GiB usable RAM."
-        return True, f"GPU ready: {capabilities.cuda_name}, {capabilities.total_vram_bytes / _GIB:.0f} GB VRAM."
-    if preference == "cpu":
-        if not capabilities.cpu_supported:
-            available = capabilities.total_ram_bytes / _GIB
-            return False, f"HaizFlow requires a 16 GB system; detected {available:.1f} GiB usable RAM."
-        ram = capabilities.total_ram_bytes / _GIB
-        return True, f"CPU ready: {ram:.0f} GB RAM, {capabilities.logical_cpu_count} logical processors."
-    if capabilities.cpu_supported:
-        return (
-            True,
-            f"CPU ready: {capabilities.total_ram_bytes / _GIB:.0f} GB RAM, "
-            f"{capabilities.logical_cpu_count} logical processors.",
+    installed = getattr(capabilities, "installed_ram_bytes", None)
+    usable = capabilities.total_ram_bytes
+    installed_text = "chưa xác định" if installed is None else f"{installed / _GIB:.1f} GiB"
+    usable_text = "chưa xác định" if not usable else f"{usable / _GIB:.1f} GiB"
+    if not _ram_capacity_supported(capabilities):
+        if language == "vi":
+            return False, (
+                f"HaizFlow cần RAM lắp đặt từ 16 GB (16 GiB) và ít nhất 8 GiB RAM Windows sử dụng được. "
+                f"RAM lắp đặt: {installed_text}; Windows sử dụng được: {usable_text}. "
+                "Kiểm tra lại cấu hình/bộ nhớ dành riêng cho phần cứng nếu số liệu chưa đúng."
+            )
+        installed_en = "unknown" if installed is None else f"{installed / _GIB:.1f} GiB"
+        usable_en = "unknown" if not usable else f"{usable / _GIB:.1f} GiB"
+        return False, (
+            "HaizFlow requires 16 GB installed RAM (16 GiB DIMM capacity) and at least 8 GiB OS-usable RAM; "
+            f"installed: {installed_en}; OS-usable: {usable_en}. Check hardware memory detection/reservation."
         )
-    return False, "This computer does not meet the minimum CPU or GPU memory requirement."
+    if preference == "gpu":
+        return True, (f"GPU sẵn sàng: {capabilities.cuda_name}, {capabilities.total_vram_bytes / _GIB:.1f} GiB VRAM." if language == "vi" else
+                      f"GPU ready: {capabilities.cuda_name}, {capabilities.total_vram_bytes / _GIB:.1f} GiB VRAM.")
+    return True, (f"CPU sẵn sàng: Windows sử dụng được {usable / _GIB:.1f} GiB RAM, {capabilities.logical_cpu_count} luồng logic." if language == "vi" else
+                  f"CPU ready: {usable / _GIB:.1f} GiB OS-usable RAM, {capabilities.logical_cpu_count} logical processors.")
 
 
 def configure_processing_device(preference: str) -> str:
@@ -581,10 +542,10 @@ def runtime_profile_for(
             hymt2_dtype="bfloat16" if capabilities.cuda_bf16_supported else "float16",
         )
 
-    total_gib = total_ram / _GIB if total_ram else 16
-    # Windows reports usable physical RAM below the marketed capacity (for
-    # example, a 16 GB PC is commonly reported as roughly 15 GiB).
-    if total_gib >= 14:
+    total_gib = total_ram / _GIB if total_ram else 0
+    # Installed capacity decides eligibility; usable capacity decides workload.
+    # A 16 GB installation must not retain multiple heavy CPU models.
+    if total_gib >= 24:
         key = "cpu_balanced"
         label = "CPU balanced"
         batch_size = 4
@@ -621,6 +582,34 @@ def runtime_profile_for(
         warm_hymt2_on_startup=False,
         translation_idle_seconds=idle_seconds,
         hymt2_dtype="float32",
+    )
+
+
+def cpu_runtime_profile(profile: RuntimeProfile | None = None, *, memory: MemorySnapshot | None = None, force_cpu: bool = False) -> RuntimeProfile:
+    """Downsize CPU work from live budgets; do not change inference precision.
+
+    Called at task boundaries, not in the UI. Never increase a cached profile's
+    batches/threads on the strength of a transient free-memory measurement.
+    """
+    profile = profile or runtime_profile()
+    if profile.cuda_available:
+        if not force_cpu:
+            return profile
+        profile = runtime_profile_for(hardware_capabilities(), "cpu")
+    memory = memory if memory is not None else memory_snapshot()
+    free = memory.available_bytes
+    commit = memory.commit_available_bytes
+    unknown = free is None or (os.name == "nt" and commit is None)
+    tight = unknown or free < 3 * _GIB or (commit is not None and commit < 4 * _GIB)
+    constrained = tight or free < 6 * _GIB or (commit is not None and commit < 8 * _GIB)
+    if not constrained:
+        return profile
+    return replace(
+        profile, key="cpu_minimum" if tight else "cpu_low_memory",
+        label="CPU memory constrained", cpu_threads=min(profile.cpu_threads, 2 if tight else 4),
+        whisper_batch_size=min(profile.whisper_batch_size, 1 if tight else 2),
+        warm_whisper_on_startup=False, warm_hymt2_on_startup=False,
+        translation_idle_seconds=min(profile.translation_idle_seconds, 30 if tight else 90),
     )
 
 

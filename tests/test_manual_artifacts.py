@@ -16,6 +16,40 @@ from haizflow.services import manual_artifacts
 
 
 class ManualArtifactTests(unittest.TestCase):
+    def test_cancelled_source_and_separation_release_producer_leases(self):
+        source = {"artifact_id": "source_audio:existing", "resolved_outputs": {"audio": "audio.wav"}}
+        for tool in ("source", "separation"):
+            with (
+                self.subTest(tool=tool),
+                patch.object(manual_tools, "source_signature", return_value="existing"),
+                patch.object(manual_tools, "separation_signature", return_value="stems"),
+                patch.object(manual_artifacts, "resolve", side_effect=[source, None] if tool == "separation" else [None]),
+                patch.object(manual_tools, "_video_input", return_value="video.mp4"),
+                patch.object(manual_tools, "extract_audio", side_effect=RuntimeError("Video cancelled by user.")),
+                patch.object(manual_tools, "separate_audio", side_effect=RuntimeError("Video cancelled by user.")),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "cancelled"):
+                    manual_tools._RUNNERS[tool](self.video, SimpleNamespace(update=Mock()))
+            manual_artifacts.assert_root_idle(self.root)
+            self.assertFalse(list(self.root.rglob(".partial-*")))
+
+    def test_existing_producer_stays_protected_but_deleted_staging_is_not_busy(self):
+        stage = manual_artifacts.create_staging_directory(self.video.video_id, "separation")
+        with self.assertRaisesRegex(RuntimeError, "being produced"):
+            manual_artifacts.assert_root_idle(self.root)
+        import shutil
+        shutil.rmtree(stage)
+        manual_artifacts.assert_root_idle(self.root)
+        self.assertNotIn(str(stage), manual_artifacts._STAGING_LEASES)
+
+    def test_failed_disk_cleanup_still_releases_finished_producer(self):
+        stage = manual_artifacts.create_staging_directory(self.video.video_id, "separation")
+        with patch.object(manual_artifacts.shutil, "rmtree"):
+            manual_artifacts.discard_staging_directory(stage)
+        self.assertTrue(stage.exists())
+        manual_artifacts.assert_root_idle(self.root)
+        self.assertFalse((stage / ".lease.json").exists())
+
     def test_manual_recognition_uses_current_timing_contract(self):
         self.assertEqual(manual_tools.TIMING_SOURCE, TIMING_SOURCE)
         self.video.enable_audio_separation = True

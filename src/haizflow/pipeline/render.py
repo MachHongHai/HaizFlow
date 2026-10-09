@@ -740,6 +740,7 @@ def _write_positioned_ass(
     region_layout: SubtitleRegionLayout | None = None,
     fixed_font_size: bool = False,
     cue_styles: dict[int, tuple[SubtitleStyle, SubtitleRegionLayout]] | None = None,
+    speech_durations: dict[int, float] | None = None,
 ):
     """Convert SRT to ASS so a dragged preview position is reproduced exactly in FFmpeg."""
     subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
@@ -778,9 +779,12 @@ def _write_positioned_ass(
         ]
     )
     lines = [header]
-    if region_layout and not cue_styles:
+    if region_layout and not cue_styles and not speech_durations:
         subtitles = _merge_contiguous_subtitles(subtitles)
     for subtitle in subtitles:
+        speech_seconds = max(0.1, min((subtitle.end - subtitle.start).total_seconds(),
+                                    (speech_durations or {}).get(subtitle.index,
+                                        (subtitle.end - subtitle.start).total_seconds())))
         cue_style, cue_layout = (cue_styles or {}).get(
             subtitle.index,
             (subtitle_style, region_layout),
@@ -797,8 +801,10 @@ def _write_positioned_ass(
                 x = round(x - cue_layout.width / 2)
             elif cue_style.alignment == "right":
                 x = round(x + cue_layout.width / 2)
+            spoken_subtitle = srt.Subtitle(index=subtitle.index, start=subtitle.start,
+                end=subtitle.start + timedelta(seconds=speech_seconds), content=subtitle.content)
             visual_parts = _subtitle_parts_for_region(
-                subtitle,
+                spoken_subtitle,
                 cue_layout,
                 cue_style,
                 fixed_font_size=fixed_font_size,
@@ -806,12 +812,12 @@ def _write_positioned_ass(
             timelines = _karaoke_part_timelines(
                 subtitle.content,
                 [part[2] for part in visual_parts],
-                (subtitle.end - subtitle.start).total_seconds(),
+                speech_seconds,
             )
-            for (start_time, end_time, content, font_size, scale_x), (units, durations) in zip(
+            for part_index, ((start_time, end_time, content, font_size, scale_x), (units, durations)) in enumerate(zip(
                 visual_parts,
                 timelines,
-            ):
+            )):
                 if cue_style.uppercase:
                     units = [unit.upper() for unit in units]
                 karaoke = _karaoke_ass_from_units(units, durations)
@@ -826,7 +832,7 @@ def _write_positioned_ass(
                     f"\\fsp{cue_style.letter_spacing}"
                 )
                 lines.append(
-                    f"Dialogue: 0,{_ass_timestamp(start_time)},{_ass_timestamp(end_time)},Default,,0,0,0,,"
+                    f"Dialogue: 0,{_ass_timestamp(start_time)},{_ass_timestamp(subtitle.end if part_index == len(visual_parts) - 1 else end_time)},Default,,0,0,0,,"
                     f"{{\\an{alignment_tag}\\pos({x},{y})\\fs{font_size}\\fscx{scale_x}{inline_style}\\bord{cue_outline}"
                     f"\\shad{cue_style.shadow}}}{karaoke}"
                 )
@@ -835,7 +841,7 @@ def _write_positioned_ass(
             end_time = _ass_timestamp(subtitle.end)
             karaoke = _karaoke_ass_text(
                 subtitle.content.upper() if cue_style.uppercase else subtitle.content,
-                (subtitle.end - subtitle.start).total_seconds(),
+                speech_seconds,
             )
             cue_outline = _karaoke_outline(
                 cue_style.font_size,
@@ -1263,6 +1269,7 @@ def _subtitle_patch_prefix(
     source_width: int,
     source_height: int,
     enable_expression: str = "",
+    *, static_mask: bool = False,
 ) -> str:
     """Cover the OCR box with real pixels from an adjacent picture strip."""
     x, y, width, height = region
@@ -1278,6 +1285,18 @@ def _subtitle_patch_prefix(
     feather = max(2, min(8, round(min(width, height) * 0.06)))
     edge_distance = "min(min(X,W-1-X),min(Y,H-1-Y))"
     overlay_enable = f":enable='{enable_expression}'" if enable_expression else ""
+    if static_mask:
+        # The feather mask is constant. Evaluate its pixels once and let
+        # framesync repeat that frame, rather than running RGB geq per frame
+        # throughout a long editor proxy. Production export is unchanged.
+        return (
+            f"[0:v]split=2[source_clean][source_patch];"
+            f"[source_patch]crop={width}:{height}:{x}:{patch_y},format=yuva420p[patch_pixels];"
+            f"color=c=black:s={width}x{height}:r=25:d=0.04,format=gray,"
+            f"geq=lum='255*min(1,{edge_distance}/{feather})'[patch_mask];"
+            f"[patch_pixels][patch_mask]alphamerge[subtitle_patch];"
+            f"[source_clean][subtitle_patch]overlay={x}:{y}{overlay_enable}[source_without_original];"
+        )
     return (
         f"[0:v]split=2[source_clean][source_patch];"
         f"[source_patch]crop={width}:{height}:{x}:{patch_y},format=rgba,"
@@ -1329,18 +1348,19 @@ def _original_subtitle_removal_prefix(
     source_height: int,
     mode: str,
     enable_expression: str = "",
+    *, static_mask: bool = False,
 ) -> str:
     if str(mode or "").strip().lower() in {"patch", "inpaint"}:
-        return _subtitle_patch_prefix(region, source_width, source_height, enable_expression)
+        return _subtitle_patch_prefix(region, source_width, source_height, enable_expression, static_mask=static_mask)
     return _subtitle_blur_prefix(region, source_width, source_height, enable_expression)
 
 
 def _ordered_subtitle_removal_prefix(payload, source_width, source_height, mode,
-                                     source_start_seconds=0.0):
+                                     source_start_seconds=0.0, *, static_mask=False):
     """Compose each timed mask onto the result of the layer below it."""
     if not payload or "treatment_layers" not in payload:
         region = _source_subtitle_removal_region(payload, source_width, source_height)
-        return (_original_subtitle_removal_prefix(region, source_width, source_height, mode)
+        return (_original_subtitle_removal_prefix(region, source_width, source_height, mode, static_mask=static_mask)
                 if region else "")
     offset = float(payload.get("timeline_offset_seconds", source_start_seconds))
     prefixes = []
@@ -1355,7 +1375,7 @@ def _ordered_subtitle_removal_prefix(payload, source_width, source_height, mode,
             continue
         enable = f"gte(t,{max(0.0, start):.6f})*lt(t,{end:.6f})"
         prefix = _original_subtitle_removal_prefix(
-            region, source_width, source_height, layer.get("mode", mode), enable,
+            region, source_width, source_height, layer.get("mode", mode), enable, static_mask=static_mask,
         )
         # Namespace all temporary labels because FFmpeg forbids consuming
         # one source pad twice or defining an output label more than once.
@@ -1691,6 +1711,7 @@ def render_video(
     # Keep blur/patch active for the entire clip, including its first/last frames.
     removal_prefix = _ordered_subtitle_removal_prefix(
         original_subtitle_region, source_width, source_height, removal_mode, source_start_seconds,
+        static_mask=compatibility_preview,
     )
     if removal_region:
         x, y, width, height = removal_region
@@ -1853,7 +1874,8 @@ def render_video(
             monitor.start()
         try:
             process = subprocess.Popen(
-                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=video_temp_dir,
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                encoding="utf-8", errors="replace", cwd=video_temp_dir,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             _stdout, process_stderr = communicate_process(

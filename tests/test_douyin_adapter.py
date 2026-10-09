@@ -62,6 +62,59 @@ def adapter_with(*replies, ready=True):
     return DouyinAdapter(session), transport
 
 
+def test_popular_pagination_waits_and_retries_with_the_same_working_identity():
+    post = detail()["aweme_detail"]
+    page = {"aweme_list": [post], "has_more": 1, "max_cursor": 42}
+    final = {"aweme_list": [{**post, "aweme_id": "7683481325270177899"}], "has_more": 0, "max_cursor": 50}
+    adapter, transport = adapter_with(response(page), response({"status_code": 0}), response(final))
+    adapter.session.native_verified = True
+    adapter.session.browser = Mock()
+    with patch("haizflow.services.video_download._wait_for_retry") as wait:
+        _, videos = adapter.profile_posts("https://www.douyin.com/user/public-user", limit=2)
+    assert len(videos) == 2 and len(transport.calls) == 3
+    assert adapter.session.generation == 1 and adapter.session.ready
+    assert [call.args[1] for call in wait.call_args_list] == [3.0, 6.0]
+    adapter.session.browser.sign.assert_not_called()
+
+
+def test_continuation_throttle_keeps_pages_and_reports_incomplete_scan():
+    page = {"aweme_list": [detail()["aweme_detail"]], "has_more": 1, "max_cursor": 42}
+    adapter, transport = adapter_with(response(page), *(response({"status_code": 0}) for _ in range(3)))
+    adapter.session.native_verified = True
+    adapter.session.browser = Mock()
+    adapter._status_callback = Mock()
+    _, rows = adapter.profile_posts("https://www.douyin.com/user/public-user", limit=2)
+    assert len(rows) == 1 and "1/2" in rows.warning
+    assert adapter.session.ready and adapter.session.generation == 1
+    assert len(transport.calls) == 4
+    assert not any(call.args == ("Douyin session needs refresh",) for call in adapter._status_callback.call_args_list)
+
+
+def test_popular_scan_resumes_throttled_cursor_without_repeating_first_page():
+    post = detail()["aweme_detail"]
+    first = {"aweme_list": [post], "has_more": 1, "max_cursor": 42}
+    final = {"aweme_list": [{**post, "aweme_id": "7683481325270177899"}], "has_more": 0, "max_cursor": 50}
+    adapter, transport = adapter_with(response(first), *[response({"status_code": 0})] * 3, response(final))
+    adapter.session.native_verified = True
+    adapter.session.browser = Mock()
+    _, rows = adapter.profile_posts("https://www.douyin.com/user/public-user", limit=100)
+    assert rows.warning and len(rows) == 1
+    _, rows = adapter.profile_posts("https://www.douyin.com/user/public-user", limit=100)
+    assert len(rows) == 2 and not getattr(rows, "warning", "")
+    assert parse_qs(urlsplit(transport.calls[-1][0]).query)["max_cursor"] == ["42"]
+    assert len(transport.calls) == 5
+    adapter.session.browser.open.assert_not_called()
+
+
+def test_cancel_during_pagination_wait_makes_no_next_request():
+    page = {"aweme_list": [detail()["aweme_detail"]], "has_more": 1, "max_cursor": 42}
+    adapter, transport = adapter_with(response(page))
+    with patch("haizflow.services.video_download._wait_for_retry", side_effect=DownloadCancelled("stopped")):
+        with pytest.raises(DownloadCancelled):
+            adapter.profile_posts("https://www.douyin.com/user/public-user", limit=2)
+    assert len(transport.calls) == 1 and adapter.session.ready
+
+
 @pytest.fixture(autouse=True)
 def no_network_wait():
     with patch("haizflow.services.video_download._wait_for_retry"):

@@ -387,6 +387,7 @@ class ChannelImportCoordinator(QObject):
                         "platform": platform,
                         "channel_name": channel_name,
                         "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
+                        "warning": getattr(candidates, "warning", ""),
                     },
                 )
             except DownloadCancelled as exc:
@@ -675,7 +676,7 @@ class ChannelImportCoordinator(QObject):
         ]
         self._rebuild_session_cache(session)
         session.state = "ready"
-        session.status = f"{len(session.candidates)} videos ready to review"
+        session.status = str(payload.get("warning") or f"{len(session.candidates)} videos ready to review")
         self._save_session(session)
         self._scan_progress = 100
         if session.session_id == self._active_session_id:

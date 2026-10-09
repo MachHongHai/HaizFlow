@@ -6,6 +6,7 @@ import os
 import queue
 
 from haizflow.core.hardware import runtime_profile
+from haizflow.core.memory import cpu_memory_constrained
 from haizflow.desktop.activity_log import ActivityLogBuffer
 from haizflow.pipeline.process_registry import is_cancelled, is_paused, prepare_video_resume
 from haizflow.services import project_store, video_store
@@ -174,7 +175,7 @@ class ProcessingLifecycleController:
                 return
             if requires_model_runtime:
                 profile = runtime_profile()
-                if profile.total_ram_gib < 24 or (
+                if profile.total_ram_gib < 24 or (not profile.cuda_available and cpu_memory_constrained()) or (
                     profile.cuda_available and profile.total_vram_gib < 12
                 ):
                     warmup = getattr(host, "_smart_warmup", None)

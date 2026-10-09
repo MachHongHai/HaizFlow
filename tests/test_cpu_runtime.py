@@ -55,7 +55,7 @@ class CpuRuntimeTests(unittest.TestCase):
             ),
             mock.patch.object(hardware, "_cuda_memory_bytes", return_value=vram_gib * 1024**3),
             mock.patch.object(hardware, "_cuda_free_memory_bytes", return_value=vram_gib * 1024**3),
-            mock.patch.object(hardware, "_total_memory_bytes", return_value=ram_gib * 1024**3),
+            mock.patch.object(hardware, "memory_snapshot", return_value=hardware.MemorySnapshot(installed_bytes=ram_gib * 1024**3, usable_bytes=ram_gib * 1024**3)),
             mock.patch.object(hardware, "_power_status", return_value=(True, 80)),
             mock.patch.object(hardware.os, "cpu_count", return_value=cpu_count),
         ):
@@ -154,7 +154,7 @@ class CpuRuntimeTests(unittest.TestCase):
             profile = hardware.runtime_profile_for(capabilities, "cpu")
 
         detect.assert_not_called()
-        self.assertEqual(profile.key, "cpu_balanced")
+        self.assertEqual(profile.key, "cpu_low_memory")
 
     def test_live_hardware_refresh_only_schedules_the_expensive_probe(self):
         capabilities = hardware.HardwareCapabilities(
@@ -715,6 +715,10 @@ class CpuRuntimeTests(unittest.TestCase):
                 mock.patch.object(audio_separation, "communicate_process", return_value=("", "")),
                 mock.patch.object(audio_separation, "check_cancellation"),
                 mock.patch.object(audio_separation, "log_to_video"),
+                mock.patch("haizflow.core.memory.memory_snapshot", return_value=hardware.MemorySnapshot(
+                    installed_bytes=16 * 1024**3, usable_bytes=15 * 1024**3,
+                    available_bytes=6 * 1024**3, process_commit_available_bytes=12 * 1024**3,
+                )),
             ):
                 audio_separation.separate_audio(
                     "audio.wav",

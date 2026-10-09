@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -17,6 +18,8 @@ import urllib.request
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
+
+import certifi
 
 from haizflow.core.model_integrity import (
     ALIGNMENT_MODEL_BASE_URL,
@@ -355,11 +358,21 @@ def _open_download(asset: ModelAsset, offset: int):
     response = urllib.request.urlopen(  # nosec B310 - URL and redirect are validated below.
         request,
         timeout=DOWNLOAD_TIMEOUT_SECONDS,
+        context=_download_tls_context(),
     )
     if not _approved_download_url(response.geturl()):
         response.close()
         raise ModelBootstrapError("Model download redirected to an unapproved host.")
     return response
+
+
+def _download_tls_context():
+    # Keep the OS trust store (including approved corporate roots), and add
+    # the packaged public CA bundle. Never replace verification with a retry
+    # that accepts untrusted certificates.
+    context = ssl.create_default_context()
+    context.load_verify_locations(cafile=certifi.where())
+    return context
 
 
 def _download_asset(
@@ -473,6 +486,13 @@ def _download_asset(
             raise
         except (OSError, ValueError, urllib.error.URLError, ModelBootstrapError) as exc:
             last_error = exc
+            reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+            if isinstance(reason, ssl.SSLCertVerificationError):
+                raise ModelBootstrapError(
+                    f"Không thể xác minh kết nối an toàn để tải {asset.label}. "
+                    "Hãy kiểm tra ngày giờ Windows, cập nhật chứng chỉ hệ thống "
+                    "hoặc nhờ quản trị mạng kiểm tra chứng chỉ của proxy/phần mềm bảo mật."
+                ) from exc
             if attempt == DOWNLOAD_RETRIES:
                 break
             _check_cancelled(cancel_event)

@@ -4,7 +4,7 @@
   "packs": {
     "engine-cpu-py313": {
       "version": "9",
-      "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.0/engine-cpu-py313-9.zip",
+      "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/engine-cpu-py313-9.zip",
       "sha256": "fd41cd2245e44d442cdd12273b7ecf81645acdc6e1af9a1093328a97478c72d7",
       "download_size": 357381643,
       "installed_size": 879438978
@@ -17,12 +17,12 @@
       "installed_size": 5097657380,
       "parts": [
         {
-          "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.3/engine-cuda128-py313-11.zip.001",
+          "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/engine-cuda128-py313-11.zip.001",
           "size": 1610612736,
           "sha256": "f145e96a7ef019957953698f7bb2e592daedfb1c03a1caa211119e5147775322"
         },
         {
-          "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.3/engine-cuda128-py313-11.zip.002",
+          "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/engine-cuda128-py313-11.zip.002",
           "size": 1585495438,
           "sha256": "c1c0bdf931aa4fe7efea0db98bffe17c8d49515f6caec661c48fb68074cdcb37"
         }
@@ -30,7 +30,7 @@
     },
     "engine-vision-onnx": {
       "version": "4",
-      "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.0/engine-vision-onnx-4.zip",
+      "url": "https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/engine-vision-onnx-4.zip",
       "sha256": "414d9e5672aeeff2858864b95ac7e878062b2a48e0c76454de60dec4a88e9999",
       "download_size": 92346549,
       "installed_size": 232481248

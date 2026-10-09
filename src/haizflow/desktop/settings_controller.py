@@ -248,7 +248,7 @@ class SettingsController:
         capabilities = getattr(host, "_hardware_capabilities", None)
         if capabilities is None:
             return False
-        compatible, reason = validate_processing_device(preference, capabilities)
+        compatible, reason = validate_processing_device(preference, capabilities, language=getattr(host, "_settings_language", "vi"))
         if not compatible:
             host.appAlertRequested.emit("Không thể dùng bộ xử lý này", str(reason), "warning")
             return False

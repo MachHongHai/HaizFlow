@@ -134,6 +134,82 @@ def visual_child(item, name):
     return None
 
 
+def test_native_result_plays_embedded_audio_with_one_clock_and_no_second_player(tmp_path):
+    import os
+    app = QGuiApplication.instance() or QGuiApplication([])
+    source, proxy = tmp_path / "source.mp4", tmp_path / "native-preview.mp4"
+    subprocess.run([
+        _binary("ffmpeg"), "-y", "-v", "error", "-f", "lavfi", "-i", "color=s=64x64:r=25:d=4",
+        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=4",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(source),
+    ], check=True, capture_output=True, timeout=20,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    os.link(source, proxy)
+    audio = pcm.ManualPreviewAudioController()
+    audio.setVolumes(0, 100, 30)  # Test routing without playing sound on the host.
+    audio._use_streaming_source(str(source), SimpleNamespace(original_video_volume=60), None)
+    engine = QQmlEngine()
+    engine.rootContext().setContextProperty("testAudio", audio)
+    component = QQmlComponent(engine)
+    component.setData((f'import QtQuick\nimport "{QML.as_uri()}"\n' + '''
+        Item {
+            QtObject {
+                id: host
+                property bool canEditSelectedVideo: true
+                property var manualPreviewAudio: testAudio
+            }
+            ManualComparePreview {
+                objectName: "preview"
+                anchors.fill: parent
+                controller: host
+                sequenceDurationSeconds: 4
+                resultUsesSequenceTimeline: true
+                subtitleLivePreviewEnabled: true
+            }
+        }
+    ''').encode(), QUrl())
+    assert component.isReady(), [error.toString() for error in component.errors()]
+    item = component.create()
+    window = QQuickWindow()
+    window.resize(900, 600)
+    item.setParent(window)
+    item.setParentItem(window.contentItem())
+    item.setSize(window.size())
+    window.show()
+    preview = item.findChild(QQuickItem, "preview")
+    player = preview.findChild(QMediaPlayer, "manualResultPlayer")
+    try:
+        preview.setProperty("resultBaseSource", QUrl.fromLocalFile(str(proxy)))
+        wait_until(lambda: preview.property("embeddedSourceAudio") and not preview.property("resultPriming")
+                   and not preview.property("resultSourceSwitching"))
+        for _ in range(2):
+            QMetaObject.invokeMethod(preview, "togglePlayback", Qt.DirectConnection)
+            wait_until(lambda: player.playbackState() == QMediaPlayer.PlayingState and player.position() > 200)
+            assert player.hasAudio() and not player.audioOutput().isMuted()
+            assert player.audioOutput().volume() == 0
+            assert audio._embedded_audio
+            assert audio._native_player.playbackState() != QMediaPlayer.PlayingState
+            assert not audio._timer.isActive()
+            preview.setProperty("resultMuted", True)
+            assert player.audioOutput().isMuted()
+            preview.setProperty("resultMuted", False)
+            preview.setProperty("suppressResultAudio", True)
+            assert player.audioOutput().isMuted()
+            preview.setProperty("suppressResultAudio", False)
+            QMetaObject.invokeMethod(preview, "pausePlayback", Qt.DirectConnection)
+            wait_until(lambda: not audio._playing)
+        assert audio.canPlayEmbeddedSource(QUrl.fromLocalFile(str(proxy)))
+    finally:
+        QMetaObject.invokeMethod(preview, "releaseMedia", Qt.DirectConnection)
+        window.close()
+        item.deleteLater()
+        window.deleteLater()
+        engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        audio.close()
+        app.processEvents()
+
+
 def test_playing_video_keeps_voice_and_captions_after_stop_pause_and_proxy_swap(audio, tmp_path):
     caption = SubtitleOverlayRenderer()
     sprite = QImage(64, 64, QImage.Format_ARGB32)

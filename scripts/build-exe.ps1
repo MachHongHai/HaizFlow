@@ -275,6 +275,7 @@ if (!(Test-Path -LiteralPath $SubtitleFontPath -PathType Leaf)) {
 $ArgsList += @("--add-data", "$SubtitleFontsPath;haizflow\assets\fonts")
 
 $ArgsList += @("--collect-all", "yt_dlp")
+$ArgsList += @("--collect-data", "certifi")
 $ArgsList += @("--collect-all", "playwright")
 $BundledModelsPath = Join-Path $Root "build\bundled-models\speaker-identification"
 Invoke-PythonChecked -Arguments @((Join-Path $PSScriptRoot "prepare-bundled-speaker-model.py"), "--download") -Label "Bundled speaker model"

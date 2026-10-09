@@ -62,8 +62,7 @@ def _release_recognition_runtime() -> None:
 
     from haizflow.services.external_engine import shared_external_engine_pool
 
-    if "recognition" in shared_external_engine_pool().release({"recognition", "separation", "ocr"}):
-        return
+    shared_external_engine_pool().release({"recognition", "separation", "ocr"})
     # An isolated ASR process is already gone. Do not import WhisperX/Torch
     # into Core just to release a model that never lived in this process.
     recognition = sys.modules.get("haizflow.pipeline.transcribe")
@@ -596,6 +595,7 @@ def process_video_sync(
         profile = runtime_profile()
         if (
             using_gemini
+            or not profile.cuda_available
             or getattr(profile, "key", "") == "cuda_low_memory"
             or getattr(profile, "total_ram_gib", 24) < 24
         ):
@@ -645,7 +645,7 @@ def process_video_sync(
             video, reporter, transcribe_audio_target, source_segments_json,
         )
 
-        if profile.key in {"cpu_low_memory", "cpu_minimum", "cuda_low_memory"}:
+        if not profile.cuda_available or profile.key == "cuda_low_memory":
             _release_recognition_runtime()
             log_to_video(
                 video_id, "Released the warmed WhisperX model before translation to conserve processing memory."

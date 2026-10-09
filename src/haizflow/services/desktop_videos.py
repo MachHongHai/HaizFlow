@@ -91,7 +91,7 @@ def _same_path(first: str, second: str) -> bool:
     return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
 
 
-def _copy_file_atomically(source_path: str, destination_path: str) -> None:
+def _copy_file_atomically(source_path: str, destination_path: str, *, link_source: bool = False) -> None:
     """Publish a complete input file without ever exposing a partial destination."""
     destination_directory = os.path.dirname(destination_path)
     os.makedirs(destination_directory, exist_ok=True)
@@ -100,7 +100,15 @@ def _copy_file_atomically(source_path: str, destination_path: str) -> None:
         f".{os.path.basename(destination_path)}.import-{uuid.uuid4().hex}.part",
     )
     try:
-        shutil.copyfile(source_path, temporary_path)
+        linked = False
+        if link_source:
+            try:
+                os.link(source_path, temporary_path)
+                linked = True
+            except OSError:
+                pass  # Cross-volume and non-NTFS imports still copy safely.
+        if not linked:
+            shutil.copyfile(source_path, temporary_path)
         if os.path.getsize(temporary_path) <= 0:
             raise RuntimeError(f"Imported video is empty: {source_path}")
         os.replace(temporary_path, destination_path)
@@ -411,7 +419,7 @@ def create_desktop_video(
         input_path = (video_info.files or {}).get("video_input")
         if not isinstance(input_path, str) or not input_path.strip():
             raise RuntimeError("New video metadata did not provide an input-video path.")
-        _copy_file_atomically(video_path, input_path)
+        _copy_file_atomically(video_path, input_path, link_source=move_input)
 
         if config.background_music_path.strip():
             set_desktop_background_music(video_info, config.background_music_path)

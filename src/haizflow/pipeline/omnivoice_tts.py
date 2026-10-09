@@ -17,6 +17,7 @@ import time
 import traceback
 import zipfile
 from collections import deque
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,7 @@ _PERSISTENT_WORKER_LOCK = threading.RLock()
 _PERSISTENT_OPERATION_LOCK = threading.Lock()
 _PERSISTENT_WORKER_PROCESS: subprocess.Popen[str] | None = None
 _PERSISTENT_WORKER_DEVICE = ""
+_PERSISTENT_MODEL_KEY: tuple[str, str] | None = None
 _PERSISTENT_IDLE_TIMER: threading.Timer | None = None
 _PERSISTENT_STDERR_LOCK = threading.Lock()
 _PERSISTENT_STDERR_TAIL: deque[str] = deque(maxlen=192)
@@ -388,9 +390,11 @@ def _log_monitor_event(video_id: str, message: str) -> None:
 
 def _stop_persistent_worker_unlocked() -> None:
     global _PERSISTENT_WORKER_PROCESS, _PERSISTENT_STDERR_THREAD
+    global _PERSISTENT_MODEL_KEY
     _cancel_idle_shutdown()
     process = _PERSISTENT_WORKER_PROCESS
     _PERSISTENT_WORKER_PROCESS = None
+    _PERSISTENT_MODEL_KEY = None
     if process is None:
         return
     try:
@@ -513,13 +517,40 @@ def _timing_detail(status: dict[str, Any]) -> str:
     return " " + " ".join(parts) if parts else ""
 
 
+def _request_model_key(request: dict[str, Any]) -> tuple[str, str]:
+    return str(request.get("model_root") or ""), str(request.get("device") or "cpu")
+
+
+def _preflight_cpu_request(request: dict[str, Any], *, allow_resident: bool = False) -> None:
+    if str(request.get("device") or "cpu").startswith("cuda"):
+        return
+    from haizflow.core.memory import require_cpu_memory
+
+    with _PERSISTENT_WORKER_LOCK:
+        process = _PERSISTENT_WORKER_PROCESS
+        if allow_resident and process is not None and process.poll() is None and (
+            _PERSISTENT_WORKER_DEVICE != str(request.get("device") or "cpu")
+            or (_PERSISTENT_MODEL_KEY is not None and _PERSISTENT_MODEL_KEY != _request_model_key(request))
+        ):
+            _stop_persistent_worker_unlocked()
+            process = None
+        resident = bool(allow_resident and process is not None and process.poll() is None
+                        and _PERSISTENT_MODEL_KEY == _request_model_key(request))
+    require_cpu_memory("voice", resident=resident)
+
+
 def _run_worker_process(
     request_path: Path,
     request: dict[str, Any],
     video_id: str,
     progress_callback=None,
+    *,
+    cancellation_id: str | None = None,
 ) -> tuple[int, str]:
     """Run one isolated inference attempt and surface stage progress."""
+    process_key = cancellation_id or video_id
+    check_cancellation(process_key)
+    _preflight_cpu_request(request)
     environment = _worker_environment()
     process = subprocess.Popen(
         _worker_command(request_path),
@@ -615,7 +646,7 @@ def _run_worker_process(
     progress_thread.start()
     try:
         _stdout, stderr = communicate_process(
-            video_id,
+            process_key,
             process,
             label="OmniVoice synthesis",
             timeout_seconds=MEDIA_PROCESS_TIMEOUT_SECONDS,
@@ -623,6 +654,7 @@ def _run_worker_process(
     finally:
         stop_progress.set()
         progress_thread.join()
+    check_cancellation(process_key)
     detail = str(stderr or "")
     if monitor_state["abort_reason"]:
         detail = f"{detail}\n{monitor_state['abort_reason']}".strip()
@@ -630,6 +662,19 @@ def _run_worker_process(
         code = int(process.returncode) & 0xFFFFFFFF
         detail = f"OmniVoice worker exited during model loading (0x{code:08X})."
     return int(process.returncode or 0), detail
+
+
+@contextmanager
+def _cancellable_voice_operation(cancellation_id: str):
+    # Speculative warm-up or another request may own the resident worker.
+    # Cancelling a waiter must neither wait for inference nor kill its owner.
+    while not _PERSISTENT_OPERATION_LOCK.acquire(timeout=0.15):
+        check_cancellation(cancellation_id)
+    try:
+        check_cancellation(cancellation_id)
+        yield
+    finally:
+        _PERSISTENT_OPERATION_LOCK.release()
 
 
 def _run_persistent_worker_process(
@@ -641,6 +686,7 @@ def _run_persistent_worker_process(
     cancellation_id: str | None = None,
 ) -> tuple[int, str]:
     """Run inference in a long-lived isolated process that keeps the model warm."""
+    global _PERSISTENT_MODEL_KEY
     response_path = request_path.with_name("response.json")
     response_path.unlink(missing_ok=True)
     request["response_path"] = str(response_path)
@@ -652,16 +698,33 @@ def _run_persistent_worker_process(
         else _CPU_STALL_TIMEOUT_SECONDS
     )
 
-    with _PERSISTENT_OPERATION_LOCK:
+    process_key = cancellation_id or video_id
+    with _cancellable_voice_operation(process_key):
         with _PERSISTENT_WORKER_LOCK:
+            check_cancellation(process_key)
+            _preflight_cpu_request(request, allow_resident=True)
             process = _persistent_worker_unlocked(str(request.get("device") or "cpu"))
+            # Bind the active request, not the resident worker's entire lifetime,
+            # to its video. Pause can then interrupt a long synthesis even if
+            # the status callback is busy encoding/publishing completed clips.
+            try:
+                register_process(process_key, process)
+            except BaseException:
+                _stop_persistent_worker_unlocked()
+                raise
             try:
                 assert process.stdin is not None
                 process.stdin.write(f"{request_path}\n")
                 process.stdin.flush()
             except (OSError, ValueError) as exc:
+                unregister_process(process_key, process)
                 _stop_persistent_worker_unlocked()
+                check_cancellation(process_key)
                 return 1, f"Could not start the warm OmniVoice request: {exc}"
+            except BaseException:
+                unregister_process(process_key, process)
+                _stop_persistent_worker_unlocked()
+                raise
 
         last_completed = -1
         last_stage = ""
@@ -680,6 +743,7 @@ def _run_persistent_worker_process(
                         continue
                     with _PERSISTENT_WORKER_LOCK:
                         if _PERSISTENT_WORKER_PROCESS is process:
+                            _PERSISTENT_MODEL_KEY = _request_model_key(request) if int(response.get("return_code", 1)) == 0 else None
                             _schedule_idle_shutdown()
                     return int(response.get("return_code", 1)), str(response.get("error") or "")
                 if process.poll() is not None:
@@ -748,6 +812,8 @@ def _run_persistent_worker_process(
                 if _PERSISTENT_WORKER_PROCESS is process:
                     _stop_persistent_worker_unlocked()
             raise
+        finally:
+            unregister_process(process_key, process)
 
 
 def _is_cuda_resource_failure(detail: str) -> bool:
@@ -924,6 +990,8 @@ def synthesize_batch_to_mp3(
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 _stdout, stderr = communicate_process(
@@ -1001,9 +1069,43 @@ def synthesize_batch_to_mp3(
                 progress_callback(len(encoded), total, stage)
 
         worker_runner = _run_persistent_worker_process if keep_worker_warm else _run_worker_process
-        worker_kwargs = {"cancellation_id": cancellation_id} if worker_runner is _run_persistent_worker_process else {}
+        worker_kwargs = ({"cancellation_id": cancellation_id}
+                         if keep_worker_warm or cancellation_id != video_id else {})
         return_code, stderr = worker_runner(request_path, request, video_id, publish_completed, **worker_kwargs)
-        if return_code != 0 and keep_worker_warm and _is_persistent_transport_failure(stderr):
+        check_cancellation(cancellation_id)
+        recovered_invalid_batch = False
+        if (return_code != 0 and not encoding_errors and len(request_items) > 1
+                and str(request["device"]).startswith("cuda")
+                and any(message in str(stderr) for message in (
+                    "OmniVoice returned empty or invalid audio",
+                    "OmniVoice returned an unexpected number of audio clips",
+                ))):
+            recovered_invalid_batch = True
+            # Older released engines cannot reduce an invalid pair themselves.
+            # Keep completed clips and retry each remaining sentence once. A
+            # single-sentence failure stays an error; quality/seed are unchanged.
+            publish_completed(len(output_pairs), len(output_pairs), "synthesizing")
+            if len(encoded) == len(output_pairs):
+                return_code, stderr = 0, ""
+            log_to_video(video_id, "[TTS][WARN] Invalid GPU audio batch; recovering missing sentences individually.")
+            for index, item in enumerate(request_items):
+                if index in encoded:
+                    continue
+                check_cancellation(cancellation_id)
+                output_pairs[index][0].unlink(missing_ok=True)
+                Path(str(request["status_path"])).unlink(missing_ok=True)
+                single_request = {**request, "items": [item]}
+                request_path.write_text(json.dumps(single_request, ensure_ascii=False), encoding="utf-8")
+
+                def publish_single(completed, _total, stage, *, target=index):
+                    publish_completed(target + 1 if completed else 0, len(output_pairs), stage)
+
+                return_code, stderr = worker_runner(request_path, single_request, video_id, publish_single, **worker_kwargs)
+                check_cancellation(cancellation_id)
+                if return_code != 0:
+                    break
+                publish_single(1, 1, "synthesizing")
+        if return_code != 0 and not recovered_invalid_batch and keep_worker_warm and _is_persistent_transport_failure(stderr):
             # A warm server is an optimization, never a requirement for a
             # successful edit. Retry the same request once in an isolated
             # process so a stale stdin channel or a crashed resident worker
@@ -1019,8 +1121,10 @@ def synthesize_batch_to_mp3(
                 request,
                 video_id,
                 publish_completed,
+                **({"cancellation_id": cancellation_id} if cancellation_id != video_id else {}),
             )
-        if return_code != 0 and str(request["device"]).startswith("cuda") and _is_cuda_resource_failure(stderr):
+            check_cancellation(cancellation_id)
+        if return_code != 0 and not recovered_invalid_batch and str(request["device"]).startswith("cuda") and _is_cuda_resource_failure(stderr):
             log_to_video(
                 video_id,
                 "[TTS][WARN] OmniVoice ran out of GPU resources; retrying this video on CPU.",
@@ -1095,7 +1199,8 @@ def release_model_memory() -> bool:
     Never start a process for this operation. Cancellation/shutdown still use
     clear_runtime(), which terminates the process completely.
     """
-    from haizflow.core.hardware import available_memory_bytes
+    global _PERSISTENT_MODEL_KEY
+    from haizflow.core.memory import memory_snapshot
 
     with _PERSISTENT_OPERATION_LOCK:
         with _PERSISTENT_WORKER_LOCK:
@@ -1124,9 +1229,14 @@ def release_model_memory() -> bool:
                             # A new SDK may retain tensors through a global
                             # cache. Never keep that worker across GPU handoff.
                             break
+                        _PERSISTENT_MODEL_KEY = None
                         # Imports alone consume RAM. Retain them only with a
                         # substantial remaining budget for the next model.
-                        if available_memory_bytes() < 3 * 1024**3:
+                        memory = memory_snapshot()
+                        if (memory.usable_bytes is None or memory.usable_bytes < 24 * 1024**3
+                                or memory.available_bytes is None or memory.available_bytes < 3 * 1024**3
+                                or (os.name == "nt" and memory.commit_available_bytes is None)
+                                or (memory.commit_available_bytes is not None and memory.commit_available_bytes < 4 * 1024**3)):
                             break
                         with _PERSISTENT_WORKER_LOCK:
                             if _PERSISTENT_WORKER_PROCESS is process:
@@ -1246,8 +1356,31 @@ def _record_batch_performance(profile, size, seconds, audio_seconds):
     del values[:-6]
 
 
+class _InvalidSynthesisAudio(RuntimeError):
+    """A decoded batch failed validation before any audio was published."""
+
+
+def _validated_waveforms(generated, count, np, torch):
+    outputs = generated if isinstance(generated, (list, tuple)) else [generated]
+    if len(outputs) != count:
+        raise _InvalidSynthesisAudio("OmniVoice returned an unexpected number of audio clips.")
+    waves = []
+    for output in outputs:
+        if isinstance(output, torch.Tensor):
+            output = output.detach().float().cpu().numpy()
+        wave = np.asarray(output, dtype=np.float32).reshape(-1)
+        if wave.size < 240 or not np.isfinite(wave).all():
+            raise _InvalidSynthesisAudio("OmniVoice returned empty or invalid audio.")
+        waves.append(wave)
+    return waves
+
+
 def _generate_bounded_batch(generate, items, torch, device):
-    """Retry only CUDA allocation failures, halving the batch before fallback."""
+    """Reduce invalid paired audio or CUDA OOM to individual synthesis.
+
+    Never retry arbitrary SDK errors, a corrupt single output, or CPU OOM.
+    Completed sentences remain untouched and quality settings stay unchanged.
+    """
     candidate = list(items)
     retries = 0
     while True:
@@ -1260,19 +1393,21 @@ def _generate_bounded_batch(generate, items, torch, device):
                     "out of memory", "cublas_status_alloc_failed", "cudnn_status_alloc_failed", "not enough memory",
                 )
             )
-            if (not device.startswith("cuda") or len(candidate) == 1
-                    or not allocation_error):
+            invalid_batch = isinstance(exc, _InvalidSynthesisAudio)
+            if (len(candidate) == 1 or not (invalid_batch or (device.startswith("cuda") and allocation_error))):
                 raise
             allocation_failed = True
         # Leave the exception frame before GC: its traceback may own tensors.
         if allocation_failed:
             gc.collect()
-            torch.cuda.empty_cache()
-            candidate = candidate[:max(1, len(candidate) // 2)]
+            if device.startswith("cuda"):
+                torch.cuda.empty_cache()
+            candidate = candidate[:1 if invalid_batch else max(1, len(candidate) // 2)]
             retries += 1
 
 
 def warm_runtime(language_id: str = "vi", *, device: str | None = None) -> None:
+    global _PERSISTENT_MODEL_KEY
     """Load OmniVoice in its isolated worker without synthesizing user audio."""
     _prepare_isolated_runtime()
     model_root = verify_omnivoice_model(Path(MODELS_DIR) / "omnivoice")
@@ -1297,6 +1432,7 @@ def warm_runtime(language_id: str = "vi", *, device: str | None = None) -> None:
         request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
         with _PERSISTENT_OPERATION_LOCK:
             with _PERSISTENT_WORKER_LOCK:
+                _preflight_cpu_request(request, allow_resident=True)
                 process = _persistent_worker_unlocked(str(request["device"]))
                 if process.stdin is None:
                     raise RuntimeError("OmniVoice worker input channel is unavailable.")
@@ -1310,6 +1446,7 @@ def warm_runtime(language_id: str = "vi", *, device: str | None = None) -> None:
                         raise RuntimeError(str(response.get("error") or "OmniVoice warm-up failed."))
                     with _PERSISTENT_WORKER_LOCK:
                         if _PERSISTENT_WORKER_PROCESS is process:
+                            _PERSISTENT_MODEL_KEY = _request_model_key(request)
                             _schedule_idle_shutdown()
                     return
                 if process.poll() is not None:
@@ -1423,7 +1560,9 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
     if not device.startswith("cuda"):
         # Map weights with one thread (Windows native loader safety), then
         # enable parallel inference while leaving a core for the desktop.
-        torch.set_num_threads(max(1, min(8, (os.cpu_count() or 4) - 1)))
+        from haizflow.core.hardware import cpu_runtime_profile
+
+        torch.set_num_threads(cpu_runtime_profile(force_cpu=True).cpu_threads)
     voice_seed = int(request.get("voice_seed") or 0) & 0x7FFFFFFF
     speaker_mode = str(request.get("speaker_mode") or "single")
     synthesis_items = list(items)
@@ -1573,7 +1712,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
             def generate(candidate):
                 reset_seed(item_seed if speaker_mode == "multiple" else voice_seed)
                 with torch.inference_mode():
-                    return model.generate(
+                    result = model.generate(
                         text=[str(entry["text"]).strip() for entry in candidate] if len(candidate) > 1 else text,
                         language=str(request.get("language") or "") or None,
                         instruct=None if voice_clone_prompt is not None else instruction,
@@ -1583,23 +1722,16 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                         audio_chunk_duration=10.0,
                         audio_chunk_threshold=8.0,
                     )
+                # Validate inside the bounded batch operation, not afterwards:
+                # otherwise one invalid pair aborts the complete video.
+                return _validated_waveforms(result, len(candidate), np, torch)
 
             generated, batch, retries = _generate_bounded_batch(generate, batch, torch, device)
             batch_retries += retries
             if retries:
                 maximum_batch = len(batch)
             batch_size = len(batch)
-            outputs = generated if isinstance(generated, (list, tuple)) else [generated]
-            if len(outputs) != len(batch):
-                raise RuntimeError("OmniVoice returned an unexpected number of audio clips.")
-            waveforms = []
-            for output in outputs:
-                if isinstance(output, torch.Tensor):
-                    output = output.detach().float().cpu().numpy()
-                waveform = np.asarray(output, dtype=np.float32).reshape(-1)
-                if waveform.size < 240 or not np.isfinite(waveform).all():
-                    raise RuntimeError("OmniVoice returned empty or invalid audio.")
-                waveforms.append(waveform)
+            waveforms = generated
             sample_rate = int(getattr(model, "sampling_rate", None) or _SAMPLE_RATE)
             synthesis_seconds = time.monotonic() - synthesis_started
             if not retries:

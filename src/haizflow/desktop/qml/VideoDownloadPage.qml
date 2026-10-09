@@ -8,6 +8,13 @@ Item {
 
     required property var downloader
 
+    Connections {
+        target: root.downloader
+        function onWorkspaceChanged() {
+            videoLink.text = String(root.downloader.workspaceState.videoUrl || root.downloader.videoPreviewUrl || "");
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: Theme.space16
@@ -39,7 +46,11 @@ Item {
                         selectByMouse: true
                         accessibleName: qsTr("Liên kết video")
                         enabled: !root.downloader.videoPreviewBusy
-                        onTextEdited: root.downloader.clearVideoPreview()
+                        text: String(root.downloader.workspaceState.videoUrl || root.downloader.videoPreviewUrl || "")
+                        onTextEdited: {
+                            root.downloader.clearVideoPreview();
+                            root.downloader.saveWorkspaceState({videoUrl: text});
+                        }
                     }
 
                     RowLayout {

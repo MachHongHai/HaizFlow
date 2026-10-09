@@ -37,6 +37,16 @@ class ExternalEngineClient:
         self._process: subprocess.Popen[str] | None = None
         self._reader: threading.Thread | None = None
 
+    @property
+    def alive(self) -> bool:
+        with self._process_lock:
+            return self._process is not None and self._process.poll() is None
+
+    @property
+    def generation(self):
+        with self._process_lock:
+            return self._process if self._process is not None and self._process.poll() is None else None
+
     def _start_locked(self) -> subprocess.Popen[str]:
         process = self._process
         if process is not None and process.poll() is None and process.stdin is not None:
@@ -199,6 +209,15 @@ class ExternalEnginePool:
         self._lock = threading.RLock()
         self._clients: dict[str, ExternalEngineClient] = {}
         self._capability_packs: dict[str, str] = {}
+        self._warm_contexts: dict[str, tuple[dict, object]] = {}
+
+    def is_warm(self, capability: str, context: dict | None = None) -> bool:
+        """Only a successful warm RPC establishes resident model ownership."""
+        with self._lock:
+            pack_id = self._capability_packs.get(capability, "")
+            client = self._clients.get(pack_id)
+            return bool(client and client.alive
+                        and self._warm_contexts.get(capability) == (dict(context or {}), client.generation))
 
     def engine_pack(self, capability: str, context: dict | None = None) -> str:
         resolver = getattr(self._manager, "warm_engine_pack", None)
@@ -225,6 +244,7 @@ class ExternalEnginePool:
                 for name, mapped_pack in tuple(self._capability_packs.items()):
                     if mapped_pack == previous:
                         self._capability_packs.pop(name, None)
+                        self._warm_contexts.pop(name, None)
             self._capability_packs[capability] = pack_id
         if stale_client is not None:
             stale_client.terminate()
@@ -243,7 +263,10 @@ class ExternalEnginePool:
         except Exception:
             with self._lock:
                 self._capability_packs.pop(str(capability), None)
+                self._warm_contexts.pop(str(capability), None)
             raise
+        with self._lock:
+            self._warm_contexts[str(capability)] = (dict(context or {}), self._client(pack_id).generation)
         return True
 
     def run_file_task(self, capability: str, context: dict | None, request_path: str) -> bool:
@@ -253,6 +276,9 @@ class ExternalEnginePool:
         if not pack_id:
             return False
         self._bind_capability_pack(str(capability), pack_id)
+        with self._lock:
+            if not self.is_warm(capability, context):
+                self._warm_contexts.pop(capability, None)
         self._client(pack_id).request(
             "file_task",
             {"request_path": str(request_path)},
@@ -263,6 +289,7 @@ class ExternalEnginePool:
     def preempt(self, capability: str) -> bool:
         with self._lock:
             pack_id = self._capability_packs.pop(str(capability), "")
+            self._warm_contexts.pop(str(capability), None)
             client = self._clients.get(pack_id) if pack_id else None
         if client is None:
             return False
@@ -274,6 +301,7 @@ class ExternalEnginePool:
         for capability in sorted(capabilities):
             with self._lock:
                 pack_id = self._capability_packs.pop(capability, "")
+                self._warm_contexts.pop(capability, None)
             if not pack_id:
                 continue
             try:
@@ -301,6 +329,7 @@ class ExternalEnginePool:
             for capability, mapped_pack in tuple(self._capability_packs.items()):
                 if mapped_pack == pack_id:
                     self._capability_packs.pop(capability, None)
+                    self._warm_contexts.pop(capability, None)
         if client is not None:
             client.close()
 
@@ -309,6 +338,7 @@ class ExternalEnginePool:
             clients = tuple(self._clients.values())
             self._clients.clear()
             self._capability_packs.clear()
+            self._warm_contexts.clear()
         for client in clients:
             client.close()
 

@@ -43,9 +43,13 @@ class NativeMediaDialogTests(unittest.TestCase):
                 )
 
         self.assertEqual(result, selected)
-        native_picker.assert_called_once_with(
-            "Choose a folder of videos for batch processing", str(Path(temporary).resolve()),
-        )
+        # Other QML tests can leave the persisted UI language set to Vietnamese.
+        # Check the wrapper's actual localized contract and filesystem identity,
+        # not English-only copy or the exact spelling of Windows separators.
+        native_picker.assert_called_once()
+        caption, directory = native_picker.call_args.args
+        self.assertEqual(caption, localization._ui_text("Choose a folder of videos for batch processing"))
+        self.assertEqual(Path(directory).resolve(), Path(temporary).resolve())
         qt_picker.assert_not_called()
 
     def test_folder_import_falls_back_to_qt_when_windows_picker_is_unavailable(self):

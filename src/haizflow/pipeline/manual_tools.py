@@ -103,6 +103,13 @@ def transcribe(*args, **kwargs):
     model_name = str(kwargs.get("model_name") or "small")
     context = recognition_context(model_name, processing_device_preference())
     model_name = context["model"]
+    if context["device"] == "cpu":
+        from haizflow.core.memory import require_cpu_memory
+        from haizflow.services.external_engine import shared_external_engine_pool
+
+        from haizflow.pipeline.process_registry import check_cancellation
+        check_cancellation(str(video_id))
+        require_cpu_memory("recognition", resident=shared_external_engine_pool().is_warm("recognition", context))
     video_store.log_to_video(
         str(video_id), f"Preparing Whisper speech-recognition worker ({model_name}).",
         component="WHISPERX", level="INFO",
@@ -138,8 +145,7 @@ def _release_recognition_runtime() -> None:
 
     from haizflow.services.external_engine import shared_external_engine_pool
 
-    if "recognition" in shared_external_engine_pool().release({"recognition", "separation", "ocr"}):
-        return
+    shared_external_engine_pool().release({"recognition", "separation", "ocr"})
     recognition = sys.modules.get("haizflow.pipeline.transcribe")
     if recognition is not None:
         recognition.release_warm_whisperx_model()
@@ -561,33 +567,18 @@ def active_voice_record(video, *, validate: bool = False) -> dict[str, Any] | No
     source = resolver(video.video_id, "subtitle_document", source_signature_value)
     if not current or not source:
         return None
-    # Compare timing according to the manifest that is actually playing, not
-    # the pending setting in the voice dialog. Otherwise confirming a switch
-    # from single to multiple speakers can detach the old, still-valid voice
-    # before the replacement has been published.
-    published_payload = _voice_manifest_payload(voice)
-    published_speaker_mode = str(
-        published_payload.get("speaker_mode")
-        or getattr(video, "speaker_mode", "single")
-        or "single"
-    )
-    multiple = published_speaker_mode == "multiple"
-
-    def spoken_rows(record: dict[str, Any]) -> list[tuple[Any, ...]]:
-        return [
-            (
-                " ".join(str(item.get("text") or "").split()),
-                *(
-                    (
-                        round(float(item.get("start", 0) or 0), 3),
-                        round(float(item.get("end", 0) or 0), 3),
-                    )
-                    if multiple
-                    else ()
-                ),
-            )
-            for item in _record_segments(record)
-        ]
+    # Compare spoken content with the published manifest, not the draft voice
+    # setting or edited timing. A replacement is pending until publication.
+    def spoken_rows(record: dict[str, Any]):
+        rows = _record_segments(record)
+        # Speaker detection happened when these clips were generated. Moving
+        # an identified sentence does not change its recorded speaker. Match
+        # by stable ID, not the new timestamp or its order on the timeline.
+        ids = [str(item.get("segment_id") or item.get("id") or "") for item in rows]
+        texts = [" ".join(str(item.get("text") or "").split()) for item in rows]
+        if all(ids) and len(set(ids)) == len(ids):
+            return dict(zip(ids, texts))
+        return texts
 
     return voice if spoken_rows(current) == spoken_rows(source) else None
 
@@ -1152,7 +1143,7 @@ def _publish_subtitles(video, source_path: str) -> dict[str, Any]:
             config_fingerprint="manual-subtitle-document-v1",
         )
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        manual_artifacts.discard_staging_directory(staging)
     outputs = record["resolved_outputs"]
     _update_files(video.video_id, transcript_json=outputs["segments"], srt_output=outputs["srt"])
     return record
@@ -1230,7 +1221,7 @@ def publish_edited_subtitles(video_id: str, segments: list[dict[str, Any]]) -> d
             config_fingerprint="manual-subtitle-document-v1",
         )
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        manual_artifacts.discard_staging_directory(staging)
     outputs = record["resolved_outputs"]
     _update_files(video_id, transcript_json=outputs["segments"], srt_output=outputs["srt"])
     if text_changed:
@@ -1352,7 +1343,7 @@ def _run_source(video, reporter) -> None:
                 config_fingerprint="source-audio-stereo-48k-pcm-v2",
             )
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            manual_artifacts.discard_staging_directory(staging)
     else:
         manual_artifacts.activate(video.video_id, "source_audio", expected)
     _update_files(video.video_id, source_audio=cached["resolved_outputs"]["audio"])
@@ -1390,7 +1381,7 @@ def _run_separation(video, reporter) -> None:
                 config_fingerprint=DEMUCS_MODEL_SIGNATURE,
             )
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            manual_artifacts.discard_staging_directory(staging)
     else:
         manual_artifacts.activate(video.video_id, "separation", expected)
     outputs = cached["resolved_outputs"]
@@ -1441,7 +1432,7 @@ def _run_recognition(video, reporter) -> None:
                 ),
             )
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            manual_artifacts.discard_staging_directory(staging)
     else:
         manual_artifacts.activate(video.video_id, "recognition", expected)
     _update_files(video.video_id, source_segments=cached["resolved_outputs"]["segments"])
@@ -1495,7 +1486,7 @@ def _run_translation(video, reporter) -> None:
                 ),
             )
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            manual_artifacts.discard_staging_directory(staging)
     else:
         manual_artifacts.activate(video.video_id, "translation", expected)
     _replace_subtitles_from_translation(video.video_id, cached["resolved_outputs"]["segments"])
@@ -1541,7 +1532,7 @@ def _run_image(video, reporter) -> None:
                 config_fingerprint=str(DETECTOR_CACHE_VERSION),
             )
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            manual_artifacts.discard_staging_directory(staging)
     else:
         manual_artifacts.activate(video.video_id, "ocr_region", expected)
     _update_files(video.video_id, ocr_region=cached["resolved_outputs"]["region"])
@@ -1561,10 +1552,31 @@ def _run_voice(video, reporter) -> None:
         staging = manual_artifacts.create_staging_directory(video.video_id, "tts_manifest")
         parts_dir = staging / "parts"
         parts_dir.mkdir(parents=True, exist_ok=True)
+        local_voice_used = False
         try:
             missing_clip_indices = []
+            published = published_voice_record(video, validate=False)
+            source_segments = published_voice_source_segments(video, published, validate=False)
+            source_signatures = _voice_clip_signatures(video, source_segments)
+            published_signatures = _voice_manifest_payload(published).get("clips", [])
+            source_indices = {
+                str(item.get("segment_id") or item.get("id") or ""): index
+                for index, item in enumerate(source_segments)
+                if item.get("segment_id") or item.get("id")
+            }
             for index, clip_signature in enumerate(clip_signatures, 1):
                 clip = manual_artifacts.resolve(video.video_id, "tts_clip", clip_signature)
+                if not clip:
+                    # Reordering subtitles must not regenerate all multi-
+                    # speaker speech. Reuse only a clip whose original inputs
+                    # still match the currently requested configuration.
+                    source_index = source_indices.get(str(segments[index - 1].get("segment_id")
+                                                         or segments[index - 1].get("id") or ""))
+                    if (source_index is not None and source_index < len(published_signatures)
+                            and source_signatures[source_index] == published_signatures[source_index]
+                            and preprocess_text_for_tts(str(source_segments[source_index].get("text") or ""))
+                            == preprocess_text_for_tts(str(segments[index - 1].get("text") or ""))):
+                        clip = manual_artifacts.resolve(video.video_id, "tts_clip", source_signatures[source_index])
                 if clip:
                     shutil.copy2(clip["resolved_outputs"]["audio"], parts_dir / f"voice_{index:04d}.mp3")
                 else:
@@ -1587,6 +1599,7 @@ def _run_voice(video, reporter) -> None:
                     resolve_tts_provider(provider, video.target_language) == "omnivoice"
                     for provider, _voice, _indices in requested_groups
                 ):
+                    local_voice_used = True
                     shutdown_hymt2_worker()
                     _release_recognition_runtime()
 
@@ -1692,8 +1705,16 @@ def _run_voice(video, reporter) -> None:
             # completed MP3 files.  Publish those clips before removing the
             # transient manifest staging directory so Resume only synthesizes
             # the genuinely missing sentences.
-            _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures)
-            shutil.rmtree(staging, ignore_errors=True)
+            try:
+                _publish_completed_voice_clips(video, subtitle, parts_dir, clip_signatures)
+            finally:
+                manual_artifacts.discard_staging_directory(staging)
+                if local_voice_used:
+                    from haizflow.core.memory import cpu_memory_constrained
+                    from haizflow.pipeline.omnivoice_tts import release_model_memory
+
+                    if cpu_memory_constrained():
+                        release_model_memory()
     current = video_store.get_video(video.video_id)
     if current and voice_signature(current) != expected:
         return
@@ -1777,7 +1798,7 @@ def _register_voice_manifest_from_parts(video, parts_dir: Path) -> dict[str, Any
             ),
         )
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        manual_artifacts.discard_staging_directory(staging)
 
 
 def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=None) -> list[str]:
@@ -1957,7 +1978,7 @@ def _run_audio(video, reporter) -> None:
                 ),
             )
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            manual_artifacts.discard_staging_directory(staging)
     else:
         manual_artifacts.activate(video.video_id, "audio_mix", expected)
     _update_files(video.video_id, voice_output=cached["resolved_outputs"]["audio"])
@@ -2114,7 +2135,7 @@ def _run_export(video, reporter) -> None:
                 config_fingerprint=expected,
             )
         finally:
-            shutil.rmtree(staging, ignore_errors=True)
+            manual_artifacts.discard_staging_directory(staging)
     else:
         manual_artifacts.activate(video.video_id, "export", expected)
     # This tool produces the managed render only. Saving a user-owned copy is

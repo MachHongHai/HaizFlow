@@ -1396,6 +1396,7 @@ class MultiProjectControllerTests(unittest.TestCase):
             project_name="Project B",
             project_directory="D:/Projects",
             project_key_value=target["project_key"],
+            move_input=True,
         )
         controller._select_video.assert_not_called()
         controller.refreshVideos.assert_called_once()

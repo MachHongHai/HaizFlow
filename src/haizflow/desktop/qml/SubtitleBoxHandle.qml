@@ -13,9 +13,9 @@ Item {
     property point initialPointer
     property rect previewRect
     property real minimumWidthPixels: 24
-    property real maximumWidthPixels: canvasItem.width
+    property real maximumWidthPixels: canvasItem ? canvasItem.width : 0
     property real minimumHeightPixels: 4
-    property real maximumHeightPixels: canvasItem.height
+    property real maximumHeightPixels: canvasItem ? canvasItem.height : 0
     signal rectanglePreviewed(rect rectangle)
     signal rectangleCommitted(rect rectangle)
     signal resizeStarted()

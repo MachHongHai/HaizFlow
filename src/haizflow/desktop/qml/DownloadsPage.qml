@@ -10,14 +10,19 @@ Item {
     // qmllint enable stale-property-read
     required property string projectName
     required property string projectRoot
-    property int currentPage: 0
+    property int currentPage: Math.max(0, Math.min(2, Number(downloader.workspaceState.page || 0)))
     readonly property bool canGoBack: false
     readonly property bool canGoForward: false
 
     function resetNavigation() { currentPage = 0 }
     function navigateBack() {}
     function navigateForward() {}
-    onProjectRootChanged: resetNavigation()
+    Connections {
+        target: root.downloader
+        function onWorkspaceChanged() {
+            root.currentPage = Math.max(0, Math.min(2, Number(root.downloader.workspaceState.page || 0)));
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -48,6 +53,7 @@ Item {
                 tabs: [qsTr("Video"), qsTr("Kênh"), qsTr("Âm thanh")]
                 onActivated: function(index) {
                     root.currentPage = index
+                    root.downloader.saveWorkspaceState({page: index})
                 }
             }
             Item { Layout.fillWidth: true }

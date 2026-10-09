@@ -904,7 +904,8 @@ ApplicationWindow {{
         self.assertIn("canGoBack: root.canNavigateBack", main)
         self.assertIn("canGoForward: root.canNavigateForward", main)
         self.assertIn("function resetNavigation()", downloads)
-        self.assertIn("onProjectRootChanged: resetNavigation()", downloads)
+        self.assertIn("function onWorkspaceChanged()", downloads)
+        self.assertIn("root.downloader.workspaceState.page", downloads)
 
     def test_editor_preview_primes_a_frame_without_a_second_paused_seek(self):
         editor = (QML_DIR / "TranslationReviewDialog.qml").read_text(encoding="utf-8")
@@ -1157,7 +1158,7 @@ ApplicationWindow {{
 
     def test_audio_download_source_switch_enables_local_file_import(self):
         page = (QML_DIR / "AudioDownloadPage.qml").read_text(encoding="utf-8")
-        self.assertIn('property string sourceMode: "link"', page)
+        self.assertIn('property string sourceMode: String(downloader.workspaceState.audioMode || "link")', page)
         self.assertIn('currentValue: root.sourceMode', page)
         self.assertIn('root.sourceMode = value', page)
         self.assertIn('root.downloader.chooseAudioSource()', page)
@@ -1209,7 +1210,8 @@ ApplicationWindow {{
         self.assertIn('text: qsTr("Dự án Tải xuống mới")', menu)
         self.assertIn('["batch", "manual", "download", "publish"].includes(type)', setup)
         self.assertIn("required property string projectName", downloads)
-        self.assertIn("property int currentPage: 0", downloads)
+        self.assertIn("property int currentPage:", downloads)
+        self.assertIn("downloader.workspaceState.page || 0", downloads)
         self.assertIn("VideoDownloadPage", downloads)
         self.assertIn("ChannelDownloadPage", downloads)
         self.assertIn("AudioDownloadPage", downloads)

@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from haizflow.config import BIN_DIR, MEDIA_PROCESS_TIMEOUT_SECONDS
+from haizflow.services.download_control import DownloadControl
 from haizflow.utils.ffmpeg import get_media_stream_types
 
 SUPPORTED_VIDEO_HOSTS = {
@@ -462,7 +463,8 @@ def _wait_for_retry(cancel_event: threading.Event | None, seconds: float) -> Non
 
 
 def _inspect_video_info(yt_dlp, url: str, *, impersonate: bool = False, auth=None, cancel_event=None) -> dict:
-    with yt_dlp.YoutubeDL(_youtube_dl_options(_ytdlp_auth_for_url(auth, url), impersonate=impersonate)) as downloader:
+    with yt_dlp.YoutubeDL(_youtube_dl_options(_ytdlp_auth_for_url(auth, url), impersonate=impersonate)) as downloader, \
+            DownloadControl(downloader, cancel_event, DownloadCancelled):
         return _extract_video_info(downloader, url, download=False, auth=auth, cancel_event=cancel_event)
 
 
@@ -558,7 +560,7 @@ def download_audio(
             }
         )
         try:
-            with yt_dlp.YoutubeDL(options) as downloader:
+            with yt_dlp.YoutubeDL(options) as downloader, DownloadControl(downloader, cancel_event, DownloadCancelled):
                 info = _extract_video_info(downloader, normalized_url, download=True, auth=auth,
                                            cancel_event=cancel_event)
                 source = _downloaded_audio_path(target.parent, info, downloader)
@@ -712,6 +714,8 @@ def download_video(
     report(0, "Starting download")
     attempts = 3
     for attempt in range(attempts):
+        if cancel_event and cancel_event.is_set():
+            raise DownloadCancelled("Video download cancelled.")
         options = _youtube_dl_options(_ytdlp_auth_for_url(auth, metadata.url), impersonate=attempt > 0)
         options.update(
             {
@@ -729,7 +733,7 @@ def download_video(
             # A new YoutubeDL instance on every attempt forces a fresh media
             # manifest.  TikTok's signed URLs can expire between inspection
             # and download, especially in a multi-video channel import.
-            with yt_dlp.YoutubeDL(options) as downloader:
+            with yt_dlp.YoutubeDL(options) as downloader, DownloadControl(downloader, cancel_event, DownloadCancelled):
                 info = _extract_video_info(downloader, metadata.url, download=True, auth=auth,
                                            cancel_event=cancel_event)
                 if cancel_event and cancel_event.is_set():
@@ -751,6 +755,8 @@ def download_video(
     else:  # pragma: no cover - all non-returning paths raise above
         raise RuntimeError("Video download did not produce a result.")
 
+    if cancel_event and cancel_event.is_set():
+        raise DownloadCancelled("Video download cancelled.")
     report(100, "Download complete")
     return video_path
 

@@ -7,8 +7,16 @@ Item {
     id: root
 
     required property var downloader
-    property string sourceMode: "link"
+    property string sourceMode: String(downloader.workspaceState.audioMode || "link")
     readonly property bool fromLink: root.sourceMode === "link"
+
+    Connections {
+        target: root.downloader
+        function onWorkspaceChanged() {
+            root.sourceMode = String(root.downloader.workspaceState.audioMode || "link");
+            audioLink.text = String(root.downloader.workspaceState.audioUrl || "");
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -41,6 +49,7 @@ Item {
                         options: [{ "label": qsTr("Liên kết"), "value": "link" }, { "label": qsTr("Tệp"), "value": "file" }]
                         onActivated: function(value) {
                             root.sourceMode = value
+                            root.downloader.saveWorkspaceState({audioMode: value})
                         }
                     }
 
@@ -51,7 +60,11 @@ Item {
                         placeholderText: qsTr("Dán liên kết video")
                         selectByMouse: true
                         accessibleName: qsTr("Liên kết video")
-                        onTextEdited: root.downloader.clearDownloadFeedback()
+                        text: String(root.downloader.workspaceState.audioUrl || "")
+                        onTextEdited: {
+                            root.downloader.clearDownloadFeedback();
+                            root.downloader.saveWorkspaceState({audioUrl: text});
+                        }
                     }
 
                     RowLayout {

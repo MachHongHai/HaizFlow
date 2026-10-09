@@ -68,6 +68,43 @@ def _write_json_atomic(path: str, payload) -> None:
 
 
 class ProjectCommandsController:
+    def _stop_project_processing(self, videos: list) -> bool:
+        queue = self._host._processing_queue
+        video_ids = {video.video_id for video in videos}
+        if not video_ids:
+            return True
+        active_id, _waiting = queue.detach_pending(video_ids)
+        if active_id:
+            cancel_video(active_id)
+            # Cancellation stops children, not the owning Python runner's
+            # finally blocks. Never remove its staging/files before it exits.
+            if queue.active_video_id == active_id:
+                self._host.appAlertRequested.emit(
+                    "Đang dừng xử lý", "Chờ tác vụ dừng xong rồi xóa dự án.", "info",
+                )
+                return False
+        return True
+
+    def _stop_project_url_download(self, project_key: str) -> bool:
+        host = self._host
+        project_import = getattr(host, "_project_import", None)
+        if project_import and project_import.has_project_work(project_key):
+            return False
+        target = getattr(host, "_url_import_target", None)
+        if not target or target.get("project_key") != project_key:
+            return True
+        importer = getattr(host, "_url_importer", None)
+        # A storage import may already be moving validated media; let it finish.
+        if importer and importer.state == "importing":
+            return False
+        if importer:
+            importer.cancel()
+            if not importer.shutdown(timeout_seconds=1.0):
+                return False
+            importer.begin("single")
+        host._url_import_target = None
+        return True
+
     def _release_project_preview(self, project_key: str, videos: list) -> None:
         host = self._host
         preview = getattr(host, "_editor_preview", None)
@@ -1087,7 +1124,11 @@ class ProjectCommandsController:
         if host.isSelectedBatchVideo:
             self.stop_batch()
             return
-        if (
+        # The Manual inspector's Pause button is already an explicit request.
+        # The synchronous confirmation runs a nested QML/Qt event loop before
+        # cancellation. It can outlive a rebuilt inspector; avoid that extra
+        # round trip for this explicit, non-destructive Manual action.
+        if getattr(selected_video, "project_type", "single") != "manual" and (
             QMessageBox.question(None, "Pause video", "Pause this video? You can resume it later from Projects.")
             != QMessageBox.StandardButton.Yes
         ):
@@ -1415,11 +1456,16 @@ class ProjectCommandsController:
             != QMessageBox.StandardButton.Yes
         ):
             return
+        if not self._stop_project_processing(project_videos):
+            return
         try:
             self._release_project_preview(current_key, project_videos)
             project_store.validate_project_deletion_by_key(current_key)
         except Exception as exc:
             QMessageBox.critical(None, "Delete project", str(exc))
+            return
+        if not self._stop_project_url_download(current_key):
+            host.appAlertRequested.emit("Chưa thể xóa dự án", "Đang dừng tải hoặc nhập video. Hãy thử lại sau ít giây.", "info")
             return
         if not host._channel_importer.cancel_project(current_key):
             QMessageBox.information(
@@ -1539,11 +1585,16 @@ class ProjectCommandsController:
             != QMessageBox.StandardButton.Yes
         ):
             return False
+        if not self._stop_project_processing(project_videos):
+            return False
         try:
             self._release_project_preview(project_key, project_videos)
             project_store.validate_project_deletion_by_key(project_key)
         except Exception as exc:
             host.appAlertRequested.emit("Không thể xóa dự án", str(exc), "error")
+            return False
+        if not self._stop_project_url_download(project_key):
+            host.appAlertRequested.emit("Chưa thể xóa dự án", "Đang dừng tải hoặc nhập video. Hãy thử lại sau ít giây.", "info")
             return False
         if not host._channel_importer.cancel_project(project_key):
             host.appAlertRequested.emit(

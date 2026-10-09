@@ -118,7 +118,10 @@ Rectangle {
     signal monitorSelected(string monitorId)
     signal requestUrlImport()
     signal requestDownloadProjectImport()
-    readonly property url effectiveResultSource: subtitleLivePreviewEnabled ? resultBaseSource : resultSource
+    readonly property url effectiveResultSource: subtitleLivePreviewEnabled
+        && String(resultBaseSource).length > 0 ? resultBaseSource : resultSource
+    readonly property bool embeddedSourceAudio: String(root.controller.manualPreviewAudio.nativeSource || "").length > 0
+        && root.controller.manualPreviewAudio.canPlayEmbeddedSource(root.attachedResultSource)
     readonly property real positionSeconds: scrubController.scrubPositionMs / 1000
     readonly property real durationSeconds: sequenceDurationSeconds > 0
         ? sequenceDurationSeconds : Math.max(inputPlayer.duration, resultPlayer.duration) / 1000
@@ -259,9 +262,11 @@ Rectangle {
             (root.comparing || root.activeMonitor === "result")
                 && resultPlayer.playbackState === MediaPlayer.PlayingState
                 && !root.resultPriming && !root.resultSourceSwitching && !scrubController.scrubbing,
-            root.resultMuted);
+            root.resultMuted || root.suppressResultAudio, root.embeddedSourceAudio);
     }
     onResultMutedChanged: syncAudio()
+    onSuppressResultAudioChanged: syncAudio()
+    onEmbeddedSourceAudioChanged: syncAudio()
     onPositionSecondsChanged: syncAudio()
 
     PreviewScrubController {
@@ -1210,6 +1215,13 @@ Rectangle {
         source: root.attachedResultSource
         videoOutput: fullscreenLayer.visible && root.fullscreenResult
             ? fullscreenOutput : resultPane.videoOutputItem
+        audioOutput: DefaultAudioOutput {
+            volume: root.controller.manualPreviewAudio.nativeVolume === undefined
+                ? 0 : root.controller.manualPreviewAudio.nativeVolume
+            muted: !root.embeddedSourceAudio || root.resultMuted || root.suppressResultAudio
+                || root.resultPriming || root.resultSourceSwitching
+                || (!root.comparing && root.activeMonitor !== "result")
+        }
         onPlaybackStateChanged: root.syncAudio()
 
         onMediaStatusChanged: function() {

@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -19,6 +20,12 @@ from haizflow.services.douyin_signing import DETAIL_PATH, POSTS_PATH, DouyinSign
 from haizflow.services.douyin_transport import BrowserProfile, DouyinTransport, validate_douyin_address
 
 logger = logging.getLogger(__name__)
+
+
+class ProfileCandidates(list):
+    """Usable pages with an explicit incomplete-scan notice, never false EOF."""
+
+    warning = ""
 
 
 def _check_cancel(cancel_event):
@@ -120,6 +127,8 @@ class DouyinAdapter:
         self.session = session or DouyinSession()
         self.signer = signer or DouyinSigner()
         self._status_callback = None
+        self._profile_pages = {}
+        self._posts_cooldown_until = 0.0
 
     def _request_succeeded(self):
         self.session.ready = True
@@ -139,7 +148,7 @@ class DouyinAdapter:
             raise DouyinError(Outcome.UNAVAILABLE if response.status in {404, 410} else Outcome.RISK)
         return validate_douyin_address(response.url)
 
-    def _api(self, path, params, cancel_event=None, *, session_probe=False):
+    def _api(self, path, params, cancel_event=None, *, session_probe=False, continuation=False):
         last = Verdict(Outcome.NETWORK, True)
         signing_failed = False
         for attempt in range(1, 4):
@@ -148,7 +157,8 @@ class DouyinAdapter:
             mode = "not_signed"
             try:
                 if self.session.browser and not self.session.native_verified:
-                    refresh = attempt == 2 and (last.outcome in {Outcome.RISK, Outcome.SIGNATURE}
+                    refresh = attempt == 2 and (last.outcome in ({Outcome.SIGNATURE} if continuation else
+                                                               {Outcome.RISK, Outcome.SIGNATURE})
                                                or (last.outcome == Outcome.NETWORK and signing_failed))
                     signed, state = self.session.browser.sign(
                         path, params, self.session.browser_cookies(), cancel_event, refresh=refresh)
@@ -159,8 +169,8 @@ class DouyinAdapter:
                     else:
                         self.session.transport.import_cookies(state["cookies"], replace=True)
                 else:
-                    self.session.warmup(cancel_event, refresh=(attempt == 2 and last.outcome in {
-                        Outcome.RISK, Outcome.SIGNATURE}))
+                    self.session.warmup(cancel_event, refresh=(attempt == 2 and last.outcome in (
+                        {Outcome.SIGNATURE} if continuation else {Outcome.RISK, Outcome.SIGNATURE})))
                     signed = self.signer.sign(path, {**_base_params(self.session.profile), **params},
                                               self.session.transport.cookies, self.session.profile)
                 mode = signed.mode
@@ -206,18 +216,24 @@ class DouyinAdapter:
                 break
             from haizflow.services.video_download import _wait_for_retry
             delay = 0.6 * attempt
+            if continuation and last.outcome in {Outcome.RISK, Outcome.RATE_LIMIT}:
+                delay = 6.0 * attempt
             if last.outcome == Outcome.RATE_LIMIT:
                 value = str(response.headers.get("retry-after", "")) if response else ""
-                delay = min(8.0, max(1.0, float(value))) if value.isdigit() else 2.0
+                delay = max(delay, min(8.0, max(1.0, float(value))) if value.isdigit() else 2.0)
             _wait_for_retry(cancel_event, delay)
-        if self.session.browser and last.outcome in {Outcome.SIGNATURE, Outcome.RISK, Outcome.CHALLENGE}:
+        invalid_session = last.outcome in {Outcome.SIGNATURE, Outcome.CHALLENGE} or (
+            last.outcome == Outcome.RISK and not continuation)
+        if self.session.browser and invalid_session:
             self.session.ready = False
             if self._status_callback:
                 try:
                     self._status_callback("Douyin session needs refresh")
                 except RuntimeError:
                     pass
-        raise DouyinError(last.outcome)
+        # A continuation throttle is not evidence that the working guest jar
+        # expired. Do not instruct the user to create another browser session.
+        raise DouyinError(Outcome.RATE_LIMIT if continuation and last.outcome == Outcome.RISK else last.outcome)
 
     def inspect(self, url, cancel_event=None):
         from haizflow.services.douyin_video import share_page_detail, video_id_from_url
@@ -262,12 +278,38 @@ class DouyinAdapter:
             # trigger an unbounded scan. The UI's 'all' scope has a desktop cap.
             scanned = 0
             budget = min(max(int(limit or 1000), 1), 1000)
+            cache_key = (match[1], self.session.generation)
+            cached = self._profile_pages.get(cache_key)
+            if budget > 20 and cached and cached["scanned"] <= budget and time.monotonic() - cached["updated"] < 300:
+                candidates = list(cached["candidates"])
+                seen = {row["remote_video_id"] for row in candidates}
+                cursor, scanned, channel_name = cached["cursor"], cached["scanned"], cached["name"]
+                if cached["complete"]:
+                    return channel_name, candidates
             while scanned < budget:
-                page = self._api(POSTS_PATH, {
-                    "sec_user_id": match[1], "max_cursor": cursor, "count": str(min(20, budget - scanned)),
-                    "publish_video_strategy_type": "2", "from_user_page": "1", "locate_query": "false",
-                    "need_time_list": "1", "show_live_replay_strategy": "1", "time_list_query": "0",
-                }, cancel_event)
+                if scanned or self._posts_cooldown_until > time.monotonic():
+                    # Popular scans read multiple pages. A burst of continuation
+                    # requests can be throttled even with a valid guest identity.
+                    from haizflow.services.video_download import _wait_for_retry
+                    if progress_callback:
+                        progress_callback(min(95, round(scanned * 95 / budget)), "Đang chờ Douyin cho phép quét tiếp…")
+                    _wait_for_retry(cancel_event, max(3.0 if scanned else 0,
+                                                     self._posts_cooldown_until - time.monotonic()))
+                try:
+                    page = self._api(POSTS_PATH, {
+                        "sec_user_id": match[1], "max_cursor": cursor, "count": str(min(20, budget - scanned)),
+                        "publish_video_strategy_type": "2", "from_user_page": "1", "locate_query": "false",
+                        "need_time_list": "1", "show_live_replay_strategy": "1", "time_list_query": "0",
+                        "pc_libra_divert": "Windows", "whale_cut_token": "",
+                    }, cancel_event, continuation=bool(scanned))
+                except DouyinError as exc:
+                    if exc.outcome not in {Outcome.RATE_LIMIT, Outcome.RISK, Outcome.NETWORK} or not candidates:
+                        raise
+                    self._posts_cooldown_until = time.monotonic() + 30
+                    partial = ProfileCandidates(candidates)
+                    partial.warning = (f"Đã quét {scanned}/{budget} bài đăng. Douyin tạm giới hạn quét tiếp; "
+                                       "danh sách được xếp theo dữ liệu đã quét. Chờ một lúc rồi Quét lại để tiếp tục.")
+                    return channel_name, partial
                 for item in page["aweme_list"]:
                     if scanned >= budget:
                         break
@@ -283,13 +325,18 @@ class DouyinAdapter:
                 if progress_callback:
                     progress_callback(min(95, round(scanned * 95 / budget)),
                                       f"Reading video details {scanned}/{budget}")
-                if not page["has_more"]:
-                    break
+                complete = not page["has_more"]
                 next_cursor = str(page["max_cursor"])
-                if next_cursor == cursor or not page["aweme_list"]:
-                    # Not EOF: an inconsistent continuation is observable and not
-                    # silently presented as a complete channel.
+                if not complete and (next_cursor == cursor or not page["aweme_list"]):
                     raise DouyinError(Outcome.METADATA)
+                self._profile_pages[cache_key] = {
+                    "updated": time.monotonic(), "candidates": list(candidates), "cursor": next_cursor,
+                    "scanned": scanned, "name": channel_name, "complete": complete,
+                }
+                while len(self._profile_pages) > 4:
+                    del self._profile_pages[next(iter(self._profile_pages))]
+                if complete:
+                    break
                 cursor = next_cursor
             if not candidates:
                 raise RuntimeError("The Douyin profile returned no public videos.")

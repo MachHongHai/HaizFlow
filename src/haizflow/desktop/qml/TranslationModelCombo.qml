@@ -14,7 +14,7 @@ AppComboBox {
         { label: qsTr("HY-MT2 GPU · đầy đủ"), value: "full", available: AppController.gpuModelsAvailable },
         { label: qsTr("Gemini 3.1 Flash-Lite · giá thấp"), value: "gemini-3.1-flash-lite" },
         { label: qsTr("Gemini 3.5 Flash-Lite · tiết kiệm"), value: "gemini-3.5-flash-lite" },
-        { label: qsTr("Gemini 3.8 Flash · chất lượng cao"), value: "gemini-3.8-flash" }
+        { label: qsTr("Gemini 3.8 Flash · chất lượng cao"), value: "gemini-3.8-flash", available: false }
     ]
     currentIndex: root.selectedModel === "full" ? 1
         : root.selectedModel === "gemini-3.1-flash-lite" ? 2

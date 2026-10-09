@@ -342,15 +342,15 @@ class ManualEditorSessionTests(unittest.TestCase):
         source = {"text": "Câu chưa đổi", "start": 1, "end": 2}
         self.assertTrue(voice_segment_is_compatible(dict(source), source))
         self.assertFalse(voice_segment_is_compatible({**source, "text": "Câu mới"}, source))
-        # Single-speaker clips are text keyed, so moving a sentence keeps its
-        # voice. Multiple-speaker clips also encode the recognized speaker at
-        # that timestamp and therefore require timing compatibility.
+        # Retiming keeps the already detected speaker attached to its sentence.
         self.assertTrue(
             voice_segment_is_compatible({**source, "start": 3, "end": 4}, source, False)
         )
-        self.assertFalse(
+        self.assertTrue(
             voice_segment_is_compatible({**source, "start": 3, "end": 4}, source, True)
         )
+        self.assertFalse(voice_segment_is_compatible(
+            {**source, "segment_id": "a"}, {**source, "segment_id": "b"}, True))
 
     def test_repeated_seeks_reuse_one_audio_output_and_release_it(self):
         from haizflow.desktop.manual_preview_audio_controller import ManualPreviewAudioController
@@ -384,7 +384,7 @@ class ManualEditorSessionTests(unittest.TestCase):
             audio.setVolumes(index, 100 - index, 30)
             audio._pump()
             self.assertIs(audio._sink, sink)
-            self.assertLess(abs(audio._cursor / 48000 - index / 10), .05)
+            self.assertLessEqual(abs(audio._cursor / 48000 - index / 10), sink.bufferSize() / (48000 * 4) + .001)
         audio.close()
         self.assertEqual(sink.resets, 100)
         self.assertEqual(sink.stops, 1)

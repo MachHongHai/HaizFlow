@@ -223,7 +223,11 @@ class GpuRecoveryTests(unittest.TestCase):
 
         def warmup():
             try:
-                translation.warm_hymt2_worker()
+                # This test owns a fake worker and tests shutdown only. Live
+                # RAM pressure from the full suite must not block its dispatch;
+                # memory admission has separate deterministic tests.
+                with mock.patch("haizflow.core.memory.require_cpu_memory"):
+                    translation.warm_hymt2_worker()
             except RuntimeError as exc:
                 warmup_errors.append(str(exc))
 

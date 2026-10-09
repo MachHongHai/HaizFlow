@@ -473,6 +473,10 @@ def _cancel_worker_idle_timer() -> None:
 def _schedule_worker_idle_shutdown() -> None:
     global _WORKER_IDLE_TIMER
     profile = runtime_profile()
+    if profile.is_cpu_only:
+        from haizflow.core.hardware import cpu_runtime_profile
+
+        profile = cpu_runtime_profile(profile)
     _cancel_worker_idle_timer()
     if profile.translation_idle_seconds <= 0:
         return
@@ -503,6 +507,10 @@ def _ensure_hymt2_worker_locked():
     if _WORKER_SHUTDOWN_EVENT.is_set():
         raise RuntimeError("HY-MT2 worker startup was cancelled because HaizFlow is shutting down.")
     _cancel_worker_idle_timer()
+    if processing_device_preference() == "cpu" or translation_model_preference() == "q4":
+        from haizflow.core.memory import require_cpu_memory
+
+        require_cpu_memory("translation", resident=is_hymt2_worker_warm())
     if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is None and _WORKER_OUTPUT is not None:
         return _WORKER_PROCESS, _WORKER_OUTPUT
 

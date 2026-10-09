@@ -6,6 +6,10 @@
 
 Use Windows 10 version 1809 or later, or Windows 11 x64, with at least 16 GB system RAM. An NVIDIA GPU is optional. GPU mode supports compatible NVIDIA cards with 6 GB dedicated VRAM or more. Shared graphics memory does not count toward this requirement. Internet access is needed to download the app and selected resource packs.
 
+The 16 GB minimum means installed RAM (16 GiB DIMM capacity). Windows may reserve some RAM for hardware. HaizFlow measures installed and OS-usable RAM separately: a 16 GB installation is not rejected merely because Windows exposes about 13–14 GiB. If less than 8 GiB is OS-usable, check the hardware reservation before processing.
+
+For a 16 GB CPU system, choose Whisper Small CPU, HY-MT2 CPU Q4 and OmniVoice CPU. Heavy models run sequentially to reduce memory use; voice generation retains the original model quality and may be slow. Close unnecessary apps, allow Windows to manage the page file and leave enough free disk space on its drive. HaizFlow checks available RAM and Windows commit headroom before each heavy stage. Installed capacity alone does not guarantee that every stage can run under current memory pressure. Saved results remain available when additional memory is needed.
+
 Allow space for the app, packs, source videos and exports. Setup shows the requirement for its application build. Packs have separate requirements and may need temporary space for downloads, extraction or repair.
 
 ## 2. Install the app

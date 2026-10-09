@@ -50,6 +50,13 @@ class _AsrModel:
 
 
 class MixedLanguagePipelineTests(unittest.TestCase):
+    def setUp(self):
+        # These tests verify recognition/translation contracts with synthetic
+        # runtimes, not the developer machine's changing free-memory counters.
+        policy = mock.patch("haizflow.core.hardware.cpu_runtime_profile", side_effect=lambda profile, **_: profile)
+        policy.start()
+        self.addCleanup(policy.stop)
+
     def test_whisperx_vad_uses_separate_small_batch_and_recovers_from_oom(self):
         inference = SimpleNamespace(batch_size=32)
         pipeline = mock.Mock(_segmentation=inference)

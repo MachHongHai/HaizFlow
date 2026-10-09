@@ -26,6 +26,32 @@ Item {
         { "label": "X", "value": "x", "platform": "x" }
     ]
 
+    function saveForm() {
+        root.downloader.saveWorkspaceState({channelUrl: channelUrl.text, platform: selectedPlatform,
+            ranking: ranking.currentValue, limit: channelLimit.value,
+            durationFilter: contentFilter.currentValue, scanScope: scanScope.currentValue});
+    }
+    function restoreForm() {
+        const form = root.downloader.workspaceState;
+        root.selectedPlatform = String(form.platform || "youtube");
+        platformSelector.currentIndex = Math.max(0, root.platformOptions.findIndex(function(option) {
+            return option.value === root.selectedPlatform;
+        }));
+        channelUrl.text = String(form.channelUrl || "");
+        ranking.currentIndex = form.ranking === "popular" ? 1 : 0;
+        channelLimit.value = Math.max(1, Math.min(100, Number(form.limit || 20)));
+        contentFilter.currentIndex = form.durationFilter === "short" ? 1
+            : form.durationFilter === "long" ? 2 : 0;
+        scanScope.currentIndex = [100, 300, 1000, 0].indexOf(Number(form.scanScope === undefined ? 300 : form.scanScope));
+        if (scanScope.currentIndex < 0) scanScope.currentIndex = 1;
+        root.inspectedSource = root.downloader.channelPreviewSource;
+    }
+    Component.onCompleted: restoreForm()
+    Connections {
+        target: root.downloader
+        function onWorkspaceChanged() { root.restoreForm(); }
+    }
+
     function placeholder() {
         if (selectedPlatform === "tiktok")
             return qsTr("Dán liên kết trang cá nhân TikTok")
@@ -95,6 +121,7 @@ Item {
                             onActivated: function(index) {
                                 root.selectedPlatform = String(platformSelector.model[index].value)
                                 contentFilter.currentIndex = 0
+                                root.saveForm()
                                 channelUrl.forceActiveFocus()
                             }
                         }
@@ -107,6 +134,7 @@ Item {
                         selectByMouse: true
                         enabled: !root.channelActive
                         accessibleName: qsTr("Liên kết kênh")
+                        onTextEdited: root.saveForm()
                     }
 
                     GridLayout {
@@ -126,6 +154,7 @@ Item {
                                 textRole: "label"
                                 valueRole: "value"
                                 enabled: !root.channelActive
+                                onActivated: root.saveForm()
                             }
                         }
 
@@ -133,7 +162,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: Theme.space4
                             Text { text: qsTr("Số lượng tải"); color: Theme.textMuted; font.pixelSize: Theme.label }
-                            AppSpinBox { id: channelLimit; Layout.fillWidth: true; from: 1; to: 100; value: 20; enabled: !root.channelActive }
+                            AppSpinBox { id: channelLimit; Layout.fillWidth: true; from: 1; to: 100; value: 20; enabled: !root.channelActive; onValueModified: root.saveForm() }
                         }
 
                         ColumnLayout {
@@ -147,6 +176,7 @@ Item {
                                 textRole: "label"
                                 valueRole: "value"
                                 enabled: !root.channelActive
+                                onActivated: root.saveForm()
                             }
                         }
 
@@ -168,6 +198,7 @@ Item {
                                 valueRole: "value"
                                 currentIndex: 1
                                 enabled: !root.channelActive
+                                onActivated: root.saveForm()
                             }
                         }
                     }
@@ -199,6 +230,7 @@ Item {
                                 && douyinAction.permitsRequest
                             onClicked: {
                                 root.inspectedSource = root.currentSource
+                                root.saveForm()
                                 root.downloader.inspectChannel(channelUrl.text.trim(), root.selectedPlatform, ranking.currentValue, channelLimit.value, contentFilter.currentValue, ranking.currentValue === "popular" ? scanScope.currentValue : 0)
                             }
                         }

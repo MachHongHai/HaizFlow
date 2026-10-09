@@ -525,7 +525,11 @@ def _scan_douyin(
     budget = request.scan_scope if request.ranking == "popular" else request.limit
     name, rows = get_douyin_adapter(_auth_options(request)).profile_posts(
         request.url, limit=budget or 1000, cancel_event=cancel_event, progress_callback=progress_callback)
-    return name, [ChannelVideoCandidate.model_validate(row) for row in rows]
+    from haizflow.services.douyin_adapter import ProfileCandidates
+
+    candidates = ProfileCandidates(ChannelVideoCandidate.model_validate(row) for row in rows)
+    candidates.warning = getattr(rows, "warning", "")
+    return name, candidates
 
 
 def scan_channel(
@@ -541,6 +545,7 @@ def scan_channel(
         channel_name, candidates = _scan_douyin(request, progress_callback, cancel_event)
     else:
         channel_name, candidates = _scan_with_ytdlp(request, platform, progress_callback, cancel_event)
+    warning = getattr(candidates, "warning", "")
     existing = {str(value).lower() for value in existing_remote_keys}
     existing.update(normalize_remote_url(value) for value in existing_remote_keys)
     candidates = [candidate for candidate in candidates if _passes_duration(candidate, request.duration_filter)]
@@ -572,6 +577,10 @@ def scan_channel(
             candidate.status = "duplicate"
     if progress_callback:
         progress_callback(100, f"Found {len(candidates)} videos")
+    if warning:
+        from haizflow.services.douyin_adapter import ProfileCandidates
+        candidates = ProfileCandidates(candidates)
+        candidates.warning = warning
     return platform, channel_name, candidates
 
 

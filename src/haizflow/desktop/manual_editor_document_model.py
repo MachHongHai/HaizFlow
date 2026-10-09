@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+import hashlib
+import json
+import os
+import tempfile
+from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 
@@ -23,6 +28,7 @@ class ManualEditorDocumentModel(QObject):
         self._selected_track_id = ""
         self._waveforms: dict[str, list[float]] = {}
         self._waveform_pending: set[str] = set()
+        self._waveform_futures: dict[str, object] = {}
         self._waveform_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="editor-waveform"
         )
@@ -46,6 +52,8 @@ class ManualEditorDocumentModel(QObject):
         video_id = str(getattr(video, "video_id", "") or "") if video else ""
         document = editor_documents.ensure(video) if video_id else None
         selection_changed = video_id != self._video_id
+        if selection_changed:
+            self._cancel_waveforms()
         self._video_id = video_id
         self._document = document
         if selection_changed:
@@ -62,6 +70,7 @@ class ManualEditorDocumentModel(QObject):
         self._document = None
         self._selected_clip_ids = []
         self._selected_track_id = ""
+        self._cancel_waveforms()
         self.selectionChanged.emit()
         self.changed.emit()
 
@@ -118,13 +127,14 @@ class ManualEditorDocumentModel(QObject):
             key=lambda item: (order.get(item.track_id, 999), item.start_ms, item.clip_id),
         )
         result: list[dict] = []
+        assets_by_id = {asset.asset_id: asset for asset in self._document.assets}
         from haizflow.services.ocr_layers import EXTRA_LAYERS_ENABLED
 
         for item in values:
             if item.kind == "ocr" and not EXTRA_LAYERS_ENABLED:
                 continue
             payload = item.model_dump()
-            asset = editor_documents.asset_by_id(self._document, item.asset_id)
+            asset = assets_by_id.get(item.asset_id)
             if asset is not None:
                 payload["asset_duration_ms"] = asset.duration_ms
                 key = self._waveform_key(asset)
@@ -137,10 +147,51 @@ class ManualEditorDocumentModel(QObject):
     def _waveform_key(asset) -> str:
         return str(asset.fingerprint or asset.path or asset.asset_id)
 
+    def _cancel_waveforms(self):
+        for future in tuple(self._waveform_futures.values()):
+            future.cancel()
+        self._waveform_futures.clear()
+        self._waveform_pending.clear()
+
+    @staticmethod
+    def _cached_waveform(source_path, key, directory):
+        cache = directory / (hashlib.sha256(key.encode()).hexdigest() + ".json") if directory else None
+        if cache:
+            try:
+                payload = json.loads(cache.read_text(encoding="utf-8"))
+                peaks = payload.get("peaks")
+                if (payload.get("version") == 1 and isinstance(peaks, list) and len(peaks) == 96
+                        and all(isinstance(value, (int, float)) and 0 <= value <= 1 for value in peaks)):
+                    return payload
+            except (OSError, ValueError, AttributeError):
+                pass
+        payload = desktop_videos.analyze_voice_reference(source_path, 96)
+        if cache and directory.is_dir() and payload.get("durationMs", 0) > 0:
+            temporary = None
+            try:
+                descriptor, temporary = tempfile.mkstemp(prefix=".waveform-", suffix=".tmp", dir=directory)
+                with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                    json.dump({**payload, "version": 1}, output)
+                os.replace(temporary, cache)
+            except OSError:
+                pass  # Deleting a project must not recreate it from a worker.
+            finally:
+                if temporary:
+                    try:
+                        Path(temporary).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+        return payload
+
     def _schedule_waveforms(self) -> None:
         if self._closed or self._document is None:
             return
         video_id = self._document.video_id
+        try:
+            directory = editor_documents.document_path(video_id).parent / "waveforms"
+            directory.mkdir(parents=True, exist_ok=True)
+        except (OSError, RuntimeError, ValueError):
+            directory = None
         for asset in self._document.assets:
             if asset.kind not in {"source", "audio"} or not asset.path:
                 continue
@@ -149,8 +200,9 @@ class ManualEditorDocumentModel(QObject):
                 continue
             self._waveform_pending.add(key)
             future = self._waveform_executor.submit(
-                desktop_videos.analyze_voice_reference, asset.path, 96
+                self._cached_waveform, asset.path, key, directory
             )
+            self._waveform_futures[key] = future
 
             def deliver(completed, *, expected_video=video_id, expected_key=key):
                 try:
@@ -158,25 +210,34 @@ class ManualEditorDocumentModel(QObject):
                 except (CancelledError, OSError, RuntimeError, ValueError):
                     analysis = {"peaks": []}
                 if not self._closed:
-                    self._waveformReady.emit(expected_video, expected_key, analysis)
+                    self._waveformReady.emit(expected_video, expected_key, (completed, analysis))
 
             future.add_done_callback(deliver)
 
     @Slot(str, str, object)
     def _accept_waveform(self, video_id: str, key: str, analysis) -> None:
-        self._waveform_pending.discard(key)
-        if self._closed or self._document is None or self._document.video_id != video_id:
+        completed = None
+        if isinstance(analysis, tuple):
+            completed, analysis = analysis
+        if completed is None or self._waveform_futures.get(key) is completed:
+            self._waveform_pending.discard(key)
+            self._waveform_futures.pop(key, None)
+        if self._closed:
             return
         peaks = analysis.get("peaks", []) if isinstance(analysis, dict) else []
         if peaks:
             self._waveforms[key] = [max(0.0, min(1.0, float(value))) for value in peaks]
-            if not self._waveform_notifications.isActive():
+            while len(self._waveforms) > 1024:
+                self._waveforms.pop(next(iter(self._waveforms)))
+            if (self._document is not None and self._document.video_id == video_id
+                    and not self._waveform_notifications.isActive()):
                 self._waveform_notifications.start()
 
     def close(self) -> None:
         self._closed = True
         self._waveform_notifications.stop()
         self._waveform_pending.clear()
+        self._waveform_futures.clear()
         self._waveform_executor.shutdown(wait=False, cancel_futures=True)
 
     @Property("QVariantList", notify=changed)

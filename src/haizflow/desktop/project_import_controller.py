@@ -535,6 +535,13 @@ class ProjectImportController:
             music_worker and music_worker.is_alive()
         )
 
+    def has_project_work(self, project_key: str) -> bool:
+        return any(context.get("project_key") == project_key for context in self._tasks.values())
+
+    def is_replacing_video(self, video_id: str) -> bool:
+        return any(context.get("operation") == "replace" and context.get("video_id") == video_id
+                   for context in self._tasks.values())
+
     def download_inspected_video(self) -> None:
         host = self._host
         if not host.hasOpenProject:
@@ -599,6 +606,7 @@ class ProjectImportController:
                         "project_directory": str(target.get("project_directory") or ""),
                         "project_key_value": str(target.get("project_key") or ""),
                         "media_source": target.get("media_source"),
+                        "move_input": True,
                     },
                 }
             ],
@@ -635,6 +643,7 @@ class ProjectImportController:
                 "project_name": str(target.get("project_name") or ""),
                 "project_directory": str(target.get("project_directory") or ""),
                 "project_key_value": str(target.get("project_key") or ""),
+                "move_input": True,
             }
             if target.get("media_source"):
                 kwargs["media_source"] = target["media_source"]
@@ -1565,6 +1574,7 @@ class ProjectImportController:
                         "project_name": host._project_name,
                         "project_directory": host._project_directory,
                         "project_key_value": host._selected_project_key,
+                        "move_input": url_import,
                     },
                 }
             ],
@@ -1585,6 +1595,7 @@ class ProjectImportController:
                     "project_name": host._project_name,
                     "project_directory": host._project_directory,
                     "project_key_value": host._selected_project_key,
+                    "move_input": url_import,
                 },
             }
             for path in valid_paths
@@ -1599,6 +1610,8 @@ class ProjectImportController:
 
     def _queue_replace(self, video_id: str, path: str, media_source, *, url_import: bool = False) -> bool:
         host = self._host
+        if self.is_replacing_video(video_id):
+            return False
         video = video_store.get_video(video_id)
         if not video:
             return False
@@ -1616,7 +1629,8 @@ class ProjectImportController:
                     "media_source": media_source,
                 }
             ],
-            {"operation": "replace", "project_key": host._selected_project_key, "url_import": url_import},
+            {"operation": "replace", "video_id": video_id,
+             "project_key": host._selected_project_key, "url_import": url_import},
         )
 
     def _release_replacement_preview(self, video_id: str) -> None:

@@ -26,6 +26,7 @@ Item {
     readonly property var dockOrder: ["tools", "properties", "tasks"]
     property bool layoutReady: false
     property bool restoringView: false
+    property bool sourceReplacementPending: false
     function saveEditorView() {
         if (!restoringView && previewVideoId.length > 0)
             AppController.saveEditorViewState(previewVideoId, {
@@ -88,10 +89,18 @@ Item {
     readonly property var editorModel: AppController.manualEditorDocumentModel
     readonly property var captionSegments: editorModel.subtitleSegments.length > 0
         ? editorModel.subtitleSegments : segments
+    readonly property var narrationTimings: AppController.manualPreviewAudio.voiceTimings || ({})
     readonly property var rendererSegments: captionSegments.filter(function(segment) {
         return !root.subtitleTransformDraft || (Number(segment.start || 0) <= comparePreview.positionSeconds
             && Number(segment.end || 0) > comparePreview.positionSeconds);
     }).map(function(segment) {
+        const voice = root.narrationTimings[String(segment.segment_id || "")];
+        // Use the audible, fitted duration, not the original ASR slot. Never
+        // borrow an old clip's clock after its text has changed.
+        if (voice && String(voice.text || "").trim() === String(segment.text || "").trim()
+                && Math.abs(Number(voice.start) - Number(segment.start)) < 0.05
+                && Number(voice.end) > Number(segment.start))
+            segment = Object.assign({}, segment, {_speech_end: Math.min(Number(segment.end), Number(voice.end))});
         if (root.subtitleTransformDraft)
             segment = Object.assign({}, segment, {
                 _style: Object.assign({}, segment._style || root.editorSubtitleStyle, root.subtitleTransformDraft)
@@ -189,7 +198,7 @@ Item {
         ? AppController.editorPreviewSource
         : AppController.hasSelectedOutput
             ? AppController.selectedOutputSource
-            : ""
+            : AppController.selectedInputSource
     readonly property int previewSubtitleIndex: subtitleIndexAt(comparePreview.positionSeconds)
     readonly property var previewSubtitle: previewSubtitleIndex >= 0
         && previewSubtitleIndex < segments.length
@@ -267,7 +276,7 @@ Item {
     }
 
     function schedulePreview() {
-        if (AppController.projectType !== "manual")
+        if (AppController.projectType !== "manual" || sourceReplacementPending)
             return;
         previewTimer.restart();
     }
@@ -491,6 +500,9 @@ Item {
 
         function onSourceReplacementRequested(videoId) {
             if (videoId === root.previewVideoId) {
+                root.sourceReplacementPending = true;
+                previewTimer.stop();
+                overlayTimer.stop();
                 root.ocrRegionDrafts = ({});
                 root.ocrModeDrafts = ({});
                 root.ocrTransformActive = false;
@@ -499,6 +511,8 @@ Item {
         }
 
         function onMediaImportChanged() {
+            if (!AppController.mediaImportBusy)
+                root.sourceReplacementPending = false;
             if (!AppController.mediaImportBusy && String(comparePreview.attachedInputSource).length === 0) {
                 root.reloadSegments();
                 comparePreview.reloadInputMedia();
@@ -509,6 +523,7 @@ Item {
         function onSelectedVideoChanged() {
             // qmllint disable missing-property
             if (root.previewVideoId !== AppController.selectedVideoId) {
+                root.sourceReplacementPending = false;
                 root.saveEditorView();
                 AppController.releaseEditorPreview();
                 root.previewVideoId = AppController.selectedVideoId;
@@ -707,9 +722,9 @@ Item {
                         root.activeMonitor = monitorId;
                         layoutSaveTimer.restart();
                     }
-                    inputSource: AppController.selectedInputSource
-                    resultSource: root.currentResultSource
-                    resultBaseSource: AppController.editorPreviewBaseSource
+                    inputSource: root.sourceReplacementPending ? "" : AppController.selectedInputSource
+                    resultSource: root.sourceReplacementPending ? "" : root.currentResultSource
+                    resultBaseSource: root.sourceReplacementPending ? "" : AppController.editorPreviewBaseSource
                     thumbnailSource: AppController.videoThumbnailSource
                     audioPreparationBusy: AppController.manualPreviewAudio.busy
                     previewBusy: AppController.editorPreviewBusy || audioPreparationBusy

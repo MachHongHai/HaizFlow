@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+import logging
 import shutil
 import threading
 import time
@@ -224,6 +225,9 @@ class RuntimeDeviceController:
             host, "_processing_device_origin", origin
         )
         host._hardware_capabilities = capabilities
+        from haizflow.core.memory import memory_snapshot
+
+        logging.getLogger(__name__).info("Hardware memory detection %s", memory_snapshot().diagnostic())
         host._settings_processing_device = selected_device
         host._processing_device_origin = origin
         host._active_processing_device = selected_device
@@ -443,6 +447,9 @@ class RuntimeDeviceController:
 
         compatible, message = validate_processing_device(preference)
         if not compatible:
+            cpu_compatible, cpu_message = validate_processing_device("cpu")
+            if not cpu_compatible:
+                raise RuntimeError(cpu_message)
             preference = "cpu"
             host._settings_processing_device = "cpu"
             host._processing_device_origin = "detected"

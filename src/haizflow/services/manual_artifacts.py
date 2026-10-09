@@ -221,6 +221,14 @@ def release_staging_directory(path: str | os.PathLike[str]) -> None:
         pass
 
 
+def discard_staging_directory(path: str | os.PathLike[str]) -> None:
+    """End a producer's lease even if Windows defers partial-file cleanup."""
+    try:
+        shutil.rmtree(path, ignore_errors=True)
+    finally:
+        release_staging_directory(path)
+
+
 def _is_live_staging(path: Path) -> bool:
     normalized = str(path.resolve())
     with _STAGING_LEASES_GUARD:
@@ -596,6 +604,9 @@ def assert_root_idle(root) -> None:
             continue
         raise RuntimeError("Managed video is in use by export or social import. Wait or cancel that task before deleting.")
     with _STAGING_LEASES_GUARD:
+        _STAGING_LEASES.difference_update(
+            candidate for candidate in tuple(_STAGING_LEASES) if not Path(candidate).exists()
+        )
         staging = list(_STAGING_LEASES)
     for path in staging:
         try:

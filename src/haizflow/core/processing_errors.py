@@ -9,6 +9,14 @@ def describe_failure(error: object, language: str = "vi") -> dict[str, str]:
     raw = " ".join(str(error or "").split())
     lowered = raw.casefold()
     vi = language == "vi"
+    if raw.startswith(("Chưa đủ bộ nhớ để chạy ", "Không đọc được bộ nhớ RAM/")):
+        # Admission errors include measured budgets and actionable guidance.
+        # Do not truncate away the remedy or misreport this as a native OOM.
+        return {
+            "code": "memory_preflight_failed",
+            "title": "Chưa đủ bộ nhớ để xử lý" if vi else "Memory preflight failed",
+            "message": raw,
+        }
     gpu_oom = any(marker in lowered for marker in (
         "cuda out of memory", "cuda failed with error out of memory", "cuda_error_out_of_memory",
         "cudnn_status_alloc_failed", "cublas_status_alloc_failed", "cuda error: out of memory",

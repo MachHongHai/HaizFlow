@@ -1,25 +1,30 @@
-"""One PCM output for Manual preview; media decoders never own result audio."""
+"""One audio owner: stream an untouched source, mix PCM only when needed."""
 from __future__ import annotations
 
 import hashlib
+import bisect
 import json
+import logging
 import os
 import subprocess
 import tempfile
 import threading
+import time
 import weakref
 from collections import OrderedDict
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
-from PySide6.QtMultimedia import QAudioFormat, QAudioSink, QMediaDevices
+from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtMultimedia import QAudioFormat, QAudioOutput, QAudioSink, QMediaDevices, QMediaPlayer
 
 from haizflow.config import TMP_DIR
 from haizflow.utils.ffmpeg import _binary
 
 RATE = 48000
+PCM_BUFFER_FRAMES = RATE // 5
+_LOG = logging.getLogger(__name__)
 
 
 def voice_segment_is_compatible(current_segment, source_segment, multiple_speakers=False):
@@ -28,14 +33,11 @@ def voice_segment_is_compatible(current_segment, source_segment, multiple_speake
         str(source_segment.get("text") or "").split()
     ):
         return False
-    if not multiple_speakers:
-        return True
-    return (
-        abs(float(current_segment.get("start") or 0) - float(source_segment.get("start") or 0))
-        < .001
-        and abs(float(current_segment.get("end") or 0) - float(source_segment.get("end") or 0))
-        < .001
-    )
+    # The caller pairs clips by sentence ID. Retiming must preserve speech for
+    # both single- and multiple-speaker manifests; it only changes placement.
+    current_id = str(current_segment.get("segment_id") or current_segment.get("id") or "")
+    source_id = str(source_segment.get("segment_id") or source_segment.get("id") or "")
+    return not (current_id and source_id and current_id != source_id)
 
 
 def mix_frames(tracks, cursor, count, volumes, muted_ids=frozenset()):
@@ -123,8 +125,10 @@ def apply_source_decisions(samples, decisions, allocate=None):
     return result
 
 
-def _dispose_pcm(mapping, path):
+def _dispose_pcm(mapping, path, persistent=False):
     mapping.close()
+    if persistent:
+        return
     try:
         Path(path).unlink(missing_ok=True)
     except OSError:
@@ -137,6 +141,7 @@ class ManualPreviewAudioController(QObject):
     voiceTimingsChanged = Signal()
     busyChanged = Signal()
     progressChanged = Signal()
+    nativeAudioChanged = Signal()
     _ready = Signal(object)
     _progress_ready = Signal(object)
 
@@ -144,6 +149,12 @@ class ManualPreviewAudioController(QObject):
         super().__init__(parent)
         self._sink = None
         self._sink_device_id = None
+        self._native_player = None
+        self._native_output = None
+        self._native_source = ""
+        self._native_identity = None
+        self._native_gain = 1.0
+        self._embedded_audio = False
         self._device = None
         self._tracks = []
         self._muted_ids = set()
@@ -156,8 +167,12 @@ class ManualPreviewAudioController(QObject):
         self._position_seconds = 0.0
         self._playing = False
         self._muted = False
+        self._drift_since = None
+        self._drift_direction = 0
+        self._last_clock_reset = 0.0
         self._volumes = {"source": .6, "voice": 1.0, "music": .3, "overlay": 1.0}
         self._cache = OrderedDict()
+        self._cache_lock = threading.Lock()
         self._closed = False
         self._busy = False
         self._progress = 0.0
@@ -166,6 +181,7 @@ class ManualPreviewAudioController(QObject):
         self._pcm_directory = tempfile.TemporaryDirectory(
             prefix="manual-preview-pcm-", dir=TMP_DIR, ignore_cleanup_errors=True,
         )
+        self._pcm_cache_directory = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="manual-audio")
         self._future = None
         self._ready.connect(self._accept)
@@ -183,6 +199,25 @@ class ManualPreviewAudioController(QObject):
     @Property(float, notify=progressChanged)
     def progress(self):
         return self._progress
+
+    @Property(str, notify=nativeAudioChanged)
+    def nativeSource(self):
+        return QUrl.fromLocalFile(self._native_source).toString() if self._native_source else ""
+
+    @Property(float, notify=nativeAudioChanged)
+    def nativeVolume(self):
+        return min(1.0, self._volumes["source"] * self._native_gain)
+
+    @Slot(QUrl, result=bool)
+    def canPlayEmbeddedSource(self, source):
+        # Native visual proxies are hardlinks to the original media. Rendered
+        # proxies contain silence and must continue using our separate mix.
+        if not self._native_source or not source.isLocalFile():
+            return False
+        try:
+            return os.path.samefile(source.toLocalFile(), self._native_source)
+        except OSError:
+            return False
 
     @Slot(object)
     def _accept_progress(self, result):
@@ -215,9 +250,9 @@ class ManualPreviewAudioController(QObject):
         return Path(path)
 
     @staticmethod
-    def _map_pcm(path):
+    def _map_pcm(path, *, persistent=False):
         samples = np.memmap(path, dtype="<i2", mode="r", shape=(path.stat().st_size // 4, 2))
-        weakref.finalize(samples, _dispose_pcm, samples._mmap, path)
+        weakref.finalize(samples, _dispose_pcm, samples._mmap, path, persistent)
         return samples
 
     def _allocate_pcm(self, frames):
@@ -228,7 +263,7 @@ class ManualPreviewAudioController(QObject):
         weakref.finalize(samples, _dispose_pcm, samples._mmap, path)
         return samples
 
-    def _decode_to_pcm(self, command, generation):
+    def _decode_to_pcm(self, command, generation, cache_path=None):
         path = self._pcm_path()
         process = None
         try:
@@ -262,6 +297,27 @@ class ManualPreviewAudioController(QObject):
             if path.stat().st_size == 0:
                 path.unlink()
                 return np.empty((0, 2), dtype="<i2")
+            if path.stat().st_size % 4:
+                raise RuntimeError("Âm thanh xem trước chưa được giải mã đầy đủ.")
+            if self._closed or generation != self._generation:
+                raise CancelledError()
+            if cache_path is not None:
+                # Atomic publication: interrupted decodes are never reusable.
+                # Copy across runtime/project drives when required.
+                import shutil
+                staged = cache_path.with_suffix(".partial")
+                try:
+                    try:
+                        os.replace(path, staged)
+                    except OSError:
+                        shutil.copyfile(path, staged)
+                    if self._closed or generation != self._generation:
+                        raise CancelledError()
+                    os.replace(staged, cache_path)
+                finally:
+                    staged.unlink(missing_ok=True)
+                path.unlink(missing_ok=True)
+                return self._map_pcm(cache_path, persistent=True)
             return self._map_pcm(path)
         except BaseException:
             if process is not None:
@@ -291,7 +347,8 @@ class ManualPreviewAudioController(QObject):
         return {
             str(track["id"]): {
                 "start": track["start"] / RATE,
-                "end": (track["start"] + len(track["samples"])) / RATE,
+                "end": (track["start"] + min(len(track["samples"]),
+                    int(track.get("duration_frames") or len(track["samples"])))) / RATE,
                 "text": track.get("text", ""),
             }
             for track in self._tracks if track["kind"] == "voice"
@@ -311,9 +368,24 @@ class ManualPreviewAudioController(QObject):
         path = Path(path)
         stat = path.stat()
         key = (str(path), stat.st_size, stat.st_mtime_ns, duration, fit)
-        if key in self._cache:
-            self._cache.move_to_end(key)
-            return self._cache[key]
+        with self._cache_lock:
+            if self._closed or generation != self._generation:
+                raise CancelledError()
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+        cache_path = None
+        if self._pcm_cache_directory is not None:
+            digest = hashlib.sha256(json.dumps((key, "pcm-stereo-48k-fit-v1"), default=str).encode()).hexdigest()
+            cache_path = self._pcm_cache_directory / f"{digest}.pcm"
+            if cache_path.is_file() and cache_path.stat().st_size > 0 and cache_path.stat().st_size % 4 == 0:
+                samples = self._map_pcm(cache_path, persistent=True)
+                try:
+                    cache_path.touch()
+                except OSError:
+                    pass
+                self._remember_pcm(key, samples, generation=generation)
+                return samples
         command = [_binary("ffmpeg"), "-v", "error", "-threads", "2", "-i", str(path), "-vn"]
         if duration is not None:
             from haizflow.pipeline.audio_timeline import _atempo_filters, trim_silence
@@ -332,14 +404,20 @@ class ManualPreviewAudioController(QObject):
                 if len(audio) > duration:
                     command += ["-af", _atempo_filters(speed)]
                 command += ["-t", str(target / 1000), "-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
-                samples = self._decode_to_pcm(command, generation)
+                samples = self._decode_to_pcm(command, generation, cache_path)
         else:
             command += ["-ac", "2", "-ar", str(RATE), "-f", "s16le", "-"]
-            samples = self._decode_to_pcm(command, generation)
-        self._cache[key] = samples
-        while sum(v.nbytes for v in self._cache.values()) > 128 * 1024 * 1024 and len(self._cache) > 1:
-            self._cache.popitem(last=False)
+            samples = self._decode_to_pcm(command, generation, cache_path)
+        self._remember_pcm(key, samples, generation=generation)
         return samples
+
+    def _remember_pcm(self, key, samples, *, generation=None):
+        with self._cache_lock:
+            if self._closed or (generation is not None and generation != self._generation):
+                raise CancelledError()
+            self._cache[key] = samples
+            while sum(v.nbytes for v in self._cache.values()) > 128 * 1024 * 1024 and len(self._cache) > 1:
+                self._cache.popitem(last=False)
 
     def request(self, video, segments, voice_enabled=True):
         if self._closed or not video or video.project_type != "manual":
@@ -349,6 +427,13 @@ class ManualPreviewAudioController(QObject):
             self._video_id = video.video_id
         from haizflow.pipeline import manual_tools
         from haizflow.services import editor_documents
+        from haizflow.services import video_store
+
+        try:
+            self._pcm_cache_directory = Path(video_store.get_video_dir(video.video_id)) / "temp" / "manual-preview-pcm"
+            self._pcm_cache_directory.mkdir(parents=True, exist_ok=True)
+        except (OSError, RuntimeError, ValueError):
+            self._pcm_cache_directory = None
 
         document = editor_documents.load(video.video_id)
         # A completed TTS manifest can arrive while the editor is open.  The
@@ -357,6 +442,13 @@ class ManualPreviewAudioController(QObject):
         # clips are still disabled; otherwise every volume drag would rescan
         # all media assets and could make the preview stutter.
         active_voice = manual_tools.published_voice_record(video, validate=False) if voice_enabled else None
+        native_source = self._streamable_source(video, document, active_voice)
+        if native_source:
+            self._use_streaming_source(native_source, video, document)
+            return
+        if self._native_source:
+            self._stop_streaming_source()
+            self._key = ""
         disabled_voices = tuple(
             (clip.segment_id, clip.name, clip.metadata.get("text_revision"))
             for clip in document.clips
@@ -450,7 +542,7 @@ class ManualPreviewAudioController(QObject):
             video.enable_audio_separation,
             {name: file_identity(path) for name, path in audio_inputs.items()},
             active_audio_artifacts,
-            audio_segments,
+            audio_segments if active_voice else [],
             {
                 "sequence": document.sequence.model_dump() if document else {},
                 "tracks": [track.model_dump(include={"track_id", "visible", "muted"}) for track in document.tracks
@@ -618,6 +710,9 @@ class ManualPreviewAudioController(QObject):
                     str(item.get("segment_id") or item.get("id") or ""): index
                     for index, item in enumerate(source_segments)
                 }
+                voice_starts = sorted({clip.start_ms for clip in voice_by_segment.values() if clip.enabled})
+                video_end = (document.sequence.duration_ms if document
+                             else int(max((s["end"] for s in segments), default=0) * 1000))
                 for index, segment in enumerate(segments):
                     if generation != self._generation:
                         return generation, [], ""
@@ -639,13 +734,8 @@ class ManualPreviewAudioController(QObject):
                     start = voice_clip.start_ms if voice_clip else int(segment["start"] * 1000)
                     end = start + (voice_clip.duration_ms if voice_clip else int(
                         (segment["end"] - segment["start"]) * 1000))
-                    video_end = (document.sequence.duration_ms if document
-                                 else int(max(s["end"] for s in segments) * 1000))
-                    next_start = min(
-                        (clip.start_ms for clip in voice_by_segment.values()
-                         if clip.enabled and clip.start_ms > start),
-                        default=video_end,
-                    )
+                    next_index = bisect.bisect_right(voice_starts, start)
+                    next_start = voice_starts[next_index] if next_index < len(voice_starts) else video_end
                     duration = _segment_slot_end_ms(start, end, next_start, video_end,
                                                    is_last=next_start >= video_end) - start
                     if duration <= 0:
@@ -673,11 +763,95 @@ class ManualPreviewAudioController(QObject):
                         track["duck_gain"] = 10 ** (document.audio_ducking_reduction_db / 20.0)
                         track["duck_attack_frames"] = document.audio_ducking_attack_ms * RATE // 1000
                         track["duck_release_frames"] = document.audio_ducking_release_ms * RATE // 1000
+                self._prune_disk_pcm(generation)
                 return generation, tracks, ""
             except Exception as exc:
                 return generation, [], str(exc)
         self._future = self._executor.submit(prepare)
         self._future.add_done_callback(self._deliver)
+
+    @staticmethod
+    def _streamable_source(video, document, active_voice):
+        files = dict(video.files or {})
+        if active_voice or files.get("background_music") or files.get("background_audio"):
+            return ""
+        if document:
+            decisions = document.sequence.edit_decisions
+            if len(decisions) != 1:
+                return ""
+            decision = decisions[0]
+            if (decision.source_start_ms or decision.sequence_start_ms or
+                    abs(document.sequence.duration_ms - decision.source_end_ms) > 250):
+                return ""
+            for clip in document.clips:
+                if not clip.enabled:
+                    continue
+                if clip.track_id == "music" or (clip.track_id == "overlays" and clip.kind == "video"):
+                    return ""
+                if clip.track_id == "source-audio" and (
+                        clip.start_ms or clip.source_in_ms or clip.fade_in_ms or clip.fade_out_ms or
+                        abs(clip.duration_ms - document.sequence.duration_ms) > 250):
+                    return ""
+        path = next((str(files[name]) for name in ("video_input", "input_video", "input")
+                     if files.get(name)), "")
+        return path if path and Path(path).is_file() else ""
+
+    def _use_streaming_source(self, path, video, document):
+        stat = Path(path).stat()
+        identity = (path, stat.st_size, stat.st_mtime_ns)
+        if self._native_identity != identity:
+            self._generation += 1
+            self._cancel_decode()
+            if self._future:
+                self._future.cancel()
+                self._future = None
+            self.synchronize(self._position_seconds, False, self._muted)
+            self._tracks = []
+            self._key = ""
+            if self._native_player is None:
+                self._native_output = QAudioOutput(QMediaDevices.defaultAudioOutput(), self)
+                self._native_player = QMediaPlayer(self)
+                self._native_player.setAudioOutput(self._native_output)
+            elif self._native_source:
+                self._stop_streaming_source()
+            self._native_source = path
+            self._native_identity = identity
+            self._native_player.setSource(QUrl.fromLocalFile(path))
+            self._finish_preparing()
+            self.voiceTimingsChanged.emit()
+        source = next((c for c in document.clips if c.track_id == "source-audio" and c.enabled), None) if document else None
+        track = next((t for t in document.tracks if t.track_id == "source-audio"), None) if document else None
+        self._native_gain = (source.volume_percent / max(1, int(video.original_video_volume or 100))) if source else 1.0
+        if (document and not source) or (source and source.muted) or (track and (track.muted or not track.visible)):
+            self._native_gain = 0.0
+        self._native_output.setVolume(min(1.0, self._volumes["source"] * self._native_gain))
+        self.nativeAudioChanged.emit()
+
+    def _stop_streaming_source(self):
+        if self._native_player:
+            self._native_player.stop()
+            self._native_player.setSource(QUrl())
+        self._native_source = ""
+        self._native_identity = None
+        self._embedded_audio = False
+        self.nativeAudioChanged.emit()
+
+    def _prune_disk_pcm(self, generation):
+        directory = self._pcm_cache_directory
+        if directory is None or generation != self._generation:
+            return
+        try:
+            paths = sorted(directory.glob("*.pcm"), key=lambda path: path.stat().st_mtime_ns, reverse=True)
+            used = 0
+            for path in paths:
+                used += path.stat().st_size
+                if used > 1024 * 1024 * 1024:
+                    try:
+                        path.unlink()  # Windows protects files still mapped by playback.
+                    except OSError:
+                        pass
+        except OSError:
+            pass
 
     def _deliver(self, future):
         if self._future is future:
@@ -685,7 +859,8 @@ class ManualPreviewAudioController(QObject):
         if not self._closed and not future.cancelled():
             self._ready.emit(future.result())
         elif self._closed:
-            self._cache.clear()
+            with self._cache_lock:
+                self._cache.clear()
             self._pcm_directory.cleanup()
 
     @Slot(object)
@@ -722,10 +897,43 @@ class ManualPreviewAudioController(QObject):
             # KeyError and silenced every track, including narration.
             "overlay": 1.0,
         }
+        if self._native_source:
+            self._native_output.setVolume(min(1.0, self._volumes["source"] * self._native_gain))
+            self.nativeAudioChanged.emit()
 
     @Slot(float, bool, bool)
-    def synchronize(self, seconds, playing, muted):
+    @Slot(float, bool, bool, bool)
+    def synchronize(self, seconds, playing, muted, embedded_audio=False):
         playing = bool(playing) and not self._busy
+        if self._native_source:
+            was_embedded = self._embedded_audio
+            self._embedded_audio = bool(embedded_audio)
+            self._muted = muted
+            if self._embedded_audio:
+                if self._playing and not was_embedded:
+                    self._native_player.pause()
+                self._native_output.setMuted(True)
+                self._playing = playing
+                self._publish_position(seconds)
+                return
+            self._native_output.setMuted(bool(muted))
+            starting = playing and (not self._playing or was_embedded)
+            if not playing and self._playing:
+                self._native_player.pause()
+            position = max(0, round(seconds * 1000))
+            current = self._native_player.position()
+            if (starting or (not playing and abs(current - position) > 20)
+                    or (playing and self._playing and self._needs_clock_resync(seconds, current / 1000))):
+                self._native_player.setPosition(position)
+                self._reset_clock_tracking()
+            if starting:
+                self._sync_output_device()
+                self._native_player.play()
+            if not playing:
+                self._drift_since = None
+            self._playing = playing
+            self._publish_position(seconds)
+            return
         if playing and not self._playing:
             self._sync_output_device()
         self._muted = muted
@@ -736,21 +944,52 @@ class ManualPreviewAudioController(QObject):
                 self._sink.reset()
                 self._device = None
             self._cursor = max(0, round(seconds * RATE))
+            self._reset_clock_tracking()
             self._publish_position(seconds)
             return
         if not self._playing:
             self._cursor = max(0, round(seconds * RATE))
+            self._reset_clock_tracking()
             self._publish_position(seconds)
             self._deferred_ids.clear()
             self._playing = True
             self._timer.start()
         elif self._sink:
             buffered = (self._sink.bufferSize() - self._sink.bytesFree()) // 4
-            if abs((self._cursor - buffered) / RATE - seconds) > .18:
+            if self._needs_clock_resync(seconds, (self._cursor - buffered) / RATE):
                 self.seek(seconds)
+
+    def _reset_clock_tracking(self):
+        self._drift_since = None
+        self._drift_direction = 0
+        self._last_clock_reset = time.monotonic()
+
+    def _needs_clock_resync(self, video_seconds, audio_seconds):
+        # Video position notifications are coarse and may arrive late under UI
+        # load. A single late tick is not a seek: resetting the decoder/sink on
+        # it drops buffered samples and produces audible clicks. Explicit seeks
+        # still go through seek() immediately.
+        drift = video_seconds - audio_seconds
+        now = time.monotonic()
+        if abs(drift) <= .35 or now - self._last_clock_reset < 2:
+            self._drift_since = None
+            return False
+        direction = 1 if drift > 0 else -1
+        if self._drift_since is None or self._drift_direction != direction:
+            self._drift_since = now
+            self._drift_direction = direction
+            return False
+        if now - self._drift_since < .75:
+            return False
+        _LOG.debug("preview audio resync mode=%s drift_ms=%d",
+                   "native" if self._native_source else "pcm", round(drift * 1000))
+        return True
 
     @Slot(float)
     def seek(self, seconds):
+        self._reset_clock_tracking()
+        if self._native_source and not self._embedded_audio:
+            self._native_player.setPosition(max(0, round(seconds * 1000)))
         self._cursor = max(0, round(seconds * RATE))
         self._publish_position(seconds)
         self._deferred_ids.clear()
@@ -763,6 +1002,10 @@ class ManualPreviewAudioController(QObject):
         if self._closed:
             return
         default = QMediaDevices.defaultAudioOutput()
+        if self._native_output:
+            self._native_output.setDevice(default)
+        if self._native_source:
+            return
         # QAudioSink has no device() accessor. Keep the identity supplied to
         # its constructor so resuming an existing sink does not raise and
         # stop both narration and the caption clock.
@@ -791,12 +1034,16 @@ class ManualPreviewAudioController(QObject):
             format.setSampleFormat(QAudioFormat.Int16)
             self._sink = QAudioSink(device, format, self)
             self._sink_device_id = device.id()
-            self._sink.setBufferSize(RATE * 4 // 20)
+            # A 50 ms buffer underruns when timeline/preview painting delays the
+            # GUI timer. Keep a bounded 200 ms buffer, not an entire-video mix.
+            self._sink.setBufferSize(PCM_BUFFER_FRAMES * 4)
         if self._device is None:
             self._device = self._sink.start()
         if self._device is None:
             return
-        count = min(RATE // 25, self._sink.bytesFree() // 4)
+        # Refill all available headroom after a delayed tick. Limiting each
+        # refill to 40 ms cannot recover when GUI ticks themselves take >40 ms.
+        count = min(PCM_BUFFER_FRAMES, self._sink.bytesFree() // 4)
         if count <= 0:
             return
         data = (bytes(count * 4) if self._muted else
@@ -810,12 +1057,14 @@ class ManualPreviewAudioController(QObject):
 
     @Slot()
     def release(self):
+        self._stop_streaming_source()
         self._generation += 1
         self._cancel_decode()
         if self._future is not None:
             self._future.cancel()
             self._future = None
         self._key = ""
+        self._pcm_cache_directory = None
         self._reconciled_voice_state = None
         self._playing = False
         self._timer.stop()
@@ -827,6 +1076,10 @@ class ManualPreviewAudioController(QObject):
         self._device = None
         self._publish_position(0.0)
         self._tracks = []
+        with self._cache_lock:
+            # Keep persistent .pcm files, not open Windows mapping handles.
+            # Reopening maps the completed disk cache without decoding again.
+            self._cache.clear()
         self._muted_ids.clear()
         self._deferred_ids.clear()
         self.voiceTimingsChanged.emit()
@@ -838,7 +1091,11 @@ class ManualPreviewAudioController(QObject):
     def close(self):
         self._closed = True
         self.release()
+        if self._native_player:
+            self._native_player.deleteLater()
+            self._native_player = None
+        if self._native_output:
+            self._native_output.deleteLater()
+            self._native_output = None
         self._executor.shutdown(wait=False, cancel_futures=True)
-        if self._future is None:
-            self._cache.clear()
         self._pcm_directory.cleanup()

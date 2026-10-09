@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "haizflow"
-version = "0.1.7"
+version = "0.1.8"
 description = "Free desktop video translation, dubbing and automation for Windows"
 authors = [{name = "Mach Hong Hai", email = "machhonghaipr@gmail.com"}]
 license = "LicenseRef-HaizFlow-Source-Available-1.0"
@@ -22,6 +22,7 @@ dependencies = [
   "websockets==16.0",
   "yt-dlp[curl-cffi]==2026.8.19",
   "curl-cffi==0.16.3",
+  "certifi==2026.6.17",
   "playwright==1.63.0",
   "pydub==0.25.1",
   "srt==3.5.3",

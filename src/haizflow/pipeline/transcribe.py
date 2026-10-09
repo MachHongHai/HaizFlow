@@ -105,7 +105,9 @@ def warm_whisperx_model(model_name: str = "small", *, device_preference: str | N
     if model_name not in {"small", "large-v3-turbo"}:
         raise RuntimeError(f"Unsupported Whisper model: {model_name}")
     with _MODEL_LOCK:
-        profile = runtime_profile()
+        from haizflow.core.hardware import cpu_runtime_profile
+
+        profile = cpu_runtime_profile(runtime_profile(), force_cpu=device_preference == "cpu")
         device = "cuda" if profile.cuda_available and device_preference != "cpu" else "cpu"
         if _WARM_ASR_MODEL is not None and _WARM_MODEL_NAME == model_name and _WARM_DEVICE == device:
             return True
@@ -1174,7 +1176,9 @@ def transcribe(
     global _WARM_ASR_MODEL, _WARM_DEVICE, _WARM_MODEL_NAME
     model_name = str(model_name or "small").strip().lower()
     log_to_video(video_id, f"Initializing WhisperX with model '{model_name}'.")
-    profile = runtime_profile()
+    from haizflow.core.hardware import cpu_runtime_profile
+
+    profile = cpu_runtime_profile(runtime_profile(), force_cpu=device_preference == "cpu")
     device = "cuda" if profile.cuda_available and device_preference != "cpu" else "cpu"
     if model_name == "large-v3-turbo" and device != "cuda":
         raise RuntimeError(

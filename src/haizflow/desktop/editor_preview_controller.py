@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -409,6 +410,9 @@ class EditorPreviewController:
         video = self._host._selected_video()
         if not video:
             return False
+        importer = getattr(self._host, "_project_import", None)
+        if importer is not None and importer.is_replacing_video(video.video_id):
+            return False
         try:
             segments = json.loads(payload)
         except (TypeError, json.JSONDecodeError):
@@ -647,7 +651,15 @@ class EditorPreviewController:
         with self._worker_lock:
             if not self._request_is_current(generation, process_id):
                 return
-            self._render_current(generation, process_id, video, settings, preview_dir)
+            try:
+                self._render_current(generation, process_id, video, settings, preview_dir)
+            finally:
+                # A cancelled/early-returning render must never leave the
+                # currently selected request permanently marked as loading.
+                with self._lock:
+                    unfinished = self._request_is_current(generation, process_id) and self._busy
+                if unfinished:
+                    self._finish_error(generation, "Không thể chuẩn bị bản xem trước. Hãy thử lại.")
 
     def _render_current(self, generation, process_id, video, settings, preview_dir: Path) -> None:
         try:
@@ -715,11 +727,42 @@ class EditorPreviewController:
             base_dir = preview_dir / f"base-{base_signature}"
             render_dir = preview_dir / f"visual-{visual_signature}"
             audio_dir = preview_dir / f"audio-{audio_signature}"
+            if (not settings.get("independent_manual_preview") and not settings["segments"]
+                    and not settings["watermark_text"] and not settings["voice_state"].get("ready")
+                    and not settings["audio_inputs"].get("background_audio")
+                    and not settings["audio_inputs"].get("background_music")
+                    and settings["original_video_volume"] == 100
+                    and self._can_reuse_native_source(settings, source_start)):
+                # An untouched Auto source also needs no full-length render.
+                native_path = Path(settings["source_path"])
+                self._finish_success(generation, native_path, 0, settings["duration"],
+                    video_id=video.video_id, request_fingerprint=settings["request_fingerprint"],
+                    visual_signature=base_signature, visual_cache_path=native_path, base_playback_path=native_path)
+                return
             base_output_path = base_dir / "preview.mp4"
             base_completion_path = base_dir / "preview.complete.json"
             if settings.get("independent_manual_preview"):
                 base_dir.mkdir(parents=True, exist_ok=True)
                 if not self._preview_cache_is_complete(base_output_path, base_completion_path, settings["duration"]):
+                    if self._can_reuse_native_source(settings, source_start):
+                        # Subtitles/watermarks/audio are independent live
+                        # layers. An untouched compatible source needs no
+                        # full-timeline encode, even for a long video.
+                        staged = base_dir / f"native-{generation}.mp4"
+                        try:
+                            self._link_or_copy(Path(settings["source_path"]), staged)
+                            if not self._request_is_current(generation, process_id):
+                                return
+                            os.replace(staged, base_output_path)
+                            self._write_completion_marker(base_completion_path, base_output_path, settings["duration"])
+                        finally:
+                            staged.unlink(missing_ok=True)
+                        logging.getLogger(__name__).info("preview native_source_reused duration=%.3f", settings["duration"])
+                        self._finish_success(generation, base_output_path, 0, settings["duration"],
+                            video_id=video.video_id, request_fingerprint=settings["request_fingerprint"],
+                            visual_signature=base_signature, visual_cache_path=base_output_path,
+                            base_playback_path=base_output_path)
+                        return
                     reusable = self._reusable_treated_base(preview_dir, settings, source_start, settings["duration"]) if direct_source_window else None
                     base_source = str(reusable[0]) if reusable else settings["source_path"]
                     base_start = reusable[1] if reusable else source_start
@@ -921,6 +964,40 @@ class EditorPreviewController:
             self._finish_error(generation, str(exc))
 
     @staticmethod
+    def _can_reuse_native_source(settings: dict, source_start: float) -> bool:
+        if source_start != 0 or settings.get("output_format") != "keep_ratio":
+            return False
+        crop = settings.get("crop") or {}
+        if any(float(crop.get(key, 0) or 0) != 0 for key in (
+            "left_percent", "right_percent", "top_percent", "bottom_percent", "pan_x_percent", "pan_y_percent",
+        )) or float(crop.get("zoom_percent", 100)) != 100:
+            return False
+        if settings.get("remove_original_subtitles") and settings.get("ocr_region"):
+            return False
+        sequence = settings.get("editor_sequence") or {}
+        if sequence:
+            window = EditorPreviewController._contiguous_source_window(sequence)
+            if window is None or window[0] != 0:
+                return False
+            # A real end trim still requires a proxy with the correct end.
+            if abs(window[1] - get_video_duration(settings["source_path"])) > .25:
+                return False
+        try:
+            probe = subprocess.run([
+                _binary("ffprobe"), "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name,pix_fmt", "-of", "json", settings["source_path"],
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+                check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            streams = json.loads(probe.stdout).get("streams", [])
+            # Qt's bundled FFmpeg decoder handles SDR HEVC directly too.
+            # Rejecting it encoded the entire untouched Douyin source before
+            # publishing a preview, even though the source monitor could play it.
+            return bool(streams and streams[0].get("codec_name") in {"h264", "hevc"}
+                        and streams[0].get("pix_fmt") == "yuv420p")
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError, AttributeError):
+            return False
+
+    @staticmethod
     def _contiguous_source_window(sequence: dict) -> tuple[float, float] | None:
         decisions = sequence.get("edit_decisions") or []
         if len(decisions) != 1:
@@ -929,7 +1006,11 @@ class EditorPreviewController:
         start = int(decision.get("source_start_ms") or 0)
         end = int(decision.get("source_end_ms") or 0)
         duration = int(sequence.get("duration_ms") or 0)
-        if int(decision.get("sequence_start_ms") or 0) != 0 or end <= start or abs(end - start - duration) > 1:
+        # ASR word boundaries/container timestamps can add a few frames to the
+        # sequence. A 48ms tail on a 30-minute source is not a compound source
+        # edit and must not trigger an extra full-resolution encode.
+        tail = duration - (end - start)
+        if int(decision.get("sequence_start_ms") or 0) != 0 or end <= start or not 0 <= tail <= 250:
             return None
         return start / 1000, duration / 1000
 

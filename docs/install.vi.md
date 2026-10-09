@@ -6,6 +6,10 @@
 
 HaizFlow dùng trên Windows 10 phiên bản 1809 trở lên hoặc Windows 11 x64, RAM hệ thống từ 16 GB. GPU NVIDIA không bắt buộc. Chế độ GPU hỗ trợ card NVIDIA tương thích có VRAM riêng từ 6 GB; bộ nhớ đồ họa chia sẻ không tính vào mức này. Cần Internet để tải ứng dụng và những gói bạn chọn.
 
+Mức 16 GB là RAM lắp đặt (16 GiB theo đơn vị bộ nhớ). Windows có thể sử dụng ít hơn vì phần cứng dành riêng một phần RAM. HaizFlow kiểm tra hai số liệu riêng; máy lắp 16 GB không bị loại chỉ vì Windows dùng được khoảng 13–14 GiB. Nếu Windows sử dụng được dưới 8 GiB, cần kiểm tra lại phần bộ nhớ dành riêng trước khi xử lý.
+
+Trên máy 16 GB, nên chọn Whisper Small CPU, HY-MT2 CPU Q4 và OmniVoice CPU. Các model chạy lần lượt để giảm RAM chiếm dụng. Giọng đọc CPU vẫn dùng chất lượng model gốc và có thể chạy chậm. Đóng ứng dụng không cần thiết, để Windows tự quản lý bộ nhớ ảo và dành đủ dung lượng trống cho ổ chứa bộ nhớ ảo. HaizFlow kiểm tra RAM trống và lượng bộ nhớ Windows còn cấp phát được trước từng bước nặng; đủ RAM lắp đặt không có nghĩa mọi bước đều chạy được khi máy đang thiếu bộ nhớ. Khi cần thêm bộ nhớ, kết quả đã lưu vẫn được giữ để xử lý tiếp sau khi giải phóng tài nguyên.
+
 Chọn ổ còn đủ chỗ cho ứng dụng, tài nguyên, video nguồn và video xuất. Setup hiển thị yêu cầu của bản đang cài; mỗi gói có yêu cầu riêng và có thể cần thêm chỗ tạm khi tải, giải nén hoặc sửa.
 
 ## 2. Cài ứng dụng

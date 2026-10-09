@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QAbstractListModel, QModelIndex, QObject, Qt, Signal, Slot
 
-from haizflow.core.hardware import MIN_GPU_VRAM_GIB, validate_processing_device
+from haizflow.core.hardware import validate_processing_device
 from haizflow.desktop.localization import QFileDialog
 from haizflow.desktop.presenters import format_memory_size
 from haizflow.desktop.resource_progress import InstallProgress, localized_progress, progress_copy
@@ -264,25 +264,13 @@ class ResourcePackController(QObject):
             return True, ""  # A pending probe must not be presented as an absent GPU.
         capabilities = getattr(self._host, "_hardware_capabilities", None)
         if capabilities is None:
+            if pack_id in {"engine-cpu-py313", "engine-cuda128-py313", "model-whisper-small", "model-whisper-turbo", "model-hymt2-cpu", "model-hymt2-gpu", "model-demucs-cpu", "model-demucs-gpu"}:
+                return False, "Chưa đọc được cấu hình máy. Hãy kiểm tra lại trước khi cài gói xử lý."
             return True, ""
         if pack_id in {"engine-cuda128-py313", "model-whisper-turbo", "model-hymt2-gpu", "model-demucs-gpu"}:
-            compatible, reason = validate_processing_device("gpu", capabilities)
-            if not compatible and getattr(self._host, "_settings_language", "vi") == "vi":
-                if not capabilities.cuda_available:
-                    reason = "Không phát hiện GPU NVIDIA tương thích CUDA."
-                elif capabilities.total_vram_bytes < MIN_GPU_VRAM_GIB * 1024**3:
-                    reason = (
-                        "Cần GPU NVIDIA 6 GB (ít nhất 5 GiB VRAM khả dụng); máy này có "
-                        f"{capabilities.total_vram_bytes / (1024**3):.1f} GB."
-                    )
-                else:
-                    reason = "Cấu hình NVIDIA cần máy có ít nhất 16 GB RAM."
-            return compatible, reason
+            return validate_processing_device("gpu", capabilities, language=getattr(self._host, "_settings_language", "vi"))
         if pack_id in {"engine-cpu-py313", "model-whisper-small", "model-hymt2-cpu", "model-demucs-cpu"}:
-            compatible, reason = validate_processing_device("cpu", capabilities)
-            if not compatible and getattr(self._host, "_settings_language", "vi") == "vi":
-                reason = "Cấu hình CPU cần máy có ít nhất 16 GB RAM."
-            return compatible, reason
+            return validate_processing_device("cpu", capabilities, language=getattr(self._host, "_settings_language", "vi"))
         return True, ""
 
     def _supporting_packs(self, pack_id: str) -> list[str]:

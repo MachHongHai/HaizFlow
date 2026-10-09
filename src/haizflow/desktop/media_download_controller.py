@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import json
+import logging
 import shutil
 import subprocess
 import threading
@@ -11,7 +13,7 @@ import uuid
 from collections import deque
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QObject, Signal, Slot, QTimer
 
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, TMP_DIR
 from haizflow.desktop.channel_import import ChannelImportCoordinator
@@ -52,6 +54,7 @@ def _safe_output_stem(value: str, fallback: str = "media") -> str:
 
 class MediaDownloadController(QObject):
     changed = Signal()
+    workspaceChanged = Signal()
     _progress = Signal(int, str)
     _finished = Signal(str)
     _failed = Signal(str)
@@ -64,6 +67,12 @@ class MediaDownloadController(QObject):
         self._channel_output_directory = ""
         self._project_key = ""
         self._project_root = ""
+        self._workspace_state = {}
+        self._restoring_workspace = False
+        self._checkpoint_timer = QTimer(self)
+        self._checkpoint_timer.setSingleShot(True)
+        self._checkpoint_timer.setInterval(350)
+        self._checkpoint_timer.timeout.connect(self.flush_checkpoint)
         self._audio_source = ""
         self._state = "idle"
         self._status = ""
@@ -88,7 +97,42 @@ class MediaDownloadController(QObject):
         self._channel_file_saved.connect(self._finish_channel_file_save)
         self._channel_importer.changed.connect(self._on_channel_changed)
         self._channel_importer.videoReady.connect(self._save_channel_video)
-        self._video_preview.changed.connect(self.changed.emit)
+        self._video_preview.changed.connect(self._on_preview_changed)
+
+    @Property("QVariantMap", notify=workspaceChanged)
+    def workspaceState(self):
+        return dict(self._workspace_state)
+
+    @Property("QVariantMap", notify=changed)
+    def channelRequest(self):
+        return self._channel_importer.requestData
+
+    @Slot("QVariantMap")
+    def saveWorkspaceState(self, changes):
+        # Form values only. Authentication is deliberately not a checkpoint.
+        allowed = {"page", "videoUrl", "audioUrl", "audioMode", "channelUrl",
+                   "platform", "ranking", "limit", "durationFilter", "scanScope"}
+        for key, value in dict(changes or {}).items():
+            if key in allowed and isinstance(value, (str, int)):
+                self._workspace_state[key] = value
+        self._checkpoint_timer.start()
+
+    def _on_preview_changed(self):
+        if not self._restoring_workspace:
+            self._checkpoint_timer.start()
+        self.changed.emit()
+
+    def flush_checkpoint(self):
+        self._checkpoint_timer.stop()
+        if not self._project_root or self._restoring_workspace:
+            return
+        payload = {"version": 1, "form": self._workspace_state,
+                   "preview": self._video_preview.preview_checkpoint(), "audio_source": self._audio_source}
+        try:
+            project_store._write_json_atomic(
+                os.path.join(self._project_root, "downloads", "workspace.json"), payload)
+        except OSError:
+            logging.getLogger(__name__).warning("download workspace checkpoint could not be saved")
 
     def set_request_guard(self, guard):
         self._request_guard = guard
@@ -252,12 +296,19 @@ class MediaDownloadController(QObject):
         root = os.path.abspath(str(project_root or "").strip()) if project_root else ""
         if key == self._project_key and root == self._project_root:
             return
+        self.flush_checkpoint()
+        self._restoring_workspace = True
+        self._workspace_state = {}
+        self._audio_source = ""
+        self._video_preview.restore_preview(None)
         if not key or not root:
             self._project_key = ""
             self._project_root = ""
             self._video_output_directory = ""
             self._audio_output_directory = ""
             self._channel_output_directory = ""
+            self._restoring_workspace = False
+            self.workspaceChanged.emit()
             self.changed.emit()
             return
         downloads_root = os.path.join(root, "downloads")
@@ -274,7 +325,26 @@ class MediaDownloadController(QObject):
         self._video_output_directory = destinations["video"]
         self._audio_output_directory = destinations["audio"]
         self._channel_importer.attach_project(key, root, set())
+        try:
+            payload = json.loads(Path(root, "downloads", "workspace.json").read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and payload.get("version") == 1:
+                form = payload.get("form")
+                self._workspace_state = dict(form) if isinstance(form, dict) else {}
+                self._audio_source = str(payload.get("audio_source") or "")
+                preview = payload.get("preview")
+                self._video_preview.restore_preview(preview if isinstance(preview, dict) else None)
+        except (OSError, ValueError, TypeError):
+            pass
+        if "channelUrl" not in self._workspace_state:
+            request = self.channelRequest
+            self._workspace_state.update({
+                "channelUrl": request.get("url", ""), "platform": request.get("platform") or "youtube",
+                "ranking": request.get("ranking", "newest"), "limit": request.get("limit", 20),
+                "durationFilter": request.get("duration_filter", "all"), "scanScope": request.get("scan_scope", 300),
+            })
+        self._restoring_workspace = False
         self._status = ""
+        self.workspaceChanged.emit()
         self.changed.emit()
 
     def can_switch_project(self, project_key: str) -> bool:
@@ -339,6 +409,7 @@ class MediaDownloadController(QObject):
         )
         if path:
             self._audio_source = os.path.abspath(path)
+            self._checkpoint_timer.start()
             self._status = ""
             self.changed.emit()
 
@@ -764,6 +835,8 @@ class MediaDownloadController(QObject):
         self._channel_importer.complete_video(session_id, remote_id, success, message)
 
     def shutdown(self, timeout_seconds: float = 5.0) -> bool:
+        self.flush_checkpoint()
+        self._restoring_workspace = True
         self._cancel.set()
         channel_stopped = self._channel_importer.shutdown(timeout_seconds)
         preview_stopped = self._video_preview.shutdown(timeout_seconds)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import bisect
 import json
 import logging
 import re
@@ -117,6 +118,8 @@ def export_events(segments, layout, fixed, directory):
             str(source), str(target), style,
             int(resolved["outputWidth"]), int(resolved["outputHeight"]),
             region, fixed_font_size=True,
+            speech_durations={i + 1: max(0.1, float(segment["_speech_end"]) - float(segment.get("start", 0)))
+                              for i, segment in enumerate(members) if segment.get("_speech_end") is not None},
         )
         text = target.read_text(encoding="utf-8")
         header = text.split("Dialogue:", 1)[0]
@@ -245,6 +248,10 @@ class SubtitleOverlayRenderer(QObject):
         super().__init__(parent)
         self._frame = {}
         self._events = []
+        self._indexed_events = None
+        self._event_starts = []
+        self._event_max_ends = []
+        self._event_keys = []
         self._header = ""
         self._layout = {}
         self._key = ""
@@ -270,7 +277,7 @@ class SubtitleOverlayRenderer(QObject):
     @Slot(str, str, bool, bool)
     def configure(self, payload, layout_json, fixed, preserve_frame=False):
         segments, layout = json.loads(payload), json.loads(layout_json)
-        caption_inputs = [{name: segment.get(name) for name in ("start", "end", "text", "_style")}
+        caption_inputs = [{name: segment.get(name) for name in ("start", "end", "text", "_style", "_speech_end")}
                           for segment in segments]
         # Publication revisions, speaker metadata and OCR state do not change
         # the ASS output. Keep the visible cue attached on those refreshes.
@@ -337,13 +344,16 @@ class SubtitleOverlayRenderer(QObject):
                 self._frame = {}
                 self.changed.emit()
             return
-        event = next((e for e in self._events if e["start"] <= seconds < e["end"]), None)
+        self._ensure_event_index()
+        latest_start = bisect.bisect_right(self._event_starts, seconds) - 1
+        index = bisect.bisect_right(self._event_max_ends, seconds)
+        event = self._events[index] if 0 <= index <= latest_start else None
         if event is None:
             if self._frame:
                 self._frame = {}
                 self.changed.emit()
             return
-        key = self._event_key(event)
+        key = self._event_keys[index]
         legacy_key = (self._generation, event["body"])
         if key not in self._cache and legacy_key in self._cache:
             key = legacy_key
@@ -376,18 +386,30 @@ class SubtitleOverlayRenderer(QObject):
                         self._frame_futures.pop(queued_key, None)
                         self._pending.discard(queued_key)
             self._request_frame(event)
-        index = self._events.index(event)
-        for upcoming in self._events[index + 1:index + 13]:
+        for upcoming_index in range(index + 1, min(len(self._events), index + 13)):
+            upcoming = self._events[upcoming_index]
             if upcoming["start"] > seconds + 8:
                 break
-            self._request_frame(upcoming)
+            self._request_frame(upcoming, self._event_keys[upcoming_index])
+
+    def _ensure_event_index(self):
+        if self._indexed_events is self._events and len(self._event_keys) == len(self._events):
+            return
+        self._indexed_events = self._events
+        self._event_starts = [event["start"] for event in self._events]
+        maximum = float("-inf")
+        self._event_max_ends = []
+        for event in self._events:
+            maximum = max(maximum, event["end"])
+            self._event_max_ends.append(maximum)
+        self._event_keys = [self._event_key(event) for event in self._events]
 
     def _event_key(self, event):
         return sprite_key(str(event.get("header") or self._header), event["body"],
                           event.get("layout") or self._layout)
 
-    def _request_frame(self, event):
-        cache_key = self._event_key(event)
+    def _request_frame(self, event, cache_key=None):
+        cache_key = cache_key or self._event_key(event)
         key = (self._generation, cache_key)
         if cache_key in self._cache or key in self._pending or self._closed:
             return
@@ -442,6 +464,10 @@ class SubtitleOverlayRenderer(QObject):
         self._key = ""
         self._events = []
         self._header = ""
+        self._indexed_events = None
+        self._event_starts = []
+        self._event_max_ends = []
+        self._event_keys = []
         self._layout = {}
         self._pending.clear()
         self._frame_futures.clear()
