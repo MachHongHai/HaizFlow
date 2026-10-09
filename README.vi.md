@@ -2,7 +2,7 @@
   <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="Logo HaizFlow">
   <h1>HaizFlow</h1>
   <p><strong>Ứng dụng miễn phí để tải, dịch, tạo phụ đề và lồng tiếng video trên Windows.</strong></p>
-  <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.7/HaizFlow-0.1.7-Setup.exe">Cài đặt</a> · <a href="docs/user-guide.vi.md">Hướng dẫn sử dụng</a> · <a href="docs/support.vi.md">Trợ giúp</a> · <a href="README.md">English</a></p>
+  <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/HaizFlow-0.1.8-Setup.exe">Cài đặt</a> · <a href="docs/user-guide.vi.md">Hướng dẫn sử dụng</a> · <a href="docs/support.vi.md">Trợ giúp</a> · <a href="README.md">English</a></p>
 </div>
 
 ## Giới thiệu
@@ -29,6 +29,48 @@ Các công cụ trong trình sửa Thủ công chạy độc lập: không bắt
 
 Xem trước video, chỉnh phụ đề và chọn giọng đọc phù hợp trước khi xuất hoặc đăng.
 
+## Hình ảnh giao diện
+
+[Trang chủ](#trang-chủ) · [Xử lý tự động](#xử-lý-tự-động) · [Trình sửa thủ công](#trình-sửa-thủ-công) · [Tải xuống](#tải-xuống) · [Đăng mạng xã hội](#đăng-mạng-xã-hội) · [Cài đặt](#cài-đặt)
+
+Ảnh minh họa giao diện tiếng Việt; tùy chọn và số phiên bản có thể khác ở các bản mới. Bấm vào ảnh để xem kích thước đầy đủ.
+
+### Trang chủ
+
+Tìm dự án gần đây, lọc theo loại và tạo dự án mới.
+
+![Trang chủ HaizFlow với các thẻ dự án và bộ lọc tìm kiếm](docs/images/screenshots/home.png)
+
+### Xử lý tự động
+
+Chọn model nhận dạng, dịch và giọng đọc; thiết lập che phụ đề, âm thanh, nhạc nền và watermark.
+
+![Trang xử lý tự động với video nguồn và các thiết lập ngôn ngữ, giọng đọc](docs/images/screenshots/automatic.png)
+
+### Trình sửa thủ công
+
+So sánh video nguồn và kết quả, chạy từng bước độc lập, chỉnh thời gian phụ đề và giọng đọc trên timeline.
+
+![Trình sửa thủ công với preview, bảng xử lý và timeline phụ đề, âm thanh](docs/images/screenshots/manual-editor.png)
+
+### Tải xuống
+
+Kiểm tra liên kết video, kênh hoặc âm thanh, xem trước danh sách và chọn các video cần tải. Ảnh minh họa một kênh Douyin.
+
+![Trang tải xuống với phiên Douyin và danh sách video có thể chọn](docs/images/screenshots/downloads.png)
+
+### Đăng mạng xã hội
+
+Thêm video đã xử lý từ dự án vào hàng đợi và chuẩn bị bài đăng cho tài khoản đã kết nối qua Zernio.
+
+![Trang đăng mạng xã hội với tài khoản, hàng đợi bài đăng và hộp chọn video từ dự án](docs/images/screenshots/social-publishing.png)
+
+### Cài đặt
+
+Chọn ngôn ngữ giao diện và chế độ CPU/GPU. Các tab còn lại quản lý API key và gói tài nguyên.
+
+![Trang cài đặt với ngôn ngữ, bộ xử lý, giữ model sẵn sàng và kiểm tra cập nhật](docs/images/screenshots/settings.png)
+
 ## Dịch trên máy, không cần trả phí API theo lượt
 
 Whisper và HY-MT2 chạy trên máy sau khi cài gói tài nguyên, không cần API key hoặc phí dịch theo lượt gọi. Gemini là lựa chọn thêm nếu bạn muốn dùng dịch vụ trực tuyến.
@@ -39,7 +81,7 @@ Gemini, Zernio và các dịch vụ bên ngoài có điều khoản, hạn mức
 
 ## Cài đặt và bắt đầu
 
-**[Tải bộ cài Windows](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.7/HaizFlow-0.1.7-Setup.exe).** Chỉ mở file EXE này; không cần tải hoặc giải nén các tệp Core. Gói tài nguyên được cài trong HaizFlow. [Thông tin phiên bản và cài đặt](https://github.com/MachHongHai/HaizFlow/releases/latest).
+**[Tải bộ cài Windows](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/HaizFlow-0.1.8-Setup.exe).** Chỉ mở file EXE này; không cần tải hoặc giải nén các tệp Core. Gói tài nguyên được cài trong HaizFlow. [Thông tin phiên bản và cài đặt](https://github.com/MachHongHai/HaizFlow/releases/latest).
 
 1. Cài và mở HaizFlow. Giao diện mặc định là tiếng Việt.
 2. Chọn CPU hoặc GPU NVIDIA trong **Cài đặt → Chung** và cài các gói cần dùng trong **Gói tài nguyên**.
@@ -60,7 +102,7 @@ HaizFlow miễn phí sử dụng theo [HaizFlow Source-Available 1.0](LICENSE). 
 
 Bạn cần có quyền sử dụng video, nhạc và mẫu giọng được đưa vào ứng dụng. Xem [NOTICE](NOTICE) và [thông báo thành phần bên thứ ba](THIRD_PARTY_NOTICES.md). [Hồ sơ giấy phép](docs/licensing-review.md) và [dự thảo không có hiệu lực](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) được lưu riêng.
 
-Ứng dụng dùng Qt/PySide theo LGPL và FFmpeg theo GPL/LGPL, tùy thành phần. [Nguồn thư viện đi kèm](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.7/HaizFlow-0.1.7-ThirdPartySources.zip) và [hướng dẫn thay thư viện](docs/third-party-library-replacement.md) được cung cấp riêng; quyền theo giấy phép của các thư viện vẫn được giữ nguyên.
+Ứng dụng dùng Qt/PySide theo LGPL và FFmpeg theo GPL/LGPL, tùy thành phần. [Nguồn thư viện đi kèm](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/HaizFlow-0.1.8-ThirdPartySources.zip) và [hướng dẫn thay thư viện](docs/third-party-library-replacement.md) được cung cấp riêng; quyền theo giấy phép của các thư viện vẫn được giữ nguyên.
 
 ## Hỗ trợ và đóng góp
 

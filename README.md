@@ -2,7 +2,7 @@
   <img src="src/haizflow/desktop/assets/branding/haizflow-mark.png" width="96" alt="HaizFlow logo">
   <h1>HaizFlow</h1>
   <p><strong>A free Windows app for downloading, translating, subtitling and dubbing videos.</strong></p>
-  <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.7/HaizFlow-0.1.7-Setup.exe">Installation</a> · <a href="docs/user-guide.md">User guide</a> · <a href="docs/support.md">Help</a> · <a href="README.vi.md">Tiếng Việt</a></p>
+  <p><a href="https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/HaizFlow-0.1.8-Setup.exe">Installation</a> · <a href="docs/user-guide.md">User guide</a> · <a href="docs/support.md">Help</a> · <a href="README.vi.md">Tiếng Việt</a></p>
 </div>
 
 ## About HaizFlow
@@ -29,6 +29,48 @@ Manual tools run independently: dubbing is optional when you only need translate
 
 Preview the video, edit captions and choose suitable voices before exporting or publishing.
 
+## App screenshots
+
+[Home](#home) · [Automatic processing](#automatic-processing) · [Manual editor](#manual-editor) · [Downloads](#downloads) · [Social publishing](#social-publishing) · [Settings](#settings)
+
+The screenshots show the Vietnamese interface. Options and version labels may differ in newer releases. Click an image to view it at full size.
+
+### Home
+
+Find recent projects, filter by project type and create a new project.
+
+![HaizFlow home page with project cards and search filters](docs/images/screenshots/home.png)
+
+### Automatic processing
+
+Choose recognition, translation and voice models, then configure subtitle coverage, audio, background music and watermark settings.
+
+![Automatic processing page with source preview, language and voice settings](docs/images/screenshots/automatic.png)
+
+### Manual editor
+
+Review the source and result previews, run individual processing steps and edit subtitle or voice timing on the timeline.
+
+![Manual editor with video preview, processing panel and subtitle and audio timeline](docs/images/screenshots/manual-editor.png)
+
+### Downloads
+
+Inspect a video, channel or audio link, review the channel's video list and select the items to download. This example shows a Douyin channel.
+
+![Downloads page showing a Douyin session and selectable channel videos](docs/images/screenshots/downloads.png)
+
+### Social publishing
+
+Add processed videos from existing projects to the publishing queue and prepare posts for your connected account through Zernio.
+
+![Social publishing page with an account, post queue and project video picker](docs/images/screenshots/social-publishing.png)
+
+### Settings
+
+Choose the interface language and CPU/GPU mode. The other tabs manage API keys and resource packs.
+
+![Settings page with language, processing device, warm-up and update controls](docs/images/screenshots/settings.png)
+
 ## Local translation without per-call API charges
 
 Whisper and HY-MT2 run on your computer after their resource packs are installed. They do not require API keys or per-call translation fees. Gemini is an additional option for online translation.
@@ -39,7 +81,7 @@ Gemini, Zernio and other external services have their own terms, limits and char
 
 ## Install and get started
 
-**[Download the Windows installer](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.7/HaizFlow-0.1.7-Setup.exe).** Run this EXE only; do not download or extract Core files. Resource packs are installed inside HaizFlow. [Release and installation details](https://github.com/MachHongHai/HaizFlow/releases/latest).
+**[Download the Windows installer](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/HaizFlow-0.1.8-Setup.exe).** Run this EXE only; do not download or extract Core files. Resource packs are installed inside HaizFlow. [Release and installation details](https://github.com/MachHongHai/HaizFlow/releases/latest).
 
 1. Install and open HaizFlow. Vietnamese is the default; English is available in Settings.
 2. Choose CPU or NVIDIA GPU in **Settings → General**, then install the resource packs you need.
@@ -60,7 +102,7 @@ HaizFlow is free to use under [HaizFlow Source-Available 1.0](LICENSE). This is 
 
 You need permission to use imported video, music and voice samples. See [NOTICE](NOTICE) and [third-party notices](THIRD_PARTY_NOTICES.md). The [licensing review](docs/licensing-review.md) and [inactive draft terms](legal/LICENSE-SOURCE-AVAILABLE-DRAFT.md) are retained separately.
 
-HaizFlow uses Qt/PySide under LGPL and FFmpeg under GPL/LGPL, depending on the component. [Bundled library sources](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.7/HaizFlow-0.1.7-ThirdPartySources.zip) and [library replacement instructions](docs/third-party-library-replacement.md) are provided separately. Independent library-license rights remain available.
+HaizFlow uses Qt/PySide under LGPL and FFmpeg under GPL/LGPL, depending on the component. [Bundled library sources](https://github.com/MachHongHai/HaizFlow/releases/download/v0.1.8/HaizFlow-0.1.8-ThirdPartySources.zip) and [library replacement instructions](docs/third-party-library-replacement.md) are provided separately. Independent library-license rights remain available.
 
 ## Support and contributions
 
