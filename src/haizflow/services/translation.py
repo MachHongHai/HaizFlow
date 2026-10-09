@@ -510,7 +510,7 @@ def _ensure_hymt2_worker_locked():
     if processing_device_preference() == "cpu" or translation_model_preference() == "q4":
         from haizflow.core.memory import require_cpu_memory
 
-        require_cpu_memory("translation", resident=is_hymt2_worker_warm())
+        require_cpu_memory("translation", resident=is_hymt2_worker_warm(), settle_seconds=2)
     if _WORKER_PROCESS is not None and _WORKER_PROCESS.poll() is None and _WORKER_OUTPUT is not None:
         return _WORKER_PROCESS, _WORKER_OUTPUT
 

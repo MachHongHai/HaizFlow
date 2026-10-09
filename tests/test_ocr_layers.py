@@ -300,6 +300,21 @@ def test_new_layer_is_a_draft_until_apply_and_does_not_change_render_request():
         assert not row["pending"] and row["enabled"]
 
 
+def test_layer_timing_cannot_extend_sequence_or_shift_audio_clock():
+    value = document()
+    host, _ = host_for(value)
+    clip_id = HaizFlowController.addOcrLayer(host)
+    assert HaizFlowController.setOcrLayerRange(host, clip_id, 500, 1500)
+    assert not HaizFlowController.setOcrLayerRange(host, clip_id, 500, 5000)
+    assert HaizFlowController.moveClip(host, clip_id, 3500)
+    clip = editor_documents.clip_by_id(value, clip_id)
+    assert (clip.start_ms, clip.duration_ms) == (3000, 1000)
+    assert HaizFlowController.trimClip(host, clip_id, "left", 1000)
+    assert clip.start_ms == 1000
+    assert not HaizFlowController.trimClip(host, clip_id, "right", 6000)
+    assert value.sequence.duration_ms == 4000
+
+
 def test_primary_region_migration_is_idempotent_and_repairs_missing_clip():
     value = document()
     assert not ocr_layers.ensure_primary(value)

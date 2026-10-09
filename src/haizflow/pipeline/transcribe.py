@@ -20,6 +20,7 @@ import whisperx.audio as _whisper_audio
 
 from haizflow.core.dependency_security import install_lightning_checkpoint_guard
 from haizflow.core.hardware import runtime_profile
+from haizflow.core.whisper_compute import whisper_compute_type
 from haizflow.core.model_integrity import (
     ALIGNMENT_MODELS,
     ModelIntegrityError,
@@ -114,7 +115,7 @@ def warm_whisperx_model(model_name: str = "small", *, device_preference: str | N
         if _WARM_ASR_MODEL is not None:
             del _WARM_ASR_MODEL
             _WARM_ASR_MODEL = None
-        compute_type = "float16" if device == "cuda" else "int8"
+        compute_type = whisper_compute_type(device)
         try:
             model = _load_whisper_model(device, compute_type, profile.cpu_threads, model_name)
         except Exception:
@@ -1185,7 +1186,7 @@ def transcribe(
             "Whisper large-v3-turbo requires an available NVIDIA GPU. "
             "Choose WhisperX small for CPU or low-VRAM processing."
         )
-    compute_type = "float16" if device == "cuda" else "int8"
+    compute_type = whisper_compute_type(device)
     log_to_video(
         video_id,
         f"WhisperX device: {device}, compute type: {compute_type}, "

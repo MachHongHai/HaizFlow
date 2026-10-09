@@ -42,6 +42,8 @@ Rectangle {
     signal clipMoveCommitted(string clipId, int startMs, string trackId)
     signal clipTrimCommitted(string clipId, string edge, int timeMs)
     signal layerDeleteRequested(string trackId)
+    signal resultSplitRequested(string clipId, int timeMs)
+    signal resultDeleteRequested(string clipId)
 
     readonly property real trackLeft: 140
     readonly property real usableWidth: Math.max(1, timelineFlick.width - trackLeft - 8)
@@ -75,6 +77,9 @@ Rectangle {
             });
         return true;
     })
+    readonly property real resultTrackOffset: extraTracks.some(function(track) {
+        return String(track.track_id || "") === "result";
+    }) ? 36 : 0
     readonly property real trackCanvasHeight: trackY(extraTracks.length) + 8
 
     color: Theme.codeSurface
@@ -87,10 +92,14 @@ Rectangle {
     }
 
     function trackY(index) {
-        let top = 128;
+        if (index < extraTracks.length
+                && String(extraTracks[index].track_id || "") === "result")
+            return 30;
+        let top = 128 + resultTrackOffset;
         for (let trackIndex = 0; trackIndex < index; ++trackIndex) {
             const track = extraTracks[trackIndex];
-            if (String(track.track_id || "") === "voice")
+            const trackId = String(track.track_id || "");
+            if (trackId === "voice" || trackId === "result")
                 continue;
             top += 36;
         }
@@ -366,8 +375,9 @@ Rectangle {
 
                 TrackHeader {
                     id: sourceTrackHeader
+                    objectName: "timelineSourceHeader"
                     x: timelineFlick.contentX
-                    y: 30
+                    y: 30 + root.resultTrackOffset
                     width: root.trackLeft - 4
                     height: 40
                     z: 8
@@ -386,11 +396,13 @@ Rectangle {
 
                     delegate: Item {
                         id: layerTrack
+                        objectName: "timelineTrack-" + trackId
                         required property int index
                         required property var modelData
                         readonly property string trackId: String(modelData.track_id || "")
                         readonly property bool combinedVoice: trackId === "voice"
                         readonly property bool canEditClips: trackId !== "overlays"
+                        readonly property bool canMoveClips: canEditClips && trackId !== "result"
                         readonly property var clips: root.editorClips.filter(function(clip) {
                             const start = Number(clip.start_ms || 0) / 1000;
                             const end = start + Number(clip.duration_ms || 0) / 1000;
@@ -401,7 +413,7 @@ Rectangle {
                                 && start <= root.visibleEndSeconds;
                         })
                         x: 0
-                        y: combinedVoice ? 104 : root.trackY(index)
+                        y: combinedVoice ? 104 + root.resultTrackOffset : root.trackY(index)
                         width: root.trackLeft + root.trackWidth
                         height: combinedVoice ? 16 : 32
                         z: combinedVoice ? 6 : 0
@@ -415,7 +427,7 @@ Rectangle {
                             title: layerTrack.trackId === "overlays"
                                 ? qsTr("Watermark")
                                 : I18n.progressDetail(String(layerTrack.modelData.name || ""))
-                            legacyReadOnly: layerTrack.trackId === "overlays"
+                            legacyReadOnly: layerTrack.trackId === "overlays" || layerTrack.trackId === "result"
                             kind: String(layerTrack.modelData.kind || "")
                             removableLayer: kind === "ocr" && layerTrack.trackId !== "ocr-source"
                             onLayerDeleteRequested: root.layerDeleteRequested(layerTrack.trackId)
@@ -482,7 +494,9 @@ Rectangle {
                                     anchors.fill: parent
                                     anchors.leftMargin: Theme.space8
                                     anchors.rightMargin: Theme.space8
-                                    text: I18n.progressDetail(String(editorClip.modelData.name || ""))
+                                    text: layerTrack.trackId === "result"
+                                        ? qsTr("Đoạn %1").arg(root.editorClips.filter(clip => String(clip.kind) === "result").findIndex(clip => String(clip.clip_id) === editorClip.clipId) + 1)
+                                        : I18n.progressDetail(String(editorClip.modelData.name || ""))
                                     color: Theme.text
                                     font.family: Theme.fontFamily
                                     font.pixelSize: TypeScale.metadata
@@ -531,18 +545,22 @@ Rectangle {
                                     anchors.rightMargin: 8
                                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     cursorShape: !layerTrack.canEditClips
-                                        ? Qt.ForbiddenCursor : Qt.SizeAllCursor
+                                        ? Qt.ForbiddenCursor : layerTrack.canMoveClips ? Qt.SizeAllCursor : Qt.PointingHandCursor
                                     preventStealing: true
                                     onPressed: function(mouse) {
                                         root.clipSelected(editorClip.clipId,
                                             (mouse.modifiers & Qt.ControlModifier) !== 0);
                                         if (mouse.button === Qt.RightButton) {
+                                            if (layerTrack.trackId === "result") {
+                                                resultClipMenu.popup();
+                                                return;
+                                            }
                                             if (String(layerTrack.modelData.kind || "") === "ocr")
                                                 if (layerTrack.trackId !== "ocr-source")
                                                     ocrClipMenu.popup();
                                             return;
                                         }
-                                        if (!layerTrack.canEditClips)
+                                        if (!layerTrack.canMoveClips)
                                             return;
                                         editorClip.gestureStartMs = Number(editorClip.modelData.start_ms || 0);
                                         editorClip.gestureDurationMs = Number(editorClip.modelData.duration_ms || 0);
@@ -551,7 +569,7 @@ Rectangle {
                                         root.editingClip = true;
                                     }
                                     onPositionChanged: function(mouse) {
-                                        if (!pressed || !editorClip.manipulating || !layerTrack.canEditClips)
+                                        if (!pressed || !editorClip.manipulating || !layerTrack.canMoveClips)
                                             return;
                                         const point = mapToItem(timelineCanvas, mouse.x, mouse.y);
                                         const deltaMs = Math.round((point.x - editorClip.gesturePointerX)
@@ -561,7 +579,7 @@ Rectangle {
                                             editorClip.gestureStartMs + deltaMs));
                                     }
                                     onReleased: {
-                                        if (layerTrack.canEditClips && editorClip.manipulating) {
+                                        if (layerTrack.canMoveClips && editorClip.manipulating) {
                                             root.clipMoveCommitted(editorClip.clipId,
                                                 editorClip.previewStartMs,
                                                 layerTrack.trackId);
@@ -574,6 +592,23 @@ Rectangle {
                                         editorClip.previewDurationMs = Number(editorClip.modelData.duration_ms || 0);
                                         editorClip.manipulating = false;
                                         root.editingClip = false;
+                                    }
+                                }
+
+                                TopBarPopupMenu {
+                                    id: resultClipMenu
+                                    menuContentWidth: 188
+                                    AppMenuItem {
+                                        text: qsTr("Chia tại vị trí phát")
+                                        iconGlyph: IconCatalog.glyph("split")
+                                        enabled: root.position * 1000 >= editorClip.previewStartMs + 80
+                                            && root.position * 1000 <= editorClip.previewStartMs + editorClip.previewDurationMs - 80
+                                        onTriggered: root.resultSplitRequested(editorClip.clipId, Math.round(root.position * 1000))
+                                    }
+                                    AppMenuItem {
+                                        text: qsTr("Xóa đoạn")
+                                        iconGlyph: IconCatalog.glyph("delete")
+                                        onTriggered: root.resultDeleteRequested(editorClip.clipId)
                                     }
                                 }
 
@@ -681,7 +716,7 @@ Rectangle {
                 Rectangle {
                     id: videoTrack
                     x: root.trackLeft
-                    y: 30
+                    y: 30 + root.resultTrackOffset
                     width: (root.sourcePictureEnd || root.duration) * root.pixelsPerSecond
                     height: 40
                     color: Theme.video
@@ -902,7 +937,7 @@ Rectangle {
                 TrackHeader {
                     id: subtitleTrackHeader
                     x: timelineFlick.contentX
-                    y: 74
+                    y: 74 + root.resultTrackOffset
                     width: root.trackLeft - 4
                     height: 50
                     z: 8
@@ -921,7 +956,7 @@ Rectangle {
 
                 Rectangle {
                     x: root.trackLeft
-                    y: 74
+                    y: 74 + root.resultTrackOffset
                     width: root.trackWidth
                     height: 50
                     color: Theme.surface
@@ -947,7 +982,7 @@ Rectangle {
                         property bool editingTiming: false
 
                         x: root.trackLeft + previewStart * root.pixelsPerSecond
-                        y: 78
+                        y: 78 + root.resultTrackOffset
                         width: Math.max(8, (previewEnd - previewStart) * root.pixelsPerSecond)
                         height: 24
                         visible: previewEnd >= Math.max(

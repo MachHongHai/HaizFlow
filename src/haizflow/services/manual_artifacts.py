@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -11,6 +12,7 @@ import stat
 import tempfile
 import threading
 import time
+import uuid
 from collections.abc import Iterable
 from functools import wraps
 from datetime import UTC, datetime
@@ -90,6 +92,7 @@ _STAGING_LEASES_GUARD = threading.Lock()
 _RUNTIME_PINS: dict[tuple[str, str], str] = {}
 _RUNTIME_PIN_ROOTS: dict[tuple[str, str], str] = {}
 _RUNTIME_PINS_GUARD = threading.Lock()
+_LOG = logging.getLogger(__name__)
 
 
 def _manifest_lock(video_id: str) -> threading.RLock:
@@ -322,6 +325,20 @@ def _output_records(directory: Path, relative_outputs: dict[str, str]) -> tuple[
     return outputs, checksums, total_size
 
 
+def _replace_cache_directory(source: Path, destination: Path) -> None:
+    """Retry only transient Windows filesystem contention, retaining atomicity."""
+    for attempt in range(6):
+        try:
+            os.replace(source, destination)
+            return
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in {5, 32, 145} and not isinstance(exc, PermissionError):
+                raise
+            if attempt == 5:
+                raise RuntimeError("Không thể cập nhật cache vì tệp đang được sử dụng. Hãy dừng xem trước rồi thử lại.") from exc
+            time.sleep(0.025 * (attempt + 1))
+
+
 def publish(
     video_id: str,
     kind: str,
@@ -351,30 +368,6 @@ def publish(
         (staging / ".lease.json").unlink(missing_ok=True)
     except OSError:
         pass
-    try:
-        if final.exists():
-            existing_valid = (final / "complete.json").is_file() and all(
-                _has_expected_digest(
-                    final / outputs[name],
-                    int(checksums[name]["size"]),
-                    str(checksums[name]["sha256"]),
-                )
-                for name in outputs
-            )
-            if existing_valid:
-                shutil.rmtree(staging, ignore_errors=True)
-            else:
-                # The target is a cache directory for this exact immutable
-                # signature, never user output.  Replace a corrupt/incomplete
-                # directory instead of discarding the newly completed artifact.
-                safe_tree(final)
-                shutil.rmtree(final)
-                os.replace(staging, final)
-        else:
-            os.replace(staging, final)
-    finally:
-        release_staging_directory(staging)
-
     timestamp = _now()
     record = {
         "artifact_id": artifact_id(kind, artifact_signature),
@@ -389,16 +382,53 @@ def publish(
         "size_bytes": total_size,
         "error": "",
     }
-    with _manifest_lock(video_id):
-        manifest = load_manifest(video_id)
-        manifest["artifacts"][record["artifact_id"]] = record
-        _save_manifest(video_id, manifest)
-        video = video_store.get_video(video_id)
-        if video and activate_artifact:
-            references = dict(getattr(video, "active_artifacts", {}) or {})
-            references[kind] = artifact_signature
-            video_store.update_video(video_id, active_artifacts=references)
-    return resolve(video_id, kind, artifact_signature) or record
+    retired = None
+    try:
+        # Same order as cache maintenance: readers/GC cannot observe a new
+        # directory with an old manifest, or delete it before it is activated.
+        with _manifest_lock(video_id), managed_storage_guard:
+            existing_outputs = _validated_outputs(video_id, record) if final.exists() else None
+            existing_valid = existing_outputs is not None and all(
+                _has_expected_digest(final / outputs[name], int(checksums[name]["size"]),
+                                     str(checksums[name]["sha256"])) for name in outputs
+            )
+            if existing_valid:
+                shutil.rmtree(staging, ignore_errors=True)
+            else:
+                if final.exists():
+                    with _RUNTIME_PINS_GUARD:
+                        pinned = any(identifier == str(video_id) and key == record["artifact_id"]
+                                     for (identifier, _), key in _RUNTIME_PINS.items())
+                    if pinned:
+                        raise RuntimeError("Cache đang được xem trước hoặc xuất. Hãy dừng tác vụ đó rồi thử lại.")
+                    safe_tree(final)
+                    retired = final.with_name(f".partial-replaced-{uuid.uuid4().hex}")
+                    _replace_cache_directory(final, retired)
+                try:
+                    _replace_cache_directory(staging, final)
+                except Exception:
+                    if retired is not None and not final.exists():
+                        _replace_cache_directory(retired, final)
+                        retired = None
+                    raise
+            resolved_outputs = _validated_outputs(video_id, record)
+            if resolved_outputs is None:
+                raise RuntimeError("Không thể xác minh cache vừa tạo. Hãy thử lại bước xử lý.")
+            manifest = load_manifest(video_id)
+            manifest["artifacts"][record["artifact_id"]] = record
+            _save_manifest(video_id, manifest)
+            video = video_store.get_video(video_id)
+            if video and activate_artifact:
+                references = dict(getattr(video, "active_artifacts", {}) or {})
+                references[kind] = artifact_signature
+                video_store.update_video(video_id, active_artifacts=references)
+            return {**record, "resolved_outputs": resolved_outputs}
+    finally:
+        release_staging_directory(staging)
+        if retired is not None and not _remove_inactive_directory(retired):
+            # An old Windows handle must not invalidate the new good result.
+            # The normal abandoned-partial maintenance will retry cleanup.
+            _LOG.info("Manual cache retirement deferred: kind=%s", kind)
 
 
 def _validated_outputs(video_id: str, record: dict[str, Any]) -> dict[str, str] | None:
@@ -587,6 +617,17 @@ def unpin(video_id: str, owner: str) -> None:
     with _RUNTIME_PINS_GUARD:
         _RUNTIME_PINS.pop((str(video_id), str(owner)), None)
         _RUNTIME_PIN_ROOTS.pop((str(video_id), str(owner)), None)
+
+
+def pin_workspace(video_id: str, owner: str) -> None:
+    """Protect source-only consumers before any output artifact exists."""
+    root = Path(video_store.get_video_dir(video_id)).absolute()
+    with managed_storage_guard, _RUNTIME_PINS_GUARD:
+        if not root.is_dir():
+            raise FileNotFoundError("Video workspace is unavailable.")
+        key = (str(video_id), str(owner))
+        _RUNTIME_PINS[key] = "workspace"
+        _RUNTIME_PIN_ROOTS[key] = str(root)
 
 
 def has_runtime_pins(video_id: str) -> bool:

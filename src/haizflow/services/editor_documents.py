@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import shutil
-import tempfile
 import uuid
 from collections.abc import Callable
 from copy import deepcopy
@@ -23,6 +22,7 @@ from haizflow.schemas.editor import (
 )
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services import manual_artifacts, video_store
+from haizflow.utils.atomic_file import atomic_json
 from haizflow.utils.ffmpeg import get_video_duration
 
 TRACKS = (
@@ -40,20 +40,7 @@ def document_path(video_id: str) -> Path:
 
 
 def _atomic_write(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(prefix=".editor-", suffix=".json.tmp", dir=path.parent)
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            json.dump(payload, stream, ensure_ascii=False, indent=2)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    except Exception:
-        try:
-            os.remove(temporary)
-        except FileNotFoundError:
-            pass
-        raise
+    atomic_json(path, payload, indent=2)
 
 
 def _fingerprint(path: str) -> str:
@@ -561,12 +548,15 @@ def save(video, document: EditorDocument, *, bump_revision: bool = True) -> Edit
 
 def ensure(video) -> EditorDocument:
     from haizflow.services.ocr_layers import ensure_primary
+    from haizflow.services.result_segments import ensure as ensure_result
 
     existing = load(video.video_id)
     if existing is not None:
         current_video = video_store.get_video(video.video_id) or video
         reconciled = _reconcile_media_assets(current_video, existing)
-        if ensure_primary(reconciled):
+        primary_added = ensure_primary(reconciled)
+        result_added = ensure_result(reconciled)
+        if primary_added or result_added:
             return save(video, reconciled)
         if reconciled is not existing:
             return save(video, reconciled)
@@ -593,6 +583,7 @@ def ensure(video) -> EditorDocument:
         shutil.copy2(metadata_path, backup_path)
     document = build_legacy_document(video)
     ensure_primary(document)
+    ensure_result(document)
     return save(video, document, bump_revision=False)
 
 
@@ -709,7 +700,7 @@ def refresh_sequence_duration(document: EditorDocument) -> None:
     ):
         source_end = document.sequence.duration_ms
     clip_end = max(
-        (clip.start_ms + clip.duration_ms for clip in document.clips if clip.enabled),
+        (clip.start_ms + clip.duration_ms for clip in document.clips if clip.enabled and clip.kind != "result"),
         default=0,
     )
     document.sequence.duration_ms = max(source_end, clip_end)

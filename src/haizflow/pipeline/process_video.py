@@ -1,4 +1,5 @@
 import os
+import re
 import hashlib
 import json
 import shutil
@@ -150,7 +151,8 @@ def _recognize_for_translation(video, reporter, audio_path, output_path):
         getattr(video, "speech_recognition_model", "small"), video.enable_audio_separation,
         TIMING_SOURCE, "recognition-progress-v1",
     )
-    if _checkpoint_valid(video, "recognition", signature, [output_path]):
+    if (_checkpoint_valid(video, "recognition", signature, [output_path])
+            or _recovery_checkpoint_valid(video, "recognition", signature, [output_path])):
         try:
             with open(output_path, encoding="utf-8") as source:
                 segments = json.load(source)
@@ -167,12 +169,26 @@ def _recognize_for_translation(video, reporter, audio_path, output_path):
              "loading_alignment": 40, "aligning": 41, "segmenting": 42,
              "detecting_languages": 46, "saved": 48}.get(event, 24), "transcribing", detail,
         ),
-        model_name=("small" if getattr(video, "runtime_recovery_step", "") == "transcribing"
-                    else getattr(video, "speech_recognition_model", "small")),
+        model_name=_execution_models(video)["speech_recognition_model"],
     )
     video.checkpoints["recognition_language"] = str(result[1] or "en")
     _mark_checkpoint(video, "recognition", signature)
     return result
+
+
+def _execution_models(video) -> dict[str, str]:
+    """Resolve only this recovery invocation; persisted choices/cache keys stay intact."""
+    from haizflow.core.model_choices import models_for_device
+
+    choices = {
+        "speech_recognition_model": str(getattr(video, "speech_recognition_model", "small") or "small"),
+        "translation_model": str(getattr(video, "translation_model", "auto") or "auto"),
+        "tts_provider": str(getattr(video, "tts_provider", "omnivoice") or "omnivoice"),
+    }
+    if getattr(video, "runtime_recovery_step", "") and processing_device_preference() == "cpu":
+        return models_for_device("cpu", recognition=choices["speech_recognition_model"],
+                                 translation=choices["translation_model"], voice=choices["tts_provider"])
+    return choices
 
 
 def _recovery_checkpoint_valid(video, name, signature, outputs):
@@ -228,9 +244,16 @@ def _ensure_gpu_available(stage: str) -> None:
 def _is_gpu_runtime_failure(error: Exception) -> bool:
     if isinstance(error, GpuRuntimeUnavailable):
         return True
+    # A GPU-named path/DLL in an OS error is not evidence of GPU failure.
+    # In particular, retrying on CPU cannot fix locks or exhausted commit.
+    if isinstance(error, (OSError, MemoryError)):
+        return False
     if not runtime_profile().cuda_available:
         return False
     message = str(error).lower()
+    windows_code = re.search(r"(?:winerror|os error)\s*(\d+)\b", message)
+    if windows_code and int(windows_code.group(1)) in {2, 3, 5, 8, 14, 32, 33, 112, 145, 206, 1450, 1455}:
+        return False
     # Memory-commit failures and native access violations need investigation.
     # Treating them as a lost GPU would hide the original defect behind a CPU
     # retry and make the failing runtime impossible to diagnose.
@@ -418,8 +441,7 @@ def _finish_recovered_translation(
         video.target_language,
         source_language="en",
         provider="gemini" if str(getattr(video, "translation_model", "")).startswith("gemini-") else "hymt2",
-        translation_model=("q4" if getattr(video, "translation_model", "auto") == "full"
-                           else getattr(video, "translation_model", "auto")),
+        translation_model=_execution_models(video)["translation_model"],
         progress_callback=report_translation_progress,
     )
     _mark_checkpoint(video, "translation", translation_signature)
@@ -527,6 +549,8 @@ def process_video_sync(
         reporter.update(3, "starting", "Preparing video")
         using_gemini = str(getattr(video, "translation_model", "")).startswith("gemini-")
         engine_name = "Gemini" if using_gemini else "HY-MT2"
+        if getattr(video, "runtime_recovery_step", "") and not using_gemini:
+            configure_translation_model(_execution_models(video)["translation_model"])
         log_to_video(video_id, f"Processing started | Mode: Full Auto | Translator: {engine_name}")
 
         video_input = _required_video_path(video, "video_input", must_exist=True)
@@ -653,6 +677,12 @@ def process_video_sync(
 
         check_cancellation(video_id)
         if not using_gemini:
+            if (_execution_models(video)["translation_model"] == "q4"
+                    or processing_device_preference() == "cpu"):
+                _release_recognition_runtime()
+                from haizflow.services.external_engine import shared_external_engine_pool
+
+                shared_external_engine_pool().release({"voice", "translation"})
             _ensure_gpu_available("translation")
         reporter.update(50, "translating", f"Starting {engine_name} translation")
 
@@ -667,7 +697,7 @@ def process_video_sync(
             video.target_language,
             source_language=detected_language or "en",
             provider="gemini" if using_gemini else "hymt2",
-            translation_model=getattr(video, "translation_model", "auto"),
+            translation_model=_execution_models(video)["translation_model"],
             progress_callback=report_translation_progress,
         )
         _mark_checkpoint(video, "translation", translation_signature)
@@ -902,7 +932,7 @@ def _finish_after_translation(video, reporter, video_dir, original_audio_target,
                 video_id,
                 progress_callback=report_voice_progress,
                 status_callback=report_voice_status,
-                provider=configured_tts_provider,
+                provider=_execution_models(video)["tts_provider"],
                 target_language=target_language,
                 keep_worker_warm=effective_tts_provider == "omnivoice",
             )

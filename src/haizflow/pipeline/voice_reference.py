@@ -12,6 +12,7 @@ from pathlib import Path
 
 from haizflow.config import MEDIA_PROCESS_TIMEOUT_SECONDS, MODELS_DIR, TMP_DIR
 from haizflow.core.model_integrity import verify_whisper_model, verify_whisper_turbo_model
+from haizflow.core.whisper_compute import whisper_compute_type
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
 from haizflow.services.video_store import log_to_video
 from haizflow.utils.atomic_file import atomic_json
@@ -125,11 +126,12 @@ def recognize_reference(audio_path: str, model_root: str, *, device: str = "cpu"
     from faster_whisper import WhisperModel
 
     def recognize(target):
+        compute_type = whisper_compute_type(target)
         model = WhisperModel(
-            model_root, device=target, compute_type="float16" if target == "cuda" else "int8",
+            model_root, device=target, compute_type=compute_type,
             local_files_only=True, cpu_threads=max(1, min(4, (os.cpu_count() or 4) - 1)),
         )
-        print(f"[CLONE-ASR][DEVICE] device={target} compute_type={'float16' if target == 'cuda' else 'int8'}",
+        print(f"[CLONE-ASR][DEVICE] device={target} compute_type={compute_type}",
               file=sys.stderr, flush=True)
         segments, _info = model.transcribe(audio_path, beam_size=3, vad_filter=True, condition_on_previous_text=False)
         return " ".join(segment.text.strip() for segment in segments).strip()

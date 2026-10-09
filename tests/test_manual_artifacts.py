@@ -245,6 +245,103 @@ class ManualArtifactTests(unittest.TestCase):
             "[{}]",
         )
 
+    def test_old_cache_cleanup_winerror145_does_not_fail_new_publication(self):
+        first = self.publish_text("same", "[]")
+        Path(first["resolved_outputs"]["segments"]).write_text("corrupt", encoding="utf-8")
+        original = manual_artifacts.shutil.rmtree
+
+        def cleanup(path, *args, **kwargs):
+            if Path(path).name.startswith(".partial-replaced-"):
+                error = OSError("directory not empty")
+                error.winerror = 145
+                raise error
+            return original(path, *args, **kwargs)
+
+        with patch.object(manual_artifacts.shutil, "rmtree", side_effect=cleanup):
+            repaired = self.publish_text("same", "[{}]")
+        self.assertEqual(Path(repaired["resolved_outputs"]["segments"]).read_text(), "[{}]")
+        self.assertIsNotNone(manual_artifacts.resolve("manual-video", "translation", "same"))
+        manual_artifacts.assert_root_idle(self.root)
+        self.assertTrue(list(self.root.rglob(".partial-replaced-*")))
+
+    def test_republish_invalid_completion_marker_is_repaired(self):
+        first = self.publish_text("same", "[]")
+        (Path(first["resolved_outputs"]["segments"]).parent / "complete.json").write_text("{}")
+        repaired = self.publish_text("same", "[]")
+        self.assertEqual(Path(repaired["resolved_outputs"]["segments"]).read_text(), "[]")
+        self.assertIsNotNone(manual_artifacts.resolve("manual-video", "translation", "same"))
+
+    def test_publication_never_returns_unverified_raw_record(self):
+        with patch.object(manual_artifacts, "_validated_outputs", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "xác minh cache"):
+                self.publish_text("bad", "[]")
+        self.assertNotIn("translation", self.video.active_artifacts)
+        self.assertNotIn("translation:bad", manual_artifacts.load_manifest("manual-video")["artifacts"])
+        manual_artifacts.assert_root_idle(self.root)
+
+    def test_parallel_same_signature_publication_is_serialized(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        stages = [manual_artifacts.create_staging_directory("manual-video", "translation") for _ in range(2)]
+        for stage in stages:
+            (stage / "segments.json").write_text("[]")
+        barrier = threading.Barrier(2)
+
+        def publish(stage):
+            barrier.wait(timeout=5)
+            return manual_artifacts.publish("manual-video", "translation", "concurrent", stage,
+                                            {"segments": "segments.json"})
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            records = list(pool.map(publish, stages))
+        for record in records:
+            self.assertEqual(Path(record["resolved_outputs"]["segments"]).read_text(), "[]")
+        self.assertIsNotNone(manual_artifacts.resolve("manual-video", "translation", "concurrent"))
+        manual_artifacts.assert_root_idle(self.root)
+
+    def test_directory_promotion_retries_transient_windows_contention(self):
+        original = manual_artifacts.os.replace
+        failures = []
+
+        def replace(source, destination):
+            if Path(source).is_dir() and not failures:
+                failures.append(True)
+                error = OSError("sharing violation")
+                error.winerror = 32
+                raise error
+            return original(source, destination)
+
+        with patch.object(manual_artifacts.os, "replace", side_effect=replace):
+            record = self.publish_text("retry", "[]")
+        self.assertEqual(Path(record["resolved_outputs"]["segments"]).read_text(), "[]")
+        self.assertEqual(len(failures), 1)
+
+    def test_failed_promotion_restores_old_cache_directory(self):
+        first = self.publish_text("same", "[]")
+        path = Path(first["resolved_outputs"]["segments"])
+        original = manual_artifacts.os.replace
+
+        def replace(source, destination):
+            if Path(source).is_dir() and Path(source).name.startswith(".partial-") and "replaced" not in Path(source).name:
+                raise OSError("disk failure")
+            return original(source, destination)
+
+        with patch.object(manual_artifacts.os, "replace", side_effect=replace):
+            with self.assertRaisesRegex(OSError, "disk failure"):
+                self.publish_text("same", "[{}]")
+        self.assertEqual(path.read_text(), "[]")
+        self.assertIsNotNone(manual_artifacts.resolve("manual-video", "translation", "same"))
+
+    def test_in_use_cache_is_not_replaced(self):
+        first = self.publish_text("same", "[]")
+        manual_artifacts.pin("manual-video", "translation", "same", "test-preview")
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Cache đang"):
+                self.publish_text("same", "[{}]")
+            self.assertEqual(Path(first["resolved_outputs"]["segments"]).read_text(), "[]")
+        finally:
+            manual_artifacts.unpin("manual-video", "test-preview")
+
     def test_switching_back_to_an_existing_variant_does_not_republish(self):
         self.publish_text("a", "[]")
         self.publish_text("b", "[{}]")

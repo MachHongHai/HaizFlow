@@ -212,6 +212,10 @@ class ResourcePackController(QObject):
         self._paused_units: dict[str, str] = {}
         self._closing = False
         self._move_thread: threading.Thread | None = None
+        self._move_active = False
+        self._move_progress = -1.0
+        self._move_phase = "prepare"
+        self._move_cancel = threading.Event()
         self._inventory_thread: threading.Thread | None = None
         self._clean_thread: threading.Thread | None = None
         # A previous cross-drive move can leave several gigabytes to remove.
@@ -405,6 +409,10 @@ class ResourcePackController(QObject):
         return format_memory_size(self.model.free_bytes)
 
     @Property(bool, notify=changed)
+    def storageMoving(self):
+        return self._move_active
+
+    @Property(bool, notify=changed)
     def busy(self):
         return (
             bool(self._pending_operations or self._active_operation)
@@ -415,8 +423,15 @@ class ResourcePackController(QObject):
     @Property(str, notify=changed)
     def activityText(self):
         vi = getattr(self._host, "_settings_language", "vi") == "vi"
-        if self._move_thread is not None and self._move_thread.is_alive():
-            return "Đang chuyển gói cài đặt" if vi else "Moving resource packs"
+        if self._move_active:
+            messages = {
+                "prepare": ("Đang chuẩn bị chuyển gói", "Preparing resource transfer"),
+                "copy": ("Đang sao chép gói tài nguyên", "Copying resource packs"),
+                "verify": ("Đang xác minh bản sao", "Verifying copied resources"),
+                "switch": ("Đang cập nhật vị trí lưu", "Updating storage location"),
+                "cleanup": ("Đang dọn gói ở vị trí cũ", "Cleaning previous resource location"),
+            }
+            return messages.get(self._move_phase, messages["prepare"])[0 if vi else 1]
         if self._clean_thread is not None and self._clean_thread.is_alive():
             return "Đang dọn tệp tải dở" if vi else "Cleaning partial downloads"
         active_states = {"checking", "downloading", "verifying", "installing", "removing"}
@@ -435,8 +450,8 @@ class ResourcePackController(QObject):
 
     @Property(float, notify=changed)
     def activityProgress(self):
-        if self._move_thread is not None and self._move_thread.is_alive():
-            return -1
+        if self._move_active:
+            return -1 if self._move_phase in {"prepare", "cleanup"} else self._move_progress
         active_states = {"checking", "downloading", "verifying", "installing", "removing"}
         for row in self.model._rows:
             if row.get("status") in active_states:
@@ -489,7 +504,7 @@ class ResourcePackController(QObject):
                 self._install_units.pop(pack_id, None)
 
     def _storage_mutating(self) -> bool:
-        return any(thread is not None and thread.is_alive()
+        return self._move_active or any(thread is not None and thread.is_alive()
                    for thread in (self._move_thread, self._clean_thread, self._inventory_thread, self._maintenance_thread))
 
     def browser_operation_pending(self) -> bool:
@@ -819,28 +834,51 @@ class ResourcePackController(QObject):
             return False
         if not str(destination).strip():
             return False
+        selected = Path(destination).expanduser().resolve()
+        if selected == self.manager.storage_root.resolve() or selected / "HaizFlowResources" == self.manager.storage_root.resolve():
+            self._host.appAlertRequested.emit("Vị trí lưu hiện tại", "Gói tài nguyên đã nằm ở vị trí này.", "info")
+            return True
         self._start_storage_move(Path(destination))
         return True
 
     def _start_storage_move(self, destination: Path) -> None:
+        self._move_cancel.clear()
+        self._move_active = True
+        self._move_progress = -1.0
+        self._move_phase = "prepare"
+
+        def report(phase, done, total):
+            start, span = {"copy": (0, 65), "verify": (65, 30), "switch": (95, 1)}[phase]
+            self._events.put({"kind": "move_progress", "pack_id": "", "phase": phase,
+                              "progress": start + span * min(1, done / max(1, total))})
+
         def move() -> None:
             warmup = getattr(self._host, "_smart_warmup", None)
             try:
                 if warmup is not None:
                     warmup.suspend_for_storage_move()
-                target = self.manager.move_storage(destination)
+                target = self.manager.move_storage(destination, progress=report, cancel_event=self._move_cancel)
+                from haizflow.config import refresh_resource_paths
+
+                refresh_resource_paths()
+                # Keep warm-up suspended until cleanup finishes. Restarting it
+                # first changes target files and can prevent safe source cleanup.
+                self._events.put({"kind": "move_progress", "pack_id": "", "phase": "cleanup", "progress": 96})
+                self.manager.cleanup_previous_storage()
+                from haizflow.core.paths import resource_storage_pointer_path
+                import json
+
+                try:
+                    pending_cleanup = bool(json.loads(resource_storage_pointer_path().read_text(encoding="utf-8")).get("cleanup_previous"))
+                except (OSError, ValueError, AttributeError):
+                    pending_cleanup = True
                 self._events.put({
                     "kind": "moved",
                     "pack_id": "",
                     "target": str(target),
                     "snapshot": self.manager.snapshot(),
+                    "pending_cleanup": pending_cleanup,
                 })
-                self._maintenance_thread = threading.Thread(
-                    target=self.manager.cleanup_previous_storage,
-                    name="resource-storage-cleanup",
-                    daemon=True,
-                )
-                self._maintenance_thread.start()
             except Exception as exc:
                 self._events.put({"kind": "move_error", "pack_id": "", "message": str(exc)})
             finally:
@@ -865,7 +903,7 @@ class ResourcePackController(QObject):
         if not selected:
             return
 
-        self._start_storage_move(Path(selected))
+        self.moveResourceStorage(selected)
 
     def drain_events(self) -> None:
         changed = False
@@ -881,14 +919,22 @@ class ResourcePackController(QObject):
                 if self._active_operation and self._active_operation[1] == pack_id:
                     self._operation_terminal_seen = True
             if kind == "moved":
+                self._move_active = False
+                self._move_progress = 100
                 self._host.appAlertRequested.emit(
                     "Đã chuyển gói cài đặt",
-                    f"Vị trí mới: {event['target']}",
-                    "info",
+                    f"Vị trí mới: {event['target']}" + (
+                        "\nMột số tệp cũ đang được sử dụng; sẽ dọn lại khi khởi động app." if event.get("pending_cleanup") else ""),
+                    "warning" if event.get("pending_cleanup") else "info",
                 )
                 self.model.apply_snapshot(event["snapshot"])
             elif kind == "move_error":
+                self._move_active = False
+                self._move_progress = -1
                 self._host.appAlertRequested.emit("Không thể chuyển", event.get("message", ""), "error")
+            elif kind == "move_progress":
+                self._move_phase = event["phase"]
+                self._move_progress = max(self._move_progress, event["progress"])
             elif kind == "inventory":
                 self.model.apply_snapshot(event["snapshot"])
             elif kind == "inventory_error":
@@ -959,6 +1005,7 @@ class ResourcePackController(QObject):
 
     def shutdown(self) -> None:
         self._closing = True
+        self._move_cancel.set()
         self._pending_operations.clear()
         for pack_id in tuple(self._threads):
             self.cancelResourcePackOperation(pack_id)

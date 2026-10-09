@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import threading
 import uuid
@@ -206,13 +207,16 @@ def render_lease(video):
 
 
 def export_video(video, destination, *, overwrite: bool = False, cancel: threading.Event | None = None,
-                 progress=None, expected_target=None) -> str:
+                 progress=None, expected_target=None, range_ms=None) -> str:
     """Verified, durable copy and same-filesystem atomic publication.
 
     Failure never changes pipeline status, checkpoints, or the internal render.
     A no-overwrite Windows rename also protects against a file created after
     the confirmation dialog. Existing output survives every pre-publication error.
     """
+    if range_ms is not None and getattr(video, "project_type", "") == "manual":
+        return _export_editor_range(video, destination, range_ms, overwrite=overwrite,
+                                    cancel=cancel, progress=progress, expected_target=expected_target)
     target = validate_export_destination(destination)
     if target.exists() and not overwrite:
         raise FileExistsError("Destination already exists; overwrite confirmation is required.")
@@ -229,21 +233,32 @@ def export_video(video, destination, *, overwrite: bool = False, cancel: threadi
         if shutil.disk_usage(target.parent).free < size + 8 * 1024**2:
             raise OSError(28, "Not enough free space for export.")
         try:
-            handle, temporary = tempfile.mkstemp(prefix=".haizflow-export-", suffix=".partial", dir=target.parent)
-            digest, copied = hashlib.sha256(), 0
-            with source.open("rb") as incoming, os.fdopen(handle, "wb") as outgoing:
-                while chunk := incoming.read(1024 * 1024):
-                    if token.is_set():
-                        raise ExportCancelled("Export cancelled.")
-                    outgoing.write(chunk)
-                    digest.update(chunk)
-                    copied += len(chunk)
-                    if progress:
-                        progress(min(95, round(copied * 95 / size)))
-                outgoing.flush()
-                os.fsync(outgoing.fileno())
-            if (copied != size or digest.hexdigest() != expected_digest
-                    or manual_artifacts._sha256(Path(temporary)) != digest.hexdigest()
+            handle, temporary = tempfile.mkstemp(prefix=".haizflow-export-", suffix=".partial.mp4", dir=target.parent)
+            if range_ms is not None:
+                os.close(handle)
+                _render_range(source, Path(temporary), range_ms, video.export_preset, token, progress)
+                size = Path(temporary).stat().st_size
+                digest_value = manual_artifacts._sha256(Path(temporary))
+                copied = size
+                expected_digest = digest_value
+                with open(temporary, "rb+") as outgoing:
+                    os.fsync(outgoing.fileno())
+            else:
+                digest, copied = hashlib.sha256(), 0
+                with source.open("rb") as incoming, os.fdopen(handle, "wb") as outgoing:
+                    while chunk := incoming.read(1024 * 1024):
+                        if token.is_set():
+                            raise ExportCancelled("Export cancelled.")
+                        outgoing.write(chunk)
+                        digest.update(chunk)
+                        copied += len(chunk)
+                        if progress:
+                            progress(min(95, round(copied * 95 / size)))
+                    outgoing.flush()
+                    os.fsync(outgoing.fileno())
+                digest_value = digest.hexdigest()
+            if (copied != size or digest_value != expected_digest
+                    or manual_artifacts._sha256(Path(temporary)) != digest_value
                     or not current_render(video)):
                 raise OSError("Export verification failed.")
             if token.is_set():
@@ -271,12 +286,144 @@ def export_video(video, destination, *, overwrite: bool = False, cancel: threadi
         progress(100)
     # History is informational only. A history write failure cannot undo a
     # verified export or turn a successful copy into a processing failure.
-    history = {"path": str(target), "size": size, "sha256": digest.hexdigest(), "exported_at": datetime.now(UTC).isoformat()}
+    history = {"path": str(target), "size": size, "sha256": digest_value, "exported_at": datetime.now(UTC).isoformat()}
+    if range_ms is not None:
+        history["range_ms"] = list(range_ms)
     try:
         video_store.update_video(video.video_id, export_history=[*(getattr(video, "export_history", []) or [])[-19:], history])
     except (OSError, RuntimeError, ValueError):
         pass
     return str(target)
+
+
+def _export_editor_range(video, destination, range_ms, *, overwrite, cancel, progress, expected_target):
+    """Bounded composition with the same atomic user-output contract as full export."""
+    from haizflow.pipeline.segment_export import render_segment
+    from haizflow.services import editor_documents
+
+    target = validate_export_destination(destination)
+    if target.exists() and not overwrite:
+        raise FileExistsError(str(target))
+    confirmed = expected_target if expected_target is not None else destination_identity(target)
+    token = cancel or threading.Event()
+    document = editor_documents.load(video.video_id)
+    if document is None:
+        raise ValueError("Editor document is unavailable.")
+    start, end = range_ms
+    if (not isinstance(start, int) or not isinstance(end, int) or start < 0
+            or end - start < 80 or end > document.sequence.duration_ms):
+        raise ValueError("Invalid result segment boundaries.")
+    if token.is_set():
+        raise ExportCancelled("Export cancelled.")
+    owner = "segment-export-" + uuid.uuid4().hex
+    owners = [owner]
+    # Pin source and all active dependencies before using the snapshot; this
+    # also prevents project deletion while a bounded render reads its media.
+    try:
+        manual_artifacts.pin_workspace(video.video_id, owner)
+        for kind, signature in (video.active_artifacts or {}).items():
+            if signature:
+                dependency_owner = owner + ":" + kind
+                manual_artifacts.pin(video.video_id, kind, signature, dependency_owner)
+                owners.append(dependency_owner)
+        revision = render_revision(video)
+        with tempfile.TemporaryDirectory(prefix=".haizflow-segment-", dir=target.parent) as directory:
+            output = Path(directory) / "segment.mp4"
+            record = current_render(video, verify=False)
+            if record:
+                with render_lease(video) as verified:
+                    _render_range(Path(verified["resolved_outputs"]["video"]), output,
+                                  range_ms, video.export_preset, token, progress)
+            else:
+                render_segment(video, document.model_copy(deep=True), range_ms, output, token, progress)
+            if token.is_set():
+                raise ExportCancelled("Export cancelled.")
+            if render_revision(video_store.get_video(video.video_id) or video) != revision:
+                raise RuntimeError("Editor changed during export. Export the updated segment again.")
+            size = output.stat().st_size
+            digest = manual_artifacts._sha256(output)
+            with output.open("rb+") as stream:
+                os.fsync(stream.fileno())
+            if token.is_set():
+                raise ExportCancelled("Export cancelled.")
+            validate_export_destination(target)
+            if overwrite:
+                if destination_identity(target) != confirmed:
+                    raise FileExistsError("Destination changed since replacement was confirmed.")
+                os.replace(output, target)
+            elif os.name == "nt":
+                os.rename(output, target)
+            else:
+                os.link(output, target)
+                output.unlink()
+    finally:
+        for pinned_owner in owners:
+            manual_artifacts.unpin(video.video_id, pinned_owner)
+    if progress:
+        progress(100)
+    try:
+        history = {"path": str(target), "size": size, "sha256": digest,
+                   "range_ms": list(range_ms), "exported_at": datetime.now(UTC).isoformat()}
+        video_store.update_video(video.video_id, export_history=[*video.export_history[-19:], history])
+    except (OSError, RuntimeError, ValueError):
+        pass
+    return str(target)
+
+
+def _render_range(source, output, range_ms, preset, token, progress):
+    """Frame-accurate cut of the immutable composed render; never run AI."""
+    from haizflow.pipeline.render import _ffmpeg_progress_fraction
+    from haizflow.utils.ffmpeg import _binary, get_video_duration, validate_video_integrity
+
+    start, end = range_ms
+    if (not isinstance(start, int) or not isinstance(end, int) or start < 0
+            or end - start < 80 or end > round(get_video_duration(str(source)) * 1000) + 100):
+        raise ValueError("Invalid result segment boundaries.")
+    if token.is_set():
+        raise ExportCancelled("Export cancelled.")
+    duration = (end - start) / 1000
+    meter = output.with_suffix(".progress")
+    process = None
+    try:
+        process = subprocess.Popen([
+            _binary("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error",
+            "-progress", str(meter), "-stats_period", "0.2", "-nostats",
+            "-ss", str(start / 1000), "-i", str(source), "-t", str(duration),
+            "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "fast",
+            "-crf", str(preset_settings(preset)["crf"]), "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+            errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        previous = -1
+        while True:
+            if token.is_set():
+                raise ExportCancelled("Export cancelled.")
+            try:
+                _stdout, error = process.communicate(timeout=0.15)
+                break
+            except subprocess.TimeoutExpired:
+                try:
+                    fraction = _ffmpeg_progress_fraction(meter.read_text(encoding="utf-8"), duration)
+                except (OSError, UnicodeError):
+                    fraction = None
+                value = min(95, round(max(0, fraction or 0) * 95))
+                if progress and value > previous:
+                    previous = value
+                    progress(value)
+        if process.returncode:
+            raise RuntimeError(f"Could not export result segment: {error[-900:]}")
+        validate_video_integrity(str(output))
+        if abs(get_video_duration(str(output)) - duration) > 0.25:
+            raise RuntimeError("Exported result segment duration does not match its timeline.")
+    finally:
+        if process and process.poll() is None:
+            process.terminate()
+            try:
+                process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+        meter.unlink(missing_ok=True)
 
 
 def batch_filename(video) -> str:

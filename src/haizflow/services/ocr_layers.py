@@ -8,9 +8,7 @@ from haizflow.services.ocr_regions import effective_region, normalize_region
 
 PRIMARY_TRACK = "ocr-source"
 PRIMARY_CLIP = "ocr-source-region"
-# Keep saved experimental layers intact, but do not expose or render them in
-# the public editor until the feature is ready.
-EXTRA_LAYERS_ENABLED = False
+EXTRA_LAYERS_ENABLED = True
 
 
 def detected_region(video):

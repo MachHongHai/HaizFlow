@@ -60,6 +60,48 @@ def _fade_clip(audio: AudioSegment, fade_in_ms: int, fade_out_ms: int) -> AudioS
     return audio
 
 
+def _window_fades(audio, offset_ms, clip_duration_ms, fade_in_ms, fade_out_ms):
+    """Continue the original fade envelope, not a new fade at the cut."""
+    def db(gain):
+        return 20 * math.log10(max(0.000001, gain))
+
+    fade_in_ms = min(clip_duration_ms, max(0, fade_in_ms))
+    fade_out_ms = min(clip_duration_ms, max(0, fade_out_ms))
+    if fade_in_ms and offset_ms < fade_in_ms:
+        duration = min(len(audio), fade_in_ms - offset_ms)
+        audio = audio.fade(from_gain=db(offset_ms / fade_in_ms),
+                           to_gain=db((offset_ms + duration) / fade_in_ms), start=0, duration=duration)
+    fade_start = clip_duration_ms - fade_out_ms
+    if fade_out_ms and offset_ms + len(audio) > fade_start:
+        start = max(0, fade_start - offset_ms)
+        audio = audio.fade(from_gain=db((clip_duration_ms - offset_ms - start) / fade_out_ms),
+                           to_gain=db(max(0, clip_duration_ms - offset_ms - len(audio)) / fade_out_ms),
+                           start=start, duration=len(audio) - start)
+    return audio
+
+
+def _decode_window(path, start_ms, duration_ms, process_id, *, loop=False):
+    """Seek/decode only the requested audio interval with registered cancellation."""
+    handle, temporary = tempfile.mkstemp(prefix=".audio-window-", suffix=".wav")
+    os.close(handle)
+    try:
+        command = [_binary("ffmpeg"), "-y", "-v", "error"]
+        if loop:
+            command += ["-stream_loop", "-1"]
+        command += ["-ss", str(start_ms / 1000), "-i", str(path), "-t", str(duration_ms / 1000),
+                    "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", temporary]
+        check_cancellation(process_id)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        _, error = communicate_process(process_id, process, label="Segment audio decode")
+        if process.returncode:
+            raise RuntimeError(f"Could not decode segment audio: {error[-900:]}")
+        check_cancellation(process_id)
+        return AudioSegment.from_file(temporary)
+    finally:
+        os.unlink(temporary)
+
+
 def _duck_music(
     music: AudioSegment,
     voice_ranges: list[tuple[int, int]],
@@ -300,6 +342,8 @@ def build_audio_timeline(
     ducking_reduction_db: float = -12.0,
     ducking_attack_ms: int = 180,
     ducking_release_ms: int = 420,
+    range_ms: tuple[int, int] | None = None,
+    timeline_duration_ms: int | None = None,
 ):
     """Compose cached audio layers without invoking a speech model.
 
@@ -316,7 +360,9 @@ def build_audio_timeline(
     video_dur = get_video_duration(video_path)
     log_to_video(video_id, f"Base video duration: {video_dur:.2f} seconds")
     
-    video_dur_ms = int(video_dur * 1000)
+    video_dur_ms = int(timeline_duration_ms if range_ms is not None else video_dur * 1000)
+    window_start, window_end = range_ms or (0, video_dur_ms)
+    output_duration_ms = window_end - window_start
     if video_dur_ms <= 0:
         raise RuntimeError("Unable to determine a positive source-video duration for the audio timeline.")
 
@@ -335,7 +381,33 @@ def build_audio_timeline(
         and os.path.isfile(prepared_base_audio_path)
         and os.path.getsize(prepared_base_audio_path) > 44
     )
-    if base_cache_hit:
+    if range_ms is not None:
+        # The caller supplies a source bed already bounded/mapped to this
+        # sequence window. Never decode/allocate the complete source here.
+        base_audio = (AudioSegment.from_file(background_audio_path)
+                      if background_audio_path else AudioSegment.silent(duration=output_duration_ms))
+        base_audio = _apply_volume(base_audio, original_video_volume, "Source audio", video_id)
+        base_audio = base_audio.set_frame_rate(48000).set_channels(2)
+        if background_music_path:
+            start = max(window_start, background_music_start_ms)
+            end = min(window_end, background_music_start_ms + (
+                background_music_duration_ms if background_music_duration_ms is not None else video_dur_ms))
+            if end > start:
+                music = _decode_window(background_music_path,
+                    background_music_source_in_ms + start - background_music_start_ms,
+                    end - start, cancellation_id, loop=background_music_loop)
+                music = _apply_volume(music, background_music_volume, "Background music", video_id)
+                music = _window_fades(music, start - background_music_start_ms,
+                    background_music_duration_ms or video_dur_ms,
+                    background_music_fade_in_ms, background_music_fade_out_ms)
+                if ducking_enabled:
+                    music = _duck_music(music, [
+                        (int(float(item.get("start", 0)) * 1000) - start,
+                         int(float(item.get("end", 0)) * 1000) - start)
+                        for item in segments if bool(item.get("_voice_enabled", True))
+                    ], ducking_reduction_db, ducking_attack_ms, ducking_release_ms)
+                base_audio = base_audio.overlay(music, position=start - window_start)
+    elif base_cache_hit:
         base_audio = AudioSegment.from_file(prepared_base_audio_path).set_frame_rate(48000).set_channels(2)
         log_to_video(video_id, f"Reusing prepared preview audio base: {prepared_base_audio_path}")
     elif background_audio_path:
@@ -360,7 +432,7 @@ def build_audio_timeline(
     else:
         base_audio = AudioSegment.silent(duration=video_dur_ms, frame_rate=48000).set_channels(2)
 
-    if background_audio_path and not base_cache_hit:
+    if background_audio_path and not base_cache_hit and range_ms is None:
         if original_audio_duration_ms is not None:
             base_audio = base_audio[:max(0, int(original_audio_duration_ms))]
         if original_audio_start_ms > 0:
@@ -370,17 +442,17 @@ def build_audio_timeline(
 
     # The final audio must always match the video. Source tracks can occasionally
     # be a few milliseconds longer than the video container reports.
-    base_audio = base_audio[:video_dur_ms]
-    if len(base_audio) < video_dur_ms:
+    base_audio = base_audio[:output_duration_ms]
+    if len(base_audio) < output_duration_ms:
         base_audio += AudioSegment.silent(
-            duration=video_dur_ms - len(base_audio),
+            duration=output_duration_ms - len(base_audio),
             frame_rate=48000,
         )
 
     # The user-selected track never enters Demucs.  AudioSegment decodes both
     # audio and video containers through FFmpeg, so MP3, MP4 and other
     # FFmpeg-supported formats follow the same safe final-mix path.
-    if background_music_path and not base_cache_hit:
+    if background_music_path and not base_cache_hit and range_ms is None:
         if not os.path.isfile(background_music_path) or os.path.getsize(background_music_path) <= 0:
             raise FileNotFoundError(f"Required background music track is missing: {background_music_path}")
         try:
@@ -497,7 +569,7 @@ def build_audio_timeline(
             is_last=idx == total,
         )
         available_dur = slot_end_ms - start_ms
-        if available_dur <= 0:
+        if available_dur <= 0 or slot_end_ms <= window_start or start_ms >= window_end:
             log_to_video(video_id, f"[{idx}/{total}] Skipping TTS: no available timeline slot.")
             continue
         
@@ -526,7 +598,9 @@ def build_audio_timeline(
                 int(seg.get("_voice_fade_in_ms", 0) or 0),
                 int(seg.get("_voice_fade_out_ms", 0) or 0),
             )
-            base_audio = base_audio.overlay(tts_segment, position=start_ms)
+            offset = max(0, window_start - start_ms)
+            tts_segment = tts_segment[offset:max(offset, window_end - start_ms)]
+            base_audio = base_audio.overlay(tts_segment, position=max(0, start_ms - window_start))
         except Exception as exc:
             raise RuntimeError(f"Failed to overlay required voice segment {idx} ({part_filename}): {exc}") from exc
 
@@ -541,7 +615,7 @@ def build_audio_timeline(
     )
     os.close(handle)
     try:
-        exported_timeline = base_audio[:video_dur_ms].export(
+        exported_timeline = base_audio[:output_duration_ms].export(
             temporary_path,
             format="wav",
             parameters=["-ac", "2", "-ar", "48000", "-c:a", "pcm_s24le"],

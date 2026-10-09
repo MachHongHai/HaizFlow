@@ -2830,6 +2830,10 @@ class HaizFlowController(QObject):
     def resourcePackBusy(self):
         return self._resource_packs.busy
 
+    @Property(bool, notify=resourcePacksChanged)
+    def resourcePackStorageMoving(self):
+        return self._resource_packs.storageMoving
+
     @Property(str, notify=resourcePacksChanged)
     def resourcePackActivityText(self):
         return self._resource_packs.activityText
@@ -4135,6 +4139,14 @@ class HaizFlowController(QObject):
             self.videoExportStarted.emit()
         return started
 
+    @Slot(str, str, str, bool, str, result=bool)
+    def exportVideoSegmentTo(self, video_id, preset, destination, overwrite, segment_id):
+        started = self._video_exports.start(video_id, preset, destination,
+            overwrite=overwrite, segment_id=segment_id)
+        if started:
+            self.videoExportStarted.emit()
+        return started
+
     @Slot(str, result=bool)
     def exportDestinationExists(self, path):
         return Path(str(path)).exists()
@@ -4211,6 +4223,9 @@ class HaizFlowController(QObject):
 
     @Slot(str, result=bool)
     def runManualTool(self, tool_id):
+        if getattr(getattr(self, "_resource_packs", None), "storageMoving", False):
+            self.appAlertRequested.emit("Đang chuyển gói tài nguyên", "Hãy chờ chuyển vị trí hoàn tất trước khi xử lý.", "info")
+            return False
         from haizflow.pipeline.manual_tools import (
             ensure_current_subtitle_document, prepare_manual_rerun, tool_states,
         )
@@ -4784,6 +4799,8 @@ class HaizFlowController(QObject):
         def update(document):
             clip = editor_documents.clip_by_id(document, clip_id)
             if clip and clip.kind == "ocr":
+                if end_ms > document.sequence.duration_ms:
+                    return
                 clip.start_ms = start_ms
                 clip.duration_ms = end_ms - start_ms
                 editor_documents.refresh_sequence_duration(document)
@@ -5226,18 +5243,31 @@ class HaizFlowController(QObject):
             clip = editor_documents.clip_by_id(document, clip_id)
             if clip is None or self._editor_track_locked(document, clip.track_id):
                 return
+            if clip.kind == "result":
+                others = [item for item in document.clips if item.kind == "result" and item is not clip]
+                if edge == "left":
+                    lower = max((item.start_ms + item.duration_ms for item in others
+                                 if item.start_ms < clip.start_ms), default=0)
+                    end = clip.start_ms + clip.duration_ms
+                    clip.start_ms = max(lower, min(position, end - 80))
+                    clip.duration_ms = end - clip.start_ms
+                else:
+                    upper = min((item.start_ms for item in others if item.start_ms > clip.start_ms),
+                                default=document.sequence.duration_ms)
+                    clip.duration_ms = max(80, min(position, upper) - clip.start_ms)
+                return
             old_end = clip.start_ms + clip.duration_ms
             asset = editor_documents.asset_by_id(document, clip.asset_id) if clip.asset_id else None
             asset_duration = int(getattr(asset, "duration_ms", 0) or 0)
             if edge == "left":
-                earliest = max(0, clip.start_ms - clip.source_in_ms)
+                earliest = 0 if clip.kind == "ocr" else max(0, clip.start_ms - clip.source_in_ms)
                 next_start = max(earliest, min(position, old_end - 80))
                 delta = next_start - clip.start_ms
                 clip.start_ms = next_start
                 clip.duration_ms -= delta
                 clip.source_in_ms = max(0, clip.source_in_ms + delta)
             else:
-                maximum_end = 86_400_000
+                maximum_end = document.sequence.duration_ms if clip.kind == "ocr" else 86_400_000
                 if asset_duration:
                     maximum_end = min(
                         maximum_end,
@@ -5261,7 +5291,7 @@ class HaizFlowController(QObject):
         target_track = str(track_id or "")
         current = self._manual_editor_document.document_object
         current_clip = editor_documents.clip_by_id(current, clip_id) if current else None
-        if current_clip is None or current_clip.track_id in {"source-video", "overlays"}:
+        if current_clip is None or current_clip.track_id in {"source-video", "overlays", "result"}:
             return False
         if current_clip.kind == "ocr":
             video = self._editor_video()
@@ -5280,12 +5310,24 @@ class HaizFlowController(QObject):
                     candidate.kind,
                 ):
                     clip.track_id = target_track
-            clip.start_ms = target_start
+            clip.start_ms = (
+                min(target_start, max(0, document.sequence.duration_ms - clip.duration_ms))
+                if clip.kind == "ocr" else target_start
+            )
             if clip.track_id == "source-audio":
                 clip.metadata["follow_source"] = False
             editor_documents.refresh_sequence_duration(document)
 
         return self._apply_editor_mutation("move_clip", move, merge_key=f"move:{clip_id}")
+
+    @Slot(str, int, result=bool)
+    def splitResultClip(self, clip_id, time_ms):
+        from haizflow.services import result_segments
+
+        def split(document):
+            result_segments.split(document, str(clip_id), int(time_ms), editor_documents.new_id("result"))
+
+        return self._apply_editor_mutation("split_result", split)
 
     @Slot(str, result=bool)
     def duplicateClip(self, clip_id: str) -> bool:

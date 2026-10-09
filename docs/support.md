@@ -27,7 +27,13 @@ Captions use the bundled Bangers font. Review their position, size and caption a
 
 ## Memory and storage
 
+Whisper selects precision from the GPU capabilities reported by CTranslate2. FP16-capable GPUs keep FP16; older GPUs such as the GTX 1070 use INT8/FP32 when supported by the backend. This does not change checkpoints or force all machines to CPU. Recognition logs show the selected mode. Compatible drivers and GPU runtimes are still required; compatibility mode does not guarantee that every model fits in VRAM.
+
 For RAM/VRAM notifications, close other apps or choose a smaller model suitable for your computer. Turn off **Keep models ready** to release models between processing runs if needed. This setting reduces repeated loading; it does not increase your computer's memory.
+
+Installed RAM determines minimum CPU eligibility; currently available RAM and Windows commit headroom determine whether a model can be loaded now. Before CPU HY-MT2, unused warm-up runtimes are released and low memory is remeasured for up to two seconds. If budgets remain insufficient, processing stops safely while retaining completed results; memory validation is not bypassed.
+
+OmniVoice CPU can take minutes for a long sentence. Completion percentage increases only after valid audio exists; `decoder_forwards` diagnostics report actual inference activity rather than timer heartbeats. Precision and inference steps are unchanged. GPU-to-CPU recovery changes only the recovering invocation's backend, not saved model choices or valid checkpoints.
 
 Use **Move location** in Resource packs to relocate resources. Let the operation finish and keep independent copies of important source videos and exports. Do not manually delete project folders or packs in use.
 

@@ -127,6 +127,9 @@ class ProjectCommandsController:
     def _resources_ready_for_videos(host, videos) -> bool:
         from haizflow.core.model_choices import gpu_choice_blocked, models_for_device
 
+        if getattr(getattr(host, "_resource_packs", None), "storageMoving", False):
+            host.appAlertRequested.emit("Đang chuyển gói tài nguyên", "Hãy chờ chuyển vị trí hoàn tất trước khi xử lý.", "info")
+            return False
         if getattr(host, "_device_switching", False):
             host.appAlertRequested.emit("Đang chuyển CPU/GPU", "Chờ chuyển bộ xử lý hoàn tất trước khi xử lý video.", "info")
             return False

@@ -22,13 +22,13 @@ def replace_with_retry(source: str | Path, destination: str | Path) -> None:
             time.sleep(min(0.02 * 2 ** attempt, 0.5))
 
 
-def atomic_json(path: str | Path, data, *, indent: int | None = None) -> None:
+def atomic_json(path: str | Path, data, *, indent: int | None = None, ensure_ascii: bool = False) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, name = tempfile.mkstemp(prefix=f".{destination.stem}-", suffix=".json.tmp", dir=destination.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(data, stream, ensure_ascii=False, indent=indent)
+            json.dump(data, stream, ensure_ascii=ensure_ascii, indent=indent)
             stream.flush()
             os.fsync(stream.fileno())
         replace_with_retry(name, destination)

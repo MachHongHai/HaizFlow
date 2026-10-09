@@ -528,6 +528,19 @@ class SmartWarmupController:
                 raise RuntimeError("Không thể dừng model đang chuẩn bị; chưa chuyển vị trí tài nguyên.")
         self._release_now("storage-move")
         close_shared_external_engine_pool()
+        # Foreground source-mode inference can leave an idle model without a
+        # speculative residency marker. Release only already-imported runtimes
+        # so their mmap/model handles cannot lock the old storage location.
+        import sys
+
+        for name, release in (
+            ("haizflow.pipeline.transcribe", "release_warm_whisperx_model"),
+            ("haizflow.services.translation", "shutdown_hymt2_worker"),
+        ):
+            module = sys.modules.get(name)
+            release_runtime = getattr(module, release, None)
+            if callable(release_runtime):
+                release_runtime()
 
     def quiesce_for_device_switch(self, timeout_seconds: float = 5.0) -> None:
         """Stop speculative work before selecting another compute engine."""

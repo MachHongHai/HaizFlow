@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 from pathlib import Path
+
+from haizflow.utils.atomic_file import atomic_json
 
 
 def manual_progress_path(video_id: str) -> Path:
@@ -43,19 +43,15 @@ class TranslationProgress:
             for index, value in zip(indices, values)
         ):
             raise ValueError("Invalid partial translation batch.")
+        pending = list(self.values)
         for index, value in zip(indices, values):
-            self.values[index] = value
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        handle, temporary = tempfile.mkstemp(prefix=".translation-progress-", dir=self.path.parent)
-        try:
-            with os.fdopen(handle, "w", encoding="utf-8") as stream:
-                json.dump({"schema": 1, "signature": self.signature, "translations": self.values},
-                          stream, ensure_ascii=True)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, self.path)
-        finally:
-            Path(temporary).unlink(missing_ok=True)
+            pending[index] = value
+        # Preserve escaped storage for raw model text (including malformed
+        # Unicode). Manual validation must be able to warn/edit, not crash
+        # while saving the unfinished translation checkpoint.
+        atomic_json(self.path, {"schema": 1, "signature": self.signature, "translations": pending}, ensure_ascii=True)
+        # Memory and disk agree even if an access/space error prevents publish.
+        self.values = pending
 
     def clear(self) -> None:
         self.path.unlink(missing_ok=True)

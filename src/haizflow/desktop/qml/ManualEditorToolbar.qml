@@ -15,6 +15,7 @@ Rectangle {
     property bool canRedo: false
     property bool hasSelection: false
     property bool sourceSelected: false
+    property bool resultSelected: false
     property bool comparing: false
     property real previewZoomPercent: 100
 
@@ -23,6 +24,8 @@ Rectangle {
     signal compareToggled()
     signal previewZoomInRequested()
     signal previewZoomOutRequested()
+    signal seekRequested(real offset)
+    signal resultSplitRequested()
     signal exportRequested()
     signal projectFolderRequested()
     signal inputVideoRequested()
@@ -109,6 +112,31 @@ Rectangle {
             enabled: root.previewZoomPercent < 400
             toolTipText: qsTr("Phóng to preview")
             onClicked: root.previewZoomInRequested()
+        }
+        Rectangle {
+            visible: root.hasVideo
+            Layout.preferredWidth: 1
+            Layout.preferredHeight: 20
+            color: Theme.divider
+        }
+        Repeater {
+            model: [-30, -15, 15, 30]
+            delegate: StudioSeekButton {
+                required property int modelData
+                objectName: "manualSeek" + modelData
+                visible: root.hasVideo
+                offsetSeconds: modelData
+                onClicked: root.seekRequested(modelData)
+            }
+        }
+        StudioIconButton {
+            objectName: "manualSplitResultButton"
+            visible: root.hasVideo && root.resultSelected
+            controlSize: 40
+            iconName: "split"
+            toolTipText: qsTr("Chia đoạn tại vị trí phát (S)")
+            showToolTip: true
+            onClicked: root.resultSplitRequested()
         }
     }
 

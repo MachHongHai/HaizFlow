@@ -56,6 +56,30 @@ if os.path.exists(BIN_DIR):
 WHISPER_MODEL_REPO = WHISPER_REPO
 WHISPER_MODEL_REVISION = WHISPER_REVISION
 WHISPER_MODELS_DIR = os.path.join(MODELS_DIR, "whisper")
+
+
+def refresh_resource_paths() -> None:
+    """Refresh already-loaded inference aliases after a quiesced storage move.
+
+    Workers must be released by the caller first. Do not import AI runtimes
+    just to update paths; optional modules remain lazy.
+    """
+    import sys
+
+    global MODELS_DIR, WHISPER_MODELS_DIR
+    previous = MODELS_DIR
+    MODELS_DIR = str(models_dir())
+    WHISPER_MODELS_DIR = os.path.join(MODELS_DIR, "whisper")
+    for name in (
+        "haizflow.pipeline.audio_separation", "haizflow.pipeline.omnivoice_tts",
+        "haizflow.pipeline.speaker_identity", "haizflow.pipeline.voice_reference",
+        "haizflow.pipeline.transcribe", "haizflow.pipeline.subtitle_ocr",
+    ):
+        module = sys.modules.get(name)
+        if module is not None and getattr(module, "MODELS_DIR", None) == previous:
+            module.MODELS_DIR = MODELS_DIR
+
+
 HYMT2_MODEL = HYMT2_GPU_REPO
 HYMT2_MODEL_REVISION = HYMT2_GPU_REVISION
 HYMT2_CPU_MODEL_REPO = HYMT2_CPU_REPO

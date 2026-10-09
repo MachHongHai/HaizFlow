@@ -10,6 +10,7 @@ from haizflow.schemas.video import SUBTITLE_FONT_FAMILY
 EDITOR_DOCUMENT_SCHEMA_VERSION = 3
 
 TrackKind = Literal[
+    "result",
     "ocr",
     "source_video",
     "subtitle",
@@ -19,6 +20,7 @@ TrackKind = Literal[
     "music",
 ]
 ClipKind = Literal[
+    "result",
     "ocr",
     "source_video",
     "subtitle",

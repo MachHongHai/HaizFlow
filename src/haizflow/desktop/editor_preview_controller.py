@@ -768,7 +768,12 @@ class EditorPreviewController:
                     base_start = reusable[1] if reusable else source_start
                     start_video(process_id)
                     try:
-                        if not self._render_proxy_layer(generation, process_id, video,
+                        if (not reusable and direct_source_window
+                                and "treatment_layers" in settings["ocr_region"]):
+                            rendered = self._render_mask_chunks(generation, process_id, video, settings,
+                                preview_dir, base_output_path, base_completion_path, source_start)
+                        else:
+                            rendered = self._render_proxy_layer(generation, process_id, video,
                             base_source, base_output_path, base_completion_path,
                             [], settings["duration"], "keep_ratio" if reusable else settings["output_format"],
                             CropSettings() if reusable else video.crop,
@@ -776,14 +781,18 @@ class EditorPreviewController:
                             "", False, settings["removal_mode"], .03, .94,
                             source_start_seconds=base_start,
                             subtitle_region_override=None,
-                            original_subtitle_intervals=settings["original_subtitle_intervals"]):
+                            original_subtitle_intervals=settings["original_subtitle_intervals"])
+                        if not rendered:
                             return
                         self._write_completion_marker(base_completion_path, base_output_path, settings["duration"],
+                            chunk_directories=(json.loads(base_completion_path.read_text(encoding="utf-8"))
+                                               .get("chunk_directories", []) if base_completion_path.is_file() else []),
                             base_context=({"effects": self._source_effects_key(settings),
                                            "source_start": source_start, "duration": settings["duration"]}
                                           if direct_source_window else None))
                     finally:
                         clean_video(process_id)
+                self._remove_stale_files(base_output_path)
                 self._finish_success(generation, base_output_path, 0, settings["duration"],
                     video_id=video.video_id, request_fingerprint=settings["request_fingerprint"],
                     visual_signature=base_signature, visual_cache_path=base_output_path,
@@ -1015,6 +1024,51 @@ class EditorPreviewController:
         return start / 1000, duration / 1000
 
     @classmethod
+    def _mask_chunk_payload(cls, settings, start, duration):
+        """Only masks touching this interval can invalidate its cached pixels."""
+        end = start + duration
+        layers = []
+        for layer in settings["ocr_region"].get("treatment_layers", []):
+            left = max(start, layer["start_ms"] / 1000)
+            right = min(end, (layer["start_ms"] + layer["duration_ms"]) / 1000)
+            if right > left:
+                layers.append({"region": layer["region"], "mode": layer["mode"],
+                               "start_ms": round(left * 1000), "duration_ms": round((right - left) * 1000)})
+        payload = cls._base_visual_cache_payload(settings)
+        payload.update(ocr_region={"treatment_layers": layers}, removal_mode="layered",
+                       remove_original_subtitles=bool(layers), start=start, duration=duration,
+                       original_subtitle_intervals=[], mask_chunk_version=1)
+        return payload
+
+    def _render_mask_chunks(self, generation, process_id, video, settings, directory,
+                            output, marker, source_start):
+        specs = []
+        for start, duration in self._visual_chunk_windows(settings["duration"]):
+            payload = self._mask_chunk_payload(settings, start, duration)
+            signature = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"))
+                                       .encode("utf-8")).hexdigest()[:20]
+            folder = directory / f"mask-chunk-{signature}"
+            folder.mkdir(parents=True, exist_ok=True)
+            specs.append((start, duration, folder / "preview.mp4", folder / "preview.complete.json", payload))
+        missing = [spec for spec in specs if not self._preview_cache_is_complete(spec[2], spec[3], spec[1])]
+        logging.getLogger(__name__).info("preview mask_chunks total=%d render=%d reused=%d",
+                                         len(specs), len(missing), len(specs) - len(missing))
+        span = .86 / max(1, len(missing))
+        for index, (start, duration, chunk, completion, payload) in enumerate(missing):
+            if not self._request_is_current(generation, process_id):
+                return False
+            region = payload["ocr_region"] if payload["remove_original_subtitles"] else None
+            if not self._render_proxy_layer(generation, process_id, video, settings["source_path"],
+                chunk, completion, [], duration, settings["output_format"], video.crop, region,
+                "", False, settings["removal_mode"], .03 + index * span, span,
+                source_start_seconds=source_start + start, subtitle_region_override=None,
+                original_subtitle_intervals=[]):
+                return False
+        self._set_progress(generation, .92, "assembling")
+        return self._assemble_preview_chunks(generation, process_id, [spec[2] for spec in specs],
+                                             output, marker, settings["duration"], assembly_progress=.94)
+
+    @classmethod
     def _source_effects_key(cls, settings: dict) -> str:
         payload = cls._base_visual_cache_payload(settings)
         payload.pop("editor_sequence", None)
@@ -1152,6 +1206,8 @@ class EditorPreviewController:
         output_path: Path,
         completion_path: Path,
         expected_duration: float,
+        *,
+        assembly_progress: float = .65,
     ) -> bool:
         """Join cached chunks without re-encoding their video frames."""
         if not chunk_paths:
@@ -1221,7 +1277,7 @@ class EditorPreviewController:
                 rendered_duration,
                 chunk_directories=[path.parent.name for path in chunk_paths],
             )
-            self._set_progress(generation, 0.65, "assembling")
+            self._set_progress(generation, assembly_progress, "assembling")
             return True
         finally:
             staged_output.unlink(missing_ok=True)
@@ -1761,7 +1817,7 @@ class EditorPreviewController:
                 reverse=True,
             )
             chunk_candidates = sorted(
-                preview_dir.glob("chunk-*/preview.mp4"),
+                [*preview_dir.glob("chunk-*/preview.mp4"), *preview_dir.glob("mask-chunk-*/preview.mp4")],
                 key=lambda path: path.stat().st_mtime,
                 reverse=True,
             )
@@ -1770,9 +1826,12 @@ class EditorPreviewController:
         retained_visuals = [current_path] if current_path in visual_candidates else []
         retained_visuals.extend(path for path in visual_candidates if path != current_path)
         retained_visuals = retained_visuals[:4]
+        retained_bases = [current_path] if current_path in base_candidates else []
+        retained_bases.extend(path for path in base_candidates if path != current_path)
+        retained_bases = retained_bases[:2]
         referenced_chunk_dirs: set[str] = set()
         has_chunk_manifest = False
-        for visual_path in retained_visuals:
+        for visual_path in [*retained_visuals, *retained_bases]:
             marker_path = visual_path.parent / "preview.complete.json"
             try:
                 marker = json.loads(marker_path.read_text(encoding="utf-8"))
@@ -1780,7 +1839,7 @@ class EditorPreviewController:
                 if isinstance(names, list):
                     has_chunk_manifest = has_chunk_manifest or bool(names)
                     referenced_chunk_dirs.update(
-                        str(name) for name in names if str(name).startswith("chunk-")
+                        str(name) for name in names if str(name).startswith(("chunk-", "mask-chunk-"))
                     )
             except (OSError, TypeError, json.JSONDecodeError):
                 continue
@@ -1793,7 +1852,8 @@ class EditorPreviewController:
             else chunk_candidates[32:]
         )
         stale_visuals = [path for path in visual_candidates if path not in retained_visuals]
-        for path in [*stale_visuals, *base_candidates[2:], *stale_chunks]:
+        stale_bases = [path for path in base_candidates if path not in retained_bases]
+        for path in [*stale_visuals, *stale_bases, *stale_chunks]:
             try:
                 shutil.rmtree(path.parent)
             except OSError:

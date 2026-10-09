@@ -4,40 +4,89 @@ import math
 import os
 import shutil
 import subprocess
+import tempfile
+import time
+from threading import Event, Thread
 from datetime import timedelta
 from pathlib import Path
 
 import srt
 
 from haizflow.pipeline.process_registry import check_cancellation, communicate_process
-from haizflow.pipeline.render import _font_path_details, font_file_fingerprint
+from haizflow.pipeline.render import _font_path_details, font_file_fingerprint, _ffmpeg_progress_fraction
 from haizflow.pipeline.text_overlay_sprite import render_text_overlay_sprite
 from haizflow.schemas.editor import EditorClip, EditorDocument, EditorTextStyle
 from haizflow.schemas.video import SubtitleStyle
 from haizflow.services import editor_documents
-from haizflow.utils.ffmpeg import _binary, get_media_stream_types
+from haizflow.utils.ffmpeg import _binary, get_media_stream_types, get_video_duration
 
 
 def document_signature_payload(document: EditorDocument | None) -> dict:
     return document.model_dump() if document else {}
 
 
-def _run(command: list[str], *, cwd: str, process_id: str, label: str) -> None:
+def _run(command: list[str], *, cwd: str, process_id: str, label: str,
+         progress_callback=None, duration: float = 0) -> None:
     check_cancellation(process_id)
-    process = subprocess.Popen(
-        command,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    _stdout, stderr = communicate_process(process_id, process, label=label)
-    check_cancellation(process_id)
-    if process.returncode != 0:
-        raise RuntimeError(f"{label} failed: {stderr[-1200:]}")
+    progress_path = None
+    stop = Event()
+    monitor = None
+    if progress_callback and duration > 0:
+        descriptor, path = tempfile.mkstemp(prefix=".sequence-progress-", suffix=".txt", dir=cwd)
+        os.close(descriptor)
+        progress_path = Path(path)
+        command = [command[0], "-progress", str(progress_path), "-stats_period", "0.5", "-nostats", *command[1:]]
+
+        def watch():
+            last = -1.0
+            while not stop.wait(0.3):
+                try:
+                    fraction = _ffmpeg_progress_fraction(progress_path.read_text(encoding="utf-8"), duration)
+                except (OSError, UnicodeError):
+                    continue
+                if fraction is not None and fraction > last:
+                    last = fraction
+                    progress_callback(fraction)
+
+        monitor = Thread(target=watch, name="sequence-progress", daemon=True)
+        monitor.start()
+    try:
+        process = subprocess.Popen(
+            command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        _stdout, stderr = communicate_process(process_id, process, label=label)
+        check_cancellation(process_id)
+        if process.returncode != 0:
+            raise RuntimeError(f"{label} failed: {stderr[-1200:]}")
+        if progress_callback:
+            progress_callback(1.0)
+    finally:
+        stop.set()
+        if monitor:
+            monitor.join(timeout=1)
+        if progress_path:
+            progress_path.unlink(missing_ok=True)
+
+
+def _copy_video(input_path, output_path, process_id, progress_callback=None):
+    if Path(input_path).resolve() == Path(output_path).resolve() or (
+            Path(output_path).exists() and os.path.samefile(input_path, output_path)):
+        raise shutil.SameFileError("Cannot copy a video onto itself.")
+    size = Path(input_path).stat().st_size
+    done = 0
+    reported = 0.0
+    with open(input_path, "rb") as source, open(output_path, "wb") as target:
+        for chunk in iter(lambda: source.read(4 * 1024 * 1024), b""):
+            check_cancellation(process_id)
+            target.write(chunk)
+            done += len(chunk)
+            now = time.monotonic()
+            if progress_callback and (done == size or now - reported >= 0.15):
+                progress_callback(done / max(1, size))
+                reported = now
+    shutil.copystat(input_path, output_path)
 
 
 def has_source_edits(document: EditorDocument | None) -> bool:
@@ -178,6 +227,7 @@ def materialize_source_video(
     document: EditorDocument | None,
     output_directory: str | Path,
     process_id: str,
+    *, progress_callback=None,
 ) -> str:
     """Materialize only the source picture edit map.
 
@@ -233,7 +283,8 @@ def materialize_source_video(
         "yuv420p",
         str(edited_video),
     ]
-    _run(command, cwd=str(output_dir), process_id=process_id, label="Editor source video")
+    _run(command, cwd=str(output_dir), process_id=process_id, label="Editor source video",
+         progress_callback=progress_callback, duration=document.sequence.duration_ms / 1000)
     return str(edited_video)
 
 
@@ -545,14 +596,21 @@ def apply_overlays(
     process_id: str,
     *,
     encoding_quality: int = 20,
+    progress_callback=None,
+    timeline_offset_seconds: float | None = None,
 ) -> str:
     overlays = _active_overlays(document)
     if not overlays:
         if os.path.abspath(input_path) != os.path.abspath(output_path):
-            shutil.copy2(input_path, output_path)
+            _copy_video(input_path, output_path, process_id, progress_callback)
         return output_path
 
     inputs = [_binary("ffmpeg"), "-y", "-i", os.path.abspath(input_path)]
+    window_duration = get_video_duration(input_path) if timeline_offset_seconds is not None else None
+    timeline_offset_seconds = float(timeline_offset_seconds or 0)
+    if window_duration is not None:
+        overlays = [clip for clip in overlays if clip.start_ms / 1000 < timeline_offset_seconds + window_duration
+                    and (clip.start_ms + clip.duration_ms) / 1000 > timeline_offset_seconds]
     media_indices: dict[str, int] = {}
     media_with_audio: set[str] = set()
     source_asset = editor_documents.asset_by_id(document, document.sequence.source_asset_id)
@@ -581,9 +639,12 @@ def apply_overlays(
         else:
             if clip.loop:
                 inputs.extend(["-stream_loop", "-1"])
+            if window_duration is not None:
+                skip = clip.source_in_ms / 1000 + max(0.0, timeline_offset_seconds - clip.start_ms / 1000)
+                inputs.extend(["-ss", str(skip), "-t", str(window_duration)])
             inputs.extend(["-i", os.path.abspath(asset.path)])
 
-    filters: list[str] = ["[0:v]setpts=PTS-STARTPTS[base0]"]
+    filters: list[str] = [f"[0:v]setpts=PTS-STARTPTS+{timeline_offset_seconds:.6f}/TB[base0]"]
     base = "base0"
     stage = 0
     overlay_audio_labels: list[str] = []
@@ -609,8 +670,9 @@ def apply_overlays(
             prepared = f"overlay{stage}"
             base_width = reference_width * (0.20 if clip.kind == "image" else 0.28)
             source_trim = ""
-            if clip.kind == "video" and clip.source_in_ms > 0:
-                source_trim = f"trim=start={clip.source_in_ms / 1000:.6f},"
+            skipped = max(0.0, timeline_offset_seconds - start)
+            if clip.kind == "video" and window_duration is None and (clip.source_in_ms > 0 or skipped):
+                source_trim = f"trim=start={clip.source_in_ms / 1000 + skipped:.6f},"
             crop_filter = ""
             if clip.kind in {"image", "video"}:
                 left = max(0.0, min(95.0, float(clip.transform.crop_left_percent)))
@@ -635,7 +697,7 @@ def apply_overlays(
                 )
             )
             filters.append(
-                f"[{input_index}:v]{source_trim}setpts=PTS-STARTPTS+{start:.6f}/TB,"
+                f"[{input_index}:v]{source_trim}setpts=PTS-STARTPTS+{max(start, timeline_offset_seconds):.6f}/TB,"
                 f"{crop_filter}{scale_filter},format=rgba,"
                 f"colorchannelmixer=aa='{opacity}/100',"
                 f"rotate='{rotation}*PI/180':ow=rotw(iw):oh=roth(ih):c=none[{prepared}]"
@@ -649,8 +711,9 @@ def apply_overlays(
             if clip.kind == "video" and clip.clip_id in media_with_audio and not clip.muted:
                 audio_label = f"overlayaudio{stage}"
                 audio_filters = [
-                    f"atrim=start={clip.source_in_ms / 1000:.6f}:duration={clip.duration_ms / 1000:.6f}",
-                    "asetpts=PTS-STARTPTS",
+                    f"atrim=start={0 if window_duration is not None else clip.source_in_ms / 1000:.6f}:"
+                    f"duration={clip.duration_ms / 1000:.6f}",
+                    f"asetpts=PTS-STARTPTS+{skipped:.6f}/TB",
                     f"volume={_number(clip.volume_percent / 100)}",
                 ]
                 if clip.fade_in_ms > 0:
@@ -662,8 +725,11 @@ def apply_overlays(
                     audio_filters.append(
                         f"afade=t=out:st={fade_start:.6f}:d={clip.fade_out_ms / 1000:.6f}"
                     )
-                if clip.start_ms > 0:
-                    audio_filters.append(f"adelay={clip.start_ms}|{clip.start_ms}")
+                delay = max(0, clip.start_ms - round(timeline_offset_seconds * 1000))
+                if window_duration is not None:
+                    audio_filters.append("asetpts=PTS-STARTPTS")
+                if delay:
+                    audio_filters.append(f"adelay={delay}|{delay}")
                 filters.append(
                     f"[{input_index}:a]{','.join(audio_filters)}[{audio_label}]"
                 )
@@ -674,6 +740,9 @@ def apply_overlays(
     if stage == 0:
         shutil.copy2(input_path, output_path)
         return output_path
+    if window_duration is not None:
+        filters.append(f"[{base}]setpts=PTS-STARTPTS[window_v]")
+        base = "window_v"
     output_audio_map = "0:a?"
     audio_codec = "copy"
     if overlay_audio_labels:
@@ -688,6 +757,7 @@ def apply_overlays(
         audio_codec = "aac"
     command = [
         *inputs,
+        *(["-t", str(window_duration)] if window_duration is not None else []),
         "-filter_complex",
         ";".join(filters),
         "-map",
@@ -711,23 +781,29 @@ def apply_overlays(
         cwd=str(Path(output_path).resolve().parent),
         process_id=process_id,
         label="Editor overlays",
+        progress_callback=progress_callback,
+        duration=window_duration if window_duration is not None else (
+            document.sequence.duration_ms / 1000 if document else get_video_duration(input_path)),
     )
     return output_path
 
 
-def finish_export_resolution(input_path: str, output_path: str, preset: str, process_id: str) -> str:
+def finish_export_resolution(input_path: str, output_path: str, preset: str, process_id: str,
+                             *, progress_callback=None) -> str:
     from haizflow.services.video_export import output_dimensions, preset_settings
     from haizflow.utils.ffmpeg import get_video_dimensions
 
     dimensions = get_video_dimensions(input_path)
     target = output_dimensions(*dimensions, preset)
     if target == dimensions:
-        shutil.copy2(input_path, output_path)
+        _copy_video(input_path, output_path, process_id, progress_callback)
         return output_path
     _run([
         _binary("ffmpeg"), "-y", "-i", os.path.abspath(input_path),
         "-map", "0:v:0", "-map", "0:a?", "-vf", f"scale={target[0]}:{target[1]}:flags=lanczos",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", str(preset_settings(preset)["crf"]),
         "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", os.path.abspath(output_path),
-    ], cwd=str(Path(output_path).resolve().parent), process_id=process_id, label="Export resolution")
+    ], cwd=str(Path(output_path).resolve().parent), process_id=process_id, label="Export resolution",
+        progress_callback=progress_callback,
+        duration=get_video_duration(input_path))
     return output_path

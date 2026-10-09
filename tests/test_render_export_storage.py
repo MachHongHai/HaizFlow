@@ -91,6 +91,59 @@ class RenderExportStorageTests(unittest.TestCase):
         files = dict(video.files, final_video=record["resolved_outputs"]["video"])
         return project, video_store.update_video(video.video_id, files=files)
 
+    def test_segment_start_and_retry_never_request_whole_manual_render(self):
+        from haizflow.schemas.editor import EditorDocument, EditorSequence
+        from haizflow.services import editor_documents, result_segments
+
+        _, video = self.make_video(kind="manual")
+        document = EditorDocument(video_id=video.video_id, sequence=EditorSequence(duration_ms=1800000))
+        result_segments.ensure(document)
+        result_segments.split(document, "result-1", 180000, "remaining")
+        self.host._selected_video_id = video.video_id
+        launch = Mock()
+        with patch.object(editor_documents, "load", return_value=document), \
+                patch("haizflow.desktop.video_export_controller.current_render", return_value=None), \
+                patch.object(self.exporter, "launch", launch):
+            self.assertTrue(self.exporter.start(video.video_id, "source", self.external / "cut.mp4",
+                                                 segment_id="result-1"))
+            self.assertEqual(self.exporter.jobs[0]["rangeMs"], [0, 180000])
+            self.host.runManualTool.assert_not_called()
+            self.exporter.jobs[0]["status"] = "failed"
+            self.assertTrue(self.exporter.retry_failed())
+            self.assertEqual(launch.call_count, 2)
+            self.host.runManualTool.assert_not_called()
+
+    def test_uncached_segment_publication_keeps_full_cache_and_blocks_project_deletion(self):
+        from haizflow.pipeline import segment_export
+        from haizflow.schemas.editor import EditorDocument, EditorSequence
+        from haizflow.services import editor_documents
+
+        _, video = self.make_video(kind="manual")
+        old_files = dict(video.files)
+        old_artifacts = dict(video.active_artifacts)
+        document = EditorDocument(video_id=video.video_id, sequence=EditorSequence(duration_ms=1800000))
+        target = self.external / "bounded.mp4"
+
+        def render_only_window(current, snapshot, window, output, token, progress):
+            self.assertEqual(window, (1200000, 1380000))
+            self.assertTrue(manual_artifacts.has_runtime_pins(video.video_id))
+            with self.assertRaises(RuntimeError):
+                video_store.delete_video(video.video_id)
+            output.write_bytes(b"bounded composed result")
+            progress(98)
+
+        with patch.object(editor_documents, "load", return_value=document), \
+                patch.object(video_export, "current_render", return_value=None), \
+                patch.object(video_export, "render_revision", return_value="snapshot"), \
+                patch.object(segment_export, "render_segment", render_only_window):
+            video_export.export_video(video, target, range_ms=(1200000, 1380000), progress=lambda _value: None)
+        self.assertEqual(target.read_bytes(), b"bounded composed result")
+        self.assertFalse(manual_artifacts.has_runtime_pins(video.video_id))
+        updated = video_store.get_video(video.video_id)
+        self.assertEqual(updated.files, old_files)
+        self.assertEqual(updated.active_artifacts, old_artifacts)
+        self.assertEqual(updated.export_history[-1]["range_ms"], [1200000, 1380000])
+
     def test_external_move_rename_edit_and_delete_do_not_affect_render_or_checkpoint(self):
         _project, video = self.make_video()
         checkpoint = dict(video.checkpoints)

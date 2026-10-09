@@ -94,9 +94,9 @@ def run_runtime_probe(device: str) -> RuntimeProbeResult:
         compute_types = sorted(ctranslate2.get_supported_compute_types(ct2_device))
         details["ctranslate2"] = _distribution_version("ctranslate2")
         details["ctranslate2_compute_types"] = compute_types
-        required_compute = "float16" if requested_device == "gpu" else "int8"
-        if required_compute not in compute_types:
-            errors.append(f"CTranslate2 does not support {required_compute} on {ct2_device}.")
+        from haizflow.core.whisper_compute import whisper_compute_type
+
+        details["whisper_compute_type"] = whisper_compute_type(ct2_device, supported_types=compute_types)
     except Exception as exc:
         errors.append(f"CTranslate2 native runtime failed: {type(exc).__name__}: {exc}")
 

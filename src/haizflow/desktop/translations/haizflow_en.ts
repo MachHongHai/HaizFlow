@@ -2015,6 +2015,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ManualEditorToolbar</name>
+    <message><source>Chia đoạn tại vị trí phát (S)</source><translation>Split segment at playhead (S)</translation></message>
     <message><source>Thu nhỏ preview</source><translation>Zoom out preview</translation></message>
     <message><source>Phóng to preview</source><translation>Zoom in preview</translation></message>
     <message>
@@ -3554,6 +3555,7 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>ResourcePacksPage</name>
+    <message><source>%1 · %2%</source><translation>%1 · %2%</translation></message>
     <message><source>Trình duyệt Douyin (Chromium)</source><translation>Douyin browser (Chromium)</translation></message>
     <message><source>Tải xuống</source><translation>Downloads</translation></message>
     <message><source>Tạo phiên Douyin riêng. Tải từ nguồn Chromium chính thức, không dùng trình duyệt cá nhân.</source><translation>Create a separate Douyin session. Downloaded from the official Chromium source; your personal browser is not used.</translation></message>
@@ -4388,6 +4390,9 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>SubtitleTimeline</name>
+    <message><source>Đoạn %1</source><translation>Segment %1</translation></message>
+    <message><source>Chia tại vị trí phát</source><translation>Split at playhead</translation></message>
+    <message><source>Xóa đoạn</source><translation>Delete segment</translation></message>
     <message><source>Xóa lớp</source><translation>Delete layer</translation></message>
     <message>
         <location filename="../qml/SubtitleTimeline.qml" line="+374"/>
@@ -4737,6 +4742,9 @@ Author and owner of HaizFlow.</translation>
 </context>
 <context>
     <name>VideoExportDialog</name>
+    <message><source>Phạm vi xuất</source><translation>Export range</translation></message>
+    <message><source>Toàn bộ video</source><translation>Entire video</translation></message>
+    <message><source>Đoạn %1 · %2 – %3</source><translation>Segment %1 · %2 – %3</translation></message>
     <message>
         <location filename="../qml/VideoExportDialog.qml" line="+15"/>
         <source>Xử lý và xuất video</source>
@@ -5345,5 +5353,10 @@ Author and owner of HaizFlow.</translation>
     <message><source>Tạo phiên Douyin</source><translation>Create Douyin session</translation></message>
     <message><source>Hủy</source><translation>Cancel</translation></message>
     <message><source>Mở phiên trình duyệt riêng cho Douyin. Không dùng tài khoản hoặc dữ liệu trình duyệt cá nhân.</source><translation>Open a separate Douyin browser session. Your account and personal browser data are not used.</translation></message>
+</context>
+<context>
+    <name>StudioSeekButton</name>
+    <message><source>Tua lùi %1 giây</source><translation>Seek backward %1 seconds</translation></message>
+    <message><source>Tua tới %1 giây</source><translation>Seek forward %1 seconds</translation></message>
 </context>
 </TS>

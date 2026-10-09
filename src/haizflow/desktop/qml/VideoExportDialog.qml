@@ -22,6 +22,7 @@ AppDialog {
         batchMode = false;
         processBeforeExport = processFirst;
         configuration = controller.manualExportSettings();
+        exportRange.currentIndex = 0;
         destination = "";
         destinationExists = false;
         quality.currentIndex = Math.max(0, (configuration.presets || []).findIndex(item => item.value === configuration.preset));
@@ -55,6 +56,26 @@ AppDialog {
             font.family: Theme.fontFamily
             font.pixelSize: TypeScale.control
             font.weight: Font.Medium
+        }
+    }
+    FormSection {
+        Layout.fillWidth: true
+        visible: !root.batchMode && !root.processBeforeExport && (root.configuration.segments || []).length > 0
+        title: qsTr("Phạm vi xuất")
+        StudioComboBox {
+            id: exportRange
+            objectName: "exportRange"
+            Layout.fillWidth: true
+            textRole: "label"
+            valueRole: "value"
+            model: [{value: "", label: qsTr("Toàn bộ video")}].concat((root.configuration.segments || []).map(function(segment, index) {
+                function time(ms) {
+                    const seconds = Math.floor(ms / 1000);
+                    return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0")
+                        + "." + String(ms % 1000).padStart(3, "0");
+                }
+                return {value: segment.id, label: qsTr("Đoạn %1 · %2 – %3").arg(index + 1).arg(time(segment.startMs)).arg(time(segment.endMs))};
+            }))
         }
     }
     FormSection {
@@ -138,6 +159,8 @@ AppDialog {
                         quality.currentValue, root.destination, root.destinationExists, root.processBeforeExport)
                     : root.processBeforeExport
                     ? root.controller.processVideoTo(root.configuration.videoId, quality.currentValue, root.destination, root.destinationExists)
+                    : exportRange.currentValue
+                    ? root.controller.exportVideoSegmentTo(root.configuration.videoId, quality.currentValue, root.destination, root.destinationExists, exportRange.currentValue)
                     : root.controller.exportVideoTo(root.configuration.videoId, quality.currentValue, root.destination, root.destinationExists);
                 if (started)
                     root.close();

@@ -10,14 +10,14 @@
     "basis": "Explicit owner approval and request to clarify redistribution and commercial software restrictions",
     "language_precedence": "vi"
   },
-  "effective_release": "0.1.8 reviewed CPU, preview and download patch; publication tracked by GitHub release state",
+  "effective_release": "0.1.9 reviewed editor, export, hardware and CPU recovery update; publication tracked by GitHub release state",
   "public_release_review": {
     "approved_by": "Codex (scoped technical packaging review, not independent legal certification)",
-    "approved_at": "2026-10-09",
-    "source_commit": "7cb6d18581dfb1fe283e00fc9db20e611c7e9f41 (review baseline; final release commit is bound by BUILD-INFO)",
-    "release_version": "0.1.8",
-    "owner_release_authorization": "Direct owner request to build/publish, commit/push source and remove releases below 0.1.5 after verifying replacement resource delivery. Supported upgrade verification is scoped to 0.1.6 and 0.1.7.",
-    "publication_condition": "Publish exact corresponding-source asset and rebuilt CPU 10/CUDA 12/vision 5 engines with the new binaries; verify installer, frozen full/delta upgrades from 0.1.6 and 0.1.7, rollback and public download/hash checks. Do not delete old releases until all new active resource URLs are verified. Engine application code is rebuilt so hardware/inference fixes reach installed users. CPU admission/lifetime, cancellation, source import, download checkpoints and preview clocks/cache change; the exact dependency locks, model checkpoints, media recipes, vendor assets, browser delivery and license terms remain unchanged. Certifi becomes an explicit direct dependency and retains its exact license. This is a technical packaging review, not independent legal certification; do not claim universal downloads, all-machine inference benchmarks or unsigned Application Control compatibility.",
+    "approved_at": "2026-10-10",
+    "source_commit": "2a13c98 (review baseline; final release commit is bound by BUILD-INFO)",
+    "release_version": "0.1.9",
+    "owner_release_authorization": "Direct owner request to build/publish 0.1.9 and explicit permission to commit and push tested source. Upgrade verification remains scoped to 0.1.6 and later released versions through 0.1.8.",
+    "publication_condition": "Publish exact corresponding-source asset and rebuilt CPU 11/CUDA 13/vision 6 engines with the new binaries; verify installer, frozen full/delta upgrades from 0.1.6, 0.1.7 and 0.1.8, rollback and public download/hash checks. Do not overwrite old immutable release assets. Editor layers/result segments, bounded export, storage relocation, cache publication, Windows file retries, capability-based Whisper precision, CPU memory handoff and GPU-to-CPU recovery change owned application code. Dependency locks, model checkpoints, media recipes, vendor assets, browser delivery and license terms remain unchanged. This is a technical packaging review, not independent legal certification; do not claim universal downloads, all-machine inference benchmarks or unsigned Application Control compatibility.",
     "clearances": {
       "owned-code-and-contributor-scope": {
         "path": "legal/reviews/application-scope-2026-10-06.md",
@@ -28,8 +28,8 @@
         "sha256": "fd3764dcb816168e9ec62737823ecf9eca79655e39999b5073779ac927cd7702"
       },
       "ffmpeg-complete-corresponding-source": {
-        "path": "legal/reviews/media-source-0.1.8.md",
-        "sha256": "428d027549e28de800b59229f1692de2df7aaf7e53f8fc3c8913babd0cf86253"
+        "path": "legal/reviews/media-source-0.1.9.md",
+        "sha256": "31283d683aae9a19c2d64e0d137d0e8552a2d6255f9566309929af9030237572"
       },
       "qt-lgpl-module-and-relinking-evidence": {
         "path": "legal/reviews/qt-replacement-2026-10-06.md",

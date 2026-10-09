@@ -15,7 +15,7 @@ from haizflow.core.hardware import translation_model_signature_parts
 from haizflow.core.model_integrity import DEMUCS_MODEL_SIGNATURE
 from haizflow.core.processing_errors import describe_failure
 from haizflow.pipeline.timing_contract import TIMING_SOURCE
-from haizflow.services import editor_documents, manual_artifacts, video_store
+from haizflow.services import editor_documents, manual_artifacts, result_segments, video_store
 from haizflow.services.video_export import legacy_render_owned, preset_settings
 
 # Cache-contract versions are intentionally available without importing the
@@ -714,7 +714,7 @@ def export_signature(video, *, validate: bool = True) -> str:
         getattr(video, "watermark_bold", True),
         getattr(video, "watermark_italic", True),
         getattr(video, "subtitle_layout_override", False),
-        editor_document.model_dump() if editor_document else {},
+        result_segments.render_payload(editor_document),
         getattr(video, "export_preset", "source"),
         *_generation_token(video, "export"),
         "manual-export-v9-absolute-libass-font-directory",
@@ -1457,9 +1457,17 @@ def _run_translation(video, reporter) -> None:
             # exhaust Windows commit even though CUDA VRAM was released.
             _release_recognition_runtime()
             from haizflow.pipeline.omnivoice_tts import clear_runtime
+            from haizflow.core.hardware import processing_device_preference
             from haizflow.services.translation_progress import manual_progress_path
 
             clear_runtime()
+            if (getattr(video, "translation_model", "auto") == "q4"
+                    or processing_device_preference() == "cpu"):
+                from haizflow.services.external_engine import shared_external_engine_pool
+
+                # RPC warm-up owners are separate from the direct HY-MT2/TTS
+                # workers above. Release their imported runtimes as well.
+                shared_external_engine_pool().release({"voice", "translation"})
             translate_segments(
                 recognition["resolved_outputs"]["segments"],
                 str(staging / "translated-segments.json"),
@@ -1801,11 +1809,13 @@ def _register_voice_manifest_from_parts(video, parts_dir: Path) -> dict[str, Any
         manual_artifacts.discard_staging_directory(staging)
 
 
-def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=None) -> list[str]:
+def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=None, *,
+                          document=None, range_ms=None, bounded_video=None,
+                          bounded_background=None, process_id=None) -> list[str]:
     """Materialize the current optional audio layers without invoking AI."""
     from haizflow.pipeline.sequence_compiler import materialize_source_sequence
 
-    document = editor_documents.ensure(video)
+    document = document or editor_documents.ensure(video)
     tracks = {track.track_id: track for track in document.tracks}
     def track_audible(track_id: str) -> bool:
         track = tracks.get(track_id)
@@ -1859,6 +1869,9 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
             segment["_voice_fade_out_ms"] = voice_clip.fade_out_ms
             if bool(segment.get("timeline_edited")) or voice_clip.duration_ms != subtitle_clip.duration_ms:
                 segment["fit_voice_to_timing"] = True
+        if range_ms is not None and (float(segment["end"]) * 1000 <= range_ms[0]
+                                    or float(segment["start"]) * 1000 >= range_ms[1]):
+            segment["_voice_enabled"] = False
         segments.append(segment)
 
     segments.sort(key=lambda item: (float(item["start"]), str(item["segment_id"])))
@@ -1917,13 +1930,12 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
 
     # Edit the source bed first. Voice and music use sequence timestamps and
     # must never be trimmed again with source-file coordinates.
-    mix_video, mix_background = materialize_source_sequence(
-        _video_input(video),
-        background,
-        document,
-        work_dir,
-        video.video_id,
-    )
+    if range_ms is not None:
+        mix_video, mix_background = bounded_video, bounded_background
+    else:
+        mix_video, mix_background = materialize_source_sequence(
+            _video_input(video), background, document, work_dir, video.video_id,
+        )
     if reporter:
         reporter.update(5, "manual_audio", "Đang cập nhật các lớp âm thanh")
     build_audio_timeline(
@@ -1954,6 +1966,8 @@ def _compose_manual_audio(video, output_path: Path, work_dir: Path, reporter=Non
         ducking_reduction_db=document.audio_ducking_reduction_db,
         ducking_attack_ms=document.audio_ducking_attack_ms,
         ducking_release_ms=document.audio_ducking_release_ms,
+        **({"range_ms": range_ms, "timeline_duration_ms": document.sequence.duration_ms,
+            "process_registry_id": process_id} if range_ms is not None else {}),
     )
     return [value for value in input_ids if value]
 
@@ -2014,6 +2028,7 @@ def _run_export(video, reporter) -> None:
         write_subtitles,
     )
 
+    reporter.update(0, "manual_export_preparing", "Đang kiểm tra dữ liệu xuất")
     subtitle = _current_subtitle_record(video)
     export_preset = str(getattr(video, "export_preset", "source") or "source")
     encoding_quality = int(preset_settings(export_preset)["crf"])
@@ -2023,7 +2038,7 @@ def _run_export(video, reporter) -> None:
     if not cached:
         staging = manual_artifacts.create_staging_directory(video.video_id, "export")
         try:
-            reporter.update(5, "manual_export", "Đang xuất video")
+            reporter.update(1, "manual_export_preparing", "Đang chuẩn bị phụ đề")
             editor_document = editor_documents.ensure(video)
             export_srt = staging / "subtitles.srt"
             if write_subtitles(editor_document, export_srt):
@@ -2051,12 +2066,16 @@ def _run_export(video, reporter) -> None:
                 export_inputs.append(str(audio.get("artifact_id") or ""))
             else:
                 audio_path = str(staging / "current-audio.wav")
+                reporter.update(3, "manual_export_preparing", "Đang chuẩn bị âm thanh")
                 export_inputs.extend(_compose_manual_audio(video, Path(audio_path), staging))
+            reporter.update(5, "manual_export_preparing", "Đang chuẩn bị video nguồn")
             render_input = materialize_source_video(
                 _video_input(video),
                 editor_document,
                 staging,
                 video.video_id,
+                progress_callback=lambda fraction: reporter.update(
+                    5 + round(14 * fraction), "manual_export", "Đang chuẩn bị video nguồn"),
             )
             render_audio = audio_path
             source_segments = manual_artifacts.active(video, "recognition")
@@ -2073,6 +2092,7 @@ def _run_export(video, reporter) -> None:
                 except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
                     intervals = []
             intervals = map_source_intervals(editor_document, intervals)
+            reporter.update(20, "manual_export_preparing", "Đang khởi tạo bộ mã hóa")
             render_video(
                 render_input,
                 render_audio,
@@ -2086,7 +2106,8 @@ def _run_export(video, reporter) -> None:
                 video.watermark_text,
                 subtitle_layout_override=bool(video.subtitle_layout_override),
                 progress_callback=lambda fraction: reporter.update(
-                    5 + round(84 * fraction), "manual_export", f"Đang xuất video {round(100 * fraction)}%"
+                    20 + round(69 * fraction), "manual_export" if fraction > 0 else "manual_export_preparing",
+                    f"Đang xuất video {round(100 * fraction)}%" if fraction > 0 else "Đang khởi tạo bộ mã hóa"
                 ),
                 original_subtitle_removal_mode=video.original_subtitle_removal_mode,
                 original_subtitle_intervals=intervals,
@@ -2110,12 +2131,17 @@ def _run_export(video, reporter) -> None:
                 editor_document,
                 video.video_id,
                 encoding_quality=encoding_quality,
+                progress_callback=lambda fraction: reporter.update(
+                    91 + round(3 * fraction), "manual_export", "Đang ghép các lớp hình ảnh"),
             )
             reporter.update(94, "manual_export", "Đang hoàn thiện video theo chất lượng đã chọn")
             finish_export_resolution(
                 str(staging / "video-overlays.mp4"), str(staging / "video.mp4"),
                 export_preset, video.video_id,
+                progress_callback=lambda fraction: reporter.update(
+                    94 + round(3 * fraction), "manual_export", "Đang hoàn thiện video theo chất lượng đã chọn"),
             )
+            reporter.update(98, "manual_export_preparing", "Đang xác minh và lưu kết quả")
             cached = manual_artifacts.publish(
                 video.video_id,
                 "export",

@@ -426,7 +426,9 @@ class ResourcePackManager:
             # Only discard the source if the active copy still contains every
             # resource. A corrupt/missing target or concurrent source change
             # must leave the previous copy available for recovery.
-            if ResourcePackManager._tree_fingerprint(previous) != ResourcePackManager._tree_fingerprint(active):
+            active_files = {path: (size, digest) for path, size, digest in ResourcePackManager._tree_fingerprint(active)}
+            if any(active_files.get(path) != (size, digest)
+                   for path, size, digest in ResourcePackManager._tree_fingerprint(previous)):
                 return
             if json.loads(pointer.read_text(encoding="utf-8")) != payload:
                 return
@@ -437,6 +439,10 @@ class ResourcePackManager:
             if candidate.parent != previous:
                 continue
             shutil.rmtree(candidate, ignore_errors=True)
+        # A locked DLL/model must be retried next startup, not silently marked
+        # as cleaned. Project/data folders are deliberately never removed.
+        if any((previous / name).exists() for name in ("models", "engines", "packages")):
+            return
         temporary = None
         try:
             if json.loads(pointer.read_text(encoding="utf-8")) != payload:
@@ -1346,8 +1352,20 @@ class ResourcePackManager:
         else:
             self._verify_model_pack(definition)
 
-    def move_storage(self, destination: Path) -> Path:
+    def move_storage(self, destination: Path, *, progress=None, cancel_event=None) -> Path:
         from haizflow.update.filesystem import no_links
+        from haizflow.core.paths import runtime_overrides_allowed
+
+        def check_cancelled():
+            if cancel_event is not None and cancel_event.is_set():
+                raise ModelBootstrapCancelled("Đã hủy chuyển gói tài nguyên. Vị trí cũ được giữ nguyên.")
+
+        check_cancelled()
+
+        # A development/worker override takes precedence over the durable
+        # pointer. Never remove files while that override still owns the root.
+        if runtime_overrides_allowed() and any(os.getenv(key) for key in ("HAIZFLOW_RESOURCE_ROOT", "MODELS_DIR")):
+            raise ResourcePackError("Vị trí tài nguyên đang được cố định bằng biến môi trường. Bỏ HAIZFLOW_RESOURCE_ROOT/MODELS_DIR rồi khởi động lại trước khi chuyển.")
 
         no_links(destination.expanduser())
         no_links(self.storage_root)
@@ -1358,6 +1376,8 @@ class ResourcePackManager:
         if destination == source:
             return source
         target = destination / "HaizFlowResources"
+        if target == source:
+            return source
         if target.is_relative_to(source) or source.is_relative_to(target):
             raise ResourcePackError("Hãy chọn một thư mục ngoài vị trí tài nguyên hiện tại.")
         no_links(target)
@@ -1384,13 +1404,47 @@ class ResourcePackManager:
         staging.mkdir(parents=True)
         backup: Path | None = None
         promoted = False
+        temporary = None
         try:
+            copied = 0
+            last_report = 0.0
+
+            def copy_file(origin, output):
+                nonlocal copied, last_report
+                with open(origin, "rb") as incoming, open(output, "wb") as outgoing:
+                    for chunk in iter(lambda: incoming.read(4 * 1024 * 1024), b""):
+                        check_cancelled()
+                        outgoing.write(chunk)
+                        copied += len(chunk)
+                        now = time.monotonic()
+                        if progress and now - last_report >= 0.1:
+                            progress("copy", copied, required)
+                            last_report = now
+                shutil.copystat(origin, output)
+                return str(output)
+
+            if progress:
+                progress("copy", 0, required)
             for name in ("models", "engines", "packages"):
                 origin = source / name
                 if origin.is_dir():
-                    shutil.copytree(origin, staging / name)
-            if self._tree_fingerprint(source) != self._tree_fingerprint(staging):
+                    shutil.copytree(origin, staging / name, copy_function=copy_file)
+            if progress:
+                progress("verify", 0, required * 2)
+            verified = 0
+
+            def hash_progress(size):
+                nonlocal verified, last_report
+                check_cancelled()
+                verified += size
+                now = time.monotonic()
+                if progress and now - last_report >= 0.1:
+                    progress("verify", verified, required * 2)
+                    last_report = now
+
+            if self._tree_fingerprint(source, progress=hash_progress) != self._tree_fingerprint(staging, progress=hash_progress):
                 raise ResourcePackError("Không thể xác minh bản sao gói tài nguyên trên ổ đích.")
+            check_cancelled()
             if target.exists():
                 backup = destination / f".haizflow-resources-{os.getpid()}.backup"
                 if backup.exists():
@@ -1414,6 +1468,9 @@ class ResourcePackManager:
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, pointer)
+            temporary = None
+            if progress:
+                progress("switch", 1, 1)
             if backup is not None:
                 shutil.rmtree(backup, ignore_errors=True)
             return target
@@ -1427,9 +1484,12 @@ class ResourcePackManager:
             elif promoted:
                 shutil.rmtree(target, ignore_errors=True)
             raise
+        finally:
+            if temporary is not None:
+                Path(temporary).unlink(missing_ok=True)
 
     @staticmethod
-    def _tree_fingerprint(root: Path) -> tuple[tuple[str, int, str], ...]:
+    def _tree_fingerprint(root: Path, *, progress=None) -> tuple[tuple[str, int, str], ...]:
         """Hash only the three resource payload trees for an atomic storage move."""
         records: list[tuple[str, int, str]] = []
         for name in ("models", "engines", "packages"):
@@ -1441,6 +1501,8 @@ class ResourcePackManager:
                 with path.open("rb") as stream:
                     for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                         digest.update(chunk)
+                        if progress:
+                            progress(len(chunk))
                 records.append((path.relative_to(root).as_posix(), path.stat().st_size, digest.hexdigest()))
         return tuple(records)
 

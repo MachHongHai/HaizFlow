@@ -48,6 +48,16 @@ class Backend(QObject):
         self.changed.emit()
         return True
 
+    @Slot(result=str)
+    def addOcrLayer(self):
+        self.calls.append(("add", "extra"))
+        return "extra"
+
+    @Slot(str, "QVariantMap", str, result=bool)
+    def updateOcrLayer(self, clip_id, region, mode):
+        self.calls.append(("layer", clip_id, dict(region), mode))
+        return True
+
 
 def test_keep_selection_is_applied_even_when_region_commit_refreshes_bindings():
     app = QGuiApplication.instance() or QGuiApplication([])
@@ -59,9 +69,10 @@ def test_keep_selection_is_applied_even_when_region_commit_refreshes_bindings():
 import QtQuick.Controls.Basic
 import "{QML_DIR.as_uri()}"
 ApplicationWindow {{
-    width: 480; height: 340; visible: true
+    width: 360; height: 340; visible: true; color: Theme.surface
     QtObject {{
         id: testInspector
+        objectName: "testInspector"
         property var selectedOcrLayer: ({{clip_id: "ocr-source-region", primary: true,
             region: {{x_percent: 10, y_percent: 40, width_percent: 60, height_percent: 15}}}})
         property var ocrLayers: [selectedOcrLayer]
@@ -74,6 +85,10 @@ ApplicationWindow {{
         signal ocrRegionDiscardRequested()
         onOcrModeDraftRequested: function(clipId, mode) {{
             ocrModeDrafts = Object.assign({{}}, ocrModeDrafts, {{[clipId]: mode}});
+        }}
+        onOcrLayerSelected: function(id) {{
+            selectedOcrLayer = {{clip_id: id, name: "Lớp che 1", primary: false, mode: "blur", region: ocrRegionDraft}};
+            ocrLayers = [selectedOcrLayer];
         }}
     }}
     ManualImageToolPanel {{
@@ -96,8 +111,8 @@ ApplicationWindow {{
         QTest.qWait(50)
         selector = window.findChild(QQuickItem, "ocrTreatmentSelector")
         assert selector is not None
-        assert window.findChild(QObject, "addOcrLayerButton") is None
-        assert window.findChild(QObject, "ocrLayerSelector") is None
+        assert window.findChild(QObject, "addOcrLayerButton") is not None
+        assert window.findChild(QObject, "ocrLayerSelector") is not None
         selector.setProperty("currentIndex", 0)
         assert QMetaObject.invokeMethod(selector, "activated", Qt.DirectConnection, Q_ARG(int, 0))
         QTest.qWait(30)
@@ -113,6 +128,24 @@ ApplicationWindow {{
         QTest.qWait(30)
         assert backend.calls[-1] == ("mode", "keep")
         assert not backend.removes
+        # Adding a layer is only a draft. It must not start OCR or apply a mask.
+        before = len(backend.calls)
+        add = window.findChild(QObject, "addOcrLayerButton")
+        assert QMetaObject.invokeMethod(add, "clicked", Qt.DirectConnection)
+        assert backend.calls[before:] == [("add", "extra")]
+        assert panel.property("clipId") == "extra"
+        assert panel.property("draftTreatment") == "blur"
+        assert QMetaObject.invokeMethod(selector, "activated", Qt.DirectConnection, Q_ARG(int, 1))
+        assert panel.property("draftTreatment") == "patch"
+        assert QMetaObject.invokeMethod(panel, "applyTreatment", Qt.DirectConnection)
+        assert backend.calls[-1][0:2] == ("layer", "extra")
+        assert backend.calls[-1][-1] == "patch"
+        assert not backend.removes  # Independent of the primary keep setting.
+        import os
+        if directory := os.getenv("HAIZFLOW_UI_CAPTURE_DIR"):
+            QTest.qWait(100)
+            Path(directory).mkdir(parents=True, exist_ok=True)
+            assert window.grabWindow().save(str(Path(directory) / "ocr-layer-panel.png"))
     finally:
         window.close()
         window.deleteLater()

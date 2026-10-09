@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import time
 from dataclasses import dataclass
 
 GIB = 1024**3
@@ -129,14 +130,29 @@ def cpu_memory_constrained(snapshot: MemorySnapshot | None = None) -> bool:
     )
 
 
-def require_cpu_memory(stage: str, *, resident: bool = False, snapshot: MemorySnapshot | None = None) -> None:
+def require_cpu_memory(stage: str, *, resident: bool = False, snapshot: MemorySnapshot | None = None,
+                       settle_seconds: float = 0) -> None:
     """Check immediately before CPU inference. Call after idle-model release.
 
     Existing resident weights are already charged to commit; only their working
     reserve is required again. This check cannot prevent other apps racing us.
     """
-    snapshot = snapshot if snapshot is not None else memory_snapshot()
+    supplied = snapshot is not None
+    snapshot = snapshot if supplied else memory_snapshot()
     physical, commit = CPU_STAGE_RESERVES[stage] if not resident else (GIB // 2, GIB)
+    # Windows can report the just-retired worker's commit/working set briefly.
+    # A bounded fresh measurement may admit it; never lower either reserve.
+    if not supplied and settle_seconds > 0:
+        deadline = time.monotonic() + min(float(settle_seconds), 2.0)
+        while (snapshot.available_bytes is not None
+               and (os.name != "nt" or snapshot.commit_available_bytes is not None)
+               and (snapshot.available_bytes < physical
+                    or (snapshot.commit_available_bytes is not None and snapshot.commit_available_bytes < commit))):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.2, remaining))
+            snapshot = memory_snapshot()
     LOGGER.info("CPU memory preflight stage=%s resident=%s %s", stage, resident, snapshot.diagnostic())
     if snapshot.available_bytes is None or (os.name == "nt" and snapshot.commit_available_bytes is None):
         raise RuntimeError("Không đọc được bộ nhớ RAM/bộ nhớ hệ thống Windows. Hãy kiểm tra lại cấu hình trước khi xử lý.")

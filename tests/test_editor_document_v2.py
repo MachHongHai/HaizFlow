@@ -782,7 +782,7 @@ def test_first_editor_document_creates_metadata_backup_and_stable_tracks(tmp_pat
     assert (tmp_path / "video.pre-editor-v2.json").is_file()
     assert destination.is_file()
     assert [track.track_id for track in document.tracks] == [
-        "source-video", "subtitles", "overlays", "voice", "source-audio", "music", "ocr-source"
+        "source-video", "subtitles", "overlays", "voice", "source-audio", "music", "ocr-source", "result"
     ]
     assert next(clip for clip in document.clips if clip.track_id == "subtitles").segment_id == "s1"
 

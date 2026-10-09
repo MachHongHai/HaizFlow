@@ -64,7 +64,8 @@ def test_apply_only_changes_ocr_configuration_and_visual_cache(video, treatment)
     host.runManualTool.assert_not_called()
 
 
-def test_experimental_layers_are_hidden_without_deleting_saved_data(video):
+def test_disabled_layers_are_hidden_without_deleting_saved_data(video, monkeypatch):
+    monkeypatch.setattr(ocr_layers, "EXTRA_LAYERS_ENABLED", False)
     document = EditorDocument(video_id=video.video_id, sequence=EditorSequence(duration_ms=5000))
     ocr_layers.ensure_primary(document)
     document.tracks.append(EditorTrack(track_id="experimental", kind="ocr", name="Lớp che 1"))

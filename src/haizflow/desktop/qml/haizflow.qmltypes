@@ -89,6 +89,7 @@ Module {
         Property { name: "resourcePackInstalledText"; type: "QString"; isReadonly: true }
         Property { name: "resourcePackFreeSpaceText"; type: "QString"; isReadonly: true }
         Property { name: "resourcePackBusy"; type: "bool"; isReadonly: true }
+        Property { name: "resourcePackStorageMoving"; type: "bool"; isReadonly: true }
         Property { name: "resourcePackActivityText"; type: "QString"; isReadonly: true }
         Property { name: "resourcePackActivityProgress"; type: "double"; isReadonly: true }
         Property { name: "keepModelsWarm"; type: "bool"; isReadonly: true }
@@ -150,6 +151,8 @@ Module {
         Method { name: "recordManualWatermarkScaleChange"; Parameter { name: "beforeScale"; type: "int" } Parameter { name: "afterScale"; type: "int" } }
         Method { name: "manualExportPreflight"; type: "QVariantMap" }
         Method { name: "splitSourceAt"; type: "bool"; Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "splitResultClip"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
+        Method { name: "exportVideoSegmentTo"; type: "bool"; Parameter { name: "videoId"; type: "string" } Parameter { name: "preset"; type: "string" } Parameter { name: "destination"; type: "string" } Parameter { name: "overwrite"; type: "bool" } Parameter { name: "segmentId"; type: "string" } }
         Method { name: "trimClip"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "edge"; type: "string" } Parameter { name: "timeMs"; type: "int" } }
         Method { name: "moveClip"; type: "bool"; Parameter { name: "clipId"; type: "string" } Parameter { name: "startMs"; type: "int" } Parameter { name: "trackId"; type: "string" } }
         Method { name: "duplicateClip"; type: "bool"; Parameter { name: "clipId"; type: "string" } }

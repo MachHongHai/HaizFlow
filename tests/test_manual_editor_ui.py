@@ -145,8 +145,8 @@ def test_voice_and_subtitles_share_one_timeline_lane_without_merging_data():
     timeline = (QML_DIR / "SubtitleTimeline.qml").read_text(encoding="utf-8")
     header = (QML_DIR / "TrackHeader.qml").read_text(encoding="utf-8")
 
-    assert 'y: combinedVoice ? 104 : root.trackY(index)' in timeline
-    assert 'if (String(track.track_id || "") === "voice")' in timeline
+    assert 'y: combinedVoice ? 104 + root.resultTrackOffset : root.trackY(index)' in timeline
+    assert 'if (trackId === "voice" || trackId === "result")' in timeline
     assert 'title: qsTr("Phụ đề · Giọng đọc")' in timeline
     assert 'onSecondaryMuteToggled: root.trackStateRequested("voice", "muted", !secondaryMuted)' in timeline
     assert 'root.clipSelected(editorClip.clipId,' in timeline

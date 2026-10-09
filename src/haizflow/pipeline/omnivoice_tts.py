@@ -17,7 +17,7 @@ import time
 import traceback
 import zipfile
 from collections import deque
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -521,6 +521,26 @@ def _request_model_key(request: dict[str, Any]) -> tuple[str, str]:
     return str(request.get("model_root") or ""), str(request.get("device") or "cpu")
 
 
+def _cpu_voice_threads() -> int:
+    from haizflow.core.hardware import cpu_runtime_profile
+
+    # Choose before loading the FP32 weights. Their own resident memory must
+    # not make every otherwise healthy 16 GiB machine drop to two threads.
+    return max(1, min(8, cpu_runtime_profile(force_cpu=True).cpu_threads))
+
+
+@contextmanager
+def _inference_activity(model, callback):
+    """Observe real decoder forwards, never a timer heartbeat or fake completion."""
+    register = getattr(model, "register_forward_hook", None)
+    handle = register(lambda *_args: callback()) if callable(register) else None
+    try:
+        yield
+    finally:
+        if handle is not None:
+            handle.remove()
+
+
 def _preflight_cpu_request(request: dict[str, Any], *, allow_resident: bool = False) -> None:
     if str(request.get("device") or "cpu").startswith("cuda"):
         return
@@ -575,6 +595,7 @@ def _run_worker_process(
         last_completed = -1
         last_stage = ""
         last_current = -1
+        last_forwards = -1
         stall_timeout = (
             _GPU_STALL_TIMEOUT_SECONDS
             if str(request.get("device") or "").startswith("cuda")
@@ -591,12 +612,15 @@ def _run_worker_process(
                 total = int(status.get("total", len(request.get("items") or [])))
                 stage = str(status.get("stage") or "synthesizing")
                 current = int(status.get("current", 0))
+                forwards = int(status.get("inference_forwards", 0))
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 status = None
-            if status is not None and (completed != last_completed or stage != last_stage or current != last_current):
+            if status is not None and (completed != last_completed or stage != last_stage or current != last_current
+                                       or forwards != last_forwards):
                 last_completed = completed
                 last_stage = stage
                 last_current = current
+                last_forwards = forwards
                 monitor_state["last_activity"] = now
                 monitor_state["last_heartbeat"] = now
                 _log_monitor_event(
@@ -729,6 +753,7 @@ def _run_persistent_worker_process(
         last_completed = -1
         last_stage = ""
         last_current = -1
+        last_forwards = -1
         last_activity = time.monotonic()
         last_heartbeat = last_activity
         started = last_activity
@@ -763,20 +788,24 @@ def _run_persistent_worker_process(
                     total = int(status.get("total", len(request.get("items") or [])))
                     stage = str(status.get("stage") or "synthesizing")
                     current = int(status.get("current", 0))
+                    forwards = int(status.get("inference_forwards", 0))
                 except (OSError, ValueError, TypeError, json.JSONDecodeError):
                     status = None
                 if status is not None and (
                     completed != last_completed or stage != last_stage or current != last_current
+                    or forwards != last_forwards
                 ):
                     last_completed = completed
                     last_stage = stage
                     last_current = current
+                    last_forwards = forwards
                     last_activity = now
                     last_heartbeat = now
                     log_to_video(
                         video_id,
                         f"[TTS][PROGRESS] provider=omnivoice stage={stage} "
-                        f"completed={completed}/{total} current={current or '-'}{_timing_detail(status)}",
+                        f"completed={completed}/{total} current={current or '-'} "
+                        f"decoder_forwards={forwards}{_timing_detail(status)}",
                     )
                     if progress_callback is not None:
                         progress_callback(completed, total, stage)
@@ -1020,6 +1049,7 @@ def synthesize_batch_to_mp3(
             "model_root": str(model_root),
             "site_packages": str(_sdk_root() / "site-packages"),
             "device": "cuda:0" if (device or processing_device_preference()) == "gpu" else "cpu",
+            "cpu_threads": _cpu_voice_threads() if (device or processing_device_preference()) != "gpu" else 1,
             "language": _omnivoice_language_id(language_id),
             "narrator_anchor_text": str(narrator_anchor_text or "").strip()
             or _narrator_anchor_text(language_id),
@@ -1133,6 +1163,7 @@ def synthesize_batch_to_mp3(
                 wav.unlink(missing_ok=True)
             Path(str(request["status_path"])).unlink(missing_ok=True)
             request["device"] = "cpu"
+            request["cpu_threads"] = _cpu_voice_threads()
             request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
             if keep_worker_warm:
                 with _PERSISTENT_WORKER_LOCK:
@@ -1480,6 +1511,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
 
     batch_size = 1
     batch_retries = 0
+    inference_forwards = 0
 
     def write_status(completed: int, stage: str, *, current: int = 0) -> None:
         _write_status_file(
@@ -1491,6 +1523,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
                 "current": current,
                 "batch_size": batch_size,
                 "batch_retries": batch_retries,
+                "inference_forwards": inference_forwards,
                 "timing_seconds": {key: round(value, 3) for key, value in timings.items()},
             },
         )
@@ -1524,6 +1557,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
         pass
 
     device = str(request.get("device") or "cpu")
+    cpu_threads = max(1, min(8, int(request.get("cpu_threads") or _cpu_voice_threads()))) if device == "cpu" else 1
     if device.startswith("cuda") and not torch.cuda.is_available():
         raise RuntimeError("OmniVoice GPU mode was selected, but CUDA is unavailable.")
     if device.startswith("cuda"):
@@ -1560,9 +1594,7 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
     if not device.startswith("cuda"):
         # Map weights with one thread (Windows native loader safety), then
         # enable parallel inference while leaving a core for the desktop.
-        from haizflow.core.hardware import cpu_runtime_profile
-
-        torch.set_num_threads(cpu_runtime_profile(force_cpu=True).cpu_threads)
+        torch.set_num_threads(cpu_threads)
     voice_seed = int(request.get("voice_seed") or 0) & 0x7FFFFFFF
     speaker_mode = str(request.get("speaker_mode") or "single")
     synthesis_items = list(items)
@@ -1710,8 +1742,20 @@ def _worker_main(request_path: str, runtime: dict[str, Any] | None = None) -> in
             synthesis_started = time.monotonic()
 
             def generate(candidate):
+                last_observation = 0.0
+
+                def observe_forward():
+                    nonlocal inference_forwards, last_observation
+                    inference_forwards += 1
+                    now = time.monotonic()
+                    if now - last_observation >= 2:
+                        last_observation = now
+                        write_status(offset, "synthesizing", current=completed)
+
                 reset_seed(item_seed if speaker_mode == "multiple" else voice_seed)
-                with torch.inference_mode():
+                with torch.inference_mode(), (
+                    _inference_activity(model, observe_forward) if device == "cpu" else nullcontext()
+                ):
                     result = model.generate(
                         text=[str(entry["text"]).strip() for entry in candidate] if len(candidate) > 1 else text,
                         language=str(request.get("language") or "") or None,

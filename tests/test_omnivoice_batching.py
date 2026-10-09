@@ -182,7 +182,8 @@ class OmniVoiceBatchTests(unittest.TestCase):
                 items = [{"text": f"{index} a short sentence", "voice": "omnivoice:male", "wav_path": str(root / f"{index}.wav")}
                          for index in range(1, 6)]
                 request = {"site_packages": directory, "model_root": "model", "device": device, "language": "vi",
-                           "items": items, "status_path": str(root / "status.json"), "speaker_mode": "multiple"}
+                           "items": items, "status_path": str(root / "status.json"), "speaker_mode": "multiple",
+                           "cpu_threads": 4}
                 path = root / "request.json"
                 path.write_text(json.dumps(request), encoding="utf-8")
                 with patch.object(voice, "_write_status_file", side_effect=lambda _path, payload: statuses.append(payload)):
@@ -193,11 +194,14 @@ class OmniVoiceBatchTests(unittest.TestCase):
                 self.assertEqual(statuses[-1]["completed"], 5)
                 if device == "cpu":
                     self.assertEqual(sizes, [1] * 5)
+                    self.assertEqual([call.args[0] for call in torch.set_num_threads.call_args_list], [1, 4])
                 elif oom:
                     self.assertEqual(sizes, [1, 2, 1, 1, 1, 1])
                     self.assertEqual(statuses[-1]["batch_retries"], 1)
                 else:
                     self.assertEqual(sizes, [1, 2, 1, 1])
+                if device.startswith("cuda"):
+                    torch.set_num_threads.assert_called_once_with(1)
 
 
 if __name__ == "__main__":

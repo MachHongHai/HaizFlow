@@ -31,6 +31,7 @@ QtObject {
             "manual_image": "Scanning original subtitles",
             "manual_audio": "Mixing audio",
             "manual_export": "Rendering video",
+            "manual_export_preparing": "Preparing video export",
             "manual_subtitles": "Subtitles ready",
             "manual_voice": "Voice ready",
             "manual_timeline": "Audio mix ready",

@@ -127,6 +127,30 @@ Item {
                 }
 
                 ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: Theme.space16
+                    visible: AppController.resourcePackStorageMoving
+                    spacing: Theme.space8
+                    Text {
+                        Layout.fillWidth: true
+                        text: AppController.resourcePackActivityProgress < 0
+                            ? AppController.resourcePackActivityText
+                            : qsTr("%1 · %2%").arg(AppController.resourcePackActivityText)
+                                .arg(Math.round(AppController.resourcePackActivityProgress))
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: TypeScale.metadata
+                        textFormat: Text.PlainText
+                    }
+                    AppProgressBar {
+                        Layout.fillWidth: true
+                        value: Math.max(0, AppController.resourcePackActivityProgress)
+                        indeterminate: AppController.resourcePackActivityProgress < 0
+                        active: parent.visible
+                    }
+                }
+
+                ColumnLayout {
                     id: packageList
                     Layout.fillWidth: true
                     spacing: 0

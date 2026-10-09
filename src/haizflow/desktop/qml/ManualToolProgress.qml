@@ -14,7 +14,7 @@ ColumnLayout {
 
     readonly property string phase: status === "pending" || stepId === "queued"
         ? "queued"
-        : stepId === "waiting_for_models" || stepId === "starting"
+        : stepId === "waiting_for_models" || stepId === "starting" || stepId === "manual_export_preparing"
             ? "preparing" : "running"
     readonly property bool measured: phase === "running" && [
         "manual_source", "manual_separation", "manual_recognition", "manual_audio",
@@ -26,7 +26,8 @@ ColumnLayout {
     readonly property string phaseDetail: phase === "queued"
         ? qsTr("Tác vụ sẽ bắt đầu khi hàng đợi sẵn sàng.")
         : phase === "preparing"
-            ? (stepId === "waiting_for_models"
+            ? (stepId === "manual_export_preparing" ? I18n.progressDetail(detail)
+                : stepId === "waiting_for_models"
                 ? qsTr("Đang nạp model cần cho công cụ này.")
                 : qsTr("Đang khởi tạo công cụ."))
             : I18n.progressDetail(detail)

@@ -132,7 +132,8 @@ Item {
     property var ocrRegionDrafts: ({})
     property var ocrModeDrafts: ({})
     readonly property var ocrLayers: editorModel.ocrLayers || []
-    readonly property string selectedOcrLayerId: "ocr-source-region"
+    readonly property string selectedOcrLayerId: String(selectedEditorClip.kind || "") === "ocr"
+        ? String(selectedEditorClip.clip_id) : "ocr-source-region"
     readonly property var selectedOcrLayer: ocrLayers.find(function(layer) {
         return String(layer.clip_id) === root.selectedOcrLayerId;
     }) || ({})
@@ -577,6 +578,9 @@ Item {
         } else if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_Y) {
             AppController.redoEdit();
             event.accepted = true;
+        } else if (event.key === Qt.Key_S && String(root.selectedEditorClip.kind || "") === "result") {
+            AppController.splitResultClip(String(root.selectedEditorClip.clip_id), Math.round(comparePreview.positionSeconds * 1000));
+            event.accepted = true;
         } else if (event.key === Qt.Key_Delete) {
             if (root.editorHasSelection && !root.editorSourceSelected)
                 AppController.removeClips(root.selectedEditorClipIds, false);
@@ -612,6 +616,8 @@ Item {
 
         ManualEditorToolbar {
             Layout.fillWidth: true
+            resultSelected: String(root.selectedEditorClip.kind || "") === "result"
+            onResultSplitRequested: AppController.splitResultClip(String(root.selectedEditorClip.clip_id), Math.round(comparePreview.positionSeconds * 1000))
             Layout.preferredHeight: 42
             projectTitle: AppController.projectName
             hasVideo: AppController.hasSelectedVideo
@@ -628,6 +634,10 @@ Item {
             onCompareToggled: root.comparing = !root.comparing
             onPreviewZoomInRequested: root.previewZoomPercent = Math.min(400, root.previewZoomPercent + 25)
             onPreviewZoomOutRequested: root.previewZoomPercent = Math.max(50, root.previewZoomPercent - 25)
+            onSeekRequested: function(offset) {
+                comparePreview.seekTo(Math.max(0, Math.min(comparePreview.durationSeconds,
+                    comparePreview.positionSeconds + offset)));
+            }
             onExportRequested: {
                 root.selectedStageIndex = 6;
                 root.activatePanel("tasks", "right");
@@ -888,6 +898,12 @@ Item {
                     }).map(function(clip) { return String(clip.clip_id); });
                     AppController.removeClips(ids, false);
                     root.forceActiveFocus();
+                }
+                onResultSplitRequested: function(clipId, timeMs) {
+                    AppController.splitResultClip(clipId, timeMs);
+                }
+                onResultDeleteRequested: function(clipId) {
+                    AppController.removeClips([clipId], false);
                 }
                 onClipMoveCommitted: function(clipId, startMs, trackId) {
                     AppController.moveClip(clipId, startMs, trackId);

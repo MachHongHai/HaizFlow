@@ -45,11 +45,15 @@ class VideoExportController(QObject):
     def settings(self, video) -> dict:
         if not video:
             return {}
+        from haizflow.services import editor_documents, result_segments
+
+        document = editor_documents.load(video.video_id) if video.project_type == "manual" else None
         return {
             "videoId": video.video_id,
             "filename": export_filename(project_display_name(video)),
             "preset": getattr(video, "export_preset", "source"),
             "ready": bool(current_render(video, verify=False)),
+            "segments": result_segments.ranges(document) if document else [],
             "presets": [{"value": value, "label": item["label" if self.host._settings_language == "vi" else "en"]}
                         for value, item in EXPORT_PRESETS.items()],
         }
@@ -145,11 +149,21 @@ class VideoExportController(QObject):
         return self.text("Không thể lưu ở vị trí này. Chọn thư mục ngoài dữ liệu dự án và thử lại. ",
                          "Cannot save here. Choose a folder outside managed project data and retry. ") + str(error)
 
-    def start(self, video_id, preset, destination, *, overwrite=False, process=False) -> bool:
+    def start(self, video_id, preset, destination, *, overwrite=False, process=False, segment_id="") -> bool:
         if self.busy:
             return False
         video = video_store.get_video(str(video_id))
+        selected_range = None
         try:
+            if segment_id:
+                from haizflow.services import editor_documents, result_segments
+
+                document = editor_documents.load(video.video_id) if video and video.project_type == "manual" else None
+                selected_range = next((item for item in result_segments.ranges(document)
+                                       if item["id"] == str(segment_id)), None) if document else None
+                if selected_range is None or process:
+                    raise ValueError(self.text("Đoạn kết quả không còn hợp lệ. Mở lại cửa sổ xuất.",
+                                               "The result segment changed. Reopen the export dialog."))
             preset_settings(str(preset))
             target = validate_export_destination(destination)
             if target.exists() and not overwrite:
@@ -168,6 +182,7 @@ class VideoExportController(QObject):
         job = {"videoId": video.video_id, "name": target.name, "path": str(target),
                "status": "pending", "progress": 0, "error": "", "overwrite": bool(overwrite),
                "process": bool(process),
+               "rangeMs": [selected_range["startMs"], selected_range["endMs"]] if selected_range else None,
                "targetIdentity": self._chosen_targets.get(str(target), destination_identity(target))}
         previous_jobs = self.jobs
         self._set_jobs([job])
@@ -178,7 +193,11 @@ class VideoExportController(QObject):
                             and preset == previous_preset
                             and bool(video.checkpoints.get("render")) and legacy and Path(legacy).is_file()
                             and legacy_render_owned(video, legacy))
-        if process:
+        if selected_range:
+            # Segment jobs own a bounded render, never enqueue a whole-video
+            # manual export merely because the full render cache is absent.
+            self.launch([job])
+        elif process:
             from haizflow.desktop.project_commands_controller import ProjectCommandsController
 
             if not ProjectCommandsController(self.host).process_for_export(video.video_id):
@@ -307,13 +326,15 @@ class VideoExportController(QObject):
                 video = video_store.get_video(identifier)
                 if not video:
                     raise FileNotFoundError(identifier)
-                if not current_render(video):
+                if not job.get("rangeMs") and not current_render(video):
                     adopt_legacy_render(video)
                     video = video_store.get_video(identifier)
                 arguments = {"overwrite": job["overwrite"], "cancel": self.cancel,
                              "progress": lambda value, key=identifier: self.events.put((key, "exporting", value, ""))}
                 if self.copier is export_video:
                     arguments["expected_target"] = job.get("targetIdentity")
+                    if job.get("rangeMs"):
+                        arguments["range_ms"] = tuple(job["rangeMs"])
                 result = self.copier(video, job["path"], **arguments)
                 try:
                     desktop_settings.save_settings({"last_export_directory": str(Path(result).parent)})
@@ -391,7 +412,8 @@ class VideoExportController(QObject):
         ready = []
         for job in jobs:
             video = video_store.get_video(job["videoId"])
-            if video and (video.project_type == "manual" or video.status == "done") and current_render(video, verify=False):
+            if video and (job.get("rangeMs") or (
+                    (video.project_type == "manual" or video.status == "done") and current_render(video, verify=False))):
                 ready.append(job)
             elif video and not self.host._processing_queue.contains(video.video_id) and self.request_render(video, job):
                 continue

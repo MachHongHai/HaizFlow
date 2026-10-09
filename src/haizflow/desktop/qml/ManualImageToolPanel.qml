@@ -10,9 +10,11 @@ ColumnLayout {
     id: imagePane
     spacing: Theme.space8
     readonly property var selectedLayer: inspector.selectedOcrLayer || ({})
-    readonly property string clipId: "ocr-source-region"
-    readonly property string appliedTreatment: !controller.removeOriginalSubtitles
-        ? "keep" : controller.originalSubtitleRemovalMode
+    readonly property string clipId: String(selectedLayer.clip_id || "ocr-source-region")
+    readonly property bool primary: Boolean(selectedLayer.primary) || clipId === "ocr-source-region"
+    readonly property string appliedTreatment: primary
+        ? (!controller.removeOriginalSubtitles ? "keep" : controller.originalSubtitleRemovalMode)
+        : String(selectedLayer.mode || "blur")
     readonly property string draftTreatment: String(inspector.ocrModeDrafts[clipId] || appliedTreatment)
 
     function applyTreatment() {
@@ -20,7 +22,31 @@ ColumnLayout {
         // the complete draft before those bindings can refresh.
         const region = inspector.ocrRegionDraft || selectedLayer.region;
         const treatment = draftTreatment;
-        return imagePane.controller.setManualSubtitleTreatment(treatment, region || ({}));
+        return primary ? imagePane.controller.setManualSubtitleTreatment(treatment, region || ({}))
+            : imagePane.controller.updateOcrLayer(clipId, region || ({}), treatment);
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Theme.space8
+        OcrLayerList {
+            Layout.fillWidth: true
+            layers: imagePane.inspector.ocrLayers
+            selectedId: imagePane.clipId
+            editable: imagePane.inspector.editable && !imagePane.inspector.taskQueued
+            onLayerSelected: function(id) { imagePane.inspector.ocrLayerSelected(id); }
+        }
+        StudioButton {
+            objectName: "addOcrLayerButton"
+            text: qsTr("Thêm lớp")
+            iconName: "add"
+            variant: "secondary"
+            enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
+            onClicked: {
+                const id = imagePane.controller.addOcrLayer();
+                if (id.length > 0)
+                    imagePane.inspector.ocrLayerSelected(id);
+            }
+        }
     }
     AppComboBox {
         objectName: "ocrTreatmentSelector"
@@ -28,13 +54,17 @@ ColumnLayout {
         enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued
         textRole: "label"
         valueRole: "value"
-        model: [
+        model: imagePane.primary ? [
             { "label": qsTr("Giữ nguyên"), "value": "keep" },
             { "label": qsTr("Che · Làm mờ"), "value": "blur" },
             { "label": qsTr("Che · Vá nền"), "value": "patch" }
+        ] : [
+            { "label": qsTr("Làm mờ"), "value": "blur" },
+            { "label": qsTr("Vá nền"), "value": "patch" }
         ]
-        currentIndex: imagePane.draftTreatment === "keep" ? 0
-            : imagePane.draftTreatment === "blur" ? 1 : 2
+        currentIndex: imagePane.primary ? (imagePane.draftTreatment === "keep" ? 0
+            : imagePane.draftTreatment === "blur" ? 1 : 2)
+            : imagePane.draftTreatment === "blur" ? 0 : 1
         onActivated: function(index) {
             const selected = model[index]
             if (selected)
@@ -55,7 +85,7 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.space8
         StudioButton {
-            visible: Number((imagePane.controller.reviewPreviewMedia.detectedOcrRegion || {}).width_percent || 0) > 0
+            visible: imagePane.primary && Number((imagePane.controller.reviewPreviewMedia.detectedOcrRegion || {}).width_percent || 0) > 0
             text: qsTr("Khôi phục vùng nhận diện")
             variant: "secondary"
             enabled: imagePane.inspector.editable && !imagePane.inspector.taskQueued

@@ -1534,6 +1534,7 @@ def render_video(
     subtitle_style_overrides: dict[int, dict] | None = None,
     encoding_quality: int | None = None,
     preview_source_scale: bool = False,
+    subtitle_timeline_offset_seconds: float | None = None,
 ):
     """Render cropped video, positioned subtitles, and dubbed audio with FFmpeg."""
     subtitle_style = SubtitleStyle.model_validate(subtitle_style.model_dump())
@@ -1659,7 +1660,14 @@ def render_video(
     ass_filter_path = rel_ass.replace(":", "\\:").replace("'", "'\\\\''")
     font_filter_path = rel_font_directory.replace(":", "\\:").replace("'", "'\\\\''")
     ass_filter = f"ass='{ass_filter_path}':fontsdir='{font_filter_path}'"
+    if subtitle_timeline_offset_seconds is not None:
+        # Keep absolute cue/karaoke clocks, including cues crossing the cut;
+        # only pixels in the bounded input window are actually rendered.
+        ass_filter = (f"setpts=PTS+{float(subtitle_timeline_offset_seconds):.6f}/TB,"
+                      f"{ass_filter},setpts=PTS-STARTPTS")
     source_start_seconds = max(0.0, float(source_start_seconds or 0.0))
+    watermark_clock_offset = (source_start_seconds if subtitle_timeline_offset_seconds is None
+                              else float(subtitle_timeline_offset_seconds))
     requested_watermark_kind = str(watermark_kind or "").lower()
     normalized_watermark_kind = (
         requested_watermark_kind if requested_watermark_kind in {"text", "image", "video"} else "text"
@@ -1675,7 +1683,7 @@ def render_video(
         watermark_text if not use_media_watermark else "",
         subtitle_width,
         subtitle_height,
-        time_offset_seconds=source_start_seconds,
+        time_offset_seconds=watermark_clock_offset,
         scale_percent=watermark_scale_percent,
         opacity_percent=watermark_opacity_percent,
         outline_percent=watermark_outline_percent,
@@ -1759,7 +1767,7 @@ def render_video(
             "[2:v]",
             subtitle_width,
             subtitle_height,
-            time_offset_seconds=source_start_seconds,
+            time_offset_seconds=watermark_clock_offset,
             scale_percent=watermark_scale_percent,
             opacity_percent=watermark_opacity_percent,
         )
@@ -1825,7 +1833,10 @@ def render_video(
         if use_image_watermark:
             cmd_prefix.extend(["-loop", "1", "-i", rel_watermark_media])
         else:
-            cmd_prefix.extend(["-stream_loop", "-1", "-i", rel_watermark_media])
+            cmd_prefix.extend(["-stream_loop", "-1"])
+            if subtitle_timeline_offset_seconds is not None and watermark_clock_offset > 0:
+                cmd_prefix.extend(["-ss", f"{watermark_clock_offset:.6f}"])
+            cmd_prefix.extend(["-i", rel_watermark_media])
     if use_media_watermark or removal_prefix or output_format == "blur_background_9_16":
         cmd_prefix.extend(["-filter_complex", vf_filter, "-map", "[outv]"])
     else:
