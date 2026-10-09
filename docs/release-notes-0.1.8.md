@@ -21,9 +21,9 @@ HaizFlow là ứng dụng miễn phí để tải video, dịch video, tạo ph�
 4. Chọn ngôn ngữ, model và giọng đọc. Gemini cần key của bạn; HY-MT2 dịch trên máy, không cần key.
 5. Xử lý, xem lại kết quả rồi bấm **Xuất**.
 
-Đang dùng **0.1.6 hoặc 0.1.7**? Bấm **Phiên bản mới → Kiểm tra lại → Cập nhật**, rồi chọn **Khởi động lại**. Có thể nâng trực tiếp lên 0.1.8, không cần cài bản trung gian. Dự án, cài đặt và gói tài nguyên đã cài được giữ nguyên. Bản này cung cấp gói cập nhật từ 0.1.6 và 0.1.7 cùng gói Core đầy đủ dự phòng. Bản dưới 0.1.6 không nằm trong phạm vi kiểm chứng cập nhật này; hãy dùng bộ cài và chọn đúng thư mục HaizFlow hiện tại nếu cần nâng cấp.
+Đang dùng **0.1.6 hoặc 0.1.7**? Bấm **Phiên bản mới → Kiểm tra lại → Cập nhật**, rồi chọn **Khởi động lại**. Có thể nâng trực tiếp lên 0.1.8, không cần cài bản trung gian. Dự án, cài đặt và tệp model đã tải được giữ nguyên. Sau cập nhật, cài phiên bản bộ xử lý CPU/CUDA mới nếu app yêu cầu trong **Gói tài nguyên**; các bản sửa inference cần engine mới, không chỉ Core. Bản này cung cấp gói cập nhật từ 0.1.6 và 0.1.7 cùng gói Core đầy đủ dự phòng. Bản dưới 0.1.6 không nằm trong phạm vi kiểm chứng cập nhật này; hãy dùng bộ cài và chọn đúng thư mục HaizFlow hiện tại nếu cần nâng cấp.
 
-[Hướng dẫn cài đặt](https://github.com/MachHongHai/HaizFlow/blob/main/docs/install.vi.md) · [Hướng dẫn sử dụng](https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.vi.md) · [Website](https://haizflow.pages.dev/) · [English guide](https://github.com/MachHongHai/HaizFlow/blob/main/docs/user-guide.md)
+[Hướng dẫn cài đặt](https://github.com/MachHongHai/HaizFlow/blob/v0.1.8/docs/install.vi.md) · [Hướng dẫn sử dụng](https://github.com/MachHongHai/HaizFlow/blob/v0.1.8/docs/user-guide.vi.md) · [Website](https://haizflow.pages.dev/) · [English guide](https://github.com/MachHongHai/HaizFlow/blob/v0.1.8/docs/user-guide.md)
 
 ## Cập nhật trong 0.1.8
 
@@ -38,7 +38,7 @@ HaizFlow là ứng dụng miễn phí để tải video, dịch video, tạo ph�
 - Sửa dừng tải trong ô nhập liên kết, thay nguồn và xóa dự án khi tác vụ đang dừng; tránh giữ tệp video gây lỗi khóa tệp trên Windows.
 - Cải thiện xác minh chứng chỉ khi tải gói tài nguyên, giữ kiểm tra TLS; không tắt xác minh chứng chỉ.
 - Tạm ẩn Gemini 3.8 khỏi danh sách chọn model. Tính năng thêm lớp OCR vẫn chưa ra mắt.
-- Chuyển các bộ xử lý đang dùng về release này để tải gói không phụ thuộc các release dưới 0.1.5 đã được dọn. Giữ nguyên archive và checksum của các bộ xử lý đã phát hành.
+- Phát hành bộ xử lý CPU 10/CUDA 12 với mã xử lý mới; chuyển OCR 4 về release này và giữ nguyên checksum. Các gói trong bản mới không phụ thuộc release dưới 0.1.5 đã được dọn; model và thư viện được khóa phiên bản không thay đổi.
 
 ## Cấu hình và điều kiện sử dụng
 
